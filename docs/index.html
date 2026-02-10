@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCC-KMP Developer Docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gcc: { green: '#22C55E', dark: '#16A34A', light: '#86EFAC' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .nav-link.active { background: #22C55E; color: white; }
+        .section { display: none; }
+        .section.active { display: block; }
+        pre code { font-size: 0.85rem; line-height: 1.5; }
+        .mermaid { background: white; padding: 1rem; border-radius: 0.5rem; }
+        .comparison-table td:first-child { font-family: monospace; color: #3B82F6; }
+        .comparison-table td:nth-child(2) { font-family: monospace; color: #22C55E; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+            <div class="w-10 h-10 bg-gcc-green rounded-lg flex items-center justify-center font-bold text-white text-lg">G</div>
+            <div>
+                <h1 class="text-xl font-bold">GCC-KMP Developer Docs</h1>
+                <p class="text-gray-400 text-sm">Kotlin Multiplatform Architecture Reference</p>
+            </div>
+            <div class="ml-auto text-sm text-gray-500">
+                <span id="lastUpdated"></span>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto flex">
+        <!-- Sidebar -->
+        <nav class="w-64 shrink-0 bg-gray-900 border-r border-gray-800 min-h-screen sticky top-16 p-4 space-y-1">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Getting Started</p>
+            <button onclick="showSection('overview')" class="nav-link active w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Architecture Overview</button>
+            <button onclick="showSection('kotlin101')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Kotlin for TS Devs</button>
+
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-6">Backend (Ktor)</p>
+            <button onclick="showSection('layers')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">3-Layer Architecture</button>
+            <button onclick="showSection('database')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Database Schema</button>
+            <button onclick="showSection('api')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">API Endpoints</button>
+            <button onclick="showSection('di')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Dependency Injection</button>
+
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-6">Shared Module</p>
+            <button onclick="showSection('models')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Data Models</button>
+            <button onclick="showSection('geo')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Geofence Logic</button>
+
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-6">Mobile App</p>
+            <button onclick="showSection('compose')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Compose UI</button>
+            <button onclick="showSection('navigation')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Navigation</button>
+
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-6">Operations</p>
+            <button onclick="showSection('commands')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Build Commands</button>
+            <button onclick="showSection('env')" class="nav-link w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">Environment Setup</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-8 max-w-4xl">
+
+            <!-- ========== OVERVIEW ========== -->
+            <div id="overview" class="section active space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Architecture Overview</h2>
+                    <p class="text-gray-400">How GCC-KMP is structured and why each piece exists.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">System Diagram</h3>
+                    <div class="mermaid">
+graph TB
+    subgraph "GCC-KMP Monorepo"
+        subgraph "shared/ (Kotlin Multiplatform)"
+            M[Data Models<br/>13 data classes]
+            G[Geofence Logic<br/>Haversine distance]
+            A[API Client<br/>Ktor HttpClient]
+            C[Constants<br/>Config values]
+        end
+
+        subgraph "server/ (Ktor JVM)"
+            T[Tables<br/>Exposed ORM]
+            S[Services<br/>Business logic]
+            R[Routes<br/>HTTP endpoints]
+            DB[(Neon PostgreSQL<br/>15 tables)]
+        end
+
+        subgraph "composeApp/ (Compose Multiplatform)"
+            UI[Screens<br/>Login, Dashboard, etc.]
+            TH[Theme<br/>Material 3 + GCC colors]
+            NAV[Navigation<br/>Decompose]
+        end
+    end
+
+    M --> T
+    M --> A
+    M --> UI
+    G --> S
+    G --> UI
+    A --> R
+    T --> DB
+    S --> T
+    R --> S
+
+    style M fill:#22C55E,color:#000
+    style G fill:#22C55E,color:#000
+    style A fill:#22C55E,color:#000
+    style C fill:#22C55E,color:#000
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Module Responsibilities</h3>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Module</th><th class="text-left py-2 text-gray-400">What It Does</th><th class="text-left py-2 text-gray-400">TS Equivalent</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-3 font-mono text-gcc-green">shared/</td><td>Data models, API client, geofence math, constants</td><td class="text-gray-400">gcc-shared package</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-3 font-mono text-gcc-green">server/</td><td>Ktor HTTP server, database queries, authentication</td><td class="text-gray-400">Next.js API routes</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-3 font-mono text-gcc-green">composeApp/</td><td>Android + iOS UI with Compose Multiplatform</td><td class="text-gray-400">React Native / Expo</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Data Flow</h3>
+                    <div class="mermaid">
+sequenceDiagram
+    participant App as Mobile App
+    participant API as Ktor Server :7310
+    participant DB as Neon PostgreSQL
+    participant Site as gcc-site (Next.js)
+
+    App->>API: GET /api/routes
+    API->>DB: SELECT * FROM routes
+    DB-->>API: ResultSet
+    API-->>App: JSON (Route[])
+
+    Site->>API: GET /api/leaderboard
+    API->>DB: SELECT workers ORDER BY stats
+    DB-->>API: ResultSet
+    API-->>Site: JSON (LeaderboardEntry[])
+
+    Note over App,DB: Both mobile app and website<br/>call the SAME Ktor API
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Project File Structure</h3>
+                    <pre class="bg-gray-950 p-4 rounded-lg overflow-x-auto text-sm"><code class="text-gray-300">gcc-kmp/
+├── <span class="text-gcc-green">shared/</span>                          # Shared Kotlin code (all platforms)
+│   └── src/commonMain/kotlin/com/gcc/shared/
+│       ├── <span class="text-yellow-400">model/</span>                   # 13 data classes + enums + GeoJSON types
+│       ├── <span class="text-yellow-400">geo/</span>                     # GeofenceVerification (Haversine)
+│       ├── <span class="text-yellow-400">api/</span>                     # GccApiClient (Ktor HttpClient)
+│       └── <span class="text-yellow-400">constants/</span>               # GccConstants (geofence params)
+│
+├── <span class="text-blue-400">server/</span>                          # Ktor backend (JVM only)
+│   └── src/main/kotlin/com/gcc/server/
+│       ├── Application.kt              # Entry point (port 7310)
+│       ├── <span class="text-yellow-400">db/</span>
+│       │   ├── DatabaseFactory.kt       # HikariCP connection + dbQuery helper
+│       │   └── <span class="text-yellow-400">tables/</span>
+│       │       └── Tables.kt           # 15 Exposed table definitions
+│       ├── <span class="text-yellow-400">services/</span>                # Business logic (WorkerService, etc.)
+│       ├── <span class="text-yellow-400">routes/</span>                  # HTTP endpoints
+│       └── <span class="text-yellow-400">plugins/</span>                 # Ktor plugins (Auth, CORS, etc.)
+│
+├── <span class="text-purple-400">composeApp/</span>                      # Mobile UI (Android + iOS)
+│   └── src/commonMain/kotlin/com/gcc/app/
+│       └── <span class="text-yellow-400">ui/</span>
+│           ├── App.kt                   # Root composable
+│           ├── <span class="text-yellow-400">screens/</span>              # Login, Dashboard, ActiveJob, etc.
+│           └── <span class="text-yellow-400">theme/</span>               # Colors, typography, GccTheme
+│
+├── <span class="text-cyan-400">docs/</span>                            # This documentation site
+├── gradle/libs.versions.toml           # All dependency versions
+└── build.gradle.kts                    # Root build config</code></pre>
+                </div>
+            </div>
+
+            <!-- ========== KOTLIN 101 ========== -->
+            <div id="kotlin101" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Kotlin for TypeScript Developers</h2>
+                    <p class="text-gray-400">A fast translation guide from patterns you already know.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Core Syntax Comparison</h3>
+                    <table class="comparison-table w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-blue-400">TypeScript</th><th class="text-left py-2 text-gcc-green">Kotlin</th><th class="text-left py-2 text-gray-400">Notes</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2">const name: string</td><td>val name: String</td><td class="text-gray-500">val = immutable (preferred)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">let count = 0</td><td>var count = 0</td><td class="text-gray-500">var = mutable</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">name?: string</td><td>name: String?</td><td class="text-gray-500">? after type = nullable</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">worker?.email ?? "none"</td><td>worker?.email ?: "none"</td><td class="text-gray-500">?: is the Elvis operator</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">interface Worker { ... }</td><td>data class Worker(...)</td><td class="text-gray-500">Auto: equals, hashCode, copy, toString</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">type Status = "a" | "b"</td><td>enum class Status { A, B }</td><td class="text-gray-500">Exhaustive when() matching</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">async function fn()</td><td>suspend fun fn()</td><td class="text-gray-500">suspend = can be paused/resumed</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">Promise&lt;T&gt;</td><td>(implicit via suspend)</td><td class="text-gray-500">No wrapper type needed</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">Observable&lt;T&gt;</td><td>Flow&lt;T&gt;</td><td class="text-gray-500">Cold stream of values</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">arr.filter(x => x > 5)</td><td>arr.filter { it > 5 }</td><td class="text-gray-500">"it" = single lambda param</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">arr.map(x => x.name)</td><td>arr.map { it.name }</td><td class="text-gray-500">Trailing lambda syntax</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">{ ...obj, name: "new" }</td><td>obj.copy(name = "new")</td><td class="text-gray-500">data class copy()</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">export default</td><td>(no equivalent)</td><td class="text-gray-500">Everything is accessible by package</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Key Kotlin Concepts</h3>
+
+                    <div class="space-y-6">
+                        <div>
+                            <h4 class="font-semibold text-gcc-green mb-2">data class (= TypeScript interface + auto-methods)</h4>
+                            <pre class="bg-gray-950 p-4 rounded-lg text-sm overflow-x-auto"><code><span class="text-purple-400">@Serializable</span>
+<span class="text-blue-400">data class</span> Worker(
+    <span class="text-blue-400">val</span> id: Int,
+    <span class="text-blue-400">val</span> name: String,
+    <span class="text-blue-400">val</span> email: String,
+    <span class="text-blue-400">val</span> phone: String,
+    <span class="text-blue-400">val</span> emailVerified: Boolean = <span class="text-yellow-400">false</span>,  <span class="text-gray-500">// default value</span>
+    <span class="text-blue-400">val</span> stats: WorkerStats = WorkerStats(),
+    <span class="text-blue-400">val</span> createdAt: Instant,
+    <span class="text-blue-400">val</span> updatedAt: Instant
+)
+<span class="text-gray-500">// Automatically generates: equals(), hashCode(), toString(), copy()</span></code></pre>
+                        </div>
+
+                        <div>
+                            <h4 class="font-semibold text-gcc-green mb-2">sealed class (= TypeScript discriminated union)</h4>
+                            <pre class="bg-gray-950 p-4 rounded-lg text-sm overflow-x-auto"><code><span class="text-blue-400">sealed class</span> ApiResult&lt;<span class="text-blue-400">out</span> T&gt; {
+    <span class="text-blue-400">data class</span> Success&lt;T&gt;(<span class="text-blue-400">val</span> data: T) : ApiResult&lt;T&gt;()
+    <span class="text-blue-400">data class</span> Error(<span class="text-blue-400">val</span> message: String) : ApiResult&lt;Nothing&gt;()
+}
+
+<span class="text-gray-500">// Compiler enforces exhaustive handling:</span>
+<span class="text-blue-400">when</span> (result) {
+    <span class="text-blue-400">is</span> ApiResult.Success -> showData(result.data)
+    <span class="text-blue-400">is</span> ApiResult.Error -> showError(result.message)
+    <span class="text-gray-500">// No "else" needed &mdash; compiler knows all cases</span>
+}</code></pre>
+                        </div>
+
+                        <div>
+                            <h4 class="font-semibold text-gcc-green mb-2">suspend fun (= async function)</h4>
+                            <pre class="bg-gray-950 p-4 rounded-lg text-sm overflow-x-auto"><code><span class="text-gray-500">// TypeScript:</span>
+<span class="text-blue-400">async function</span> getWorker(id: number): Promise&lt;Worker&gt; {
+    <span class="text-blue-400">const</span> response = <span class="text-blue-400">await</span> fetch(<span class="text-yellow-400">`/api/workers/${id}`</span>);
+    <span class="text-blue-400">return</span> response.json();
+}
+
+<span class="text-gray-500">// Kotlin:</span>
+<span class="text-blue-400">suspend fun</span> getWorker(id: Int): Worker {
+    <span class="text-blue-400">return</span> httpClient.get(<span class="text-yellow-400">"/api/workers/$id"</span>).body()
+    <span class="text-gray-500">// No "await" keyword &mdash; suspend functions auto-pause</span>
+}</code></pre>
+                        </div>
+
+                        <div>
+                            <h4 class="font-semibold text-gcc-green mb-2">object (= singleton / static module)</h4>
+                            <pre class="bg-gray-950 p-4 rounded-lg text-sm overflow-x-auto"><code><span class="text-blue-400">object</span> GeofenceVerification {
+    <span class="text-blue-400">fun</span> isWithinGeofence(user: Point, checkpoint: Point, radius: Double): Boolean {
+        <span class="text-blue-400">return</span> distanceMeters(user, checkpoint) <= radius
+    }
+}
+<span class="text-gray-500">// Usage: GeofenceVerification.isWithinGeofence(...)</span>
+<span class="text-gray-500">// Like a TS module with exported functions &mdash; no instantiation needed</span></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== LAYERS ========== -->
+            <div id="layers" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">3-Layer Backend Architecture</h2>
+                    <p class="text-gray-400">How HTTP requests flow through the Ktor server.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <div class="mermaid">
+flowchart LR
+    Client[Mobile App / Website] -->|HTTP Request| Route
+    Route[Routes Layer<br/><i>routes/*.kt</i>] -->|Calls| Service
+    Service[Services Layer<br/><i>services/*.kt</i>] -->|Queries| Table
+    Table[Tables Layer<br/><i>db/tables/Tables.kt</i>] -->|SQL| DB[(PostgreSQL)]
+    DB -->|ResultRow| Table
+    Table -->|Data Model| Service
+    Service -->|Data Model| Route
+    Route -->|JSON Response| Client
+
+    style Route fill:#3B82F6,color:#fff
+    style Service fill:#8B5CF6,color:#fff
+    style Table fill:#22C55E,color:#000
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-blue-950 rounded-xl p-6 border border-blue-800">
+                        <h3 class="text-lg font-semibold text-blue-400 mb-3">Routes Layer</h3>
+                        <p class="text-sm text-gray-300 mb-3">HTTP endpoint definitions. Parses request params, calls services, returns JSON.</p>
+                        <pre class="bg-gray-950 p-3 rounded text-xs overflow-x-auto"><code>fun Routing.workerRoutes() {
+    route("/api/workers") {
+        get {
+            val workers = workerService.getAll()
+            call.respond(workers)
+        }
+    }
+}</code></pre>
+                        <p class="text-xs text-gray-500 mt-2">Like: Next.js API route handler</p>
+                    </div>
+
+                    <div class="bg-purple-950 rounded-xl p-6 border border-purple-800">
+                        <h3 class="text-lg font-semibold text-purple-400 mb-3">Services Layer</h3>
+                        <p class="text-sm text-gray-300 mb-3">Business logic + database queries. Converts DB rows to shared models.</p>
+                        <pre class="bg-gray-950 p-3 rounded text-xs overflow-x-auto"><code>class WorkerService {
+    suspend fun getAll() = dbQuery {
+        Workers.selectAll()
+            .map { it.toWorker() }
+    }
+}</code></pre>
+                        <p class="text-xs text-gray-500 mt-2">Like: Drizzle query + data mapping</p>
+                    </div>
+
+                    <div class="bg-green-950 rounded-xl p-6 border border-green-800">
+                        <h3 class="text-lg font-semibold text-gcc-green mb-3">Tables Layer</h3>
+                        <p class="text-sm text-gray-300 mb-3">Exposed ORM table definitions. Maps to existing Neon PostgreSQL schema.</p>
+                        <pre class="bg-gray-950 p-3 rounded text-xs overflow-x-auto"><code>object Workers : Table("workers") {
+    val id = integer("id").autoIncrement()
+    val name = varchar("name", 255)
+    val email = varchar("email", 255)
+    // ...
+}</code></pre>
+                        <p class="text-xs text-gray-500 mt-2">Like: Drizzle pgTable() definition</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Why 3 Layers?</h3>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Change</th><th class="text-left py-2 text-gray-400">What to edit</th><th class="text-left py-2 text-gray-400">What stays the same</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2">Database column renamed</td><td class="text-gcc-green">Tables.kt only</td><td class="text-gray-400">Services + Routes</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">New business rule added</td><td class="text-purple-400">Service only</td><td class="text-gray-400">Tables + Routes</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">API response format changes</td><td class="text-blue-400">Route only</td><td class="text-gray-400">Tables + Services</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2">New endpoint added</td><td class="text-blue-400">New Route + new Service method</td><td class="text-gray-400">Tables stay the same</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========== DATABASE ========== -->
+            <div id="database" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Database Schema</h2>
+                    <p class="text-gray-400">15 tables in Neon PostgreSQL, shared with gcc-site.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Entity Relationship Diagram</h3>
+                    <div class="mermaid">
+erDiagram
+    SERVICE_AREAS ||--o{ BLOCKS : contains
+    SERVICE_AREAS ||--o{ ROUTES : contains
+    BLOCKS ||--o{ JOBS : "generates"
+    ROUTES ||--o{ ROUTE_CHECKPOINTS : has
+    ROUTES ||--o{ JOBS : "assigned to"
+    WORKERS ||--o{ JOBS : "works on"
+    SPONSORS ||--o{ BLOCKS : "funds"
+    SPONSORS ||--o{ TRANSACTIONS : "pays"
+    SPONSORS ||--o{ SPONSOR_PACKAGES : "subscribes"
+    WORKERS ||--o{ COMMUNITY_REPORTS : "reports"
+    WORKERS ||--o{ FEEDBACK_TICKETS : "creates"
+    FEEDBACK_TICKETS ||--o{ FEEDBACK_REPLIES : has
+    WORKERS ||--o{ MEDIA : "uploads"
+
+    WORKERS {
+        int id PK
+        string name
+        string email UK
+        string phone
+        jsonb address
+        jsonb verification
+        jsonb stripe
+        jsonb stats
+        string early_adopter_tier
+    }
+
+    ROUTES {
+        int id PK
+        string code UK
+        string display_name
+        int service_area_id FK
+        jsonb geometry
+        string status
+        int payout_amount
+    }
+
+    BLOCKS {
+        int id PK
+        string code UK
+        string name
+        int service_area_id FK
+        string status
+        jsonb boundary
+        int funding_goal
+        int funding_current
+    }
+
+    JOBS {
+        int id PK
+        int block_id FK
+        int route_id FK
+        int worker_id FK
+        string status
+        jsonb photos
+        jsonb gps_path
+        int payout_amount
+    }
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">All 15 Tables</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div class="bg-gray-950 p-3 rounded-lg">
+                            <p class="font-semibold text-gcc-green mb-1">Core Operations</p>
+                            <ul class="text-gray-400 space-y-1">
+                                <li>workers</li>
+                                <li>routes</li>
+                                <li>route_checkpoints</li>
+                                <li>blocks</li>
+                                <li>jobs</li>
+                                <li>service_areas</li>
+                            </ul>
+                        </div>
+                        <div class="bg-gray-950 p-3 rounded-lg">
+                            <p class="font-semibold text-blue-400 mb-1">Sponsor / Financial</p>
+                            <ul class="text-gray-400 space-y-1">
+                                <li>sponsors</li>
+                                <li>sponsor_packages</li>
+                                <li>transactions</li>
+                            </ul>
+                        </div>
+                        <div class="bg-gray-950 p-3 rounded-lg">
+                            <p class="font-semibold text-purple-400 mb-1">Community / Support</p>
+                            <ul class="text-gray-400 space-y-1">
+                                <li>media</li>
+                                <li>feedback_tickets</li>
+                                <li>feedback_replies</li>
+                                <li>forum_posts</li>
+                                <li>community_reports</li>
+                                <li>waitlist_entries</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-yellow-950 rounded-xl p-6 border border-yellow-800">
+                    <h3 class="text-lg font-semibold text-yellow-400 mb-2">Important: Shared Database</h3>
+                    <p class="text-sm text-gray-300">Both <strong>gcc-site</strong> (Next.js) and <strong>gcc-kmp</strong> (Ktor) connect to the <strong>same Neon PostgreSQL database</strong>. The Ktor server does NOT create or modify tables &mdash; it reads the existing schema that gcc-site's Drizzle ORM created. If column names don't match, update the <code class="bg-gray-800 px-1 rounded">Tables.kt</code> string values.</p>
+                </div>
+            </div>
+
+            <!-- ========== API ========== -->
+            <div id="api" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">API Endpoints</h2>
+                    <p class="text-gray-400">All Ktor server endpoints at port 7310.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Phase 1: Read-Only Endpoints (Current)</h3>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Method</th><th class="text-left py-2 text-gray-400">Path</th><th class="text-left py-2 text-gray-400">Description</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/health</td><td class="text-gray-400">Server health check</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/stats</td><td class="text-gray-400">Public stats (worker count, blocks, etc.)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/leaderboard</td><td class="text-gray-400">Top workers by jobs completed</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/workers</td><td class="text-gray-400">List workers (paginated)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/workers/{id}</td><td class="text-gray-400">Get worker by ID</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/routes</td><td class="text-gray-400">List routes (filterable by status/area)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/routes/{id}</td><td class="text-gray-400">Get route with checkpoints</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/blocks</td><td class="text-gray-400">List blocks (filterable by status/area)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/blocks/{id}</td><td class="text-gray-400">Get block by ID</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/service-areas</td><td class="text-gray-400">List service areas</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/service-areas/{id}</td><td class="text-gray-400">Get service area by ID</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/jobs</td><td class="text-gray-400">List jobs (filterable)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-gcc-green font-mono">GET</td><td class="font-mono text-gray-300">/api/jobs/{id}</td><td class="text-gray-400">Get job by ID</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Phase 2: Auth + Worker-Facing (Next)</h3>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Method</th><th class="text-left py-2 text-gray-400">Path</th><th class="text-left py-2 text-gray-400">Description</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-yellow-400 font-mono">POST</td><td class="font-mono text-gray-300">/api/workers/register</td><td class="text-gray-400">Create account + hash password</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-yellow-400 font-mono">POST</td><td class="font-mono text-gray-300">/api/workers/login</td><td class="text-gray-400">Authenticate + return JWT</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-yellow-400 font-mono">POST</td><td class="font-mono text-gray-300">/api/jobs/{id}/claim</td><td class="text-gray-400">Worker claims a job</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-yellow-400 font-mono">POST</td><td class="font-mono text-gray-300">/api/jobs/{id}/start</td><td class="text-gray-400">Begin GPS tracking</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 text-yellow-400 font-mono">POST</td><td class="font-mono text-gray-300">/api/jobs/{id}/submit</td><td class="text-gray-400">Submit photos + GPS path</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========== DI ========== -->
+            <div id="di" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Dependency Injection (Koin)</h2>
+                    <p class="text-gray-400">How services are created and shared across the app.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">What is Dependency Injection?</h3>
+                    <p class="text-sm text-gray-300 mb-4">Instead of creating services inside routes (tight coupling), we declare what services exist in one place and let the framework "inject" them where needed. This makes testing easy (swap real DB with mock) and keeps code modular.</p>
+                    <div class="mermaid">
+graph LR
+    Module[Koin Module<br/><i>declares all services</i>] -->|injects| Route1[WorkerRoutes]
+    Module -->|injects| Route2[RouteRoutes]
+    Module -->|injects| Route3[BlockRoutes]
+
+    Module -->|creates| WS[WorkerService]
+    Module -->|creates| RS[RouteService]
+    Module -->|creates| BS[BlockService]
+    Module -->|creates| SS[StatsService]
+
+    SS -->|depends on| WS
+    SS -->|depends on| BS
+
+    style Module fill:#22C55E,color:#000
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-3">TypeScript vs Kotlin DI</h3>
+                    <pre class="bg-gray-950 p-4 rounded-lg text-sm overflow-x-auto"><code><span class="text-gray-500">// TypeScript: Manual dependency creation</span>
+<span class="text-blue-400">const</span> workerService = <span class="text-blue-400">new</span> WorkerService(db);
+<span class="text-blue-400">const</span> statsService = <span class="text-blue-400">new</span> StatsService(workerService);
+<span class="text-gray-500">// Must wire everything manually, order matters</span>
+
+<span class="text-gray-500">// Kotlin with Koin: Declarative</span>
+<span class="text-blue-400">val</span> appModule = module {
+    single { WorkerService() }                           <span class="text-gray-500">// create once, reuse</span>
+    single { StatsService(get(), get(), get(), get()) }  <span class="text-gray-500">// get() = auto-resolve</span>
+}
+<span class="text-gray-500">// Koin resolves the dependency graph automatically</span></code></pre>
+                </div>
+            </div>
+
+            <!-- ========== MODELS ========== -->
+            <div id="models" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Shared Data Models</h2>
+                    <p class="text-gray-400">13 data classes in shared/src/commonMain/ used by ALL platforms.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Model Hierarchy</h3>
+                    <div class="mermaid">
+graph TB
+    subgraph "Core Models"
+        Worker --> WorkerAddress
+        Worker --> WorkerVerification
+        Worker --> WorkerStripe
+        Worker --> WorkerStats
+        Worker --> WorkerNotifications
+    end
+
+    subgraph "Route Models"
+        Route --> RouteCheckpoint
+        RouteCheckpoint --> Coordinates
+    end
+
+    subgraph "Sponsor Models"
+        Sponsor --> SponsorBusiness
+        Sponsor --> SponsorPreferences
+        Sponsor --> SponsorStats
+        Sponsor --> SponsorStripe
+    end
+
+    subgraph "Job Models"
+        Job --> JobTiming
+    end
+
+    subgraph "GeoJSON Types"
+        GeoJSONPolygon
+        GeoJSONLineString
+        GeoJSONPoint
+        Coordinates
+    end
+
+    style Worker fill:#22C55E,color:#000
+    style Route fill:#3B82F6,color:#fff
+    style Sponsor fill:#8B5CF6,color:#fff
+    style Job fill:#F59E0B,color:#000
+                    </div>
+                </div>
+
+                <div class="bg-yellow-950 rounded-xl p-6 border border-yellow-800">
+                    <h3 class="text-lg font-semibold text-yellow-400 mb-2">The "Contract" Pattern</h3>
+                    <p class="text-sm text-gray-300">These shared models are the <strong>single source of truth</strong> for data shape. The server serializes database rows into these models. The mobile app deserializes API responses into the exact same models. If a field is added/removed, the compiler catches every affected location across server, Android, and iOS.</p>
+                </div>
+            </div>
+
+            <!-- ========== GEO ========== -->
+            <div id="geo" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Geofence Logic</h2>
+                    <p class="text-gray-400">Shared Haversine distance calculation for checkpoint verification.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">How Geofencing Works</h3>
+                    <div class="mermaid">
+flowchart TB
+    GPS[Worker GPS Position] --> CALC[Haversine Distance]
+    CP[Checkpoint Coordinates] --> CALC
+    CALC --> CHECK{Distance <= 15m?}
+    CHECK -->|Yes| INSIDE[Within Geofence<br/>Can take photo]
+    CHECK -->|No| OUTSIDE[Outside Geofence<br/>Must move closer]
+
+    style INSIDE fill:#22C55E,color:#000
+    style OUTSIDE fill:#EF4444,color:#fff
+                    </div>
+                    <p class="text-sm text-gray-400 mt-4">The Haversine formula calculates the great-circle distance between two points on a sphere (Earth). It accounts for Earth's curvature, making it accurate for the short distances (0-50m) used in checkpoint verification. The same <code class="bg-gray-800 px-1 rounded">GeofenceVerification</code> object runs on both the phone (for real-time UI) and the server (for authoritative validation).</p>
+                </div>
+            </div>
+
+            <!-- ========== COMPOSE ========== -->
+            <div id="compose" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Compose Multiplatform UI</h2>
+                    <p class="text-gray-400">Shared UI layer for Android and iOS.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Screen Flow</h3>
+                    <div class="mermaid">
+stateDiagram-v2
+    [*] --> Login
+    Login --> Dashboard: Authenticated
+    Dashboard --> RouteDetail: Tap route
+    Dashboard --> Profile: Tap profile
+    RouteDetail --> ActiveJob: Claim + Start
+    ActiveJob --> Dashboard: Submit completed
+    Dashboard --> ActiveJob: Resume active job
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-3">Compose vs React Comparison</h3>
+                    <table class="comparison-table w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-blue-400">React Native</th><th class="text-left py-2 text-gcc-green">Compose</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td>useState()</td><td>mutableStateOf()</td></tr>
+                            <tr class="border-b border-gray-800"><td>useEffect()</td><td>LaunchedEffect()</td></tr>
+                            <tr class="border-b border-gray-800"><td>&lt;View&gt;</td><td>Box / Column / Row</td></tr>
+                            <tr class="border-b border-gray-800"><td>&lt;Text&gt;</td><td>Text()</td></tr>
+                            <tr class="border-b border-gray-800"><td>&lt;FlatList&gt;</td><td>LazyColumn()</td></tr>
+                            <tr class="border-b border-gray-800"><td>StyleSheet.create()</td><td>Modifier chains</td></tr>
+                            <tr class="border-b border-gray-800"><td>React Navigation</td><td>Decompose</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========== NAVIGATION ========== -->
+            <div id="navigation" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Navigation (Decompose)</h2>
+                    <p class="text-gray-400">Type-safe navigation with lifecycle awareness. Coming in Step 3.</p>
+                </div>
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <p class="text-gray-400">Decompose provides navigation that works identically on Android and iOS. Unlike React Navigation (which wraps native navigators), Decompose manages the navigation stack in shared Kotlin code. Each screen gets its own component with lifecycle callbacks.</p>
+                </div>
+            </div>
+
+            <!-- ========== COMMANDS ========== -->
+            <div id="commands" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Build Commands</h2>
+                    <p class="text-gray-400">Essential Gradle commands for development.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Command</th><th class="text-left py-2 text-gray-400">What it does</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :server:build</td><td class="text-gray-400">Compile server module</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :server:run</td><td class="text-gray-400">Run Ktor server on :7310</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :shared:build</td><td class="text-gray-400">Compile shared module (all targets)</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :composeApp:build</td><td class="text-gray-400">Compile mobile app</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :composeApp:installDebug</td><td class="text-gray-400">Install on Android emulator</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew :server:buildFatJar</td><td class="text-gray-400">Build deployable server JAR</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">./gradlew build</td><td class="text-gray-400">Build everything</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========== ENV ========== -->
+            <div id="env" class="section space-y-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Environment Setup</h2>
+                    <p class="text-gray-400">Required environment variables and configuration.</p>
+                </div>
+
+                <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                    <h3 class="text-lg font-semibold mb-4">Server Environment Variables</h3>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b border-gray-700"><th class="text-left py-2 text-gray-400">Variable</th><th class="text-left py-2 text-gray-400">Required</th><th class="text-left py-2 text-gray-400">Description</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">DATABASE_URL</td><td class="text-red-400">Yes</td><td class="text-gray-400">Neon PostgreSQL connection string</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">PORT</td><td class="text-gray-400">No (7310)</td><td class="text-gray-400">HTTP server port</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">JWT_SECRET</td><td class="text-gray-400">No (dev)</td><td class="text-gray-400">JWT signing secret</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">JWT_ISSUER</td><td class="text-gray-400">No (gcc-api)</td><td class="text-gray-400">JWT issuer claim</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">JWT_AUDIENCE</td><td class="text-gray-400">No (gcc-app)</td><td class="text-gray-400">JWT audience claim</td></tr>
+                            <tr class="border-b border-gray-800"><td class="py-2 font-mono text-gcc-green">ALLOWED_ORIGINS</td><td class="text-gray-400">No</td><td class="text-gray-400">CORS allowed origins (comma-separated)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        mermaid.initialize({ theme: 'dark', startOnLoad: true });
+        document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleDateString();
+
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            window.scrollTo(0, 0);
+        }
+    </script>
+</body>
+</html>

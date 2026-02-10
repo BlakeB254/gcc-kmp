@@ -1,0 +1,8 @@
+# Release signing configuration for GCC Worker App
+# Copy this to signing.properties and fill in your values.
+# NEVER commit signing.properties to version control.
+
+KEYSTORE_PATH=path/to/release.keystore
+KEYSTORE_PASSWORD=
+KEY_ALIAS=gcc-worker
+KEY_PASSWORD=
