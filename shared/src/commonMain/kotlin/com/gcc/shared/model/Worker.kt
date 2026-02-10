@@ -15,6 +15,7 @@ data class Worker(
     val stripe: WorkerStripe = WorkerStripe(),
     val stats: WorkerStats = WorkerStats(),
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
+    val role: String = "worker",
     val referralCode: String? = null,
     val notifications: WorkerNotifications = WorkerNotifications(),
     val createdAt: Instant,

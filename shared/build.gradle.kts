@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
@@ -7,10 +9,8 @@ plugins {
 kotlin {
     jvm()
     androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
     listOf(
@@ -33,6 +33,7 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.client.auth)
             implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.multiplatform.settings)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)

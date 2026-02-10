@@ -15,6 +15,17 @@ data class CommunityReport(
     val upvotes: Int = 0,
     val verifiedBy: Int? = null,
     val resolvedAt: Instant? = null,
+    val bountyId: Int? = null,
+    val observerRewardPoints: Int = 0,
+    val aiAnalysis: AiAnalysis? = null,
     val createdAt: Instant,
     val updatedAt: Instant
+)
+
+@Serializable
+data class AiAnalysis(
+    val estimatedWeightLbs: Double? = null,
+    val trashTypes: List<String> = emptyList(),
+    val confidence: Double? = null,
+    val severity: String? = null,
 )

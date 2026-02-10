@@ -18,6 +18,10 @@ data class Job(
     val payoutStatus: TransactionStatus? = null,
     val rating: Double? = null,
     val reviewNotes: String? = null,
+    val fundingSource: String? = null,
+    val bountyId: Int? = null,
+    val sponsorId: Int? = null,
+    val completionReport: CompletionReport? = null,
     val createdAt: Instant,
     val updatedAt: Instant
 )

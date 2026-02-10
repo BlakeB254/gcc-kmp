@@ -183,7 +183,73 @@ enum class CheckpointType {
 @Serializable
 enum class CommunityReportType {
     @SerialName("sighting") SIGHTING,
-    @SerialName("volunteer_cleanup") VOLUNTEER_CLEANUP
+    @SerialName("volunteer_cleanup") VOLUNTEER_CLEANUP,
+    @SerialName("bounty_triggered") BOUNTY_TRIGGERED
+}
+
+@Serializable
+enum class WalletTransactionType {
+    @SerialName("deposit") DEPOSIT,
+    @SerialName("allocation") ALLOCATION,
+    @SerialName("job_deduction") JOB_DEDUCTION,
+    @SerialName("bounty_deduction") BOUNTY_DEDUCTION,
+    @SerialName("refund") REFUND
+}
+
+@Serializable
+enum class FundType {
+    @SerialName("general") GENERAL,
+    @SerialName("route") ROUTE,
+    @SerialName("bounty") BOUNTY
+}
+
+@Serializable
+enum class BountyStatus {
+    @SerialName("open") OPEN,
+    @SerialName("first_refusal") FIRST_REFUSAL,
+    @SerialName("claimed") CLAIMED,
+    @SerialName("in_progress") IN_PROGRESS,
+    @SerialName("completed") COMPLETED,
+    @SerialName("expired") EXPIRED,
+    @SerialName("cancelled") CANCELLED
+}
+
+@Serializable
+enum class VolunteerCleanupStatus {
+    @SerialName("in_progress") IN_PROGRESS,
+    @SerialName("completed") COMPLETED,
+    @SerialName("verified") VERIFIED
+}
+
+@Serializable
+enum class SponsorMilestoneType {
+    @SerialName("total_funded") TOTAL_FUNDED,
+    @SerialName("jobs_funded") JOBS_FUNDED,
+    @SerialName("routes_funded") ROUTES_FUNDED,
+    @SerialName("bounties_funded") BOUNTIES_FUNDED,
+    @SerialName("areas_covered") AREAS_COVERED
+}
+
+@Serializable
+enum class PosterType {
+    @SerialName("sponsor") SPONSOR,
+    @SerialName("worker") WORKER
+}
+
+@Serializable
+enum class WalletReferenceType {
+    @SerialName("job") JOB,
+    @SerialName("bounty") BOUNTY,
+    @SerialName("bounty_pledge") BOUNTY_PLEDGE,
+    @SerialName("stripe_deposit") STRIPE_DEPOSIT
+}
+
+@Serializable
+enum class PledgeStatus {
+    @SerialName("active") ACTIVE,
+    @SerialName("expired") EXPIRED,
+    @SerialName("refunded") REFUNDED,
+    @SerialName("paid_out") PAID_OUT
 }
 
 @Serializable
