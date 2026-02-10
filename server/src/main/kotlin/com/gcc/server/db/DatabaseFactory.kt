@@ -2,7 +2,9 @@ package com.gcc.server.db
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 
 object DatabaseFactory {
     fun init() {
@@ -21,7 +23,11 @@ object DatabaseFactory {
         Database.connect(HikariDataSource(config))
     }
 
-    /** Convert postgres:// URL to jdbc:postgresql:// format */
+    /** Execute a database query on the IO dispatcher within a transaction. */
+    suspend fun <T> dbQuery(block: suspend () -> T): T =
+        newSuspendedTransaction(Dispatchers.IO) { block() }
+
+    /** Convert postgres:// URL to jdbc:postgresql:// format, preserving query params (e.g. sslmode). */
     private fun convertToJdbcUrl(url: String): String {
         return url
             .replace("postgres://", "jdbc:postgresql://")

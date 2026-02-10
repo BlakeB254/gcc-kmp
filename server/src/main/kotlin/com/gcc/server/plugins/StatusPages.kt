@@ -11,6 +11,12 @@ data class ErrorResponse(val error: String, val status: Int)
 
 fun Application.configureStatusPages() {
     install(StatusPages) {
+        exception<AuthorizationException> { call, cause ->
+            call.respond(HttpStatusCode.Forbidden, ErrorResponse(cause.message ?: "Forbidden", 403))
+        }
+        exception<IllegalStateException> { call, cause ->
+            call.respond(HttpStatusCode.Conflict, ErrorResponse(cause.message ?: "Conflict", 409))
+        }
         exception<IllegalArgumentException> { call, cause ->
             call.respond(HttpStatusCode.BadRequest, ErrorResponse(cause.message ?: "Bad request", 400))
         }

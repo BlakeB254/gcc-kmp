@@ -1,79 +1,66 @@
 package com.gcc.server.routes
 
+import com.gcc.server.plugins.workerId
+import com.gcc.server.services.WorkerService
+import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
-import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
+import org.koin.ktor.ext.get as koinGet
 
-@Serializable
-data class WorkerResponse(
-    val id: String,
-    val name: String,
-    val email: String,
-    val status: String
-)
-
-@Serializable
-data class RegisterRequest(
-    val name: String,
-    val email: String,
-    val password: String,
-    val phone: String? = null
-)
-
-@Serializable
-data class LoginRequest(
-    val email: String,
-    val password: String
-)
-
-@Serializable
-data class AuthResponse(
-    val token: String,
-    val worker: WorkerResponse
-)
-
-@Serializable
-data class MessageResponse(val message: String)
-
+/**
+ * Worker endpoints — public read-only queries.
+ *
+ * GET  /api/workers       — List all workers (paginated)
+ * GET  /api/workers/{id}  — Get single worker by ID
+ */
 fun Routing.workerRoutes() {
+    val workerService = koinGet<WorkerService>()
+
     route("/api/workers") {
         get {
-            // TODO: Replace with database query
-            val mockWorkers = listOf(
-                WorkerResponse("w-001", "Marcus Johnson", "marcus@example.com", "active"),
-                WorkerResponse("w-002", "Terrence Williams", "terrence@example.com", "active"),
-                WorkerResponse("w-003", "DeShawn Carter", "deshawn@example.com", "on_route")
-            )
-            call.respond(HttpStatusCode.OK, mockWorkers)
+            val limit = call.parameters["limit"]?.toIntOrNull() ?: 50
+            val offset = call.parameters["offset"]?.toLongOrNull() ?: 0
+            val workers = workerService.getAll(limit = limit, offset = offset)
+            call.respond(HttpStatusCode.OK, ApiResponse(data = workers))
         }
 
         get("/{id}") {
-            val id = call.parameters["id"] ?: throw IllegalArgumentException("Worker ID required")
-            // TODO: Replace with database lookup
-            val mockWorker = WorkerResponse(id, "Marcus Johnson", "marcus@example.com", "active")
-            call.respond(HttpStatusCode.OK, mockWorker)
-        }
-
-        post("/register") {
-            val request = call.receive<RegisterRequest>()
-            // TODO: Implement registration with database + password hashing
-            val mockResponse = AuthResponse(
-                token = "placeholder-jwt-token",
-                worker = WorkerResponse("w-new", request.name, request.email, "pending")
-            )
-            call.respond(HttpStatusCode.Created, mockResponse)
-        }
-
-        post("/login") {
-            val request = call.receive<LoginRequest>()
-            // TODO: Implement login with database lookup + bcrypt verification
-            val mockResponse = AuthResponse(
-                token = "placeholder-jwt-token",
-                worker = WorkerResponse("w-001", "Marcus Johnson", request.email, "active")
-            )
-            call.respond(HttpStatusCode.OK, mockResponse)
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Worker ID must be an integer")
+            val worker = workerService.getById(id)
+            if (worker != null) {
+                call.respond(HttpStatusCode.OK, ApiResponse(data = worker))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
+            }
         }
     }
 }
+
+/**
+ * Authenticated worker endpoints.
+ *
+ * GET /api/workers/me — Get the current authenticated worker's profile.
+ *
+ * Must be called inside an `authenticate("auth-jwt") { }` block.
+ */
+fun Route.authenticatedWorkerRoutes() {
+    val workerService = application.koinGet<WorkerService>()
+
+    route("/api/workers") {
+        get("/me") {
+            val id = call.workerId()
+            val worker = workerService.getById(id)
+            if (worker != null) {
+                call.respond(HttpStatusCode.OK, ApiResponse(data = worker))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
+            }
+        }
+    }
+}
+
+@Serializable
+data class ErrorResponse(val message: String, val code: Int)
