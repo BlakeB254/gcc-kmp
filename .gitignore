@@ -25,3 +25,8 @@ iosApp/.build/
 # Environment
 .env
 .env.local
+
+# Signing
+composeApp/signing.properties
+*.keystore
+*.jks

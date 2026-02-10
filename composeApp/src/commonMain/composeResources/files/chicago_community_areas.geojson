@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "area_numbe": "29",
+        "community": "NORTH LAWNDALE",
+        "area_num_1": "29"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-87.7447, 41.8660],
+          [-87.7447, 41.8450],
+          [-87.7060, 41.8450],
+          [-87.7060, 41.8660],
+          [-87.7447, 41.8660]
+        ]]
+      }
+    }
+  ]
+}
