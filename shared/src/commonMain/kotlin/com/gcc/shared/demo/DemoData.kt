@@ -513,6 +513,130 @@ object DemoData {
         updatedAt = Instant.parse("2024-06-09T08:45:00Z"),
     )
 
+    // ── Blocks (10 fundable North Lawndale blocks) ─────────────────────
+    val demoBlocks: List<Block> = listOf(
+        Block(
+            id = 1, code = "NL-001", name = "Pulaski & Roosevelt", serviceAreaId = 1,
+            status = BlockStatus.FUNDED,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7290, 41.8695), listOf(-87.7230, 41.8695),
+                listOf(-87.7230, 41.8665), listOf(-87.7290, 41.8665),
+                listOf(-87.7290, 41.8695),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7260, 41.8680)),
+            fundingGoal = 500000, fundingCurrent = 500000,
+            createdAt = Instant.parse("2024-01-15T10:00:00Z"), updatedAt = Instant.parse("2024-06-10T12:00:00Z"),
+        ),
+        Block(
+            id = 2, code = "NL-002", name = "Homan & Ogden", serviceAreaId = 1,
+            status = BlockStatus.IN_PROGRESS,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7135, 41.8570), listOf(-87.7075, 41.8570),
+                listOf(-87.7075, 41.8540), listOf(-87.7135, 41.8540),
+                listOf(-87.7135, 41.8570),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7105, 41.8555)),
+            fundingGoal = 350000, fundingCurrent = 280000,
+            createdAt = Instant.parse("2024-02-01T08:00:00Z"), updatedAt = Instant.parse("2024-06-09T14:00:00Z"),
+        ),
+        Block(
+            id = 3, code = "NL-003", name = "Kedzie & Cermak", serviceAreaId = 1,
+            status = BlockStatus.AVAILABLE,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7075, 41.8520), listOf(-87.7015, 41.8520),
+                listOf(-87.7015, 41.8490), listOf(-87.7075, 41.8490),
+                listOf(-87.7075, 41.8520),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7045, 41.8505)),
+            fundingGoal = 400000, fundingCurrent = 120000,
+            createdAt = Instant.parse("2024-02-10T08:00:00Z"), updatedAt = Instant.parse("2024-06-01T00:00:00Z"),
+        ),
+        Block(
+            id = 4, code = "NL-004", name = "Central Park & Fillmore", serviceAreaId = 1,
+            status = BlockStatus.AVAILABLE,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7195, 41.8640), listOf(-87.7135, 41.8640),
+                listOf(-87.7135, 41.8610), listOf(-87.7195, 41.8610),
+                listOf(-87.7195, 41.8640),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7165, 41.8625)),
+            fundingGoal = 300000, fundingCurrent = 75000,
+            createdAt = Instant.parse("2024-02-15T08:00:00Z"), updatedAt = Instant.parse("2024-06-01T00:00:00Z"),
+        ),
+        Block(
+            id = 5, code = "NL-005", name = "Independence & 16th", serviceAreaId = 1,
+            status = BlockStatus.COMPLETED,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7030, 41.8605), listOf(-87.6970, 41.8605),
+                listOf(-87.6970, 41.8575), listOf(-87.7030, 41.8575),
+                listOf(-87.7030, 41.8605),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7000, 41.8590)),
+            fundingGoal = 250000, fundingCurrent = 250000,
+            createdAt = Instant.parse("2024-01-20T08:00:00Z"), updatedAt = Instant.parse("2024-05-20T16:00:00Z"),
+        ),
+        Block(
+            id = 6, code = "NL-006", name = "Springfield & 13th", serviceAreaId = 1,
+            status = BlockStatus.AVAILABLE,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7230, 41.8660), listOf(-87.7170, 41.8660),
+                listOf(-87.7170, 41.8630), listOf(-87.7230, 41.8630),
+                listOf(-87.7230, 41.8660),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7200, 41.8645)),
+            fundingGoal = 350000, fundingCurrent = 50000,
+            createdAt = Instant.parse("2024-03-01T08:00:00Z"), updatedAt = Instant.parse("2024-06-01T00:00:00Z"),
+        ),
+        Block(
+            id = 7, code = "NL-007", name = "Kostner & Roosevelt", serviceAreaId = 1,
+            status = BlockStatus.FUNDED,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7370, 41.8695), listOf(-87.7310, 41.8695),
+                listOf(-87.7310, 41.8665), listOf(-87.7370, 41.8665),
+                listOf(-87.7370, 41.8695),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7340, 41.8680)),
+            fundingGoal = 450000, fundingCurrent = 450000,
+            createdAt = Instant.parse("2024-02-20T08:00:00Z"), updatedAt = Instant.parse("2024-06-08T12:00:00Z"),
+        ),
+        Block(
+            id = 8, code = "NL-008", name = "Lawndale & Grenshaw", serviceAreaId = 1,
+            status = BlockStatus.AVAILABLE,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7260, 41.8625), listOf(-87.7200, 41.8625),
+                listOf(-87.7200, 41.8595), listOf(-87.7260, 41.8595),
+                listOf(-87.7260, 41.8625),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7230, 41.8610)),
+            fundingGoal = 300000, fundingCurrent = 90000,
+            createdAt = Instant.parse("2024-03-10T08:00:00Z"), updatedAt = Instant.parse("2024-06-01T00:00:00Z"),
+        ),
+        Block(
+            id = 9, code = "NL-009", name = "California & 21st", serviceAreaId = 1,
+            status = BlockStatus.IN_PROGRESS,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.6970, 41.8540), listOf(-87.6920, 41.8540),
+                listOf(-87.6920, 41.8510), listOf(-87.6970, 41.8510),
+                listOf(-87.6970, 41.8540),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.6945, 41.8525)),
+            fundingGoal = 400000, fundingCurrent = 320000,
+            createdAt = Instant.parse("2024-03-15T08:00:00Z"), updatedAt = Instant.parse("2024-06-09T10:00:00Z"),
+        ),
+        Block(
+            id = 10, code = "NL-010", name = "Hamlin & 19th", serviceAreaId = 1,
+            status = BlockStatus.AVAILABLE,
+            boundary = GeoJSONPolygon(coordinates = listOf(listOf(
+                listOf(-87.7200, 41.8570), listOf(-87.7140, 41.8570),
+                listOf(-87.7140, 41.8545), listOf(-87.7200, 41.8545),
+                listOf(-87.7200, 41.8570),
+            ))),
+            center = GeoJSONPoint(coordinates = listOf(-87.7170, 41.8558)),
+            fundingGoal = 350000, fundingCurrent = 100000,
+            createdAt = Instant.parse("2024-03-20T08:00:00Z"), updatedAt = Instant.parse("2024-06-01T00:00:00Z"),
+        ),
+    )
+
     // ── Stats ──────────────────────────────────────────────────────────
     val demoStats: Map<String, Int> = mapOf(
         "totalJobs" to 2847,

@@ -155,7 +155,7 @@ fun DashboardScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     StatCard(
                         value = "$$dollars.${cents.padTwo()}",

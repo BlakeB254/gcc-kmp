@@ -31,9 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.map.BuildingRenderer.drawBuildings
 import com.gcc.app.ui.theme.*
+import com.gcc.shared.model.BlockStatus
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 
@@ -315,8 +317,18 @@ actual fun GccMap(
                 drawGridLines(centerLat, centerLng, zoom, w, h, effectiveZoom)
             }
 
-            // --- Draw each community area ---
+            // --- Draw each community area (with viewport culling) ---
+            // Compute visible geographic bounds for culling
+            val visNorth = pixelToLat(0f, centerLat, zoom, h)
+            val visSouth = pixelToLat(h, centerLat, zoom, h)
+            val visWest = pixelToLng(0f, centerLng, zoom, w)
+            val visEast = pixelToLng(w, centerLng, zoom, w)
+
             for (area in chicagoCommunityAreas) {
+                // Viewport culling: skip areas whose bounds don't intersect the visible region
+                if (area.bounds.south > visNorth || area.bounds.north < visSouth ||
+                    area.bounds.west > visEast || area.bounds.east < visWest) continue
+
                 val isTapped = area == tappedArea
                 val usePolygon = area.polygon.isNotEmpty()
 
@@ -326,19 +338,36 @@ actual fun GccMap(
                     drawRectArea(area, isTapped, centerLat, centerLng, zoom, w, h)
                 }
 
-                // Area label (zoom-scaled)
-                val style = if (area.isServiceArea) serviceAreaLabelStyle else areaLabelStyle
-                val textResult = textMeasurer.measure(area.displayName, style)
-
-                val topLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-                val bottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-                val rectTopLeft = Offset(minOf(topLeft.x, bottomRight.x), minOf(topLeft.y, bottomRight.y))
+                // Area label (zoom-scaled) — only draw if area is large enough on screen
+                val areaTopLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
+                val areaBottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
+                val rectTopLeft = Offset(minOf(areaTopLeft.x, areaBottomRight.x), minOf(areaTopLeft.y, areaBottomRight.y))
                 val rectSize = androidx.compose.ui.geometry.Size(
-                    abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y)
+                    abs(areaBottomRight.x - areaTopLeft.x), abs(areaBottomRight.y - areaTopLeft.y)
                 )
-                val textX = rectTopLeft.x + (rectSize.width - textResult.size.width) / 2f
-                val textY = rectTopLeft.y + (rectSize.height - textResult.size.height) / 2f
-                drawText(textResult, topLeft = Offset(textX, textY))
+
+                // Only show labels if the area is at least 40px wide on screen
+                if (rectSize.width >= 40f) {
+                    val style = if (area.isServiceArea) serviceAreaLabelStyle else areaLabelStyle
+                    val textResult = textMeasurer.measure(area.displayName, style)
+                    val textX = rectTopLeft.x + (rectSize.width - textResult.size.width) / 2f
+                    val textY = rectTopLeft.y + (rectSize.height - textResult.size.height) / 2f
+                    drawText(textResult, topLeft = Offset(textX, textY))
+                }
+            }
+
+            // --- Draw fundable blocks at route zoom (15+) ---
+            if (effectiveZoom >= MapStyles.ZOOM_ROUTE) {
+                drawFundableBlocks(
+                    blocks = northLawndaleBlocks,
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = zoom,
+                    w = w,
+                    h = h,
+                    textMeasurer = textMeasurer,
+                    labelScaleFactor = labelScaleFactor,
+                )
             }
 
             // --- Isometric buildings at street zoom ---
@@ -828,6 +857,135 @@ private fun DrawScope.drawStreetGrid(
             )
 
             drawText(labelResult, topLeft = Offset(midX, midY))
+        }
+    }
+}
+
+// --- Fundable block rendering ---
+
+/** Draw fundable blocks as colored polygons with funding progress labels. */
+private fun DrawScope.drawFundableBlocks(
+    blocks: List<MapBlock>,
+    centerLat: Double,
+    centerLng: Double,
+    zoom: Double,
+    w: Float,
+    h: Float,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    labelScaleFactor: Float,
+) {
+    for (block in blocks) {
+        if (block.polygon.isEmpty()) continue
+
+        // Build polygon path
+        val path = Path()
+        block.polygon.forEachIndexed { index, (lat, lng) ->
+            val point = latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+            if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+        }
+        path.close()
+
+        // Fill color based on status
+        val fillColor = when (block.status) {
+            BlockStatus.AVAILABLE -> BlockAvailable
+            BlockStatus.FUNDED -> BlockFunded
+            BlockStatus.IN_PROGRESS -> BlockInProgress
+            BlockStatus.COMPLETED -> BlockCompleted
+        }
+
+        drawPath(path = path, color = fillColor)
+        drawPath(
+            path = path,
+            color = BlockBorder,
+            style = Stroke(width = 1.5f),
+        )
+
+        // Compute center for label placement
+        val first = block.polygon.first()
+        val firstPx = latLngToPixel(first.first, first.second, centerLat, centerLng, zoom, w, h)
+        var minX = firstPx.x; var maxX = firstPx.x
+        var minY = firstPx.y; var maxY = firstPx.y
+        for (i in 1 until block.polygon.size) {
+            val (lat, lng) = block.polygon[i]
+            val px = latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+            minX = min(minX, px.x); maxX = max(maxX, px.x)
+            minY = min(minY, px.y); maxY = max(maxY, px.y)
+        }
+        val blockWidth = maxX - minX
+
+        // Only show labels if the block is large enough on screen
+        if (blockWidth >= 50f) {
+            val cx = (minX + maxX) / 2f
+            val cy = (minY + maxY) / 2f
+
+            // Block name
+            val nameStyle = TextStyle(
+                fontSize = (8f * labelScaleFactor).sp,
+                color = MapAreaLabel,
+                textAlign = TextAlign.Center,
+            )
+            val nameResult = textMeasurer.measure(block.code, nameStyle)
+            drawText(
+                nameResult,
+                topLeft = Offset(cx - nameResult.size.width / 2f, cy - nameResult.size.height - 2f),
+            )
+
+            // Funding progress label
+            val goalDollars = block.fundingGoalCents / 100
+            val currentDollars = block.fundingCurrentCents / 100
+            val progressText = "$$currentDollars / $$goalDollars"
+            val progressStyle = TextStyle(
+                fontSize = (7f * labelScaleFactor).sp,
+                color = TextMuted,
+                textAlign = TextAlign.Center,
+            )
+            val progressResult = textMeasurer.measure(progressText, progressStyle)
+
+            // Background pill for readability
+            val bgPadH = 3f
+            val bgPadV = 1f
+            val progX = cx - progressResult.size.width / 2f
+            val progY = cy + 2f
+            drawRoundRect(
+                color = MapBackground.copy(alpha = 0.85f),
+                topLeft = Offset(progX - bgPadH, progY - bgPadV),
+                size = androidx.compose.ui.geometry.Size(
+                    progressResult.size.width + bgPadH * 2,
+                    progressResult.size.height + bgPadV * 2,
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
+            )
+            drawText(progressResult, topLeft = Offset(progX, progY))
+
+            // Progress bar under the text
+            val barWidth = blockWidth * 0.6f
+            val barHeight = 4f
+            val barX = cx - barWidth / 2f
+            val barY = progY + progressResult.size.height + 4f
+            val progress = (block.fundingCurrentCents.toFloat() / block.fundingGoalCents).coerceIn(0f, 1f)
+
+            // Background bar
+            drawRoundRect(
+                color = BlockBorder.copy(alpha = 0.2f),
+                topLeft = Offset(barX, barY),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+            )
+            // Filled portion
+            if (progress > 0f) {
+                val filledColor = when (block.status) {
+                    BlockStatus.AVAILABLE -> MapAreaBorder
+                    BlockStatus.FUNDED -> GccGreen
+                    BlockStatus.IN_PROGRESS -> GccBlue
+                    BlockStatus.COMPLETED -> GccGold
+                }
+                drawRoundRect(
+                    color = filledColor,
+                    topLeft = Offset(barX, barY),
+                    size = androidx.compose.ui.geometry.Size(barWidth * progress, barHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+                )
+            }
         }
     }
 }

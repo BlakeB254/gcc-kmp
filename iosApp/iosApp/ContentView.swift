@@ -4,7 +4,12 @@ import ComposeApp
 
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        MainViewControllerKt.MainViewController()
+        let isDemo = ProcessInfo.processInfo.environment["GCC_DEMO"] == "true"
+        if isDemo {
+            return MainViewControllerKt.MainViewControllerDemo()
+        } else {
+            return MainViewControllerKt.MainViewController()
+        }
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}

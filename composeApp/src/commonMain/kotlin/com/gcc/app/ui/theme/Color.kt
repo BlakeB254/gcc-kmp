@@ -101,3 +101,15 @@ val MapServiceGradientEdge = Color(0x1A22C55E)
 val MapControlBg = Color(0xFFFFFFFE)
 val MapControlIcon = Color(0xFF374151)
 val MapScaleBar = Color(0xFF6B7280)
+
+// Community area map colors (non-service areas)
+val MapAreaBorder = Color(0xFF6B7280)         // gray border for non-service areas
+val MapAreaFill = Color(0x0D6B7280)           // very subtle gray fill
+val MapAreaLabel = Color(0xFF4B5563)          // dark gray area labels
+
+// Fundable block status colors (20% alpha fills)
+val BlockAvailable = Color(0x339CA3AF)        // gray, needs funding
+val BlockFunded = Color(0x3322C55E)           // green, fully funded
+val BlockInProgress = Color(0x333B82F6)       // blue, work underway
+val BlockCompleted = Color(0x33F59E0B)        // gold, done
+val BlockBorder = Color(0xFF6B7280)           // subtle border

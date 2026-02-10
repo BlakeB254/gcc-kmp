@@ -42,6 +42,7 @@ private val bountyClaimPattern = Regex("^/api/bounties/(\\d+)/claim$")
 private val bountyPledgePattern = Regex("^/api/bounties/(\\d+)/pledge$")
 private val bountyIdPattern = Regex("^/api/bounties/(\\d+)$")
 private val spotVolunteerPattern = Regex("^/api/spots/(\\d+)/volunteer$")
+private val blockIdPattern = Regex("^/api/blocks/(\\d+)$")
 
 /**
  * Creates a Ktor [MockEngine] that returns canned demo data for every API
@@ -145,6 +146,17 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
 
         path == "/api/spots" ->
             respondApi(json.encodeToString(DemoData.demoSpotResponse))
+
+        // ── Blocks ────────────────────────────────────────────────
+        blockIdPattern.matches(path) -> {
+            val id = blockIdPattern.find(path)!!.groupValues[1].toInt()
+            val block = DemoData.demoBlocks.find { it.id == id }
+            if (block != null) respondApi(json.encodeToString(block))
+            else respondNotFound()
+        }
+
+        path == "/api/blocks" ->
+            respondApi(json.encodeToString(DemoData.demoBlocks))
 
         // ── Stats ──────────────────────────────────────────────
         path == "/api/stats" ->

@@ -11,8 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
+import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.util.padTwo
@@ -38,7 +40,12 @@ fun BountyListScreen(
         topBar = {
             TopAppBar(
                 windowInsets = WindowInsets(0),
-                title = { Text("Bounties") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GccLogo(size = 24.dp)
+                        Text("Bounties")
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -128,6 +135,8 @@ private fun BountyListItem(
                 Text(
                     bounty.title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -158,6 +167,7 @@ private fun BountyListItem(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                         maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

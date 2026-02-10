@@ -74,7 +74,8 @@ fun ProfileCard(
 
     Card(
         modifier = modifier
-            .width(324.dp) // 200 * phi
+            .widthIn(max = 324.dp) // 200 * phi — caps width but shrinks on narrow screens
+            .fillMaxWidth()
             .aspectRatio(9f / 16f),
         shape = RoundedCornerShape(21.dp), // Fibonacci
         elevation = CardDefaults.cardElevation(defaultElevation = GccTheme.elevation.overlay),
