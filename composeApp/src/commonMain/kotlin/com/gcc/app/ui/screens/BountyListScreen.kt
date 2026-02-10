@@ -1,8 +1,11 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -10,9 +13,18 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.ui.theme.*
@@ -126,61 +138,304 @@ private fun BountyListItem(
         accentColor = CardAccentGold,
         onClick = onClick,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    bounty.title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BountyStatusChip(bounty.status)
-                    bounty.communityArea?.let { area ->
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(13.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                // Thumbnail image
+                if (bounty.mediaUrls.isNotEmpty()) {
+                    BountyThumbnail(
+                        bounty = bounty,
+                        modifier = Modifier.size(80.dp),
+                    )
+                }
+
+                // Text content
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top,
+                    ) {
                         Text(
-                            area,
+                            bounty.title,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "$$dollars.${cents.padTwo()}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = GccGreen,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BountyStatusChip(bounty.status)
+                        bounty.communityArea?.let { area ->
+                            Text(
+                                area,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                    bounty.description?.let { desc ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            desc,
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                bounty.neighborhood?.let { neighborhood ->
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        neighborhood,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSubtle,
-                    )
-                }
-                bounty.description?.let { desc ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        desc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Text(
-                "$$dollars.${cents.padTwo()}",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = GccGreen,
-            )
+            // Photo count badge
+            if (bounty.mediaUrls.size > 1) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "\uD83D\uDCF7 ${bounty.mediaUrls.size} photos",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSubtle,
+                )
+            }
         }
     }
+}
+
+// Procedural thumbnail that draws a scene based on bounty content keywords
+@Composable
+private fun BountyThumbnail(
+    bounty: Bounty,
+    modifier: Modifier = Modifier,
+) {
+    val titleLower = bounty.title.lowercase()
+    val category = when {
+        "tire" in titleLower -> BountyCategory.TIRES
+        "dump" in titleLower || "dumping" in titleLower -> BountyCategory.DUMPING
+        "alley" in titleLower || "cleanup" in titleLower -> BountyCategory.ALLEY
+        "mattress" in titleLower || "furniture" in titleLower -> BountyCategory.MATTRESS
+        "trash" in titleLower || "pile" in titleLower -> BountyCategory.TRASH
+        else -> BountyCategory.GENERAL
+    }
+
+    val (gradient, accentColor) = when (bounty.status) {
+        BountyStatus.OPEN -> Pair(
+            Brush.linearGradient(listOf(Color(0xFF2E7D32), Color(0xFF66BB6A))),
+            Color(0xFF81C784),
+        )
+        BountyStatus.CLAIMED, BountyStatus.FIRST_REFUSAL -> Pair(
+            Brush.linearGradient(listOf(Color(0xFF1565C0), Color(0xFF42A5F5))),
+            Color(0xFF90CAF9),
+        )
+        BountyStatus.IN_PROGRESS -> Pair(
+            Brush.linearGradient(listOf(Color(0xFFE65100), Color(0xFFFFA726))),
+            Color(0xFFFFCC80),
+        )
+        BountyStatus.COMPLETED -> Pair(
+            Brush.linearGradient(listOf(Color(0xFF6A1B9A), Color(0xFFAB47BC))),
+            Color(0xFFCE93D8),
+        )
+        BountyStatus.EXPIRED, BountyStatus.CANCELLED -> Pair(
+            Brush.linearGradient(listOf(Color(0xFF616161), Color(0xFF9E9E9E))),
+            Color(0xFFBDBDBD),
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp)),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // Background gradient
+            drawRect(brush = gradient)
+
+            // Draw scene based on category
+            when (category) {
+                BountyCategory.TIRES -> drawTireScene(accentColor)
+                BountyCategory.DUMPING -> drawDumpingScene(accentColor)
+                BountyCategory.ALLEY -> drawAlleyScene(accentColor)
+                BountyCategory.MATTRESS -> drawMattressScene(accentColor)
+                BountyCategory.TRASH -> drawTrashScene(accentColor)
+                BountyCategory.GENERAL -> drawGeneralScene(accentColor)
+            }
+
+            // Photo count overlay badge (top-right corner)
+            if (bounty.mediaUrls.size > 1) {
+                val badgeRadius = size.minDimension * 0.12f
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    radius = badgeRadius,
+                    center = Offset(size.width - badgeRadius - 4f, badgeRadius + 4f),
+                )
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawTireScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Ground line
+    drawRect(Color.Black.copy(alpha = 0.15f), Offset(0f, h * 0.7f), Size(w, h * 0.3f))
+    // Draw 3 stacked tire circles
+    val tireColor = Color(0xFF212121)
+    val rimColor = accent.copy(alpha = 0.5f)
+    for (i in 0..2) {
+        val cx = w * (0.3f + i * 0.2f)
+        val cy = h * (0.55f - i * 0.12f)
+        val radius = w * 0.14f
+        drawCircle(tireColor, radius, Offset(cx, cy))
+        drawCircle(rimColor, radius * 0.45f, Offset(cx, cy))
+        drawCircle(tireColor, radius * 0.2f, Offset(cx, cy))
+    }
+}
+
+private fun DrawScope.drawDumpingScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Ground
+    drawRect(Color.Black.copy(alpha = 0.12f), Offset(0f, h * 0.65f), Size(w, h * 0.35f))
+    // Pile of irregular shapes (debris)
+    val debrisColor = Color(0xFF795548).copy(alpha = 0.7f)
+    val path = Path().apply {
+        moveTo(w * 0.1f, h * 0.7f)
+        lineTo(w * 0.25f, h * 0.35f)
+        lineTo(w * 0.4f, h * 0.45f)
+        lineTo(w * 0.55f, h * 0.3f)
+        lineTo(w * 0.7f, h * 0.4f)
+        lineTo(w * 0.85f, h * 0.5f)
+        lineTo(w * 0.9f, h * 0.7f)
+        close()
+    }
+    drawPath(path, debrisColor)
+    // Accent highlight on top
+    drawCircle(accent.copy(alpha = 0.3f), w * 0.08f, Offset(w * 0.45f, h * 0.38f))
+    drawCircle(accent.copy(alpha = 0.2f), w * 0.06f, Offset(w * 0.65f, h * 0.42f))
+    // Warning stripes
+    drawRoundRect(
+        Color(0xFFFFEB3B).copy(alpha = 0.6f),
+        Offset(w * 0.05f, h * 0.05f),
+        Size(w * 0.25f, h * 0.1f),
+        CornerRadius(4f),
+    )
+}
+
+private fun DrawScope.drawAlleyScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Alley perspective — two walls converging
+    val wallColor = Color(0xFF8D6E63).copy(alpha = 0.5f)
+    val groundColor = Color(0xFF757575).copy(alpha = 0.3f)
+    // Ground plane
+    drawRect(groundColor, Offset(0f, h * 0.5f), Size(w, h * 0.5f))
+    // Left wall
+    val leftWall = Path().apply {
+        moveTo(0f, h * 0.1f)
+        lineTo(w * 0.35f, h * 0.35f)
+        lineTo(w * 0.35f, h)
+        lineTo(0f, h)
+        close()
+    }
+    drawPath(leftWall, wallColor)
+    // Right wall
+    val rightWall = Path().apply {
+        moveTo(w, h * 0.1f)
+        lineTo(w * 0.65f, h * 0.35f)
+        lineTo(w * 0.65f, h)
+        lineTo(w, h)
+        close()
+    }
+    drawPath(rightWall, wallColor)
+    // Trash bags in alley
+    drawCircle(Color(0xFF37474F), w * 0.09f, Offset(w * 0.42f, h * 0.65f))
+    drawCircle(Color(0xFF37474F), w * 0.08f, Offset(w * 0.55f, h * 0.7f))
+    drawCircle(accent.copy(alpha = 0.3f), w * 0.06f, Offset(w * 0.48f, h * 0.58f))
+}
+
+private fun DrawScope.drawMattressScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Ground
+    drawRect(Color.Black.copy(alpha = 0.1f), Offset(0f, h * 0.7f), Size(w, h * 0.3f))
+    // Mattress — tilted rectangle
+    val mattressColor = Color(0xFFE0E0E0).copy(alpha = 0.8f)
+    val mattress = Path().apply {
+        moveTo(w * 0.15f, h * 0.68f)
+        lineTo(w * 0.2f, h * 0.25f)
+        lineTo(w * 0.75f, h * 0.2f)
+        lineTo(w * 0.7f, h * 0.63f)
+        close()
+    }
+    drawPath(mattress, mattressColor)
+    // Mattress stripes
+    for (i in 1..3) {
+        val frac = i * 0.25f
+        drawLine(
+            accent.copy(alpha = 0.3f),
+            Offset(w * (0.15f + frac * 0.55f), h * (0.68f - frac * 0.43f)),
+            Offset(w * (0.2f + frac * 0.55f), h * (0.25f - frac * 0.05f + frac * 0.38f)),
+            strokeWidth = 2f,
+        )
+    }
+    // Second mattress behind
+    drawRoundRect(
+        Color(0xFFBDBDBD).copy(alpha = 0.5f),
+        Offset(w * 0.5f, h * 0.35f),
+        Size(w * 0.4f, h * 0.35f),
+        CornerRadius(4f),
+    )
+}
+
+private fun DrawScope.drawTrashScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Ground
+    drawRect(Color.Black.copy(alpha = 0.1f), Offset(0f, h * 0.65f), Size(w, h * 0.35f))
+    // Trash bags — several overlapping circles
+    val bagColor = Color(0xFF37474F)
+    drawCircle(bagColor, w * 0.15f, Offset(w * 0.3f, h * 0.55f))
+    drawCircle(bagColor.copy(alpha = 0.8f), w * 0.13f, Offset(w * 0.5f, h * 0.5f))
+    drawCircle(bagColor.copy(alpha = 0.9f), w * 0.12f, Offset(w * 0.65f, h * 0.58f))
+    drawCircle(bagColor.copy(alpha = 0.7f), w * 0.1f, Offset(w * 0.45f, h * 0.65f))
+    // Tie knots on bags
+    drawCircle(accent.copy(alpha = 0.5f), w * 0.03f, Offset(w * 0.3f, h * 0.42f))
+    drawCircle(accent.copy(alpha = 0.5f), w * 0.03f, Offset(w * 0.5f, h * 0.39f))
+    drawCircle(accent.copy(alpha = 0.5f), w * 0.03f, Offset(w * 0.65f, h * 0.48f))
+    // Scattered debris
+    drawCircle(Color(0xFF8D6E63).copy(alpha = 0.4f), w * 0.04f, Offset(w * 0.15f, h * 0.7f))
+    drawCircle(Color(0xFF8D6E63).copy(alpha = 0.3f), w * 0.035f, Offset(w * 0.8f, h * 0.68f))
+}
+
+private fun DrawScope.drawGeneralScene(accent: Color) {
+    val w = size.width
+    val h = size.height
+    // Generic report thumbnail — camera/pin icon style
+    drawRect(Color.Black.copy(alpha = 0.1f), Offset(0f, h * 0.6f), Size(w, h * 0.4f))
+    // Pin shape
+    val pinColor = accent.copy(alpha = 0.7f)
+    drawCircle(pinColor, w * 0.18f, Offset(w * 0.5f, h * 0.35f))
+    val pinPath = Path().apply {
+        moveTo(w * 0.5f - w * 0.1f, h * 0.45f)
+        lineTo(w * 0.5f, h * 0.7f)
+        lineTo(w * 0.5f + w * 0.1f, h * 0.45f)
+        close()
+    }
+    drawPath(pinPath, pinColor)
+    drawCircle(Color.White.copy(alpha = 0.5f), w * 0.08f, Offset(w * 0.5f, h * 0.33f))
+}
+
+private enum class BountyCategory {
+    TIRES, DUMPING, ALLEY, MATTRESS, TRASH, GENERAL
 }
 
 @Composable
