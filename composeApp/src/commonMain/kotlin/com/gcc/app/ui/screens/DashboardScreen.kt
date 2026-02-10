@@ -1,16 +1,26 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.ChicagoOverlay
 import com.gcc.app.ui.map.GccMap
@@ -35,6 +45,8 @@ fun DashboardScreen(
     onWalletClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onFeedClick: () -> Unit = {},
+    onAchievementsClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -88,7 +100,7 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
-            // Custom header row
+            // --- Header with greeting ---
             item {
                 Row(
                     modifier = Modifier
@@ -118,7 +130,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Map section
+            // --- Map preview ---
             item {
                 Box(
                     modifier = Modifier
@@ -146,7 +158,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Stats row
+            // --- Stats row ---
             item {
                 val totalEarnings = uiState.worker?.stats?.totalEarnings ?: 0
                 val dollars = totalEarnings / 100
@@ -178,89 +190,74 @@ fun DashboardScreen(
                 }
             }
 
-            // Quick actions row
+            // --- Quick Actions (circle icon grid) ---
+            item {
+                SectionHeader(
+                    title = "Quick Actions",
+                    modifier = Modifier.padding(horizontal = 13.dp),
+                )
+            }
+
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(13.dp),
                 ) {
-                    GccCard(
-                        accentColor = CardAccentGold,
-                        modifier = Modifier.weight(1f),
+                    QuickActionButton(
+                        emoji = "\uD83D\uDCF8",
+                        label = "Spot\nReport",
+                        bgColor = CardAccentRed,
+                        onClick = onSpotClick,
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83C\uDFC6",
+                        label = "Bounties",
+                        bgColor = CardAccentGold,
                         onClick = onBountyListClick,
-                    ) {
-                        Text(
-                            "Bounties",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "Browse open bounties",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
-                    GccCard(
-                        accentColor = CardAccentBlue,
-                        modifier = Modifier.weight(1f),
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83D\uDCB0",
+                        label = "Wallet",
+                        bgColor = CardAccentBlue,
                         onClick = onWalletClick,
-                    ) {
-                        Text(
-                            "Wallet",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "Manage funds",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
-                }
-            }
-
-            // Second action row
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    GccCard(
-                        accentColor = CardAccentPurple,
-                        modifier = Modifier.weight(1f),
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83C\uDFC5",
+                        label = "Leader-\nboard",
+                        bgColor = CardAccentPurple,
                         onClick = onLeaderboardClick,
-                    ) {
-                        Text(
-                            "Leaderboard",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "See top cleaners",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
-                    GccCard(
-                        accentColor = CardAccentPurple,
-                        modifier = Modifier.weight(1f),
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83D\uDCF0",
+                        label = "Feed",
+                        bgColor = GccGreen,
                         onClick = onFeedClick,
-                    ) {
-                        Text(
-                            "Feed",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "See what's happening",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
+                    )
+                    QuickActionButton(
+                        emoji = "\u2B50",
+                        label = "Awards",
+                        bgColor = GccGold,
+                        onClick = onAchievementsClick,
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83D\uDDFA\uFE0F",
+                        label = "Map",
+                        bgColor = GccGreenDark,
+                        onClick = onMapClick,
+                    )
+                    QuickActionButton(
+                        emoji = "\u2699\uFE0F",
+                        label = "Settings",
+                        bgColor = TextMuted,
+                        onClick = onSettingsClick,
+                    )
                 }
             }
 
-            // Available Routes header
+            // --- Available Routes header ---
             item {
                 SectionHeader(
                     title = "Available Routes",
@@ -268,7 +265,7 @@ fun DashboardScreen(
                 )
             }
 
-            // Route list or loading/empty state
+            // --- Route list ---
             if (uiState.isLoading) {
                 item {
                     SkeletonList(count = 3)
@@ -292,7 +289,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Error message
+            // --- Error banner ---
             uiState.error?.let { error ->
                 item {
                     GccCard(
@@ -312,6 +309,59 @@ fun DashboardScreen(
         }
     }
 }
+
+// --- Quick Action circle button ---
+
+@Composable
+private fun QuickActionButton(
+    emoji: String,
+    label: String,
+    bgColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .width(64.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(55.dp)
+                .shadow(elevation = 2.dp, shape = CircleShape)
+                .clip(CircleShape)
+                .background(bgColor.copy(alpha = 0.12f))
+                .background(Color.White.copy(alpha = 0.7f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(55.dp)
+                    .clip(CircleShape)
+                    .background(bgColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    emoji,
+                    fontSize = 24.sp,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(5.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 12.sp,
+        )
+    }
+}
+
+// --- Route list item ---
 
 @Composable
 private fun RouteListItem(

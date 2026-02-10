@@ -39,6 +39,8 @@ fun App(component: RootComponent) {
                     onWalletClick = component::navigateToWallet,
                     onLeaderboardClick = component::navigateToLeaderboard,
                     onFeedClick = component::navigateToFeed,
+                    onAchievementsClick = component::navigateToAchievements,
+                    onSettingsClick = component::navigateToSettings,
                 )
                 is Screen.RouteDetail -> RouteDetailScreen(
                     routeId = screen.routeId,
