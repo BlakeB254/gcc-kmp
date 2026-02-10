@@ -16,10 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -221,11 +219,26 @@ actual fun GccMap(
             val w = size.width
             val h = size.height
 
+            // --- Base map: procedural street/block/park rendering ---
+            drawCityBlocks(centerLat, centerLng, zoom, w, h)
+            drawParks(centerLat, centerLng, zoom, w, h)
+            drawStreetGrid(centerLat, centerLng, zoom, w, h, effectiveZoom, textMeasurer)
+
+            // --- Grid lines at route level ---
             if (showGridLines && effectiveZoom >= MapStyles.ZOOM_ROUTE) {
                 drawGridLines(centerLat, centerLng, zoom, w, h, effectiveZoom)
             }
 
+            // --- Community areas with viewport culling ---
+            val visNorth = pixelToLat(0f, centerLat, zoom, h)
+            val visSouth = pixelToLat(h, centerLat, zoom, h)
+            val visWest = pixelToLng(0f, centerLng, zoom, w)
+            val visEast = pixelToLng(w, centerLng, zoom, w)
+
             for (area in chicagoCommunityAreas) {
+                if (area.bounds.south > visNorth || area.bounds.north < visSouth ||
+                    area.bounds.west > visEast || area.bounds.east < visWest) continue
+
                 val isTapped = area == tappedArea
                 val usePolygon = area.polygon.isNotEmpty()
 
@@ -235,20 +248,37 @@ actual fun GccMap(
                     drawRectArea(area, isTapped, centerLat, centerLng, zoom, w, h)
                 }
 
-                val style = if (area.isServiceArea) serviceAreaLabelStyle else areaLabelStyle
-                val textResult = textMeasurer.measure(area.displayName, style)
-
-                val topLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-                val bottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-                val rectTopLeft = Offset(minOf(topLeft.x, bottomRight.x), minOf(topLeft.y, bottomRight.y))
+                val areaTopLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
+                val areaBottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
+                val rectTopLeft = Offset(minOf(areaTopLeft.x, areaBottomRight.x), minOf(areaTopLeft.y, areaBottomRight.y))
                 val rectSize = androidx.compose.ui.geometry.Size(
-                    abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y)
+                    abs(areaBottomRight.x - areaTopLeft.x), abs(areaBottomRight.y - areaTopLeft.y)
                 )
-                val textX = rectTopLeft.x + (rectSize.width - textResult.size.width) / 2f
-                val textY = rectTopLeft.y + (rectSize.height - textResult.size.height) / 2f
-                drawText(textResult, topLeft = Offset(textX, textY))
+
+                if (rectSize.width >= 40f) {
+                    val style = if (area.isServiceArea) serviceAreaLabelStyle else areaLabelStyle
+                    val textResult = textMeasurer.measure(area.displayName, style)
+                    val textX = rectTopLeft.x + (rectSize.width - textResult.size.width) / 2f
+                    val textY = rectTopLeft.y + (rectSize.height - textResult.size.height) / 2f
+                    drawText(textResult, topLeft = Offset(textX, textY))
+                }
             }
 
+            // --- Fundable blocks at route zoom ---
+            if (effectiveZoom >= MapStyles.ZOOM_ROUTE) {
+                drawFundableBlocks(
+                    blocks = northLawndaleBlocks,
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = zoom,
+                    w = w,
+                    h = h,
+                    textMeasurer = textMeasurer,
+                    labelScaleFactor = labelScaleFactor,
+                )
+            }
+
+            // --- Isometric buildings at street zoom ---
             if (showBuildings && effectiveZoom >= MapStyles.ZOOM_STREET) {
                 drawBuildings(
                     buildings = northLawndaleBuildings,
@@ -260,6 +290,7 @@ actual fun GccMap(
                 )
             }
 
+            // --- Route paths ---
             if (animateRoutes) {
                 for (routeCoords in routeCoordinates) {
                     drawAnimatedRoutePath(
@@ -297,6 +328,7 @@ actual fun GccMap(
                 }
             }
 
+            // --- Bounty zone pulses ---
             if (bountyPulse != null) {
                 for (bountyLoc in bountyLocations) {
                     val pos = latLngToPixel(bountyLoc.lat, bountyLoc.lng, centerLat, centerLng, zoom, w, h)
@@ -307,10 +339,12 @@ actual fun GccMap(
                 }
             }
 
+            // --- Context pin ---
             contextPin?.let { pin ->
                 drawContextPin(Offset(pin.canvasX, pin.canvasY))
             }
 
+            // --- GPS dot + heading cone + pulse ---
             if (currentLocation != null) {
                 val gpsPos = latLngToPixel(currentLocation.lat, currentLocation.lng, centerLat, centerLng, zoom, w, h)
 
@@ -388,195 +422,4 @@ actual fun GccMap(
             }
         }
     }
-}
-
-// --- Drawing helpers ---
-
-private fun DrawScope.drawPolygonArea(
-    area: CommunityArea,
-    isTapped: Boolean,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-) {
-    val path = Path()
-    area.polygon.forEachIndexed { index, (lat, lng) ->
-        val point = latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
-        if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
-    }
-    path.close()
-
-    val topLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-    val bottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-    val cx = (topLeft.x + bottomRight.x) / 2f
-    val cy = (topLeft.y + bottomRight.y) / 2f
-    val radius = maxOf(abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y)) / 2f
-
-    val (gradCenter, gradEdge) = when {
-        isTapped && area.isServiceArea -> GccGreen.copy(alpha = 0.35f) to GccGreen.copy(alpha = 0.12f)
-        isTapped -> MapAreaGradientCenter.copy(alpha = 0.5f) to MapAreaGradientEdge.copy(alpha = 0.15f)
-        area.isServiceArea -> MapServiceGradientCenter to MapServiceGradientEdge
-        else -> MapAreaGradientCenter to MapAreaGradientEdge
-    }
-
-    drawPath(
-        path = path,
-        brush = Brush.radialGradient(
-            colors = listOf(gradCenter, gradEdge),
-            center = Offset(cx, cy),
-            radius = radius.coerceAtLeast(1f),
-        ),
-    )
-
-    if (area.isServiceArea) {
-        drawPath(
-            path = path,
-            color = MapServiceBoundary,
-            style = Stroke(
-                width = if (isTapped) 3.5f else 2.5f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f),
-            ),
-        )
-    } else {
-        drawPath(
-            path = path,
-            color = if (isTapped) GccGreen else MapCommunityStroke,
-            style = Stroke(width = if (isTapped) 2f else 1f),
-        )
-    }
-}
-
-private fun DrawScope.drawRectArea(
-    area: CommunityArea,
-    isTapped: Boolean,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-) {
-    val topLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-    val bottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-    val rectTopLeft = Offset(minOf(topLeft.x, bottomRight.x), minOf(topLeft.y, bottomRight.y))
-    val rectSize = androidx.compose.ui.geometry.Size(abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y))
-
-    val cx = rectTopLeft.x + rectSize.width / 2f
-    val cy = rectTopLeft.y + rectSize.height / 2f
-    val radius = maxOf(rectSize.width, rectSize.height) / 2f
-
-    val (gradCenter, gradEdge) = when {
-        isTapped && area.isServiceArea -> GccGreen.copy(alpha = 0.35f) to GccGreen.copy(alpha = 0.12f)
-        isTapped -> MapAreaGradientCenter.copy(alpha = 0.5f) to MapAreaGradientEdge.copy(alpha = 0.15f)
-        area.isServiceArea -> MapServiceGradientCenter to MapServiceGradientEdge
-        else -> MapAreaGradientCenter to MapAreaGradientEdge
-    }
-
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(gradCenter, gradEdge),
-            center = Offset(cx, cy),
-            radius = radius.coerceAtLeast(1f),
-        ),
-        topLeft = rectTopLeft,
-        size = rectSize,
-    )
-
-    if (area.isServiceArea) {
-        drawRect(
-            color = MapServiceBoundary,
-            topLeft = rectTopLeft,
-            size = rectSize,
-            style = Stroke(width = 2.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)),
-        )
-    } else {
-        drawRect(
-            color = MapCommunityStroke,
-            topLeft = rectTopLeft,
-            size = rectSize,
-            style = Stroke(width = 1f),
-        )
-    }
-}
-
-private fun DrawScope.drawGridLines(
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-    effectiveZoom: Double,
-) {
-    val gridColor = MapStyles.GRID_COLOR
-    val gridSpacingDeg = when {
-        effectiveZoom >= MapStyles.ZOOM_STREET -> 0.0005
-        effectiveZoom >= MapStyles.ZOOM_ACTIVE_JOB -> 0.001
-        else -> 0.002
-    }
-
-    val latRange = 0.02 / (1 shl (zoom.toInt() - 14).coerceAtLeast(0))
-    val lngRange = 0.03 / (1 shl (zoom.toInt() - 14).coerceAtLeast(0))
-
-    val startLat = ((centerLat - latRange) / gridSpacingDeg).toInt() * gridSpacingDeg
-    val startLng = ((centerLng - lngRange) / gridSpacingDeg).toInt() * gridSpacingDeg
-
-    var lat = startLat
-    while (lat <= centerLat + latRange) {
-        val left = latLngToPixel(lat, centerLng - lngRange, centerLat, centerLng, zoom, w, h)
-        val right = latLngToPixel(lat, centerLng + lngRange, centerLat, centerLng, zoom, w, h)
-        drawLine(
-            color = gridColor,
-            start = Offset(left.x, left.y),
-            end = Offset(right.x, right.y),
-            strokeWidth = 0.5f,
-        )
-        lat += gridSpacingDeg
-    }
-
-    var lng = startLng
-    while (lng <= centerLng + lngRange) {
-        val top = latLngToPixel(centerLat + latRange, lng, centerLat, centerLng, zoom, w, h)
-        val bottom = latLngToPixel(centerLat - latRange, lng, centerLat, centerLng, zoom, w, h)
-        drawLine(
-            color = gridColor,
-            start = Offset(top.x, top.y),
-            end = Offset(bottom.x, bottom.y),
-            strokeWidth = 0.5f,
-        )
-        lng += gridSpacingDeg
-    }
-}
-
-private fun DrawScope.drawContextPin(position: Offset) {
-    val pinHeight = 21f
-    val pinRadius = 8f
-
-    drawCircle(
-        color = MapStyles.PIN_SHADOW,
-        radius = 5f,
-        center = Offset(position.x + 1f, position.y + 1f),
-    )
-
-    val pinPath = Path().apply {
-        moveTo(position.x, position.y)
-        lineTo(position.x - pinRadius, position.y - pinHeight * 0.6f)
-        quadraticTo(
-            position.x - pinRadius, position.y - pinHeight,
-            position.x, position.y - pinHeight,
-        )
-        quadraticTo(
-            position.x + pinRadius, position.y - pinHeight,
-            position.x + pinRadius, position.y - pinHeight * 0.6f,
-        )
-        close()
-    }
-    drawPath(path = pinPath, color = MapStyles.PIN_RED)
-    drawPath(path = pinPath, color = MapStyles.PIN_RED.copy(alpha = 0.6f), style = Stroke(width = 1f))
-
-    drawCircle(
-        color = androidx.compose.ui.graphics.Color.White,
-        radius = 3f,
-        center = Offset(position.x, position.y - pinHeight * 0.78f),
-    )
 }
