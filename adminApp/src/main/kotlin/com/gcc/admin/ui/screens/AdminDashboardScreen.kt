@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gcc.admin.ui.components.AdminScaffold
 import com.gcc.admin.ui.components.StatsCard
+import com.gcc.admin.ui.map.AdminMap
+import com.gcc.admin.ui.map.ZOOM_CITY
 import com.gcc.admin.viewmodel.AdminDashboardViewModel
 import org.koin.compose.koinInject
 
@@ -119,6 +121,26 @@ fun AdminDashboardScreen(
                     value = "$" + ((stats?.totalRevenue ?: 0) / 100).toString(),
                     icon = Icons.Default.AttachMoney,
                     modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Network Overview",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth().height(280.dp),
+            ) {
+                AdminMap(
+                    modifier = Modifier.fillMaxSize(),
+                    initialZoom = ZOOM_CITY,
+                    enableGestures = false,
                 )
             }
 

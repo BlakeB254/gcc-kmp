@@ -1,0 +1,16 @@
+# cdx-mobile project config — gcc-kmp
+# Kotlin Multiplatform project: worker app (iOS + Android) + admin desktop app
+# Docs: cdx-mobile --help
+
+name: gcc-kmp
+type: kmp
+branch: main
+remote_path: ~/CDX-DEV-PROJECTS/gcc-kmp
+
+# iOS build (KMP via xcodebuild — runs on MacBook Air)
+ios_build: xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -derivedDataPath iosApp/build/DerivedData build
+ios_output: iosApp/build/DerivedData
+
+# Android build (KMP via Gradle — runs on MacBook Air)
+android_build: ./gradlew :composeApp:assembleDebug
+android_output: composeApp/build/outputs

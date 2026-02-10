@@ -31,3 +31,6 @@ iosApp/.build/
 composeApp/signing.properties
 *.keystore
 *.jks
+
+# Build artifacts fetched from MacBook
+builds/

@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.map.*
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.BlockManagementViewModel
 import com.gcc.shared.model.AdminBlockRequest
@@ -20,6 +21,7 @@ import org.koin.compose.koinInject
 @Composable
 fun AdminBlockListScreen(
     viewModel: BlockManagementViewModel = koinInject(),
+    mapViewModel: AdminMapViewModel = koinInject(),
 ) {
     val state by viewModel.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -50,6 +52,19 @@ fun AdminBlockListScreen(
         },
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+            // Mini-map card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth().height(250.dp).padding(bottom = 16.dp),
+            ) {
+                AdminMap(
+                    modifier = Modifier.fillMaxSize(),
+                    viewModel = mapViewModel,
+                    initialZoom = ZOOM_NEIGHBORHOOD,
+                    enableGestures = false,
+                )
+            }
+
             if (state.isLoading) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),

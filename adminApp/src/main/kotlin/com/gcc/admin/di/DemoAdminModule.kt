@@ -1,5 +1,6 @@
 package com.gcc.admin.di
 
+import com.gcc.admin.ui.map.AdminMapViewModel
 import com.gcc.admin.viewmodel.*
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.demo.DemoTokenManager
@@ -24,4 +25,5 @@ val demoAdminModule = module {
     singleOf(::AnalyticsViewModel)
     singleOf(::FeedbackViewModel)
     singleOf(::AddressChangeViewModel)
+    singleOf(::AdminMapViewModel)
 }
