@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.GccLogo
+import com.gcc.app.ui.components.QrCodeCanvas
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Badge
 import com.gcc.shared.model.EarlyAdopterTier
@@ -240,31 +241,23 @@ fun ProfileCard(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // QR code placeholder: referral code styled text box
+                // QR code: Canvas-rendered referral link
                 worker.referralCode?.let { code ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp)) // Fibonacci sm
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 21.dp, vertical = 8.dp), // Fibonacci
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "REFERRAL CODE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.6f),
-                                letterSpacing = 1.sp,
-                            )
-                            Text(
-                                text = code,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                letterSpacing = 3.sp,
-                            )
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        QrCodeCanvas(
+                            data = "https://globalcommunitycleaners.org/refer/$code",
+                            size = 89.dp,
+                            foregroundColor = Color.White,
+                            backgroundColor = Color.Transparent,
+                        )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = code,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            letterSpacing = 3.sp,
+                        )
                     }
                 }
 

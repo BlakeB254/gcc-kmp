@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,55 +50,56 @@ fun BountyListScreen(
             )
         },
     ) { padding ->
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = GccGreen)
-            }
-        } else if (uiState.bounties.isEmpty() && uiState.error == null) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "No bounties available",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextMuted,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Check back soon for new cleanup bounties.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSubtle,
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                // Error message
-                uiState.error?.let { error ->
-                    item {
-                        GccCard(accentColor = CardAccentRed) {
-                            Text(error, color = GccError)
-                        }
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            if (uiState.isLoading) {
+                SkeletonList(count = 3)
+            } else if (uiState.bounties.isEmpty() && uiState.error == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "No bounties available",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Check back soon for new cleanup bounties.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSubtle,
+                        )
                     }
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    // Error message
+                    uiState.error?.let { error ->
+                        item {
+                            GccCard(accentColor = CardAccentRed) {
+                                Text(error, color = GccError)
+                            }
+                        }
+                    }
 
-                items(uiState.bounties, key = { it.id }) { bounty ->
-                    BountyListItem(
-                        bounty = bounty,
-                        onClick = { onBountyClick(bounty.id) },
-                    )
+                    items(uiState.bounties, key = { it.id }) { bounty ->
+                        BountyListItem(
+                            bounty = bounty,
+                            onClick = { onBountyClick(bounty.id) },
+                        )
+                    }
+
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
                 }
-
-                item { Spacer(modifier = Modifier.height(8.dp)) }
             }
         }
     }

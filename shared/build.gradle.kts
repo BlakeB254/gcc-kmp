@@ -34,6 +34,8 @@ kotlin {
             implementation(libs.ktor.client.auth)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.multiplatform.settings)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.multiplatform.settings.test)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
@@ -54,7 +56,7 @@ kotlin {
 
 android {
     namespace = "com.gcc.shared"
-    compileSdk = 35
+    compileSdk = 36
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

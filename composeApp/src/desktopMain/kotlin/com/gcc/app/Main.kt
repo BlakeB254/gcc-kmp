@@ -9,15 +9,18 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.lifecycle.LifecycleController
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.app.di.appModule
+import com.gcc.app.di.demoAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import javax.swing.SwingUtilities
 
-fun main() {
+fun main(args: Array<String> = emptyArray()) {
+    val isDemo = "--demo" in args || System.getenv("GCC_DEMO") == "true"
+
     startKoin {
-        modules(appModule)
+        modules(if (isDemo) demoAppModule else appModule)
     }
 
     val lifecycle = LifecycleRegistry()
@@ -38,7 +41,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = "GCC Worker App",
+            title = if (isDemo) "GCC Worker App [DEMO]" else "GCC Worker App",
         ) {
             App(root)
         }

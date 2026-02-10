@@ -1,6 +1,7 @@
 package com.gcc.server.routes
 
 import com.gcc.server.plugins.workerId
+import com.gcc.server.services.ServiceAreaService
 import com.gcc.server.services.WorkerService
 import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
@@ -55,6 +56,28 @@ fun Route.authenticatedWorkerRoutes() {
             val worker = workerService.getById(id)
             if (worker != null) {
                 call.respond(HttpStatusCode.OK, ApiResponse(data = worker))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
+            }
+        }
+
+        get("/me/service-area") {
+            val id = call.workerId()
+            val worker = workerService.getById(id)
+            if (worker != null) {
+                val serviceAreaService = application.koinGet<ServiceAreaService>()
+                val lat = worker.address.latitude
+                val lng = worker.address.longitude
+                if (lat != null && lng != null) {
+                    val area = serviceAreaService.getServiceAreaForLocation(lat, lng)
+                    if (area != null) {
+                        call.respond(HttpStatusCode.OK, ApiResponse(data = area))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, ErrorResponse("No service area found for location", 404))
+                    }
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Worker address has no coordinates", 400))
+                }
             } else {
                 call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
             }

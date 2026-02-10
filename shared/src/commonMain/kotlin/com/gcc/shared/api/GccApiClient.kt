@@ -1,7 +1,6 @@
 package com.gcc.shared.api
 
-import com.gcc.shared.model.ApiResponse
-import com.gcc.shared.model.LeaderboardEntry
+import com.gcc.shared.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -13,7 +12,8 @@ import kotlinx.serialization.json.Json
 
 class GccApiClient(
     val baseUrl: String,
-    private val tokenProvider: suspend () -> String? = { null }
+    private val tokenProvider: suspend () -> String? = { null },
+    httpClientOverride: HttpClient? = null,
 ) {
     val json = Json {
         ignoreUnknownKeys = true
@@ -22,7 +22,7 @@ class GccApiClient(
         prettyPrint = false
     }
 
-    val httpClient = HttpClient {
+    val httpClient = httpClientOverride ?: HttpClient {
         install(ContentNegotiation) {
             json(this@GccApiClient.json)
         }
@@ -41,5 +41,32 @@ class GccApiClient(
             parameter("limit", limit)
         }
         return response.body<ApiResponse<List<LeaderboardEntry>>>().data
+    }
+
+    suspend fun getFeed(
+        limit: Int = 30,
+        offset: Int = 0,
+        type: String? = null,
+    ): List<FeedItem> {
+        val response = httpClient.get("$baseUrl/api/feed") {
+            parameter("limit", limit)
+            parameter("offset", offset)
+            type?.let { parameter("type", it) }
+        }
+        return response.body<ApiResponse<List<FeedItem>>>().data
+    }
+
+    suspend fun getMyBadges(): List<Badge> {
+        val response = httpClient.get("$baseUrl/api/gamification/me/badges")
+        return response.body<ApiResponse<List<Badge>>>().data
+    }
+
+    suspend fun getMyServiceArea(): ServiceArea? {
+        return try {
+            val response = httpClient.get("$baseUrl/api/workers/me/service-area")
+            response.body<ApiResponse<ServiceArea>>().data
+        } catch (_: Exception) {
+            null
+        }
     }
 }

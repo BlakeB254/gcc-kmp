@@ -29,6 +29,37 @@ class ServiceAreaService {
     suspend fun count(): Long = dbQuery {
         ServiceAreas.selectAll().count()
     }
+
+    suspend fun getServiceAreaForLocation(lat: Double, lng: Double): ServiceArea? = dbQuery {
+        ServiceAreas.selectAll()
+            .where { ServiceAreas.status eq "active" }
+            .map { it.toServiceArea() }
+            .find { area ->
+                area.boundary?.let { polygon ->
+                    pointInPolygon(lat, lng, polygon)
+                } ?: false
+            }
+    }
+
+    private fun pointInPolygon(lat: Double, lng: Double, polygon: GeoJSONPolygon): Boolean {
+        val ring = polygon.coordinates.firstOrNull() ?: return false
+        var inside = false
+        var j = ring.size - 1
+        for (i in ring.indices) {
+            val yi = ring[i].getOrNull(1) ?: continue
+            val xi = ring[i].getOrNull(0) ?: continue
+            val yj = ring[j].getOrNull(1) ?: continue
+            val xj = ring[j].getOrNull(0) ?: continue
+
+            if (((yi > lat) != (yj > lat)) &&
+                (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)
+            ) {
+                inside = !inside
+            }
+            j = i
+        }
+        return inside
+    }
 }
 
 fun ResultRow.toServiceArea(): ServiceArea = ServiceArea(

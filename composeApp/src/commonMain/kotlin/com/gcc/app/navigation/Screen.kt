@@ -54,4 +54,7 @@ sealed class Screen {
 
     @Serializable
     data object Leaderboard : Screen()
+
+    @Serializable
+    data object Feed : Screen()
 }

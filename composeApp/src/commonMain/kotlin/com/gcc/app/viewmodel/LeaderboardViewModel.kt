@@ -23,6 +23,7 @@ data class LeaderboardUiState(
     val currentUserId: Int? = null,
     val selectedPeriod: LeaderboardPeriod = LeaderboardPeriod.ALL_TIME,
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
 )
 
@@ -55,6 +56,28 @@ class LeaderboardViewModel(
                     isLoading = false,
                     error = e.message ?: "Failed to load leaderboard",
                 )
+            }
+        }
+    }
+
+    fun refresh() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            try {
+                val entries = apiClient.getLeaderboard(
+                    period = _uiState.value.selectedPeriod.apiValue,
+                    limit = 50,
+                )
+                val userId = tokenManager.getWorkerId()
+                val userRank = entries.find { it.workerId == userId }?.rank
+                _uiState.value = _uiState.value.copy(
+                    entries = entries,
+                    currentUserId = userId,
+                    currentUserRank = userRank,
+                    isRefreshing = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isRefreshing = false)
             }
         }
     }

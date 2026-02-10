@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.ui.components.SkeletonList
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.fmt
 import com.gcc.app.util.padTwo
@@ -110,17 +112,17 @@ fun LeaderboardScreen(
                 }
             }
 
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             Crossfade(
                 targetState = uiState.selectedPeriod,
                 animationSpec = tween(durationMillis = 300),
             ) { _ ->
                 if (uiState.isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(color = GccGreen)
-                    }
+                    SkeletonList(count = 3)
                 } else if (uiState.error != null) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -248,6 +250,7 @@ fun LeaderboardScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onRouteClick: (Int) -> Unit = {},
@@ -32,6 +34,7 @@ fun DashboardScreen(
     onBountyListClick: () -> Unit = {},
     onWalletClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
+    onFeedClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -39,11 +42,11 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         viewModel.loadDashboard()
         viewModel.loadWorkerProfile()
+        viewModel.loadServiceArea()
     }
 
-    @OptIn(kotlin.time.ExperimentalTime::class)
     val greeting = remember {
-        val now = kotlin.time.Clock.System.now()
+        val now = kotlinx.datetime.Clock.System.now()
         val hour = now.toLocalDateTime(TimeZone.of("America/Chicago")).hour
         when (hour) {
             in 5..11 -> "Good morning"
@@ -76,8 +79,13 @@ fun DashboardScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             // Custom header row
@@ -99,6 +107,9 @@ fun DashboardScreen(
                             workerName,
                             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         )
+                        uiState.serviceAreaName?.let { area ->
+                            Text(area, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
                     }
                     GccLogo(
                         size = 32.dp,
@@ -230,8 +241,22 @@ fun DashboardScreen(
                             color = TextMuted,
                         )
                     }
-                    // Placeholder spacer for second column symmetry
-                    Spacer(modifier = Modifier.weight(1f))
+                    GccCard(
+                        accentColor = CardAccentPurple,
+                        modifier = Modifier.weight(1f),
+                        onClick = onFeedClick,
+                    ) {
+                        Text(
+                            "Feed",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "See what's happening",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
                 }
             }
 
@@ -246,12 +271,7 @@ fun DashboardScreen(
             // Route list or loading/empty state
             if (uiState.isLoading) {
                 item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(color = GccGreen)
-                    }
+                    SkeletonList(count = 3)
                 }
             } else if (uiState.routes.isEmpty()) {
                 item {
@@ -288,6 +308,7 @@ fun DashboardScreen(
             }
 
             item { Spacer(modifier = Modifier.height(8.dp)) }
+        }
         }
     }
 }

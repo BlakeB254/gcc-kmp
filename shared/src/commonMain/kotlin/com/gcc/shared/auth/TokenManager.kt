@@ -17,7 +17,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  *
  * Token survives app restarts. On construction, loads any saved token.
  */
-class TokenManager(private val settings: Settings = Settings()) {
+open class TokenManager(private val settings: Settings = Settings()) {
     private val _token = MutableStateFlow<String?>(settings.getStringOrNull(KEY_AUTH_TOKEN))
     val token: StateFlow<String?> = _token.asStateFlow()
 

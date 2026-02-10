@@ -29,7 +29,9 @@ data class WorkerAddress(
     val state: String = "IL",
     val zip: String,
     val neighborhood: String? = null,
-    val isNorthLawndale: Boolean? = null
+    val isNorthLawndale: Boolean? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 @Serializable

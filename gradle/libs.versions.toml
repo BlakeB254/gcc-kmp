@@ -1,7 +1,7 @@
 [versions]
 # Core
 kotlin = "2.2.0"
-agp = "8.7.3"
+agp = "8.9.1"
 compose-multiplatform = "1.8.0"
 
 # Ktor
@@ -16,7 +16,7 @@ hikari = "6.2.1"
 # KotlinX
 kotlinx-serialization = "1.7.3"
 kotlinx-coroutines = "1.9.0"
-kotlinx-datetime = "0.6.1"  # PINNED — 0.7.x removed Clock/Instant (breaks 20+ files)
+kotlinx-datetime = "0.6.1"  # PINNED — 0.7.x removes Instant class (breaks serialization in 20+ model files)
 
 # Architecture
 decompose = "3.4.0"
@@ -122,6 +122,8 @@ androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-ru
 
 # Settings (Multiplatform key-value storage)
 multiplatform-settings = { module = "com.russhwolf:multiplatform-settings-no-arg", version.ref = "multiplatform-settings" }
+multiplatform-settings-test = { module = "com.russhwolf:multiplatform-settings-test", version.ref = "multiplatform-settings" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 # Security (Server)
 bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }

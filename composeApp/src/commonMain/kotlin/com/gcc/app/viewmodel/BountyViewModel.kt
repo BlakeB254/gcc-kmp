@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 data class BountyListUiState(
     val bounties: List<Bounty> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val selectedBounty: Bounty? = null,
     val isClaimingBounty: Boolean = false,
@@ -52,6 +53,22 @@ class BountyViewModel(
                     isLoading = false,
                     error = e.message ?: "Failed to load bounties",
                 )
+            }
+        }
+    }
+
+    fun refresh() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            try {
+                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/bounties") {
+                    parameter("limit", 50)
+                    parameter("status", "open")
+                }
+                val bounties = response.body<ApiResponse<List<Bounty>>>()
+                _uiState.value = _uiState.value.copy(bounties = bounties.data, isRefreshing = false)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isRefreshing = false)
             }
         }
     }

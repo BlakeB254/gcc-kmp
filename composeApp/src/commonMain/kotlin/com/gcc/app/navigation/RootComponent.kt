@@ -114,6 +114,10 @@ class RootComponent(
         navigation.push(Screen.Leaderboard)
     }
 
+    fun navigateToFeed() {
+        navigation.push(Screen.Feed)
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }

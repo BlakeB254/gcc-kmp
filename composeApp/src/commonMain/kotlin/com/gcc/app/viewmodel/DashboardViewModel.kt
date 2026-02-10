@@ -17,6 +17,8 @@ data class DashboardUiState(
     val worker: Worker? = null,
     val leaderboard: List<LeaderboardEntry> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
+    val serviceAreaName: String? = null,
     val error: String? = null,
 )
 
@@ -67,6 +69,30 @@ class DashboardViewModel(
                     error = e.message ?: "Failed to load leaderboard",
                 )
             }
+        }
+    }
+
+    fun refresh() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            try {
+                val routesResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes") {
+                    parameter("status", "published")
+                }
+                val routes = routesResponse.body<ApiResponse<List<Route>>>()
+                _uiState.value = _uiState.value.copy(routes = routes.data, isRefreshing = false)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isRefreshing = false)
+            }
+        }
+    }
+
+    fun loadServiceArea() {
+        scope.launch {
+            try {
+                val area = apiClient.getMyServiceArea()
+                _uiState.value = _uiState.value.copy(serviceAreaName = area?.name)
+            } catch (_: Exception) { }
         }
     }
 

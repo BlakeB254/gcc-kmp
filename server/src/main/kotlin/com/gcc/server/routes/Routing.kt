@@ -29,6 +29,7 @@ fun Application.configureRouting() {
         spotRoutes()
         bountyRoutes()
         gamificationRoutes()
+        feedRoutes()
 
         // Authenticated endpoints (require valid JWT)
         authenticate("auth-jwt") {

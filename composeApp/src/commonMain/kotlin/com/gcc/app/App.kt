@@ -38,6 +38,7 @@ fun App(component: RootComponent) {
                     onBountyListClick = component::navigateToBountyList,
                     onWalletClick = component::navigateToWallet,
                     onLeaderboardClick = component::navigateToLeaderboard,
+                    onFeedClick = component::navigateToFeed,
                 )
                 is Screen.RouteDetail -> RouteDetailScreen(
                     routeId = screen.routeId,
@@ -93,6 +94,9 @@ fun App(component: RootComponent) {
                     onBack = component::navigateBack,
                 )
                 is Screen.Leaderboard -> LeaderboardScreen(
+                    onBack = component::navigateBack,
+                )
+                is Screen.Feed -> FeedScreen(
                     onBack = component::navigateBack,
                 )
             }
