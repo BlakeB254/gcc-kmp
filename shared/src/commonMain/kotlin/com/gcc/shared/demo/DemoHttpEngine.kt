@@ -43,6 +43,8 @@ private val bountyPledgePattern = Regex("^/api/bounties/(\\d+)/pledge$")
 private val bountyIdPattern = Regex("^/api/bounties/(\\d+)$")
 private val spotVolunteerPattern = Regex("^/api/spots/(\\d+)/volunteer$")
 private val blockIdPattern = Regex("^/api/blocks/(\\d+)$")
+private val adminWorkerIdPattern = Regex("^/api/admin/workers/(\\d+)$")
+private val adminWorkerActionPattern = Regex("^/api/admin/workers/(\\d+)/(verify|role)$")
 
 /**
  * Creates a Ktor [MockEngine] that returns canned demo data for every API
@@ -161,6 +163,50 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
         // ── Stats ──────────────────────────────────────────────
         path == "/api/stats" ->
             respondApi(json.encodeToString(DemoData.demoStats))
+
+        // ── Admin Endpoints ──────────────────────────────────────
+        path == "/api/admin/analytics/stats" ->
+            respondApi(json.encodeToString(DemoData.demoAdminStats))
+
+        path == "/api/admin/analytics/activity" ->
+            respondApi(json.encodeToString(DemoData.demoAdminActivity))
+
+        adminWorkerActionPattern.matches(path) -> {
+            val id = adminWorkerActionPattern.find(path)!!.groupValues[1].toInt()
+            val worker = DemoData.demoWorkerList.find { it.id == id } ?: DemoData.demoWorker
+            respondApi(json.encodeToString(worker))
+        }
+
+        adminWorkerIdPattern.matches(path) -> {
+            val id = adminWorkerIdPattern.find(path)!!.groupValues[1].toInt()
+            val worker = DemoData.demoWorkerList.find { it.id == id }
+            if (worker != null) respondApi(json.encodeToString(worker))
+            else respondNotFound()
+        }
+
+        path == "/api/admin/workers" || path == "/api/admin/workers/bulk-verify" ->
+            respondApi(json.encodeToString(DemoData.demoWorkerList))
+
+        path == "/api/admin/sponsors" ->
+            respondApi(json.encodeToString(DemoData.demoSponsorList))
+
+        path == "/api/admin/jobs" ->
+            respondApi(json.encodeToString(listOf(DemoData.demoActiveJob)))
+
+        path == "/api/admin/routes" ->
+            respondApi(json.encodeToString(DemoData.demoRoutes))
+
+        path == "/api/admin/blocks" ->
+            respondApi(json.encodeToString(DemoData.demoBlocks))
+
+        path == "/api/admin/bounties" ->
+            respondApi(json.encodeToString(DemoData.demoBounties))
+
+        path == "/api/admin/service-areas" ->
+            respondApi(json.encodeToString(DemoData.demoServiceArea))
+
+        path.startsWith("/api/admin/") ->
+            respondApi("""[]""")
 
         // ── Fallback ───────────────────────────────────────────
         else -> respondNotFound()

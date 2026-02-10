@@ -8,14 +8,17 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.lifecycle.LifecycleController
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.admin.di.adminModule
+import com.gcc.admin.di.demoAdminModule
 import com.gcc.admin.navigation.AdminRootComponent
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import javax.swing.SwingUtilities
 
-fun main() {
+fun main(args: Array<String> = emptyArray()) {
+    val isDemo = "--demo" in args || System.getenv("GCC_DEMO") == "true"
+
     startKoin {
-        modules(adminModule)
+        modules(if (isDemo) demoAdminModule else adminModule)
     }
 
     val lifecycle = LifecycleRegistry()
@@ -33,7 +36,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = "GCC Admin Dashboard",
+            title = if (isDemo) "GCC Admin Dashboard [DEMO]" else "GCC Admin Dashboard",
         ) {
             AdminApp(root)
         }

@@ -646,4 +646,63 @@ object DemoData {
         "activeRoutes" to 42,
         "volunteerCleanups" to 189,
     )
+
+    // ── Admin Models ─────────────────────────────────────────────────
+
+    val demoAdminStats: AdminStatsResponse = AdminStatsResponse(
+        totalWorkers = 156,
+        verifiedWorkers = 89,
+        pendingVerifications = 12,
+        totalSponsors = 34,
+        totalJobs = 2847,
+        completedJobs = 2650,
+        activeJobs = 47,
+        totalRevenue = 28470000,
+        totalRoutes = 42,
+        totalBlocks = 10,
+        totalBounties = 67,
+        activeBounties = 23,
+        totalDisputes = 8,
+        openDisputes = 2,
+    )
+
+    val demoAdminActivity: List<AdminActivityItem> = listOf(
+        AdminActivityItem(1, AdminActivityType.WORKER_VERIFIED, "Marcus Johnson verified by admin", "Admin", Instant.parse("2024-06-10T14:30:00Z")),
+        AdminActivityItem(2, AdminActivityType.JOB_COMPLETED, "Block NL-005 cleaning completed", "Keisha Williams", Instant.parse("2024-06-10T13:15:00Z")),
+        AdminActivityItem(3, AdminActivityType.BOUNTY_POSTED, "New bounty: Pulaski & 16th illegal dumping", "Community", Instant.parse("2024-06-10T12:00:00Z")),
+        AdminActivityItem(4, AdminActivityType.BLOCK_FUNDED, "Block NL-007 fully funded by sponsor", "Chicago Foundation", Instant.parse("2024-06-10T11:00:00Z")),
+        AdminActivityItem(5, AdminActivityType.WORKER_REGISTERED, "New worker signup: David Thompson", null, Instant.parse("2024-06-10T10:30:00Z")),
+        AdminActivityItem(6, AdminActivityType.DISPUTE_OPENED, "Job #2841 dispute: incomplete cleanup", "Resident Report", Instant.parse("2024-06-10T09:45:00Z")),
+        AdminActivityItem(7, AdminActivityType.SPONSOR_REGISTERED, "New sponsor: West Side Community Fund", null, Instant.parse("2024-06-10T09:00:00Z")),
+        AdminActivityItem(8, AdminActivityType.ROUTE_PUBLISHED, "Route NL-R003 published", "Admin", Instant.parse("2024-06-10T08:30:00Z")),
+        AdminActivityItem(9, AdminActivityType.BOUNTY_CLAIMED, "Bounty #12 claimed by worker", "Marcus Johnson", Instant.parse("2024-06-09T16:00:00Z")),
+        AdminActivityItem(10, AdminActivityType.DISPUTE_RESOLVED, "Dispute #5 resolved: payment issued", "Admin", Instant.parse("2024-06-09T15:00:00Z")),
+    )
+
+    val demoWorkerList: List<Worker> = listOf(
+        demoWorker,
+        demoWorker.copy(id = 2, name = "Keisha Williams", email = "keisha.w@example.com", phone = "+17735552345",
+            stats = WorkerStats(jobsCompleted = 34, totalEarnings = 340000, averageRating = 4.9)),
+        demoWorker.copy(id = 3, name = "David Thompson", email = "david.t@example.com", phone = "+17735553456",
+            stats = WorkerStats(jobsCompleted = 12, totalEarnings = 120000, averageRating = 4.5)),
+        demoWorker.copy(id = 4, name = "Angela Davis", email = "angela.d@example.com", phone = "+17735554567",
+            stats = WorkerStats(jobsCompleted = 67, totalEarnings = 670000, averageRating = 4.95)),
+        demoWorker.copy(id = 5, name = "Robert Brown", email = "robert.b@example.com", phone = "+17735555678",
+            stats = WorkerStats(jobsCompleted = 8, totalEarnings = 80000, averageRating = 4.2)),
+    )
+
+    val demoSponsorList: List<Sponsor> = listOf(
+        Sponsor(id = 1, name = "Chicago Foundation", email = "info@chicagofound.org",
+            type = SponsorType.ORGANIZATION,
+            stats = SponsorStats(totalDonated = 1500000, blocksSponsored = 3),
+            createdAt = Instant.parse("2024-01-10T00:00:00Z"), updatedAt = Instant.parse("2024-06-10T00:00:00Z")),
+        Sponsor(id = 2, name = "West Side Community Fund", email = "westside@fund.org",
+            type = SponsorType.ORGANIZATION,
+            stats = SponsorStats(totalDonated = 800000, blocksSponsored = 2),
+            createdAt = Instant.parse("2024-02-15T00:00:00Z"), updatedAt = Instant.parse("2024-06-09T00:00:00Z")),
+        Sponsor(id = 3, name = "Maria Garcia", email = "maria.g@example.com",
+            type = SponsorType.INDIVIDUAL,
+            stats = SponsorStats(totalDonated = 100000, blocksSponsored = 1),
+            createdAt = Instant.parse("2024-03-01T00:00:00Z"), updatedAt = Instant.parse("2024-06-05T00:00:00Z")),
+    )
 }
