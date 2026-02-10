@@ -25,6 +25,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.map.BuildingRenderer.drawBuildings
@@ -32,6 +34,8 @@ import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Desktop actual implementation of GccMap using Canvas-based rendering.
@@ -85,6 +89,30 @@ actual fun GccMap(
     val effectiveZoom by remember(zoom) {
         derivedStateOf {
             zoom + kotlin.math.log2(effectiveScale.toDouble().coerceAtLeast(0.01))
+        }
+    }
+
+    // --- Tile loading state ---
+    var tileLoadCount by remember { mutableIntStateOf(0) }
+    val zoomInt = zoom.toInt()
+    val centerTileX = remember(centerLng, zoomInt) { TileLoader.tileX(centerLng, zoomInt) }
+    val centerTileY = remember(centerLat, zoomInt) { TileLoader.tileY(centerLat, zoomInt) }
+    val tilesLoaded = tileLoadCount > 0 // true once at least one tile has loaded
+
+    // Trigger tile loading when center or zoom changes
+    LaunchedEffect(centerTileX, centerTileY, zoomInt) {
+        // Load a 5x5 grid of tiles around the center
+        for (dx in -2..2) {
+            for (dy in -2..2) {
+                val tx = centerTileX + dx
+                val ty = centerTileY + dy
+                if (!TileLoader.isCached(zoomInt, tx, ty)) {
+                    launch {
+                        TileLoader.loadTile(zoomInt, tx, ty)
+                        tileLoadCount++
+                    }
+                }
+            }
         }
     }
 
@@ -237,6 +265,50 @@ actual fun GccMap(
         ) {
             val w = size.width
             val h = size.height
+
+            // Access tileLoadCount to subscribe to recomposition on new tiles
+            @Suppress("UNUSED_EXPRESSION")
+            tileLoadCount
+
+            // --- Raster map tiles (real OpenStreetMap imagery) ---
+            var anyTilesDrawn = false
+            for (dx in -3..3) {
+                for (dy in -3..3) {
+                    val tx = centerTileX + dx
+                    val ty = centerTileY + dy
+                    val tile = TileLoader.getCachedTile(zoomInt, tx, ty)
+                    if (tile != null) {
+                        anyTilesDrawn = true
+                        val tileTopLat = TileLoader.tileLat(ty, zoomInt)
+                        val tileLeftLng = TileLoader.tileLng(tx, zoomInt)
+                        val tileBottomLat = TileLoader.tileLat(ty + 1, zoomInt)
+                        val tileRightLng = TileLoader.tileLng(tx + 1, zoomInt)
+
+                        val topLeft = latLngToPixel(tileTopLat, tileLeftLng, centerLat, centerLng, zoom, w, h)
+                        val bottomRight = latLngToPixel(tileBottomLat, tileRightLng, centerLat, centerLng, zoom, w, h)
+
+                        val dstX = topLeft.x.toInt()
+                        val dstY = topLeft.y.toInt()
+                        val dstW = (bottomRight.x - topLeft.x).toInt().coerceAtLeast(1)
+                        val dstH = (bottomRight.y - topLeft.y).toInt().coerceAtLeast(1)
+
+                        drawImage(
+                            image = tile,
+                            srcOffset = IntOffset.Zero,
+                            srcSize = IntSize(tile.width, tile.height),
+                            dstOffset = IntOffset(dstX, dstY),
+                            dstSize = IntSize(dstW, dstH),
+                        )
+                    }
+                }
+            }
+
+            // --- Fallback layers (only drawn when tiles haven't loaded yet) ---
+            if (!anyTilesDrawn) {
+                drawCityBlocks(centerLat, centerLng, zoom, w, h)
+                drawParks(centerLat, centerLng, zoom, w, h)
+                drawStreetGrid(centerLat, centerLng, zoom, w, h, effectiveZoom, textMeasurer)
+            }
 
             // --- Grid lines at street level ---
             if (showGridLines && effectiveZoom >= MapStyles.ZOOM_ROUTE) {
@@ -611,4 +683,151 @@ private fun DrawScope.drawContextPin(position: Offset) {
         radius = 3f,
         center = Offset(position.x, position.y - pinHeight * 0.78f),
     )
+}
+
+// --- Realistic map rendering layers ---
+
+/** Fill city blocks with a subtle warm color to distinguish from streets. */
+private fun DrawScope.drawCityBlocks(
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+) {
+    // Draw block-fill rectangles between major streets in the North Lawndale area
+    // This creates the visual separation between streets (white) and blocks (tan)
+    val blockLatPairs = listOf(
+        41.8750 to 41.8700, 41.8700 to 41.8665, 41.8665 to 41.8640,
+        41.8640 to 41.8625, 41.8625 to 41.8605, 41.8605 to 41.8585,
+        41.8585 to 41.8558, 41.8558 to 41.8535, 41.8535 to 41.8510,
+        41.8510 to 41.8440,
+    )
+    val blockLngPairs = listOf(
+        -87.7450 to -87.7370, -87.7370 to -87.7340, -87.7340 to -87.7310,
+        -87.7310 to -87.7280, -87.7280 to -87.7260, -87.7260 to -87.7225,
+        -87.7225 to -87.7210, -87.7210 to -87.7195, -87.7195 to -87.7180,
+        -87.7180 to -87.7165, -87.7165 to -87.7135, -87.7135 to -87.7105,
+        -87.7105 to -87.7075, -87.7075 to -87.7045, -87.7045 to -87.7000,
+        -87.7000 to -87.6940, -87.6940 to -87.6860,
+    )
+
+    for ((latN, latS) in blockLatPairs) {
+        for ((lngW, lngE) in blockLngPairs) {
+            val tl = latLngToPixel(latN, lngW, centerLat, centerLng, zoom, w, h)
+            val br = latLngToPixel(latS, lngE, centerLat, centerLng, zoom, w, h)
+            val topLeft = Offset(min(tl.x, br.x), min(tl.y, br.y))
+            val blockSize = androidx.compose.ui.geometry.Size(
+                abs(br.x - tl.x), abs(br.y - tl.y),
+            )
+            if (blockSize.width > 1f && blockSize.height > 1f) {
+                drawRect(
+                    color = MapBlockFill,
+                    topLeft = topLeft,
+                    size = blockSize,
+                )
+            }
+        }
+    }
+}
+
+/** Draw parks as green-tinted rectangles. */
+private fun DrawScope.drawParks(
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+) {
+    for (park in chicagoParks) {
+        val tl = latLngToPixel(park.north, park.west, centerLat, centerLng, zoom, w, h)
+        val br = latLngToPixel(park.south, park.east, centerLat, centerLng, zoom, w, h)
+        val topLeft = Offset(min(tl.x, br.x), min(tl.y, br.y))
+        val parkSize = androidx.compose.ui.geometry.Size(
+            abs(br.x - tl.x), abs(br.y - tl.y),
+        )
+        drawRoundRect(
+            color = MapParkFill,
+            topLeft = topLeft,
+            size = parkSize,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+        )
+        drawRoundRect(
+            color = MapParkStroke,
+            topLeft = topLeft,
+            size = parkSize,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+            style = Stroke(width = 1f),
+        )
+    }
+}
+
+/** Draw the street grid with width based on street type and labels for arterials. */
+private fun DrawScope.drawStreetGrid(
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    effectiveZoom: Double,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+) {
+    // Only show collectors at zoom >= 13.5, arterials always visible at neighborhood zoom
+    val showCollectors = effectiveZoom >= 13.5
+    val showLabels = effectiveZoom >= 13.0
+
+    for (street in chicagoStreets) {
+        if (street.type == StreetType.COLLECTOR && !showCollectors) continue
+        if (street.type == StreetType.LOCAL) continue
+
+        val start = latLngToPixel(street.startLat, street.startLng, centerLat, centerLng, zoom, w, h)
+        val end = latLngToPixel(street.endLat, street.endLng, centerLat, centerLng, zoom, w, h)
+
+        val streetWidth = when (street.type) {
+            StreetType.ARTERIAL -> 6f
+            StreetType.COLLECTOR -> 3f
+            StreetType.LOCAL -> 1.5f
+        }
+        val streetColor = when (street.type) {
+            StreetType.ARTERIAL -> MapStreetArterial
+            else -> MapStreetCollector
+        }
+        val outlineWidth = when (street.type) {
+            StreetType.ARTERIAL -> 8f
+            StreetType.COLLECTOR -> 4.5f
+            StreetType.LOCAL -> 2f
+        }
+
+        // Street outline (subtle border effect)
+        drawLine(
+            color = MapStreetOutline,
+            start = start,
+            end = end,
+            strokeWidth = outlineWidth,
+        )
+        // Street fill
+        drawLine(
+            color = streetColor,
+            start = start,
+            end = end,
+            strokeWidth = streetWidth,
+        )
+
+        // Labels for arterials
+        if (showLabels && street.type == StreetType.ARTERIAL) {
+            val labelStyle = TextStyle(
+                fontSize = (8f * (effectiveZoom / MapStyles.ZOOM_NEIGHBORHOOD).toFloat().coerceIn(0.7f, 1.5f)).sp,
+                color = MapStreetLabel,
+                textAlign = TextAlign.Center,
+            )
+            val labelResult = textMeasurer.measure(street.name, labelStyle)
+
+            // Place label at midpoint of street
+            val midX = (start.x + end.x) / 2f - labelResult.size.width / 2f
+            val midY = (start.y + end.y) / 2f - labelResult.size.height / 2f
+
+            // Background pill for readability
+            val bgPadH = 4f
+            val bgPadV = 1f
+            drawRoundRect(
+                color = MapBackground.copy(alpha = 0.85f),
+                topLeft = Offset(midX - bgPadH, midY - bgPadV),
+                size = androidx.compose.ui.geometry.Size(
+                    labelResult.size.width + bgPadH * 2,
+                    labelResult.size.height + bgPadV * 2,
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
+            )
+
+            drawText(labelResult, topLeft = Offset(midX, midY))
+        }
+    }
 }

@@ -1,10 +1,13 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,15 +18,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.GccCard
 import com.gcc.app.ui.components.SkeletonList
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.padTwo
 import com.gcc.app.viewmodel.FeedViewModel
+import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.EarlyAdopterTier
 import com.gcc.shared.model.FeedItem
 import com.gcc.shared.model.FeedItemType
@@ -295,6 +307,28 @@ private fun FeedCard(
             )
         }
 
+        // Media thumbnails (before/after or report photos)
+        val allMedia = item.mediaUrls + item.completionMediaUrls
+        if (allMedia.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            FeedMediaRow(
+                mediaUrls = item.mediaUrls,
+                completionMediaUrls = item.completionMediaUrls,
+                accentColor = accentColor,
+                feedType = item.type,
+            )
+        }
+
+        // Mini map showing location
+        if (item.locationLat != null && item.locationLng != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            FeedMiniMap(
+                lat = item.locationLat!!,
+                lng = item.locationLng!!,
+                accentColor = accentColor,
+            )
+        }
+
         // Amount / Points badge row
         val hasAmountOrPoints = item.amount != null || item.points != null
         if (hasAmountOrPoints) {
@@ -344,6 +378,337 @@ private fun FeedCard(
                 area,
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSubtle,
+            )
+        }
+    }
+}
+
+/**
+ * Horizontally scrollable row of photo thumbnails.
+ * Renders Canvas-based placeholders since demo mode has no real image URLs.
+ * Shows "Before" / "After" labels when both media and completion media exist.
+ */
+@Composable
+private fun FeedMediaRow(
+    mediaUrls: List<String>,
+    completionMediaUrls: List<String>,
+    accentColor: Color,
+    feedType: FeedItemType,
+) {
+    val hasBefore = mediaUrls.isNotEmpty()
+    val hasAfter = completionMediaUrls.isNotEmpty()
+    val showLabels = hasBefore && hasAfter
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // "Before" photos
+        mediaUrls.forEachIndexed { index, _ ->
+            PhotoThumbnail(
+                label = if (showLabels) "Before" else null,
+                sublabel = if (mediaUrls.size > 1) "${index + 1}" else null,
+                accentColor = accentColor,
+                feedType = feedType,
+                isBefore = true,
+            )
+        }
+
+        // "After" / completion photos
+        completionMediaUrls.forEachIndexed { index, _ ->
+            PhotoThumbnail(
+                label = if (showLabels) "After" else if (hasAfter && !hasBefore) "Verified" else null,
+                sublabel = if (completionMediaUrls.size > 1) "${index + 1}" else null,
+                accentColor = if (hasAfter && !hasBefore) GccGreen else GccCompleted,
+                feedType = feedType,
+                isBefore = false,
+            )
+        }
+    }
+}
+
+/**
+ * Canvas-drawn photo thumbnail placeholder.
+ * Shows a gradient background, a camera/scene icon, and optional label.
+ */
+@Composable
+private fun PhotoThumbnail(
+    label: String?,
+    sublabel: String?,
+    accentColor: Color,
+    feedType: FeedItemType,
+    isBefore: Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .size(width = 120.dp, height = 89.dp)
+            .clip(RoundedCornerShape(8.dp)),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Gradient background
+            val gradientColors = if (isBefore) {
+                listOf(
+                    accentColor.copy(alpha = 0.25f),
+                    accentColor.copy(alpha = 0.08f),
+                )
+            } else {
+                listOf(
+                    GccGreen.copy(alpha = 0.25f),
+                    GccGreen.copy(alpha = 0.08f),
+                )
+            }
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = gradientColors,
+                    start = Offset(0f, 0f),
+                    end = Offset(w, h),
+                ),
+                cornerRadius = CornerRadius(8f, 8f),
+                size = size,
+            )
+
+            // Draw a scene representation based on feed type
+            when (feedType) {
+                FeedItemType.SPOT_REPORT -> drawSpotScene(w, h, accentColor)
+                FeedItemType.BOUNTY_COMPLETED, FeedItemType.BOUNTY_CREATED -> drawBountyScene(w, h, isBefore)
+                FeedItemType.JOB_COMPLETED -> drawRouteScene(w, h)
+                FeedItemType.VOLUNTEER_CLEANUP -> drawCleanupScene(w, h)
+                FeedItemType.BADGE_UNLOCKED -> { /* no photos for badges */ }
+            }
+
+            // Camera icon indicator (top-right corner)
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.3f),
+                topLeft = Offset(w - 28f, 4f),
+                size = Size(24f, 20f),
+                cornerRadius = CornerRadius(4f, 4f),
+            )
+            // Lens circle
+            drawCircle(
+                color = Color.White.copy(alpha = 0.7f),
+                radius = 5f,
+                center = Offset(w - 16f, 14f),
+            )
+        }
+
+        // Label overlay at bottom
+        if (label != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = Color.Black.copy(alpha = 0.6f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                    sublabel?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Draw a spot report scene: trash pile silhouette */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpotScene(
+    w: Float, h: Float, accentColor: Color,
+) {
+    // Ground line
+    drawLine(
+        color = accentColor.copy(alpha = 0.3f),
+        start = Offset(0f, h * 0.75f),
+        end = Offset(w, h * 0.75f),
+        strokeWidth = 1.5f,
+    )
+    // Trash pile shapes (irregular rectangles)
+    val pileColor = accentColor.copy(alpha = 0.2f)
+    drawRoundRect(pileColor, Offset(w * 0.15f, h * 0.45f), Size(w * 0.25f, h * 0.3f), CornerRadius(3f))
+    drawRoundRect(pileColor, Offset(w * 0.35f, h * 0.35f), Size(w * 0.2f, h * 0.4f), CornerRadius(3f))
+    drawRoundRect(pileColor, Offset(w * 0.5f, h * 0.5f), Size(w * 0.22f, h * 0.25f), CornerRadius(3f))
+    // Warning triangle
+    val triPath = Path().apply {
+        moveTo(w * 0.78f, h * 0.3f)
+        lineTo(w * 0.72f, h * 0.55f)
+        lineTo(w * 0.84f, h * 0.55f)
+        close()
+    }
+    drawPath(triPath, color = accentColor.copy(alpha = 0.4f))
+    drawPath(triPath, color = accentColor.copy(alpha = 0.6f), style = Stroke(width = 1.5f))
+}
+
+/** Draw a bounty scene: before (dirty) or after (clean) */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBountyScene(
+    w: Float, h: Float, isBefore: Boolean,
+) {
+    if (isBefore) {
+        // Messy scene
+        val messColor = CardAccentGold.copy(alpha = 0.2f)
+        drawRoundRect(messColor, Offset(w * 0.1f, h * 0.5f), Size(w * 0.3f, h * 0.25f), CornerRadius(2f))
+        drawRoundRect(messColor, Offset(w * 0.45f, h * 0.4f), Size(w * 0.2f, h * 0.35f), CornerRadius(2f))
+        drawRoundRect(messColor, Offset(w * 0.6f, h * 0.55f), Size(w * 0.25f, h * 0.2f), CornerRadius(2f))
+        drawLine(CardAccentGold.copy(alpha = 0.3f), Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)
+    } else {
+        // Clean scene with checkmark
+        drawLine(GccGreen.copy(alpha = 0.3f), Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)
+        // Sparkle dots
+        val sparkle = GccGreen.copy(alpha = 0.3f)
+        drawCircle(sparkle, 3f, Offset(w * 0.25f, h * 0.4f))
+        drawCircle(sparkle, 2f, Offset(w * 0.6f, h * 0.35f))
+        drawCircle(sparkle, 2.5f, Offset(w * 0.45f, h * 0.55f))
+        drawCircle(sparkle, 1.5f, Offset(w * 0.75f, h * 0.5f))
+        // Checkmark
+        val checkPath = Path().apply {
+            moveTo(w * 0.4f, h * 0.45f)
+            lineTo(w * 0.48f, h * 0.55f)
+            lineTo(w * 0.62f, h * 0.35f)
+        }
+        drawPath(checkPath, color = GccGreen.copy(alpha = 0.6f), style = Stroke(width = 3f))
+    }
+}
+
+/** Draw a route completion scene: path line with checkpoints */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteScene(w: Float, h: Float) {
+    val routeColor = GccGreen.copy(alpha = 0.35f)
+    // Winding path
+    val path = Path().apply {
+        moveTo(w * 0.1f, h * 0.7f)
+        quadraticTo(w * 0.3f, h * 0.3f, w * 0.5f, h * 0.5f)
+        quadraticTo(w * 0.7f, h * 0.7f, w * 0.9f, h * 0.3f)
+    }
+    drawPath(path, color = routeColor, style = Stroke(width = 3f))
+    // Checkpoint dots
+    drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.1f, h * 0.7f))
+    drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.5f, h * 0.5f))
+    drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.9f, h * 0.3f))
+    // Completed checkmark on last dot
+    val check = Path().apply {
+        moveTo(w * 0.86f, h * 0.3f)
+        lineTo(w * 0.89f, h * 0.35f)
+        lineTo(w * 0.95f, h * 0.22f)
+    }
+    drawPath(check, color = GccGreen.copy(alpha = 0.7f), style = Stroke(width = 2f))
+}
+
+/** Draw a volunteer cleanup scene: broom and bag */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCleanupScene(w: Float, h: Float) {
+    val cleanColor = CardAccentBlue.copy(alpha = 0.3f)
+    // Ground
+    drawLine(cleanColor, Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)
+    // Trash bag shape
+    drawRoundRect(
+        cleanColor.copy(alpha = 0.5f),
+        Offset(w * 0.55f, h * 0.35f),
+        Size(w * 0.25f, h * 0.4f),
+        CornerRadius(6f),
+    )
+    // Bag tie
+    drawCircle(cleanColor, 4f, Offset(w * 0.675f, h * 0.35f))
+    // Broom handle (diagonal line)
+    drawLine(
+        cleanColor.copy(alpha = 0.6f),
+        start = Offset(w * 0.2f, h * 0.2f),
+        end = Offset(w * 0.35f, h * 0.7f),
+        strokeWidth = 2.5f,
+    )
+    // Broom bristles
+    for (i in -2..2) {
+        drawLine(
+            cleanColor.copy(alpha = 0.4f),
+            start = Offset(w * 0.35f, h * 0.7f),
+            end = Offset(w * 0.35f + i * 3f, h * 0.78f),
+            strokeWidth = 1.5f,
+        )
+    }
+}
+
+/**
+ * Mini map view showing the feed item's location.
+ * Uses the existing GccMap composable centered on the coordinates.
+ */
+@Composable
+private fun FeedMiniMap(
+    lat: Double,
+    lng: Double,
+    accentColor: Color,
+) {
+    Column {
+        // Map header with location pin label
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(accentColor),
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                "Location",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = TextMuted,
+            )
+        }
+
+        // Map container
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(8.dp)),
+        ) {
+            GccMap(
+                modifier = Modifier.fillMaxSize(),
+                centerLat = lat,
+                centerLng = lng,
+                zoom = MapStyles.ZOOM_ROUTE,
+                currentLocation = Coordinates(lat = lat, lng = lng),
+                enableGestures = false,
+                showBuildings = false,
+                showGridLines = false,
+            )
+
+            // Subtle gradient overlay at bottom for visual blending
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                GccSurface.copy(alpha = 0.4f),
+                            ),
+                        ),
+                    ),
             )
         }
     }

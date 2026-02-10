@@ -77,9 +77,19 @@ val DividerColor = Color(0xFFE5E7EB)
 
 // Enhanced map colors
 val MapServiceBoundary = Color(0xFFF97316)
-val MapBackground = Color(0xFFF0FDF4)
+val MapBackground = Color(0xFFF5F5F0)       // neutral warm gray (like real map tiles)
 val MapCommunityFill = Color(0x1A22C55E)
 val MapCommunityStroke = Color(0xFF4ADE80)
+
+// Street colors for Canvas map rendering
+val MapStreetArterial = Color(0xFFFFFFFF)     // white for major roads
+val MapStreetCollector = Color(0xFFF8F8F5)    // off-white for minor streets
+val MapStreetOutline = Color(0xFFE0DDD5)      // subtle border on streets
+val MapBlockFill = Color(0xFFF0EDE5)          // city blocks between streets
+val MapParkFill = Color(0xFFD5E8D4)           // parks / green spaces
+val MapParkStroke = Color(0xFFB5D6B3)
+val MapStreetLabel = Color(0xFF7A7A6E)        // muted text for street names
+val MapWaterFill = Color(0xFFB4D4E4)          // water (not used in NL but available)
 
 // Map gradient fills (radial gradient centers for community areas)
 val MapAreaGradientCenter = Color(0x3322C55E)

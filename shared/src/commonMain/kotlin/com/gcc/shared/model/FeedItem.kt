@@ -27,6 +27,8 @@ data class FeedItem(
     val amount: Int? = null,
     val points: Int? = null,
     val communityArea: String? = null,
+    val locationLat: Double? = null,
+    val locationLng: Double? = null,
     val timestamp: Instant,
     val metadata: Map<String, String> = emptyMap(),
 )
