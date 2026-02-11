@@ -107,6 +107,11 @@ val MapAreaBorder = Color(0xFF6B7280)         // gray border for non-service are
 val MapAreaFill = Color(0x0D6B7280)           // very subtle gray fill
 val MapAreaLabel = Color(0xFF4B5563)          // dark gray area labels
 
+// Geographic boundary colors
+val MapCommunityBoundary = Color(0xFFDC2626)  // red for community area outlines
+val MapCityBoundary = Color(0xFF4B5563)       // dark gray for Chicago city outline
+val MapStateBoundary = Color(0xFF9CA3AF)      // lighter gray for Illinois state outline
+
 // Fundable block status colors (20% alpha fills)
 val BlockAvailable = Color(0x339CA3AF)        // gray, needs funding
 val BlockFunded = Color(0x3322C55E)           // green, fully funded

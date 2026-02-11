@@ -21,7 +21,7 @@ import com.gcc.shared.model.Route
 /**
  * Overlay that renders route chips in a horizontal scrollable row.
  *
- * Each chip shows the route name, checkpoint count, and payout.
+ * Each chip shows a route thumbnail, the route name, checkpoint count, and payout.
  */
 @Composable
 fun RouteOverlay(
@@ -56,10 +56,15 @@ private fun RouteChip(
         color = Color.White,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Route visual thumbnail
+            RouteThumbnail(
+                route = route,
+                modifier = Modifier.size(40.dp),
+            )
             Column {
                 Text(
                     route.displayName,

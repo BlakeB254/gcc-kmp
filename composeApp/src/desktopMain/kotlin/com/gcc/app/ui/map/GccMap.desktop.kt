@@ -33,6 +33,7 @@ import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.ln
+import kotlin.math.pow
 
 /**
  * Desktop actual implementation of GccMap using Canvas-based rendering.
@@ -53,6 +54,9 @@ actual fun GccMap(
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     showGridLines: Boolean,
+    showControls: Boolean,
+    statusBarPadding: Boolean,
+    zoomPresets: List<ZoomPreset>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -176,7 +180,7 @@ actual fun GccMap(
     }
 
     // --- Zoom presets for double-tap ---
-    val zoomPresets = listOf(1.0f, 2.0f, 4.0f, 8.0f)
+    val doubleTapScales = listOf(1.0f, 2.0f, 4.0f, 8.0f)
 
     Box(modifier = modifier.fillMaxWidth().background(MapBackground)) {
         val gestureModifier = if (enableGestures) {
@@ -197,8 +201,8 @@ actual fun GccMap(
                         onDoubleTap = { _ ->
                             // Animate to next zoom preset level
                             val currentScale = gestureScale * animatedScale.value
-                            val nextScale = zoomPresets.firstOrNull { it > currentScale + 0.1f }
-                                ?: zoomPresets.first()
+                            val nextScale = doubleTapScales.firstOrNull { it > currentScale + 0.1f }
+                                ?: doubleTapScales.first()
                             val targetAnimScale = nextScale / gestureScale
                             coroutineScope.launch {
                                 animatedScale.animateTo(
@@ -306,6 +310,10 @@ actual fun GccMap(
                 drawParks(centerLat, centerLng, zoom, w, h)
                 drawStreetGrid(centerLat, centerLng, zoom, w, h, effectiveZoom, textMeasurer)
             }
+
+            // --- Geographic boundaries (drawn below community areas) ---
+            drawStateBoundary(centerLat, centerLng, zoom, w, h, effectiveZoom)
+            drawCityBoundary(centerLat, centerLng, zoom, w, h, effectiveZoom)
 
             // --- Grid lines at street level ---
             if (showGridLines && effectiveZoom >= MapStyles.ZOOM_ROUTE) {
@@ -459,6 +467,46 @@ actual fun GccMap(
 
         // Overlay content
         content()
+
+        if (showControls) {
+            MapControls(
+                currentZoom = effectiveZoom,
+                presets = zoomPresets,
+                onZoomIn = {
+                    val targetScale = (gestureScale * 1.5f).coerceAtMost(8f)
+                    val ratio = targetScale / gestureScale
+                    coroutineScope.launch {
+                        animatedScale.animateTo(ratio, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                        gestureScale *= animatedScale.value
+                        animatedScale.snapTo(1f)
+                    }
+                },
+                onZoomOut = {
+                    val targetScale = (gestureScale / 1.5f).coerceAtLeast(0.3f)
+                    val ratio = targetScale / gestureScale
+                    coroutineScope.launch {
+                        animatedScale.animateTo(ratio, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                        gestureScale *= animatedScale.value
+                        animatedScale.snapTo(1f)
+                    }
+                },
+                onPresetSelect = { targetZoom ->
+                    val targetScale = 2.0.pow(targetZoom - zoom).toFloat()
+                    val ratio = targetScale / gestureScale
+                    coroutineScope.launch {
+                        animatedScale.animateTo(ratio, animationSpec = tween(500, easing = FastOutSlowInEasing))
+                        gestureScale *= animatedScale.value
+                        animatedScale.snapTo(1f)
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+
+            ScaleBar(
+                zoom = effectiveZoom,
+                modifier = Modifier.align(Alignment.BottomStart),
+            )
+        }
 
         // Tapped area tooltip with slide-up animation
         tappedArea?.let { area ->

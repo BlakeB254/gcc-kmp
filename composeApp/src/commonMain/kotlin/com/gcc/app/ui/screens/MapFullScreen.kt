@@ -47,13 +47,15 @@ fun MapFullScreen(
             modifier = Modifier.fillMaxSize(),
             centerLat = MapStyles.CHICAGO_CENTER_LAT,
             centerLng = MapStyles.CHICAGO_CENTER_LNG,
-            zoom = MapStyles.ZOOM_NEIGHBORHOOD,
+            zoom = MapStyles.ZOOM_AREA,
             enableGestures = true,
+            showControls = true,
+            statusBarPadding = true,
             routeCoordinates = routeCoordinates,
             onAreaTap = { /* tooltip handled internally by GccMap */ },
         ) {
             ChicagoOverlay(
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 42.dp),
             )
             if (uiState.routes.isNotEmpty()) {
                 RouteOverlay(
@@ -68,6 +70,7 @@ fun MapFullScreen(
         TextButton(
             onClick = onBack,
             modifier = Modifier
+                .statusBarsPadding()
                 .padding(8.dp)
                 .align(Alignment.TopEnd),
         ) {

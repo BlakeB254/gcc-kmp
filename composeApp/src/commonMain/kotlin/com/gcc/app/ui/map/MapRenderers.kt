@@ -296,7 +296,7 @@ internal fun DrawScope.drawGridLines(
     }
 }
 
-/** Draw a community area as a polygon path with radial gradient fill. */
+/** Draw a community area as a polygon outline (no fill). */
 internal fun DrawScope.drawPolygonArea(
     area: CommunityArea,
     isTapped: Boolean,
@@ -308,28 +308,6 @@ internal fun DrawScope.drawPolygonArea(
         if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
     }
     path.close()
-
-    val topLeft = latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-    val bottomRight = latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-    val cx = (topLeft.x + bottomRight.x) / 2f
-    val cy = (topLeft.y + bottomRight.y) / 2f
-    val radius = maxOf(abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y)) / 2f
-
-    val (gradCenter, gradEdge) = when {
-        isTapped && area.isServiceArea -> GccGreen.copy(alpha = 0.35f) to GccGreen.copy(alpha = 0.12f)
-        isTapped -> MapAreaGradientCenter.copy(alpha = 0.5f) to MapAreaGradientEdge.copy(alpha = 0.15f)
-        area.isServiceArea -> MapServiceGradientCenter to MapServiceGradientEdge
-        else -> MapAreaGradientCenter to MapAreaGradientEdge
-    }
-
-    drawPath(
-        path = path,
-        brush = Brush.radialGradient(
-            colors = listOf(gradCenter, gradEdge),
-            center = Offset(cx, cy),
-            radius = radius.coerceAtLeast(1f),
-        ),
-    )
 
     if (area.isServiceArea) {
         drawPath(
@@ -343,13 +321,13 @@ internal fun DrawScope.drawPolygonArea(
     } else {
         drawPath(
             path = path,
-            color = if (isTapped) GccGreen else MapCommunityStroke,
-            style = Stroke(width = if (isTapped) 2f else 1f),
+            color = if (isTapped) MapCommunityBoundary.copy(alpha = 0.8f) else MapCommunityBoundary,
+            style = Stroke(width = if (isTapped) 2.5f else MapStyles.COMMUNITY_AREA_STROKE_WIDTH),
         )
     }
 }
 
-/** Fallback: draw a community area as a rectangle (when no polygon data). */
+/** Fallback: draw a community area as a rectangle outline (no fill). */
 internal fun DrawScope.drawRectArea(
     area: CommunityArea,
     isTapped: Boolean,
@@ -360,27 +338,6 @@ internal fun DrawScope.drawRectArea(
     val rectTopLeft = Offset(minOf(topLeft.x, bottomRight.x), minOf(topLeft.y, bottomRight.y))
     val rectSize = Size(abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y))
 
-    val cx = rectTopLeft.x + rectSize.width / 2f
-    val cy = rectTopLeft.y + rectSize.height / 2f
-    val radius = maxOf(rectSize.width, rectSize.height) / 2f
-
-    val (gradCenter, gradEdge) = when {
-        isTapped && area.isServiceArea -> GccGreen.copy(alpha = 0.35f) to GccGreen.copy(alpha = 0.12f)
-        isTapped -> MapAreaGradientCenter.copy(alpha = 0.5f) to MapAreaGradientEdge.copy(alpha = 0.15f)
-        area.isServiceArea -> MapServiceGradientCenter to MapServiceGradientEdge
-        else -> MapAreaGradientCenter to MapAreaGradientEdge
-    }
-
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(gradCenter, gradEdge),
-            center = Offset(cx, cy),
-            radius = radius.coerceAtLeast(1f),
-        ),
-        topLeft = rectTopLeft,
-        size = rectSize,
-    )
-
     if (area.isServiceArea) {
         drawRect(
             color = MapServiceBoundary,
@@ -390,12 +347,78 @@ internal fun DrawScope.drawRectArea(
         )
     } else {
         drawRect(
-            color = MapCommunityStroke,
+            color = if (isTapped) MapCommunityBoundary.copy(alpha = 0.8f) else MapCommunityBoundary,
             topLeft = rectTopLeft,
             size = rectSize,
-            style = Stroke(width = 1f),
+            style = Stroke(width = if (isTapped) 2.5f else MapStyles.COMMUNITY_AREA_STROKE_WIDTH),
         )
     }
+}
+
+/**
+ * Draw the Illinois state outline as a polygon path.
+ *
+ * Line width scales with effective zoom so the outline looks proportional
+ * at City level (bold) and doesn't overwhelm at Area/Route level (thin).
+ */
+internal fun DrawScope.drawStateBoundary(
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    effectiveZoom: Double = zoom,
+) {
+    // Fade out at high zoom (community areas take over)
+    val alpha = ((MapStyles.ZOOM_AREA - effectiveZoom) / 3.0).coerceIn(0.0, 1.0).toFloat()
+    if (alpha <= 0f) return
+
+    val width = when {
+        effectiveZoom <= MapStyles.ZOOM_CITY -> 2.5f
+        effectiveZoom <= MapStyles.ZOOM_AREA -> 1.5f
+        else -> 1.0f
+    }
+
+    val path = Path()
+    illinoisOutline.forEachIndexed { index, (lat, lng) ->
+        val point = latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+        if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+    }
+    path.close()
+    drawPath(
+        path = path,
+        color = MapStateBoundary.copy(alpha = alpha),
+        style = Stroke(width = width),
+    )
+}
+
+/**
+ * Draw the Chicago city outline as a polygon path.
+ *
+ * Visible from City to Area zoom; fades at Route level where
+ * community area boundaries provide enough context.
+ */
+internal fun DrawScope.drawCityBoundary(
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    effectiveZoom: Double = zoom,
+) {
+    // Fade out at high zoom (community areas take over)
+    val alpha = ((MapStyles.ZOOM_ROUTE - effectiveZoom) / 3.0).coerceIn(0.0, 1.0).toFloat()
+    if (alpha <= 0f) return
+
+    val width = when {
+        effectiveZoom <= MapStyles.ZOOM_CITY -> 2.5f
+        effectiveZoom <= MapStyles.ZOOM_AREA -> 2.0f
+        else -> 1.5f
+    }
+
+    val path = Path()
+    chicagoCityOutline.forEachIndexed { index, (lat, lng) ->
+        val point = latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+        if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+    }
+    path.close()
+    drawPath(
+        path = path,
+        color = MapCityBoundary.copy(alpha = alpha),
+        style = Stroke(width = width),
+    )
 }
 
 /** Draw a context pin marker (red teardrop shape). */

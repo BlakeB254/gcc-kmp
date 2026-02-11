@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -22,10 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.*
-import com.gcc.app.ui.map.ChicagoOverlay
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
-import com.gcc.app.ui.map.RouteOverlay
+import com.gcc.app.ui.map.RouteThumbnail
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.model.Route
@@ -130,28 +130,38 @@ fun DashboardScreen(
                 }
             }
 
-            // --- Map preview ---
+            // --- Map preview (clean — no overlays, no controls) ---
             item {
                 Box(
                     modifier = Modifier
                         .height(233.dp)
                         .padding(horizontal = 13.dp)
+                        .clip(RoundedCornerShape(13.dp))
                         .clickable(onClick = onMapClick),
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
                         centerLat = MapStyles.CHICAGO_CENTER_LAT,
                         centerLng = MapStyles.CHICAGO_CENTER_LNG,
-                        zoom = MapStyles.ZOOM_NEIGHBORHOOD,
+                        zoom = MapStyles.ZOOM_AREA,
+                        showControls = false,
+                    )
+
+                    // Expand affordance — small icon in bottom-right corner
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(28.dp),
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.85f),
+                        shadowElevation = 2.dp,
                     ) {
-                        ChicagoOverlay(
-                            modifier = Modifier.align(Alignment.TopStart),
-                        )
-                        if (uiState.routes.isNotEmpty()) {
-                            RouteOverlay(
-                                routes = uiState.routes,
-                                onRouteClick = { route -> onRouteClick(route.id) },
-                                modifier = Modifier.align(Alignment.BottomStart),
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "\u2922", // ⤢ expand arrows
+                                fontSize = 14.sp,
+                                color = GccGreenDark,
                             )
                         }
                     }
@@ -361,7 +371,7 @@ private fun QuickActionButton(
     }
 }
 
-// --- Route list item ---
+// --- Route list item with thumbnail ---
 
 @Composable
 private fun RouteListItem(
@@ -376,9 +386,14 @@ private fun RouteListItem(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Route visual thumbnail
+            RouteThumbnail(
+                route = route,
+                modifier = Modifier.size(55.dp),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     route.displayName,

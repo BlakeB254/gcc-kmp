@@ -46,20 +46,7 @@ fun ChicagoOverlay(
             modifier = Modifier.padding(spacing.md),  // 13dp Fibonacci
             verticalArrangement = Arrangement.spacedBy(spacing.xs),  // 5dp Fibonacci
         ) {
-            // Service Area legend
-            LegendItem(
-                indicator = {
-                    Box(
-                        modifier = Modifier
-                            .size(spacing.sm)  // 8dp
-                            .clip(RoundedCornerShape(spacing.xxs))  // 3dp
-                            .background(GccGreen)
-                    )
-                },
-                label = "Service Area",
-            )
-
-            // Boundary legend (dashed orange line)
+            // Service Area legend (dashed orange boundary)
             LegendItem(
                 indicator = {
                     Box(
@@ -72,20 +59,55 @@ fun ChicagoOverlay(
                             )
                     )
                 },
-                label = "Boundary",
+                label = "Service Area",
             )
 
-            // Community Areas legend
+            // Community Boundary legend (red outline)
             LegendItem(
                 indicator = {
                     Box(
                         modifier = Modifier
-                            .size(spacing.sm)  // 8dp
-                            .clip(RoundedCornerShape(spacing.xxs))  // 3dp
-                            .background(MapCommunityStroke)
+                            .width(21.dp)  // Fibonacci: 21
+                            .height(0.dp)
+                            .border(
+                                width = 1.5.dp,
+                                color = MapCommunityBoundary,
+                            )
                     )
                 },
-                label = "Community Areas",
+                label = "Community Boundary",
+            )
+
+            // City Boundary legend (dark gray line)
+            LegendItem(
+                indicator = {
+                    Box(
+                        modifier = Modifier
+                            .width(21.dp)  // Fibonacci: 21
+                            .height(0.dp)
+                            .border(
+                                width = 1.5.dp,
+                                color = MapCityBoundary,
+                            )
+                    )
+                },
+                label = "City Boundary",
+            )
+
+            // State Boundary legend (light gray line)
+            LegendItem(
+                indicator = {
+                    Box(
+                        modifier = Modifier
+                            .width(21.dp)  // Fibonacci: 21
+                            .height(0.dp)
+                            .border(
+                                width = 1.dp,
+                                color = MapStateBoundary,
+                            )
+                    )
+                },
+                label = "State Boundary",
             )
 
             // Zoom level indicator (optional)

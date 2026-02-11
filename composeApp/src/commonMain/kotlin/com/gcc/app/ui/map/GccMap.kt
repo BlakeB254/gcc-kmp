@@ -50,6 +50,9 @@ data class ContextPin(
  * @param onContextPin       Callback when a long-press pin is placed (lat, lng)
  * @param showBuildings      Show isometric buildings at street zoom
  * @param showGridLines      Show grid lines at route zoom and above
+ * @param showControls       Show zoom controls (+ / - buttons and preset bar) and scale bar
+ * @param statusBarPadding   Add status bar padding to controls (use in full-screen map)
+ * @param zoomPresets        Which zoom presets to show (defaults to overview: City/Area)
  * @param content            Overlay content (composables positioned in the Box)
  */
 @Composable
@@ -68,6 +71,9 @@ expect fun GccMap(
     onContextPin: ((lat: Double, lng: Double) -> Unit)? = null,
     showBuildings: Boolean = true,
     showGridLines: Boolean = true,
+    showControls: Boolean = false,
+    statusBarPadding: Boolean = false,
+    zoomPresets: List<ZoomPreset> = overviewZoomPresets,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

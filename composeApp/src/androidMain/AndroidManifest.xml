@@ -8,13 +8,15 @@
 
     <application
         android:allowBackup="true"
-        android:label="GCC Worker"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="GCC"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name="com.gcc.app.MainActivity"
             android:exported="true"
-            android:label="GCC Worker">
+            android:label="GCC">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

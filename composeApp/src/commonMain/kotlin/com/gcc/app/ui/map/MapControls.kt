@@ -1,7 +1,6 @@
 package com.gcc.app.ui.map
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,31 +30,39 @@ data class ZoomPreset(
     val zoom: Double,
 )
 
-/** Standard zoom presets using defined MapStyles constants. */
+/** Overview presets for Dashboard and Map tab — no route/street level. */
+val overviewZoomPresets = listOf(
+    ZoomPreset("City", MapStyles.ZOOM_CITY),
+    ZoomPreset("Area", MapStyles.ZOOM_AREA),
+)
+
+/** Active job presets — includes route zoom for navigation. */
+val activeJobZoomPresets = listOf(
+    ZoomPreset("Area", MapStyles.ZOOM_AREA),
+    ZoomPreset("Route", MapStyles.ZOOM_ROUTE),
+    ZoomPreset("Street", MapStyles.ZOOM_STREET),
+)
+
+/** Full preset list — all zoom levels. */
 val defaultZoomPresets = listOf(
     ZoomPreset("City", MapStyles.ZOOM_CITY),
-    ZoomPreset("Area", MapStyles.ZOOM_NEIGHBORHOOD),
+    ZoomPreset("Area", MapStyles.ZOOM_AREA),
     ZoomPreset("Route", MapStyles.ZOOM_ROUTE),
     ZoomPreset("Street", MapStyles.ZOOM_STREET),
 )
 
 /**
- * Floating map control overlay with zoom buttons and preset zoom bar.
+ * Floating map control bar — compact horizontal layout at the top of the map.
  *
- * Positioned bottom-right (by the caller via Modifier.align). Uses Fibonacci
- * spacing tokens from GccTheme.spacing throughout.
+ * Layout:
+ * ```
+ * ┌──────────────────────────────────────────┐
+ * │  [−] [+]        [City][Area][Route][St.] │
+ * └──────────────────────────────────────────┘
+ * ```
  *
- * Layout (vertical, bottom-right):
- * ```
- *   [ + ]          <- 34dp diameter zoom-in button
- *   [ - ]          <- 34dp diameter zoom-out button
- *   ┌─────┐
- *   │City │
- *   │Area │        <- Vertical pill of preset buttons
- *   │Route│
- *   │St.  │
- *   └─────┘
- * ```
+ * Positioned at the top by the caller via Modifier.align(Alignment.TopCenter).
+ * Uses a semi-transparent background to avoid obstructing the map.
  *
  * @param currentZoom      The current effective zoom level
  * @param onZoomIn         Called when + button is tapped
@@ -73,75 +80,68 @@ fun MapControls(
     presets: List<ZoomPreset> = defaultZoomPresets,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = GccTheme.spacing
-    val dims = GccTheme.dimensions
-    val elevation = GccTheme.elevation
-
-    Column(
-        modifier = modifier.padding(end = spacing.sm, bottom = spacing.md),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-        // Zoom in button: 34dp circle
-        ZoomButton(
-            text = "+",
-            onClick = onZoomIn,
-            size = dims.avatarSm,  // 34dp
-        )
-
-        // Zoom out button: 34dp circle
-        ZoomButton(
-            text = "\u2212",  // minus sign
-            onClick = onZoomOut,
-            size = dims.avatarSm,
-        )
-
-        Spacer(modifier = Modifier.height(spacing.xxs))
-
-        // Preset zoom bar: vertical pill
-        ZoomPresetBar(
-            presets = presets,
-            currentZoom = currentZoom,
-            onPresetSelect = onPresetSelect,
-        )
-    }
-}
-
-/**
- * A circular zoom button (+/-).
- */
-@Composable
-private fun ZoomButton(
-    text: String,
-    onClick: () -> Unit,
-    size: androidx.compose.ui.unit.Dp,
-) {
     Surface(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        shadowElevation = GccTheme.elevation.raised,
-        color = MapControlBg,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = Color.White.copy(alpha = 0.85f),
+        shadowElevation = 2.dp,
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize(),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = text,
-                fontSize = 13.sp,  // Fibonacci: 13
-                fontWeight = FontWeight.Bold,
-                color = MapControlIcon,
-                textAlign = TextAlign.Center,
+            // Left: zoom in/out buttons
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ZoomButton(text = "\u2212", onClick = onZoomOut)  // minus
+                ZoomButton(text = "+", onClick = onZoomIn)
+            }
+
+            // Right: preset selector (horizontal segmented control)
+            ZoomPresetBar(
+                presets = presets,
+                currentZoom = currentZoom,
+                onPresetSelect = onPresetSelect,
             )
         }
     }
 }
 
 /**
- * Vertical pill of zoom preset buttons.
+ * A small circular zoom button (+/-).
+ */
+@Composable
+private fun ZoomButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(MapControlBg)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MapControlIcon,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * Horizontal segmented zoom preset bar.
  *
  * The active preset (closest to currentZoom) is highlighted with GccGreen.
  */
@@ -153,47 +153,30 @@ private fun ZoomPresetBar(
 ) {
     val activeIndex = findActivePresetIndex(presets, currentZoom)
 
-    Surface(
-        shape = RoundedCornerShape(GccTheme.spacing.sm),  // 8dp Fibonacci radius
-        shadowElevation = GccTheme.elevation.raised,
-        color = MapControlBg,
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MapControlBg),
     ) {
-        Column {
-            presets.forEachIndexed { index, preset ->
-                val isActive = index == activeIndex
-                val bgColor = if (isActive) GccGreen else Color.Transparent
-                val textColor = if (isActive) Color.White else MapControlIcon
+        presets.forEachIndexed { index, preset ->
+            val isActive = index == activeIndex
+            val bgColor = if (isActive) GccGreen else Color.Transparent
+            val textColor = if (isActive) Color.White else MapControlIcon
 
-                Box(
-                    modifier = Modifier
-                        .width(GccTheme.dimensions.avatarSm)  // 34dp
-                        .clickable { onPresetSelect(preset.zoom) }
-                        .background(bgColor)
-                        .padding(
-                            horizontal = GccTheme.spacing.xxs,
-                            vertical = GccTheme.spacing.xs,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = preset.label,
-                        fontSize = 8.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                        color = textColor,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                    )
-                }
-
-                // Divider between presets (except last)
-                if (index < presets.lastIndex && !isActive && index + 1 != activeIndex) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(0.5.dp)
-                            .background(DividerColor),
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .clickable { onPresetSelect(preset.zoom) }
+                    .background(bgColor)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = preset.label,
+                    fontSize = 10.sp,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                    color = textColor,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -224,7 +207,7 @@ fun ScaleBar(
     val (distanceMeters, label) = selectScaleDistance(metersPerPixel)
     val barWidthPx = (distanceMeters / metersPerPixel).toFloat()
 
-    // Clamp to reasonable pixel range (21..144dp as Fibonacci-adjacent)
+    // Clamp to reasonable pixel range
     val barWidthDp = barWidthPx.coerceIn(21f, 144f).dp
 
     Column(
@@ -247,11 +230,8 @@ fun ScaleBar(
 
 /**
  * Selects a round distance value for the scale bar based on meters per pixel.
- *
- * Returns a pair of (distanceInMeters, displayLabel).
  */
 private fun selectScaleDistance(metersPerPixel: Double): Pair<Double, String> {
-    // Target bar width ~80px
     val targetMeters = metersPerPixel * 80.0
     return when {
         targetMeters >= 10000 -> 10000.0 to "10 km"

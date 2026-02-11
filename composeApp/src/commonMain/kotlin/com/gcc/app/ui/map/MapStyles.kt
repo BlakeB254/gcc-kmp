@@ -15,9 +15,11 @@ object MapStyles {
     // Default zoom levels
     const val ZOOM_CITY = 11.0
     const val ZOOM_NEIGHBORHOOD = 14.0
+    const val ZOOM_AREA = ZOOM_NEIGHBORHOOD  // alias — matches "Area" preset in MapControls
     const val ZOOM_ROUTE = 15.0
     const val ZOOM_ACTIVE_JOB = 17.0
     const val ZOOM_STREET = 19.0
+
 
     // Layer IDs
     const val LAYER_COMMUNITY_AREAS = "community-areas-fill"
@@ -27,6 +29,8 @@ object MapStyles {
     const val LAYER_ROUTE_LINE_REMAINING = "route-line-remaining"
     const val LAYER_CHECKPOINTS = "checkpoints"
     const val LAYER_GPS_DOT = "gps-dot"
+    const val LAYER_STATE_OUTLINE = "state-outline"
+    const val LAYER_CITY_OUTLINE = "city-outline"
 
     // Route line styles
     const val ROUTE_LINE_WIDTH = 4.0f
@@ -34,10 +38,15 @@ object MapStyles {
     const val COMPLETED_LINE_OPACITY = 1.0f
     const val REMAINING_LINE_OPACITY = 0.5f
 
-    // Community area styles
-    val COMMUNITY_AREA_FILL_COLOR = Color(0x2222C55E) // semi-transparent green
-    val COMMUNITY_AREA_STROKE_COLOR = Color(0xFF22C55E)
+    // Community area styles (outline only — no fill)
+    val COMMUNITY_AREA_STROKE_COLOR = Color(0xFFDC2626) // red boundary
     const val COMMUNITY_AREA_STROKE_WIDTH = 1.5f
+
+    // Geographic boundary styles
+    val STATE_OUTLINE_COLOR = Color(0xFF9CA3AF)       // gray
+    const val STATE_OUTLINE_WIDTH = 1.0f
+    val CITY_OUTLINE_COLOR = Color(0xFF4B5563)        // dark gray
+    const val CITY_OUTLINE_WIDTH = 1.5f
 
     // Geofence
     const val GEOFENCE_RADIUS_METERS = 15.0
