@@ -5,8 +5,8 @@ import com.gcc.app.ui.theme.*
 
 /** Style constants for the map layers */
 object MapStyles {
-    // Base map style URL (MapLibre OSM-based style)
-    const val STYLE_URL = "https://demotiles.maplibre.org/style.json"
+    // Base map style URL (OpenFreeMap — full OSM vector tiles with street-level detail)
+    const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
 
     // Chicago center coordinates (North Lawndale area)
     const val CHICAGO_CENTER_LAT = 41.8603
