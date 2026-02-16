@@ -30,4 +30,17 @@ expect class LocationProvider() {
 
     /** Whether location services are currently active. */
     val isTracking: Boolean
+
+    /**
+     * Enable background location tracking for active job sessions.
+     * iOS: Requests "always" authorization and enables allowsBackgroundLocationUpdates.
+     * Android: Starts a foreground service with a persistent notification.
+     * Desktop: No-op.
+     */
+    fun startBackgroundTracking()
+
+    /**
+     * Disable background tracking and revert to when-in-use mode.
+     */
+    fun stopBackgroundTracking()
 }

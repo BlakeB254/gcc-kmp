@@ -130,4 +130,17 @@ class RootComponent(
     fun navigateBack() {
         navigation.pop()
     }
+
+    /**
+     * Handle a deep link by navigating to the target screen.
+     * If the user is not logged in, the deep link is ignored (they land on Login).
+     * Otherwise, pushes the deep link screen on top of Dashboard.
+     */
+    fun handleDeepLink(uri: String) {
+        val tm = tokenManager ?: return
+        if (!tm.isLoggedIn() || tm.isTokenExpired()) return
+
+        val screen = DeepLinkParser.parse(uri) ?: return
+        navigation.push(screen)
+    }
 }

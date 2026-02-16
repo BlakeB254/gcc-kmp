@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BountyViewModel
@@ -25,6 +26,7 @@ val demoAppModule = module {
     single<TokenManager> { DemoTokenManager() }
     single { LocationProvider() }
     single { ShareManager() }
+    single { PushNotificationManager() }
     single { createDemoApiClient() }
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)

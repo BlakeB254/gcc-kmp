@@ -75,6 +75,19 @@ class GccApiClient(
         }
     }
 
+    // ── Push Notification Token ────────────────────────────────────────
+
+    suspend fun registerDeviceToken(platform: String, token: String) {
+        httpClient.post("$baseUrl/api/workers/me/device-token") {
+            contentType(io.ktor.http.ContentType.Application.Json)
+            setBody(mapOf("platform" to platform, "token" to token))
+        }
+    }
+
+    suspend fun removeDeviceToken() {
+        httpClient.delete("$baseUrl/api/workers/me/device-token")
+    }
+
     // ── Admin API Methods ─────────────────────────────────────────────
 
     suspend fun getAdminStats(): AdminStatsResponse {

@@ -5,6 +5,7 @@ import com.gcc.server.services.ServiceAreaService
 import com.gcc.server.services.WorkerService
 import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
@@ -61,6 +62,25 @@ fun Route.authenticatedWorkerRoutes() {
             }
         }
 
+        // POST /api/workers/me/device-token — register push notification token
+        post("/me/device-token") {
+            val id = call.workerId()
+            val body = call.receive<DeviceTokenRequest>()
+            if (body.token.isBlank() || body.platform.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse("token and platform are required", 400))
+                return@post
+            }
+            workerService.savePushToken(id, body.platform, body.token)
+            call.respond(HttpStatusCode.OK, ApiResponse(data = mapOf("success" to true)))
+        }
+
+        // DELETE /api/workers/me/device-token — remove push token (sign out)
+        delete("/me/device-token") {
+            val id = call.workerId()
+            workerService.removePushToken(id)
+            call.respond(HttpStatusCode.OK, ApiResponse(data = mapOf("success" to true)))
+        }
+
         get("/me/service-area") {
             val id = call.workerId()
             val worker = workerService.getById(id)
@@ -87,3 +107,6 @@ fun Route.authenticatedWorkerRoutes() {
 
 @Serializable
 data class ErrorResponse(val message: String, val code: Int)
+
+@Serializable
+data class DeviceTokenRequest(val platform: String, val token: String)

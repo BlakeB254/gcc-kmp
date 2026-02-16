@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
-import io.github.dellisd.spatialk.geojson.Position
+import org.maplibre.spatialk.geojson.Position
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState

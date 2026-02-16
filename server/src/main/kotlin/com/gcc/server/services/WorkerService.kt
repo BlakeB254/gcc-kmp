@@ -5,6 +5,8 @@ import com.gcc.server.db.tables.Workers
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.jetbrains.exposed.sql.*
 
 class WorkerService {
@@ -42,6 +44,28 @@ class WorkerService {
 
     suspend fun count(): Long = dbQuery {
         Workers.selectAll().count()
+    }
+
+    /** Store a push notification device token for the worker. */
+    suspend fun savePushToken(workerId: Int, platform: String, token: String): Unit = dbQuery {
+        val subscription = JsonObject(mapOf(
+            "platform" to JsonPrimitive(platform),
+            "token" to JsonPrimitive(token),
+        ))
+        Workers.update({ Workers.id eq workerId }) {
+            it[notificationsPushEnabled] = true
+            it[notificationsPushSubscription] = subscription
+            it[updatedAt] = Clock.System.now()
+        }
+    }
+
+    /** Remove the push token for the worker (e.g. on sign out). */
+    suspend fun removePushToken(workerId: Int): Unit = dbQuery {
+        Workers.update({ Workers.id eq workerId }) {
+            it[notificationsPushEnabled] = false
+            it[notificationsPushSubscription] = null
+            it[updatedAt] = Clock.System.now()
+        }
     }
 
     /** Top workers by jobs completed (from denormalized flat stats columns). */

@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.useContents
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AVFoundation.AVCaptureDevice
 import platform.AVFoundation.AVCaptureDeviceInput
@@ -146,11 +147,7 @@ actual fun CameraPreview(modifier: Modifier) {
     )
 
     if (hasCamera) {
-        try {
-            CameraPreviewWithAVCapture(modifier)
-        } catch (_: Throwable) {
-            CameraPreviewFallback(modifier)
-        }
+        CameraPreviewWithAVCapture(modifier)
     } else {
         CameraPreviewFallback(modifier)
     }

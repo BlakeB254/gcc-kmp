@@ -81,6 +81,8 @@ kotlin {
             // MapLibre + Compass mobile implementation (Android)
             implementation(libs.maplibre.compose)
             implementation(libs.compass.geolocation.mobile)
+            // Encrypted storage for secure token persistence
+            implementation(libs.androidx.security.crypto)
         }
         iosMain.dependencies {
             // MapLibre + Compass mobile implementation (iOS)

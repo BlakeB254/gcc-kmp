@@ -1,6 +1,8 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.PushNotificationManager
+import com.gcc.app.platform.SecureStorage
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
@@ -22,9 +24,10 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 val appModule = module {
-    single { TokenManager() }
+    single { TokenManager(settings = SecureStorage()) }
     single { LocationProvider() }
     single { ShareManager() }
+    single { PushNotificationManager() }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(

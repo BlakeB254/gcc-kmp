@@ -173,6 +173,52 @@ actual class LocationProvider actual constructor() {
         locationManager = null
     }
 
+    /**
+     * Enable background location tracking via a foreground service.
+     *
+     * On Android, continuous background location requires a foreground service
+     * with a persistent notification (android:foregroundServiceType="location").
+     * This starts the LocationTrackingService if context is available.
+     */
+    actual fun startBackgroundTracking() {
+        val ctx = appContext ?: run {
+            Log.w(TAG, "Cannot start background tracking: context not initialized")
+            return
+        }
+        try {
+            val serviceIntent = android.content.Intent(
+                ctx,
+                Class.forName("com.gcc.app.service.LocationTrackingService")
+            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                ctx.startForegroundService(serviceIntent)
+            } else {
+                ctx.startService(serviceIntent)
+            }
+            Log.d(TAG, "Background location tracking service started")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start background tracking service", e)
+        }
+
+        if (!_isTracking) {
+            startLocationUpdates()
+        }
+    }
+
+    actual fun stopBackgroundTracking() {
+        val ctx = appContext ?: return
+        try {
+            val serviceIntent = android.content.Intent(
+                ctx,
+                Class.forName("com.gcc.app.service.LocationTrackingService")
+            )
+            ctx.stopService(serviceIntent)
+            Log.d(TAG, "Background location tracking service stopped")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop background tracking service", e)
+        }
+    }
+
     companion object {
         /** Default fallback location: GCC service area in Chicago. */
         private val FALLBACK_CHICAGO = Coordinates(lat = 41.8686, lng = -87.7258)

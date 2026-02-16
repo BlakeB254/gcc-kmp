@@ -29,4 +29,12 @@ actual class LocationProvider actual constructor() {
     actual fun stopLocationUpdates() {
         _isTracking = false
     }
+
+    actual fun startBackgroundTracking() {
+        // No-op on desktop
+    }
+
+    actual fun stopBackgroundTracking() {
+        // No-op on desktop
+    }
 }

@@ -8,7 +8,20 @@ import com.gcc.app.di.demoAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
-import org.koin.core.context.GlobalContext
+import org.koin.mp.KoinPlatform
+
+/**
+ * Singleton reference to the root navigation component.
+ * Used by Swift AppDelegate to forward deep links and push notifications.
+ */
+object AppNavigator {
+    var rootComponent: RootComponent? = null
+        internal set
+
+    fun handleDeepLink(uri: String) {
+        rootComponent?.handleDeepLink(uri)
+    }
+}
 
 fun MainViewController() = MainViewControllerWithDemo(demoMode = false)
 
@@ -16,17 +29,18 @@ fun MainViewControllerDemo() = MainViewControllerWithDemo(demoMode = true)
 
 private fun MainViewControllerWithDemo(demoMode: Boolean) = ComposeUIViewController {
     // Initialize Koin if not already started
-    if (GlobalContext.getOrNull() == null) {
+    if (runCatching { KoinPlatform.getKoin() }.isFailure) {
         startKoin {
             modules(if (demoMode) demoAppModule else appModule)
         }
     }
 
     val lifecycle = LifecycleRegistry()
-    val tokenManager = GlobalContext.get().get<TokenManager>()
+    val tokenManager = KoinPlatform.getKoin().get<TokenManager>()
     val root = RootComponent(
         componentContext = DefaultComponentContext(lifecycle = lifecycle),
         tokenManager = tokenManager,
     )
+    AppNavigator.rootComponent = root
     App(root)
 }

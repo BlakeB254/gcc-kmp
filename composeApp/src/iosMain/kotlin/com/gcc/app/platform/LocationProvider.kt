@@ -135,14 +135,42 @@ actual class LocationProvider actual constructor() {
 
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.stopUpdatingLocation()
+            locationManager.allowsBackgroundLocationUpdates = false
             locationManager.delegate = null
         }
     }
 
     /**
-     * Handle authorization status changes. If authorized, ensure
-     * location updates are running when tracking is active.
+     * Enable background location tracking for active job sessions.
+     *
+     * Upgrades from when-in-use to always authorization and enables
+     * allowsBackgroundLocationUpdates so the OS continues delivering
+     * location updates when the app is backgrounded.
+     *
+     * Also starts significant location change monitoring as a fallback —
+     * if the app is suspended, significant changes will relaunch it.
      */
+    actual fun startBackgroundTracking() {
+        dispatch_async(dispatch_get_main_queue()) {
+            locationManager.requestAlwaysAuthorization()
+            locationManager.allowsBackgroundLocationUpdates = true
+            locationManager.pausesLocationUpdatesAutomatically = false
+            locationManager.startMonitoringSignificantLocationChanges()
+
+            if (!_isTracking) {
+                startLocationUpdates()
+            }
+        }
+    }
+
+    actual fun stopBackgroundTracking() {
+        dispatch_async(dispatch_get_main_queue()) {
+            locationManager.allowsBackgroundLocationUpdates = false
+            locationManager.pausesLocationUpdatesAutomatically = true
+            locationManager.stopMonitoringSignificantLocationChanges()
+        }
+    }
+
     private fun handleAuthorizationChange(manager: CLLocationManager) {
         if (_isTracking) {
             dispatch_async(dispatch_get_main_queue()) {
