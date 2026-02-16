@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.PushNotificationManager
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -25,6 +26,7 @@ data class SettingsUiState(
 class SettingsViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
+    private val pushNotificationManager: PushNotificationManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val settings = Settings()
@@ -60,7 +62,15 @@ class SettingsViewModel(
     }
 
     fun signOut() {
-        tokenManager.clearToken()
-        _uiState.value = _uiState.value.copy(signedOut = true)
+        scope.launch {
+            try {
+                apiClient.removeDeviceToken()
+            } catch (_: Exception) {
+                // Best-effort: server token cleanup is non-critical
+            }
+            pushNotificationManager.unregister()
+            tokenManager.clearToken()
+            _uiState.value = _uiState.value.copy(signedOut = true)
+        }
     }
 }

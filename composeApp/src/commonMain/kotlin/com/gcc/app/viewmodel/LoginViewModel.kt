@@ -1,5 +1,7 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.PushNotificationManager
+import com.gcc.app.platform.getPlatformName
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -24,6 +26,7 @@ data class LoginUiState(
 class LoginViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
+    private val pushNotificationManager: PushNotificationManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -45,6 +48,8 @@ class LoginViewModel(
                         isLoggedIn = true,
                         worker = apiResponse.data.worker,
                     )
+                    // Register for push notifications after successful login
+                    registerPushToken()
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -62,5 +67,21 @@ class LoginViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private fun registerPushToken() {
+        scope.launch {
+            try {
+                val token = pushNotificationManager.registerForPushNotifications()
+                if (token != null) {
+                    apiClient.registerDeviceToken(
+                        platform = getPlatformName(),
+                        token = token,
+                    )
+                }
+            } catch (_: Exception) {
+                // Push registration is best-effort; don't block login flow
+            }
+        }
     }
 }

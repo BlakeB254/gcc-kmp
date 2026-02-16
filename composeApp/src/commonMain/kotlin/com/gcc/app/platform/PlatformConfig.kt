@@ -9,3 +9,6 @@ package com.gcc.app.platform
  * - Desktop: localhost
  */
 expect fun getApiBaseUrl(): String
+
+/** Returns "android", "ios", or "desktop" for push notification token registration. */
+expect fun getPlatformName(): String

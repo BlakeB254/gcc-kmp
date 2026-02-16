@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
@@ -42,6 +43,7 @@ data class ActiveJobUiState(
 
 class ActiveJobViewModel(
     private val apiClient: GccApiClient,
+    private val locationTrackingController: LocationTrackingController,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(ActiveJobUiState())
@@ -91,6 +93,7 @@ class ActiveJobViewModel(
             try {
                 val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/jobs/${job.id}/start")
                 val updatedJob = response.body<ApiResponse<Job>>()
+                locationTrackingController.startTracking()
                 _uiState.value = _uiState.value.copy(
                     job = updatedJob.data,
                     isStarting = false,
@@ -112,6 +115,7 @@ class ActiveJobViewModel(
             try {
                 val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/jobs/${job.id}/complete")
                 val updatedJob = response.body<ApiResponse<Job>>()
+                locationTrackingController.stopTracking()
                 _uiState.value = _uiState.value.copy(
                     job = updatedJob.data,
                     isCompleting = false,

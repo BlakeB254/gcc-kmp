@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.SecureStorage
 import com.gcc.app.platform.ShareManager
@@ -26,6 +27,7 @@ import org.koin.dsl.module
 val appModule = module {
     single { TokenManager(settings = SecureStorage()) }
     single { LocationProvider() }
+    single { LocationTrackingController() }
     single { ShareManager() }
     single { PushNotificationManager() }
     single {

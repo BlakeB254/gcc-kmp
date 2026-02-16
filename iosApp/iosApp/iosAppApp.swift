@@ -23,6 +23,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+
+        // Bridge UIApplication push methods to Kotlin (K/N can't call these directly)
+        PushNotificationManager.companion.registerCallback = {
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
+        PushNotificationManager.companion.unregisterCallback = {
+            DispatchQueue.main.async {
+                UIApplication.shared.unregisterForRemoteNotifications()
+            }
+        }
+
         return true
     }
 

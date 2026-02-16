@@ -10,6 +10,7 @@ import com.gcc.app.di.appModule
 import com.gcc.app.di.demoAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.SecureStorage
 import com.gcc.app.platform.ShareManager
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
         // Initialize platform providers that need Android context
         SecureStorage.initContext(this)
         LocationProvider.initContext(this)
+        LocationTrackingController.initContext(this)
         ShareManager.initContext(this)
         PushNotificationManager.initContext(this)
 
