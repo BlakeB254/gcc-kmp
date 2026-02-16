@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <defs>
+    <linearGradient id="green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="400" fill="#064e3b"/>
+
+  <!-- Equipment silhouettes -->
+  <!-- Trash cart -->
+  <rect x="100" y="200" width="120" height="150" rx="10" fill="url(#green-grad)"/>
+  <circle cx="125" cy="370" r="20" fill="#1f2937"/>
+  <circle cx="195" cy="370" r="20" fill="#1f2937"/>
+  <text x="160" y="280" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle" font-weight="bold">YOUR</text>
+  <text x="160" y="305" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle" font-weight="bold">LOGO</text>
+
+  <!-- Broom -->
+  <rect x="320" y="120" width="15" height="200" fill="#78350f"/>
+  <rect x="295" y="320" width="65" height="20" rx="3" fill="url(#green-grad)"/>
+  <text x="327" y="336" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">BRAND</text>
+
+  <!-- Rake -->
+  <rect x="430" y="140" width="12" height="180" fill="#78350f"/>
+  <rect x="400" y="320" width="72" height="15" rx="2" fill="url(#green-grad)"/>
+  <rect x="405" y="335" width="6" height="30" fill="#6b7280"/>
+  <rect x="425" y="335" width="6" height="30" fill="#6b7280"/>
+  <rect x="445" y="335" width="6" height="30" fill="#6b7280"/>
+  <rect x="465" y="335" width="6" height="30" fill="#6b7280"/>
+
+  <!-- Trash bag -->
+  <ellipse cx="600" cy="330" rx="70" ry="50" fill="url(#green-grad)"/>
+  <text x="600" y="335" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">SPONSOR</text>
+
+  <text x="400" y="70" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Professional Equipment, Your Brand</text>
+  <text x="400" y="100" font-family="Arial, sans-serif" font-size="16" fill="#a7f3d0" text-anchor="middle">Brooms, rakes, carts, and bags</text>
+</svg>

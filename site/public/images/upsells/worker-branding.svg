@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <defs>
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="dark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f2937"/>
+      <stop offset="100%" style="stop-color:#111827"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="400" fill="url(#dark-grad)"/>
+
+  <!-- Street scene silhouette -->
+  <rect x="0" y="300" width="800" height="100" fill="#374151"/>
+  <rect x="50" y="200" width="100" height="200" fill="#4b5563"/>
+  <rect x="200" y="150" width="80" height="250" fill="#4b5563"/>
+  <rect x="500" y="180" width="120" height="220" fill="#4b5563"/>
+  <rect x="680" y="220" width="100" height="180" fill="#4b5563"/>
+
+  <!-- Workers -->
+  <!-- Worker 1 with vest -->
+  <circle cx="300" cy="250" r="25" fill="#fbbf24"/>
+  <rect x="275" y="275" width="50" height="80" rx="5" fill="url(#gold-grad)"/>
+  <text x="300" y="320" font-family="Arial, sans-serif" font-size="14" fill="#1f2937" text-anchor="middle" font-weight="bold">LOGO</text>
+  <rect x="280" y="350" width="15" height="40" fill="#4b5563"/>
+  <rect x="305" y="350" width="15" height="40" fill="#4b5563"/>
+
+  <!-- Worker 2 with vest -->
+  <circle cx="420" cy="260" r="25" fill="#fbbf24"/>
+  <rect x="395" y="285" width="50" height="80" rx="5" fill="url(#gold-grad)"/>
+  <text x="420" y="330" font-family="Arial, sans-serif" font-size="14" fill="#1f2937" text-anchor="middle" font-weight="bold">LOGO</text>
+  <rect x="400" y="360" width="15" height="30" fill="#4b5563"/>
+  <rect x="425" y="360" width="15" height="30" fill="#4b5563"/>
+
+  <!-- Broom/cleaning tool -->
+  <rect x="450" y="260" width="8" height="100" fill="#78350f"/>
+  <rect x="440" y="350" width="28" height="12" rx="2" fill="#9ca3af"/>
+
+  <!-- Title Text -->
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Your Brand on Every Worker</text>
+  <text x="400" y="115" font-family="Arial, sans-serif" font-size="16" fill="#9ca3af" text-anchor="middle">Branded vests, shirts, and caps</text>
+</svg>

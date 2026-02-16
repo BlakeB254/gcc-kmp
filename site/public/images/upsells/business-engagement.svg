@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <rect width="800" height="400" fill="#451a03"/>
+
+  <!-- Worker with flyers -->
+  <circle cx="250" cy="150" r="35" fill="#fbbf24"/>
+  <rect x="215" y="185" width="70" height="100" rx="8" fill="#f59e0b"/>
+  <rect x="220" y="280" width="25" height="60" fill="#4b5563"/>
+  <rect x="255" y="280" width="25" height="60" fill="#4b5563"/>
+
+  <!-- Flyers in hand -->
+  <rect x="290" y="200" width="50" height="70" rx="3" fill="white" transform="rotate(15, 315, 235)"/>
+  <rect x="295" y="210" width="40" height="8" fill="#d1d5db" transform="rotate(15, 315, 235)"/>
+  <rect x="295" y="225" width="35" height="8" fill="#d1d5db" transform="rotate(15, 315, 235)"/>
+
+  <!-- Resident receiving -->
+  <circle cx="450" cy="160" r="30" fill="#fbbf24"/>
+  <rect x="420" y="190" width="60" height="90" rx="6" fill="#6b7280"/>
+  <rect x="425" y="275" width="22" height="50" fill="#4b5563"/>
+  <rect x="453" y="275" width="22" height="50" fill="#4b5563"/>
+
+  <!-- Sample products -->
+  <rect x="550" y="180" width="60" height="80" rx="5" fill="#f59e0b"/>
+  <text x="580" y="225" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle" font-weight="bold">FREE</text>
+  <text x="580" y="245" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">SAMPLE</text>
+
+  <!-- QR Code -->
+  <rect x="650" y="180" width="80" height="80" rx="5" fill="white"/>
+  <rect x="660" y="190" width="20" height="20" fill="#1f2937"/>
+  <rect x="700" y="190" width="20" height="20" fill="#1f2937"/>
+  <rect x="660" y="230" width="20" height="20" fill="#1f2937"/>
+  <rect x="680" y="210" width="10" height="10" fill="#1f2937"/>
+  <rect x="695" y="235" width="10" height="10" fill="#1f2937"/>
+  <rect x="710" y="220" width="10" height="10" fill="#1f2937"/>
+  <text x="690" y="285" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">Scan Me!</text>
+
+  <!-- Happy exchange indicator -->
+  <path d="M 340 140 Q 350 100, 400 120" stroke="#4ade80" stroke-width="4" fill="none"/>
+  <polygon points="400,115 410,125 395,125" fill="#4ade80"/>
+
+  <text x="400" y="45" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Direct Community Outreach</text>
+  <text x="400" y="370" font-family="Arial, sans-serif" font-size="16" fill="#fcd34d" text-anchor="middle">Workers earn bonuses for promotional activities</text>
+</svg>

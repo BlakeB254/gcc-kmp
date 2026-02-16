@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <defs>
+    <linearGradient id="event-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="400" fill="#1f2937"/>
+
+  <!-- Party banner -->
+  <path d="M 100 80 L 200 100 L 300 80 L 400 100 L 500 80 L 600 100 L 700 80" stroke="#f59e0b" stroke-width="4" fill="none"/>
+  <polygon points="150,80 160,120 140,120" fill="#ef4444"/>
+  <polygon points="250,90 260,130 240,130" fill="#3b82f6"/>
+  <polygon points="350,80 360,120 340,120" fill="#22c55e"/>
+  <polygon points="450,90 460,130 440,130" fill="#f59e0b"/>
+  <polygon points="550,80 560,120 540,120" fill="#8b5cf6"/>
+  <polygon points="650,90 660,130 640,130" fill="#ec4899"/>
+
+  <!-- Cleaning crew -->
+  <!-- Worker 1 -->
+  <circle cx="200" cy="220" r="25" fill="#fbbf24"/>
+  <rect x="175" y="245" width="50" height="70" rx="5" fill="url(#event-grad)"/>
+  <rect x="225" y="260" width="6" height="80" fill="#78350f"/>
+  <rect x="215" y="335" width="26" height="10" rx="2" fill="#9ca3af"/>
+
+  <!-- Worker 2 -->
+  <circle cx="320" cy="230" r="25" fill="#fbbf24"/>
+  <rect x="295" y="255" width="50" height="70" rx="5" fill="url(#event-grad)"/>
+  <rect x="345" y="270" width="6" height="70" fill="#78350f"/>
+
+  <!-- Worker 3 -->
+  <circle cx="440" cy="215" r="25" fill="#fbbf24"/>
+  <rect x="415" y="240" width="50" height="70" rx="5" fill="url(#event-grad)"/>
+
+  <!-- Tent/booth -->
+  <polygon points="550,150 700,150 720,250 530,250" fill="#3b82f6"/>
+  <rect x="545" y="250" width="160" height="100" fill="#1e40af"/>
+  <text x="625" y="290" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">YOUR BRAND</text>
+  <text x="625" y="315" font-family="Arial, sans-serif" font-size="12" fill="white" text-anchor="middle">SPONSOR BOOTH</text>
+
+  <!-- Crowd silhouettes -->
+  <ellipse cx="150" cy="370" rx="20" ry="25" fill="#4b5563"/>
+  <ellipse cx="250" cy="365" rx="18" ry="23" fill="#4b5563"/>
+  <ellipse cx="350" cy="375" rx="22" ry="20" fill="#4b5563"/>
+  <ellipse cx="450" cy="368" rx="20" ry="25" fill="#4b5563"/>
+  <ellipse cx="550" cy="375" rx="18" ry="20" fill="#4b5563"/>
+
+  <text x="400" y="45" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Make It an Event</text>
+  <text x="400" y="70" font-family="Arial, sans-serif" font-size="14" fill="#fcd34d" text-anchor="middle">Block parties, grand openings, and community celebrations</text>
+</svg>

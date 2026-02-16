@@ -1,0 +1,1052 @@
+import {
+  pgTable,
+  serial,
+  varchar,
+  text,
+  boolean,
+  timestamp,
+  numeric,
+  integer,
+  jsonb,
+  pgEnum,
+} from 'drizzle-orm/pg-core'
+
+// Enums (matching Payload's generated enums)
+export const earlyAdopterTierEnum = pgEnum('enum_workers_early_adopter_tier', [
+  'founder',
+  'pioneer',
+  'early',
+  'standard',
+])
+
+export const verificationStatusEnum = pgEnum('enum_workers_verification_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'needs_info',
+])
+
+export const documentStatusEnum = pgEnum('enum_workers_verification_government_id_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'resubmit',
+])
+
+export const proofStatusEnum = pgEnum('enum_workers_verification_proof_of_address_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'resubmit',
+])
+
+export const stripeOnboardingStatusEnum = pgEnum('enum_workers_stripe_onboarding_status', [
+  'not_started',
+  'in_progress',
+  'completed',
+  'restricted',
+])
+
+export const pendingAddressStatusEnum = pgEnum('enum_workers_pending_address_change_status', [
+  'none',
+  'pending',
+  'approved',
+  'rejected',
+])
+
+export const waitlistStatusEnum = pgEnum('enum_waitlist_entries_status', [
+  'waitlisted',
+  'invited',
+  'converted',
+])
+
+export const waitlistTierEnum = pgEnum('enum_waitlist_entries_early_adopter_tier', [
+  'founder',
+  'pioneer',
+  'early',
+  'standard',
+])
+
+export const mediaCategoryEnum = pgEnum('enum_media_category', [
+  'job_photo',
+  'worker_id',
+  'proof_of_address',
+  'sponsor_logo',
+  'landing',
+  'tax_document',
+  'community_report',  // Off the clock volunteer photos/videos
+  'other',
+])
+
+// Workers table
+export const workers = pgTable('workers', {
+  id: serial('id').primaryKey(),
+  name: varchar('name').notNull(),
+  email: varchar('email').notNull().unique(),
+  phone: varchar('phone').notNull(),
+
+  // Email verification
+  emailVerified: boolean('email_verified').default(false),
+  emailVerificationToken: varchar('email_verification_token'),
+  emailVerificationExpires: timestamp('email_verification_expires', { mode: 'string', withTimezone: true }),
+  emailVerifiedAt: timestamp('email_verified_at', { mode: 'string', withTimezone: true }),
+
+  // Address
+  addressStreet: varchar('address_street').notNull(),
+  addressCity: varchar('address_city').default('Chicago').notNull(),
+  addressState: varchar('address_state').default('IL').notNull(),
+  addressZip: varchar('address_zip').notNull(),
+  addressNeighborhood: varchar('address_neighborhood'), // Chicago community area name
+  addressIsNorthLawndale: boolean('address_is_north_lawndale'),
+
+  // Pending address change
+  pendingAddressChangeStreet: varchar('pending_address_change_street'),
+  pendingAddressChangeCity: varchar('pending_address_change_city'),
+  pendingAddressChangeState: varchar('pending_address_change_state'),
+  pendingAddressChangeZip: varchar('pending_address_change_zip'),
+  pendingAddressChangeProofOfAddressId: integer('pending_address_change_proof_of_address_id'),
+  pendingAddressChangeRequestedAt: timestamp('pending_address_change_requested_at', { mode: 'string', withTimezone: true }),
+  pendingAddressChangeStatus: pendingAddressStatusEnum('pending_address_change_status').default('none'),
+  pendingAddressChangeReviewNotes: varchar('pending_address_change_review_notes'),
+  lastAddressChangeAt: timestamp('last_address_change_at', { mode: 'string', withTimezone: true }),
+
+  // Verification documents
+  verificationGovernmentIdId: integer('verification_government_id_id'),
+  verificationGovernmentIdStatus: documentStatusEnum('verification_government_id_status').default('pending'),
+  verificationGovernmentIdNotes: varchar('verification_government_id_notes'),
+  verificationProofOfAddressId: integer('verification_proof_of_address_id'),
+  verificationProofOfAddressStatus: proofStatusEnum('verification_proof_of_address_status').default('pending'),
+  verificationProofOfAddressNotes: varchar('verification_proof_of_address_notes'),
+  verificationStatus: verificationStatusEnum('verification_status').default('pending'),
+  verificationReviewNotes: varchar('verification_review_notes'),
+  verificationResubmissionCount: numeric('verification_resubmission_count').default('0'),
+  verificationLastResubmittedAt: timestamp('verification_last_resubmitted_at', { mode: 'string', withTimezone: true }),
+  verificationReviewedAt: timestamp('verification_reviewed_at', { mode: 'string', withTimezone: true }),
+  verificationReviewedById: integer('verification_reviewed_by_id'),
+
+  // Stripe
+  stripeAccountId: varchar('stripe_account_id'),
+  stripeOnboardingStatus: stripeOnboardingStatusEnum('stripe_onboarding_status').default('not_started'),
+  stripeInstantPayoutsEnabled: boolean('stripe_instant_payouts_enabled').default(false),
+  stripeDefaultPayoutMethod: varchar('stripe_default_payout_method').default('standard'),
+
+  // Stats
+  statsJobsCompleted: numeric('stats_jobs_completed').default('0'),
+  statsTotalEarnings: numeric('stats_total_earnings').default('0'),
+  statsAverageRating: numeric('stats_average_rating'),
+  statsLastJobAt: timestamp('stats_last_job_at', { mode: 'string', withTimezone: true }),
+
+  // Movement rankings
+  signupTimestamp: timestamp('signup_timestamp', { mode: 'string', withTimezone: true }),
+  signupRankingsGlobal: numeric('signup_rankings_global'),
+  signupRankingsCountry: numeric('signup_rankings_country'),
+  signupRankingsState: numeric('signup_rankings_state'),
+  signupRankingsCity: numeric('signup_rankings_city'),
+  signupRankingsNeighborhood: numeric('signup_rankings_neighborhood'), // Chicago community area rank
+  earlyAdopterTier: earlyAdopterTierEnum('early_adopter_tier').default('standard'),
+  referralCode: varchar('referral_code').unique(),
+  referredBy: varchar('referred_by'),
+  convertedFromWaitlistId: integer('converted_from_waitlist_id'),
+
+  // Notifications
+  notificationsPushEnabled: boolean('notifications_push_enabled').default(false),
+  notificationsPushSubscription: jsonb('notifications_push_subscription'),
+  notificationsSmsEnabled: boolean('notifications_sms_enabled').default(true),
+  notificationsEmailEnabled: boolean('notifications_email_enabled').default(true),
+
+  // Auth (Payload style)
+  salt: varchar('salt'),
+  hash: varchar('hash'),
+  resetPasswordToken: varchar('reset_password_token'),
+  resetPasswordExpiration: timestamp('reset_password_expiration', { mode: 'string', withTimezone: true }),
+  loginAttempts: numeric('login_attempts').default('0'),
+  lockUntil: timestamp('lock_until', { mode: 'string', withTimezone: true }),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Waitlist entries table
+export const waitlistEntries = pgTable('waitlist_entries', {
+  id: serial('id').primaryKey(),
+  email: varchar('email').notNull().unique(),
+  name: varchar('name'),
+  phone: varchar('phone'),
+
+  // Location
+  locationCountry: varchar('location_country').default('United States').notNull(),
+  locationCountryCode: varchar('location_country_code').default('US').notNull(),
+  locationState: varchar('location_state').notNull(),
+  locationStateCode: varchar('location_state_code').notNull(),
+  locationCity: varchar('location_city').notNull(),
+  locationNeighborhood: varchar('location_neighborhood'),
+
+  // Rankings
+  signupTimestamp: timestamp('signup_timestamp', { mode: 'string', withTimezone: true }).notNull(),
+  rankingsGlobal: numeric('rankings_global').notNull(),
+  rankingsCountry: numeric('rankings_country').notNull(),
+  rankingsState: numeric('rankings_state').notNull(),
+  rankingsCity: numeric('rankings_city').notNull(),
+  rankingsNeighborhood: numeric('rankings_neighborhood'),
+
+  // Tier and referral
+  earlyAdopterTier: waitlistTierEnum('early_adopter_tier').default('standard').notNull(),
+  referralCode: varchar('referral_code').notNull().unique(),
+  referredById: integer('referred_by_id'),
+  referralCount: numeric('referral_count').default('0'),
+
+  // Status
+  status: waitlistStatusEnum('status').default('waitlisted').notNull(),
+  convertedToWorkerId: integer('converted_to_worker_id'),
+  invitedAt: timestamp('invited_at', { mode: 'string', withTimezone: true }),
+
+  // Source tracking (e.g., 'mobile-app', 'landing', 'referral')
+  source: varchar('source'),
+  // Mobile app platform preference (if source is 'mobile-app')
+  mobileAppPlatform: varchar('mobile_app_platform'), // 'ios', 'android', 'both'
+
+  // Preferences
+  preferencesWantsToBeWorker: boolean('preferences_wants_to_be_worker').default(true),
+  preferencesWantsToBeSponsor: boolean('preferences_wants_to_be_sponsor').default(false),
+  preferencesWantsToVolunteer: boolean('preferences_wants_to_volunteer').default(false),
+  preferencesEmailUpdates: boolean('preferences_email_updates').default(true),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Media table (for file uploads)
+export const media = pgTable('media', {
+  id: serial('id').primaryKey(),
+  alt: varchar('alt'),
+  category: mediaCategoryEnum('category'),
+  url: varchar('url'),
+  thumbnailUrl: varchar('thumbnail_u_r_l'),
+  filename: varchar('filename').unique(),
+  mimeType: varchar('mime_type'),
+  filesize: numeric('filesize'),
+  width: numeric('width'),
+  height: numeric('height'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Sponsor enums
+export const sponsorTypeEnum = pgEnum('enum_sponsors_type', [
+  'individual',
+  'business',
+  'organization',
+  'foundation',
+])
+
+export const sponsorFrequencyEnum = pgEnum('enum_sponsors_preferences_frequency', [
+  'one_time',
+  'monthly',
+  'quarterly',
+  'annual',
+])
+
+// Fund allocation type - how sponsor wants their money used
+export const fundAllocationEnum = pgEnum('enum_sponsors_fund_allocation', [
+  'general_fund',        // GCC uses for any available blocks
+  'community_specific',  // Only used in sponsor's preferred community
+])
+
+// Sponsors table
+export const sponsors = pgTable('sponsors', {
+  id: serial('id').primaryKey(),
+  name: varchar('name').notNull(),
+  email: varchar('email').notNull().unique(),
+  phone: varchar('phone'),
+
+  // Email verification
+  emailVerified: boolean('email_verified').default(false),
+  emailVerificationToken: varchar('email_verification_token'),
+  emailVerificationExpires: timestamp('email_verification_expires', { mode: 'string', withTimezone: true }),
+  emailVerifiedAt: timestamp('email_verified_at', { mode: 'string', withTimezone: true }),
+
+  type: sponsorTypeEnum('type').default('individual'),
+
+  // Business info (if type is business/organization)
+  businessName: varchar('business_name'),
+  businessWebsite: varchar('business_website'),
+  businessLogoId: integer('business_logo_id'),
+
+  // Address
+  addressStreet: varchar('address_street'),
+  addressCity: varchar('address_city'),
+  addressState: varchar('address_state'),
+  addressZip: varchar('address_zip'),
+
+  // Preferences
+  preferencesFrequency: sponsorFrequencyEnum('preferences_frequency').default('one_time'),
+  preferencesIsAnonymous: boolean('preferences_is_anonymous').default(false),
+  preferencesWantsUpdates: boolean('preferences_wants_updates').default(true),
+
+  // Fund allocation preferences - flexible sponsorship model
+  fundAllocation: fundAllocationEnum('fund_allocation').default('general_fund'),
+  preferredCommunity: varchar('preferred_community'),        // City/area if community_specific
+  waitForCommunityLaunch: boolean('wait_for_community_launch').default(false), // Hold funds until launch
+  letGccChooseBlocks: boolean('let_gcc_choose_blocks').default(true),          // GCC selects blocks vs sponsor
+
+  // Stripe
+  stripeCustomerId: varchar('stripe_customer_id'),
+  stripeSubscriptionId: varchar('stripe_subscription_id'),
+  stripeDefaultPaymentMethod: varchar('stripe_default_payment_method'),
+
+  // Stats
+  statsTotalContributed: numeric('stats_total_contributed').default('0'),
+  statsBlocksFunded: numeric('stats_blocks_funded').default('0'),
+  statsLastContributionAt: timestamp('stats_last_contribution_at', { mode: 'string', withTimezone: true }),
+
+  // Active sponsorship
+  activeSponsorship: boolean('active_sponsorship').default(false),
+
+  // Movement rankings (sponsors are part of the movement too!)
+  signupTimestamp: timestamp('signup_timestamp', { mode: 'string', withTimezone: true }),
+  signupRankingsGlobal: numeric('signup_rankings_global'),
+  earlyAdopterTier: earlyAdopterTierEnum('early_adopter_tier').default('standard'),
+  referralCode: varchar('referral_code').unique(),
+  referredBy: varchar('referred_by'),
+
+  // Public profile settings
+  profileIsPublic: boolean('profile_is_public').default(true),
+  profileTagline: varchar('profile_tagline'), // Short tagline like "Proud to support North Lawndale"
+  profileBio: text('profile_bio'), // Longer description
+  profileSocialTwitter: varchar('profile_social_twitter'), // @handle or full URL
+  profileSocialLinkedIn: varchar('profile_social_linkedin'), // Full URL
+  profileSocialInstagram: varchar('profile_social_instagram'), // @handle or full URL
+  profileSocialWebsite: varchar('profile_social_website'), // Additional website beyond businessWebsite
+
+  // Auth
+  salt: varchar('salt'),
+  hash: varchar('hash'),
+  resetPasswordToken: varchar('reset_password_token'),
+  resetPasswordExpiration: timestamp('reset_password_expiration', { mode: 'string', withTimezone: true }),
+  loginAttempts: numeric('login_attempts').default('0'),
+  lockUntil: timestamp('lock_until', { mode: 'string', withTimezone: true }),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Block status enum
+export const blockStatusEnum = pgEnum('enum_blocks_status', [
+  'available',
+  'funded',
+  'in_progress',
+  'completed',
+])
+
+// Blocks table
+export const blocks = pgTable('blocks', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 20 }).unique(), // Block code e.g., "NL-N01"
+  name: varchar('name').notNull(),
+  description: text('description'),
+  status: blockStatusEnum('status').default('available'),
+
+  // Service area reference
+  serviceAreaId: integer('service_area_id'), // FK to service_areas
+
+  // Route reference (1:1 relationship - each block has one route)
+  routeId: integer('route_id'), // FK to routes - auto-created when block is saved
+
+  // Location
+  locationNeighborhood: varchar('location_neighborhood'),
+  locationBoundary: jsonb('location_boundary'), // GeoJSON polygon
+  locationCenter: jsonb('location_center'), // GeoJSON point for map centering
+
+  // Block metadata
+  streetName: varchar('street_name'),
+  fromCorner: varchar('from_corner'),
+  toCorner: varchar('to_corner'),
+  side: varchar('side', { length: 10 }), // 'north' or 'south'
+  includesAlley: boolean('includes_alley').default(true),
+  checkpoints: jsonb('checkpoints'), // Array of checkpoint objects
+
+  // Funding
+  fundingGoal: numeric('funding_goal').default('100'),
+  fundingCurrent: numeric('funding_current').default('0'),
+  fundedById: integer('funded_by_id'), // Sponsor ID
+  fundedAt: timestamp('funded_at', { mode: 'string', withTimezone: true }),
+
+  // Preferred cleaning schedule (set by sponsor, seen by workers)
+  preferredCleaningDate: timestamp('preferred_cleaning_date', { mode: 'string', withTimezone: true }),
+  preferredCleaningTimeStart: varchar('preferred_cleaning_time_start', { length: 5 }), // HH:MM format
+  preferredCleaningTimeEnd: varchar('preferred_cleaning_time_end', { length: 5 }), // HH:MM format
+
+  // Completion
+  completedById: integer('completed_by_id'), // Worker ID
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Job status enum
+export const jobStatusEnum = pgEnum('enum_jobs_status', [
+  'available',
+  'claimed',
+  'in_progress',
+  'pending_review',
+  'completed',
+  'disputed',
+])
+
+// Jobs table
+export const jobs = pgTable('jobs', {
+  id: serial('id').primaryKey(),
+  blockId: integer('block_id').notNull(),
+  workerId: integer('worker_id'),
+  status: jobStatusEnum('status').default('available'),
+
+  // Claim info
+  claimedAt: timestamp('claimed_at', { mode: 'string', withTimezone: true }),
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+
+  // Photos and evidence
+  beforePhotos: jsonb('before_photos'), // Array of media IDs
+  afterPhotos: jsonb('after_photos'), // Array of media IDs
+  gpsPath: jsonb('gps_path'), // GeoJSON LineString
+
+  // Payout
+  payoutAmount: numeric('payout_amount'),
+  payoutStatus: varchar('payout_status'),
+  payoutStripeTransferId: varchar('payout_stripe_transfer_id'),
+  payoutCompletedAt: timestamp('payout_completed_at', { mode: 'string', withTimezone: true }),
+
+  // Rating
+  rating: numeric('rating'),
+  ratingNotes: text('rating_notes'),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Transaction status enum
+export const transactionStatusEnum = pgEnum('enum_transactions_status', [
+  'pending',
+  'completed',
+  'failed',
+  'refunded',
+])
+
+// Allocation type enum - how the contribution should be used
+export const allocationTypeEnum = pgEnum('enum_transactions_allocation_type', [
+  'general',   // General fund - GCC allocates where needed
+  'block',     // Specific block sponsorship
+  'area',      // Area-wide sponsorship (future)
+])
+
+// Message status enum - for moderating supporter messages on the wall
+export const messageStatusEnum = pgEnum('enum_transactions_message_status', [
+  'visible',   // Message is shown as-is
+  'hidden',    // Message is completely hidden (offensive)
+  'redacted',  // Message replaced with admin-provided text
+])
+
+// Transactions table (for Stripe payments - both donations and sponsorships)
+export const transactions = pgTable('transactions', {
+  id: serial('id').primaryKey(),
+  sponsorId: integer('sponsor_id'),
+  blockId: integer('block_id'), // null = general donation, set = block sponsorship
+  jobId: integer('job_id'),
+
+  // Stripe info
+  stripePaymentIntentId: varchar('stripe_payment_intent_id'),
+  stripeCheckoutSessionId: varchar('stripe_checkout_session_id'),
+  stripeSubscriptionId: varchar('stripe_subscription_id'),
+
+  // Amount
+  amount: numeric('amount').notNull(), // In cents
+  currency: varchar('currency').default('usd'),
+
+  // Status
+  status: transactionStatusEnum('status').default('pending'),
+
+  // Contribution type and allocation
+  allocationType: allocationTypeEnum('allocation_type').default('general'),
+  sponsorType: varchar('sponsor_type'), // 'one_time' or 'monthly'
+
+  // Public display settings
+  displayName: varchar('display_name'),    // Name/org to display publicly (can differ from sponsor name)
+  isAnonymous: boolean('is_anonymous').default(false), // If true, don't show name publicly
+
+  // Supporter message
+  message: text('message'),
+  messageStatus: messageStatusEnum('message_status').default('visible'),
+  messageRedactedText: text('message_redacted_text'), // Admin-provided replacement text if redacted
+
+  // Preferred cleaning schedule (set by sponsor)
+  preferredCleaningDate: timestamp('preferred_cleaning_date', { mode: 'string', withTimezone: true }), // Required for sponsorships
+  preferredCleaningTimeStart: varchar('preferred_cleaning_time_start', { length: 5 }), // HH:MM format, optional
+  preferredCleaningTimeEnd: varchar('preferred_cleaning_time_end', { length: 5 }), // HH:MM format, optional
+
+  // Timestamps
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Sponsor package status enum
+export const sponsorPackageStatusEnum = pgEnum('enum_sponsor_packages_status', [
+  'draft',
+  'quoted',
+  'paid',
+  'active',
+  'completed',
+  'cancelled',
+])
+
+// Enterprise tier enum
+export const enterpriseTierEnum = pgEnum('enum_sponsor_packages_enterprise_tier', [
+  'community_champion',
+  'impact_partner',
+  'documentary_sponsor',
+  'movement_partner',
+  'legacy_sponsor',
+  'founding_partner',
+])
+
+// Sponsor packages table (for calculator-based sponsorships)
+export const sponsorPackages = pgTable('sponsor_packages', {
+  id: serial('id').primaryKey(),
+  sponsorId: integer('sponsor_id'), // FK to sponsors table
+  name: varchar('name'), // e.g., "Q1 2025 North Lawndale Campaign"
+
+  // Base configuration
+  blockCount: integer('block_count').notNull(),
+  baseAmount: numeric('base_amount').notNull(), // Worker payout (100% of discounted base)
+  isRecurring: boolean('is_recurring').default(false),
+  recurringFrequency: varchar('recurring_frequency'), // 'monthly', 'quarterly', 'annual'
+
+  // Add-ons stored as JSONB for flexibility
+  // Format: { vests: true, equipment: true, blockSigns: false, ... }
+  workerBrandingAddons: jsonb('worker_branding_addons'),
+  equipmentBrandingAddons: jsonb('equipment_branding_addons'),
+  streetAdvertisingAddons: jsonb('street_advertising_addons'),
+  digitalPresenceAddons: jsonb('digital_presence_addons'),
+  enhancedCleaningAddons: jsonb('enhanced_cleaning_addons'),
+  seasonalServicesAddons: jsonb('seasonal_services_addons'),
+  greenServicesAddons: jsonb('green_services_addons'),
+  businessEngagementAddons: jsonb('business_engagement_addons'),
+
+  // Events (array of event configurations)
+  eventPackages: jsonb('event_packages'), // [{packageId: 'standard_crew', date: '2025-03-15', quantity: 1}]
+
+  // Media packages
+  photoPackage: varchar('photo_package'), // e.g., 'standard_photo'
+  videoPackage: varchar('video_package'), // e.g., 'impact_story'
+
+  // Calculated amounts (in cents)
+  workerBrandingAmount: numeric('worker_branding_amount').default('0'),
+  equipmentBrandingAmount: numeric('equipment_branding_amount').default('0'),
+  streetAdvertisingAmount: numeric('street_advertising_amount').default('0'),
+  digitalPresenceAmount: numeric('digital_presence_amount').default('0'),
+  enhancedCleaningAmount: numeric('enhanced_cleaning_amount').default('0'),
+  seasonalServicesAmount: numeric('seasonal_services_amount').default('0'),
+  greenServicesAmount: numeric('green_services_amount').default('0'),
+  businessEngagementAmount: numeric('business_engagement_amount').default('0'),
+  eventsAmount: numeric('events_amount').default('0'),
+  mediaAmount: numeric('media_amount').default('0'),
+
+  // Totals
+  addonsAmount: numeric('addons_amount').default('0'),
+  volumeDiscountAmount: numeric('volume_discount_amount').default('0'),
+  recurringDiscountAmount: numeric('recurring_discount_amount').default('0'),
+  totalAmount: numeric('total_amount').notNull(),
+  workerPayoutAmount: numeric('worker_payout_amount').notNull(), // Always transparent
+  gccFeeAmount: numeric('gcc_fee_amount').default('0'), // Total - worker payout
+
+  // Enterprise flags
+  isEnterprise: boolean('is_enterprise').default(false),
+  enterpriseTier: enterpriseTierEnum('enterprise_tier'),
+  requiresCustomQuote: boolean('requires_custom_quote').default(false),
+  recognitionLevel: varchar('recognition_level'), // 'supporter', 'friend', 'advocate', etc.
+
+  // Status
+  status: sponsorPackageStatusEnum('status').default('draft'),
+  stripePaymentIntentId: varchar('stripe_payment_intent_id'),
+  stripeCheckoutSessionId: varchar('stripe_checkout_session_id'),
+  stripeSubscriptionId: varchar('stripe_subscription_id'),
+  paidAt: timestamp('paid_at', { mode: 'string', withTimezone: true }),
+
+  // Notes and metadata
+  notes: text('notes'),
+  metadata: jsonb('metadata'), // Additional custom data
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
+// FEEDBACK & COMMUNITY
+// =====================
+
+// Feedback ticket category enum
+export const feedbackCategoryEnum = pgEnum('enum_feedback_tickets_category', [
+  'safety_concern',
+  'app_issue',
+  'verification_problem',
+  'payment_issue',
+  'general_improvement',
+  'feature_request',
+  'other',
+])
+
+// Feedback ticket status enum
+export const feedbackStatusEnum = pgEnum('enum_feedback_tickets_status', [
+  'open',
+  'in_progress',
+  'waiting_response',
+  'resolved',
+  'closed',
+])
+
+// Feedback ticket priority enum
+export const feedbackPriorityEnum = pgEnum('enum_feedback_tickets_priority', [
+  'low',
+  'medium',
+  'high',
+  'urgent',
+])
+
+// User type enum (for polymorphic references)
+export const userTypeEnum = pgEnum('enum_user_type', [
+  'worker',
+  'sponsor',
+])
+
+// Feedback tickets table
+export const feedbackTickets = pgTable('feedback_tickets', {
+  id: serial('id').primaryKey(),
+
+  // User who submitted (polymorphic - either worker or sponsor)
+  userType: userTypeEnum('user_type').notNull(),
+  userId: integer('user_id').notNull(),
+  userEmail: varchar('user_email').notNull(),
+  userName: varchar('user_name').notNull(),
+
+  // Ticket details
+  category: feedbackCategoryEnum('category').notNull(),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+
+  // Status tracking
+  status: feedbackStatusEnum('status').default('open').notNull(),
+  priority: feedbackPriorityEnum('priority').default('medium').notNull(),
+
+  // Assignment
+  assignedTo: varchar('assigned_to'), // Admin name/identifier
+
+  // Resolution
+  resolutionNotes: text('resolution_notes'),
+  resolvedAt: timestamp('resolved_at', { mode: 'string', withTimezone: true }),
+
+  // Attachments (array of media IDs)
+  attachmentIds: jsonb('attachment_ids'),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Feedback replies table (admin responses)
+export const feedbackReplies = pgTable('feedback_replies', {
+  id: serial('id').primaryKey(),
+  ticketId: integer('ticket_id').notNull(),
+
+  // Who replied (either user or admin)
+  isAdminReply: boolean('is_admin_reply').default(false).notNull(),
+  replierName: varchar('replier_name').notNull(),
+  replierEmail: varchar('replier_email'),
+
+  // Reply content
+  message: text('message').notNull(),
+
+  // Internal notes (admin only, not visible to user)
+  isInternal: boolean('is_internal').default(false),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Forum post category enum
+export const forumCategoryEnum = pgEnum('enum_forum_posts_category', [
+  'general',
+  'worker_tips',
+  'sponsor_stories',
+  'feature_requests',
+  'announcements',
+  'local_news',
+])
+
+// Forum post status enum
+export const forumStatusEnum = pgEnum('enum_forum_posts_status', [
+  'active',
+  'hidden',
+  'locked',
+  'archived',
+])
+
+// Forum posts table
+export const forumPosts = pgTable('forum_posts', {
+  id: serial('id').primaryKey(),
+
+  // Author (polymorphic - either worker or sponsor)
+  authorType: userTypeEnum('author_type').notNull(),
+  authorId: integer('author_id').notNull(),
+  authorName: varchar('author_name').notNull(),
+
+  // Post content
+  category: forumCategoryEnum('category').default('general').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+
+  // Status and moderation
+  status: forumStatusEnum('status').default('active').notNull(),
+  isPinned: boolean('is_pinned').default(false),
+  isAnnouncement: boolean('is_announcement').default(false),
+
+  // Engagement stats
+  viewCount: integer('view_count').default(0),
+  replyCount: integer('reply_count').default(0),
+  likeCount: integer('like_count').default(0),
+
+  // Last activity (for sorting by recent activity)
+  lastActivityAt: timestamp('last_activity_at', { mode: 'string', withTimezone: true }).defaultNow(),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Forum replies table
+export const forumReplies = pgTable('forum_replies', {
+  id: serial('id').primaryKey(),
+  postId: integer('post_id').notNull(),
+
+  // Author (polymorphic)
+  authorType: userTypeEnum('author_type').notNull(),
+  authorId: integer('author_id').notNull(),
+  authorName: varchar('author_name').notNull(),
+
+  // Parent reply for threading (null = top-level reply)
+  parentReplyId: integer('parent_reply_id'),
+
+  // Reply content
+  content: text('content').notNull(),
+
+  // Moderation
+  isHidden: boolean('is_hidden').default(false),
+
+  // Engagement
+  likeCount: integer('like_count').default(0),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Forum likes table (for tracking who liked what)
+export const forumLikes = pgTable('forum_likes', {
+  id: serial('id').primaryKey(),
+
+  // User who liked
+  userType: userTypeEnum('user_type').notNull(),
+  userId: integer('user_id').notNull(),
+
+  // What they liked (post or reply)
+  postId: integer('post_id'),
+  replyId: integer('reply_id'),
+
+  // Timestamp
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
+// COMMUNITY REPORTS ("Off the Clock" Volunteering)
+// =====================
+
+// Community report type enum
+export const communityReportTypeEnum = pgEnum('enum_community_reports_type', [
+  'sighting',       // User spotted an area that needs cleaning
+  'volunteer_cleanup', // User cleaned an area voluntarily (off the clock)
+])
+
+// Community report status enum
+export const communityReportStatusEnum = pgEnum('enum_community_reports_status', [
+  'pending',        // Just submitted, awaiting review
+  'verified',       // Admin verified the report
+  'resolved',       // Issue has been addressed (for sightings)
+  'acknowledged',   // Volunteer effort acknowledged
+  'rejected',       // Invalid or spam report
+])
+
+// Community reports table
+export const communityReports = pgTable('community_reports', {
+  id: serial('id').primaryKey(),
+
+  // Reporter (polymorphic - can be worker, sponsor, or anonymous)
+  reporterType: userTypeEnum('reporter_type'), // null = anonymous
+  reporterId: integer('reporter_id'),          // null = anonymous
+  reporterName: varchar('reporter_name'),      // Display name (optional for anonymous)
+
+  // Report type and details
+  type: communityReportTypeEnum('type').notNull(),
+  title: varchar('title', { length: 255 }),    // Optional brief title
+  description: text('description'),             // What they saw or what they cleaned
+
+  // Location
+  coordinates: jsonb('coordinates').notNull(), // [lng, lat] point
+  locationAddress: varchar('location_address'), // Reverse-geocoded or user-entered address
+  locationNeighborhood: varchar('location_neighborhood'),
+  serviceAreaId: integer('service_area_id'),   // FK to service_areas (if within one)
+  nearBlockId: integer('near_block_id'),       // Closest block (if applicable)
+
+  // Media evidence (array of media IDs)
+  mediaIds: jsonb('media_ids'),                // Photos and/or videos
+  beforePhotos: jsonb('before_photos'),        // For volunteer_cleanup: before state
+  afterPhotos: jsonb('after_photos'),          // For volunteer_cleanup: after state
+
+  // Cleanup details (for volunteer_cleanup type)
+  cleanupDurationMinutes: integer('cleanup_duration_minutes'),
+  cleanupBagsCollected: integer('cleanup_bags_collected'),
+  cleanupNotes: text('cleanup_notes'),
+
+  // Status and moderation
+  status: communityReportStatusEnum('status').default('pending').notNull(),
+  reviewedAt: timestamp('reviewed_at', { mode: 'string', withTimezone: true }),
+  reviewedById: integer('reviewed_by_id'),     // Admin who reviewed
+  reviewNotes: text('review_notes'),
+
+  // Map visibility
+  showOnMap: boolean('show_on_map').default(true),
+  mapExpiresAt: timestamp('map_expires_at', { mode: 'string', withTimezone: true }), // When to remove from map (for sightings)
+
+  // Resolution (for sightings that led to actual block cleaning)
+  resolvedByJobId: integer('resolved_by_job_id'), // If a paid job cleaned this up
+
+  // Engagement
+  viewCount: integer('view_count').default(0),
+  thankCount: integer('thank_count').default(0), // Community "thanks" for volunteers
+
+  // Timestamps
+  capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }), // When photo/video was taken
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Community report thanks table (track who thanked volunteers)
+export const communityReportThanks = pgTable('community_report_thanks', {
+  id: serial('id').primaryKey(),
+  reportId: integer('report_id').notNull(),    // FK to community_reports
+
+  // User who thanked
+  userType: userTypeEnum('user_type').notNull(),
+  userId: integer('user_id').notNull(),
+
+  // Timestamp
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
+// ROUTES & SERVICE AREAS
+// =====================
+
+// Service area status enum
+export const serviceAreaStatusEnum = pgEnum('enum_service_areas_status', [
+  'planning',
+  'pilot',
+  'active',
+  'paused',
+])
+
+// Service areas table (for expansion management)
+export const serviceAreas = pgTable('service_areas', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(), // "North Lawndale"
+  city: varchar('city', { length: 100 }).notNull(), // "Chicago"
+  state: varchar('state', { length: 50 }).notNull(), // "IL"
+
+  // GeoJSON Polygon defining the area boundary
+  boundary: jsonb('boundary').notNull(),
+
+  // Default map center [lng, lat]
+  mapCenter: jsonb('map_center').notNull(),
+
+  // Default zoom level
+  defaultZoom: numeric('default_zoom').default('14'),
+
+  // Status
+  status: serviceAreaStatusEnum('status').default('planning'),
+
+  // When the area launched/will launch
+  launchDate: timestamp('launch_date', { mode: 'string', withTimezone: true }),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Route status enum
+export const routeStatusEnum = pgEnum('enum_routes_status', [
+  'draft',
+  'published',
+  'archived',
+])
+
+// Routes table (street-conforming cleaning paths)
+export const routes = pgTable('routes', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 20 }).notNull().unique(), // "NL-R001"
+  displayName: varchar('display_name', { length: 255 }).notNull(),
+  serviceAreaId: integer('service_area_id').notNull(), // FK to service_areas
+
+  // GeoJSON LineString geometry (snapped to streets)
+  geometry: jsonb('geometry').notNull(),
+
+  // Route metrics
+  lengthMeters: numeric('length_meters'),
+  estimatedMinutes: numeric('estimated_minutes'),
+
+  // Status & versioning
+  status: routeStatusEnum('status').default('draft'),
+  publishedAt: timestamp('published_at', { mode: 'string', withTimezone: true }),
+  version: integer('version').default(1),
+
+  // Funding
+  payoutAmount: numeric('payout_amount').default('10000'), // In cents ($100 default)
+
+  // Admin who created this route
+  createdById: integer('created_by_id'),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Checkpoint type enum
+export const checkpointTypeEnum = pgEnum('enum_route_checkpoints_type', [
+  'route_start',
+  'photo_point',
+  'alley_entrance',
+  'route_end',
+])
+
+// Route checkpoints table (photo verification points)
+export const routeCheckpoints = pgTable('route_checkpoints', {
+  id: serial('id').primaryKey(),
+  routeId: integer('route_id').notNull(), // FK to routes
+
+  name: varchar('name', { length: 100 }).notNull(),
+  sequenceOrder: integer('sequence_order').notNull(),
+
+  // GPS coordinates [lng, lat]
+  coordinates: jsonb('coordinates').notNull(),
+
+  // Photo configuration
+  photoRequired: boolean('photo_required').default(true),
+  photoInstructions: text('photo_instructions'),
+
+  // Geofence radius in meters
+  geofenceRadius: numeric('geofence_radius').default('15'),
+
+  // Type of checkpoint
+  type: checkpointTypeEnum('type').notNull(),
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Material donation inquiry status enum
+export const materialDonationStatusEnum = pgEnum('enum_material_donations_status', [
+  'pending',      // New inquiry, needs follow-up
+  'contacted',    // Admin has reached out
+  'scheduled',    // Pickup/dropoff scheduled
+  'received',     // Donation received
+  'cancelled',    // Cancelled by donor or admin
+])
+
+// Material donations table (for tracking supply/equipment donations)
+export const materialDonations = pgTable('material_donations', {
+  id: serial('id').primaryKey(),
+
+  // Donor info
+  name: varchar('name', { length: 100 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 20 }),
+  company: varchar('company', { length: 100 }),
+
+  // Donation details
+  items: text('items').notNull(), // Description of items being donated
+  itemCategories: jsonb('item_categories'), // Array of categories: gloves, brooms, rakes, etc.
+  quantity: varchar('quantity', { length: 100 }), // Approximate quantity/amount
+  condition: varchar('condition', { length: 50 }), // new, used-good, used-fair
+
+  // Logistics
+  preferredMethod: varchar('preferred_method', { length: 20 }), // 'pickup' or 'dropoff'
+  address: text('address'), // For pickup
+  availableDates: text('available_dates'), // When donor is available
+  notes: text('notes'), // Additional notes from donor
+
+  // Admin tracking
+  status: materialDonationStatusEnum('status').default('pending').notNull(),
+  adminNotes: text('admin_notes'),
+  scheduledDate: timestamp('scheduled_date', { mode: 'string', withTimezone: true }),
+  receivedDate: timestamp('received_date', { mode: 'string', withTimezone: true }),
+  estimatedValue: numeric('estimated_value'), // For tax receipt purposes
+
+  // Timestamps
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Type exports
+export type Worker = typeof workers.$inferSelect
+export type NewWorker = typeof workers.$inferInsert
+export type WaitlistEntry = typeof waitlistEntries.$inferSelect
+export type NewWaitlistEntry = typeof waitlistEntries.$inferInsert
+export type Media = typeof media.$inferSelect
+export type NewMedia = typeof media.$inferInsert
+export type Sponsor = typeof sponsors.$inferSelect
+export type NewSponsor = typeof sponsors.$inferInsert
+export type Block = typeof blocks.$inferSelect
+export type NewBlock = typeof blocks.$inferInsert
+export type Job = typeof jobs.$inferSelect
+export type NewJob = typeof jobs.$inferInsert
+export type Transaction = typeof transactions.$inferSelect
+export type NewTransaction = typeof transactions.$inferInsert
+export type SponsorPackage = typeof sponsorPackages.$inferSelect
+export type NewSponsorPackage = typeof sponsorPackages.$inferInsert
+export type FeedbackTicket = typeof feedbackTickets.$inferSelect
+export type NewFeedbackTicket = typeof feedbackTickets.$inferInsert
+export type FeedbackReply = typeof feedbackReplies.$inferSelect
+export type NewFeedbackReply = typeof feedbackReplies.$inferInsert
+export type ForumPost = typeof forumPosts.$inferSelect
+export type NewForumPost = typeof forumPosts.$inferInsert
+export type ForumReply = typeof forumReplies.$inferSelect
+export type NewForumReply = typeof forumReplies.$inferInsert
+export type ForumLike = typeof forumLikes.$inferSelect
+export type NewForumLike = typeof forumLikes.$inferInsert
+export type ServiceArea = typeof serviceAreas.$inferSelect
+export type NewServiceArea = typeof serviceAreas.$inferInsert
+export type Route = typeof routes.$inferSelect
+export type NewRoute = typeof routes.$inferInsert
+export type RouteCheckpoint = typeof routeCheckpoints.$inferSelect
+export type NewRouteCheckpoint = typeof routeCheckpoints.$inferInsert
+export type CommunityReport = typeof communityReports.$inferSelect
+export type NewCommunityReport = typeof communityReports.$inferInsert
+export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
+export type NewCommunityReportThanks = typeof communityReportThanks.$inferInsert
+export type MaterialDonation = typeof materialDonations.$inferSelect
+export type NewMaterialDonation = typeof materialDonations.$inferInsert

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <rect width="800" height="400" fill="#0c4a6e"/>
+
+  <!-- Winter scene on left -->
+  <rect x="50" y="80" width="200" height="280" rx="15" fill="#1e3a5f"/>
+  <!-- Snow -->
+  <ellipse cx="150" cy="330" rx="80" ry="30" fill="white"/>
+  <ellipse cx="120" cy="300" rx="40" ry="20" fill="white"/>
+  <ellipse cx="180" cy="290" rx="30" ry="15" fill="white"/>
+  <!-- Snowflakes -->
+  <text x="100" y="150" font-family="Arial" font-size="24" fill="white">*</text>
+  <text x="150" y="180" font-family="Arial" font-size="20" fill="white">*</text>
+  <text x="180" y="130" font-family="Arial" font-size="28" fill="white">*</text>
+  <text x="130" y="220" font-family="Arial" font-size="18" fill="white">*</text>
+  <!-- Shovel -->
+  <rect x="195" y="180" width="8" height="80" fill="#78350f"/>
+  <rect x="185" y="255" width="28" height="15" rx="2" fill="#9ca3af"/>
+  <text x="150" y="370" font-family="Arial, sans-serif" font-size="14" fill="#7dd3fc" text-anchor="middle">Snow Removal</text>
+
+  <!-- Fall scene in middle -->
+  <rect x="300" y="80" width="200" height="280" rx="15" fill="#451a03"/>
+  <!-- Leaves -->
+  <ellipse cx="400" cy="300" rx="70" ry="40" fill="#ea580c"/>
+  <ellipse cx="350" cy="280" rx="30" ry="25" fill="#f97316"/>
+  <ellipse cx="450" cy="270" rx="35" ry="20" fill="#fb923c"/>
+  <ellipse cx="380" cy="320" rx="25" ry="15" fill="#c2410c"/>
+  <!-- Rake -->
+  <rect x="320" y="150" width="8" height="100" fill="#78350f"/>
+  <rect x="300" y="240" width="48" height="12" rx="2" fill="#9ca3af"/>
+  <text x="400" y="370" font-family="Arial, sans-serif" font-size="14" fill="#fdba74" text-anchor="middle">Leaf Removal</text>
+
+  <!-- Spring scene on right -->
+  <rect x="550" y="80" width="200" height="280" rx="15" fill="#14532d"/>
+  <!-- Sun -->
+  <circle cx="650" cy="130" r="25" fill="#fbbf24"/>
+  <!-- Flowers/plants -->
+  <rect x="580" y="280" width="15" height="60" fill="#22c55e"/>
+  <circle cx="587" cy="265" r="15" fill="#f472b6"/>
+  <rect x="620" y="270" width="12" height="70" fill="#22c55e"/>
+  <circle cx="626" cy="255" r="12" fill="#fbbf24"/>
+  <rect x="660" y="275" width="15" height="65" fill="#22c55e"/>
+  <circle cx="667" cy="260" r="15" fill="#c084fc"/>
+  <rect x="700" y="285" width="12" height="55" fill="#22c55e"/>
+  <circle cx="706" cy="270" r="12" fill="#f472b6"/>
+  <text x="650" y="370" font-family="Arial, sans-serif" font-size="14" fill="#a7f3d0" text-anchor="middle">Spring Cleanup</text>
+
+  <text x="400" y="45" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Year-Round Community Care</text>
+</svg>

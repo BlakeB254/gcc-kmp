@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none">
+  <defs>
+    <linearGradient id="clean-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="400" fill="#064e3b"/>
+
+  <!-- Before/After split -->
+  <rect x="50" y="100" width="300" height="220" rx="10" fill="#4b5563"/>
+  <text x="200" y="90" font-family="Arial, sans-serif" font-size="16" fill="#f87171" text-anchor="middle" font-weight="bold">BEFORE</text>
+  <!-- Dirty sidewalk representation -->
+  <rect x="60" y="110" width="280" height="200" fill="#78716c"/>
+  <circle cx="120" cy="180" r="20" fill="#57534e"/>
+  <circle cx="200" cy="220" r="30" fill="#44403c"/>
+  <circle cx="280" cy="160" r="15" fill="#57534e"/>
+  <text x="200" y="270" font-family="Arial, sans-serif" font-size="14" fill="#a8a29e">Graffiti & grime</text>
+
+  <rect x="450" y="100" width="300" height="220" rx="10" fill="#10b981"/>
+  <text x="600" y="90" font-family="Arial, sans-serif" font-size="16" fill="#a7f3d0" text-anchor="middle" font-weight="bold">AFTER</text>
+  <!-- Clean sidewalk -->
+  <rect x="460" y="110" width="280" height="200" fill="#d1d5db"/>
+  <text x="600" y="210" font-family="Arial, sans-serif" font-size="20" fill="#059669" text-anchor="middle" font-weight="bold">SPOTLESS</text>
+  <text x="600" y="270" font-family="Arial, sans-serif" font-size="14" fill="#6b7280">Pressure washed</text>
+
+  <!-- Arrow -->
+  <polygon points="380,200 400,180 400,190 440,190 440,210 400,210 400,220" fill="#fbbf24"/>
+
+  <text x="400" y="50" font-family="Arial, sans-serif" font-size="28" fill="white" text-anchor="middle" font-weight="bold">Deep Clean Transformation</text>
+  <text x="400" y="370" font-family="Arial, sans-serif" font-size="16" fill="#a7f3d0" text-anchor="middle">Pressure washing, graffiti removal, and more</text>
+</svg>
