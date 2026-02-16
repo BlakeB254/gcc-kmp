@@ -96,14 +96,15 @@ fun RouteDetailScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
         ) {
-            // Hero map with route polyline and gradient overlay
+            // Hero map with route polyline, back button, and gradient overlay
             item {
-                Box(modifier = Modifier.height(260.dp)) {
+                Box(modifier = Modifier.height(280.dp)) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
                         centerLat = mapCenter.lat,
                         centerLng = mapCenter.lng,
                         zoom = MapStyles.ZOOM_ROUTE,
+                        enableGestures = true,
                         routeCoordinates = routePath,
                         animateRoutes = true,
                     )
@@ -118,6 +119,28 @@ fun RouteDetailScreen(
                                 )
                             )
                     )
+                    // Back button inside hero map Box so it isn't blocked by UIKitView
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding(),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "\u2190",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = GccGreenDark,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -275,27 +298,6 @@ fun RouteDetailScreen(
             }
         }
 
-        // Floating back button
-        TextButton(
-            onClick = onBack,
-            modifier = Modifier
-                .padding(8.dp)
-                .align(Alignment.TopStart),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "\u2190",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = GccGreenDark,
-                )
-            }
-        }
     }
 }
 

@@ -17,6 +17,9 @@ import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.expressions.dsl.exponential
+import org.maplibre.compose.expressions.dsl.interpolate
+import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.layers.CircleLayer
@@ -106,36 +109,59 @@ actual fun GccMap(
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
 
             // --- Layers (bottom to top) ---
+            // Boundary lines use zoom-based width: visible at overview, fade at street level
+            // to avoid obscuring the base map's street names and POI labels.
 
-            // State outline (Illinois)
+            // State outline (Illinois) — visible at zoom 6-14, fades out above
             LineLayer(
                 id = MapStyles.LAYER_STATE_OUTLINE,
                 source = stateSrc,
                 color = const(MapStyles.STATE_OUTLINE_COLOR),
-                width = const(MapStyles.STATE_OUTLINE_WIDTH.dp),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    6 to const(0.5.dp),
+                    11 to const(1.dp),
+                    14 to const(0.5.dp),
+                    16 to const(0.dp),
+                ),
             )
 
-            // City outline (Chicago)
+            // City outline (Chicago) — visible at zoom 8-15, fades out above
             LineLayer(
                 id = MapStyles.LAYER_CITY_OUTLINE,
                 source = citySrc,
                 color = const(MapStyles.CITY_OUTLINE_COLOR),
-                width = const(MapStyles.CITY_OUTLINE_WIDTH.dp),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    8 to const(0.5.dp),
+                    11 to const(1.5.dp),
+                    14 to const(1.dp),
+                    16 to const(0.dp),
+                ),
             )
 
-            // Service area fill (green tint)
+            // Service area fill (green tint) — fades at street zoom
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
                 color = const(MapStyles.GEOFENCE_FILL_COLOR),
             )
 
-            // Community area outlines
+            // Community area outlines — visible at zoom 10-15, fades out above
             LineLayer(
                 id = MapStyles.LAYER_COMMUNITY_AREAS_OUTLINE,
                 source = areaSrc,
                 color = const(MapStyles.COMMUNITY_AREA_STROKE_COLOR),
-                width = const(MapStyles.COMMUNITY_AREA_STROKE_WIDTH.dp),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0.5.dp),
+                    12 to const(1.5.dp),
+                    15 to const(0.5.dp),
+                    17 to const(0.dp),
+                ),
             )
 
             // Community area tap target (transparent fill for click detection)
