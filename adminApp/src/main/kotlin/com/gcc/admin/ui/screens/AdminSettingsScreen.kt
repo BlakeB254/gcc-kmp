@@ -1,82 +1,136 @@
 package com.gcc.admin.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
-import com.gcc.admin.viewmodel.AdminLoginViewModel
+import com.gcc.admin.ui.theme.*
+import com.gcc.shared.api.GccApiClient
 import org.koin.compose.koinInject
 
-/**
- * Admin settings screen with API configuration display,
- * admin info, and logout functionality.
- */
 @Composable
-fun AdminSettingsScreen(
-    loginViewModel: AdminLoginViewModel = koinInject(),
-) {
-    val loginState by loginViewModel.state.collectAsState()
+fun AdminSettingsScreen() {
+    val api = koinInject<GccApiClient>()
 
-    AdminScaffold(
-        title = "Settings",
-        subtitle = "System",
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            // API Configuration
-            DetailPanel(
-                title = "API Configuration",
-                items = listOf(
-                    "API URL" to "http://localhost:7310",
-                    "Connection" to "Local Development",
-                ),
-            )
+        Text("Settings", style = MaterialTheme.typography.headlineMedium)
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Admin Info
-            DetailPanel(
-                title = "Admin Session",
-                items = listOf(
-                    "Email" to if (loginState.email.isNotBlank()) loginState.email else "admin@gcc.app",
-                    "Status" to if (loginState.isLoggedIn) "Authenticated" else "Not Authenticated",
-                    "Role" to "Super Admin",
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Application Info
-            DetailPanel(
-                title = "Application",
-                items = listOf(
-                    "Version" to "1.0.0",
-                    "Platform" to "Desktop (JVM)",
-                    "Build" to "Development",
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Logout button
-            Button(
-                onClick = { loginViewModel.logout() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                ),
-                modifier = Modifier.height(48.dp),
+        // ── Server Configuration ────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Logout,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
+                Text("Server Configuration", style = MaterialTheme.typography.titleMedium)
+
+                OutlinedTextField(
+                    value = api.baseUrl,
+                    onValueChange = {},
+                    label = { Text("API Base URL") },
+                    readOnly = true,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Sign Out")
             }
         }
+
+        // ── App Mode ────────────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+            ) {
+                Text("Application Mode", style = MaterialTheme.typography.titleMedium)
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = AdminInfo,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    val isDemoMode = api.baseUrl.contains("demo") || api.baseUrl.contains("mock")
+                    Text(
+                        text = if (isDemoMode) "Demo Mode" else "Production Mode",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+
+        // ── Account ─────────────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+            ) {
+                Text("Account", style = MaterialTheme.typography.titleMedium)
+
+                OutlinedButton(
+                    onClick = { /* Sign out handled by navigation */ },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AdminError),
+                    border = BorderStroke(1.dp, AdminError),
+                ) {
+                    Icon(
+                        Icons.Default.Logout,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(AdminTheme.spacing.sm))
+                    Text("Sign Out")
+                }
+            }
+        }
+
+        // ── App Info ────────────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+            ) {
+                Text("About", style = MaterialTheme.typography.titleMedium)
+                Text("GCC Admin Desktop", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Version 1.0.0",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AdminOnSurfaceVariant,
+                )
+                Text(
+                    "Gotham City Cleanup - Admin Operations Console",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AdminOnSurfaceVariant,
+                )
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
     }
 }

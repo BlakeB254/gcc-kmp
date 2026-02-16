@@ -42,7 +42,7 @@ class FeedService {
                         actorTier = enumValueOfOrDefault(row[Workers.earlyAdopterTier]),
                         title = "Reported ${row[CommunityReports.type]} sighting",
                         description = row[CommunityReports.description] ?: "Community report submitted",
-                        mediaUrls = row[CommunityReports.mediaUrls],
+                        mediaUrls = emptyList(), // mediaIds are int refs, not URLs
                         timestamp = row[CommunityReports.createdAt],
                     )
                 }
@@ -122,7 +122,7 @@ class FeedService {
                         actorTier = enumValueOfOrDefault(row[Workers.earlyAdopterTier]),
                         title = "Completed a cleaning job",
                         description = "Route cleaned successfully",
-                        amount = row[Jobs.payoutAmount],
+                        amount = row[Jobs.payoutAmount]?.toIntOrNull(),
                         timestamp = row[Jobs.completedAt] ?: row[Jobs.updatedAt],
                     )
                 }

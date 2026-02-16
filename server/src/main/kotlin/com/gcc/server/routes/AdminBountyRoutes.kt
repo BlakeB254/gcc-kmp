@@ -12,7 +12,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 fun Route.adminBountyRoutes() {
     val bountyService = application.koinGet<BountyService>()

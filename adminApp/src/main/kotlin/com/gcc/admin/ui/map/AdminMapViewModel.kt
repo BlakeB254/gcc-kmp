@@ -2,122 +2,114 @@ package com.gcc.admin.ui.map
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 
-enum class LayerType {
-    COMMUNITY_AREAS, BLOCKS, ROUTES, SPOTS, BOUNTIES, GRID
-}
+/**
+ * ViewModel for the admin map screen. Manages map state including loaded data
+ * (blocks, routes, service areas), selection state, and checkpoint placement mode.
+ */
+class AdminMapViewModel(private val api: GccApiClient) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-data class AdminMapState(
-    val blocks: List<Block> = emptyList(),
-    val routes: List<Route> = emptyList(),
-    val serviceAreas: List<ServiceArea> = emptyList(),
-    val spots: List<CommunityReport> = emptyList(),
-    val bounties: List<Bounty> = emptyList(),
-    val selectedBlockId: Int? = null,
-    val selectedServiceAreaId: Int? = null,
-    val selectedSpotId: Int? = null,
-    val selectedBountyId: Int? = null,
-    val showCommunityAreas: Boolean = true,
-    val showBlocks: Boolean = true,
-    val showRoutes: Boolean = true,
-    val showSpots: Boolean = true,
-    val showBounties: Boolean = true,
-    val showGrid: Boolean = false,
-    val isLoading: Boolean = false,
-    val error: String? = null,
-)
+    // Map center (North Lawndale default)
+    private val _centerLat = MutableStateFlow(41.8603)
+    val centerLat: StateFlow<Double> = _centerLat.asStateFlow()
 
-class AdminMapViewModel(
-    private val apiClient: GccApiClient,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val _state = MutableStateFlow(AdminMapState())
-    val state: StateFlow<AdminMapState> = _state.asStateFlow()
+    private val _centerLng = MutableStateFlow(-87.7228)
+    val centerLng: StateFlow<Double> = _centerLng.asStateFlow()
+
+    private val _zoom = MutableStateFlow(14.0)
+    val zoom: StateFlow<Double> = _zoom.asStateFlow()
+
+    // Loaded data
+    private val _blocks = MutableStateFlow<List<Block>>(emptyList())
+    val blocks: StateFlow<List<Block>> = _blocks.asStateFlow()
+
+    private val _routes = MutableStateFlow<List<Route>>(emptyList())
+    val routes: StateFlow<List<Route>> = _routes.asStateFlow()
+
+    private val _serviceAreas = MutableStateFlow<List<ServiceArea>>(emptyList())
+    val serviceAreas: StateFlow<List<ServiceArea>> = _serviceAreas.asStateFlow()
+
+    // Selection state
+    private val _selectedBlockId = MutableStateFlow<Int?>(null)
+    val selectedBlockId: StateFlow<Int?> = _selectedBlockId.asStateFlow()
+
+    private val _selectedRouteId = MutableStateFlow<Int?>(null)
+    val selectedRouteId: StateFlow<Int?> = _selectedRouteId.asStateFlow()
+
+    // Checkpoint placement mode
+    private val _placingCheckpoints = MutableStateFlow(false)
+    val placingCheckpoints: StateFlow<Boolean> = _placingCheckpoints.asStateFlow()
+
+    private val _placedCheckpoints = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val placedCheckpoints: StateFlow<List<Pair<Double, Double>>> = _placedCheckpoints.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
-        loadAllData()
+        loadMapData()
     }
 
-    fun loadAllData() {
+    fun loadMapData() {
         scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _isLoading.value = true
             try {
-                val blocksDeferred = async { loadList<Block>("/api/admin/blocks") }
-                val routesDeferred = async { loadList<Route>("/api/admin/routes") }
-                val areasDeferred = async { loadList<ServiceArea>("/api/admin/service-areas") }
-                val spotsDeferred = async { loadList<CommunityReport>("/api/admin/spots") }
-                val bountiesDeferred = async { loadList<Bounty>("/api/admin/bounties") }
-
-                _state.update {
-                    it.copy(
-                        blocks = blocksDeferred.await(),
-                        routes = routesDeferred.await(),
-                        serviceAreas = areasDeferred.await(),
-                        spots = spotsDeferred.await(),
-                        bounties = bountiesDeferred.await(),
-                        isLoading = false,
-                    )
+                coroutineScope {
+                    val blocksDeferred = async { api.getAdminBlocks() }
+                    val routesDeferred = async { api.getAdminRoutes() }
+                    val areasDeferred = async { api.getAdminServiceAreas() }
+                    _blocks.value = blocksDeferred.await()
+                    _routes.value = routesDeferred.await()
+                    _serviceAreas.value = areasDeferred.await()
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Failed to load map data", isLoading = false) }
+            } catch (_: Exception) {
+                // Silently handle API errors — map still renders with empty data
             }
+            _isLoading.value = false
         }
     }
 
-    private suspend inline fun <reified T> loadList(path: String): List<T> {
-        return try {
-            val response = apiClient.httpClient.get("${apiClient.baseUrl}$path") {
-                contentType(ContentType.Application.Json)
-            }
-            val result: ApiResponse<List<T>> = response.body()
-            if (result.success && result.data != null) result.data else emptyList()
-        } catch (_: Exception) {
-            emptyList()
+    fun selectBlock(blockId: Int?) {
+        _selectedBlockId.value = blockId
+    }
+
+    fun selectRoute(routeId: Int?) {
+        _selectedRouteId.value = routeId
+    }
+
+    fun startCheckpointPlacement() {
+        _placingCheckpoints.value = true
+        _placedCheckpoints.value = emptyList()
+    }
+
+    fun stopCheckpointPlacement() {
+        _placingCheckpoints.value = false
+    }
+
+    fun addCheckpoint(lat: Double, lng: Double) {
+        _placedCheckpoints.value = _placedCheckpoints.value + (lat to lng)
+    }
+
+    fun removeLastCheckpoint() {
+        val current = _placedCheckpoints.value
+        if (current.isNotEmpty()) {
+            _placedCheckpoints.value = current.dropLast(1)
         }
     }
 
-    fun selectBlock(id: Int) {
-        _state.update { it.copy(selectedBlockId = id, selectedServiceAreaId = null, selectedSpotId = null, selectedBountyId = null) }
+    fun clearCheckpoints() {
+        _placedCheckpoints.value = emptyList()
     }
 
-    fun selectServiceArea(id: Int) {
-        _state.update { it.copy(selectedBlockId = null, selectedServiceAreaId = id, selectedSpotId = null, selectedBountyId = null) }
+    fun setCenter(lat: Double, lng: Double) {
+        _centerLat.value = lat
+        _centerLng.value = lng
     }
 
-    fun selectSpot(id: Int) {
-        _state.update { it.copy(selectedBlockId = null, selectedServiceAreaId = null, selectedSpotId = id, selectedBountyId = null) }
-    }
-
-    fun selectBounty(id: Int) {
-        _state.update { it.copy(selectedBlockId = null, selectedServiceAreaId = null, selectedSpotId = null, selectedBountyId = id) }
-    }
-
-    fun clearSelection() {
-        _state.update { it.copy(selectedBlockId = null, selectedServiceAreaId = null, selectedSpotId = null, selectedBountyId = null) }
-    }
-
-    fun toggleLayer(layer: LayerType) {
-        _state.update {
-            when (layer) {
-                LayerType.COMMUNITY_AREAS -> it.copy(showCommunityAreas = !it.showCommunityAreas)
-                LayerType.BLOCKS -> it.copy(showBlocks = !it.showBlocks)
-                LayerType.ROUTES -> it.copy(showRoutes = !it.showRoutes)
-                LayerType.SPOTS -> it.copy(showSpots = !it.showSpots)
-                LayerType.BOUNTIES -> it.copy(showBounties = !it.showBounties)
-                LayerType.GRID -> it.copy(showGrid = !it.showGrid)
-            }
-        }
-    }
-
-    fun refresh() {
-        loadAllData()
+    fun setZoom(z: Double) {
+        _zoom.value = z
     }
 }

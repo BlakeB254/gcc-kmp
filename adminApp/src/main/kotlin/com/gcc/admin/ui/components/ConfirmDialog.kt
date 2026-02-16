@@ -1,26 +1,25 @@
 package com.gcc.admin.ui.components
 
-import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import com.gcc.admin.ui.theme.AdminError
+import androidx.compose.ui.graphics.Color
 
 /**
- * Confirmation dialog for destructive or significant actions.
- *
- * The confirm button is styled with the error color to reinforce that
- * the action has consequences.
- *
- * @param title Dialog title (e.g. "Suspend Worker").
- * @param message Descriptive body text explaining the action.
- * @param confirmText Label for the confirm button (e.g. "Suspend", "Delete").
- * @param onConfirm Callback invoked when the user confirms.
- * @param onDismiss Callback invoked when the user cancels or taps outside.
+ * A simple two-button confirmation dialog used for destructive or
+ * important actions (e.g. "Ban worker", "Delete route").
  */
 @Composable
 fun ConfirmDialog(
     title: String,
     message: String,
     confirmText: String = "Confirm",
+    cancelText: String = "Cancel",
+    confirmColor: Color = MaterialTheme.colorScheme.error,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -29,34 +28,30 @@ fun ConfirmDialog(
         title = {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
             )
         },
         text = {
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         confirmButton = {
             Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AdminError,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = confirmColor),
             ) {
                 Text(confirmText)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+            OutlinedButton(onClick = onDismiss) {
+                Text(cancelText)
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

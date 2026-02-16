@@ -99,6 +99,7 @@ object DemoData {
                 RouteCheckpoint(id = 3, name = "Pulaski & Ogden", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7260, lat = 41.8545), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 4, name = "Pulaski & Cermak", sequenceOrder = 4, coordinates = Coordinates(lng = -87.7260, lat = 41.8510), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-pulaski-road.jpg",
             createdAt = Instant.parse("2024-02-01T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -116,6 +117,7 @@ object DemoData {
                 RouteCheckpoint(id = 6, name = "Homan & Fillmore", sequenceOrder = 2, coordinates = Coordinates(lng = -87.7105, lat = 41.8625), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 7, name = "Homan & Ogden", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7105, lat = 41.8545), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-homan-corridor.jpg",
             createdAt = Instant.parse("2024-02-05T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -134,6 +136,7 @@ object DemoData {
                 RouteCheckpoint(id = 10, name = "Ogden & Homan", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7105, lat = 41.8590), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 11, name = "Ogden & Kedzie", sequenceOrder = 4, coordinates = Coordinates(lng = -87.7045, lat = 41.8610), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-ogden-loop.jpg",
             createdAt = Instant.parse("2024-02-10T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -151,6 +154,7 @@ object DemoData {
                 RouteCheckpoint(id = 13, name = "Central Park & 16th", sequenceOrder = 2, coordinates = Coordinates(lng = -87.7165, lat = 41.8585), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 14, name = "Central Park & Ogden", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7165, lat = 41.8545), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-central-park.jpg",
             createdAt = Instant.parse("2024-02-15T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -169,6 +173,7 @@ object DemoData {
                 RouteCheckpoint(id = 17, name = "Independence & 16th", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7000, lat = 41.8585), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 18, name = "Independence & Ogden", sequenceOrder = 4, coordinates = Coordinates(lng = -87.7000, lat = 41.8545), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-independence-blvd.jpg",
             createdAt = Instant.parse("2024-02-20T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -186,6 +191,7 @@ object DemoData {
                 RouteCheckpoint(id = 20, name = "16th & Central Park", sequenceOrder = 2, coordinates = Coordinates(lng = -87.7165, lat = 41.8585), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 21, name = "16th & Homan", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7105, lat = 41.8585), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-16th-street.jpg",
             createdAt = Instant.parse("2024-03-01T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -204,6 +210,7 @@ object DemoData {
                 RouteCheckpoint(id = 24, name = "Roosevelt & Central Park", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7165, lat = 41.8665), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 25, name = "Roosevelt & Pulaski", sequenceOrder = 4, coordinates = Coordinates(lng = -87.7260, lat = 41.8665), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-roosevelt-road.jpg",
             createdAt = Instant.parse("2024-03-05T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -221,6 +228,7 @@ object DemoData {
                 RouteCheckpoint(id = 27, name = "Kostner & Fillmore", sequenceOrder = 2, coordinates = Coordinates(lng = -87.7340, lat = 41.8625), photoRequired = true, type = CheckpointType.PHOTO_POINT),
                 RouteCheckpoint(id = 28, name = "Kostner & 16th", sequenceOrder = 3, coordinates = Coordinates(lng = -87.7340, lat = 41.8585), photoRequired = true, type = CheckpointType.ROUTE_END),
             ),
+            imageUrl = "demo://route-kostner-circuit.jpg",
             createdAt = Instant.parse("2024-03-10T08:00:00Z"),
             updatedAt = Instant.parse("2024-05-15T12:00:00Z"),
         ),
@@ -709,5 +717,123 @@ object DemoData {
             type = SponsorType.INDIVIDUAL,
             stats = SponsorStats(totalDonated = 100000, blocksSponsored = 1),
             createdAt = Instant.parse("2024-03-01T00:00:00Z"), updatedAt = Instant.parse("2024-06-05T00:00:00Z")),
+    )
+
+    // ── Daily Stats (30 days) ────────────────────────────────────────
+    val demoDailyStats: List<AdminDailyStats> = (0 until 30).map { daysAgo ->
+        val seed = daysAgo * 7 + 3
+        AdminDailyStats(
+            date = "2024-${if (daysAgo < 10) "06" else "05"}-${(10 - daysAgo % 28).coerceAtLeast(1).toString().padStart(2, '0')}",
+            jobsCompleted = 80 + (seed % 41),
+            jobsCreated = 90 + (seed % 41),
+            revenue = 800000 + (seed * 23333) % 700001,
+            newWorkers = 1 + seed % 5,
+            newSponsors = seed % 3,
+            bountiesPosted = 1 + seed % 4,
+            bountiesClaimed = 1 + seed % 3,
+        )
+    }
+
+    // ── Revenue by Area ──────────────────────────────────────────────
+    val demoRevenueByArea: List<RevenueByArea> = listOf(
+        RevenueByArea(serviceAreaId = 1, serviceAreaName = "North Lawndale", totalRevenue = 18500000, jobCount = 1850, workerCount = 89),
+        RevenueByArea(serviceAreaId = 2, serviceAreaName = "East Garfield Park", totalRevenue = 5200000, jobCount = 520, workerCount = 34),
+        RevenueByArea(serviceAreaId = 3, serviceAreaName = "Austin", totalRevenue = 3100000, jobCount = 310, workerCount = 21),
+        RevenueByArea(serviceAreaId = 4, serviceAreaName = "Englewood", totalRevenue = 1670000, jobCount = 167, workerCount = 12),
+    )
+
+    // ── Worker Metrics ───────────────────────────────────────────────
+    val demoWorkerMetrics: List<WorkerMetrics> = listOf(
+        WorkerMetrics(workerId = 5, workerName = "Deshawn Williams", jobsCompleted = 62, totalEarnings = 310000, averageRating = 4.8, volunteersCompleted = 15, badgesEarned = 9),
+        WorkerMetrics(workerId = 3, workerName = "Keisha Thompson", jobsCompleted = 55, totalEarnings = 275000, averageRating = 5.0, volunteersCompleted = 22, badgesEarned = 8),
+        WorkerMetrics(workerId = 1, workerName = "Marcus Johnson", jobsCompleted = 47, totalEarnings = 235000, averageRating = 4.9, volunteersCompleted = 12, badgesEarned = 7),
+        WorkerMetrics(workerId = 7, workerName = "Andre Davis", jobsCompleted = 41, totalEarnings = 205000, averageRating = 4.7, volunteersCompleted = 8, badgesEarned = 6),
+        WorkerMetrics(workerId = 2, workerName = "Tanya Robinson", jobsCompleted = 38, totalEarnings = 190000, averageRating = 4.6, volunteersCompleted = 10, badgesEarned = 5),
+    )
+
+    // ── Sponsor Metrics ──────────────────────────────────────────────
+    val demoSponsorMetrics: List<SponsorMetrics> = listOf(
+        SponsorMetrics(sponsorId = 1, sponsorName = "Chicago Foundation", totalFunded = 1500000, blocksSponsored = 3, bountiesPosted = 12, walletBalance = 350000),
+        SponsorMetrics(sponsorId = 2, sponsorName = "West Side Community Fund", totalFunded = 800000, blocksSponsored = 2, bountiesPosted = 8, walletBalance = 150000),
+        SponsorMetrics(sponsorId = 3, sponsorName = "Maria Garcia", totalFunded = 100000, blocksSponsored = 1, bountiesPosted = 3, walletBalance = 25000),
+    )
+
+    // ── Disputes ─────────────────────────────────────────────────────
+    val demoDisputeList: List<Dispute> = listOf(
+        Dispute(
+            id = 1, jobId = 2841, reporterId = 101, reporterType = DisputePartyType.SPONSOR,
+            respondentId = 8, respondentType = DisputePartyType.WORKER,
+            type = DisputeType.INCOMPLETE, status = DisputeStatus.OPEN,
+            description = "Worker marked job as complete but alley was only partially cleaned. Before/after photos show debris remaining near dumpster.",
+            evidence = listOf("demo://dispute-1-evidence-1.jpg", "demo://dispute-1-evidence-2.jpg"),
+            createdAt = Instant.parse("2024-06-10T09:45:00Z"), updatedAt = Instant.parse("2024-06-10T09:45:00Z"),
+        ),
+        Dispute(
+            id = 2, jobId = 2835, reporterId = 5, reporterType = DisputePartyType.WORKER,
+            respondentId = 102, respondentType = DisputePartyType.SPONSOR,
+            type = DisputeType.PAYMENT, status = DisputeStatus.UNDER_REVIEW,
+            description = "Completed bounty cleanup but payment has not been processed after 48 hours.",
+            createdAt = Instant.parse("2024-06-08T14:00:00Z"), updatedAt = Instant.parse("2024-06-09T10:00:00Z"),
+        ),
+        Dispute(
+            id = 3, jobId = 2820, reporterId = 103, reporterType = DisputePartyType.SPONSOR,
+            respondentId = 4, respondentType = DisputePartyType.WORKER,
+            type = DisputeType.QUALITY, status = DisputeStatus.RESOLVED,
+            description = "Quality of cleanup did not meet expectations. Grass clippings left on sidewalk.",
+            resolution = DisputeResolution.REFUND_PARTIAL, resolutionNotes = "50% refund issued, worker counseled on quality standards.",
+            resolvedBy = 1, resolvedAt = Instant.parse("2024-06-07T16:00:00Z"),
+            createdAt = Instant.parse("2024-06-06T11:00:00Z"), updatedAt = Instant.parse("2024-06-07T16:00:00Z"),
+        ),
+    )
+
+    // ── Feedback ─────────────────────────────────────────────────────
+    val demoFeedbackList: List<FeedbackTicket> = listOf(
+        FeedbackTicket(
+            id = 1, userId = 1, userType = UserType.WORKER, category = FeedbackCategory.APP_ISSUE,
+            subject = "Map not loading on slow connection",
+            description = "When I'm in areas with poor cell signal, the map tiles don't load and I can't see my route checkpoints.",
+            status = FeedbackStatus.IN_PROGRESS, priority = FeedbackPriority.HIGH,
+            assignedTo = "Engineering",
+            createdAt = Instant.parse("2024-06-09T08:00:00Z"), updatedAt = Instant.parse("2024-06-10T10:00:00Z"),
+        ),
+        FeedbackTicket(
+            id = 2, userId = 3, userType = UserType.WORKER, category = FeedbackCategory.FEATURE_REQUEST,
+            subject = "Add route difficulty ratings",
+            description = "It would be helpful to see difficulty ratings for routes so I can plan my day better. Some routes have steep hills.",
+            status = FeedbackStatus.OPEN, priority = FeedbackPriority.MEDIUM,
+            createdAt = Instant.parse("2024-06-08T14:30:00Z"), updatedAt = Instant.parse("2024-06-08T14:30:00Z"),
+        ),
+        FeedbackTicket(
+            id = 3, userId = 1, userType = UserType.SPONSOR, category = FeedbackCategory.PAYMENT_ISSUE,
+            subject = "Duplicate charge on wallet deposit",
+            description = "I deposited $100 but was charged twice. Please refund the extra charge.",
+            status = FeedbackStatus.RESOLVED, priority = FeedbackPriority.URGENT,
+            assignedTo = "Finance",
+            createdAt = Instant.parse("2024-06-05T09:00:00Z"), updatedAt = Instant.parse("2024-06-06T11:00:00Z"),
+        ),
+    )
+
+    // ── Address Changes ──────────────────────────────────────────────
+    val demoAddressChanges: List<AddressChangeRequest> = listOf(
+        AddressChangeRequest(
+            workerId = 2,
+            newAddress = WorkerAddress(
+                street = "4100 W Roosevelt Rd",
+                city = "Chicago", state = "IL", zip = "60624",
+                neighborhood = "North Lawndale", isNorthLawndale = true,
+                latitude = 41.8665, longitude = -87.7290,
+            ),
+            reason = "Moved to a new apartment within the neighborhood",
+        ),
+        AddressChangeRequest(
+            workerId = 5,
+            newAddress = WorkerAddress(
+                street = "3200 W 16th St",
+                city = "Chicago", state = "IL", zip = "60623",
+                neighborhood = "North Lawndale", isNorthLawndale = true,
+                latitude = 41.8585, longitude = -87.7105,
+            ),
+            reason = "Relocating closer to primary route area",
+        ),
     )
 }

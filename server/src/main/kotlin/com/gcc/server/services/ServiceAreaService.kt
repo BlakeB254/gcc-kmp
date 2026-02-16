@@ -62,17 +62,23 @@ class ServiceAreaService {
     }
 }
 
-fun ResultRow.toServiceArea(): ServiceArea = ServiceArea(
+fun ResultRow.toServiceArea(): ServiceArea {
+    val center = this[ServiceAreas.mapCenter]
+    return ServiceArea(
     id = this[ServiceAreas.id],
     name = this[ServiceAreas.name],
     city = this[ServiceAreas.city],
     state = this[ServiceAreas.state],
     boundary = this[ServiceAreas.boundary],
-    mapCenter = this[ServiceAreas.mapCenter],
-    mapZoom = this[ServiceAreas.mapZoom],
+    mapCenter = Coordinates(
+        lng = center.getOrElse(0) { 0.0 },
+        lat = center.getOrElse(1) { 0.0 }
+    ),
+    mapZoom = this[ServiceAreas.defaultZoom]?.toDoubleOrNull() ?: 14.0,
     status = enumValueOfOrDefault(this[ServiceAreas.status]),
-    totalBlocks = this[ServiceAreas.totalBlocks],
-    activeWorkers = this[ServiceAreas.activeWorkers],
+    totalBlocks = 0,      // not stored in DB; computed on demand
+    activeWorkers = 0,     // not stored in DB; computed on demand
     createdAt = this[ServiceAreas.createdAt],
     updatedAt = this[ServiceAreas.updatedAt]
 )
+}

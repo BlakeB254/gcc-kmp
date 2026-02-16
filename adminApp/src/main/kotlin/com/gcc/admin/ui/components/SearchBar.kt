@@ -5,24 +5,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gcc.admin.ui.theme.AdminOnSurfaceVariant
-import com.gcc.admin.ui.theme.AdminSurfaceVariant
+import com.gcc.admin.ui.theme.AdminOutline
+import com.gcc.admin.ui.theme.AdminPrimary
 
 /**
- * A search text field with a leading search icon and a trailing clear button.
- *
- * Styled for the dark admin theme with subdued colors that blend into the
- * surface background.
- *
- * @param query Current search text.
- * @param onQueryChange Callback when the text changes.
- * @param placeholder Hint text shown when [query] is empty.
- * @param modifier Modifier applied to the text field.
+ * Full-width search input field with a leading search icon and a
+ * trailing clear button that appears when [query] is not empty.
  */
 @Composable
 fun SearchBar(
@@ -34,9 +32,11 @@ fun SearchBar(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
+        modifier = modifier.fillMaxWidth(),
         placeholder = {
             Text(
                 text = placeholder,
+                style = MaterialTheme.typography.bodyMedium,
                 color = AdminOnSurfaceVariant,
             )
         },
@@ -59,16 +59,11 @@ fun SearchBar(
             }
         },
         singleLine = true,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = AdminSurfaceVariant,
-            unfocusedContainerColor = AdminSurfaceVariant,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = Color.Transparent,
-            cursorColor = MaterialTheme.colorScheme.primary,
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedBorderColor = AdminPrimary,
+            unfocusedBorderColor = AdminOutline,
+            cursorColor = AdminPrimary,
         ),
-        modifier = modifier.fillMaxWidth(),
     )
 }

@@ -5,115 +5,98 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DataColumn
+import com.gcc.admin.ui.components.DataTable
+import com.gcc.admin.ui.components.RouteStatusBadge
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.RouteManagementViewModel
-import com.gcc.shared.model.RouteStatus
 import org.koin.compose.koinInject
 
-/**
- * List screen showing all routes with a "Create Route" action button.
- */
 @Composable
 fun AdminRouteListScreen(
     onRouteClick: (Int) -> Unit,
-    onCreateRoute: () -> Unit,
-    viewModel: RouteManagementViewModel = koinInject(),
+    onNewRoute: () -> Unit,
 ) {
-    val state by viewModel.state.collectAsState()
+    val viewModel = koinInject<RouteManagementViewModel>()
+    val routes by viewModel.routes.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Routes",
-        subtitle = "Management",
-        scrollable = false,
-        actions = {
-            Button(
-                onClick = onCreateRoute,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Create Route")
-            }
-        },
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        // ── Header ──────────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+            ) {
+                Text("Routes", style = MaterialTheme.typography.headlineMedium)
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
-            } else {
-                DataTable(
-                    items = state.routes,
-                    columns = listOf(
-                        TableColumn(header = "Code", weight = 1f) { route ->
-                            Text(
-                                text = route.code,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                        TableColumn(header = "Name", weight = 1.5f) { route ->
-                            Text(
-                                text = route.displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Area", weight = 0.8f) { route ->
-                            Text(
-                                text = route.serviceAreaId.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        TableColumn(header = "Status", weight = 0.8f) { route ->
-                            StatusBadge(
-                                text = route.status.name,
-                                color = when (route.status) {
-                                    RouteStatus.DRAFT -> StatusWarning
-                                    RouteStatus.PUBLISHED -> StatusAvailable
-                                    RouteStatus.ARCHIVED -> StatusError
-                                },
-                            )
-                        },
-                        TableColumn(header = "Distance", weight = 0.8f) { route ->
-                            val meters = route.distanceMeters ?: 0.0
-                            val display = if (meters > 1000) {
-                                (meters / 1000).toInt().toString() + " km"
-                            } else {
-                                meters.toInt().toString() + " m"
-                            }
-                            Text(
-                                text = display,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Payout", weight = 0.8f) { route ->
-                            val payout = route.payoutAmount
-                            Text(
-                                text = if (payout != null) "$${payout / 100}" else "N/A",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                    ),
-                    onRowClick = { route -> onRouteClick(route.id) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+            }
+            Button(
+                onClick = {
+                    viewModel.startNewRoute()
+                    onNewRoute()
+                },
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(AdminTheme.spacing.xs))
+                Text("New Route")
             }
         }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
+        // ── Data Table ──────────────────────────────────────────────
+        DataTable(
+            items = routes,
+            columns = listOf(
+                DataColumn(header = "Code", weight = 0.8f) { route ->
+                    Text(route.code, style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Name", weight = 1.5f) { route ->
+                    Text(route.displayName, style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Status", weight = 0.8f) { route ->
+                    RouteStatusBadge(route.status)
+                },
+                DataColumn(header = "Distance", weight = 0.8f) { route ->
+                    val distText = route.distanceMeters?.let {
+                        String.format("%.1f mi", it / 1609.344)
+                    } ?: "--"
+                    Text(distText, style = MaterialTheme.typography.bodySmall)
+                },
+                DataColumn(header = "Duration", weight = 0.8f) { route ->
+                    Text(
+                        text = route.estimatedDurationMinutes?.let { "${it} min" } ?: "--",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                DataColumn(header = "Payout", weight = 0.7f) { route ->
+                    Text(
+                        text = route.payoutAmount?.let { "$${it / 100}" } ?: "--",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                DataColumn(header = "Checkpoints", weight = 0.7f) { route ->
+                    Text(route.checkpoints.size.toString(), style = MaterialTheme.typography.bodyMedium)
+                },
+            ),
+            onRowClick = { route -> onRouteClick(route.id) },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }

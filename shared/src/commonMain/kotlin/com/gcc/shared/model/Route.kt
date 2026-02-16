@@ -15,6 +15,7 @@ data class Route(
     val estimatedDurationMinutes: Int? = null,
     val payoutAmount: Int? = null,
     val checkpoints: List<RouteCheckpoint> = emptyList(),
+    val imageUrl: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant
 )

@@ -40,6 +40,7 @@ data class AdminRouteRequest(
     val estimatedDurationMinutes: Int? = null,
     val payoutAmount: Int? = null,
     val checkpoints: List<AdminCheckpointRequest> = emptyList(),
+    val imageUrl: String? = null,
 )
 
 @Serializable
@@ -51,6 +52,9 @@ data class AdminCheckpointRequest(
     val photoRequired: Boolean = false,
     val geofenceRadius: Double = 15.0,
     val type: String = "photo_point",
+    val instructions: String? = null,
+    val cameraMode: String? = null,
+    val bountyPrompts: List<String> = emptyList(),
 )
 
 @Serializable

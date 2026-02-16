@@ -1,35 +1,43 @@
 package com.gcc.admin.viewmodel
 
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
+import com.gcc.shared.model.AdminDailyStats
+import com.gcc.shared.model.AdminStatsResponse
+import com.gcc.shared.model.RevenueByArea
+import com.gcc.shared.model.SponsorMetrics
+import com.gcc.shared.model.WorkerMetrics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class AnalyticsState(
-    val stats: AdminStatsResponse? = null,
-    val revenueByArea: List<RevenueByArea> = emptyList(),
-    val workerMetrics: List<WorkerMetrics> = emptyList(),
-    val sponsorMetrics: List<SponsorMetrics> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null,
-)
+class AnalyticsViewModel(private val api: GccApiClient) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-class AnalyticsViewModel(
-    private val apiClient: GccApiClient,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _stats = MutableStateFlow<AdminStatsResponse?>(null)
+    val stats: StateFlow<AdminStatsResponse?> = _stats.asStateFlow()
 
-    private val _state = MutableStateFlow(AnalyticsState())
-    val state: StateFlow<AnalyticsState> = _state.asStateFlow()
+    private val _dailyStats = MutableStateFlow<List<AdminDailyStats>>(emptyList())
+    val dailyStats: StateFlow<List<AdminDailyStats>> = _dailyStats.asStateFlow()
+
+    private val _revenueByArea = MutableStateFlow<List<RevenueByArea>>(emptyList())
+    val revenueByArea: StateFlow<List<RevenueByArea>> = _revenueByArea.asStateFlow()
+
+    private val _workerMetrics = MutableStateFlow<List<WorkerMetrics>>(emptyList())
+    val workerMetrics: StateFlow<List<WorkerMetrics>> = _workerMetrics.asStateFlow()
+
+    private val _sponsorMetrics = MutableStateFlow<List<SponsorMetrics>>(emptyList())
+    val sponsorMetrics: StateFlow<List<SponsorMetrics>> = _sponsorMetrics.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
         loadAnalytics()
@@ -37,64 +45,25 @@ class AnalyticsViewModel(
 
     fun loadAnalytics() {
         scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _isLoading.value = true
+            _error.value = null
             try {
-                val statsResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/stats") {
-                    contentType(ContentType.Application.Json)
-                }
-                val statsResult: ApiResponse<AdminStatsResponse> = statsResponse.body()
-                if (statsResult.success) {
-                    _state.update { it.copy(stats = statsResult.data) }
-                }
+                val statsDeferred = async { api.getAdminStats() }
+                val dailyDeferred = async { api.getAdminDailyStats() }
+                val revenueDeferred = async { api.getRevenueByArea() }
+                val workerDeferred = async { api.getWorkerMetrics() }
+                val sponsorDeferred = async { api.getSponsorMetrics() }
+
+                _stats.value = statsDeferred.await()
+                _dailyStats.value = dailyDeferred.await()
+                _revenueByArea.value = revenueDeferred.await()
+                _workerMetrics.value = workerDeferred.await()
+                _sponsorMetrics.value = sponsorDeferred.await()
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Failed to load stats") }
+                _error.value = e.message ?: "Failed to load analytics"
+            } finally {
+                _isLoading.value = false
             }
         }
-
-        scope.launch {
-            try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/revenue-by-area") {
-                    contentType(ContentType.Application.Json)
-                }
-                val result: ApiResponse<List<RevenueByArea>> = response.body()
-                if (result.success && result.data != null) {
-                    _state.update { it.copy(revenueByArea = result.data) }
-                }
-            } catch (_: Exception) { }
-        }
-
-        scope.launch {
-            try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/worker-metrics") {
-                    contentType(ContentType.Application.Json)
-                }
-                val result: ApiResponse<List<WorkerMetrics>> = response.body()
-                if (result.success && result.data != null) {
-                    _state.update { it.copy(workerMetrics = result.data) }
-                }
-            } catch (_: Exception) { }
-        }
-
-        scope.launch {
-            try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/sponsor-metrics") {
-                    contentType(ContentType.Application.Json)
-                }
-                val result: ApiResponse<List<SponsorMetrics>> = response.body()
-                if (result.success && result.data != null) {
-                    _state.update { it.copy(sponsorMetrics = result.data, isLoading = false) }
-                }
-            } catch (_: Exception) {
-                _state.update { it.copy(isLoading = false) }
-            }
-        }
-    }
-
-    fun refresh() {
-        loadAnalytics()
-    }
-
-    fun clearError() {
-        _state.update { it.copy(error = null) }
     }
 }

@@ -1,5 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
@@ -8,7 +6,6 @@ plugins {
 }
 
 dependencies {
-    // Shared models + API client
     implementation(project(":shared"))
 
     // Compose Desktop
@@ -25,7 +22,10 @@ dependencies {
     implementation(libs.decompose.compose)
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
+
+    // KotlinX
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.datetime)
 
@@ -37,22 +37,5 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.gcc.admin.MainKt"
-
-        nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Deb, TargetFormat.Msi)
-            packageName = "GCC Admin"
-            packageVersion = "1.0.0"
-            description = "Global Community Cleaners - Admin Dashboard"
-
-            linux {
-                iconFile.set(project.file("src/main/resources/icon.png"))
-            }
-            macOS {
-                iconFile.set(project.file("src/main/resources/icon.icns"))
-            }
-            windows {
-                iconFile.set(project.file("src/main/resources/icon.ico"))
-            }
-        }
     }
 }

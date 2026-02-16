@@ -1,3 +1,3 @@
 package com.gcc.app.platform
 
-actual fun getApiBaseUrl(): String = "http://10.0.2.2:7310"
+actual fun getApiBaseUrl(): String = "http://100.67.196.13:7310"

@@ -86,7 +86,7 @@ class VolunteerService {
 
         CommunityReports.update({ CommunityReports.id eq cleanupData.reportId }) {
             it[CommunityReports.status] = CommunityReportStatus.RESOLVED.name.lowercase()
-            it[resolvedAt] = now
+            it[reviewedAt] = now
             it[updatedAt] = now
         }
 

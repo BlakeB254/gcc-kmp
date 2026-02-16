@@ -24,6 +24,7 @@ import com.gcc.app.ui.gamification.BadgeCard
 import com.gcc.app.ui.gamification.ProfileCard
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.padTwo
+import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ProfileViewModel
 import org.koin.compose.koinInject
 
@@ -35,6 +36,7 @@ fun ProfileScreen(
     onSettingsClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<ProfileViewModel>()
+    val shareManager = koinInject<ShareManager>()
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
@@ -100,7 +102,17 @@ fun ProfileScreen(
                     worker = worker,
                     badges = uiState.badges,
                     streakDays = uiState.streakDays,
-                    onShareClick = { /* TODO: native share */ },
+                    onShareClick = {
+                        val badgeCount = uiState.badges.count { it.isUnlocked }
+                        shareManager.shareText(
+                            text = "I'm ${worker.name} on Global Community Cleaners! " +
+                                "${worker.stats.jobsCompleted} jobs completed, " +
+                                "$badgeCount badges earned. " +
+                                "Join the movement: https://globalcommunitycleaners.org" +
+                                (worker.referralCode?.let { "/refer/$it" } ?: ""),
+                            subject = "My GCC Profile",
+                        )
+                    },
                 )
 
                 Spacer(modifier = Modifier.height(21.dp)) // Fibonacci

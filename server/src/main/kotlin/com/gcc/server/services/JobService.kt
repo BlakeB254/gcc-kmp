@@ -5,9 +5,6 @@ import com.gcc.server.db.tables.Jobs
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import org.jetbrains.exposed.sql.*
 
 class JobService {
@@ -15,14 +12,12 @@ class JobService {
     suspend fun getAll(
         status: JobStatus? = null,
         workerId: Int? = null,
-        routeId: Int? = null,
         limit: Int = 50,
         offset: Long = 0
     ): List<Job> = dbQuery {
         val query = Jobs.selectAll()
         status?.let { query.andWhere { Jobs.status eq it.name.lowercase() } }
         workerId?.let { query.andWhere { Jobs.workerId eq it } }
-        routeId?.let { query.andWhere { Jobs.routeId eq it } }
 
         query
             .orderBy(Jobs.createdAt, SortOrder.DESC)
@@ -49,10 +44,6 @@ class JobService {
         Jobs.selectAll().where { Jobs.status eq status.name.lowercase() }.count()
     }
 
-    /**
-     * Claim an available job for a worker. Sets status to CLAIMED.
-     * Validates: job exists, job is currently AVAILABLE.
-     */
     suspend fun claimJob(jobId: Int, workerId: Int): Job = dbQuery {
         val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
             ?: throw IllegalArgumentException("Job not found")
@@ -72,10 +63,6 @@ class JobService {
         Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()
     }
 
-    /**
-     * Start a claimed job. Sets status to IN_PROGRESS.
-     * Validates: job exists, is CLAIMED, and belongs to the requesting worker.
-     */
     suspend fun startJob(jobId: Int, workerId: Int): Job = dbQuery {
         val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
             ?: throw IllegalArgumentException("Job not found")
@@ -97,10 +84,6 @@ class JobService {
         Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()
     }
 
-    /**
-     * Complete an in-progress job. Sets status to COMPLETED and calculates duration.
-     * Validates: job exists, is IN_PROGRESS, and belongs to the requesting worker.
-     */
     suspend fun completeJob(jobId: Int, workerId: Int): Job = dbQuery {
         val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
             ?: throw IllegalArgumentException("Job not found")
@@ -120,7 +103,6 @@ class JobService {
         Jobs.update({ Jobs.id eq jobId }) {
             it[status] = JobStatus.COMPLETED.name.lowercase()
             it[completedAt] = now
-            it[durationMinutes] = duration
             it[updatedAt] = now
         }
 
@@ -128,36 +110,33 @@ class JobService {
     }
 }
 
+/**
+ * Map a Jobs row to the shared Job model.
+ * Several model fields (routeId, fundingSource, bountyId, sponsorId, completionReport)
+ * don't exist in the production Drizzle schema and are defaulted to null.
+ */
 fun ResultRow.toJob(): Job = Job(
     id = this[Jobs.id],
     blockId = this[Jobs.blockId],
-    routeId = this[Jobs.routeId],
+    routeId = null, // not in production schema
     workerId = this[Jobs.workerId],
     status = enumValueOfOrDefault(this[Jobs.status]),
     timing = JobTiming(
         claimedAt = this[Jobs.claimedAt],
         startedAt = this[Jobs.startedAt],
         completedAt = this[Jobs.completedAt],
-        durationMinutes = this[Jobs.durationMinutes]
+        durationMinutes = null, // not in production schema
     ),
-    photos = this[Jobs.photos]?.let { urls ->
-        buildJsonArray { urls.forEach { add(JsonPrimitive(it)) } }
-    },
-    gpsPath = this[Jobs.gpsPath]?.let { path ->
-        buildJsonArray {
-            path.forEach { point ->
-                add(buildJsonArray { point.forEach { add(JsonPrimitive(it)) } })
-            }
-        }
-    },
-    payoutAmount = this[Jobs.payoutAmount],
+    photos = (this[Jobs.beforePhotos] ?: this[Jobs.afterPhotos]) as? kotlinx.serialization.json.JsonArray,
+    gpsPath = this[Jobs.gpsPath] as? kotlinx.serialization.json.JsonArray,
+    payoutAmount = this[Jobs.payoutAmount]?.toIntOrNull(),
     payoutStatus = this[Jobs.payoutStatus]?.let { enumValueOfOrDefault<TransactionStatus>(it) },
-    rating = this[Jobs.rating],
-    reviewNotes = this[Jobs.reviewNotes],
-    fundingSource = this[Jobs.fundingSource],
-    bountyId = this[Jobs.bountyId],
-    sponsorId = this[Jobs.sponsorId],
-    completionReport = this[Jobs.completionReport],
+    rating = this[Jobs.rating]?.toDoubleOrNull(),
+    reviewNotes = this[Jobs.ratingNotes],
+    fundingSource = null,     // not in production schema
+    bountyId = null,          // not in production schema
+    sponsorId = null,         // not in production schema
+    completionReport = null,  // not in production schema
     createdAt = this[Jobs.createdAt],
     updatedAt = this[Jobs.updatedAt]
 )

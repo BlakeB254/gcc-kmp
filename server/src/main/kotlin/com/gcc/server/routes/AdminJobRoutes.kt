@@ -15,7 +15,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 fun Route.adminJobRoutes() {
     val jobService = application.koinGet<JobService>()
@@ -30,11 +30,9 @@ fun Route.adminJobRoutes() {
                 try { enumValueOf<JobStatus>(it.uppercase()) } catch (_: Exception) { null }
             }
             val workerId = call.parameters["workerId"]?.toIntOrNull()
-            val routeId = call.parameters["routeId"]?.toIntOrNull()
             val jobs = jobService.getAll(
                 status = status,
                 workerId = workerId,
-                routeId = routeId,
                 limit = limit,
                 offset = offset,
             )
@@ -62,7 +60,7 @@ fun Route.adminJobRoutes() {
             val updated = dbQuery {
                 Jobs.update({ Jobs.id eq id }) {
                     it[status] = request.status.name.lowercase()
-                    it[reviewNotes] = request.reason
+                    it[ratingNotes] = request.reason
                     it[updatedAt] = now
                 }
                 Jobs.selectAll().where { Jobs.id eq id }

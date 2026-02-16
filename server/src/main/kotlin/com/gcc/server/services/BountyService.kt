@@ -211,14 +211,12 @@ class BountyService(
             require(now < expires) { "First-refusal window has expired" }
         }
 
-        // Create a job for this bounty
+        // Create a job for this bounty (blockId is required in schema, use 0 as placeholder)
         val jobId = Jobs.insert {
+            it[blockId] = 0
             it[status] = JobStatus.CLAIMED.name.lowercase()
-            it[workerId] = observerId
-            it[payoutAmount] = bounty.amount
-            it[fundingSource] = "bounty"
-            it[Jobs.bountyId] = bountyId
-            it[Jobs.sponsorId] = bounty.posterId
+            it[Jobs.workerId] = observerId
+            it[payoutAmount] = bounty.amount.toString()
             it[claimedAt] = now
             it[createdAt] = now
             it[updatedAt] = now
@@ -270,12 +268,10 @@ class BountyService(
 
         val now = Clock.System.now()
         val jobId = Jobs.insert {
+            it[blockId] = 0
             it[status] = JobStatus.CLAIMED.name.lowercase()
             it[Jobs.workerId] = workerId
-            it[payoutAmount] = bounty.amount
-            it[fundingSource] = "bounty"
-            it[Jobs.bountyId] = bountyId
-            it[Jobs.sponsorId] = if (bounty.posterType == PosterType.SPONSOR) bounty.posterId else null
+            it[payoutAmount] = bounty.amount.toString()
             it[claimedAt] = now
             it[createdAt] = now
             it[updatedAt] = now

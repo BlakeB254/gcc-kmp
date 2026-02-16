@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalUriHandler
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -529,13 +530,15 @@ private fun CompletionPhase(
             }
         }
 
-        // Download PDF placeholder
+        // Download PDF report
         item {
+            val pdfUrl = cleanup?.pdfUrl
+            val uriHandler = LocalUriHandler.current
             GccButton(
                 text = "Download PDF Report",
-                onClick = { /* placeholder */ },
+                onClick = { pdfUrl?.let { uriHandler.openUri(it) } },
                 variant = GccButtonVariant.OUTLINED,
-                enabled = cleanup?.pdfUrl != null,
+                enabled = pdfUrl != null,
             )
         }
 

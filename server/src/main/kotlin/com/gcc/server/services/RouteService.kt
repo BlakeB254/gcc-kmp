@@ -69,23 +69,26 @@ fun ResultRow.toRoute(): Route = Route(
     serviceAreaId = this[Routes.serviceAreaId],
     geometry = this[Routes.geometry],
     status = enumValueOfOrDefault(this[Routes.status]),
-    distanceMeters = this[Routes.distanceMeters],
-    estimatedDurationMinutes = this[Routes.estimatedDurationMinutes],
-    payoutAmount = this[Routes.payoutAmount],
+    distanceMeters = this[Routes.lengthMeters]?.toDoubleOrNull(),
+    estimatedDurationMinutes = this[Routes.estimatedMinutes]?.toIntOrNull(),
+    payoutAmount = this[Routes.payoutAmount]?.toIntOrNull(),
     checkpoints = emptyList(), // populated by service after batch-loading
     createdAt = this[Routes.createdAt],
     updatedAt = this[Routes.updatedAt]
 )
 
-fun ResultRow.toCheckpoint(): RouteCheckpoint = RouteCheckpoint(
-    id = this[RouteCheckpoints.id],
-    name = this[RouteCheckpoints.name],
-    sequenceOrder = this[RouteCheckpoints.sequenceOrder],
-    coordinates = Coordinates(
-        lng = this[RouteCheckpoints.lng],
-        lat = this[RouteCheckpoints.lat]
-    ),
-    photoRequired = this[RouteCheckpoints.photoRequired],
-    geofenceRadius = this[RouteCheckpoints.geofenceRadius],
-    type = enumValueOfOrDefault(this[RouteCheckpoints.type])
-)
+fun ResultRow.toCheckpoint(): RouteCheckpoint {
+    val coords = this[RouteCheckpoints.coordinates]
+    return RouteCheckpoint(
+        id = this[RouteCheckpoints.id],
+        name = this[RouteCheckpoints.name],
+        sequenceOrder = this[RouteCheckpoints.sequenceOrder],
+        coordinates = Coordinates(
+            lng = coords.getOrElse(0) { 0.0 },
+            lat = coords.getOrElse(1) { 0.0 }
+        ),
+        photoRequired = this[RouteCheckpoints.photoRequired],
+        geofenceRadius = this[RouteCheckpoints.geofenceRadius]?.toDoubleOrNull() ?: 15.0,
+        type = enumValueOfOrDefault(this[RouteCheckpoints.type])
+    )
+}

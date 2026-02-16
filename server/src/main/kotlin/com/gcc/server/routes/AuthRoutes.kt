@@ -6,7 +6,7 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 fun Routing.authRoutes() {
     val authService = koinGet<AuthService>()

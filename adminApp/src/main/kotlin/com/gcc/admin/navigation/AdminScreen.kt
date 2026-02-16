@@ -24,4 +24,5 @@ sealed class AdminScreen {
     @Serializable data object FeedbackList : AdminScreen()
     @Serializable data object AddressChanges : AdminScreen()
     @Serializable data object Settings : AdminScreen()
+    @Serializable data object LiveTracking : AdminScreen()
 }

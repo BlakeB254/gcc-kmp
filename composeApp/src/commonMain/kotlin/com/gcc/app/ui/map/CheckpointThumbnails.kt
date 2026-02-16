@@ -41,6 +41,10 @@ fun CheckpointThumbnail(
                 CheckpointType.ROUTE_END -> drawEndScene()
                 CheckpointType.PHOTO_POINT -> drawPhotoPointScene(sequenceNumber)
                 CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
+                CheckpointType.RECORD -> drawPhotoPointScene(sequenceNumber)
+                CheckpointType.CLEAN -> drawStartScene()
+                CheckpointType.VERIFY -> drawEndScene()
+                CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene(sequenceNumber)
             }
         }
     }
@@ -71,6 +75,10 @@ fun RouteThumbnail(
                 CheckpointType.ROUTE_END -> drawEndScene()
                 CheckpointType.PHOTO_POINT -> drawPhotoPointScene(1)
                 CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
+                CheckpointType.RECORD -> drawPhotoPointScene(1)
+                CheckpointType.CLEAN -> drawStartScene()
+                CheckpointType.VERIFY -> drawEndScene()
+                CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene(1)
             }
         }
     }

@@ -45,6 +45,14 @@ private val spotVolunteerPattern = Regex("^/api/spots/(\\d+)/volunteer$")
 private val blockIdPattern = Regex("^/api/blocks/(\\d+)$")
 private val adminWorkerIdPattern = Regex("^/api/admin/workers/(\\d+)$")
 private val adminWorkerActionPattern = Regex("^/api/admin/workers/(\\d+)/(verify|role)$")
+private val adminRouteIdPattern = Regex("^/api/admin/routes/(\\d+)$")
+private val adminBlockIdPattern = Regex("^/api/admin/blocks/(\\d+)$")
+private val adminBountyActionPattern = Regex("^/api/admin/bounties/(\\d+)/(close|expire)$")
+private val adminDisputeActionPattern = Regex("^/api/admin/disputes/(\\d+)/resolve$")
+private val adminJobStatusPattern = Regex("^/api/admin/jobs/(\\d+)/status$")
+private val bountyAcceptPattern = Regex("^/api/bounties/(\\d+)/accept$")
+private val spotVolunteerCompletePattern = Regex("^/api/spots/(\\d+)/volunteer/(\\d+)/complete$")
+private val adminSponsorIdPattern = Regex("^/api/admin/sponsors/(\\d+)$")
 
 /**
  * Creates a Ktor [MockEngine] that returns canned demo data for every API
@@ -106,6 +114,12 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
             respondApi(json.encodeToString(DemoData.demoFeedItems))
 
         // ── Bounties (actions first) ───────────────────────────
+        bountyAcceptPattern.matches(path) -> {
+            val id = bountyAcceptPattern.find(path)!!.groupValues[1].toInt()
+            val bounty = DemoData.demoBounties.find { it.id == id } ?: DemoData.demoBounties.first()
+            respondApi(json.encodeToString(bounty.copy(status = BountyStatus.CLAIMED, claimedBy = 1)))
+        }
+
         bountyClaimPattern.matches(path) -> {
             val id = bountyClaimPattern.find(path)!!.groupValues[1].toInt()
             val bounty = DemoData.demoBounties.find { it.id == id } ?: DemoData.demoBounties.first()
@@ -143,6 +157,9 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
             respondApi(json.encodeToString(DemoData.demoBadges))
 
         // ── Spots / Volunteer ──────────────────────────────────
+        spotVolunteerCompletePattern.matches(path) ->
+            respondApi(json.encodeToString(DemoData.demoVolunteerCleanup))
+
         spotVolunteerPattern.matches(path) ->
             respondApi(json.encodeToString(DemoData.demoVolunteerCleanup))
 
@@ -202,8 +219,72 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
         path == "/api/admin/bounties" ->
             respondApi(json.encodeToString(DemoData.demoBounties))
 
+        // ── Admin Analytics (expanded) ──────────────────────────────
+        path == "/api/admin/analytics/daily" ->
+            respondApi(json.encodeToString(DemoData.demoDailyStats))
+
+        path == "/api/admin/analytics/revenue-by-area" ->
+            respondApi(json.encodeToString(DemoData.demoRevenueByArea))
+
+        path == "/api/admin/analytics/worker-metrics" ->
+            respondApi(json.encodeToString(DemoData.demoWorkerMetrics))
+
+        path == "/api/admin/analytics/sponsor-metrics" ->
+            respondApi(json.encodeToString(DemoData.demoSponsorMetrics))
+
+        // ── Admin Disputes ──────────────────────────────────────────
+        adminDisputeActionPattern.matches(path) ->
+            respondApi(json.encodeToString(DemoData.demoDisputeList.first()))
+
+        path == "/api/admin/disputes" ->
+            respondApi(json.encodeToString(DemoData.demoDisputeList))
+
+        // ── Admin Route mutations ───────────────────────────────────
+        adminRouteIdPattern.matches(path) -> {
+            val id = adminRouteIdPattern.find(path)!!.groupValues[1].toInt()
+            val route = DemoData.demoRoutes.find { it.id == id }
+            if (route != null) respondApi(json.encodeToString(route))
+            else respondNotFound()
+        }
+
+        // ── Admin Block mutations ───────────────────────────────────
+        adminBlockIdPattern.matches(path) -> {
+            val id = adminBlockIdPattern.find(path)!!.groupValues[1].toInt()
+            val block = DemoData.demoBlocks.find { it.id == id }
+            if (block != null) respondApi(json.encodeToString(block))
+            else respondNotFound()
+        }
+
+        // ── Admin Bounty actions ────────────────────────────────────
+        adminBountyActionPattern.matches(path) -> {
+            val id = adminBountyActionPattern.find(path)!!.groupValues[1].toInt()
+            val bounty = DemoData.demoBounties.find { it.id == id } ?: DemoData.demoBounties.first()
+            respondApi(json.encodeToString(bounty.copy(status = BountyStatus.CANCELLED)))
+        }
+
+        // ── Admin Job status ────────────────────────────────────────
+        adminJobStatusPattern.matches(path) ->
+            respondApi(json.encodeToString(DemoData.demoActiveJob))
+
+        // ── Admin Sponsor detail ────────────────────────────────────
+        adminSponsorIdPattern.matches(path) -> {
+            val id = adminSponsorIdPattern.find(path)!!.groupValues[1].toInt()
+            val sponsor = DemoData.demoSponsorList.find { it.id == id }
+            if (sponsor != null) respondApi(json.encodeToString(sponsor))
+            else respondNotFound()
+        }
+
+        // ── Admin Feedback ──────────────────────────────────────────
+        path == "/api/admin/feedback" ->
+            respondApi(json.encodeToString(DemoData.demoFeedbackList))
+
+        // ── Admin Address Changes ───────────────────────────────────
+        path == "/api/admin/address-changes" ->
+            respondApi(json.encodeToString(DemoData.demoAddressChanges))
+
+        // ── Admin Service Areas (list) ──────────────────────────────
         path == "/api/admin/service-areas" ->
-            respondApi(json.encodeToString(DemoData.demoServiceArea))
+            respondApi(json.encodeToString(listOf(DemoData.demoServiceArea)))
 
         path.startsWith("/api/admin/") ->
             respondApi("""[]""")

@@ -7,7 +7,7 @@ import com.gcc.shared.model.JobStatus
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 /**
  * Public job endpoints — read-only queries.
@@ -27,12 +27,10 @@ fun Routing.jobRoutes() {
                 try { JobStatus.valueOf(it.uppercase()) } catch (_: Exception) { null }
             }
             val workerId = call.parameters["worker_id"]?.toIntOrNull()
-            val routeId = call.parameters["route_id"]?.toIntOrNull()
 
             val jobs = jobService.getAll(
                 status = status,
                 workerId = workerId,
-                routeId = routeId,
                 limit = limit,
                 offset = offset
             )

@@ -4,6 +4,7 @@ import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.Workers
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import org.jetbrains.exposed.sql.*
 
 class WorkerService {
@@ -25,17 +26,25 @@ class WorkerService {
             .firstOrNull()?.toWorker()
     }
 
-    suspend fun getPasswordHash(email: String): String? = dbQuery {
-        Workers.select(Workers.passwordHash)
+    /**
+     * Returns the salt and hash for Payload CMS-style authentication.
+     * Production DB uses separate `salt` and `hash` columns (SHA-256 based).
+     */
+    suspend fun getAuthCredentials(email: String): Pair<String, String>? = dbQuery {
+        Workers.select(Workers.salt, Workers.hash)
             .where { Workers.email eq email }
-            .firstOrNull()?.get(Workers.passwordHash)
+            .firstOrNull()?.let { row ->
+                val salt = row[Workers.salt] ?: return@let null
+                val hash = row[Workers.hash] ?: return@let null
+                Pair(salt, hash)
+            }
     }
 
     suspend fun count(): Long = dbQuery {
         Workers.selectAll().count()
     }
 
-    /** Top workers by jobs completed (from denormalized stats JSONB). */
+    /** Top workers by jobs completed (from denormalized flat stats columns). */
     suspend fun getLeaderboard(limit: Int = 10): List<Worker> = dbQuery {
         Workers.selectAll()
             .orderBy(Workers.createdAt, SortOrder.ASC)
@@ -47,7 +56,7 @@ class WorkerService {
 }
 
 // ---------------------------------------------------------------------------
-// ResultRow → shared model mapping
+// ResultRow -> shared model mapping (flat columns -> nested model objects)
 // ---------------------------------------------------------------------------
 fun ResultRow.toWorker(): Worker = Worker(
     id = this[Workers.id],
@@ -55,16 +64,42 @@ fun ResultRow.toWorker(): Worker = Worker(
     email = this[Workers.email],
     phone = this[Workers.phone],
     emailVerified = this[Workers.emailVerified],
-    address = this[Workers.address],
-    verification = this[Workers.verification],
-    stripe = this[Workers.stripe],
-    stats = this[Workers.stats],
-    earlyAdopterTier = enumValueOfOrDefault(this[Workers.earlyAdopterTier]),
-    role = this[Workers.role],
+    address = WorkerAddress(
+        street = this[Workers.addressStreet],
+        city = this[Workers.addressCity],
+        state = this[Workers.addressState],
+        zip = this[Workers.addressZip],
+        neighborhood = this[Workers.addressNeighborhood],
+        isNorthLawndale = this[Workers.addressIsNorthLawndale],
+    ),
+    verification = WorkerVerification(
+        status = enumValueOfOrDefault(this[Workers.verificationStatus] ?: "pending"),
+        governmentIdStatus = enumValueOfOrDefault(this[Workers.verificationGovernmentIdStatus] ?: "pending"),
+        proofOfAddressStatus = enumValueOfOrDefault(this[Workers.verificationProofOfAddressStatus] ?: "pending"),
+        reviewNotes = this[Workers.verificationReviewNotes],
+    ),
+    stripe = WorkerStripe(
+        accountId = this[Workers.stripeAccountId],
+        onboardingStatus = enumValueOfOrDefault(this[Workers.stripeOnboardingStatus] ?: "not_started"),
+        instantPayoutsEnabled = this[Workers.stripeInstantPayoutsEnabled],
+        defaultPayoutMethod = this[Workers.stripeDefaultPayoutMethod] ?: "standard",
+    ),
+    stats = WorkerStats(
+        jobsCompleted = this[Workers.statsJobsCompleted]?.toIntOrNull() ?: 0,
+        totalEarnings = this[Workers.statsTotalEarnings]?.toIntOrNull() ?: 0,
+        averageRating = this[Workers.statsAverageRating]?.toDoubleOrNull(),
+        lastJobAt = this[Workers.statsLastJobAt],
+    ),
+    earlyAdopterTier = enumValueOfOrDefault(this[Workers.earlyAdopterTier] ?: "standard"),
+    role = "worker", // not stored in production DB; admin role lives in JWT claims
     referralCode = this[Workers.referralCode],
-    notifications = this[Workers.notifications],
+    notifications = WorkerNotifications(
+        pushEnabled = this[Workers.notificationsPushEnabled],
+        smsEnabled = this[Workers.notificationsSmsEnabled],
+        emailEnabled = this[Workers.notificationsEmailEnabled],
+    ),
     createdAt = this[Workers.createdAt],
-    updatedAt = this[Workers.updatedAt]
+    updatedAt = this[Workers.updatedAt],
 )
 
 /** Safely parse a @SerialName-annotated enum from its serialized string value. */

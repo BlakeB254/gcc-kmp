@@ -2,222 +2,286 @@ package com.gcc.admin.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DetailRow
+import com.gcc.admin.ui.components.StatsCard
+import com.gcc.admin.ui.components.VerificationStatusBadge
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.WorkerManagementViewModel
-import com.gcc.shared.model.*
+import com.gcc.shared.model.UpdateWorkerRoleRequest
+import com.gcc.shared.model.UserRole
+import com.gcc.shared.model.VerificationStatus
+import com.gcc.shared.model.VerifyWorkerRequest
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
-/**
- * Detail screen for a single worker with actions for verification,
- * role management, and deletion.
- */
 @Composable
-fun AdminWorkerDetailScreen(
-    workerId: Int,
-    onBack: () -> Unit,
-    viewModel: WorkerManagementViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var showRoleDropdown by remember { mutableStateOf(false) }
+fun AdminWorkerDetailScreen(workerId: Int, onBack: () -> Unit) {
+    val viewModel = koinInject<WorkerManagementViewModel>()
+    val workers by viewModel.workers.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    LaunchedEffect(workerId) {
-        viewModel.selectWorker(workerId)
+    val worker = remember(workers, workerId) {
+        workers.find { it.id == workerId }
     }
 
-    AdminScaffold(
-        title = "Worker Detail",
-        subtitle = "Workers",
-        actions = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
+    var selectedRole by remember { mutableStateOf<UserRole?>(null) }
+    var roleExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
     ) {
-        val worker = state.selectedWorker
+        // ── Header ──────────────────────────────────────────────────
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            }
+            Text("Worker Detail", style = MaterialTheme.typography.headlineMedium)
+            if (isLoading) {
+                Spacer(Modifier.width(AdminTheme.spacing.sm))
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
         if (worker == null) {
             Box(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                contentAlignment = androidx.compose.ui.Alignment.Center,
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                if (isLoading) {
+                    CircularProgressIndicator()
+                } else {
+                    Text("Worker not found", style = MaterialTheme.typography.bodyLarge, color = AdminOnSurfaceVariant)
+                }
             }
         } else {
-            Column(modifier = Modifier.padding(24.dp)) {
-                if (state.error != null) {
-                    Text(
-                        text = state.error ?: "",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxWidth(),
+            // ── Info + Stats Row ────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
+            ) {
+                // Left: Worker Info
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = AdminTheme.elevation.card,
                 ) {
-                    // Worker Info Panel
-                    DetailPanel(
-                        title = "Worker Information",
-                        items = listOf(
-                            "ID" to worker.id.toString(),
-                            "Name" to worker.name,
-                            "Email" to worker.email,
-                            "Phone" to worker.phone,
-                            "Role" to worker.role,
-                            "Early Adopter Tier" to worker.earlyAdopterTier.name,
-                            "Referral Code" to (worker.referralCode ?: "N/A"),
-                            "Joined" to worker.createdAt.toString().take(10),
-                        ),
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        // Address Panel
-                        DetailPanel(
-                            title = "Address",
-                            items = listOf(
-                                "Street" to worker.address.street,
-                                "City" to worker.address.city,
-                                "State" to worker.address.state,
-                                "ZIP" to worker.address.zip,
-                                "Neighborhood" to (worker.address.neighborhood ?: "N/A"),
-                            ),
+                    Column(
+                        modifier = Modifier.padding(AdminTheme.spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs),
+                    ) {
+                        Text("Worker Information", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(AdminTheme.spacing.sm))
+                        DetailRow("Name", worker.name)
+                        DetailRow("Email", worker.email)
+                        DetailRow("Phone", worker.phone)
+                        DetailRow(
+                            "Address",
+                            "${worker.address.street}, ${worker.address.city}, ${worker.address.state} ${worker.address.zip}",
                         )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Verification Panel
-                        DetailPanel(
-                            title = "Verification",
-                            items = listOf(
-                                "Overall Status" to worker.verification.status.name,
-                                "Government ID" to worker.verification.governmentIdStatus.name,
-                                "Proof of Address" to worker.verification.proofOfAddressStatus.name,
-                                "Review Notes" to (worker.verification.reviewNotes ?: "None"),
-                            ),
+                        val registeredDate = worker.createdAt.toLocalDateTime(TimeZone.currentSystemDefault())
+                        DetailRow(
+                            "Registered",
+                            "${registeredDate.monthNumber}/${registeredDate.dayOfMonth}/${registeredDate.year}",
                         )
+                        DetailRow("Referral Code", worker.referralCode ?: "--")
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Stats Panel
-                DetailPanel(
-                    title = "Statistics",
-                    items = listOf(
-                        "Jobs Completed" to worker.stats.jobsCompleted.toString(),
-                        "Total Earnings" to ("$" + (worker.stats.totalEarnings / 100).toString()),
-                        "Average Rating" to (worker.stats.averageRating?.toString() ?: "N/A"),
-                        "Last Job" to (worker.stats.lastJobAt?.toString()?.take(10) ?: "Never"),
-                    ),
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Action Buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Verify Button
-                    if (worker.verification.status != VerificationStatus.APPROVED) {
-                        Button(
-                            onClick = {
-                                viewModel.verifyWorker(
-                                    worker.id,
-                                    VerifyWorkerRequest(
-                                        status = VerificationStatus.APPROVED,
-                                        governmentIdStatus = DocumentStatus.APPROVED,
-                                        proofOfAddressStatus = DocumentStatus.APPROVED,
-                                    ),
-                                )
-                            },
-                            enabled = !state.isLoading,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StatusAvailable,
-                            ),
-                        ) {
-                            Text("Approve")
-                        }
+                // Right: Stats Cards
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                    ) {
+                        StatsCard(
+                            title = "Jobs Completed",
+                            value = worker.stats.jobsCompleted.toString(),
+                            icon = Icons.Default.CheckCircle,
+                            modifier = Modifier.weight(1f),
+                        )
+                        StatsCard(
+                            title = "Total Earnings",
+                            value = "$${worker.stats.totalEarnings / 100}",
+                            icon = Icons.Default.Favorite,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-
-                    // Reject Button
-                    if (worker.verification.status != VerificationStatus.REJECTED) {
-                        Button(
-                            onClick = {
-                                viewModel.verifyWorker(
-                                    worker.id,
-                                    VerifyWorkerRequest(status = VerificationStatus.REJECTED),
-                                )
-                            },
-                            enabled = !state.isLoading,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StatusError,
-                            ),
-                        ) {
-                            Text("Reject")
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                    ) {
+                        StatsCard(
+                            title = "Average Rating",
+                            value = worker.stats.averageRating?.let { String.format("%.1f", it) } ?: "--",
+                            icon = Icons.Default.Star,
+                            modifier = Modifier.weight(1f),
+                        )
+                        StatsCard(
+                            title = "Tier",
+                            value = worker.earlyAdopterTier.name.lowercase().replaceFirstChar { it.uppercase() },
+                            icon = Icons.Default.ThumbUp,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
+                }
+            }
 
-                    // Role Dropdown
-                    Box {
-                        OutlinedButton(onClick = { showRoleDropdown = true }) {
-                            Text("Change Role")
-                        }
-                        DropdownMenu(
-                            expanded = showRoleDropdown,
-                            onDismissRequest = { showRoleDropdown = false },
-                        ) {
-                            UserRole.entries.forEach { role ->
-                                DropdownMenuItem(
-                                    text = { Text(role.name) },
-                                    onClick = {
-                                        viewModel.updateRole(worker.id, role)
-                                        showRoleDropdown = false
-                                    },
+            // ── Verification Section ────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = AdminTheme.elevation.card,
+            ) {
+                Column(
+                    modifier = Modifier.padding(AdminTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                ) {
+                    Text("Verification", style = MaterialTheme.typography.titleMedium)
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                            ) {
+                                Text("Overall:", style = MaterialTheme.typography.bodyMedium, color = AdminOnSurfaceVariant)
+                                VerificationStatusBadge(worker.verification.status)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                            ) {
+                                Text("Gov ID:", style = MaterialTheme.typography.bodySmall, color = AdminOnSurfaceVariant)
+                                Text(
+                                    worker.verification.governmentIdStatus.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                            ) {
+                                Text("Address Proof:", style = MaterialTheme.typography.bodySmall, color = AdminOnSurfaceVariant)
+                                Text(
+                                    worker.verification.proofOfAddressStatus.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.bodySmall,
                                 )
                             }
                         }
+
+                        Spacer(Modifier.weight(1f))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm)) {
+                            Button(
+                                onClick = {
+                                    viewModel.verifyWorker(
+                                        worker.id,
+                                        VerifyWorkerRequest(status = VerificationStatus.APPROVED),
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = AdminSuccess),
+                                enabled = worker.verification.status != VerificationStatus.APPROVED,
+                            ) {
+                                Text("Verify")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.verifyWorker(
+                                        worker.id,
+                                        VerifyWorkerRequest(status = VerificationStatus.REJECTED),
+                                    )
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = AdminError),
+                                enabled = worker.verification.status != VerificationStatus.REJECTED,
+                            ) {
+                                Text("Reject")
+                            }
+                        }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.weight(1f))
+            // ── Role Management ─────────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = AdminTheme.elevation.card,
+            ) {
+                Column(
+                    modifier = Modifier.padding(AdminTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                ) {
+                    Text("Role Management", style = MaterialTheme.typography.titleMedium)
 
-                    // Delete Button
-                    Button(
-                        onClick = { showDeleteDialog = true },
-                        enabled = !state.isLoading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                        ),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
                     ) {
-                        Text("Delete Worker")
+                        Text(
+                            "Current role: ${worker.role}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AdminOnSurfaceVariant,
+                        )
+
+                        Box {
+                            OutlinedButton(onClick = { roleExpanded = true }) {
+                                Text(selectedRole?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Select Role")
+                            }
+                            DropdownMenu(
+                                expanded = roleExpanded,
+                                onDismissRequest = { roleExpanded = false },
+                            ) {
+                                UserRole.entries.forEach { role ->
+                                    DropdownMenuItem(
+                                        text = { Text(role.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                        onClick = {
+                                            selectedRole = role
+                                            roleExpanded = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        selectedRole?.let { role ->
+                            Button(
+                                onClick = {
+                                    viewModel.updateRole(worker.id, UpdateWorkerRoleRequest(role = role))
+                                    selectedRole = null
+                                },
+                            ) {
+                                Text("Update Role")
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-
-    // Delete Confirmation Dialog
-    if (showDeleteDialog) {
-        ConfirmDialog(
-            title = "Delete Worker",
-            message = "Are you sure you want to delete this worker? This action cannot be undone.",
-            confirmText = "Delete",
-            onConfirm = {
-                viewModel.deleteWorker(workerId)
-                showDeleteDialog = false
-                onBack()
-            },
-            onDismiss = { showDeleteDialog = false },
-        )
     }
 }

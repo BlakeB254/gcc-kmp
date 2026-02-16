@@ -8,6 +8,8 @@ import com.arkivanov.decompose.defaultComponentContext
 import com.gcc.app.di.appModule
 import com.gcc.app.di.demoAppModule
 import com.gcc.app.navigation.RootComponent
+import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.ShareManager
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
@@ -15,6 +17,10 @@ import org.koin.core.context.startKoin
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize platform providers that need Android context
+        LocationProvider.initContext(this)
+        ShareManager.initContext(this)
 
         val isDemo = intent.getBooleanExtra("GCC_DEMO", false)
             || System.getenv("GCC_DEMO") == "true"

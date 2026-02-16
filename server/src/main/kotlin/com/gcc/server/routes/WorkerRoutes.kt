@@ -8,7 +8,7 @@ import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 /**
  * Worker endpoints — public read-only queries.

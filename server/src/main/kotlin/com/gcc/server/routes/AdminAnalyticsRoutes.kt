@@ -6,7 +6,7 @@ import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 fun Route.adminAnalyticsRoutes() {
     val analyticsService = application.koinGet<AnalyticsService>()
@@ -36,6 +36,20 @@ fun Route.adminAnalyticsRoutes() {
             val limit = call.parameters["limit"]?.toIntOrNull() ?: 20
             val metrics = analyticsService.getSponsorMetrics(limit)
             call.respond(HttpStatusCode.OK, ApiResponse(data = metrics))
+        }
+
+        get("/activity") {
+            call.requireAdmin()
+            val limit = call.parameters["limit"]?.toIntOrNull() ?: 20
+            val activity = analyticsService.getActivity(limit)
+            call.respond(HttpStatusCode.OK, ApiResponse(data = activity))
+        }
+
+        get("/daily") {
+            call.requireAdmin()
+            val days = call.parameters["days"]?.toIntOrNull() ?: 30
+            val dailyStats = analyticsService.getDailyStats(days)
+            call.respond(HttpStatusCode.OK, ApiResponse(data = dailyStats))
         }
     }
 }

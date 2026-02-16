@@ -34,3 +34,8 @@ composeApp/signing.properties
 
 # Build artifacts fetched from MacBook
 builds/
+
+# Next.js site
+site/node_modules/
+site/.next/
+site/.env.local

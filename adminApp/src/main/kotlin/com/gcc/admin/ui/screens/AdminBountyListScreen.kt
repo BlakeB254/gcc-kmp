@@ -1,122 +1,125 @@
 package com.gcc.admin.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.BountyStatusBadge
+import com.gcc.admin.ui.components.DataColumn
+import com.gcc.admin.ui.components.DataTable
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.BountyManagementViewModel
-import com.gcc.shared.model.BountyStatus
+import com.gcc.shared.model.Bounty
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
-/**
- * List screen showing all bounties with status filtering.
- */
 @Composable
-fun AdminBountyListScreen(
-    onBountyClick: (Int) -> Unit,
-    viewModel: BountyManagementViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
+fun AdminBountyListScreen(onBountyClick: (Int) -> Unit) {
+    val viewModel = koinInject<BountyManagementViewModel>()
+    val bounties by viewModel.bounties.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Bounties",
-        subtitle = "Operations",
-        scrollable = false,
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            // Status filter chips
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp),
-            ) {
-                FilterChip(
-                    selected = state.statusFilter == null,
-                    onClick = { viewModel.setStatusFilter(null) },
-                    label = { Text("All") },
-                )
-                listOf(
-                    BountyStatus.OPEN,
-                    BountyStatus.CLAIMED,
-                    BountyStatus.IN_PROGRESS,
-                    BountyStatus.COMPLETED,
-                    BountyStatus.EXPIRED,
-                ).forEach { status ->
-                    FilterChip(
-                        selected = state.statusFilter == status,
-                        onClick = { viewModel.setStatusFilter(status) },
-                        label = { Text(status.name) },
-                    )
-                }
-            }
-
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                DataTable(
-                    items = state.bounties,
-                    columns = listOf(
-                        TableColumn(header = "ID", weight = 0.5f) { bounty ->
-                            Text(
-                                text = bounty.id.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Title", weight = 1.5f) { bounty ->
-                            Text(
-                                text = bounty.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Amount", weight = 0.8f) { bounty ->
-                            Text(
-                                text = "$" + (bounty.amount / 100).toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                        TableColumn(header = "Status", weight = 1f) { bounty ->
-                            StatusBadge(
-                                text = bounty.status.name,
-                                color = when (bounty.status) {
-                                    BountyStatus.OPEN -> StatusAvailable
-                                    BountyStatus.FIRST_REFUSAL -> StatusWarning
-                                    BountyStatus.CLAIMED -> StatusInProgress
-                                    BountyStatus.IN_PROGRESS -> StatusInProgress
-                                    BountyStatus.COMPLETED -> StatusCompleted
-                                    BountyStatus.EXPIRED -> StatusError
-                                    BountyStatus.CANCELLED -> StatusError
-                                },
-                            )
-                        },
-                        TableColumn(header = "Pledges", weight = 0.6f) { bounty ->
-                            Text(
-                                text = bounty.pledgeCount.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        TableColumn(header = "Expires", weight = 1f) { bounty ->
-                            Text(
-                                text = bounty.expiresAt?.toString()?.take(16) ?: "N/A",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    ),
-                    onRowClick = { bounty -> onBountyClick(bounty.id) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // -- Header ---------------------------------------------------------
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Bounties", style = MaterialTheme.typography.headlineMedium)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
         }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
+        // -- Table ----------------------------------------------------------
+        val columns = remember {
+            listOf(
+                DataColumn<Bounty>(
+                    header = "ID",
+                    weight = 0.5f,
+                    content = { bounty ->
+                        Text("#${bounty.id}", style = MaterialTheme.typography.bodyMedium)
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Title",
+                    weight = 2f,
+                    content = { bounty ->
+                        Text(bounty.title, style = MaterialTheme.typography.bodyMedium)
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Amount",
+                    weight = 0.8f,
+                    content = { bounty ->
+                        Text(
+                            text = "$${"%,d".format(bounty.amount / 100)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Status",
+                    weight = 1f,
+                    content = { bounty ->
+                        BountyStatusBadge(bounty.status)
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Location",
+                    weight = 1.2f,
+                    content = { bounty ->
+                        Text(
+                            text = bounty.communityArea ?: "N/A",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Pledges",
+                    weight = 0.6f,
+                    content = { bounty ->
+                        Text(
+                            text = bounty.pledgeCount.toString(),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                ),
+                DataColumn<Bounty>(
+                    header = "Created",
+                    weight = 0.9f,
+                    content = { bounty ->
+                        val local = bounty.createdAt
+                            .toLocalDateTime(TimeZone.currentSystemDefault())
+                        Text(
+                            text = "${local.monthNumber}/${local.dayOfMonth}/${local.year}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AdminOnSurfaceVariant,
+                        )
+                    },
+                ),
+            )
+        }
+
+        DataTable(
+            items = bounties,
+            columns = columns,
+            onRowClick = { bounty -> onBountyClick(bounty.id) },
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
     }
 }

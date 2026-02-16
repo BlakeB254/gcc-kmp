@@ -130,48 +130,79 @@ val AdminTypography = Typography(
 )
 
 // ── Shapes ───────────────────────────────────────────────────────────────────
+// Fibonacci-based radii: 3, 5, 8, 13, 21dp
 
 val AdminShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(6.dp),
-    medium = RoundedCornerShape(10.dp),
-    large = RoundedCornerShape(14.dp),
-    extraLarge = RoundedCornerShape(20.dp),
+    extraSmall = RoundedCornerShape(3.dp),
+    small = RoundedCornerShape(5.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(13.dp),
+    extraLarge = RoundedCornerShape(21.dp),
 )
 
-// ── Custom Spacing Tokens ────────────────────────────────────────────────────
+// ── Fibonacci Spacing Tokens: 3, 5, 8, 13, 21, 34, 55, 89dp ────────────────
 
 @Immutable
 data class AdminSpacing(
-    val xs: Dp = 4.dp,
+    val xxs: Dp = 3.dp,
+    val xs: Dp = 5.dp,
     val sm: Dp = 8.dp,
-    val md: Dp = 12.dp,
-    val lg: Dp = 16.dp,
-    val xl: Dp = 20.dp,
-    val xxl: Dp = 24.dp,
-    val xxxl: Dp = 32.dp,
-    val section: Dp = 40.dp,
+    val md: Dp = 13.dp,
+    val lg: Dp = 21.dp,
+    val xl: Dp = 34.dp,
+    val xxl: Dp = 55.dp,
+    val xxxl: Dp = 89.dp,
 )
 
-// ── Custom Elevation Tokens ──────────────────────────────────────────────────
+// ── Fibonacci-derived Component Dimensions ───────────────────────────────────
+
+@Immutable
+data class AdminDimensions(
+    val phi: Float = 1.618034f,
+    // Icons
+    val iconSm: Dp = 21.dp,
+    val iconMd: Dp = 34.dp,
+    val iconLg: Dp = 55.dp,
+    // Avatars
+    val avatarSm: Dp = 34.dp,
+    val avatarMd: Dp = 55.dp,
+    val avatarLg: Dp = 89.dp,
+    // Cards
+    val cardMinHeight: Dp = 89.dp,
+    val cardRadius: Dp = 13.dp,
+    // Buttons
+    val buttonHeight: Dp = 55.dp,
+    // Touch targets
+    val touchTarget: Dp = 55.dp,
+)
+
+// ── Fibonacci Elevation Scale: 0, 1, 2, 3, 5, 8, 13dp ──────────────────────
 
 @Immutable
 data class AdminElevation(
     val none: Dp = 0.dp,
+    val subtle: Dp = 1.dp,
     val card: Dp = 2.dp,
-    val raised: Dp = 4.dp,
-    val floating: Dp = 8.dp,
-    val overlay: Dp = 16.dp,
+    val raised: Dp = 3.dp,
+    val floating: Dp = 5.dp,
+    val overlay: Dp = 8.dp,
+    val modal: Dp = 13.dp,
 )
 
 // ── Composition Locals ───────────────────────────────────────────────────────
 
 val LocalAdminSpacing = staticCompositionLocalOf { AdminSpacing() }
+val LocalAdminDimensions = staticCompositionLocalOf { AdminDimensions() }
 val LocalAdminElevation = staticCompositionLocalOf { AdminElevation() }
 
-object AdminThemeTokens {
+// ── Theme Accessor Object ────────────────────────────────────────────────────
+
+object AdminTheme {
     val spacing: AdminSpacing
         @Composable get() = LocalAdminSpacing.current
+
+    val dimensions: AdminDimensions
+        @Composable get() = LocalAdminDimensions.current
 
     val elevation: AdminElevation
         @Composable get() = LocalAdminElevation.current
@@ -183,6 +214,7 @@ object AdminThemeTokens {
 fun AdminTheme(content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalAdminSpacing provides AdminSpacing(),
+        LocalAdminDimensions provides AdminDimensions(),
         LocalAdminElevation provides AdminElevation(),
     ) {
         MaterialTheme(

@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
@@ -23,6 +24,7 @@ import org.koin.dsl.module
 val demoAppModule = module {
     single<TokenManager> { DemoTokenManager() }
     single { LocationProvider() }
+    single { ShareManager() }
     single { createDemoApiClient() }
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)

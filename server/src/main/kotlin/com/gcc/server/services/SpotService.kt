@@ -5,6 +5,10 @@ import com.gcc.server.db.tables.Bounties
 import com.gcc.server.db.tables.CommunityReports
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.sql.*
 import kotlin.math.*
 
@@ -19,15 +23,18 @@ class SpotService {
         mediaUrls: List<String>,
     ): CommunityReport = dbQuery {
         val now = Clock.System.now()
+        val coordsJson = kotlinx.serialization.json.buildJsonArray {
+            add(JsonPrimitive(lng))
+            add(JsonPrimitive(lat))
+        }
         val id = CommunityReports.insert {
+            it[reporterType] = "worker"
             it[CommunityReports.reporterId] = reporterId
+            it[reporterName] = "" // filled by caller or trigger
             it[CommunityReports.type] = type.name.lowercase()
-            it[CommunityReports.lat] = lat
-            it[CommunityReports.lng] = lng
+            it[CommunityReports.coordinates] = listOf(lng, lat)
             it[CommunityReports.description] = description
-            it[CommunityReports.mediaUrls] = mediaUrls
             it[CommunityReports.status] = CommunityReportStatus.PENDING.name.lowercase()
-            it[CommunityReports.observerRewardPoints] = 10
             it[createdAt] = now
             it[updatedAt] = now
         }[CommunityReports.id]
@@ -70,7 +77,7 @@ class SpotService {
             it[CommunityReports.status] = status.name.lowercase()
             it[updatedAt] = now
             if (status == CommunityReportStatus.RESOLVED) {
-                it[resolvedAt] = now
+                it[reviewedAt] = now
             }
         }
         CommunityReports.selectAll().where { CommunityReports.id eq id }
@@ -98,23 +105,33 @@ class SpotService {
     }
 }
 
-fun ResultRow.toReport(): CommunityReport = CommunityReport(
-    id = this[CommunityReports.id],
-    reporterId = this[CommunityReports.reporterId],
-    type = enumValueOfOrDefault(this[CommunityReports.type]),
-    coordinates = Coordinates(lng = this[CommunityReports.lng], lat = this[CommunityReports.lat]),
-    description = this[CommunityReports.description],
-    mediaUrls = this[CommunityReports.mediaUrls],
-    status = enumValueOfOrDefault(this[CommunityReports.status]),
-    upvotes = this[CommunityReports.upvotes],
-    verifiedBy = this[CommunityReports.verifiedBy],
-    resolvedAt = this[CommunityReports.resolvedAt],
-    bountyId = this[CommunityReports.bountyId],
-    observerRewardPoints = this[CommunityReports.observerRewardPoints],
-    aiAnalysis = this[CommunityReports.aiAnalysis],
-    createdAt = this[CommunityReports.createdAt],
-    updatedAt = this[CommunityReports.updatedAt],
-)
+/**
+ * Map a CommunityReports row to the shared CommunityReport model.
+ * Fields that don't exist in the production Drizzle schema are defaulted.
+ */
+fun ResultRow.toReport(): CommunityReport {
+    val coords = this[CommunityReports.coordinates]
+    return CommunityReport(
+        id = this[CommunityReports.id],
+        reporterId = this[CommunityReports.reporterId],
+        type = enumValueOfOrDefault(this[CommunityReports.type]),
+        coordinates = Coordinates(
+            lng = coords.getOrElse(0) { 0.0 },
+            lat = coords.getOrElse(1) { 0.0 }
+        ),
+        description = this[CommunityReports.description],
+        mediaUrls = emptyList(), // mediaIds are integer refs, not URLs
+        status = enumValueOfOrDefault(this[CommunityReports.status]),
+        upvotes = this[CommunityReports.thankCount],
+        verifiedBy = this[CommunityReports.reviewedById],
+        resolvedAt = this[CommunityReports.reviewedAt],
+        bountyId = null,
+        observerRewardPoints = 0,
+        aiAnalysis = null,
+        createdAt = this[CommunityReports.createdAt],
+        updatedAt = this[CommunityReports.updatedAt],
+    )
+}
 
 /**
  * Haversine formula — distance in meters between two lat/lng points on Earth.

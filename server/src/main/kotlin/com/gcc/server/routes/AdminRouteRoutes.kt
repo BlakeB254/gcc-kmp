@@ -16,7 +16,7 @@ import io.ktor.server.routing.*
 import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 fun Route.adminRouteRoutes() {
     val routeService = application.koinGet<RouteService>()
@@ -49,9 +49,9 @@ fun Route.adminRouteRoutes() {
                     it[displayName] = request.displayName
                     it[serviceAreaId] = request.serviceAreaId
                     it[status] = "draft"
-                    it[distanceMeters] = request.distanceMeters
-                    it[estimatedDurationMinutes] = request.estimatedDurationMinutes
-                    it[payoutAmount] = request.payoutAmount
+                    it[lengthMeters] = request.distanceMeters?.toString()
+                    it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
+                    it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
                     it[createdAt] = now
                     it[updatedAt] = now
                 }[Routes.id]
@@ -61,11 +61,12 @@ fun Route.adminRouteRoutes() {
                         it[routeId] = id
                         it[name] = cp.name
                         it[sequenceOrder] = cp.sequenceOrder
-                        it[lat] = cp.lat
-                        it[lng] = cp.lng
+                        it[coordinates] = listOf(cp.lng, cp.lat)
                         it[photoRequired] = cp.photoRequired
-                        it[geofenceRadius] = cp.geofenceRadius
+                        it[geofenceRadius] = cp.geofenceRadius.toString()
                         it[type] = cp.type
+                        it[createdAt] = now
+                        it[updatedAt] = now
                     }
                 }
 
@@ -86,9 +87,9 @@ fun Route.adminRouteRoutes() {
                     it[code] = request.code
                     it[displayName] = request.displayName
                     it[serviceAreaId] = request.serviceAreaId
-                    it[distanceMeters] = request.distanceMeters
-                    it[estimatedDurationMinutes] = request.estimatedDurationMinutes
-                    it[payoutAmount] = request.payoutAmount
+                    it[lengthMeters] = request.distanceMeters?.toString()
+                    it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
+                    it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
                     it[updatedAt] = now
                 }
                 Routes.selectAll().where { Routes.id eq id }

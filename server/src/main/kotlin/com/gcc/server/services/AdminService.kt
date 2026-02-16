@@ -26,15 +26,18 @@ class AdminService(
         val existing = Workers.selectAll().where { Workers.id eq workerId }
             .firstOrNull()?.toWorker() ?: return@dbQuery null
 
-        val updatedVerification = existing.verification.copy(
-            status = status,
-            governmentIdStatus = governmentIdStatus ?: existing.verification.governmentIdStatus,
-            proofOfAddressStatus = proofOfAddressStatus ?: existing.verification.proofOfAddressStatus,
-            reviewNotes = reviewNotes ?: existing.verification.reviewNotes,
-        )
-
         Workers.update({ Workers.id eq workerId }) {
-            it[verification] = updatedVerification
+            it[verificationStatus] = status.name.lowercase()
+            governmentIdStatus?.let { govStatus ->
+                it[verificationGovernmentIdStatus] = govStatus.name.lowercase()
+            }
+            proofOfAddressStatus?.let { poaStatus ->
+                it[verificationProofOfAddressStatus] = poaStatus.name.lowercase()
+            }
+            reviewNotes?.let { notes ->
+                it[verificationReviewNotes] = notes
+            }
+            it[verificationReviewedAt] = now
             it[updatedAt] = now
         }
 
@@ -42,13 +45,10 @@ class AdminService(
             .firstOrNull()?.toWorker()
     }
 
-    /** Update a worker's role (admin promotion/demotion). */
+    /** Update a worker's role — role is managed via JWT claims, not a DB column. */
     suspend fun updateWorkerRole(workerId: Int, role: String): Worker? = dbQuery {
-        val now = Clock.System.now()
-        Workers.update({ Workers.id eq workerId }) {
-            it[Workers.role] = role
-            it[updatedAt] = now
-        }
+        // Role is not stored in the production DB; it's managed via JWT claims.
+        // This is a no-op for now until a role column is added via migration.
         Workers.selectAll().where { Workers.id eq workerId }
             .firstOrNull()?.toWorker()
     }
@@ -58,17 +58,14 @@ class AdminService(
         val now = Clock.System.now()
         var count = 0
         for (id in workerIds) {
-            val existing = Workers.selectAll().where { Workers.id eq id }
-                .firstOrNull()?.toWorker() ?: continue
-
-            val updatedVerification = existing.verification.copy(
-                status = VerificationStatus.APPROVED,
-                governmentIdStatus = DocumentStatus.APPROVED,
-                proofOfAddressStatus = DocumentStatus.APPROVED,
-            )
+            val exists = Workers.selectAll().where { Workers.id eq id }
+                .firstOrNull() ?: continue
 
             Workers.update({ Workers.id eq id }) {
-                it[verification] = updatedVerification
+                it[verificationStatus] = "approved"
+                it[verificationGovernmentIdStatus] = "approved"
+                it[verificationProofOfAddressStatus] = "approved"
+                it[verificationReviewedAt] = now
                 it[updatedAt] = now
             }
             count++
@@ -80,7 +77,12 @@ class AdminService(
     suspend fun updateWorkerAddress(workerId: Int, newAddress: WorkerAddress): Worker? = dbQuery {
         val now = Clock.System.now()
         Workers.update({ Workers.id eq workerId }) {
-            it[address] = newAddress
+            it[addressStreet] = newAddress.street
+            it[addressCity] = newAddress.city
+            it[addressState] = newAddress.state
+            it[addressZip] = newAddress.zip
+            newAddress.neighborhood?.let { n -> it[addressNeighborhood] = n }
+            newAddress.isNorthLawndale?.let { v -> it[addressIsNorthLawndale] = v }
             it[updatedAt] = now
         }
         Workers.selectAll().where { Workers.id eq workerId }
@@ -94,10 +96,10 @@ class AdminService(
         offset: Long = 0,
     ): List<Worker> = dbQuery {
         Workers.selectAll()
+            .andWhere { Workers.verificationStatus eq status.lowercase() }
             .orderBy(Workers.createdAt, SortOrder.DESC)
             .limit(limit).offset(offset)
             .map { it.toWorker() }
-            .filter { it.verification.status.name.equals(status, ignoreCase = true) }
     }
 
     /** Get all workers (admin list view with pagination). */

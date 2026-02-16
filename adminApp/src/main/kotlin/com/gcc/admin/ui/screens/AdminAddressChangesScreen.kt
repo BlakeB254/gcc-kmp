@@ -1,126 +1,111 @@
 package com.gcc.admin.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DataColumn
+import com.gcc.admin.ui.components.DataTable
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.AddressChangeViewModel
+import com.gcc.shared.model.AddressChangeRequest
 import org.koin.compose.koinInject
 
-/**
- * Screen showing workers with pending address changes.
- *
- * Each row shows the current and new address with approve/reject buttons.
- */
 @Composable
-fun AdminAddressChangesScreen(
-    viewModel: AddressChangeViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
+fun AdminAddressChangesScreen() {
+    val viewModel = koinInject<AddressChangeViewModel>()
+    val changes by viewModel.changes.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Address Changes",
-        subtitle = "System",
-        scrollable = false,
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            if (state.error != null) {
-                Text(
-                    text = state.error ?: "",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
-
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                DataTable(
-                    items = state.pendingChanges,
-                    columns = listOf(
-                        TableColumn(header = "Worker", weight = 1.2f) { change ->
-                            Column {
-                                Text(
-                                    text = change.workerName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = "ID: " + change.workerId.toString(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
-                        TableColumn(header = "Current Address", weight = 1.5f) { change ->
-                            Text(
-                                text = change.currentAddress.street + ", " +
-                                    change.currentAddress.city + " " +
-                                    change.currentAddress.zip,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        TableColumn(header = "New Address", weight = 1.5f) { change ->
-                            Text(
-                                text = change.newAddress.street + ", " +
-                                    change.newAddress.city + " " +
-                                    change.newAddress.zip,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Status", weight = 0.8f) { change ->
-                            StatusBadge(
-                                text = change.status.name,
-                                color = StatusWarning,
-                            )
-                        },
-                        TableColumn(header = "Actions", weight = 1.2f) { change ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { viewModel.approveChange(change.workerId) },
-                                    enabled = !state.isLoading,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = StatusAvailable,
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp),
-                                ) {
-                                    Text(
-                                        text = "Approve",
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                }
-                                Button(
-                                    onClick = { viewModel.rejectChange(change.workerId) },
-                                    enabled = !state.isLoading,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = StatusError,
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp),
-                                ) {
-                                    Text(
-                                        text = "Reject",
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                }
-                            }
-                        },
-                    ),
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // -- Header ---------------------------------------------------------
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Address Changes", style = MaterialTheme.typography.headlineMedium)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
         }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
+        // -- Table ----------------------------------------------------------
+        val columns = remember {
+            listOf(
+                DataColumn<AddressChangeRequest>(
+                    header = "Worker ID",
+                    weight = 0.7f,
+                    content = { change ->
+                        Text("#${change.workerId}", style = MaterialTheme.typography.bodyMedium)
+                    },
+                ),
+                DataColumn<AddressChangeRequest>(
+                    header = "Street",
+                    weight = 2f,
+                    content = { change ->
+                        Text(
+                            text = change.newAddress.street,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                ),
+                DataColumn<AddressChangeRequest>(
+                    header = "City / State / Zip",
+                    weight = 1.5f,
+                    content = { change ->
+                        Text(
+                            text = "${change.newAddress.city}, ${change.newAddress.state} ${change.newAddress.zip}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                ),
+                DataColumn<AddressChangeRequest>(
+                    header = "Neighborhood",
+                    weight = 1.2f,
+                    content = { change ->
+                        Text(
+                            text = change.newAddress.neighborhood ?: "N/A",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (change.newAddress.neighborhood != null)
+                                MaterialTheme.colorScheme.onSurface
+                            else AdminOnSurfaceVariant,
+                        )
+                    },
+                ),
+                DataColumn<AddressChangeRequest>(
+                    header = "Reason",
+                    weight = 1.5f,
+                    content = { change ->
+                        Text(
+                            text = change.reason ?: "N/A",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (change.reason != null)
+                                MaterialTheme.colorScheme.onSurface
+                            else AdminOnSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    },
+                ),
+            )
+        }
+
+        DataTable(
+            items = changes,
+            columns = columns,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
     }
 }

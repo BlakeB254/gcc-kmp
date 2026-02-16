@@ -32,6 +32,14 @@ val AdminOnSurfaceVariant = Color(0xFF9CA3AF)
 val AdminOutline = Color(0xFF4B5563)
 val AdminOutlineVariant = Color(0xFF374151)
 
+// ── Admin Dark Sidebar ───────────────────────────────────────────────────────
+val AdminNavBackground = Color(0xFF1E293B)     // slate-800
+val AdminNavSurface = Color(0xFF334155)         // slate-700
+val AdminNavSelected = Color(0xFF0F172A)        // slate-900
+val AdminNavText = Color(0xFFCBD5E1)           // slate-300
+val AdminNavTextActive = Color(0xFFFFFFFF)
+val AdminNavAccent = Color(0xFF22C55E)          // GCC green
+
 // ── Status Badge Colors ──────────────────────────────────────────────────────
 val StatusAvailable = Color(0xFF22C55E)
 val StatusInProgress = Color(0xFF3B82F6)
@@ -47,6 +55,11 @@ val StatusCompletedBg = Color(0x2614B8A6)
 val StatusErrorBg = Color(0x26EF4444)
 val StatusWarningBg = Color(0x26F59E0B)
 val StatusPendingBg = Color(0x268B5CF6)
+
+// ── Status Convenience Aliases ───────────────────────────────────────────────
+val AdminSuccess = Color(0xFF22C55E)
+val AdminWarning = Color(0xFFF59E0B)
+val AdminInfo = Color(0xFF3B82F6)
 
 // ── Sidebar Item Colors ──────────────────────────────────────────────────────
 val SidebarItemActive = Color(0xFF22C55E)

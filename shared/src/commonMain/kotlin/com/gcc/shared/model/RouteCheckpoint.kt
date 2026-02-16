@@ -10,5 +10,8 @@ data class RouteCheckpoint(
     val coordinates: Coordinates,
     val photoRequired: Boolean = false,
     val geofenceRadius: Double = 15.0,
-    val type: CheckpointType = CheckpointType.PHOTO_POINT
+    val type: CheckpointType = CheckpointType.PHOTO_POINT,
+    val instructions: String? = null,
+    val cameraMode: CameraMode? = null,
+    val bountyPrompts: List<String> = emptyList(),
 )

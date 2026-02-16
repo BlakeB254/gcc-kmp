@@ -87,10 +87,25 @@ private fun ResultRow.toSponsor(): Sponsor = Sponsor(
     phone = this[Sponsors.phone],
     emailVerified = this[Sponsors.emailVerified],
     type = com.gcc.server.services.enumValueOfOrDefault(this[Sponsors.type]),
-    business = this[Sponsors.business],
-    preferences = this[Sponsors.preferences],
-    stats = this[Sponsors.stats],
-    stripe = this[Sponsors.stripe],
+    business = SponsorBusiness(
+        name = this[Sponsors.businessName],
+        website = this[Sponsors.businessWebsite],
+    ),
+    preferences = SponsorPreferences(
+        frequency = com.gcc.server.services.enumValueOfOrDefault(this[Sponsors.preferencesFrequency]),
+        isAnonymous = this[Sponsors.preferencesIsAnonymous],
+        wantsUpdates = this[Sponsors.preferencesWantsUpdates],
+    ),
+    stats = SponsorStats(
+        totalDonated = this[Sponsors.statsTotalContributed]?.toIntOrNull() ?: 0,
+        blocksSponsored = this[Sponsors.statsBlocksFunded]?.toIntOrNull() ?: 0,
+        lastDonationAt = this[Sponsors.statsLastContributionAt],
+    ),
+    stripe = SponsorStripe(
+        customerId = this[Sponsors.stripeCustomerId],
+        subscriptionId = this[Sponsors.stripeSubscriptionId],
+        defaultPaymentMethod = this[Sponsors.stripeDefaultPaymentMethod],
+    ),
     createdAt = this[Sponsors.createdAt],
     updatedAt = this[Sponsors.updatedAt],
 )

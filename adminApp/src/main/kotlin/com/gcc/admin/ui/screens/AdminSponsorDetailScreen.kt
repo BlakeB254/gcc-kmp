@@ -2,129 +2,138 @@ package com.gcc.admin.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DetailRow
+import com.gcc.admin.ui.components.StatsCard
+import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.SponsorManagementViewModel
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
-/**
- * Detail screen for a single sponsor showing all sponsor information.
- */
 @Composable
-fun AdminSponsorDetailScreen(
-    sponsorId: Int,
-    onBack: () -> Unit,
-    viewModel: SponsorManagementViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
+fun AdminSponsorDetailScreen(sponsorId: Int, onBack: () -> Unit) {
+    val viewModel = koinInject<SponsorManagementViewModel>()
+    val sponsors by viewModel.sponsors.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    LaunchedEffect(sponsorId) {
-        viewModel.selectSponsor(sponsorId)
-    }
+    val sponsor = sponsors.find { it.id == sponsorId }
 
-    AdminScaffold(
-        title = "Sponsor Detail",
-        subtitle = "Sponsors",
-        actions = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
     ) {
-        val sponsor = state.selectedSponsor
+        // -- Header with back button ----------------------------------------
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            }
+            Text("Sponsor Detail", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.weight(1f))
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
         if (sponsor == null) {
             Box(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                contentAlignment = androidx.compose.ui.Alignment.Center,
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
-        } else {
-            Column(modifier = Modifier.padding(24.dp)) {
-                if (state.error != null) {
-                    Text(
-                        text = state.error ?: "",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    // Sponsor Info
-                    DetailPanel(
-                        title = "Sponsor Information",
-                        items = listOf(
-                            "ID" to sponsor.id.toString(),
-                            "Name" to sponsor.name,
-                            "Email" to sponsor.email,
-                            "Phone" to (sponsor.phone ?: "N/A"),
-                            "Type" to sponsor.type.name,
-                            "Email Verified" to if (sponsor.emailVerified) "Yes" else "No",
-                            "Joined" to sponsor.createdAt.toString().take(10),
-                        ),
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        // Business Info
-                        DetailPanel(
-                            title = "Business Details",
-                            items = listOf(
-                                "Business Name" to (sponsor.business?.name ?: "N/A"),
-                                "Website" to (sponsor.business?.website ?: "N/A"),
-                                "Description" to (sponsor.business?.description ?: "N/A"),
-                            ),
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Preferences
-                        DetailPanel(
-                            title = "Preferences",
-                            items = listOf(
-                                "Frequency" to sponsor.preferences.frequency.name,
-                                "Neighborhood" to (sponsor.preferences.neighborhoodPreference ?: "Any"),
-                                "Wants Updates" to if (sponsor.preferences.wantsUpdates) "Yes" else "No",
-                                "Anonymous" to if (sponsor.preferences.isAnonymous) "Yes" else "No",
-                            ),
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Stats
-                DetailPanel(
-                    title = "Funding Statistics",
-                    items = listOf(
-                        "Total Donated" to ("$" + (sponsor.stats.totalDonated / 100).toString()),
-                        "Blocks Sponsored" to sponsor.stats.blocksSponsored.toString(),
-                        "Last Donation" to (sponsor.stats.lastDonationAt?.toString()?.take(10) ?: "Never"),
-                    ),
+                Text(
+                    "Sponsor not found",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = AdminOnSurfaceVariant,
                 )
+            }
+            return
+        }
 
-                Spacer(modifier = Modifier.height(16.dp))
+        // -- Info Section ---------------------------------------------------
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+            ) {
+                Text("Information", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(AdminTheme.spacing.xs))
+                DetailRow("Name", sponsor.name)
+                DetailRow("Email", sponsor.email)
+                DetailRow("Phone", sponsor.phone ?: "N/A")
+                DetailRow("Type", sponsor.type.name.lowercase().replaceFirstChar { it.uppercase() })
 
-                // Stripe Info
-                DetailPanel(
-                    title = "Stripe",
-                    items = listOf(
-                        "Customer ID" to (sponsor.stripe.customerId ?: "Not connected"),
-                        "Subscription" to (sponsor.stripe.subscriptionId ?: "None"),
-                        "Payment Method" to (sponsor.stripe.defaultPaymentMethod ?: "None"),
-                    ),
+                sponsor.business?.let { biz ->
+                    biz.name?.let { DetailRow("Business", it) }
+                    biz.website?.let { DetailRow("Website", it) }
+                }
+            }
+        }
+
+        // -- Stats Row ------------------------------------------------------
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+        ) {
+            StatsCard(
+                title = "Total Donated",
+                value = "$${"%,d".format(sponsor.stats.totalDonated / 100)}",
+                icon = Icons.Default.AttachMoney,
+                modifier = Modifier.weight(1f),
+            )
+            StatsCard(
+                title = "Blocks Sponsored",
+                value = sponsor.stats.blocksSponsored.toString(),
+                icon = Icons.Default.GridView,
+                modifier = Modifier.weight(1f),
+            )
+            StatsCard(
+                title = "Frequency",
+                value = sponsor.preferences.frequency.name.lowercase()
+                    .replace("_", " ")
+                    .replaceFirstChar { it.uppercase() },
+                icon = Icons.Default.Refresh,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        // -- Dates ----------------------------------------------------------
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = AdminTheme.elevation.card,
+        ) {
+            Column(
+                modifier = Modifier.padding(AdminTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+            ) {
+                val createdLocal = sponsor.createdAt
+                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                val updatedLocal = sponsor.updatedAt
+                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                DetailRow(
+                    "Created",
+                    "${createdLocal.monthNumber}/${createdLocal.dayOfMonth}/${createdLocal.year}",
+                )
+                DetailRow(
+                    "Updated",
+                    "${updatedLocal.monthNumber}/${updatedLocal.dayOfMonth}/${updatedLocal.year}",
                 )
             }
         }

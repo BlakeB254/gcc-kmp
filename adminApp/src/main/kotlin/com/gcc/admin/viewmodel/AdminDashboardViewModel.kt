@@ -1,33 +1,35 @@
 package com.gcc.admin.viewmodel
 
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
+import com.gcc.shared.model.AdminActivityItem
+import com.gcc.shared.model.AdminDailyStats
+import com.gcc.shared.model.AdminStatsResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class AdminDashboardState(
-    val stats: AdminStatsResponse? = null,
-    val recentActivity: List<AdminActivityItem> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null,
-)
+class AdminDashboardViewModel(private val api: GccApiClient) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-class AdminDashboardViewModel(
-    private val apiClient: GccApiClient,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _stats = MutableStateFlow<AdminStatsResponse?>(null)
+    val stats: StateFlow<AdminStatsResponse?> = _stats.asStateFlow()
 
-    private val _state = MutableStateFlow(AdminDashboardState())
-    val state: StateFlow<AdminDashboardState> = _state.asStateFlow()
+    private val _activity = MutableStateFlow<List<AdminActivityItem>>(emptyList())
+    val activity: StateFlow<List<AdminActivityItem>> = _activity.asStateFlow()
+
+    private val _dailyStats = MutableStateFlow<List<AdminDailyStats>>(emptyList())
+    val dailyStats: StateFlow<List<AdminDailyStats>> = _dailyStats.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
         loadDashboard()
@@ -35,42 +37,21 @@ class AdminDashboardViewModel(
 
     fun loadDashboard() {
         scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _isLoading.value = true
+            _error.value = null
             try {
-                // Load stats
-                val statsResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/stats") {
-                    contentType(ContentType.Application.Json)
-                }
-                val statsResult: ApiResponse<AdminStatsResponse> = statsResponse.body()
+                val statsDeferred = async { api.getAdminStats() }
+                val activityDeferred = async { api.getAdminActivity() }
+                val dailyDeferred = async { api.getAdminDailyStats() }
 
-                if (statsResult.success) {
-                    _state.update { it.copy(stats = statsResult.data, isLoading = false) }
-                } else {
-                    _state.update { it.copy(error = statsResult.message ?: "Failed to load stats", isLoading = false) }
-                }
+                _stats.value = statsDeferred.await()
+                _activity.value = activityDeferred.await()
+                _dailyStats.value = dailyDeferred.await()
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Failed to load dashboard", isLoading = false) }
+                _error.value = e.message ?: "Failed to load dashboard"
+            } finally {
+                _isLoading.value = false
             }
         }
-
-        // Load recent activity in parallel
-        scope.launch {
-            try {
-                val activityResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/analytics/activity") {
-                    contentType(ContentType.Application.Json)
-                    parameter("limit", 20)
-                }
-                val activityResult: ApiResponse<List<AdminActivityItem>> = activityResponse.body()
-                if (activityResult.success && activityResult.data != null) {
-                    _state.update { it.copy(recentActivity = activityResult.data) }
-                }
-            } catch (_: Exception) {
-                // Activity loading is non-critical
-            }
-        }
-    }
-
-    fun refresh() {
-        loadDashboard()
     }
 }

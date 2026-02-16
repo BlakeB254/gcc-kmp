@@ -10,6 +10,7 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.admin.di.adminModule
 import com.gcc.admin.di.demoAdminModule
 import com.gcc.admin.navigation.AdminRootComponent
+import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
 import org.koin.java.KoinJavaComponent.getKoin
 import javax.swing.SwingUtilities
@@ -22,21 +23,23 @@ fun main(args: Array<String> = emptyArray()) {
     }
 
     val lifecycle = LifecycleRegistry()
+    val tokenManager = getKoin().get<TokenManager>()
 
     val root = runOnUiThread {
         AdminRootComponent(
             componentContext = DefaultComponentContext(lifecycle = lifecycle),
+            tokenManager = tokenManager,
         )
     }
 
     application {
-        val windowState = rememberWindowState(width = 1400.dp, height = 900.dp)
+        val windowState = rememberWindowState(width = 1440.dp, height = 900.dp)
         LifecycleController(lifecycle, windowState)
 
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = if (isDemo) "GCC Admin Dashboard [DEMO]" else "GCC Admin Dashboard",
+            title = if (isDemo) "GCC Admin [DEMO]" else "GCC Admin",
         ) {
             AdminApp(root)
         }

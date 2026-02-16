@@ -6,7 +6,7 @@ import com.gcc.shared.model.BlockStatus
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 /**
  * Block endpoints — city blocks that can be sponsored and cleaned.

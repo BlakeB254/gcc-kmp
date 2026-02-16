@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
@@ -23,6 +24,7 @@ import org.koin.dsl.module
 val appModule = module {
     single { TokenManager() }
     single { LocationProvider() }
+    single { ShareManager() }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(

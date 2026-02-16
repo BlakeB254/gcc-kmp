@@ -5,12 +5,33 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.EditLocationAlt
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +47,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.admin.navigation.AdminScreen
-import com.gcc.admin.ui.theme.*
+import com.gcc.admin.ui.theme.AdminOnSurfaceVariant
+import com.gcc.admin.ui.theme.AdminPrimary
+import com.gcc.admin.ui.theme.AdminSidebarBackground
+import com.gcc.admin.ui.theme.AdminSurfaceVariant
+import com.gcc.admin.ui.theme.SidebarDivider
+import com.gcc.admin.ui.theme.SidebarItemActive
+import com.gcc.admin.ui.theme.SidebarItemActiveBg
+import com.gcc.admin.ui.theme.SidebarItemInactive
+import com.gcc.admin.ui.theme.SidebarSectionHeader
+
+// ── Data Structures ──────────────────────────────────────────────────────────
 
 private data class NavItem(
     val label: String,
@@ -39,6 +70,8 @@ private data class NavSection(
     val items: List<NavItem>,
 )
 
+// ── Navigation Structure ─────────────────────────────────────────────────────
+
 private val navSections = listOf(
     NavSection(
         header = "Overview",
@@ -47,39 +80,53 @@ private val navSections = listOf(
         ),
     ),
     NavSection(
-        header = "Management",
+        header = "People",
         items = listOf(
             NavItem("Workers", Icons.Default.People, AdminScreen.WorkerList),
             NavItem("Sponsors", Icons.Default.Business, AdminScreen.SponsorList),
-            NavItem("Jobs", Icons.Default.Work, AdminScreen.JobList),
-            NavItem("Routes", Icons.Default.Route, AdminScreen.RouteList),
-            NavItem("Blocks", Icons.Default.GridView, AdminScreen.BlockList),
         ),
     ),
     NavSection(
         header = "Operations",
         items = listOf(
+            NavItem("Routes", Icons.Default.Route, AdminScreen.RouteList),
+            NavItem("Blocks", Icons.Default.GridView, AdminScreen.BlockList),
+            NavItem("Jobs", Icons.Default.Work, AdminScreen.JobList),
             NavItem("Bounties", Icons.Default.EmojiEvents, AdminScreen.BountyList),
-            NavItem("Service Areas", Icons.Default.Map, AdminScreen.ServiceAreaMap),
+            NavItem("Live Tracking", Icons.Default.MyLocation, AdminScreen.LiveTracking),
+        ),
+    ),
+    NavSection(
+        header = "Community",
+        items = listOf(
             NavItem("Disputes", Icons.Default.Gavel, AdminScreen.DisputeList),
-            NavItem("Analytics", Icons.Default.BarChart, AdminScreen.Analytics),
             NavItem("Feedback", Icons.Default.Feedback, AdminScreen.FeedbackList),
+            NavItem("Address Changes", Icons.Default.EditLocationAlt, AdminScreen.AddressChanges),
+        ),
+    ),
+    NavSection(
+        header = "Data",
+        items = listOf(
+            NavItem("Analytics", Icons.Default.BarChart, AdminScreen.Analytics),
+            NavItem("Service Areas", Icons.Default.Map, AdminScreen.ServiceAreaMap),
         ),
     ),
     NavSection(
         header = "System",
         items = listOf(
-            NavItem("Address Changes", Icons.Default.EditLocationAlt, AdminScreen.AddressChanges),
             NavItem("Settings", Icons.Default.Settings, AdminScreen.Settings),
         ),
     ),
 )
 
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+
 /**
- * Persistent sidebar navigation for the admin dashboard.
+ * Persistent sidebar navigation for the admin dashboard (240 dp wide).
  *
  * Renders a dark sidebar with grouped navigation items. The active screen
- * is highlighted with the primary (green) accent color.
+ * is highlighted with the primary (green) accent color. Detail screens
+ * map back to their parent list screen for highlighting.
  */
 @Composable
 fun AdminSidebar(
@@ -153,6 +200,8 @@ fun AdminSidebar(
     }
 }
 
+// ── Section ──────────────────────────────────────────────────────────────────
+
 @Composable
 private fun SidebarSection(
     section: NavSection,
@@ -178,6 +227,8 @@ private fun SidebarSection(
         )
     }
 }
+
+// ── Individual Nav Item ──────────────────────────────────────────────────────
 
 @Composable
 private fun SidebarNavItem(
@@ -225,9 +276,11 @@ private fun SidebarNavItem(
     }
 }
 
+// ── Active Screen Detection ──────────────────────────────────────────────────
+
 /**
  * Determines if the current [active] screen matches a sidebar [target] screen.
- * Detail screens map back to their parent list screen.
+ * Detail screens map back to their parent list screen for highlighting.
  */
 private fun isScreenActive(active: AdminScreen, target: AdminScreen): Boolean {
     if (active == target) return true

@@ -1,204 +1,211 @@
 package com.gcc.admin.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
-import com.gcc.admin.ui.map.*
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.ServiceAreaViewModel
-import com.gcc.shared.model.AdminServiceAreaRequest
-import com.gcc.shared.model.ServiceAreaStatus
+import com.gcc.shared.model.ServiceArea
 import org.koin.compose.koinInject
 
 @Composable
-fun AdminServiceAreaMapScreen(
-    viewModel: ServiceAreaViewModel = koinInject(),
-    mapViewModel: AdminMapViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
-    val mapState by mapViewModel.state.collectAsState()
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var viewMode by remember { mutableStateOf(ViewMode.MAP) }
-    var newName by remember { mutableStateOf("") }
-    var newCity by remember { mutableStateOf("Chicago") }
-    var newStatus by remember { mutableStateOf("planning") }
+fun AdminServiceAreaMapScreen() {
+    val viewModel = koinInject<ServiceAreaViewModel>()
+    val serviceAreas by viewModel.serviceAreas.collectAsState()
+    val blocks by viewModel.blocks.collectAsState()
+    val routes by viewModel.routes.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Network Map",
-        subtitle = "Operations",
-        scrollable = false,
-        actions = {
-            IconButton(onClick = { viewMode = if (viewMode == ViewMode.MAP) ViewMode.LIST else ViewMode.MAP }) {
-                Icon(
-                    imageVector = if (viewMode == ViewMode.MAP) Icons.AutoMirrored.Filled.ViewList else Icons.Default.Map,
-                    contentDescription = if (viewMode == ViewMode.MAP) "Switch to List" else "Switch to Map",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Button(
-                onClick = { showCreateDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Create Area")
-            }
-        },
-    ) {
-        when (viewMode) {
-            ViewMode.MAP -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AdminMap(
-                        modifier = Modifier.fillMaxSize(),
-                        viewModel = mapViewModel,
-                        enableGestures = true,
-                        onBlockClick = { block -> mapViewModel.selectBlock(block.id) },
-                        onSpotClick = { spot -> mapViewModel.selectSpot(spot.id) },
-                        onBountyClick = { bounty -> mapViewModel.selectBounty(bounty.id) },
+    Row(modifier = Modifier.fillMaxSize()) {
+        // -- Left Panel: Service Area List (300dp) --------------------------
+        Surface(
+            modifier = Modifier.width(300.dp).fillMaxHeight(),
+            tonalElevation = AdminTheme.elevation.raised,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Panel header
+                Column(modifier = Modifier.padding(AdminTheme.spacing.lg)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
                     ) {
-                        AdminMapControls(
-                            currentZoom = ZOOM_CITY,
-                            layerState = mapState,
-                            onZoomIn = { /* TODO */ },
-                            onZoomOut = { /* TODO */ },
-                            onPresetSelect = { /* TODO */ },
-                            onToggleLayer = { mapViewModel.toggleLayer(it) },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                        Text(
+                            "Service Areas",
+                            style = MaterialTheme.typography.titleMedium,
                         )
-                        AdminMapLegend(
-                            currentZoom = ZOOM_CITY,
-                            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
-                        )
+                        Spacer(Modifier.weight(1f))
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     }
 
-                    AdminMapInfoPanel(
-                        state = mapState,
-                        blocks = mapState.blocks,
-                        serviceAreas = mapState.serviceAreas,
-                        spots = mapState.spots,
-                        bounties = mapState.bounties,
-                        onClose = { mapViewModel.clearSelection() },
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+                    error?.let {
+                        Spacer(Modifier.height(AdminTheme.spacing.sm))
+                        Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                Divider(color = TableBorder)
+
+                // Service area list
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(AdminTheme.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs),
+                ) {
+                    items(serviceAreas) { area ->
+                        ServiceAreaListItem(area)
+                    }
+
+                    if (serviceAreas.isEmpty() && !isLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(AdminTheme.spacing.xl),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "No service areas",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = AdminOnSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                 }
             }
-            ViewMode.LIST -> {
-                Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                    if (state.error != null) {
-                        Text(
-                            text = state.error ?: "",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(bottom = 12.dp),
+        }
+
+        // -- Right: Map Placeholder -----------------------------------------
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(AdminBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = AdminTheme.elevation.card,
+            ) {
+                Column(
+                    modifier = Modifier.padding(AdminTheme.spacing.xl),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Map,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = AdminOnSurfaceVariant,
+                    )
+                    Text(
+                        "Service Area Map",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        "Interactive map coming in Phase 4",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AdminOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(AdminTheme.spacing.sm))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
+                    ) {
+                        StatChip(
+                            label = "Areas",
+                            value = serviceAreas.size.toString(),
                         )
-                    }
-                    if (state.isLoading) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        }
-                    } else {
-                        DataTable(
-                            items = state.serviceAreas,
-                            columns = listOf(
-                                TableColumn(header = "Name", weight = 1.5f) { area ->
-                                    Text(area.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                },
-                                TableColumn(header = "City", weight = 1f) { area ->
-                                    Text(area.city + ", " + area.state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                },
-                                TableColumn(header = "Status", weight = 0.8f) { area ->
-                                    StatusBadge(
-                                        text = area.status.name,
-                                        color = when (area.status) {
-                                            ServiceAreaStatus.PLANNING -> StatusPending
-                                            ServiceAreaStatus.PILOT -> StatusWarning
-                                            ServiceAreaStatus.ACTIVE -> StatusAvailable
-                                            ServiceAreaStatus.PAUSED -> StatusError
-                                        },
-                                    )
-                                },
-                                TableColumn(header = "Workers", weight = 0.6f) { area ->
-                                    Text(area.activeWorkers.toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                },
-                                TableColumn(header = "Blocks", weight = 0.6f) { area ->
-                                    Text(area.totalBlocks.toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                },
-                            ),
-                            modifier = Modifier.fillMaxSize(),
+                        StatChip(
+                            label = "Blocks",
+                            value = blocks.size.toString(),
+                        )
+                        StatChip(
+                            label = "Routes",
+                            value = routes.size.toString(),
                         )
                     }
                 }
             }
         }
     }
+}
 
-    if (showCreateDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreateDialog = false },
-            title = { Text("Create Service Area") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Area Name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = newCity,
-                        onValueChange = { newCity = it },
-                        label = { Text("City") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = newStatus,
-                        onValueChange = { newStatus = it },
-                        label = { Text("Status (planning/pilot/active/paused)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.createServiceArea(
-                            AdminServiceAreaRequest(
-                                name = newName,
-                                city = newCity,
-                                status = newStatus,
-                            ),
-                        )
-                        newName = ""
-                        newCity = "Chicago"
-                        newStatus = "planning"
-                        showCreateDialog = false
-                    },
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-        )
+@Composable
+private fun ServiceAreaListItem(area: ServiceArea) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = AdminTheme.elevation.card,
+    ) {
+        Column(
+            modifier = Modifier.padding(AdminTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Place,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = AdminPrimary,
+                )
+                Text(
+                    text = area.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.lg),
+            ) {
+                Text(
+                    text = "${area.totalBlocks} blocks",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AdminOnSurfaceVariant,
+                )
+                Text(
+                    text = "${area.activeWorkers} workers",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AdminOnSurfaceVariant,
+                )
+            }
+            Text(
+                text = "${area.city}, ${area.state}",
+                style = MaterialTheme.typography.labelSmall,
+                color = AdminOnSurfaceVariant,
+            )
+        }
     }
 }
 
-private enum class ViewMode { MAP, LIST }
+@Composable
+private fun StatChip(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            color = AdminPrimary,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = AdminOnSurfaceVariant,
+        )
+    }
+}

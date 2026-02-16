@@ -3,119 +3,86 @@ package com.gcc.admin.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DataColumn
+import com.gcc.admin.ui.components.DataTable
+import com.gcc.admin.ui.components.SearchBar
+import com.gcc.admin.ui.components.VerificationStatusBadge
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.WorkerManagementViewModel
-import com.gcc.shared.model.VerificationStatus
 import org.koin.compose.koinInject
 
-/**
- * List screen showing all workers with search and status filtering.
- */
 @Composable
-fun AdminWorkerListScreen(
-    onWorkerClick: (Int) -> Unit,
-    viewModel: WorkerManagementViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
+fun AdminWorkerListScreen(onWorkerClick: (Int) -> Unit) {
+    val viewModel = koinInject<WorkerManagementViewModel>()
+    val workers by viewModel.workers.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Workers",
-        subtitle = "Management",
-        scrollable = false,
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            // Search bar
-            SearchBar(
-                query = state.searchQuery,
-                onQueryChange = { viewModel.searchWorkers(it) },
-                placeholder = "Search workers by name or email...",
-                modifier = Modifier.padding(bottom = 16.dp),
-            )
-
-            // Status filter chips
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp),
-            ) {
-                FilterChip(
-                    selected = state.statusFilter == null,
-                    onClick = { viewModel.setStatusFilter(null) },
-                    label = { Text("All") },
-                )
-                VerificationStatus.entries.forEach { status ->
-                    FilterChip(
-                        selected = state.statusFilter == status,
-                        onClick = { viewModel.setStatusFilter(status) },
-                        label = { Text(status.name) },
-                    )
-                }
-            }
-
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                DataTable(
-                    items = state.workers,
-                    columns = listOf(
-                        TableColumn(header = "ID", weight = 0.5f) { worker ->
-                            Text(
-                                text = worker.id.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Name", weight = 1.5f) { worker ->
-                            Text(
-                                text = worker.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Email", weight = 1.5f) { worker ->
-                            Text(
-                                text = worker.email,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        TableColumn(header = "Status", weight = 1f) { worker ->
-                            StatusBadge(
-                                text = worker.verification.status.name,
-                                color = when (worker.verification.status) {
-                                    VerificationStatus.APPROVED -> StatusAvailable
-                                    VerificationStatus.PENDING -> StatusPending
-                                    VerificationStatus.REJECTED -> StatusError
-                                    VerificationStatus.NEEDS_INFO -> StatusWarning
-                                },
-                            )
-                        },
-                        TableColumn(header = "Role", weight = 0.8f) { worker ->
-                            Text(
-                                text = worker.role,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Joined", weight = 1f) { worker ->
-                            Text(
-                                text = worker.createdAt.toString().take(10),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    ),
-                    onRowClick = { worker -> onWorkerClick(worker.id) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // ── Header ──────────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Workers", style = MaterialTheme.typography.headlineMedium)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
         }
+
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
+        SearchBar(
+            query = searchQuery,
+            onQueryChange = viewModel::onSearchChange,
+            placeholder = "Search workers by name or email...",
+        )
+
+        // ── Data Table ──────────────────────────────────────────────
+        DataTable(
+            items = workers,
+            columns = listOf(
+                DataColumn(header = "Name", weight = 1.5f) { worker ->
+                    Text(worker.name, style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Email", weight = 1.5f) { worker ->
+                    Text(worker.email, style = MaterialTheme.typography.bodySmall, color = AdminOnSurfaceVariant)
+                },
+                DataColumn(header = "Status", weight = 1f) { worker ->
+                    VerificationStatusBadge(worker.verification.status)
+                },
+                DataColumn(header = "Jobs", weight = 0.7f) { worker ->
+                    Text(worker.stats.jobsCompleted.toString(), style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Earnings", weight = 0.8f) { worker ->
+                    Text("$${worker.stats.totalEarnings / 100}", style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Rating", weight = 0.7f) { worker ->
+                    val rating = worker.stats.averageRating
+                    Text(
+                        text = if (rating != null) String.format("%.1f", rating) else "--",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                DataColumn(header = "Tier", weight = 0.8f) { worker ->
+                    Text(
+                        text = worker.earlyAdopterTier.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+            ),
+            onRowClick = { worker -> onWorkerClick(worker.id) },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }

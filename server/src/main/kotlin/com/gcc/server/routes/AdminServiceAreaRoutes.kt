@@ -38,9 +38,9 @@ fun Route.adminServiceAreaRoutes() {
                     it[name] = request.name
                     it[city] = request.city
                     it[state] = request.state
-                    it[boundary] = request.boundary
-                    it[mapCenter] = request.mapCenter
-                    it[mapZoom] = request.mapZoom
+                    request.boundary?.let { b -> it[boundary] = b }
+                    request.mapCenter?.let { c -> it[mapCenter] = listOf(c.lng, c.lat) }
+                    it[defaultZoom] = request.mapZoom.toString()
                     it[status] = request.status
                     it[createdAt] = now
                     it[updatedAt] = now
@@ -63,9 +63,9 @@ fun Route.adminServiceAreaRoutes() {
                     it[name] = request.name
                     it[city] = request.city
                     it[state] = request.state
-                    it[boundary] = request.boundary
-                    it[mapCenter] = request.mapCenter
-                    it[mapZoom] = request.mapZoom
+                    request.boundary?.let { b -> it[boundary] = b }
+                    request.mapCenter?.let { c -> it[mapCenter] = listOf(c.lng, c.lat) }
+                    it[defaultZoom] = request.mapZoom.toString()
                     it[status] = request.status
                     it[updatedAt] = now
                 }

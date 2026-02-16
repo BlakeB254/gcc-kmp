@@ -3,119 +3,116 @@ package com.gcc.admin.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.admin.ui.components.*
+import com.gcc.admin.ui.components.DataColumn
+import com.gcc.admin.ui.components.DataTable
+import com.gcc.admin.ui.components.JobStatusBadge
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.JobManagementViewModel
 import com.gcc.shared.model.JobStatus
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
-/**
- * List screen showing all jobs with status filter chips.
- */
 @Composable
-fun AdminJobListScreen(
-    onJobClick: (Int) -> Unit,
-    viewModel: JobManagementViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
+fun AdminJobListScreen(onJobClick: (Int) -> Unit) {
+    val viewModel = koinInject<JobManagementViewModel>()
+    val jobs by viewModel.jobs.collectAsState()
+    val statusFilter by viewModel.statusFilter.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    AdminScaffold(
-        title = "Jobs",
-        subtitle = "Management",
-        scrollable = false,
+    val filterOptions = listOf(
+        null to "All",
+        "available" to "Available",
+        "claimed" to "Claimed",
+        "in_progress" to "In Progress",
+        "completed" to "Completed",
+        "disputed" to "Disputed",
+    )
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            // Status filter chips
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp),
-            ) {
-                FilterChip(
-                    selected = state.statusFilter == null,
-                    onClick = { viewModel.setStatusFilter(null) },
-                    label = { Text("All") },
-                )
-                listOf(
-                    JobStatus.AVAILABLE,
-                    JobStatus.IN_PROGRESS,
-                    JobStatus.COMPLETED,
-                    JobStatus.DISPUTED,
-                ).forEach { status ->
-                    FilterChip(
-                        selected = state.statusFilter == status,
-                        onClick = { viewModel.setStatusFilter(status) },
-                        label = { Text(status.name) },
-                    )
-                }
+        // ── Header ──────────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Jobs", style = MaterialTheme.typography.headlineMedium)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             }
+        }
 
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                DataTable(
-                    items = state.jobs,
-                    columns = listOf(
-                        TableColumn(header = "ID", weight = 0.5f) { job ->
-                            Text(
-                                text = job.id.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Route", weight = 1f) { job ->
-                            Text(
-                                text = job.routeId?.toString() ?: "N/A",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Worker", weight = 1f) { job ->
-                            Text(
-                                text = job.workerId?.toString() ?: "Unassigned",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        TableColumn(header = "Status", weight = 1f) { job ->
-                            StatusBadge(
-                                text = job.status.name,
-                                color = when (job.status) {
-                                    JobStatus.AVAILABLE -> StatusAvailable
-                                    JobStatus.CLAIMED -> StatusPending
-                                    JobStatus.IN_PROGRESS -> StatusInProgress
-                                    JobStatus.PENDING_REVIEW -> StatusWarning
-                                    JobStatus.COMPLETED -> StatusCompleted
-                                    JobStatus.DISPUTED -> StatusError
-                                },
-                            )
-                        },
-                        TableColumn(header = "Pay", weight = 0.8f) { job ->
-                            val payout = job.payoutAmount
-                            Text(
-                                text = if (payout != null) "$${payout / 100}" else "N/A",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        TableColumn(header = "Date", weight = 1f) { job ->
-                            Text(
-                                text = job.createdAt.toString().take(10),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+        error?.let {
+            Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
+        }
+
+        // ── Status Filter Chips ─────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+        ) {
+            filterOptions.forEach { (value, label) ->
+                val selected = statusFilter == value
+                FilterChip(
+                    selected = selected,
+                    onClick = { viewModel.onStatusFilterChange(value) },
+                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = AdminPrimary.copy(alpha = 0.15f),
+                        selectedLabelColor = AdminPrimary,
                     ),
-                    onRowClick = { job -> onJobClick(job.id) },
-                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
+
+        // ── Data Table ──────────────────────────────────────────────
+        DataTable(
+            items = jobs,
+            columns = listOf(
+                DataColumn(header = "ID", weight = 0.5f) { job ->
+                    Text("#${job.id}", style = MaterialTheme.typography.bodyMedium)
+                },
+                DataColumn(header = "Route", weight = 0.7f) { job ->
+                    Text(
+                        text = job.routeId?.toString() ?: "--",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AdminOnSurfaceVariant,
+                    )
+                },
+                DataColumn(header = "Worker", weight = 0.7f) { job ->
+                    Text(
+                        text = job.workerId?.toString() ?: "Unassigned",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (job.workerId != null) MaterialTheme.colorScheme.onSurface else AdminOnSurfaceVariant,
+                    )
+                },
+                DataColumn(header = "Status", weight = 0.8f) { job ->
+                    JobStatusBadge(job.status)
+                },
+                DataColumn(header = "Payout", weight = 0.7f) { job ->
+                    Text(
+                        text = job.payoutAmount?.let { "$${it / 100}" } ?: "--",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                DataColumn(header = "Created", weight = 1f) { job ->
+                    val localTime = job.createdAt.toLocalDateTime(TimeZone.currentSystemDefault())
+                    Text(
+                        text = "${localTime.monthNumber}/${localTime.dayOfMonth}/${localTime.year}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AdminOnSurfaceVariant,
+                    )
+                },
+            ),
+            onRowClick = { job -> onJobClick(job.id) },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }

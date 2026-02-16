@@ -5,7 +5,7 @@ import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.koin.ktor.ext.get as koinGet
+import com.gcc.server.plugins.koinGet
 
 /**
  * Leaderboard endpoint — top workers by jobs completed.

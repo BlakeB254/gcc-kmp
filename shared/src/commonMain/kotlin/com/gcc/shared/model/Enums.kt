@@ -177,7 +177,35 @@ enum class CheckpointType {
     @SerialName("route_start") ROUTE_START,
     @SerialName("photo_point") PHOTO_POINT,
     @SerialName("alley_entrance") ALLEY_ENTRANCE,
-    @SerialName("route_end") ROUTE_END
+    @SerialName("route_end") ROUTE_END,
+    @SerialName("record") RECORD,
+    @SerialName("clean") CLEAN,
+    @SerialName("verify") VERIFY,
+    @SerialName("record_clean_verify") RECORD_CLEAN_VERIFY,
+}
+
+@Serializable
+enum class CameraMode {
+    @SerialName("panoramic") PANORAMIC,
+    @SerialName("focused") FOCUSED,
+    @SerialName("video") VIDEO,
+}
+
+@Serializable
+enum class RouteMarkerType {
+    @SerialName("note") NOTE,
+    @SerialName("photo") PHOTO,
+    @SerialName("video") VIDEO,
+    @SerialName("issue") ISSUE,
+    @SerialName("bounty_response") BOUNTY_RESPONSE,
+}
+
+@Serializable
+enum class RouteSessionStatus {
+    @SerialName("active") ACTIVE,
+    @SerialName("paused") PAUSED,
+    @SerialName("completed") COMPLETED,
+    @SerialName("abandoned") ABANDONED,
 }
 
 @Serializable

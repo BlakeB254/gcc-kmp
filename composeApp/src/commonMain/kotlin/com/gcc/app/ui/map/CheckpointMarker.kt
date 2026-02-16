@@ -72,6 +72,10 @@ fun CheckpointMarker(
                 CheckpointType.PHOTO_POINT -> if (photoRequired) "PHOTO" else "PT"
                 CheckpointType.ALLEY_ENTRANCE -> "ALLEY"
                 CheckpointType.ROUTE_END -> "END"
+                CheckpointType.RECORD -> "REC"
+                CheckpointType.CLEAN -> "CLEAN"
+                CheckpointType.VERIFY -> "CHECK"
+                CheckpointType.RECORD_CLEAN_VERIFY -> "RCV"
             },
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
             color = borderColor,

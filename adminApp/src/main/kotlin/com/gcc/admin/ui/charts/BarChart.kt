@@ -1,11 +1,17 @@
 package com.gcc.admin.ui.charts
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -14,128 +20,109 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.admin.ui.theme.AdminOnSurfaceVariant
-import com.gcc.admin.ui.theme.ChartPalette
+import com.gcc.admin.ui.theme.AdminOutlineVariant
 
 /**
- * A single data point for chart components.
- *
- * @param label Display label (x-axis label for bar charts, legend label for pie charts).
- * @param value Numeric value.
- * @param color Optional override color. If null, a color from [ChartPalette] is assigned.
+ * A single bar entry.
  */
-data class ChartDataPoint(
+data class BarChartData(
     val label: String,
     val value: Float,
-    val color: Color? = null,
+    val color: Color,
 )
 
 /**
- * Canvas-based vertical bar chart.
- *
- * Draws bars proportional to [ChartDataPoint.value] with labels on the x-axis
- * and value labels above each bar. Automatically scales to the maximum value
- * in the dataset.
- *
- * @param data List of data points to plot.
- * @param modifier Modifier applied to the Canvas.
+ * Canvas-based bar chart with rounded bars, optional labels, and
+ * animated height transitions.
  */
 @Composable
 fun BarChart(
-    data: List<ChartDataPoint>,
+    data: List<BarChartData>,
     modifier: Modifier = Modifier,
+    showLabels: Boolean = true,
+    animate: Boolean = true,
 ) {
+    if (data.isEmpty()) return
+
     val textMeasurer = rememberTextMeasurer()
-    val labelColor = AdminOnSurfaceVariant
-    val labelStyle = TextStyle(fontSize = 11.sp, color = labelColor)
-    val valueStyle = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
+
+    // Animate from 0 -> 1
+    var targetFraction by remember { mutableStateOf(if (animate) 0f else 1f) }
+    val animatedFraction by animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(durationMillis = 600),
+    )
+    LaunchedEffect(data) { targetFraction = 1f }
+
+    val maxValue = data.maxOf { it.value }.coerceAtLeast(1f)
+
+    val labelStyle = TextStyle(
+        fontSize = 10.sp,
+        color = AdminOnSurfaceVariant,
+    )
+    val scaleStyle = TextStyle(
+        fontSize = 9.sp,
+        color = AdminOnSurfaceVariant,
+    )
 
     Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(240.dp),
+        modifier = modifier.heightIn(min = 200.dp),
     ) {
-        if (data.isEmpty()) return@Canvas
+        val chartLeft = 40f
+        val chartBottom = if (showLabels) size.height - 28f else size.height - 8f
+        val chartTop = 8f
+        val chartHeight = chartBottom - chartTop
+        val chartWidth = size.width - chartLeft - 8f
 
-        val maxValue = data.maxOf { it.value }.coerceAtLeast(1f)
-        val labelAreaHeight = 28.dp.toPx()
-        val valueAreaHeight = 18.dp.toPx()
-        val chartTop = valueAreaHeight
-        val chartHeight = size.height - labelAreaHeight - valueAreaHeight
-        val barSpacing = 8.dp.toPx()
-        val barCount = data.size
-        val totalSpacing = barSpacing * (barCount + 1)
-        val barWidth = ((size.width - totalSpacing) / barCount).coerceAtLeast(12.dp.toPx())
+        val barGap = 8.dp.toPx()
+        val totalGaps = (data.size - 1).coerceAtLeast(0) * barGap
+        val barWidth = ((chartWidth - totalGaps) / data.size).coerceAtLeast(4f)
 
-        data.forEachIndexed { index, point ->
-            val barColor = point.color ?: ChartPalette[index % ChartPalette.size]
-            val barHeight = (point.value / maxValue) * chartHeight
-            val x = barSpacing + index * (barWidth + barSpacing)
-            val y = chartTop + chartHeight - barHeight
-
-            // Bar
-            drawRect(
-                color = barColor,
-                topLeft = Offset(x, y),
-                size = Size(barWidth, barHeight),
+        // ── Y-axis scale lines (0%, 50%, 100%) ──────────────────────
+        listOf(0f, 0.5f, 1f).forEach { fraction ->
+            val y = chartBottom - (chartHeight * fraction)
+            drawLine(
+                color = AdminOutlineVariant,
+                start = Offset(chartLeft, y),
+                end = Offset(size.width - 8f, y),
+                strokeWidth = 1f,
             )
-
-            // Value label above bar
-            drawTextLabel(
-                textMeasurer = textMeasurer,
-                text = point.value.toInt().toString(),
-                style = valueStyle,
-                x = x + barWidth / 2,
-                y = y - 4.dp.toPx(),
-                anchorBottom = true,
-            )
-
-            // X-axis label below bar
-            drawTextLabel(
-                textMeasurer = textMeasurer,
-                text = point.label,
-                style = labelStyle,
-                x = x + barWidth / 2,
-                y = chartTop + chartHeight + 6.dp.toPx(),
-                anchorBottom = false,
-                maxWidth = barWidth + barSpacing,
+            val scaleText = "${(maxValue * fraction).toInt()}"
+            val measured = textMeasurer.measure(scaleText, scaleStyle)
+            drawText(
+                textLayoutResult = measured,
+                topLeft = Offset(
+                    x = chartLeft - measured.size.width - 4f,
+                    y = y - measured.size.height / 2f,
+                ),
             )
         }
+
+        // ── Bars ─────────────────────────────────────────────────────
+        data.forEachIndexed { index, entry ->
+            val x = chartLeft + index * (barWidth + barGap)
+            val normalised = (entry.value / maxValue) * animatedFraction
+            val barHeight = chartHeight * normalised
+
+            drawRoundRect(
+                color = entry.color,
+                topLeft = Offset(x, chartBottom - barHeight),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(4f, 4f),
+            )
+
+            // ── Label below bar ──────────────────────────────────────
+            if (showLabels) {
+                val measured = textMeasurer.measure(entry.label, labelStyle)
+                val labelX = x + (barWidth - measured.size.width) / 2f
+                drawText(
+                    textLayoutResult = measured,
+                    topLeft = Offset(labelX, chartBottom + 6f),
+                )
+            }
+        }
     }
-}
-
-/**
- * Utility to draw centered text at a given position on the canvas.
- */
-internal fun DrawScope.drawTextLabel(
-    textMeasurer: TextMeasurer,
-    text: String,
-    style: TextStyle,
-    x: Float,
-    y: Float,
-    anchorBottom: Boolean,
-    maxWidth: Float = Float.MAX_VALUE,
-) {
-    val layoutResult = textMeasurer.measure(
-        text = text,
-        style = style,
-        overflow = TextOverflow.Ellipsis,
-        maxLines = 1,
-        constraints = if (maxWidth < Float.MAX_VALUE) {
-            Constraints(maxWidth = maxWidth.toInt().coerceAtLeast(1))
-        } else {
-            Constraints()
-        },
-    )
-    val textX = x - layoutResult.size.width / 2f
-    val textY = if (anchorBottom) y - layoutResult.size.height else y
-
-    drawText(
-        textLayoutResult = layoutResult,
-        topLeft = Offset(textX.coerceAtLeast(0f), textY),
-    )
 }

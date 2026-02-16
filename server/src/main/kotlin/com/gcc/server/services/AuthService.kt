@@ -1,6 +1,5 @@
 package com.gcc.server.services
 
-import at.favre.lib.crypto.bcrypt.BCrypt
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.gcc.server.db.DatabaseFactory.dbQuery
@@ -8,7 +7,10 @@ import com.gcc.server.db.tables.Workers
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.insert
+import java.security.SecureRandom
 import java.util.*
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 class AuthService(
     private val workerService: WorkerService
@@ -17,6 +19,8 @@ class AuthService(
     private val jwtIssuer = System.getenv("JWT_ISSUER") ?: "gcc-api"
     private val jwtAudience = System.getenv("JWT_AUDIENCE") ?: "gcc-app"
     private val tokenLifetimeMs = 7L * 24 * 60 * 60 * 1000 // 7 days
+    private val adminEmails = System.getenv("ADMIN_EMAILS")
+        ?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
 
     suspend fun register(request: RegisterRequest): AuthResponse {
         val existing = workerService.getByEmail(request.email)
@@ -24,7 +28,9 @@ class AuthService(
             throw IllegalArgumentException("Email already registered")
         }
 
-        val hash = BCrypt.withDefaults().hashToString(12, request.password.toCharArray())
+        // Generate salt and hash (Payload CMS style: SHA-256 of salt + password)
+        val salt = generateSalt()
+        val hash = hashPassword(salt, request.password)
 
         val now = Clock.System.now()
         val workerId = dbQuery {
@@ -32,15 +38,33 @@ class AuthService(
                 it[name] = request.name
                 it[email] = request.email
                 it[phone] = request.phone
-                it[passwordHash] = hash
+                it[Workers.salt] = salt
+                it[Workers.hash] = hash
                 it[emailVerified] = false
-                it[address] = WorkerAddress(street = "", city = "Chicago", state = "IL", zip = "")
-                it[verification] = WorkerVerification()
-                it[stripe] = WorkerStripe()
-                it[stats] = WorkerStats()
+                // Address flat columns
+                it[addressStreet] = ""
+                it[addressCity] = "Chicago"
+                it[addressState] = "IL"
+                it[addressZip] = ""
+                // Verification flat columns (defaults)
+                it[verificationStatus] = "pending"
+                it[verificationGovernmentIdStatus] = "pending"
+                it[verificationProofOfAddressStatus] = "pending"
+                // Stripe flat columns (defaults)
+                it[stripeOnboardingStatus] = "not_started"
+                it[stripeInstantPayoutsEnabled] = false
+                it[stripeDefaultPayoutMethod] = "standard"
+                // Stats flat columns (defaults)
+                it[statsJobsCompleted] = "0"
+                it[statsTotalEarnings] = "0"
+                // Tier and referral
                 it[earlyAdopterTier] = "standard"
                 it[referralCode] = generateReferralCode(request.name)
-                it[notifications] = WorkerNotifications()
+                // Notification flat columns (defaults)
+                it[notificationsPushEnabled] = false
+                it[notificationsSmsEnabled] = true
+                it[notificationsEmailEnabled] = true
+                // Timestamps
                 it[createdAt] = now
                 it[updatedAt] = now
             }[Workers.id]
@@ -49,25 +73,29 @@ class AuthService(
         val worker = workerService.getById(workerId)
             ?: throw IllegalStateException("Failed to retrieve worker after registration")
 
+        val role = if (request.email.lowercase() in adminEmails) "admin" else "worker"
         val expiresAt = System.currentTimeMillis() + tokenLifetimeMs
-        val token = generateToken(workerId, worker.role, expiresAt)
+        val token = generateToken(workerId, role, expiresAt)
         return AuthResponse(token = token, worker = worker, exp = expiresAt / 1000)
     }
 
     suspend fun login(request: LoginRequest): AuthResponse {
-        val hash = workerService.getPasswordHash(request.email)
+        val credentials = workerService.getAuthCredentials(request.email)
             ?: throw IllegalArgumentException("Invalid email or password")
 
-        val result = BCrypt.verifyer().verify(request.password.toCharArray(), hash)
-        if (!result.verified) {
+        val (salt, storedHash) = credentials
+        val computedHash = hashPassword(salt, request.password)
+
+        if (computedHash != storedHash) {
             throw IllegalArgumentException("Invalid email or password")
         }
 
         val worker = workerService.getByEmail(request.email)
             ?: throw IllegalStateException("Worker not found after password verification")
 
+        val role = if (request.email.lowercase() in adminEmails) "admin" else "worker"
         val expiresAt = System.currentTimeMillis() + tokenLifetimeMs
-        val token = generateToken(worker.id, worker.role, expiresAt)
+        val token = generateToken(worker.id, role, expiresAt)
         return AuthResponse(token = token, worker = worker, exp = expiresAt / 1000)
     }
 
@@ -89,4 +117,29 @@ class AuthService(
         val random = (1000..9999).random()
         return "GCC-$initials$random"
     }
+
+    /**
+     * Generate a cryptographically secure random salt (hex string).
+     * Matches site's crypto.randomBytes(16).toString('hex') → 32 hex chars.
+     */
+    private fun generateSalt(): String {
+        val bytes = ByteArray(16)
+        SecureRandom().nextBytes(bytes)
+        return bytes.toHex()
+    }
+
+    /**
+     * Hash a password using PBKDF2 to match the production site.
+     * Site uses: crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
+     */
+    private fun hashPassword(salt: String, password: String): String {
+        val spec = PBEKeySpec(password.toCharArray(), salt.toByteArray(), 100_000, 512)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
+        val hashBytes = factory.generateSecret(spec).encoded
+        return hashBytes.toHex()
+    }
+
+    /** Convert a byte array to a lowercase hex string. */
+    private fun ByteArray.toHex(): String =
+        joinToString("") { "%02x".format(it) }
 }

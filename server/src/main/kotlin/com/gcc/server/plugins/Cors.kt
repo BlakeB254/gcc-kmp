@@ -16,9 +16,17 @@ fun Application.configureCors() {
         allowHeader(HttpHeaders.ContentType)
 
         val allowedOrigins = System.getenv("ALLOWED_ORIGINS")?.split(",")
-            ?: listOf("http://localhost:3000", "http://localhost:3001")
+            ?: listOf(
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://localhost:7300",
+                "https://www.globalcommunitycleaners.org",
+                "https://globalcommunitycleaners.org"
+            )
         allowedOrigins.forEach { allowHost(it.removePrefix("http://").removePrefix("https://"), schemes = listOf("http", "https")) }
 
-        allowCredentials = true
+        // Allow mobile app requests (Ktor HttpClient doesn't send Origin, but this covers WebView scenarios)
+        anyHost()
+        allowCredentials = false
     }
 }

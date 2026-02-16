@@ -1,130 +1,76 @@
 package com.gcc.admin.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.gcc.admin.ui.theme.AdminPrimary
+import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.AdminLoginViewModel
 import org.koin.compose.koinInject
 
-/**
- * Full-screen login screen for admin authentication.
- *
- * Displays a centered card with email/password fields and a login button.
- * When authentication succeeds, [onLoginSuccess] is invoked to navigate
- * to the dashboard.
- */
 @Composable
-fun AdminLoginScreen(
-    onLoginSuccess: () -> Unit,
-    viewModel: AdminLoginViewModel = koinInject(),
-) {
-    val state by viewModel.state.collectAsState()
-
-    // Navigate on successful login
-    LaunchedEffect(state.isLoggedIn) {
-        if (state.isLoggedIn) {
-            onLoginSuccess()
-        }
-    }
+fun AdminLoginScreen(onLoginSuccess: () -> Unit) {
+    val viewModel = koinInject<AdminLoginViewModel>()
+    val email by viewModel.email.collectAsState()
+    val password by viewModel.password.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
     Box(
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
     ) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.width(420.dp),
+        Surface(
+            modifier = Modifier.width(400.dp),
+            shape = MaterialTheme.shapes.large,
+            shadowElevation = AdminTheme.elevation.overlay,
         ) {
             Column(
+                modifier = Modifier.padding(AdminTheme.spacing.xl),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(40.dp),
+                verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
             ) {
-                // Logo / Title
+                Text("GCC Admin", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    text = "GCC",
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 3.sp,
-                    ),
-                    color = AdminPrimary,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Admin Dashboard",
+                    "Sign in to manage operations",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(Modifier.height(AdminTheme.spacing.sm))
 
-                // Email field
                 OutlinedTextField(
-                    value = state.email,
-                    onValueChange = { viewModel.updateEmail(it) },
+                    value = email,
+                    onValueChange = viewModel::onEmailChange,
                     label = { Text("Email") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Password field
                 OutlinedTextField(
-                    value = state.password,
-                    onValueChange = { viewModel.updatePassword(it) },
+                    value = password,
+                    onValueChange = viewModel::onPasswordChange,
                     label = { Text("Password") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
                 )
 
-                // Error message
-                if (state.error != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = state.error ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                error?.let {
+                    Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Login button
                 Button(
-                    onClick = { viewModel.login() },
-                    enabled = !state.isLoading,
+                    onClick = { viewModel.login(onLoginSuccess) },
+                    enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
                 ) {
-                    if (state.isLoading) {
+                    if (isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
                             strokeWidth = 2.dp,
                         )
                     } else {

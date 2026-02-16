@@ -1,32 +1,29 @@
 package com.gcc.admin.viewmodel
 
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
+import com.gcc.shared.model.FeedbackTicket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class FeedbackState(
-    val feedbackList: List<FeedbackTicket> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null,
-)
+class FeedbackViewModel(private val api: GccApiClient) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-class FeedbackViewModel(
-    private val apiClient: GccApiClient,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _tickets = MutableStateFlow<List<FeedbackTicket>>(emptyList())
+    val tickets: StateFlow<List<FeedbackTicket>> = _tickets.asStateFlow()
 
-    private val _state = MutableStateFlow(FeedbackState())
-    val state: StateFlow<FeedbackState> = _state.asStateFlow()
+    private val _statusFilter = MutableStateFlow<String?>(null)
+    val statusFilter: StateFlow<String?> = _statusFilter.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
         loadFeedback()
@@ -34,24 +31,20 @@ class FeedbackViewModel(
 
     fun loadFeedback() {
         scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _isLoading.value = true
+            _error.value = null
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/feedback") {
-                    contentType(ContentType.Application.Json)
-                }
-                val result: ApiResponse<List<FeedbackTicket>> = response.body()
-                if (result.success && result.data != null) {
-                    _state.update { it.copy(feedbackList = result.data, isLoading = false) }
-                } else {
-                    _state.update { it.copy(error = result.message ?: "Failed to load feedback", isLoading = false) }
-                }
+                _tickets.value = api.getAdminFeedback(status = _statusFilter.value)
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Failed to load feedback", isLoading = false) }
+                _error.value = e.message ?: "Failed to load feedback"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
-    fun clearError() {
-        _state.update { it.copy(error = null) }
+    fun onStatusFilterChange(status: String?) {
+        _statusFilter.value = status
+        loadFeedback()
     }
 }

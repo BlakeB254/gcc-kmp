@@ -1,99 +1,57 @@
 package com.gcc.admin.viewmodel
 
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
+import com.gcc.shared.model.Block
+import com.gcc.shared.model.Route
+import com.gcc.shared.model.ServiceArea
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class ServiceAreaState(
-    val serviceAreas: List<ServiceArea> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null,
-)
+class ServiceAreaViewModel(private val api: GccApiClient) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-class ServiceAreaViewModel(
-    private val apiClient: GccApiClient,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _serviceAreas = MutableStateFlow<List<ServiceArea>>(emptyList())
+    val serviceAreas: StateFlow<List<ServiceArea>> = _serviceAreas.asStateFlow()
 
-    private val _state = MutableStateFlow(ServiceAreaState())
-    val state: StateFlow<ServiceAreaState> = _state.asStateFlow()
+    private val _blocks = MutableStateFlow<List<Block>>(emptyList())
+    val blocks: StateFlow<List<Block>> = _blocks.asStateFlow()
+
+    private val _routes = MutableStateFlow<List<Route>>(emptyList())
+    val routes: StateFlow<List<Route>> = _routes.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
-        loadServiceAreas()
+        loadData()
     }
 
-    fun loadServiceAreas() {
+    fun loadData() {
         scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _isLoading.value = true
+            _error.value = null
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/admin/service-areas") {
-                    contentType(ContentType.Application.Json)
-                }
-                val result: ApiResponse<List<ServiceArea>> = response.body()
-                if (result.success && result.data != null) {
-                    _state.update { it.copy(serviceAreas = result.data, isLoading = false) }
-                } else {
-                    _state.update { it.copy(error = result.message ?: "Failed to load service areas", isLoading = false) }
-                }
+                val areasDeferred = async { api.getAdminServiceAreas() }
+                val blocksDeferred = async { api.getAdminBlocks() }
+                val routesDeferred = async { api.getAdminRoutes() }
+
+                _serviceAreas.value = areasDeferred.await()
+                _blocks.value = blocksDeferred.await()
+                _routes.value = routesDeferred.await()
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Failed to load service areas", isLoading = false) }
+                _error.value = e.message ?: "Failed to load service area data"
+            } finally {
+                _isLoading.value = false
             }
         }
-    }
-
-    fun createServiceArea(request: AdminServiceAreaRequest) {
-        scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/admin/service-areas") {
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                val result: ApiResponse<ServiceArea> = response.body()
-                if (result.success) {
-                    _state.update { it.copy(isLoading = false) }
-                    loadServiceAreas()
-                } else {
-                    _state.update { it.copy(error = result.message ?: "Create failed", isLoading = false) }
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Create failed", isLoading = false) }
-            }
-        }
-    }
-
-    fun updateServiceArea(areaId: Int, request: AdminServiceAreaRequest) {
-        scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            try {
-                val response = apiClient.httpClient.put("${apiClient.baseUrl}/api/admin/service-areas/$areaId") {
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                val result: ApiResponse<ServiceArea> = response.body()
-                if (result.success) {
-                    _state.update { it.copy(isLoading = false) }
-                    loadServiceAreas()
-                } else {
-                    _state.update { it.copy(error = result.message ?: "Update failed", isLoading = false) }
-                }
-            } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Update failed", isLoading = false) }
-            }
-        }
-    }
-
-    fun clearError() {
-        _state.update { it.copy(error = null) }
     }
 }

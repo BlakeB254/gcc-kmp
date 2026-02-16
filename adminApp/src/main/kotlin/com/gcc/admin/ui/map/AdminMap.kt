@@ -1,11 +1,18 @@
 package com.gcc.admin.ui.map
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -22,50 +29,144 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.admin.ui.theme.*
 import com.gcc.shared.model.*
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.*
 
+// ── Admin Map Color Constants ──────────────────────────────────────────────
+
+private val MapBackground = Color(0xFFF5F5F4)
+private val BlockAvailableFill = Color(0x3322C55E)      // green 20%
+private val BlockFundedFill = Color(0x333B82F6)          // blue 20%
+private val BlockInProgressFill = Color(0x33F59E0B)      // amber 20%
+private val BlockCompletedFill = Color(0x3314B8A6)       // teal 20%
+private val BlockBorderColor = Color(0xFF6B7280)         // gray-500
+private val BlockSelectedBorder = Color(0xFFEF4444)      // red-500
+private val BlockSelectedFill = Color(0x40EF4444)        // red 25%
+private val RouteLineColor = Color(0xFF22C55E)           // GCC green
+private val RouteLineShadow = Color(0x4422C55E)          // green 27%
+private val CheckpointColor = Color(0xFFEF4444)          // red
+private val CheckpointOutline = Color(0xFFFFFFFF)
+private val ServiceAreaBorder = Color(0xFF8B5CF6)        // purple-500
+private val ServiceAreaFill = Color(0x1A8B5CF6)          // purple 10%
+
+// ── Mercator Projection Helpers ────────────────────────────────────────────
+
+/**
+ * Simple Mercator projection converting lat/lng to pixel coordinates
+ * relative to the canvas center. Matches the composeApp implementation.
+ */
+fun adminLatLngToPixel(
+    lat: Double, lng: Double,
+    centerLat: Double, centerLng: Double,
+    zoom: Double, canvasWidth: Float, canvasHeight: Float,
+): Offset {
+    val scale = (256.0 * (1 shl zoom.toInt())).toFloat()
+    val worldX = ((lng + 180.0) / 360.0 * scale).toFloat()
+    val worldY = ((1.0 - ln(tan(lat * PI / 180.0) + 1.0 / cos(lat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
+    val centerWorldX = ((centerLng + 180.0) / 360.0 * scale).toFloat()
+    val centerWorldY = ((1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
+    return Offset(
+        x = canvasWidth / 2f + (worldX - centerWorldX),
+        y = canvasHeight / 2f + (worldY - centerWorldY),
+    )
+}
+
+/** Inverse Mercator: convert pixel Y to latitude. */
+fun adminPixelToLat(
+    pixelY: Float,
+    centerLat: Double,
+    zoom: Double,
+    canvasHeight: Float,
+): Double {
+    val scale = (256.0 * (1 shl zoom.toInt()))
+    val centerWorldY = (1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale
+    val worldY = centerWorldY + (pixelY - canvasHeight / 2.0)
+    val n = PI - 2.0 * PI * worldY / scale
+    return 180.0 / PI * atan(0.5 * (exp(n) - exp(-n)))
+}
+
+/** Inverse Mercator: convert pixel X to longitude. */
+fun adminPixelToLng(
+    pixelX: Float,
+    centerLng: Double,
+    zoom: Double,
+    canvasWidth: Float,
+): Double {
+    val scale = (256.0 * (1 shl zoom.toInt()))
+    val centerWorldX = (centerLng + 180.0) / 360.0 * scale
+    val worldX = centerWorldX + (pixelX - canvasWidth / 2.0)
+    return worldX / scale * 360.0 - 180.0
+}
+
+// ── Main Admin Map Composable ──────────────────────────────────────────────
+
+/**
+ * Admin map composable using Canvas-based rendering with OSM tiles.
+ * Supports block selection, route path display, service area overlays,
+ * and checkpoint placement for route editing.
+ *
+ * @param centerLat Map center latitude
+ * @param centerLng Map center longitude
+ * @param zoom Base zoom level
+ * @param blocks List of blocks to render as colored polygons
+ * @param routes List of routes (selected route's checkpoints are drawn as a path)
+ * @param serviceAreas List of service areas to render as boundary overlays
+ * @param selectedBlockId Currently selected block ID (highlighted with red border)
+ * @param selectedRouteId Currently selected route ID (its path is drawn)
+ * @param placedCheckpoints List of (lat, lng) pairs for checkpoint placement mode
+ * @param isLoading Whether data is currently loading
+ * @param onBlockClick Callback when a block is clicked
+ * @param onMapClick Callback when the map is clicked (for checkpoint placement)
+ * @param modifier Composable modifier
+ */
 @Composable
 fun AdminMap(
+    centerLat: Double,
+    centerLng: Double,
+    zoom: Double,
+    blocks: List<Block> = emptyList(),
+    routes: List<Route> = emptyList(),
+    serviceAreas: List<ServiceArea> = emptyList(),
+    selectedBlockId: Int? = null,
+    selectedRouteId: Int? = null,
+    placedCheckpoints: List<Pair<Double, Double>> = emptyList(),
+    isLoading: Boolean = false,
+    onBlockClick: ((Int) -> Unit)? = null,
+    onMapClick: ((lat: Double, lng: Double) -> Unit)? = null,
     modifier: Modifier = Modifier,
-    viewModel: AdminMapViewModel = koinInject(),
-    initialZoom: Double = ZOOM_CITY,
-    initialCenterLat: Double = CHICAGO_CENTER_LAT,
-    initialCenterLng: Double = CHICAGO_CENTER_LNG,
-    enableGestures: Boolean = true,
-    onBlockClick: ((Block) -> Unit)? = null,
-    onAreaClick: ((CommunityArea) -> Unit)? = null,
-    onSpotClick: ((CommunityReport) -> Unit)? = null,
-    onBountyClick: ((Bounty) -> Unit)? = null,
-    content: @Composable BoxScope.() -> Unit = {},
 ) {
     val textMeasurer = rememberTextMeasurer()
     val coroutineScope = rememberCoroutineScope()
-    val state by viewModel.state.collectAsState()
 
     // --- Gesture state ---
+    val animatedScale = remember { Animatable(1f) }
     var gestureOffsetX by remember { mutableFloatStateOf(0f) }
     var gestureOffsetY by remember { mutableFloatStateOf(0f) }
     var gestureScale by remember { mutableFloatStateOf(1f) }
 
-    val effectiveZoom by remember {
+    val effectiveOffsetX by remember { derivedStateOf { gestureOffsetX } }
+    val effectiveOffsetY by remember { derivedStateOf { gestureOffsetY } }
+    val effectiveScale by remember { derivedStateOf { gestureScale * animatedScale.value } }
+
+    val effectiveZoom by remember(zoom) {
         derivedStateOf {
-            initialZoom + kotlin.math.log2(gestureScale.toDouble().coerceAtLeast(0.01))
+            zoom + log2(effectiveScale.toDouble().coerceAtLeast(0.01))
         }
     }
 
     // --- Tile loading state ---
     var tileLoadCount by remember { mutableIntStateOf(0) }
-    val zoomInt = initialZoom.toInt()
-    val centerTileX = remember(initialCenterLng, zoomInt) { MapProjection.tileX(initialCenterLng, zoomInt) }
-    val centerTileY = remember(initialCenterLat, zoomInt) { MapProjection.tileY(initialCenterLat, zoomInt) }
+    val zoomInt = zoom.toInt()
+    val centerTileX = remember(centerLng, zoomInt) { AdminTileLoader.tileX(centerLng, zoomInt) }
+    val centerTileY = remember(centerLat, zoomInt) { AdminTileLoader.tileY(centerLat, zoomInt) }
 
+    // Trigger tile loading when center or zoom changes
     LaunchedEffect(centerTileX, centerTileY, zoomInt) {
+        // Load a 5x5 grid of tiles around the center
         for (dx in -2..2) {
             for (dy in -2..2) {
                 val tx = centerTileX + dx
@@ -80,141 +181,106 @@ fun AdminMap(
         }
     }
 
-    // --- Label style ---
-    val labelScaleFactor by remember {
-        derivedStateOf {
-            (effectiveZoom / ZOOM_NEIGHBORHOOD).toFloat().coerceIn(0.6f, 2.0f)
-        }
-    }
+    // --- Checkpoint pulse animation ---
+    val pulseTransition = rememberInfiniteTransition(label = "checkpointPulse")
+    val checkpointPulseRadius by pulseTransition.animateFloat(
+        initialValue = 8f,
+        targetValue = 18f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = EaseOut), RepeatMode.Restart),
+        label = "checkpointPulseRadius",
+    )
+    val checkpointPulseAlpha by pulseTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = EaseOut), RepeatMode.Restart),
+        label = "checkpointPulseAlpha",
+    )
 
-    val areaLabelStyle by remember(labelScaleFactor) {
-        derivedStateOf {
-            TextStyle(
-                fontSize = (9f * labelScaleFactor).sp,
-                color = MapCommunityLabel,
-                textAlign = TextAlign.Center,
-                lineHeight = (11f * labelScaleFactor).sp,
+    // Double-tap zoom presets
+    val doubleTapScales = listOf(1.0f, 2.0f, 4.0f, 8.0f)
+
+    // Pre-compute block hit areas for click detection
+    val blockBounds = remember(blocks) {
+        blocks.mapNotNull { block ->
+            val boundary = block.boundary ?: return@mapNotNull null
+            if (boundary.coordinates.isEmpty() || boundary.coordinates.first().isEmpty()) return@mapNotNull null
+            val ring = boundary.coordinates.first()
+            val lats = ring.map { it[1] }
+            val lngs = ring.map { it[0] }
+            block.id to BlockBounds(
+                north = lats.max(),
+                south = lats.min(),
+                east = lngs.max(),
+                west = lngs.min(),
             )
         }
     }
 
-    Box(modifier = modifier.fillMaxWidth().background(MapDarkBackground)) {
-        val gestureModifier = if (enableGestures) {
-            Modifier
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, gestureZoom, _ ->
-                        gestureScale = (gestureScale * gestureZoom).coerceIn(0.3f, 8f)
-                        gestureOffsetX += pan.x
-                        gestureOffsetY += pan.y
-                    }
+    Box(modifier = modifier.fillMaxWidth().background(MapBackground)) {
+        val gestureModifier = Modifier
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, gestureZoom, _ ->
+                    gestureScale = (gestureScale * gestureZoom).coerceIn(0.3f, 8f)
+                    gestureOffsetX += pan.x
+                    gestureOffsetY += pan.y
                 }
-                .pointerInput(onBlockClick, onAreaClick, onSpotClick, onBountyClick) {
-                    detectTapGestures(
-                        onDoubleTap = { _ ->
-                            // Cycle zoom presets
-                            val zoomPresets = listOf(1.0f, 2.0f, 4.0f, 8.0f)
-                            val nextScale = zoomPresets.firstOrNull { it > gestureScale + 0.1f }
-                                ?: zoomPresets.first()
-                            gestureScale = nextScale
-                        },
-                        onTap = { tapOffset ->
-                            val totalScale = gestureScale
-                            val canvasX = (tapOffset.x - gestureOffsetX - size.width / 2f * (totalScale - 1f)) / totalScale
-                            val canvasY = (tapOffset.y - gestureOffsetY - size.height / 2f * (totalScale - 1f)) / totalScale
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
+            }
+            .pointerInput(onBlockClick, onMapClick) {
+                detectTapGestures(
+                    onDoubleTap = { _ ->
+                        val currentScale = gestureScale * animatedScale.value
+                        val nextScale = doubleTapScales.firstOrNull { it > currentScale + 0.1f }
+                            ?: doubleTapScales.first()
+                        val targetAnimScale = nextScale / gestureScale
+                        coroutineScope.launch {
+                            animatedScale.animateTo(
+                                targetValue = targetAnimScale,
+                                animationSpec = tween(377, easing = FastOutSlowInEasing),
+                            )
+                            gestureScale *= animatedScale.value
+                            gestureScale = gestureScale.coerceIn(0.3f, 8f)
+                            animatedScale.snapTo(1f)
+                        }
+                    },
+                    onTap = { tapOffset ->
+                        val totalScale = gestureScale * animatedScale.value
+                        val canvasX = (tapOffset.x - effectiveOffsetX - size.width / 2f * (totalScale - 1f)) / totalScale
+                        val canvasY = (tapOffset.y - effectiveOffsetY - size.height / 2f * (totalScale - 1f)) / totalScale
+                        val w = size.width.toFloat()
+                        val h = size.height.toFloat()
 
-                            // Hit-test blocks first
-                            if (onBlockClick != null) {
-                                val hitBlock = state.blocks.find { block ->
-                                    val boundary = block.boundary ?: return@find false
-                                    if (boundary.coordinates.isEmpty()) return@find false
-                                    val ring = boundary.coordinates[0]
-                                    val bbox = geoBBox(ring, initialCenterLat, initialCenterLng, initialZoom, w, h)
-                                    canvasX in bbox.first.x..bbox.second.x && canvasY in bbox.first.y..bbox.second.y
-                                }
-                                if (hitBlock != null) {
-                                    viewModel.selectBlock(hitBlock.id)
-                                    onBlockClick(hitBlock)
-                                    return@detectTapGestures
-                                }
+                        val tapLat = adminPixelToLat(canvasY, centerLat, zoom, h)
+                        val tapLng = adminPixelToLng(canvasX, centerLng, zoom, w)
+
+                        // Check block hit testing
+                        var hitBlockId: Int? = null
+                        for ((blockId, bounds) in blockBounds) {
+                            if (tapLat in bounds.south..bounds.north &&
+                                tapLng in bounds.west..bounds.east
+                            ) {
+                                hitBlockId = blockId
+                                break
                             }
+                        }
 
-                            // Hit-test spots (distance < 12px)
-                            if (onSpotClick != null) {
-                                val hitSpot = state.spots.find { spot ->
-                                    val px = MapProjection.latLngToPixel(
-                                        spot.coordinates.lat, spot.coordinates.lng,
-                                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                                    )
-                                    val dx = canvasX - px.x
-                                    val dy = canvasY - px.y
-                                    dx * dx + dy * dy < 144f // 12px radius
-                                }
-                                if (hitSpot != null) {
-                                    viewModel.selectSpot(hitSpot.id)
-                                    onSpotClick(hitSpot)
-                                    return@detectTapGestures
-                                }
-                            }
-
-                            // Hit-test bounties (distance < 16px)
-                            if (onBountyClick != null) {
-                                val hitBounty = state.bounties.find { bounty ->
-                                    val px = MapProjection.latLngToPixel(
-                                        bounty.locationLat, bounty.locationLng,
-                                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                                    )
-                                    val dx = canvasX - px.x
-                                    val dy = canvasY - px.y
-                                    dx * dx + dy * dy < 256f // 16px radius
-                                }
-                                if (hitBounty != null) {
-                                    viewModel.selectBounty(hitBounty.id)
-                                    onBountyClick(hitBounty)
-                                    return@detectTapGestures
-                                }
-                            }
-
-                            // Hit-test community areas
-                            if (onAreaClick != null) {
-                                val hitArea = chicagoCommunityAreas.find { area ->
-                                    val topLeft = MapProjection.latLngToPixel(
-                                        area.bounds.north, area.bounds.west,
-                                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                                    )
-                                    val bottomRight = MapProjection.latLngToPixel(
-                                        area.bounds.south, area.bounds.east,
-                                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                                    )
-                                    val minX = min(topLeft.x, bottomRight.x)
-                                    val maxX = max(topLeft.x, bottomRight.x)
-                                    val minY = min(topLeft.y, bottomRight.y)
-                                    val maxY = max(topLeft.y, bottomRight.y)
-                                    canvasX in minX..maxX && canvasY in minY..maxY
-                                }
-                                if (hitArea != null) {
-                                    onAreaClick(hitArea)
-                                    return@detectTapGestures
-                                }
-                            }
-
-                            // Tap on empty space clears selection
-                            viewModel.clearSelection()
-                        },
-                    )
-                }
-        } else Modifier
+                        if (hitBlockId != null) {
+                            onBlockClick?.invoke(hitBlockId)
+                        } else {
+                            onMapClick?.invoke(tapLat, tapLng)
+                        }
+                    },
+                )
+            }
 
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .then(gestureModifier)
                 .graphicsLayer {
-                    scaleX = gestureScale
-                    scaleY = gestureScale
-                    translationX = gestureOffsetX
-                    translationY = gestureOffsetY
+                    scaleX = effectiveScale
+                    scaleY = effectiveScale
+                    translationX = effectiveOffsetX
+                    translationY = effectiveOffsetY
                 }
         ) {
             val w = size.width
@@ -224,462 +290,446 @@ fun AdminMap(
             @Suppress("UNUSED_EXPRESSION")
             tileLoadCount
 
-            // 1. Dark background fill
-            drawRect(color = MapDarkBackground, size = size)
+            // ── Layer 1: OSM Raster Tiles ──────────────────────────────────
 
-            // 2. CartoDB dark tiles
             for (dx in -3..3) {
                 for (dy in -3..3) {
                     val tx = centerTileX + dx
                     val ty = centerTileY + dy
                     val tile = AdminTileLoader.getCachedTile(zoomInt, tx, ty)
                     if (tile != null) {
-                        val tileTopLat = MapProjection.tileLat(ty, zoomInt)
-                        val tileLeftLng = MapProjection.tileLng(tx, zoomInt)
-                        val tileBottomLat = MapProjection.tileLat(ty + 1, zoomInt)
-                        val tileRightLng = MapProjection.tileLng(tx + 1, zoomInt)
+                        val tileTopLat = AdminTileLoader.tileLat(ty, zoomInt)
+                        val tileLeftLng = AdminTileLoader.tileLng(tx, zoomInt)
+                        val tileBottomLat = AdminTileLoader.tileLat(ty + 1, zoomInt)
+                        val tileRightLng = AdminTileLoader.tileLng(tx + 1, zoomInt)
 
-                        val topLeft = MapProjection.latLngToPixel(
-                            tileTopLat, tileLeftLng, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                        )
-                        val bottomRight = MapProjection.latLngToPixel(
-                            tileBottomLat, tileRightLng, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                        )
+                        val topLeft = adminLatLngToPixel(tileTopLat, tileLeftLng, centerLat, centerLng, zoom, w, h)
+                        val bottomRight = adminLatLngToPixel(tileBottomLat, tileRightLng, centerLat, centerLng, zoom, w, h)
+
+                        val dstX = topLeft.x.toInt()
+                        val dstY = topLeft.y.toInt()
+                        val dstW = (bottomRight.x - topLeft.x).toInt().coerceAtLeast(1)
+                        val dstH = (bottomRight.y - topLeft.y).toInt().coerceAtLeast(1)
 
                         drawImage(
                             image = tile,
                             srcOffset = IntOffset.Zero,
                             srcSize = IntSize(tile.width, tile.height),
-                            dstOffset = IntOffset(topLeft.x.toInt(), topLeft.y.toInt()),
-                            dstSize = IntSize(
-                                (bottomRight.x - topLeft.x).toInt().coerceAtLeast(1),
-                                (bottomRight.y - topLeft.y).toInt().coerceAtLeast(1),
-                            ),
+                            dstOffset = IntOffset(dstX, dstY),
+                            dstSize = IntSize(dstW, dstH),
                         )
                     }
                 }
             }
 
-            // Viewport bounds for culling
-            val visNorth = MapProjection.pixelToLat(0f, initialCenterLat, initialZoom, h)
-            val visSouth = MapProjection.pixelToLat(h, initialCenterLat, initialZoom, h)
-            val visWest = MapProjection.pixelToLng(0f, initialCenterLng, initialZoom, w)
-            val visEast = MapProjection.pixelToLng(w, initialCenterLng, initialZoom, w)
+            // ── Layer 2: Service Area Boundaries ───────────────────────────
 
-            // 3. Community area polygons
-            if (state.showCommunityAreas) {
-                for (area in chicagoCommunityAreas) {
-                    if (area.bounds.south > visNorth || area.bounds.north < visSouth ||
-                        area.bounds.west > visEast || area.bounds.east < visWest) continue
-
-                    drawCommunityAreaPolygon(
-                        area, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                    )
-
-                    // Area label
-                    val areaTopLeft = MapProjection.latLngToPixel(
-                        area.bounds.north, area.bounds.west, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                    )
-                    val areaBottomRight = MapProjection.latLngToPixel(
-                        area.bounds.south, area.bounds.east, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                    )
-                    val rectWidth = abs(areaBottomRight.x - areaTopLeft.x)
-                    if (rectWidth >= 40f) {
-                        val rectTopLeft = Offset(
-                            min(areaTopLeft.x, areaBottomRight.x),
-                            min(areaTopLeft.y, areaBottomRight.y),
-                        )
-                        val rectSize = Size(rectWidth, abs(areaBottomRight.y - areaTopLeft.y))
-                        val textResult = textMeasurer.measure(area.displayName, areaLabelStyle)
-                        drawText(
-                            textResult,
-                            topLeft = Offset(
-                                rectTopLeft.x + (rectSize.width - textResult.size.width) / 2f,
-                                rectTopLeft.y + (rectSize.height - textResult.size.height) / 2f,
-                            ),
-                        )
-                    }
-                }
-            }
-
-            // 4. Service area boundaries (dashed)
-            for (sa in state.serviceAreas) {
-                val boundary = sa.boundary ?: continue
-                if (boundary.coordinates.isEmpty()) continue
-                val ring = boundary.coordinates[0]
-                drawGeoPolygon(
-                    ring = ring,
-                    fillColor = MapServiceAreaFill,
-                    strokeColor = MapServiceAreaBorder,
-                    strokeWidth = 2f,
-                    dashed = true,
-                    centerLat = initialCenterLat,
-                    centerLng = initialCenterLng,
-                    zoom = initialZoom,
-                    w = w, h = h,
+            for (area in serviceAreas) {
+                drawServiceAreaOverlay(
+                    area = area,
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = zoom,
+                    w = w,
+                    h = h,
+                    textMeasurer = textMeasurer,
                 )
             }
 
-            // 5. Block polygons at ZOOM_NEIGHBORHOOD+
-            if (state.showBlocks && effectiveZoom >= ZOOM_NEIGHBORHOOD) {
-                for (block in state.blocks) {
-                    val boundary = block.boundary ?: continue
-                    if (boundary.coordinates.isEmpty()) continue
-                    val ring = boundary.coordinates[0]
+            // ── Layer 3: Block Overlays ────────────────────────────────────
 
-                    val fillColor = when (block.status) {
-                        BlockStatus.AVAILABLE -> MapBlockAvailable
-                        BlockStatus.FUNDED -> MapBlockFunded
-                        BlockStatus.IN_PROGRESS -> MapBlockInProgress
-                        BlockStatus.COMPLETED -> MapBlockCompleted
-                    }
-
-                    val isSelected = state.selectedBlockId == block.id
-                    drawGeoPolygon(
-                        ring = ring,
-                        fillColor = fillColor,
-                        strokeColor = if (isSelected) MapSelectionOutline else MapBlockBorder,
-                        strokeWidth = if (isSelected) 3f else 1.5f,
-                        dashed = false,
-                        centerLat = initialCenterLat,
-                        centerLng = initialCenterLng,
-                        zoom = initialZoom,
-                        w = w, h = h,
-                    )
-
-                    // Block labels when zoomed enough
-                    if (effectiveZoom >= ZOOM_ROUTE) {
-                        drawBlockLabel(
-                            block, ring, initialCenterLat, initialCenterLng, initialZoom,
-                            w, h, textMeasurer, labelScaleFactor,
-                        )
-                    }
-                }
+            for (block in blocks) {
+                val isSelected = block.id == selectedBlockId
+                drawBlockOverlay(
+                    block = block,
+                    isSelected = isSelected,
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = zoom,
+                    w = w,
+                    h = h,
+                    textMeasurer = textMeasurer,
+                    effectiveZoom = effectiveZoom,
+                )
             }
 
-            // 6. Route paths at ZOOM_ROUTE+
-            if (state.showRoutes && effectiveZoom >= ZOOM_ROUTE) {
-                for (route in state.routes) {
-                    val geometry = route.geometry ?: continue
-                    if (geometry.coordinates.size < 2) continue
+            // ── Layer 4: Route Path (selected route) ───────────────────────
 
-                    val path = Path()
-                    geometry.coordinates.forEachIndexed { index, point ->
-                        val lat = point[1]
-                        val lng = point[0]
-                        val px = MapProjection.latLngToPixel(
-                            lat, lng, initialCenterLat, initialCenterLng, initialZoom, w, h,
-                        )
-                        if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+            val selectedRoute = routes.find { it.id == selectedRouteId }
+            if (selectedRoute != null) {
+                drawRoutePath(
+                    route = selectedRoute,
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = zoom,
+                    w = w,
+                    h = h,
+                )
+            }
+
+            // ── Layer 5: Placed Checkpoint Markers ─────────────────────────
+
+            if (placedCheckpoints.isNotEmpty()) {
+                // Draw connecting line between placed checkpoints
+                if (placedCheckpoints.size >= 2) {
+                    val checkpointPath = Path()
+                    placedCheckpoints.forEachIndexed { index, (lat, lng) ->
+                        val point = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+                        if (index == 0) checkpointPath.moveTo(point.x, point.y)
+                        else checkpointPath.lineTo(point.x, point.y)
                     }
+                    // Shadow line
                     drawPath(
-                        path = path,
-                        color = MapRouteLine,
+                        path = checkpointPath,
+                        color = CheckpointColor.copy(alpha = 0.3f),
+                        style = Stroke(
+                            width = 5f,
+                            pathEffect = PathEffect.cornerPathEffect(8f),
+                        ),
+                    )
+                    // Main line
+                    drawPath(
+                        path = checkpointPath,
+                        color = CheckpointColor,
                         style = Stroke(
                             width = 3f,
                             pathEffect = PathEffect.cornerPathEffect(8f),
                         ),
                     )
-
-                    // Checkpoint dots
-                    for (checkpoint in route.checkpoints) {
-                        val cpPx = MapProjection.latLngToPixel(
-                            checkpoint.coordinates.lat, checkpoint.coordinates.lng,
-                            initialCenterLat, initialCenterLng, initialZoom, w, h,
-                        )
-                        drawCircle(color = MapCheckpointDot, radius = 4f, center = cpPx)
-                    }
                 }
-            }
 
-            // 7. Spot markers
-            if (state.showSpots) {
-                for (spot in state.spots) {
-                    val px = MapProjection.latLngToPixel(
-                        spot.coordinates.lat, spot.coordinates.lng,
-                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                    )
-                    // Radius circle
-                    drawCircle(color = MapSpotRadius, radius = 18f, center = px)
-                    // Marker dot
-                    val isSelected = state.selectedSpotId == spot.id
+                // Draw each checkpoint marker with pulse
+                placedCheckpoints.forEachIndexed { index, (lat, lng) ->
+                    val pos = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+
+                    // Pulse ring
                     drawCircle(
-                        color = if (isSelected) MapSelectionOutline else MapSpotMarker,
-                        radius = 6f,
-                        center = px,
+                        color = CheckpointColor.copy(alpha = checkpointPulseAlpha),
+                        radius = checkpointPulseRadius,
+                        center = pos,
                     )
-                    if (isSelected) {
-                        drawCircle(
-                            color = MapSelectionOutline,
-                            radius = 10f,
-                            center = px,
-                            style = Stroke(width = 2f),
-                        )
-                    }
-                }
-            }
-
-            // 8. Bounty zones
-            if (state.showBounties) {
-                for (bounty in state.bounties) {
-                    val px = MapProjection.latLngToPixel(
-                        bounty.locationLat, bounty.locationLng,
-                        initialCenterLat, initialCenterLng, initialZoom, w, h,
-                    )
-                    // Approximate pixels per meter at this zoom
-                    val metersPerPixel = 156543.03 * kotlin.math.cos(
-                        bounty.locationLat * kotlin.math.PI / 180.0
-                    ) / (1 shl initialZoom.toInt()).toDouble()
-                    val radiusPx = (bounty.radiusMeters / metersPerPixel).toFloat().coerceIn(8f, 200f)
-
-                    val zoneColor = if (bounty.claimedBy != null) MapBountyClaimed else MapBountyZone
-                    drawCircle(color = zoneColor.copy(alpha = 0.15f), radius = radiusPx, center = px)
+                    // Outer circle
                     drawCircle(
-                        color = zoneColor,
-                        radius = radiusPx,
-                        center = px,
-                        style = Stroke(width = 2f),
+                        color = CheckpointOutline,
+                        radius = 9f,
+                        center = pos,
                     )
-                    drawCircle(color = zoneColor, radius = 5f, center = px)
-
-                    val isSelected = state.selectedBountyId == bounty.id
-                    if (isSelected) {
-                        drawCircle(
-                            color = MapSelectionOutline,
-                            radius = radiusPx + 4f,
-                            center = px,
-                            style = Stroke(width = 2.5f),
-                        )
-                    }
-                }
-            }
-
-            // 9. Selection highlight glow (for blocks with boundary)
-            state.selectedBlockId?.let { selectedId ->
-                val block = state.blocks.find { it.id == selectedId }
-                val boundary = block?.boundary
-                if (boundary != null && boundary.coordinates.isNotEmpty()) {
-                    val ring = boundary.coordinates[0]
-                    drawGeoPolygon(
-                        ring = ring,
-                        fillColor = Color.Transparent,
-                        strokeColor = MapSelectionOutline,
-                        strokeWidth = 4f,
-                        dashed = false,
-                        centerLat = initialCenterLat,
-                        centerLng = initialCenterLng,
-                        zoom = initialZoom,
-                        w = w, h = h,
+                    // Inner filled circle
+                    drawCircle(
+                        color = CheckpointColor,
+                        radius = 7f,
+                        center = pos,
+                    )
+                    // Sequence number label
+                    val label = "${index + 1}"
+                    val labelStyle = TextStyle(
+                        fontSize = 9.sp,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                    )
+                    val labelResult = textMeasurer.measure(label, labelStyle)
+                    drawText(
+                        labelResult,
+                        topLeft = Offset(
+                            pos.x - labelResult.size.width / 2f,
+                            pos.y - labelResult.size.height / 2f,
+                        ),
                     )
                 }
-            }
-
-            // 10. Grid lines at ZOOM_STREET+
-            if (state.showGrid && effectiveZoom >= ZOOM_STREET) {
-                drawAdminGridLines(initialCenterLat, initialCenterLng, initialZoom, w, h, effectiveZoom)
             }
         }
 
-        // Overlay content
-        content()
-    }
-}
+        // ── Loading Indicator ──────────────────────────────────────────────
 
-// --- Drawing helpers ---
-
-private fun DrawScope.drawCommunityAreaPolygon(
-    area: CommunityArea,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-) {
-    if (area.polygon.isNotEmpty()) {
-        val path = Path()
-        area.polygon.forEachIndexed { index, (lat, lng) ->
-            val point = MapProjection.latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
-            if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
-        }
-        path.close()
-        drawPath(path = path, color = MapCommunityFill)
-        drawPath(path = path, color = MapCommunityStroke, style = Stroke(width = 1f))
-    } else {
-        val topLeft = MapProjection.latLngToPixel(area.bounds.north, area.bounds.west, centerLat, centerLng, zoom, w, h)
-        val bottomRight = MapProjection.latLngToPixel(area.bounds.south, area.bounds.east, centerLat, centerLng, zoom, w, h)
-        val rectTopLeft = Offset(min(topLeft.x, bottomRight.x), min(topLeft.y, bottomRight.y))
-        val rectSize = Size(abs(bottomRight.x - topLeft.x), abs(bottomRight.y - topLeft.y))
-        drawRect(color = MapCommunityFill, topLeft = rectTopLeft, size = rectSize)
-        drawRect(color = MapCommunityStroke, topLeft = rectTopLeft, size = rectSize, style = Stroke(width = 1f))
-    }
-}
-
-private fun DrawScope.drawGeoPolygon(
-    ring: List<Point>,
-    fillColor: Color,
-    strokeColor: Color,
-    strokeWidth: Float,
-    dashed: Boolean,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-) {
-    if (ring.isEmpty()) return
-    val path = Path()
-    ring.forEachIndexed { index, point ->
-        val lat = point[1]
-        val lng = point[0]
-        val px = MapProjection.latLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
-        if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
-    }
-    path.close()
-    drawPath(path = path, color = fillColor)
-    drawPath(
-        path = path,
-        color = strokeColor,
-        style = Stroke(
-            width = strokeWidth,
-            pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f) else null,
-        ),
-    )
-}
-
-private fun DrawScope.drawBlockLabel(
-    block: Block,
-    ring: List<Point>,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    labelScaleFactor: Float,
-) {
-    // Compute bounding box of block polygon
-    var minX = Float.MAX_VALUE; var maxX = Float.MIN_VALUE
-    var minY = Float.MAX_VALUE; var maxY = Float.MIN_VALUE
-    for (point in ring) {
-        val px = MapProjection.latLngToPixel(point[1], point[0], centerLat, centerLng, zoom, w, h)
-        minX = min(minX, px.x); maxX = max(maxX, px.x)
-        minY = min(minY, px.y); maxY = max(maxY, px.y)
-    }
-    val blockWidth = maxX - minX
-    if (blockWidth < 50f) return
-
-    val cx = (minX + maxX) / 2f
-    val cy = (minY + maxY) / 2f
-
-    // Block code label
-    val nameStyle = TextStyle(
-        fontSize = (8f * labelScaleFactor).sp,
-        color = MapCommunityLabel,
-        textAlign = TextAlign.Center,
-    )
-    val nameResult = textMeasurer.measure(block.code, nameStyle)
-    drawText(nameResult, topLeft = Offset(cx - nameResult.size.width / 2f, cy - nameResult.size.height - 2f))
-
-    // Funding progress
-    val goal = block.fundingGoal ?: 0
-    val current = block.fundingCurrent
-    if (goal > 0) {
-        val progressText = "\$${current / 100} / \$${goal / 100}"
-        val progressStyle = TextStyle(
-            fontSize = (7f * labelScaleFactor).sp,
-            color = MapControlIcon.copy(alpha = 0.6f),
-            textAlign = TextAlign.Center,
-        )
-        val progressResult = textMeasurer.measure(progressText, progressStyle)
-        val progX = cx - progressResult.size.width / 2f
-        val progY = cy + 2f
-
-        // Background pill
-        drawRoundRect(
-            color = MapDarkBackground.copy(alpha = 0.85f),
-            topLeft = Offset(progX - 3f, progY - 1f),
-            size = Size(progressResult.size.width + 6f, progressResult.size.height + 2f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
-        )
-        drawText(progressResult, topLeft = Offset(progX, progY))
-
-        // Progress bar
-        val barWidth = blockWidth * 0.6f
-        val barHeight = 4f
-        val barX = cx - barWidth / 2f
-        val barY = progY + progressResult.size.height + 4f
-        val progress = (current.toFloat() / goal).coerceIn(0f, 1f)
-
-        drawRoundRect(
-            color = MapBlockBorder.copy(alpha = 0.2f),
-            topLeft = Offset(barX, barY),
-            size = Size(barWidth, barHeight),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
-        )
-        if (progress > 0f) {
-            val filledColor = when (block.status) {
-                BlockStatus.AVAILABLE -> MapBlockAvailable
-                BlockStatus.FUNDED -> MapBlockFunded
-                BlockStatus.IN_PROGRESS -> MapBlockInProgress
-                BlockStatus.COMPLETED -> MapBlockCompleted
+        if (isLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = AdminSurface.copy(alpha = 0.9f),
+                shadowElevation = 4.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = AdminPrimary,
+                    )
+                    Text(
+                        "Loading map data...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AdminOnSurface,
+                    )
+                }
             }
-            drawRoundRect(
-                color = filledColor.copy(alpha = 0.9f),
-                topLeft = Offset(barX, barY),
-                size = Size(barWidth * progress, barHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+        }
+
+        // ── Zoom Level Indicator ───────────────────────────────────────────
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp),
+            shape = RoundedCornerShape(4.dp),
+            color = Color.White.copy(alpha = 0.85f),
+            shadowElevation = 2.dp,
+        ) {
+            Text(
+                "Zoom: ${"%.1f".format(effectiveZoom)}",
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF374151),
             )
         }
     }
 }
 
-private fun DrawScope.drawAdminGridLines(
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
+// ── Block Bounds Helper ────────────────────────────────────────────────────
+
+private data class BlockBounds(
+    val north: Double,
+    val south: Double,
+    val east: Double,
+    val west: Double,
+)
+
+// ── Drawing Extension Functions ────────────────────────────────────────────
+
+/**
+ * Draw a block as a colored polygon overlay. Selected blocks get a brighter
+ * fill and thicker red border.
+ */
+private fun DrawScope.drawBlockOverlay(
+    block: Block,
+    isSelected: Boolean,
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
     effectiveZoom: Double,
 ) {
-    val gridSpacing = if (effectiveZoom >= 20.0) 0.0005 else 0.001
-    val latRange = 0.02 / (1 shl (zoom.toInt() - 14).coerceAtLeast(0))
-    val lngRange = 0.03 / (1 shl (zoom.toInt() - 14).coerceAtLeast(0))
+    val boundary = block.boundary ?: return
+    if (boundary.coordinates.isEmpty() || boundary.coordinates.first().isEmpty()) return
 
-    val startLat = ((centerLat - latRange) / gridSpacing).toInt() * gridSpacing
-    val startLng = ((centerLng - lngRange) / gridSpacing).toInt() * gridSpacing
+    val ring = boundary.coordinates.first()
+    val path = Path()
+    ring.forEachIndexed { index, point ->
+        // GeoJSON format: [lng, lat]
+        val lng = point[0]
+        val lat = point[1]
+        val px = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+        if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+    }
+    path.close()
 
-    var lat = startLat
-    while (lat <= centerLat + latRange) {
-        val left = MapProjection.latLngToPixel(lat, centerLng - lngRange, centerLat, centerLng, zoom, w, h)
-        val right = MapProjection.latLngToPixel(lat, centerLng + lngRange, centerLat, centerLng, zoom, w, h)
-        drawLine(color = MapGridLine, start = left, end = right, strokeWidth = 0.5f)
-        lat += gridSpacing
+    // Fill color based on status
+    val fillColor = if (isSelected) {
+        BlockSelectedFill
+    } else {
+        when (block.status) {
+            BlockStatus.AVAILABLE -> BlockAvailableFill
+            BlockStatus.FUNDED -> BlockFundedFill
+            BlockStatus.IN_PROGRESS -> BlockInProgressFill
+            BlockStatus.COMPLETED -> BlockCompletedFill
+        }
     }
 
-    var lng = startLng
-    while (lng <= centerLng + lngRange) {
-        val top = MapProjection.latLngToPixel(centerLat + latRange, lng, centerLat, centerLng, zoom, w, h)
-        val bottom = MapProjection.latLngToPixel(centerLat - latRange, lng, centerLat, centerLng, zoom, w, h)
-        drawLine(color = MapGridLine, start = top, end = bottom, strokeWidth = 0.5f)
-        lng += gridSpacing
+    drawPath(path = path, color = fillColor)
+
+    // Border
+    val borderColor = if (isSelected) BlockSelectedBorder else BlockBorderColor
+    val borderWidth = if (isSelected) 3f else 1.5f
+    drawPath(
+        path = path,
+        color = borderColor,
+        style = Stroke(width = borderWidth),
+    )
+
+    // Block code label (only at higher zoom levels and if block is large enough on screen)
+    if (effectiveZoom >= 15.0) {
+        val points = ring.map { p ->
+            adminLatLngToPixel(p[1], p[0], centerLat, centerLng, zoom, w, h)
+        }
+        val minX = points.minOf { it.x }
+        val maxX = points.maxOf { it.x }
+        val minY = points.minOf { it.y }
+        val maxY = points.maxOf { it.y }
+        val blockWidth = maxX - minX
+
+        if (blockWidth >= 40f) {
+            val cx = (minX + maxX) / 2f
+            val cy = (minY + maxY) / 2f
+
+            val scaleFactor = (effectiveZoom / 15.0).toFloat().coerceIn(0.7f, 1.5f)
+            val labelStyle = TextStyle(
+                fontSize = (9f * scaleFactor).sp,
+                color = if (isSelected) BlockSelectedBorder else Color(0xFF374151),
+                textAlign = TextAlign.Center,
+            )
+            val labelResult = textMeasurer.measure(block.code, labelStyle)
+            val bgPad = 3f
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.85f),
+                topLeft = Offset(
+                    cx - labelResult.size.width / 2f - bgPad,
+                    cy - labelResult.size.height / 2f - bgPad,
+                ),
+                size = Size(
+                    labelResult.size.width + bgPad * 2,
+                    labelResult.size.height + bgPad * 2,
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
+            )
+            drawText(
+                labelResult,
+                topLeft = Offset(
+                    cx - labelResult.size.width / 2f,
+                    cy - labelResult.size.height / 2f,
+                ),
+            )
+        }
     }
 }
 
-/** Compute AABB for a GeoJSON ring in pixel space. */
-private fun geoBBox(
-    ring: List<Point>,
-    centerLat: Double,
-    centerLng: Double,
-    zoom: Double,
-    w: Float,
-    h: Float,
-): Pair<Offset, Offset> {
-    var minX = Float.MAX_VALUE; var maxX = Float.MIN_VALUE
-    var minY = Float.MAX_VALUE; var maxY = Float.MIN_VALUE
-    for (point in ring) {
-        val px = MapProjection.latLngToPixel(point[1], point[0], centerLat, centerLng, zoom, w, h)
-        minX = min(minX, px.x); maxX = max(maxX, px.x)
-        minY = min(minY, px.y); maxY = max(maxY, px.y)
+/**
+ * Draw a route's checkpoints connected by a green line path,
+ * with small dots at each checkpoint.
+ */
+private fun DrawScope.drawRoutePath(
+    route: Route,
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+) {
+    val checkpoints = route.checkpoints
+    if (checkpoints.isEmpty()) {
+        // Fall back to geometry LineString if available
+        val geometry = route.geometry
+        if (geometry != null && geometry.coordinates.size >= 2) {
+            val path = Path()
+            geometry.coordinates.forEachIndexed { index, point ->
+                val px = adminLatLngToPixel(point[1], point[0], centerLat, centerLng, zoom, w, h)
+                if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+            }
+            // Shadow
+            drawPath(
+                path = path,
+                color = RouteLineShadow,
+                style = Stroke(width = 7f, pathEffect = PathEffect.cornerPathEffect(8f)),
+            )
+            // Main line
+            drawPath(
+                path = path,
+                color = RouteLineColor,
+                style = Stroke(width = 4f, pathEffect = PathEffect.cornerPathEffect(8f)),
+            )
+            // Dots at each coordinate
+            for (point in geometry.coordinates) {
+                val px = adminLatLngToPixel(point[1], point[0], centerLat, centerLng, zoom, w, h)
+                drawCircle(color = Color.White, radius = 5f, center = px)
+                drawCircle(color = RouteLineColor, radius = 3.5f, center = px)
+            }
+        }
+        return
     }
-    return Offset(minX, minY) to Offset(maxX, maxY)
+
+    // Draw from checkpoint coordinates
+    if (checkpoints.size >= 2) {
+        val sortedCheckpoints = checkpoints.sortedBy { it.sequenceOrder }
+        val path = Path()
+        sortedCheckpoints.forEachIndexed { index, cp ->
+            val px = adminLatLngToPixel(cp.coordinates.lat, cp.coordinates.lng, centerLat, centerLng, zoom, w, h)
+            if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+        }
+        // Shadow
+        drawPath(
+            path = path,
+            color = RouteLineShadow,
+            style = Stroke(width = 7f, pathEffect = PathEffect.cornerPathEffect(8f)),
+        )
+        // Main line
+        drawPath(
+            path = path,
+            color = RouteLineColor,
+            style = Stroke(width = 4f, pathEffect = PathEffect.cornerPathEffect(8f)),
+        )
+    }
+
+    // Checkpoint dots
+    for (cp in checkpoints) {
+        val px = adminLatLngToPixel(cp.coordinates.lat, cp.coordinates.lng, centerLat, centerLng, zoom, w, h)
+        drawCircle(color = Color.White, radius = 6f, center = px)
+        drawCircle(color = RouteLineColor, radius = 4f, center = px)
+    }
+}
+
+/**
+ * Draw a service area boundary as a dashed polygon outline with a subtle fill.
+ * Includes a name label at the centroid.
+ */
+private fun DrawScope.drawServiceAreaOverlay(
+    area: ServiceArea,
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+) {
+    val boundary = area.boundary ?: return
+    if (boundary.coordinates.isEmpty() || boundary.coordinates.first().isEmpty()) return
+
+    val ring = boundary.coordinates.first()
+    val path = Path()
+    ring.forEachIndexed { index, point ->
+        val lng = point[0]
+        val lat = point[1]
+        val px = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+        if (index == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+    }
+    path.close()
+
+    // Subtle fill
+    drawPath(path = path, color = ServiceAreaFill)
+
+    // Dashed border
+    drawPath(
+        path = path,
+        color = ServiceAreaBorder,
+        style = Stroke(
+            width = 2.5f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 6f), 0f),
+        ),
+    )
+
+    // Name label at centroid
+    val points = ring.map { p ->
+        adminLatLngToPixel(p[1], p[0], centerLat, centerLng, zoom, w, h)
+    }
+    val cx = points.map { it.x }.average().toFloat()
+    val cy = points.map { it.y }.average().toFloat()
+
+    val labelStyle = TextStyle(
+        fontSize = 11.sp,
+        color = ServiceAreaBorder,
+        textAlign = TextAlign.Center,
+    )
+    val labelResult = textMeasurer.measure(area.name, labelStyle)
+    val bgPad = 4f
+    drawRoundRect(
+        color = Color.White.copy(alpha = 0.85f),
+        topLeft = Offset(
+            cx - labelResult.size.width / 2f - bgPad,
+            cy - labelResult.size.height / 2f - bgPad,
+        ),
+        size = Size(
+            labelResult.size.width + bgPad * 2,
+            labelResult.size.height + bgPad * 2,
+        ),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+    )
+    drawText(
+        labelResult,
+        topLeft = Offset(
+            cx - labelResult.size.width / 2f,
+            cy - labelResult.size.height / 2f,
+        ),
+    )
 }
