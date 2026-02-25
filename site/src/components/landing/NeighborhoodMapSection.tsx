@@ -257,15 +257,45 @@ export function NeighborhoodMapSection() {
     }
   }, [mapLoaded])
 
+  // Zoom to fit a block's polygon
+  const zoomToBlock = useCallback((block: BlockWithStatus) => {
+    const map = mapRef.current
+    if (!map) return
+    const coords = block.geo.polygon.coordinates[0]
+    const lngs = coords.map(c => c[0])
+    const lats = coords.map(c => c[1])
+    map.fitBounds(
+      [
+        [Math.min(...lngs) - 0.0003, Math.min(...lats) - 0.0003],
+        [Math.max(...lngs) + 0.0003, Math.max(...lats) + 0.0003],
+      ],
+      { padding: { top: 80, bottom: 160, left: 50, right: 50 }, duration: 600 }
+    )
+  }, [])
+
+  // Reset to the full 10-block overview
+  const resetMapView = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.fitBounds(
+      [
+        [MAP_BOUNDS.west - 0.001, MAP_BOUNDS.south - 0.001],
+        [MAP_BOUNDS.east + 0.001, MAP_BOUNDS.north + 0.001],
+      ],
+      { padding: { top: 50, bottom: 50, left: 50, right: 50 }, duration: 600 }
+    )
+  }, [])
+
   const onClick = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0]
     if (feature && feature.properties) {
       const block = blocksWithStatus.find(b => b.id === feature.properties?.id)
       if (block) {
         setSelectedBlock(block)
+        zoomToBlock(block)
       }
     }
-  }, [blocksWithStatus])
+  }, [blocksWithStatus, zoomToBlock])
 
   const onHover = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0]
@@ -513,7 +543,7 @@ export function NeighborhoodMapSection() {
                       {STATUS_ICONS[selectedBlock.status]} {STATUS_LABELS[selectedBlock.status]}
                     </span>
                     <button
-                      onClick={() => setSelectedBlock(null)}
+                      onClick={() => { setSelectedBlock(null); resetMapView() }}
                       className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors rounded-full hover:bg-neutral-100"
                       aria-label="Close"
                     >
