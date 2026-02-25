@@ -88,7 +88,7 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
 
   const workersTotal = stats?.workers?.total || 0
   const sponsorsTotal = stats?.sponsors?.total || 0
-  const waitlistTotal = stats?.waitlist?.total || 0
+  const blocksCleanedOrFunded = (stats?.blocks?.cleaned || 0) + (stats?.blocks?.funded || 0)
   const totalRaised = stats?.financial?.totalRaised || 0
 
   const counters = [
@@ -106,26 +106,32 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
       color: 'text-brand-gold-400',
       delay: 100,
     },
-    {
-      icon: '👥',
-      value: waitlistTotal,
-      label: 'Supporters',
-      color: 'text-brand-sky-400',
-      delay: 200,
-    },
+    // Show Blocks Cleaned card only once blocks are actually funded/cleaned
+    ...(blocksCleanedOrFunded > 0
+      ? [
+          {
+            icon: '📍',
+            value: blocksCleanedOrFunded,
+            label: 'Blocks Cleaned',
+            color: 'text-brand-sky-400',
+            delay: 200,
+          },
+        ]
+      : []),
     {
       icon: '💰',
       value: totalRaised / 100,
       prefix: '$',
       label: 'Total Raised',
       color: 'text-white',
-      delay: 300,
+      delay: blocksCleanedOrFunded > 0 ? 300 : 200,
     },
   ]
 
+  const colCount = counters.length
   const gridClass = layout === 'horizontal'
-    ? 'grid grid-cols-2 md:grid-cols-4 gap-4'
-    : 'grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6'
+    ? `grid grid-cols-${colCount} gap-4`
+    : `grid grid-cols-${colCount === 3 ? '3' : '2 md:grid-cols-4'} gap-4 sm:gap-6`
 
   return (
     <div className={`${gridClass} max-w-5xl mx-auto`}>
