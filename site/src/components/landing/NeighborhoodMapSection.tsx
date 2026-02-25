@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import Map, { Source, Layer, Popup, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
+import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -263,21 +263,6 @@ export function NeighborhoodMapSection() {
       const block = blocksWithStatus.find(b => b.id === feature.properties?.id)
       if (block) {
         setSelectedBlock(block)
-
-        // Pan map so the popup is fully visible — offset upward to
-        // make room for the popup card above the block center
-        const map = mapRef.current
-        if (map) {
-          const [lng, lat] = block.geo.center.coordinates
-          const point = map.project([lng, lat])
-          // Shift the target point down by 120px so the map pans up,
-          // placing the popup comfortably within the viewport
-          const offsetPoint = map.unproject([point.x, point.y + 120])
-          map.easeTo({
-            center: [lng, offsetPoint.lat],
-            duration: 400,
-          })
-        }
       }
     }
   }, [blocksWithStatus])
@@ -450,49 +435,34 @@ export function NeighborhoodMapSection() {
                   }}
                 />
 
-                {/* Block labels - zoom-adaptive with no overlap */}
+                {/* Block labels - always show cross streets, scale with zoom */}
                 <Layer
                   id="blocks-label"
                   type="symbol"
                   layout={{
                     'text-field': [
-                      'step',
-                      ['zoom'],
-                      // Zoom < 15.5: short code only
-                      ['get', 'code'],
-                      15.5,
-                      // Zoom 15.5-16.5: corner names stacked
-                      [
-                        'case',
-                        ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
-                        ['concat', ['get', 'fromCorner'], '\n→ ', ['get', 'toCorner']],
-                        ['get', 'streetName'],
-                      ],
-                      16.5,
-                      // Zoom 16.5+: full detail with street name
-                      [
-                        'case',
-                        ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
-                        ['concat', ['get', 'fromCorner'], ' → ', ['get', 'toCorner'], '\n', ['get', 'streetName']],
-                        ['get', 'streetName'],
-                      ],
+                      'case',
+                      ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
+                      ['concat', ['get', 'fromCorner'], '\n→ ', ['get', 'toCorner']],
+                      ['get', 'streetName'],
                     ],
                     'text-size': [
                       'interpolate', ['linear'], ['zoom'],
-                      14, 8,
-                      15, 10,
-                      16, 12,
-                      17, 14,
-                      18, 16,
+                      14, 7,
+                      15, 9,
+                      16, 11,
+                      17, 13,
+                      18, 15,
                     ],
                     'text-anchor': 'center',
                     'text-justify': 'center',
                     'text-allow-overlap': false,
                     'text-ignore-placement': false,
-                    'text-padding': 4,
+                    'text-optional': true,
+                    'text-padding': 2,
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-max-width': 8,
-                    'text-line-height': 1.2,
+                    'text-max-width': 10,
+                    'text-line-height': 1.15,
                     'symbol-sort-key': [
                       'case',
                       ['get', 'isAvailable'], 0,
@@ -502,12 +472,7 @@ export function NeighborhoodMapSection() {
                   }}
                   paint={{
                     'text-color': '#ffffff',
-                    'text-halo-color': [
-                      'case',
-                      ['get', 'isAvailable'],
-                      '#16A34A',
-                      '#000000',
-                    ],
+                    'text-halo-color': ['get', 'color'],
                     'text-halo-width': [
                       'interpolate', ['linear'], ['zoom'],
                       14, 1.5,
@@ -519,88 +484,12 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Popup for selected block */}
-              {selectedBlock && (
-                <Popup
-                  longitude={selectedBlock.geo.center.coordinates[0]}
-                  latitude={selectedBlock.geo.center.coordinates[1]}
-                  anchor="bottom"
-                  onClose={() => setSelectedBlock(null)}
-                  closeButton={true}
-                  closeOnClick={false}
-                  className="block-popup"
-                  maxWidth="300px"
-                  offset={20}
-                >
-                  <div className="p-4 min-w-[220px] max-w-[280px]">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-bold text-neutral-900 text-lg">
-                        {selectedBlock.fromCorner && selectedBlock.toCorner
-                          ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
-                          : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
-                      </span>
-                      <span
-                        className="text-xs px-3 py-1 rounded-full text-white font-semibold flex items-center gap-1"
-                        style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
-                      >
-                        <span>{STATUS_ICONS[selectedBlock.status]}</span>
-                        {STATUS_LABELS[selectedBlock.status]}
-                      </span>
-                    </div>
-                    {selectedBlock.streetName && (
-                      <p className="text-sm text-neutral-700 mb-4 font-medium">
-                        📍 {formatStreetName(selectedBlock.streetName)}
-                      </p>
-                    )}
-
-                    {selectedBlock.status === 'available' && (
-                      <div className="space-y-2">
-                        <Link
-                          href="/worker/signup"
-                          className="btn-primary w-full text-sm py-2.5 text-center block font-semibold"
-                        >
-                          🧹 Claim This Block - Earn $100
-                        </Link>
-                        <p className="text-xs text-center text-neutral-500">
-                          Sign up as a worker to claim
-                        </p>
-                      </div>
-                    )}
-                    {selectedBlock.status === 'unfunded' && (
-                      <div className="space-y-2">
-                        <Link
-                          href="/sponsor"
-                          className="btn-secondary w-full text-sm py-2.5 text-center block font-semibold"
-                        >
-                          💰 Fund This Block - $100
-                        </Link>
-                        <p className="text-xs text-center text-neutral-500">
-                          Sponsor a cleaner community
-                        </p>
-                      </div>
-                    )}
-                    {selectedBlock.status === 'completed' && (
-                      <div className="text-center p-2 bg-emerald-50 rounded-lg">
-                        <p className="text-sm text-emerald-700 font-medium">
-                          🏆 Recently cleaned!
-                        </p>
-                      </div>
-                    )}
-                    {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress') && (
-                      <div className="text-center p-2 bg-amber-50 rounded-lg">
-                        <p className="text-sm text-amber-700 font-medium">
-                          👷 A worker is handling this block
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </Popup>
-              )}
+              {/* No in-map popup — detail card is rendered outside the map below */}
             </Map>
           </div>
 
           {/* Map attribution */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white/90 px-3 py-1.5 text-xs text-neutral-500 flex justify-between items-center">
+          <div className="absolute bottom-0 left-0 right-0 bg-white/90 px-3 py-1.5 text-xs text-neutral-500 flex justify-between items-center z-10">
             <span>
               © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">OpenStreetMap</a>
               {' • '}
@@ -611,6 +500,71 @@ export function NeighborhoodMapSection() {
             </span>
           </div>
         </div>
+
+        {/* Selected block detail card — rendered outside the map container so it's never clipped */}
+        {selectedBlock && (
+          <div className="mt-4 bg-white rounded-xl shadow-lg border border-neutral-200 p-5 animate-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <h3 className="font-bold text-neutral-900 text-lg">
+                  {selectedBlock.fromCorner && selectedBlock.toCorner
+                    ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
+                    : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
+                </h3>
+                {selectedBlock.streetName && (
+                  <p className="text-sm text-neutral-600 mt-1">
+                    📍 {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North side' : 'South side'}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span
+                  className="text-xs px-3 py-1.5 rounded-full text-white font-semibold flex items-center gap-1"
+                  style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
+                >
+                  <span>{STATUS_ICONS[selectedBlock.status]}</span>
+                  {STATUS_LABELS[selectedBlock.status]}
+                </span>
+                <button
+                  onClick={() => setSelectedBlock(null)}
+                  className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
+                  aria-label="Close"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {selectedBlock.status === 'available' && (
+              <Link
+                href="/worker/signup"
+                className="btn-primary w-full sm:w-auto text-sm py-2.5 px-6 text-center inline-block font-semibold"
+              >
+                🧹 Claim This Block — Earn $100
+              </Link>
+            )}
+            {selectedBlock.status === 'unfunded' && (
+              <Link
+                href="/sponsor"
+                className="btn-secondary w-full sm:w-auto text-sm py-2.5 px-6 text-center inline-block font-semibold"
+              >
+                💰 Fund This Block — $100
+              </Link>
+            )}
+            {selectedBlock.status === 'completed' && (
+              <p className="text-sm text-emerald-700 font-medium bg-emerald-50 rounded-lg px-4 py-2 inline-block">
+                🏆 Recently cleaned!
+              </p>
+            )}
+            {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
+              <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-4 py-2 inline-block">
+                🚫 This block is currently being handled
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Block stats - Enhanced cards */}
         <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
