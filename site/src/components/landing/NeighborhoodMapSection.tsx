@@ -263,6 +263,21 @@ export function NeighborhoodMapSection() {
       const block = blocksWithStatus.find(b => b.id === feature.properties?.id)
       if (block) {
         setSelectedBlock(block)
+
+        // Pan map so the popup is fully visible — offset upward to
+        // make room for the popup card above the block center
+        const map = mapRef.current
+        if (map) {
+          const [lng, lat] = block.geo.center.coordinates
+          const point = map.project([lng, lat])
+          // Shift the target point down by 120px so the map pans up,
+          // placing the popup comfortably within the viewport
+          const offsetPoint = map.unproject([point.x, point.y + 120])
+          map.easeTo({
+            center: [lng, offsetPoint.lat],
+            duration: 400,
+          })
+        }
       }
     }
   }, [blocksWithStatus])
@@ -514,9 +529,10 @@ export function NeighborhoodMapSection() {
                   closeButton={true}
                   closeOnClick={false}
                   className="block-popup"
-                  offset={15}
+                  maxWidth="300px"
+                  offset={20}
                 >
-                  <div className="p-4 min-w-[240px]">
+                  <div className="p-4 min-w-[220px] max-w-[280px]">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-bold text-neutral-900 text-lg">
                         {selectedBlock.fromCorner && selectedBlock.toCorner
