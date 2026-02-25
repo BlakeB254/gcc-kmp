@@ -86,30 +86,30 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
     fetchStats()
   }, [])
 
-  const movementTotal = stats?.movement?.total || 0
   const workersTotal = stats?.workers?.total || 0
-  const blocksCleanedOrFunded = (stats?.blocks?.cleaned || 0) + (stats?.blocks?.funded || 0)
+  const sponsorsTotal = stats?.sponsors?.total || 0
+  const waitlistTotal = stats?.waitlist?.total || 0
   const totalRaised = stats?.financial?.totalRaised || 0
 
   const counters = [
     {
-      icon: '👥',
-      value: movementTotal,
-      label: 'In the Movement',
-      color: 'text-brand-gold-400',
+      icon: '🧹',
+      value: workersTotal,
+      label: 'Workers Enrolled',
+      color: 'text-brand-green-400',
       delay: 0,
     },
     {
-      icon: '🧹',
-      value: workersTotal,
-      label: 'Workers Signed Up',
-      color: 'text-brand-green-400',
+      icon: '🤝',
+      value: sponsorsTotal,
+      label: 'Sponsors',
+      color: 'text-brand-gold-400',
       delay: 100,
     },
     {
-      icon: '📍',
-      value: blocksCleanedOrFunded,
-      label: 'Blocks Funded',
+      icon: '👥',
+      value: waitlistTotal,
+      label: 'Supporters',
       color: 'text-brand-sky-400',
       delay: 200,
     },
