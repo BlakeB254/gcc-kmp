@@ -426,22 +426,55 @@ export function NeighborhoodMapSection() {
                   }}
                 />
 
-                {/* Block labels - show street corners instead of codes */}
+                {/* Block labels - zoom-adaptive with no overlap */}
                 <Layer
                   id="blocks-label"
                   type="symbol"
                   layout={{
                     'text-field': [
-                      'case',
-                      ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
-                      ['concat', ['get', 'fromCorner'], ' → ', ['get', 'toCorner']],
-                      ['get', 'streetName'],
+                      'step',
+                      ['zoom'],
+                      // Zoom < 15.5: short code only
+                      ['get', 'code'],
+                      15.5,
+                      // Zoom 15.5-16.5: corner names stacked
+                      [
+                        'case',
+                        ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
+                        ['concat', ['get', 'fromCorner'], '\n→ ', ['get', 'toCorner']],
+                        ['get', 'streetName'],
+                      ],
+                      16.5,
+                      // Zoom 16.5+: full detail with street name
+                      [
+                        'case',
+                        ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
+                        ['concat', ['get', 'fromCorner'], ' → ', ['get', 'toCorner'], '\n', ['get', 'streetName']],
+                        ['get', 'streetName'],
+                      ],
                     ],
-                    'text-size': 10,
+                    'text-size': [
+                      'interpolate', ['linear'], ['zoom'],
+                      14, 8,
+                      15, 10,
+                      16, 12,
+                      17, 14,
+                      18, 16,
+                    ],
                     'text-anchor': 'center',
-                    'text-allow-overlap': true,
+                    'text-justify': 'center',
+                    'text-allow-overlap': false,
+                    'text-ignore-placement': false,
+                    'text-padding': 4,
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-max-width': 12,
+                    'text-max-width': 8,
+                    'text-line-height': 1.2,
+                    'symbol-sort-key': [
+                      'case',
+                      ['get', 'isAvailable'], 0,
+                      ['get', 'isUnfunded'], 2,
+                      1,
+                    ],
                   }}
                   paint={{
                     'text-color': '#ffffff',
@@ -451,7 +484,13 @@ export function NeighborhoodMapSection() {
                       '#15803D',
                       '#000000',
                     ],
-                    'text-halo-width': 2,
+                    'text-halo-width': [
+                      'interpolate', ['linear'], ['zoom'],
+                      14, 1.5,
+                      16, 2,
+                      18, 2.5,
+                    ],
+                    'text-halo-blur': 0.5,
                   }}
                 />
               </Source>
