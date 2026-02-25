@@ -488,6 +488,87 @@ export function NeighborhoodMapSection() {
             </Map>
           </div>
 
+          {/* Block detail card — overlaid inside the map canvas */}
+          {selectedBlock && (
+            <div className="absolute bottom-8 left-3 right-3 sm:left-4 sm:right-auto sm:max-w-sm z-20">
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-neutral-900 text-base leading-tight">
+                      {selectedBlock.fromCorner && selectedBlock.toCorner
+                        ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
+                        : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
+                    </h3>
+                    {selectedBlock.streetName && (
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        📍 {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North' : 'South'} side
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span
+                      className="text-xs px-2.5 py-1 rounded-full text-white font-semibold flex items-center gap-1"
+                      style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
+                    >
+                      {STATUS_ICONS[selectedBlock.status]} {STATUS_LABELS[selectedBlock.status]}
+                    </span>
+                    <button
+                      onClick={() => setSelectedBlock(null)}
+                      className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors rounded-full hover:bg-neutral-100"
+                      aria-label="Close"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {selectedBlock.status === 'available' && (
+                  <Link href="/worker/signup" className="btn-primary w-full text-sm py-2 text-center block font-semibold mt-2">
+                    🧹 Claim This Block — Earn $100
+                  </Link>
+                )}
+                {selectedBlock.status === 'unfunded' && (
+                  <Link href="/sponsor" className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
+                    💰 Fund This Block — $100
+                  </Link>
+                )}
+                {selectedBlock.status === 'completed' && (
+                  <p className="text-sm text-blue-700 font-medium bg-blue-50 rounded-lg px-3 py-1.5 mt-2 text-center">
+                    🏆 Recently cleaned!
+                  </p>
+                )}
+                {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
+                  <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-3 py-1.5 mt-2 text-center">
+                    🚫 Currently being handled
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Stats bar — overlaid at top-left of map */}
+          <div className="absolute top-3 left-3 z-20 flex gap-2">
+            {[
+              { value: stats.available, label: 'Available', color: 'bg-green-500' },
+              { value: stats.needSponsors, label: 'Need Sponsors', color: 'bg-neutral-400' },
+              ...(stats.completed > 0 ? [{ value: stats.completed, label: 'Completed', color: 'bg-blue-500' }] : []),
+              ...(stats.inProgress > 0 ? [{ value: stats.inProgress, label: 'In Progress', color: 'bg-red-500' }] : []),
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="bg-white/90 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-md text-center"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${stat.color}`} />
+                  <span className="text-sm font-bold text-neutral-900">{stat.value}</span>
+                </div>
+                <p className="text-[10px] text-neutral-500 leading-tight">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
           {/* Map attribution */}
           <div className="absolute bottom-0 left-0 right-0 bg-white/90 px-3 py-1.5 text-xs text-neutral-500 flex justify-between items-center z-10">
             <span>
@@ -498,97 +579,6 @@ export function NeighborhoodMapSection() {
             <span className="font-medium text-brand-gold-600">
               GCC Service Area
             </span>
-          </div>
-        </div>
-
-        {/* Selected block detail card — rendered outside the map container so it's never clipped */}
-        {selectedBlock && (
-          <div className="mt-4 bg-white rounded-xl shadow-lg border border-neutral-200 p-5 animate-in slide-in-from-bottom-2 duration-200">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div>
-                <h3 className="font-bold text-neutral-900 text-lg">
-                  {selectedBlock.fromCorner && selectedBlock.toCorner
-                    ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
-                    : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
-                </h3>
-                {selectedBlock.streetName && (
-                  <p className="text-sm text-neutral-600 mt-1">
-                    📍 {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North side' : 'South side'}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span
-                  className="text-xs px-3 py-1.5 rounded-full text-white font-semibold flex items-center gap-1"
-                  style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
-                >
-                  <span>{STATUS_ICONS[selectedBlock.status]}</span>
-                  {STATUS_LABELS[selectedBlock.status]}
-                </span>
-                <button
-                  onClick={() => setSelectedBlock(null)}
-                  className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors"
-                  aria-label="Close"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {selectedBlock.status === 'available' && (
-              <Link
-                href="/worker/signup"
-                className="btn-primary w-full sm:w-auto text-sm py-2.5 px-6 text-center inline-block font-semibold"
-              >
-                🧹 Claim This Block — Earn $100
-              </Link>
-            )}
-            {selectedBlock.status === 'unfunded' && (
-              <Link
-                href="/sponsor"
-                className="btn-secondary w-full sm:w-auto text-sm py-2.5 px-6 text-center inline-block font-semibold"
-              >
-                💰 Fund This Block — $100
-              </Link>
-            )}
-            {selectedBlock.status === 'completed' && (
-              <p className="text-sm text-emerald-700 font-medium bg-emerald-50 rounded-lg px-4 py-2 inline-block">
-                🏆 Recently cleaned!
-              </p>
-            )}
-            {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
-              <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-4 py-2 inline-block">
-                🚫 This block is currently being handled
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Block stats - Enhanced cards */}
-        <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl p-5 text-center shadow-md border-l-4 border-green-500">
-            <p className="text-3xl font-bold text-green-600">{stats.available}</p>
-            <p className="text-sm text-neutral-600 mt-1">Available Now</p>
-            <p className="text-xs text-neutral-400">Ready to claim</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 text-center shadow-md border-l-4 border-amber-500">
-            <p className="text-3xl font-bold text-amber-600">{stats.inProgress}</p>
-            <p className="text-sm text-neutral-600 mt-1">In Progress</p>
-            <p className="text-xs text-neutral-400">Being cleaned</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 text-center shadow-md border-l-4 border-emerald-500">
-            <p className="text-3xl font-bold text-emerald-600">{stats.completed}</p>
-            <p className="text-sm text-neutral-600 mt-1">Completed</p>
-            <p className="text-xs text-neutral-400">Mission accomplished</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 text-center shadow-md border-l-4 border-neutral-400">
-            <p className="text-3xl font-bold text-neutral-500">{stats.needSponsors}</p>
-            <p className="text-sm text-neutral-600 mt-1">Need Sponsors</p>
-            <Link href="/sponsor" className="text-xs text-brand-gold-600 hover:underline">
-              Fund a block →
-            </Link>
           </div>
         </div>
 
