@@ -36,7 +36,7 @@ export function MobileAppAnnouncementBanner({
                 <div className="min-w-0">
                   <p className="font-semibold text-sm truncate">GCC Mobile App</p>
                   <p className="text-xs text-neutral-300 truncate">
-                    Launching Feb 2nd - Get notified!
+                    Launching Soon, Spring 2026 - Get notified!
                   </p>
                 </div>
               </div>
@@ -85,7 +85,7 @@ export function MobileAppAnnouncementBanner({
           </span>
           <span className="text-sm font-medium">
             <span className="text-brand-gold-400 font-bold">Mobile App</span>
-            {' '}launching Feb 2nd
+            {' '}launching soon, Spring 2026
           </span>
         </div>
 

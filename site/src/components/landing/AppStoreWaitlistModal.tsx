@@ -125,7 +125,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                 Done
               </button>
               <a
-                href="https://twitter.com/intent/tweet?text=I%20just%20signed%20up%20for%20the%20GCC%20mobile%20app%20launching%20Feb%202nd!%20%F0%9F%93%B1%20Clean%20streets%2C%20real%20money%2C%20your%20neighborhood.%20%40GCCmovement"
+                href="https://twitter.com/intent/tweet?text=I%20just%20signed%20up%20for%20the%20GCC%20mobile%20app%20launching%20Spring%202026!%20%F0%9F%93%B1%20Clean%20streets%2C%20real%20money%2C%20your%20neighborhood.%20%40GCCmovement"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 py-3 px-4 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
