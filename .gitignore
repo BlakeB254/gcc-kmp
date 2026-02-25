@@ -39,3 +39,8 @@ builds/
 site/node_modules/
 site/.next/
 site/.env.local
+
+# Environment files (added by CDX credential leak prevention)
+.env.*.local
+.env.production
+.env.development

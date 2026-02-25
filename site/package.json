@@ -4,9 +4,9 @@
   "description": "Global Community Cleaners - Uber-like platform for paid block cleaning",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 7300",
+    "dev": "next dev -p 7350",
     "build": "next build",
-    "start": "next start -p 7300",
+    "start": "next start -p 7350",
     "lint": "next lint",
     "seed": "tsx src/seed/index.ts",
     "db:generate": "drizzle-kit generate",
