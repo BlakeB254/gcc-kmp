@@ -27,21 +27,30 @@ const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
 // Block status colors - designed for clear visibility
 // Maps database status to display colors
 const STATUS_COLORS = {
-  unfunded: '#6B7280',    // gray-500 - needs sponsor (muted)
-  available: '#16A34A',   // green-600 - ready to claim (vibrant)
-  funded: '#16A34A',      // green-600 - funded = available for workers
-  claimed: '#D97706',     // amber-600 - someone is working
-  in_progress: '#2563EB', // blue-600 - being cleaned
-  pending_review: '#7C3AED', // violet-600 - awaiting approval
-  completed: '#059669',   // emerald-600 - done
+  unfunded: '#9CA3AF',    // gray-400 - needs sponsor (muted, neutral)
+  available: '#22C55E',   // green-500 - ready to claim (bright green)
+  funded: '#22C55E',      // green-500 - funded = available (alias)
+  claimed: '#EF4444',     // red-500 - not available (taken)
+  in_progress: '#EF4444', // red-500 - not available (in use)
+  pending_review: '#EF4444', // red-500 - not available (under review)
+  completed: '#3B82F6',   // blue-500 - done (distinct from green)
 } as const
 
+// Simplified legend for the map key
+const LEGEND_STATUSES = {
+  unfunded: { label: 'Needs Sponsor', icon: '💰', color: '#9CA3AF' },
+  available: { label: 'Available Now', icon: '✅', color: '#22C55E' },
+  not_available: { label: 'Not Available', icon: '🚫', color: '#EF4444' },
+  completed: { label: 'Completed', icon: '🏆', color: '#3B82F6' },
+} as const
+
+// Full label map for popups and detail views
 const STATUS_LABELS = {
   unfunded: 'Needs Sponsor',
   available: 'Available Now',
   funded: 'Available Now',
-  claimed: 'Claimed',
-  in_progress: 'Being Cleaned',
+  claimed: 'Not Available',
+  in_progress: 'Not Available',
   pending_review: 'Under Review',
   completed: 'Completed',
 } as const
@@ -50,7 +59,7 @@ const STATUS_ICONS = {
   unfunded: '💰',
   available: '✅',
   funded: '✅',
-  claimed: '👷',
+  claimed: '🚫',
   in_progress: '🧹',
   pending_review: '⏳',
   completed: '🏆',
@@ -311,9 +320,9 @@ export function NeighborhoodMapSection() {
           </p>
         </div>
 
-        {/* Legend - Enhanced with icons */}
+        {/* Legend */}
         <div className="flex flex-wrap justify-center gap-3 mb-8">
-          {Object.entries(STATUS_LABELS).map(([status, label]) => (
+          {Object.entries(LEGEND_STATUSES).map(([status, { label, icon, color }]) => (
             <div
               key={status}
               className={`
@@ -322,10 +331,10 @@ export function NeighborhoodMapSection() {
                 shadow-sm
               `}
             >
-              <span>{STATUS_ICONS[status as BlockStatus]}</span>
+              <span>{icon}</span>
               <span
                 className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: STATUS_COLORS[status as BlockStatus] }}
+                style={{ backgroundColor: color }}
               />
               <span className={`${status === 'available' ? 'font-semibold text-green-700' : 'text-neutral-600'}`}>
                 {label}
@@ -410,7 +419,7 @@ export function NeighborhoodMapSection() {
                     'line-color': [
                       'case',
                       ['get', 'isAvailable'],
-                      '#15803D', // darker green for available
+                      '#16A34A', // darker green for available
                       ['get', 'color'],
                     ],
                     'line-width': [
@@ -481,7 +490,7 @@ export function NeighborhoodMapSection() {
                     'text-halo-color': [
                       'case',
                       ['get', 'isAvailable'],
-                      '#15803D',
+                      '#16A34A',
                       '#000000',
                     ],
                     'text-halo-width': [
