@@ -85,7 +85,7 @@ export function HeroSection() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
             </span>
             <span className="text-sm font-medium text-white tracking-wide">
-              🔥 Launching in Chicago • Expanding Nationwide
+              🔥 Launching in Chicago • Expanding Worldwide
             </span>
           </div>
 
