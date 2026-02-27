@@ -1,6 +1,6 @@
 package com.gcc.app
 
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import com.arkivanov.decompose.extensions.compose.stack.Children
 import com.arkivanov.decompose.extensions.compose.stack.animation.fade
 import com.arkivanov.decompose.extensions.compose.stack.animation.plus
@@ -13,7 +13,14 @@ import com.gcc.app.ui.theme.GccTheme
 
 @Composable
 fun App(component: RootComponent) {
+    var showSplash by remember { mutableStateOf(true) }
+
     GccTheme {
+        if (showSplash) {
+            SplashScreen(onFinished = { showSplash = false })
+            return@GccTheme
+        }
+
         Children(
             stack = component.childStack,
             animation = stackAnimation(fade() + scale()),
