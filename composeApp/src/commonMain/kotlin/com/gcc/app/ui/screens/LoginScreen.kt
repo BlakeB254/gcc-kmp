@@ -68,13 +68,13 @@ fun LoginScreen(
                     GccLogo(size = 96.dp, showGlow = true)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "GCC Worker",
+                        "Global Community Cleaners",
                         style = MaterialTheme.typography.headlineLarge,
                         color = Color.White,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Sign in to start cleaning",
+                        "Sign in to get started",
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color.White.copy(alpha = 0.8f),
                     )

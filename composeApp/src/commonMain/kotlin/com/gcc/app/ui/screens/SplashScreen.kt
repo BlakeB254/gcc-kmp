@@ -50,15 +50,15 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// ── Timeline thresholds (5 phases, 8 seconds total) ──
-private const val PHASE1_END = 0.1875f       // 0–1.5s
-private const val PHASE2_START = 0.1875f      // 1.5s
-private const val PHASE2_END = 0.4375f        // 3.5s
-private const val PHASE3_START = 0.4375f      // 3.5s
-private const val PHASE3_END = 0.625f         // 5.0s
-private const val PHASE4_START = 0.625f       // 5.0s
-private const val PHASE4_END = 0.8125f        // 6.5s
-private const val PHASE5_START = 0.8125f      // 6.5s
+// ── Timeline thresholds (5 phases, 12 seconds total) ──
+private const val PHASE1_END = 0.167f         // 0–2.0s    NL close-up
+private const val PHASE2_START = 0.167f       // 2.0s
+private const val PHASE2_END = 0.375f         // 4.5s      Chicago zoom-out
+private const val PHASE3_START = 0.375f       // 4.5s
+private const val PHASE3_END = 0.667f         // 8.0s      Continental US + green spread
+private const val PHASE4_START = 0.667f       // 8.0s
+private const val PHASE4_END = 0.833f         // 10.0s     Globe crossfade
+private const val PHASE5_START = 0.833f       // 10.0s     Logo reveal
 
 // ── Colors ──
 private val GreyBase = Color(0xFF4A4A4A)
@@ -114,11 +114,12 @@ fun SplashScreen(onFinished: () -> Unit) {
         )
     }
 
-    // Master animation: 0 -> 1 over 8 seconds
-    LaunchedEffect(Unit) {
+    // Master animation: 0 -> 1 over 8 seconds (waits for GeoJSON to load)
+    LaunchedEffect(geoData) {
+        if (geoData == null) return@LaunchedEffect
         masterProgress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 8000, easing = LinearEasing),
+            animationSpec = tween(durationMillis = 12000, easing = LinearEasing),
         )
         // Animation complete -- fade out
         splashAlpha.animateTo(0f, tween(500))
@@ -148,6 +149,20 @@ fun SplashScreen(onFinished: () -> Unit) {
                 area to dist
             }
             ?.sortedBy { it.second }
+    }
+
+    // Pre-sort US states by distance from Chicago for green spread
+    val sortedStates = remember(geoData) {
+        geoData?.usStates?.map { state ->
+            val ring = state.rings.firstOrNull() ?: return@map state to Double.MAX_VALUE
+            val centLat = ring.map { it.first }.average()
+            val centLng = ring.map { it.second }.average()
+            val dist = sqrt(
+                (centLat - CHICAGO_LAT).pow(2) +
+                    (centLng - CHICAGO_LNG).pow(2),
+            )
+            state to dist
+        }?.sortedBy { it.second }
     }
 
     // Logo scale for phase 5 spring bounce
@@ -199,10 +214,10 @@ fun SplashScreen(onFinished: () -> Unit) {
                     drawPhase2Chicago(phase2Progress, w, h, geo, sortedAreas)
                 }
 
-                // ── Phase 3: Continental US (0.4375 - 0.625) ──
+                // ── Phase 3: Continental US + green spread (0.375 - 0.667) ──
                 p < PHASE3_END -> {
                     val phase3Progress = (p - PHASE3_START) / (PHASE3_END - PHASE3_START)
-                    drawPhase3US(phase3Progress, w, h, geo)
+                    drawPhase3US(phase3Progress, w, h, geo, sortedStates)
                 }
 
                 // ── Phase 4+: Radial green glow behind globe ──
@@ -563,13 +578,15 @@ private fun DrawScope.drawPhase2Chicago(
     drawPath(nlPath, color = GccGreenDark, style = Stroke(width = 2f))
 }
 
-// ── Phase 3: Continental US (state outlines) ──
+// ── Phase 3: Continental US with green spread from Chicago ──
 private fun DrawScope.drawPhase3US(
     progress: Float,
     w: Float,
     h: Float,
     geo: SplashGeoData,
+    sortedStates: List<Pair<SplashPolygon, Double>>?,
 ) {
+    val states = sortedStates ?: return
     val latRange = US_MAX_LAT - US_MIN_LAT
     val lngRange = US_MAX_LNG - US_MIN_LNG
 
@@ -585,14 +602,24 @@ private fun DrawScope.drawPhase3US(
         return Offset(x, y)
     }
 
-    // Overall alpha: fade out in last 30%
+    // Overall alpha: fade out in last 15% of phase for smooth transition to globe
     val stateAlpha = when {
-        progress > 0.7f -> (1f - progress) / 0.3f
+        progress > 0.85f -> (1f - progress) / 0.15f
         else -> 1f
     }.coerceIn(0f, 1f)
 
-    // Draw each state as thin white/grey stroke outlines only (no fill)
-    geo.usStates.forEach { state ->
+    // Green spread starts at 15% of phase (after states are visible) and fills by 85%
+    val spreadProgress = ((progress - 0.15f) / 0.70f).coerceIn(0f, 1f)
+    // Smoothstep easing for organic spread feel
+    val easedSpread = spreadProgress * spreadProgress * (3f - 2f * spreadProgress)
+
+    val maxDist = states.maxOfOrNull { it.second }?.toFloat() ?: 1f
+
+    // Draw each state with fill + borders
+    states.forEach { (state, dist) ->
+        val distNorm = (dist.toFloat() / maxDist).coerceIn(0f, 1f)
+        val cleaned = easedSpread > distNorm
+
         state.rings.forEach { ring ->
             if (ring.size < 3) return@forEach
             val path = Path()
@@ -601,6 +628,17 @@ private fun DrawScope.drawPhase3US(
                 if (idx == 0) path.moveTo(pos.x, pos.y) else path.lineTo(pos.x, pos.y)
             }
             path.close()
+
+            // Fill: transition from dark to green as the wave reaches each state
+            val fillColor = if (cleaned) {
+                val cleanAmount = ((easedSpread - distNorm) / 0.12f).coerceIn(0f, 1f)
+                lerp(Color(0xFF1A2A1A), GccGreen.copy(alpha = 0.7f), cleanAmount)
+            } else {
+                Color(0xFF1A2A1A).copy(alpha = 0.4f * stateAlpha)
+            }
+            drawPath(path, color = fillColor.copy(alpha = fillColor.alpha * stateAlpha))
+
+            // State border strokes
             drawPath(
                 path,
                 color = Color.White.copy(alpha = 0.2f * stateAlpha),
@@ -609,9 +647,9 @@ private fun DrawScope.drawPhase3US(
         }
     }
 
-    // Green pulsing glow dot at Chicago's position
+    // Green pulsing glow dot at Chicago's position (always visible)
     val chicagoPos = toCanvas(CHICAGO_LAT, CHICAGO_LNG)
-    val pulse = sin(progress * PI.toFloat() * 6f)
+    val pulse = sin(progress * PI.toFloat() * 4f)
     val glowRadius = w * 0.03f + w * 0.01f * pulse
 
     drawCircle(
