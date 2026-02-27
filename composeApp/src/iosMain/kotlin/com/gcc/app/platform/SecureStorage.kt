@@ -1,14 +1,18 @@
 package com.gcc.app.platform
 
 import com.russhwolf.settings.Settings
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
-import platform.CoreFoundation.CFStringRef
-import platform.CoreFoundation.CFTypeRef
+import platform.CoreFoundation.CFDictionaryCreateMutable
+import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFDictionarySetValue
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
@@ -38,33 +42,25 @@ private const val SERVICE_NAME = "com.globalcommunitycleaners.worker"
 /**
  * iOS secure storage backed by Keychain Services.
  *
- * Each key-value pair is stored as a `kSecClassGenericPassword` item with:
- * - `kSecAttrService` = bundle identifier (scopes to this app)
- * - `kSecAttrAccount` = the settings key
- * - `kSecValueData` = the value encoded as UTF-8
- * - `kSecAttrAccessible` = `kSecAttrAccessibleAfterFirstUnlock` (available
- *   in background after first device unlock — needed for background location)
- *
- * Implements the multiplatform-settings [Settings] interface so it can be
- * passed directly to [com.gcc.shared.auth.TokenManager].
+ * Uses CFDictionary APIs directly for Keychain queries since Kotlin/Native
+ * does not implicitly bridge Kotlin Maps to CFDictionaryRef.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class SecureStorage actual constructor() : Settings {
 
-    override val keys: Set<String> get() = emptySet() // Keychain doesn't support key enumeration efficiently
+    override val keys: Set<String> get() = emptySet()
     override val size: Int get() = 0
 
     override fun clear() {
-        val query = mapOf<Any?, Any?>(
+        val query = cfDict(
             kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE_NAME,
+            kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
         )
-        SecItemDelete(query as platform.CoreFoundation.CFDictionaryRef?)
+        SecItemDelete(query)
     }
 
     override fun remove(key: String) {
-        val query = baseQuery(key)
-        SecItemDelete(query as platform.CoreFoundation.CFDictionaryRef?)
+        SecItemDelete(baseQuery(key))
     }
 
     override fun hasKey(key: String): Boolean = getStringOrNull(key) != null
@@ -79,39 +75,40 @@ actual class SecureStorage actual constructor() : Settings {
 
     override fun putString(key: String, value: String) {
         val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return
+        val dataRef = CFBridgingRetain(data)
 
-        // Try update first (most common path after initial save)
+        // Try update first
         val updateQuery = baseQuery(key)
-        val updateAttrs = mapOf<Any?, Any?>(kSecValueData to data)
-        val updateStatus = SecItemUpdate(
-            updateQuery as platform.CoreFoundation.CFDictionaryRef?,
-            updateAttrs as platform.CoreFoundation.CFDictionaryRef?,
-        )
+        val updateAttrs = cfDict(kSecValueData to dataRef)
+        val updateStatus = SecItemUpdate(updateQuery, updateAttrs)
 
         if (updateStatus == errSecSuccess) return
 
         // Item doesn't exist yet — add it
         if (updateStatus == errSecItemNotFound) {
-            val addQuery = baseQuery(key) + mapOf<Any?, Any?>(
-                kSecValueData to data,
+            val addQuery = cfDict(
+                kSecClass to kSecClassGenericPassword,
+                kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
+                kSecAttrAccount to CFBridgingRetain(key as NSString),
+                kSecValueData to dataRef,
                 kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlock,
             )
-            SecItemAdd(addQuery as platform.CoreFoundation.CFDictionaryRef?, null)
+            SecItemAdd(addQuery, null)
         }
     }
 
     override fun getString(key: String, defaultValue: String): String = getStringOrNull(key) ?: defaultValue
 
     override fun getStringOrNull(key: String): String? = memScoped {
-        val query = baseQuery(key) + mapOf<Any?, Any?>(
-            kSecReturnData to true,
+        val query = cfDict(
+            kSecClass to kSecClassGenericPassword,
+            kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
+            kSecAttrAccount to CFBridgingRetain(key as NSString),
+            kSecReturnData to CFBridgingRetain(true as Any),
             kSecMatchLimit to kSecMatchLimitOne,
         )
         val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(
-            query as platform.CoreFoundation.CFDictionaryRef?,
-            result.ptr,
-        )
+        val status = SecItemCopyMatching(query, result.ptr)
         if (status != errSecSuccess) return null
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
         NSString.create(data = data, encoding = NSUTF8StringEncoding) as? String
@@ -129,9 +126,20 @@ actual class SecureStorage actual constructor() : Settings {
     override fun getBoolean(key: String, defaultValue: Boolean): Boolean = getBooleanOrNull(key) ?: defaultValue
     override fun getBooleanOrNull(key: String): Boolean? = getStringOrNull(key)?.toBooleanStrictOrNull()
 
-    private fun baseQuery(key: String): Map<Any?, Any?> = mapOf(
+    private fun baseQuery(key: String): CFDictionaryRef? = cfDict(
         kSecClass to kSecClassGenericPassword,
-        kSecAttrService to SERVICE_NAME,
-        kSecAttrAccount to key,
+        kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
+        kSecAttrAccount to CFBridgingRetain(key as NSString),
     )
+
+    private fun cfDict(vararg entries: Pair<COpaquePointer?, COpaquePointer?>): CFDictionaryRef? {
+        val dict = CFDictionaryCreateMutable(
+            null, entries.size.toLong(),
+            kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
+        )
+        for ((k, v) in entries) {
+            CFDictionarySetValue(dict, k, v)
+        }
+        return dict
+    }
 }

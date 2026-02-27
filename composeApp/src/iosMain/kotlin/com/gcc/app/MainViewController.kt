@@ -27,14 +27,15 @@ fun MainViewController() = MainViewControllerWithDemo(demoMode = false)
 
 fun MainViewControllerDemo() = MainViewControllerWithDemo(demoMode = true)
 
-private fun MainViewControllerWithDemo(demoMode: Boolean) = ComposeUIViewController {
-    // Initialize Koin if not already started
+private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIViewController {
+    // Initialize Koin before composable scope (must be stable across recompositions)
     if (runCatching { KoinPlatform.getKoin() }.isFailure) {
         startKoin {
             modules(if (demoMode) demoAppModule else appModule)
         }
     }
 
+    // Create Decompose component outside composable scope — must survive recomposition
     val lifecycle = LifecycleRegistry()
     val tokenManager = KoinPlatform.getKoin().get<TokenManager>()
     val root = RootComponent(
@@ -42,5 +43,8 @@ private fun MainViewControllerWithDemo(demoMode: Boolean) = ComposeUIViewControl
         tokenManager = tokenManager,
     )
     AppNavigator.rootComponent = root
-    App(root)
+
+    return ComposeUIViewController {
+        App(root)
+    }
 }
