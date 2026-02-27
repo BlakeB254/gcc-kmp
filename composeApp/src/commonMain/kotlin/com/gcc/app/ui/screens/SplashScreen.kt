@@ -21,15 +21,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -39,7 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.GccLogo
-import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import gcc_kmp.composeapp.generated.resources.Res
@@ -49,16 +45,20 @@ import io.github.alexzhirkevich.compottie.rememberLottieComposition
 import io.github.alexzhirkevich.compottie.rememberLottiePainter
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// ── Timeline thresholds ──
-private const val PHASE1_END = 0.25f        // 0-2s
-private const val PHASE2_END = 0.5625f       // 2-4.5s
-private const val PHASE3_START = 0.5625f     // 4.5s
-private const val PHASE3_END = 0.8125f       // 6.5s
-private const val PHASE4_START = 0.8125f     // 6.5s
+// ── Timeline thresholds (5 phases, 8 seconds total) ──
+private const val PHASE1_END = 0.1875f       // 0–1.5s
+private const val PHASE2_START = 0.1875f      // 1.5s
+private const val PHASE2_END = 0.4375f        // 3.5s
+private const val PHASE3_START = 0.4375f      // 3.5s
+private const val PHASE3_END = 0.625f         // 5.0s
+private const val PHASE4_START = 0.625f       // 5.0s
+private const val PHASE4_END = 0.8125f        // 6.5s
+private const val PHASE5_START = 0.8125f      // 6.5s
 
 // ── Colors ──
 private val GreyBase = Color(0xFF4A4A4A)
@@ -66,15 +66,7 @@ private val HotspotRed = Color(0xFFE53935)
 private val SplashBackground = Color(0xFF0A0E0A)
 private val GlowGreen = Color(0xFF2E7D32)
 
-// ── North Lawndale polygon (area #29) ──
-private val NL_POLYGON = listOf(
-    41.8750 to -87.7410,
-    41.8750 to -87.6920,
-    41.8600 to -87.6920,
-    41.8440 to -87.6950,
-    41.8440 to -87.7350,
-    41.8550 to -87.7410,
-)
+// ── North Lawndale centroid (for distance sorting) ──
 private const val NL_CENTROID_LAT = 41.8595
 private const val NL_CENTROID_LNG = -87.7165
 
@@ -86,12 +78,34 @@ private val NL_HOTSPOTS = listOf(
     41.862 to -87.710,
 )
 
+// ── Chicago lat/lng for US map dot ──
+private const val CHICAGO_LAT = 41.8781
+private const val CHICAGO_LNG = -87.6298
+
+// ── US bounding box ──
+private const val US_MIN_LAT = 24.5
+private const val US_MAX_LAT = 49.5
+private const val US_MIN_LNG = -125.0
+private const val US_MAX_LNG = -66.0
+
 @OptIn(ExperimentalResourceApi::class)
 @Composable
 fun SplashScreen(onFinished: () -> Unit) {
     val masterProgress = remember { Animatable(0f) }
     val splashAlpha = remember { Animatable(1f) }
     var skipped by remember { mutableStateOf(false) }
+
+    // ── Load GeoJSON data ──
+    var geoData by remember { mutableStateOf<SplashGeoData?>(null) }
+
+    LaunchedEffect(Unit) {
+        val chicagoJson = Res.readBytes("files/chicago_communities_real.json").decodeToString()
+        val usJson = Res.readBytes("files/us_states.json").decodeToString()
+        geoData = SplashGeoData(
+            chicagoAreas = parseChicagoGeoJson(chicagoJson),
+            usStates = parseUsStatesGeoJson(usJson),
+        )
+    }
 
     // ── Lottie globe composition ──
     val globeComposition by rememberLottieComposition {
@@ -100,13 +114,13 @@ fun SplashScreen(onFinished: () -> Unit) {
         )
     }
 
-    // Master animation: 0 → 1 over 8 seconds
+    // Master animation: 0 -> 1 over 8 seconds
     LaunchedEffect(Unit) {
         masterProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 8000, easing = LinearEasing),
         )
-        // Animation complete — fade out
+        // Animation complete -- fade out
         splashAlpha.animateTo(0f, tween(500))
         onFinished()
     }
@@ -120,28 +134,28 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 
     // Pre-sort community areas by distance from NL centroid
-    val sortedAreas = remember {
-        chicagoCommunityAreas
-            .filter { it.number != 29 }
-            .map { area ->
-                val centLat = area.polygon.map { it.first }.average()
-                val centLng = area.polygon.map { it.second }.average()
+    val sortedAreas = remember(geoData) {
+        geoData?.chicagoAreas
+            ?.filter { it.id != 29 }
+            ?.map { area ->
+                val outerRing = area.rings.firstOrNull() ?: return@map area to Double.MAX_VALUE
+                val centLat = outerRing.map { it.first }.average()
+                val centLng = outerRing.map { it.second }.average()
                 val dist = sqrt(
                     (centLat - NL_CENTROID_LAT).pow(2) +
                         (centLng - NL_CENTROID_LNG).pow(2),
                 )
                 area to dist
             }
-            .sortedBy { it.second }
-            .take(24)
+            ?.sortedBy { it.second }
     }
 
-    // Logo scale for phase 4 spring bounce
+    // Logo scale for phase 5 spring bounce
     val logoScale = remember { Animatable(0f) }
     val progress = masterProgress.value
 
     LaunchedEffect(progress) {
-        if (progress >= PHASE4_START && logoScale.value == 0f) {
+        if (progress >= PHASE5_START && logoScale.value == 0f) {
             logoScale.animateTo(
                 targetValue = 1f,
                 animationSpec = spring(
@@ -160,32 +174,40 @@ fun SplashScreen(onFinished: () -> Unit) {
                 detectTapGestures { skipped = true }
             },
     ) {
-        // ── Canvas layer: Background + Phases 1-2 + transition effects ──
+        // ── Canvas layer: Background + Phases 1-3 + transition effects ──
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
             val p = progress
 
-            // Background
+            // Background always
             drawRect(SplashBackground)
 
+            val geo = geoData ?: return@Canvas
+
             when {
-                // ── Phase 1: North Lawndale Close-Up (0 - 0.25) ──
+                // ── Phase 1: North Lawndale Close-Up (0 - 0.1875) ──
                 p < PHASE1_END -> {
                     val phase1Progress = p / PHASE1_END
-                    drawPhase1(phase1Progress, w, h)
+                    val nl = geo.northLawndale ?: return@Canvas
+                    drawPhase1NorthLawndale(phase1Progress, w, h, nl)
                 }
 
-                // ── Phase 2: Zoom Out (0.25 - 0.5625) ──
+                // ── Phase 2: Chicago Zoom-Out (0.1875 - 0.4375) ──
                 p < PHASE2_END -> {
-                    val phase2Progress = (p - PHASE1_END) / (PHASE2_END - PHASE1_END)
-                    drawPhase2(phase2Progress, w, h, sortedAreas)
+                    val phase2Progress = (p - PHASE2_START) / (PHASE2_END - PHASE2_START)
+                    drawPhase2Chicago(phase2Progress, w, h, geo, sortedAreas)
                 }
 
-                // ── Phase 3-4: Dark background with radial glow ──
+                // ── Phase 3: Continental US (0.4375 - 0.625) ──
+                p < PHASE3_END -> {
+                    val phase3Progress = (p - PHASE3_START) / (PHASE3_END - PHASE3_START)
+                    drawPhase3US(phase3Progress, w, h, geo)
+                }
+
+                // ── Phase 4+: Radial green glow behind globe ──
                 else -> {
-                    val glowProgress = ((p - PHASE3_START) / 0.1f).coerceIn(0f, 1f)
-                    // Radial green glow behind the globe
+                    val glowProgress = ((p - PHASE4_START) / 0.1f).coerceIn(0f, 1f)
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
@@ -202,33 +224,33 @@ fun SplashScreen(onFinished: () -> Unit) {
                 }
             }
 
-            // Particle-like green dots floating outward during transition
-            if (p in PHASE3_START..PHASE3_END) {
-                val particleProgress = ((p - PHASE3_START) / (PHASE3_END - PHASE3_START))
+            // Particle-like green dots floating outward during phase 4 transition
+            if (p in PHASE4_START..PHASE4_END) {
+                val particleProgress = (p - PHASE4_START) / (PHASE4_END - PHASE4_START)
                 drawTransitionParticles(particleProgress, w, h)
             }
         }
 
-        // ── Lottie Globe layer (phases 3-4) ──
+        // ── Lottie Globe layer (phases 4-5) ──
         val globeAlpha = when {
-            progress < PHASE3_START -> 0f
-            progress < PHASE3_START + 0.0625f -> // fade in over ~500ms
-                ((progress - PHASE3_START) / 0.0625f).coerceIn(0f, 1f)
+            progress < PHASE4_START -> 0f
+            progress < PHASE4_START + 0.0625f -> // fade in over ~500ms
+                ((progress - PHASE4_START) / 0.0625f).coerceIn(0f, 1f)
             else -> 1f
         }
 
-        // Globe size transitions: larger during phase 3, shrinks for logo in phase 4
+        // Globe size transitions: larger during phase 4, shrinks for logo in phase 5
         val globeSizeDp = when {
-            progress < PHASE4_START -> 280.dp
+            progress < PHASE5_START -> 280.dp
             else -> {
-                val shrink = ((progress - PHASE4_START) / (1f - PHASE4_START)).coerceIn(0f, 1f)
-                (280 - (shrink * 80).toInt()).dp // 280dp → 200dp
+                val shrink = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
+                (280 - (shrink * 80).toInt()).dp // 280dp -> 200dp
             }
         }
         val globeOffsetY = when {
-            progress < PHASE4_START -> (-20).dp
+            progress < PHASE5_START -> (-20).dp
             else -> {
-                val shift = ((progress - PHASE4_START) / (1f - PHASE4_START)).coerceIn(0f, 1f)
+                val shift = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
                 ((-20) - (shift * 50).toInt()).dp // moves up for logo
             }
         }
@@ -249,10 +271,80 @@ fun SplashScreen(onFinished: () -> Unit) {
             )
         }
 
-        // ── Logo + Text overlay (phase 4) ──
-        if (progress >= PHASE4_START) {
-            val phase4Progress = ((progress - PHASE4_START) / (1f - PHASE4_START)).coerceIn(0f, 1f)
-            val textAlpha = ((phase4Progress - 0.3f) / 0.5f).coerceIn(0f, 1f)
+        // ── Phase labels ──
+        // Phase 1 label: "North Lawndale, Chicago"
+        if (progress < PHASE1_END && geoData != null) {
+            val phase1Progress = progress / PHASE1_END
+            val labelAlpha = when {
+                phase1Progress < 0.2f -> phase1Progress / 0.2f
+                phase1Progress > 0.9f -> (1f - phase1Progress) / 0.1f
+                else -> 1f
+            }.coerceIn(0f, 1f)
+
+            Text(
+                text = "North Lawndale, Chicago",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = labelAlpha),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-60).dp),
+            )
+        }
+
+        // Phase 2 label: "Chicago, IL"
+        if (progress in PHASE2_START..PHASE2_END && geoData != null) {
+            val phase2Progress = (progress - PHASE2_START) / (PHASE2_END - PHASE2_START)
+            val labelAlpha = when {
+                phase2Progress < 0.2f -> phase2Progress / 0.2f
+                phase2Progress > 0.9f -> (1f - phase2Progress) / 0.1f
+                else -> 1f
+            }.coerceIn(0f, 1f)
+
+            Text(
+                text = "Chicago, IL",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = labelAlpha),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 60.dp),
+            )
+        }
+
+        // Phase 3 label: "United States"
+        if (progress in PHASE3_START..PHASE3_END && geoData != null) {
+            val phase3Progress = (progress - PHASE3_START) / (PHASE3_END - PHASE3_START)
+            val labelAlpha = when {
+                phase3Progress < 0.3f -> phase3Progress / 0.3f
+                phase3Progress > 0.9f -> (1f - phase3Progress) / 0.1f
+                else -> 1f
+            }.coerceIn(0f, 1f)
+
+            Text(
+                text = "United States",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = labelAlpha),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.sp,
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-60).dp),
+            )
+        }
+
+        // ── Logo + Text overlay (phase 5) ──
+        if (progress >= PHASE5_START) {
+            val phase5Progress = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
+            val textAlpha = ((phase5Progress - 0.3f) / 0.5f).coerceIn(0f, 1f)
 
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -284,9 +376,21 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 }
 
-// ── Phase 1: North Lawndale Close-Up ──
-private fun DrawScope.drawPhase1(progress: Float, w: Float, h: Float) {
+// ── Phase 1: North Lawndale Close-Up (real boundary) ──
+private fun DrawScope.drawPhase1NorthLawndale(
+    progress: Float,
+    w: Float,
+    h: Float,
+    nl: SplashPolygon,
+) {
     val center = Offset(w / 2f, h / 2f)
+    val outerRing = nl.rings.firstOrNull() ?: return
+
+    // Compute bounding box of NL polygon
+    val minLat = outerRing.minOf { it.first }
+    val maxLat = outerRing.maxOf { it.first }
+    val minLng = outerRing.minOf { it.second }
+    val maxLng = outerRing.maxOf { it.second }
 
     // Subtle radial glow behind NL
     drawCircle(
@@ -302,19 +406,37 @@ private fun DrawScope.drawPhase1(progress: Float, w: Float, h: Float) {
         center = center,
     )
 
+    // Map polygon to fill ~70% screen width, centered
     val polyWidth = w * 0.70f
-    val nlPath = buildNlPath(
-        polygon = NL_POLYGON,
-        targetWidth = polyWidth,
-        center = center,
-    )
+    val latRange = maxLat - minLat
+    val lngRange = maxLng - minLng
+    val aspect = latRange / lngRange
+    val pxW = polyWidth
+    val pxH = (pxW * aspect).toFloat()
+    val offX = center.x - pxW / 2f
+    val offY = center.y - pxH / 2f
+
+    fun toCanvas(lat: Double, lng: Double): Offset {
+        val x = offX + ((lng - minLng) / lngRange * pxW).toFloat()
+        val y = offY + ((maxLat - lat) / latRange * pxH).toFloat()
+        return Offset(x, y)
+    }
+
+    // Build path from real boundary
+    val nlPath = Path()
+    outerRing.forEachIndexed { i, (lat, lng) ->
+        val pos = toCanvas(lat, lng)
+        if (i == 0) nlPath.moveTo(pos.x, pos.y) else nlPath.lineTo(pos.x, pos.y)
+    }
+    nlPath.close()
+
     val bounds = nlPath.getBounds()
 
     // Grey base fill
     drawPath(nlPath, color = GreyBase)
 
-    // Green sweep left-to-right with eased progress
-    val easedSweep = progress * progress * (3f - 2f * progress) // smoothstep
+    // Green sweep left-to-right with smoothstep easing
+    val easedSweep = progress * progress * (3f - 2f * progress)
     val sweepX = bounds.left + bounds.width * easedSweep
     clipRect(left = bounds.left, top = bounds.top, right = sweepX, bottom = bounds.bottom) {
         drawPath(nlPath, color = GccGreen)
@@ -322,16 +444,10 @@ private fun DrawScope.drawPhase1(progress: Float, w: Float, h: Float) {
 
     // Hotspot dots
     NL_HOTSPOTS.forEachIndexed { i, (lat, lng) ->
-        val pos = latLngToCanvasPos(
-            lat, lng,
-            NL_POLYGON,
-            targetWidth = polyWidth,
-            center = center,
-        )
+        val pos = toCanvas(lat, lng)
         val hotspotSweepNorm = ((pos.x - bounds.left) / bounds.width).coerceIn(0f, 1f)
         val cleaned = easedSweep > hotspotSweepNorm
 
-        // Pulse radius via sin wave
         val baseRadius = w * 0.018f
         val pulsePhase = sin(progress * PI.toFloat() * 6f + i * 1.5f)
         val radius = if (cleaned) {
@@ -358,61 +474,48 @@ private fun DrawScope.drawPhase1(progress: Float, w: Float, h: Float) {
         drawCircle(color = color, radius = radius, center = pos)
     }
 
-    // Border with slight glow
+    // White border + green glow stroke
     drawPath(nlPath, color = Color.White.copy(alpha = 0.25f), style = Stroke(width = 2f))
     drawPath(nlPath, color = GccGreen.copy(alpha = 0.1f), style = Stroke(width = 6f))
 }
 
-// ── Phase 2: Zoom Out ──
-private fun DrawScope.drawPhase2(
+// ── Phase 2: Chicago Zoom-Out (all 77 real areas) ──
+private fun DrawScope.drawPhase2Chicago(
     progress: Float,
     w: Float,
     h: Float,
-    sortedAreas: List<Pair<com.gcc.app.ui.map.CommunityArea, Double>>,
+    geo: SplashGeoData,
+    sortedAreas: List<Pair<SplashPolygon, Double>>?,
 ) {
-    // Smoother zoom: 1.0 -> 0.45 (not as extreme as before)
-    val scale = 1f - progress * 0.55f
-    val center = Offset(w / 2f, h / 2f)
+    val areas = sortedAreas ?: return
+    val nlArea = geo.northLawndale ?: return
 
-    withTransform({
-        translate(left = center.x * (1f - scale), top = center.y * (1f - scale))
-        scale(scale, scale, pivot = Offset.Zero)
-    }) {
-        drawCommunityAreas(w, h, sortedAreas, progress)
-    }
-}
-
-// Shared community area drawing logic
-private fun DrawScope.drawCommunityAreas(
-    w: Float,
-    h: Float,
-    sortedAreas: List<Pair<com.gcc.app.ui.map.CommunityArea, Double>>,
-    cleanProgress: Float,
-    globalAlpha: Float = 1f,
-) {
-    val allAreas = sortedAreas.map { it.first } + chicagoCommunityAreas.first { it.number == 29 }
-    val allPoints = allAreas.flatMap { it.polygon }
+    // Compute bounding box of ALL Chicago areas
+    val allPoints = geo.chicagoAreas.flatMap { area -> area.rings.firstOrNull() ?: emptyList() }
     val minLat = allPoints.minOf { it.first }
     val maxLat = allPoints.maxOf { it.first }
     val minLng = allPoints.minOf { it.second }
     val maxLng = allPoints.maxOf { it.second }
-
     val latRange = maxLat - minLat
     val lngRange = maxLng - minLng
-    val mapW = w * 0.85f
+
+    // Map to 85% screen height, centered, maintaining aspect ratio
     val mapH = h * 0.85f
-    val mapOffX = (w - mapW) / 2f
-    val mapOffY = (h - mapH) / 2f
+    val mapW = (mapH * (lngRange / latRange)).toFloat()
+    val actualMapW = if (mapW > w * 0.95f) w * 0.95f else mapW
+    val actualMapH = if (mapW > w * 0.95f) (actualMapW * (latRange / lngRange)).toFloat() else mapH
+    val mapOffX = (w - actualMapW) / 2f
+    val mapOffY = (h - actualMapH) / 2f
 
     fun toCanvas(lat: Double, lng: Double): Offset {
-        val x = mapOffX + ((lng - minLng) / lngRange * mapW).toFloat()
-        val y = mapOffY + ((maxLat - lat) / latRange * mapH).toFloat()
+        val x = mapOffX + ((lng - minLng) / lngRange * actualMapW).toFloat()
+        val y = mapOffY + ((maxLat - lat) / latRange * actualMapH).toFloat()
         return Offset(x, y)
     }
 
-    fun buildAreaPath(polygon: List<Pair<Double, Double>>): Path {
+    fun buildAreaPath(ring: List<Pair<Double, Double>>): Path {
         val path = Path()
-        polygon.forEachIndexed { idx, (lat, lng) ->
+        ring.forEachIndexed { idx, (lat, lng) ->
             val pos = toCanvas(lat, lng)
             if (idx == 0) path.moveTo(pos.x, pos.y) else path.lineTo(pos.x, pos.y)
         }
@@ -420,42 +523,115 @@ private fun DrawScope.drawCommunityAreas(
         return path
     }
 
-    val maxDist = sortedAreas.maxOf { it.second }.toFloat()
+    val maxDist = areas.maxOfOrNull { it.second }?.toFloat() ?: 1f
 
-    // Draw surrounding areas
-    sortedAreas.forEach { (area, dist) ->
-        val areaPath = buildAreaPath(area.polygon)
+    // Draw surrounding areas (sorted by distance from NL)
+    areas.forEach { (area, dist) ->
+        val outerRing = area.rings.firstOrNull() ?: return@forEach
+        val areaPath = buildAreaPath(outerRing)
         val distNorm = (dist.toFloat() / maxDist).coerceIn(0f, 1f)
-        val cleaned = cleanProgress > distNorm
+        val cleaned = progress > distNorm
 
         val fillColor = if (cleaned) {
-            lerp(GreyBase, GccGreen, ((cleanProgress - distNorm) / 0.15f).coerceIn(0f, 1f))
+            lerp(GreyBase, GccGreen, ((progress - distNorm) / 0.15f).coerceIn(0f, 1f))
         } else {
             GreyBase
         }
-        drawPath(areaPath, color = fillColor.copy(alpha = globalAlpha))
-        drawPath(areaPath, color = Color.White.copy(alpha = 0.15f * globalAlpha), style = Stroke(width = 1f))
+        drawPath(areaPath, color = fillColor)
+        drawPath(areaPath, color = Color.White.copy(alpha = 0.15f), style = Stroke(width = 1f))
 
-        // Area hotspot at centroid
-        val centLat = area.polygon.map { it.first }.average()
-        val centLng = area.polygon.map { it.second }.average()
+        // Hotspot dot at centroid
+        val centLat = outerRing.map { it.first }.average()
+        val centLng = outerRing.map { it.second }.average()
         val centPos = toCanvas(centLat, centLng)
-        val dotRadius = w * 0.008f
-        val pulsePhase = sin(cleanProgress * PI.toFloat() * 4f + dist.toFloat() * 10f)
+        val dotRadius = w * 0.005f
+        val pulsePhase = sin(progress * PI.toFloat() * 4f + dist.toFloat() * 10f)
 
         val dotColor = if (cleaned) {
-            lerp(HotspotRed, GccGreen, ((cleanProgress - distNorm) / 0.15f).coerceIn(0f, 1f))
+            lerp(HotspotRed, GccGreen, ((progress - distNorm) / 0.15f).coerceIn(0f, 1f))
         } else {
             HotspotRed
         }
         val r = if (cleaned) dotRadius * 0.6f else dotRadius + dotRadius * 0.25f * pulsePhase
-        drawCircle(color = dotColor.copy(alpha = globalAlpha), radius = r, center = centPos)
+        drawCircle(color = dotColor, radius = r, center = centPos)
     }
 
     // North Lawndale always on top, always green
-    val nlPath = buildAreaPath(NL_POLYGON)
-    drawPath(nlPath, color = GccGreen.copy(alpha = globalAlpha))
-    drawPath(nlPath, color = GccGreenDark.copy(alpha = globalAlpha), style = Stroke(width = 2f))
+    val nlRing = nlArea.rings.firstOrNull() ?: return
+    val nlPath = buildAreaPath(nlRing)
+    drawPath(nlPath, color = GccGreen)
+    drawPath(nlPath, color = GccGreenDark, style = Stroke(width = 2f))
+}
+
+// ── Phase 3: Continental US (state outlines) ──
+private fun DrawScope.drawPhase3US(
+    progress: Float,
+    w: Float,
+    h: Float,
+    geo: SplashGeoData,
+) {
+    val latRange = US_MAX_LAT - US_MIN_LAT
+    val lngRange = US_MAX_LNG - US_MIN_LNG
+
+    // Map to 90% screen width, maintaining aspect ratio
+    val mapW = w * 0.90f
+    val mapH = (mapW * (latRange / lngRange)).toFloat()
+    val mapOffX = (w - mapW) / 2f
+    val mapOffY = (h - mapH) / 2f
+
+    fun toCanvas(lat: Double, lng: Double): Offset {
+        val x = mapOffX + ((lng - US_MIN_LNG) / lngRange * mapW).toFloat()
+        val y = mapOffY + ((US_MAX_LAT - lat) / latRange * mapH).toFloat()
+        return Offset(x, y)
+    }
+
+    // Overall alpha: fade out in last 30%
+    val stateAlpha = when {
+        progress > 0.7f -> (1f - progress) / 0.3f
+        else -> 1f
+    }.coerceIn(0f, 1f)
+
+    // Draw each state as thin white/grey stroke outlines only (no fill)
+    geo.usStates.forEach { state ->
+        state.rings.forEach { ring ->
+            if (ring.size < 3) return@forEach
+            val path = Path()
+            ring.forEachIndexed { idx, (lat, lng) ->
+                val pos = toCanvas(lat, lng)
+                if (idx == 0) path.moveTo(pos.x, pos.y) else path.lineTo(pos.x, pos.y)
+            }
+            path.close()
+            drawPath(
+                path,
+                color = Color.White.copy(alpha = 0.2f * stateAlpha),
+                style = Stroke(width = 1f),
+            )
+        }
+    }
+
+    // Green pulsing glow dot at Chicago's position
+    val chicagoPos = toCanvas(CHICAGO_LAT, CHICAGO_LNG)
+    val pulse = sin(progress * PI.toFloat() * 6f)
+    val glowRadius = w * 0.03f + w * 0.01f * pulse
+
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                GccGreen.copy(alpha = 0.6f * stateAlpha),
+                GccGreen.copy(alpha = 0.2f * stateAlpha),
+                Color.Transparent,
+            ),
+            center = chicagoPos,
+            radius = glowRadius * 3f,
+        ),
+        radius = glowRadius * 3f,
+        center = chicagoPos,
+    )
+    drawCircle(
+        color = GccGreen.copy(alpha = 0.9f * stateAlpha),
+        radius = glowRadius * 0.4f,
+        center = chicagoPos,
+    )
 }
 
 // ── Transition particles (green dots floating outward) ──
@@ -466,8 +642,8 @@ private fun DrawScope.drawTransitionParticles(progress: Float, w: Float, h: Floa
         val angle = (2f * PI.toFloat() / particleCount) * i + progress * PI.toFloat() * 0.5f
         val baseRadius = w * 0.2f
         val expandRadius = baseRadius + progress * w * 0.25f
-        val x = center.x + kotlin.math.cos(angle) * expandRadius
-        val y = center.y + kotlin.math.sin(angle) * expandRadius
+        val x = center.x + cos(angle) * expandRadius
+        val y = center.y + sin(angle) * expandRadius
         val alpha = (1f - progress) * 0.4f
         val dotSize = w * 0.006f * (1f - progress * 0.5f)
         if (alpha > 0.01f) {
@@ -478,63 +654,4 @@ private fun DrawScope.drawTransitionParticles(progress: Float, w: Float, h: Floa
             )
         }
     }
-}
-
-// ── Helpers ──
-
-private fun buildNlPath(
-    polygon: List<Pair<Double, Double>>,
-    targetWidth: Float,
-    center: Offset,
-): Path {
-    val lats = polygon.map { it.first }
-    val lngs = polygon.map { it.second }
-    val minLat = lats.min()
-    val maxLat = lats.max()
-    val minLng = lngs.min()
-    val maxLng = lngs.max()
-    val latRange = maxLat - minLat
-    val lngRange = maxLng - minLng
-
-    val aspect = latRange / lngRange
-    val pxW = targetWidth
-    val pxH = (pxW * aspect).toFloat()
-    val offX = center.x - pxW / 2f
-    val offY = center.y - pxH / 2f
-
-    val path = Path()
-    polygon.forEachIndexed { i, (lat, lng) ->
-        val x = offX + ((lng - minLng) / lngRange * pxW).toFloat()
-        val y = offY + ((maxLat - lat) / latRange * pxH).toFloat()
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-    return path
-}
-
-private fun latLngToCanvasPos(
-    lat: Double,
-    lng: Double,
-    polygon: List<Pair<Double, Double>>,
-    targetWidth: Float,
-    center: Offset,
-): Offset {
-    val lats = polygon.map { it.first }
-    val lngs = polygon.map { it.second }
-    val minLat = lats.min()
-    val maxLat = lats.max()
-    val minLng = lngs.min()
-    val maxLng = lngs.max()
-    val latRange = maxLat - minLat
-    val lngRange = maxLng - minLng
-
-    val aspect = latRange / lngRange
-    val pxW = targetWidth
-    val pxH = (pxW * aspect).toFloat()
-    val offX = center.x - pxW / 2f
-    val offY = center.y - pxH / 2f
-
-    val x = offX + ((lng - minLng) / lngRange * pxW).toFloat()
-    val y = offY + ((maxLat - lat) / latRange * pxH).toFloat()
-    return Offset(x, y)
 }
