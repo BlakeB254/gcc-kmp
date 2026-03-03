@@ -44,3 +44,4 @@ site/.env.local
 .env.*.local
 .env.production
 .env.development
+.vercel
