@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * Subdomain routing proxy (Next.js 16 convention).
+ * Subdomain routing middleware.
  * Detects north-lawndale.globalcommunitycleaners.org and rewrites
  * requests to the /north-lawndale route directory.
  *
  * For local dev, use ?subdomain=north-lawndale to simulate.
  */
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
 
   // Fast path: most requests are not for the subdomain
