@@ -3,6 +3,7 @@ package com.gcc.server.routes
 import com.gcc.server.services.AuthService
 import com.gcc.shared.model.*
 import io.ktor.http.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -11,6 +12,7 @@ import com.gcc.server.plugins.koinGet
 fun Routing.authRoutes() {
     val authService = koinGet<AuthService>()
 
+    rateLimit(RateLimitName("auth")) {
     route("/api/auth") {
         post("/register") {
             try {
@@ -31,5 +33,6 @@ fun Routing.authRoutes() {
                 call.respond(HttpStatusCode.Unauthorized, ErrorResponse(e.message ?: "Authentication failed", 401))
             }
         }
+    }
     }
 }

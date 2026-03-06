@@ -1,5 +1,5 @@
 package com.gcc.app.platform
 
-actual fun getApiBaseUrl(): String = "http://100.67.196.13:7310"
+actual fun getApiBaseUrl(): String = "https://api.globalcommunitycleaners.org"
 
 actual fun getPlatformName(): String = "ios"

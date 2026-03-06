@@ -18,7 +18,7 @@ export default function PrivacyPage() {
 
           <div className="prose prose-neutral max-w-none">
             <p className="text-neutral-600 mb-6">
-              Last updated: January 2025
+              Last updated: March 2026
             </p>
 
             <section className="mb-8">
@@ -39,6 +39,8 @@ export default function PrivacyPage() {
                 <li><strong>Payment Information:</strong> Bank account details for receiving payments (processed through Stripe)</li>
                 <li><strong>Location Data:</strong> GPS data during job completion to verify block cleanings</li>
                 <li><strong>Photos:</strong> Before and after photos of block cleanings</li>
+                <li><strong>Device Identifiers:</strong> Device tokens for push notifications (Apple Push Notification service / Firebase Cloud Messaging)</li>
+                <li><strong>Usage Data:</strong> App interaction data, feature usage patterns, and crash reports to improve performance</li>
               </ul>
             </section>
 
@@ -56,6 +58,13 @@ export default function PrivacyPage() {
                 <li>Communicate with you about our services</li>
                 <li>Detect and prevent fraud</li>
               </ul>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-neutral-900 mb-4">3A. Push Notifications</h2>
+              <p className="text-neutral-700 mb-4">
+                We use push notifications to alert you about new job opportunities, route assignments, payment confirmations, and important service updates. You can manage notification preferences in the app settings or through your device's system settings at any time.
+              </p>
             </section>
 
             <section className="mb-8">
@@ -84,6 +93,13 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold text-neutral-900 mb-4">6. Data Retention</h2>
               <p className="text-neutral-700 mb-4">
                 We retain your personal information for as long as necessary to provide our services and comply with legal obligations. You may request deletion of your account and associated data at any time.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-neutral-900 mb-4">6A. Background Location Tracking</h2>
+              <p className="text-neutral-700 mb-4">
+                During active cleaning jobs, the app tracks your location in the background to record your route path for verification purposes. Background location tracking is only active while you have an in-progress job and stops automatically when the job is completed or abandoned. You will see a location indicator in your device's status bar whenever background tracking is active.
               </p>
             </section>
 

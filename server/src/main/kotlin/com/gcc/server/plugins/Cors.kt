@@ -23,10 +23,15 @@ fun Application.configureCors() {
                 "https://www.globalcommunitycleaners.org",
                 "https://globalcommunitycleaners.org"
             )
-        allowedOrigins.forEach { allowHost(it.removePrefix("http://").removePrefix("https://"), schemes = listOf("http", "https")) }
+        allowedOrigins.forEach { origin ->
+            val host = origin.removePrefix("http://").removePrefix("https://")
+            val schemes = if (origin.startsWith("https://")) listOf("https") else listOf("http", "https")
+            allowHost(host, schemes = schemes)
+        }
 
-        // Allow mobile app requests (Ktor HttpClient doesn't send Origin, but this covers WebView scenarios)
-        anyHost()
+        // Mobile native apps (Ktor HttpClient) don't send Origin headers.
+        // Requests without an Origin header bypass CORS entirely (browser-only mechanism).
+        // No anyHost() — only explicitly allowed origins above.
         allowCredentials = false
     }
 }

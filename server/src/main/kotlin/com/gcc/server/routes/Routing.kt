@@ -2,6 +2,7 @@ package com.gcc.server.routes
 
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.routing.*
 
 /**
@@ -18,20 +19,23 @@ fun Application.configureRouting() {
         // Auth (public — login/register)
         authRoutes()
 
-        // Public read-only
-        statsRoutes()
-        leaderboardRoutes()
-        workerRoutes()
-        routeRoutes()
-        blockRoutes()
-        serviceAreaRoutes()
-        jobRoutes()
-        spotRoutes()
-        bountyRoutes()
-        gamificationRoutes()
-        feedRoutes()
+        // Public read-only (higher rate limit)
+        rateLimit(RateLimitName("public")) {
+            statsRoutes()
+            leaderboardRoutes()
+            workerRoutes()
+            routeRoutes()
+            blockRoutes()
+            serviceAreaRoutes()
+            jobRoutes()
+            spotRoutes()
+            bountyRoutes()
+            gamificationRoutes()
+            feedRoutes()
+        }
 
         // Authenticated endpoints (require valid JWT)
+        rateLimit(RateLimitName("api")) {
         authenticate("auth-jwt") {
             authenticatedWorkerRoutes()
             authenticatedJobRoutes()
@@ -50,6 +54,7 @@ fun Application.configureRouting() {
             adminServiceAreaRoutes()
             adminDisputeRoutes()
             adminAnalyticsRoutes()
+        }
         }
     }
 }
