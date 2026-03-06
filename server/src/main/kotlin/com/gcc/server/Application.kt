@@ -18,25 +18,8 @@ import io.ktor.server.netty.*
  */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 7310
-    embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        // Limit request body to 10MB (photo uploads are the largest payloads)
-        connector { }
-        module()
-    }.start(wait = true)
-}
-
-private fun Application.configureRequestLimits() {
-    // Netty's maxContentLength is configured at the engine level.
-    // For Ktor 3.x, we use the receive pipeline to reject oversized bodies.
-    receivePipeline.intercept(io.ktor.server.request.ApplicationReceivePipeline.Before) {
-        val contentLength = call.request.headers[io.ktor.http.HttpHeaders.ContentLength]?.toLongOrNull()
-        val maxSize = 10L * 1024 * 1024 // 10 MB
-        if (contentLength != null && contentLength > maxSize) {
-            call.respond(io.ktor.http.HttpStatusCode.PayloadTooLarge,
-                com.gcc.server.plugins.ErrorResponse("Request body too large (max 10MB)", 413))
-            finish()
-        }
-    }
+    embeddedServer(Netty, port = port, host = "0.0.0.0", module = Application::module)
+        .start(wait = true)
 }
 
 fun Application.module() {
@@ -52,7 +35,6 @@ fun Application.module() {
     configureAuthentication()
     configureSecurity()
     configureRateLimiting()
-    configureRequestLimits()
     configureStatusPages()
 
     // 4. HTTP routes

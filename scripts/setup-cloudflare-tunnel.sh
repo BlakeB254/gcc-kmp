@@ -32,8 +32,12 @@ echo ""
 echo "[3/5] Creating tunnel '${TUNNEL_NAME}'..."
 cloudflared tunnel create "${TUNNEL_NAME}" 2>/dev/null || echo "       Tunnel may already exist — continuing."
 
-# Get tunnel ID
-TUNNEL_ID=$(cloudflared tunnel list | grep "${TUNNEL_NAME}" | awk '{print $1}')
+# Get tunnel ID (match exact name in second column)
+TUNNEL_ID=$(cloudflared tunnel list | awk -v name="${TUNNEL_NAME}" '$2 == name {print $1}')
+if [ -z "${TUNNEL_ID}" ]; then
+    echo "Error: Could not find tunnel ID for '${TUNNEL_NAME}'"
+    exit 1
+fi
 echo "       Tunnel ID: ${TUNNEL_ID}"
 
 # ---- Step 4: Configure DNS ----

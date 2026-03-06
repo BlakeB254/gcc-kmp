@@ -34,27 +34,27 @@ fun Application.configureRouting() {
             feedRoutes()
         }
 
-        // Authenticated endpoints (require valid JWT)
-        rateLimit(RateLimitName("api")) {
+        // Authenticated endpoints (auth first — reject bad tokens before consuming rate limit)
         authenticate("auth-jwt") {
-            authenticatedWorkerRoutes()
-            authenticatedJobRoutes()
-            authenticatedSpotRoutes()
-            authenticatedWalletRoutes()
-            authenticatedBountyRoutes()
-            authenticatedGamificationRoutes()
+            rateLimit(RateLimitName("api")) {
+                authenticatedWorkerRoutes()
+                authenticatedJobRoutes()
+                authenticatedSpotRoutes()
+                authenticatedWalletRoutes()
+                authenticatedBountyRoutes()
+                authenticatedGamificationRoutes()
 
-            // Admin routes (require admin role)
-            adminWorkerRoutes()
-            adminSponsorRoutes()
-            adminJobRoutes()
-            adminRouteRoutes()
-            adminBlockRoutes()
-            adminBountyRoutes()
-            adminServiceAreaRoutes()
-            adminDisputeRoutes()
-            adminAnalyticsRoutes()
-        }
+                // Admin routes (require admin role)
+                adminWorkerRoutes()
+                adminSponsorRoutes()
+                adminJobRoutes()
+                adminRouteRoutes()
+                adminBlockRoutes()
+                adminBountyRoutes()
+                adminServiceAreaRoutes()
+                adminDisputeRoutes()
+                adminAnalyticsRoutes()
+            }
         }
     }
 }
