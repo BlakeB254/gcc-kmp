@@ -14,6 +14,7 @@ object MapStyles {
 
     // Default zoom levels
     const val ZOOM_CITY = 11.0
+    const val ZOOM_SERVICE_AREA = 13.2       // fits full service area with overlay padding
     const val ZOOM_NEIGHBORHOOD = 14.0
     const val ZOOM_AREA = ZOOM_NEIGHBORHOOD  // alias — matches "Area" preset in MapControls
     const val ZOOM_ROUTE = 15.0
@@ -24,19 +25,46 @@ object MapStyles {
     // Layer IDs
     const val LAYER_COMMUNITY_AREAS = "community-areas-fill"
     const val LAYER_COMMUNITY_AREAS_OUTLINE = "community-areas-outline"
+    const val LAYER_ROUTE_FILL = "route-fill"
+    const val LAYER_ROUTE_GLOW = "route-glow"
+    const val LAYER_ROUTE_CASING = "route-casing"
     const val LAYER_ROUTE_LINE = "route-line"
     const val LAYER_ROUTE_LINE_COMPLETED = "route-line-completed"
     const val LAYER_ROUTE_LINE_REMAINING = "route-line-remaining"
+    const val LAYER_CHECKPOINT_OUTER = "checkpoint-outer"
+    const val LAYER_CHECKPOINT_INNER = "checkpoint-inner"
+    const val LAYER_CHECKPOINT_START = "checkpoint-start-outer"
+    const val LAYER_CHECKPOINT_START_INNER = "checkpoint-start-inner"
+    const val LAYER_CHECKPOINT_END = "checkpoint-end-outer"
+    const val LAYER_CHECKPOINT_END_INNER = "checkpoint-end-inner"
     const val LAYER_CHECKPOINTS = "checkpoints"
     const val LAYER_GPS_DOT = "gps-dot"
     const val LAYER_STATE_OUTLINE = "state-outline"
     const val LAYER_CITY_OUTLINE = "city-outline"
 
-    // Route line styles
-    const val ROUTE_LINE_WIDTH = 4.0f
+    // Route line styles — 3-layer stack (glow → casing → core)
+    const val ROUTE_GLOW_WIDTH = 14.0f
+    const val ROUTE_GLOW_OPACITY = 0.15f
+    const val ROUTE_CASING_WIDTH = 8.0f
+    const val ROUTE_LINE_WIDTH = 5.0f
     const val ROUTE_LINE_WIDTH_ACTIVE = 6.0f
     const val COMPLETED_LINE_OPACITY = 1.0f
     const val REMAINING_LINE_OPACITY = 0.5f
+
+    // Route casing color (darker green for border/depth)
+    val ROUTE_CASING_COLOR = Color(0xFF14532D)
+    val ROUTE_GLOW_COLOR = Color(0xFF22C55E) // same as GccGreen but used at low opacity
+    val ROUTE_FILL_COLOR = Color(0x4022C55E)  // 25% opacity green — overview fill
+
+    // Checkpoint marker sizes
+    const val CHECKPOINT_OUTER_RADIUS = 8.0f
+    const val CHECKPOINT_INNER_RADIUS = 5.5f
+    const val CHECKPOINT_START_END_OUTER = 11.0f
+    const val CHECKPOINT_START_END_INNER = 7.5f
+
+    // Checkpoint colors
+    val CHECKPOINT_START_COLOR = Color(0xFF16A34A) // vivid green
+    val CHECKPOINT_END_COLOR = Color(0xFFF97316)   // orange/finish
 
     // Community area styles (outline only — no fill)
     val COMMUNITY_AREA_STROKE_COLOR = Color(0xFFDC2626) // red boundary
