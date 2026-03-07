@@ -32,6 +32,15 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -45,7 +54,14 @@
         <string>location</string>
         <string>remote-notification</string>
     </array>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

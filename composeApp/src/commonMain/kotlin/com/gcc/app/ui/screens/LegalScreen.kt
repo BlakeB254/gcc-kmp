@@ -34,7 +34,6 @@ fun LegalScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                windowInsets = WindowInsets(0),
                 title = { Text(screenType.title) },
                 navigationIcon = {
                     TextButton(onClick = onBack) {

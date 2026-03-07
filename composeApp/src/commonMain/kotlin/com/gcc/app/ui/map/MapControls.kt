@@ -115,10 +115,37 @@ fun MapControls(
 }
 
 /**
+ * Standalone zoom buttons — compact vertical or horizontal +/- controls.
+ * Useful for placing zoom controls independently from the preset bar
+ * (e.g., bottom-left of the map).
+ */
+@Composable
+fun ZoomButtons(
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.padding(8.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = Color.White.copy(alpha = 0.9f),
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            ZoomButton(text = "+", onClick = onZoomIn)
+            ZoomButton(text = "\u2212", onClick = onZoomOut) // minus
+        }
+    }
+}
+
+/**
  * A small circular zoom button (+/-).
  */
 @Composable
-private fun ZoomButton(
+internal fun ZoomButton(
     text: String,
     onClick: () -> Unit,
 ) {

@@ -39,7 +39,6 @@ fun WalletScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                windowInsets = WindowInsets(0),
                 title = { Text("My Wallet") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

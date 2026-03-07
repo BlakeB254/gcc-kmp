@@ -11,20 +11,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
+import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.Coordinates
 import org.maplibre.spatialk.geojson.Position
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.expressions.dsl.em
 import org.maplibre.compose.expressions.dsl.exponential
+import org.maplibre.compose.expressions.dsl.feature
+import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.interpolate
+import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
+import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.GestureOptions
 import org.maplibre.compose.map.MapOptions
 import org.maplibre.compose.map.MaplibreMap
@@ -50,13 +56,18 @@ actual fun GccMap(
     routeCoordinates: List<List<Coordinates>>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
+    bounties: List<com.gcc.shared.model.Bounty>,
+    spots: List<CommunityReport>,
     onAreaTap: ((CommunityArea) -> Unit)?,
+    onRouteTap: ((routeIndex: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,
     zoomPresets: List<ZoomPreset>,
+    cameraBounds: AreaBounds?,
+    mapMode: MapMode,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -67,7 +78,11 @@ actual fun GccMap(
     val stateJson = remember { buildStateBoundaryGeoJson() }
     val cityJson = remember { buildCityBoundaryGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
+    val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
+    val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
+    val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
+    val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -79,6 +94,37 @@ actual fun GccMap(
             zoom = zoom,
         )
     )
+
+    // Soft camera bounding — snap back if user pans outside bounds
+    if (cameraBounds != null) {
+        val padding = 0.15
+        val latSpan = cameraBounds.north - cameraBounds.south
+        val lngSpan = cameraBounds.east - cameraBounds.west
+        val paddedBounds = remember(cameraBounds) {
+            AreaBounds(
+                north = cameraBounds.north + latSpan * padding,
+                south = cameraBounds.south - latSpan * padding,
+                east = cameraBounds.east + lngSpan * padding,
+                west = cameraBounds.west - lngSpan * padding,
+            )
+        }
+
+        LaunchedEffect(camera.position) {
+            val pos = camera.position
+            val lat = pos.target.latitude
+            val lng = pos.target.longitude
+            val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
+            val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
+            if (clampedLat != lat || clampedLng != lng) {
+                camera.animateTo(
+                    finalPosition = pos.copy(
+                        target = Position(latitude = clampedLat, longitude = clampedLng)
+                    ),
+                    duration = 300.milliseconds,
+                )
+            }
+        }
+    }
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -106,6 +152,7 @@ actual fun GccMap(
             val areaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(communityAreasJson))
             val serviceAreaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(serviceAreaJson))
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
+            val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
 
             // --- Layers (bottom to top) ---
@@ -127,7 +174,24 @@ actual fun GccMap(
                 ),
             )
 
-            // City outline (Chicago) — visible at zoom 8-15, fades out above
+            // City outline glow — wide semi-transparent halo for depth
+            LineLayer(
+                id = MapStyles.LAYER_CITY_OUTLINE_GLOW,
+                source = citySrc,
+                color = const(MapStyles.CITY_OUTLINE_GLOW_COLOR.copy(alpha = 0.2f)),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    8 to const(2.dp),
+                    11 to const(8.dp),
+                    14 to const(4.dp),
+                    16 to const(0.dp),
+                ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+            )
+
+            // City outline (Chicago) — pronounced deep blue-gray
             LineLayer(
                 id = MapStyles.LAYER_CITY_OUTLINE,
                 source = citySrc,
@@ -135,11 +199,13 @@ actual fun GccMap(
                 width = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    8 to const(0.5.dp),
-                    11 to const(1.5.dp),
-                    14 to const(1.dp),
+                    8 to const(1.dp),
+                    11 to const(3.dp),
+                    14 to const(2.dp),
                     16 to const(0.dp),
                 ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
             )
 
             // Service area fill (green tint) — fades at street zoom
@@ -180,70 +246,258 @@ actual fun GccMap(
                 },
             )
 
-            // Route lines
+            // Community area name labels — at centroids, visible zoom 11-15
+            val labelsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(labelsJson))
+            @Suppress("UNCHECKED_CAST")
+            val nameExpr = feature["name"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+            SymbolLayer(
+                id = MapStyles.LAYER_COMMUNITY_LABELS,
+                source = labelsSrc,
+                textField = format(span(nameExpr)),
+                textSize = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0f).em,
+                    11 to const(0.6f).em,
+                    13 to const(0.8f).em,
+                    15 to const(0.65f).em,
+                    16 to const(0f).em,
+                ),
+                textColor = const(Color(0xFF4B5563)),
+                textHaloColor = const(Color.White),
+                textHaloWidth = const(1.5.dp),
+                textAllowOverlap = const(false),
+                textIgnorePlacement = const(false),
+            )
+
+            // ── Route polygon fill — visible at overview zooms, fades at street level ──
+            FillLayer(
+                id = MapStyles.LAYER_ROUTE_FILL,
+                source = routePolygonsSrc,
+                color = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(MapStyles.ROUTE_FILL_COLOR),
+                    14 to const(MapStyles.ROUTE_FILL_COLOR),
+                    16 to const(Color.Transparent),
+                ),
+                onClick = if (onRouteTap != null) { features ->
+                    val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
+                    if (idx != null) {
+                        onRouteTap(idx)
+                        ClickResult.Consume
+                    } else {
+                        ClickResult.Pass
+                    }
+                } else null,
+            )
+
+            // ── Route rendering: 3-layer stack (glow → casing → core) ──
+            // All widths scale with zoom: thin at overview, full at street level.
+
+            // Route glow — wide semi-transparent halo for emphasis
             LineLayer(
-                id = MapStyles.LAYER_ROUTE_LINE,
+                id = MapStyles.LAYER_ROUTE_GLOW,
                 source = routesSrc,
-                color = const(GccGreen),
-                width = const(MapStyles.ROUTE_LINE_WIDTH.dp),
+                color = const(MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY)),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(1.dp),
+                    13 to const(3.dp),
+                    15 to const(8.dp),
+                    17 to const(14.dp),
+                ),
                 cap = const(LineCap.Round),
                 join = const(LineJoin.Round),
             )
 
-            // Checkpoint dots
+            // Route casing — dark border for depth and contrast
+            LineLayer(
+                id = MapStyles.LAYER_ROUTE_CASING,
+                source = routesSrc,
+                color = const(MapStyles.ROUTE_CASING_COLOR),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0.5.dp),
+                    13 to const(2.dp),
+                    15 to const(5.dp),
+                    17 to const(8.dp),
+                ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+            )
+
+            // Route core — bright green main line
+            LineLayer(
+                id = MapStyles.LAYER_ROUTE_LINE,
+                source = routesSrc,
+                color = const(GccGreen),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0.5.dp),
+                    13 to const(1.5.dp),
+                    15 to const(3.dp),
+                    17 to const(5.dp),
+                ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+                onClick = if (onRouteTap != null) { features ->
+                    val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
+                    if (idx != null) {
+                        onRouteTap(idx)
+                        ClickResult.Consume
+                    } else {
+                        ClickResult.Pass
+                    }
+                } else null,
+            )
+
+            // ── Checkpoint markers: zoom-adaptive circles ──
+            // Hidden at overview, appear at neighborhood zoom, full size at street level.
+
+            // Waypoint outer ring (white border)
             CircleLayer(
-                id = MapStyles.LAYER_CHECKPOINTS,
+                id = MapStyles.LAYER_CHECKPOINT_OUTER,
                 source = checkpointsSrc,
-                color = const(GccGreenDark),
-                radius = const(4.dp),
+                color = const(Color.White),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(3.dp),
+                    17 to const(8.dp),
+                ),
+                strokeColor = const(GccGreenDark),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(0.5.dp),
+                    17 to const(1.5.dp),
+                ),
+            )
+
+            // Waypoint inner fill (green)
+            CircleLayer(
+                id = MapStyles.LAYER_CHECKPOINT_INNER,
+                source = checkpointsSrc,
+                color = const(GccGreen),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(2.dp),
+                    17 to const(5.5.dp),
+                ),
+            )
+
+            // ── Bounty markers: red dots with radius and amount labels ──
+            val bountySrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountyJson))
+
+            CircleLayer(
+                id = MapStyles.LAYER_BOUNTY_RADIUS,
+                source = bountySrc,
+                color = const(MapStyles.BOUNTY_RADIUS_FILL),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(5.dp),
+                    17 to const(40.dp),
+                ),
+            )
+
+            CircleLayer(
+                id = MapStyles.LAYER_BOUNTY_DOTS,
+                source = bountySrc,
+                color = const(MapStyles.BOUNTY_DOT_COLOR),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(3.dp),
+                    12 to const(4.dp),
+                    14 to const(5.dp),
+                ),
+                strokeColor = const(Color.White),
+                strokeWidth = const(1.5.dp),
+            )
+
+            @Suppress("UNCHECKED_CAST")
+            val amountExpr = feature["amountLabel"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+            SymbolLayer(
+                id = MapStyles.LAYER_BOUNTY_LABELS,
+                source = bountySrc,
+                textField = format(span(amountExpr)),
+                textSize = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    12 to const(0f).em,
+                    13 to const(0.6f).em,
+                    15 to const(0.8f).em,
+                ),
+                textColor = const(MapStyles.BOUNTY_DOT_COLOR),
+                textHaloColor = const(Color.White),
+                textHaloWidth = const(1.5.dp),
+                textAllowOverlap = const(true),
+                textIgnorePlacement = const(true),
+            )
+
+            // ── Spot report markers: orange circles ──
+            val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_MARKERS,
+                source = spotSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    12 to const(0.dp),
+                    13 to const(3.dp),
+                    15 to const(6.dp),
+                ),
+                strokeColor = const(Color.White),
+                strokeWidth = const(1.dp),
             )
         }
 
         // Overlay content (composables positioned in the Box)
         content()
 
-        // Controls wired to MapLibre camera
+        // Zoom controls and scale bar — bottom-left stack
         if (showControls) {
-            MapControls(
-                currentZoom = camera.position.zoom,
-                presets = zoomPresets,
-                onZoomIn = {
-                    coroutineScope.launch {
-                        camera.animateTo(
-                            finalPosition = camera.position.copy(
-                                zoom = (camera.position.zoom + 1.0).coerceAtMost(20.0)
-                            ),
-                            duration = 300.milliseconds,
-                        )
-                    }
-                },
-                onZoomOut = {
-                    coroutineScope.launch {
-                        camera.animateTo(
-                            finalPosition = camera.position.copy(
-                                zoom = (camera.position.zoom - 1.0).coerceAtLeast(1.0)
-                            ),
-                            duration = 300.milliseconds,
-                        )
-                    }
-                },
-                onPresetSelect = { targetZoom ->
-                    coroutineScope.launch {
-                        camera.animateTo(
-                            finalPosition = camera.position.copy(zoom = targetZoom),
-                            duration = 500.milliseconds,
-                        )
-                    }
-                },
+            Column(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .then(if (statusBarPadding) Modifier.statusBarsPadding() else Modifier),
-            )
-
-            ScaleBar(
-                zoom = camera.position.zoom,
-                modifier = Modifier.align(Alignment.BottomStart),
-            )
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 72.dp),
+            ) {
+                ZoomButtons(
+                    onZoomIn = {
+                        coroutineScope.launch {
+                            camera.animateTo(
+                                finalPosition = camera.position.copy(
+                                    zoom = (camera.position.zoom + 1.0).coerceAtMost(20.0)
+                                ),
+                                duration = 300.milliseconds,
+                            )
+                        }
+                    },
+                    onZoomOut = {
+                        coroutineScope.launch {
+                            camera.animateTo(
+                                finalPosition = camera.position.copy(
+                                    zoom = (camera.position.zoom - 1.0).coerceAtLeast(1.0)
+                                ),
+                                duration = 300.milliseconds,
+                            )
+                        }
+                    },
+                )
+                ScaleBar(
+                    zoom = camera.position.zoom,
+                )
+            }
         }
 
         // Area tooltip overlay

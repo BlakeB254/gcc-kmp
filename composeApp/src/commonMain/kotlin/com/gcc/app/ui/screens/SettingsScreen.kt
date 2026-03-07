@@ -35,7 +35,6 @@ fun SettingsScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                windowInsets = WindowInsets(0),
                 title = { Text("Settings") },
                 navigationIcon = {
                     TextButton(onClick = onBack) {

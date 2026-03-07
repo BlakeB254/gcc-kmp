@@ -15,6 +15,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.CameraPreview
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -23,6 +25,7 @@ import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
@@ -40,6 +43,7 @@ fun SpotScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -139,32 +143,33 @@ private fun CameraPhase(
     onCapture: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val cameraManager = remember { CameraManager() }
+    val coroutineScope = rememberCoroutineScope()
+    var isCapturing by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Camera placeholder
+        // Live camera preview
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GccOnBackground.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
+                .clip(RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "\uD83D\uDCF7",
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "Camera Preview",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-                if (photoCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
+            CameraPreview(modifier = Modifier.fillMaxSize())
+
+            // Photo count overlay
+            if (photoCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
                     Text(
                         "$photoCount photo${if (photoCount != 1) "s" else ""} captured",
                         style = MaterialTheme.typography.bodyMedium,
@@ -176,22 +181,42 @@ private fun CameraPhase(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Capture button
+        // Capture button — triggers native camera (UIImagePickerController on iOS)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedButton(
-                onClick = onCapture,
+                onClick = {
+                    if (!isCapturing) {
+                        isCapturing = true
+                        coroutineScope.launch {
+                            val photo = cameraManager.capturePhoto()
+                            if (photo != null) {
+                                onCapture()
+                            }
+                            isCapturing = false
+                        }
+                    }
+                },
                 modifier = Modifier.size(72.dp),
                 shape = CircleShape,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                enabled = !isCapturing,
             ) {
-                Text(
-                    "\uD83D\uDCF8",
-                    style = MaterialTheme.typography.headlineMedium,
-                )
+                if (isCapturing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = GccGreen,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(
+                        "\uD83D\uDCF8",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                }
             }
         }
 

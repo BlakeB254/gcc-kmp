@@ -50,39 +50,48 @@ private fun RouteChip(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier
+            .width(160.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
         shadowElevation = 1.dp,
         color = Color.White,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Route visual thumbnail
             RouteThumbnail(
                 route = route,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
             )
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     route.displayName,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
                 )
-                Text(
-                    "${route.checkpoints.size} checkpoints",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-            }
-            route.payoutAmount?.let { payout ->
-                Text(
-                    "$${payout / 100}.${(payout % 100).padTwo()}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GccGreen,
-                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "${route.checkpoints.size} stops",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                    route.payoutAmount?.let { payout ->
+                        Text(
+                            "$${payout / 100}.${(payout % 100).padTwo()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GccGreen,
+                        )
+                    }
+                }
             }
         }
     }

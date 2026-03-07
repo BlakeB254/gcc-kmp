@@ -1,65 +1,226 @@
 package com.gcc.app.ui.map
 
 /**
- * Simplified geographic boundary polygons for map rendering.
+ * Geographic boundary polygons for map rendering.
  *
- * These are approximate outlines (~15-20 vertices each) for rendering at
- * state and city zoom levels. They provide geographic context when zoomed
- * out beyond community area level.
+ * City and state outlines provide geographic context at overview zoom levels.
+ * The Chicago city boundary is sourced from the Chicago Data Portal (qqq8-j68g)
+ * and simplified with Douglas-Peucker (~0.002° ≈ 220m tolerance).
  */
 
 /**
- * Simplified Illinois state outline (~15 key vertices).
- * Covers the rough shape: NW corner, NE along WI border, down the lake,
- * southern tip at Cairo, and back up the Mississippi.
+ * Simplified Illinois state outline (~18 key vertices).
  */
 val illinoisOutline: List<Pair<Double, Double>> = listOf(
-    42.4970 to -90.6390,   // NW corner (Galena area)
-    42.5080 to -89.3640,   // N border midpoint
-    42.4950 to -87.8000,   // NE near Waukegan
-    42.0230 to -87.5230,   // Chicago lakefront north
-    41.6210 to -87.5240,   // Chicago lakefront south (Gary border)
-    41.1720 to -87.5300,   // Kankakee area
-    40.4820 to -87.5260,   // Danville area
-    39.3510 to -87.5330,   // E border mid
-    38.7360 to -87.5090,   // Vincennes area
-    37.7770 to -87.6900,   // SE curve toward Ohio River
-    37.0050 to -89.1710,   // Southern tip (Cairo)
-    37.3590 to -89.5210,   // Cape Girardeau area
-    38.2270 to -90.5740,   // St. Louis area
-    38.7660 to -90.1580,   // Alton area
-    39.7180 to -91.3750,   // Quincy area
-    40.6270 to -91.1200,   // Ft. Madison area
-    41.2380 to -91.0530,   // Burlington area
-    42.1570 to -90.1530,   // Dubuque area
+    42.4970 to -90.6390,
+    42.5080 to -89.3640,
+    42.4950 to -87.8000,
+    42.0230 to -87.5230,
+    41.6210 to -87.5240,
+    41.1720 to -87.5300,
+    40.4820 to -87.5260,
+    39.3510 to -87.5330,
+    38.7360 to -87.5090,
+    37.7770 to -87.6900,
+    37.0050 to -89.1710,
+    37.3590 to -89.5210,
+    38.2270 to -90.5740,
+    38.7660 to -90.1580,
+    39.7180 to -91.3750,
+    40.6270 to -91.1200,
+    41.2380 to -91.0530,
+    42.1570 to -90.1530,
 )
 
 /**
- * Simplified Chicago city boundary (~20 key vertices).
- * Follows the rough outline: north along lake, west to O'Hare,
- * south along western edge, east along southern edge back to lake.
+ * Official Chicago city boundary from Chicago Data Portal (qqq8-j68g).
+ * Simplified from 11,326 to ~186 vertices with Douglas-Peucker.
  */
 val chicagoCityOutline: List<Pair<Double, Double>> = listOf(
-    42.0230 to -87.6690,   // Rogers Park (N lakefront)
-    42.0190 to -87.6340,   // Juneway Terrace (NE corner)
-    41.8850 to -87.6100,   // Lincoln Park lakefront
-    41.8430 to -87.6060,   // Grant Park / downtown lakefront
-    41.7930 to -87.5910,   // Hyde Park lakefront
-    41.7450 to -87.5430,   // South Shore / Rainbow Beach
-    41.6440 to -87.5240,   // SE corner (Hegewisch)
-    41.6440 to -87.5520,   // Hegewisch inland
-    41.6440 to -87.6240,   // Riverdale / far south
-    41.6530 to -87.6820,   // Beverly area
-    41.6900 to -87.7580,   // Clearing / Midway area
-    41.7260 to -87.7870,   // SW corner (Mt. Greenwood)
-    41.7880 to -87.7870,   // Garfield Ridge
-    41.8380 to -87.7900,   // W side mid (Cicero border)
-    41.8810 to -87.8050,   // Austin / W boundary
-    41.9160 to -87.8360,   // Montclare
-    41.9450 to -87.8390,   // O'Hare south edge
-    41.9860 to -87.8360,   // O'Hare west
-    42.0060 to -87.8360,   // O'Hare north
-    42.0190 to -87.7900,   // Edgebrook area
-    42.0230 to -87.7570,   // West Ridge (NW)
-    42.0230 to -87.6870,   // Rogers Park (N west)
+    42.0009 to -87.9351,
+    42.0082 to -87.9353,
+    42.005 to -87.9303,
+    42.0077 to -87.9255,
+    42.0039 to -87.9209,
+    42.0051 to -87.9138,
+    42.0087 to -87.9138,
+    42.0051 to -87.913,
+    42.0052 to -87.9077,
+    42.009 to -87.9058,
+    42.0057 to -87.8943,
+    42.0027 to -87.8943,
+    42.0023 to -87.8904,
+    42.0036 to -87.9041,
+    41.9952 to -87.8804,
+    41.9767 to -87.8737,
+    41.9739 to -87.8759,
+    41.9739 to -87.862,
+    41.9811 to -87.8559,
+    41.9891 to -87.8559,
+    41.9844 to -87.8233,
+    42.0186 to -87.8212,
+    42.019 to -87.8065,
+    42.0008 to -87.8068,
+    42.0004 to -87.7906,
+    42.0045 to -87.782,
+    42.012 to -87.7888,
+    42.012 to -87.7793,
+    42.0154 to -87.777,
+    42.012 to -87.7771,
+    42.012 to -87.7733,
+    42.0049 to -87.7692,
+    42.0033 to -87.7658,
+    42.0083 to -87.7675,
+    42.0083 to -87.7617,
+    42.0017 to -87.7623,
+    41.9973 to -87.7529,
+    41.9974 to -87.7095,
+    42.0191 to -87.709,
+    42.0194 to -87.6731,
+    42.023 to -87.6771,
+    42.0229 to -87.6651,
+    42.012 to -87.661,
+    42.0067 to -87.6553,
+    42.0056 to -87.6574,
+    41.9884 to -87.6543,
+    41.9864 to -87.6494,
+    41.9795 to -87.6505,
+    41.9778 to -87.6461,
+    41.9713 to -87.6453,
+    41.9657 to -87.6359,
+    41.9651 to -87.632,
+    41.9685 to -87.6309,
+    41.9625 to -87.6315,
+    41.9594 to -87.6375,
+    41.9605 to -87.6409,
+    41.9628 to -87.6357,
+    41.9614 to -87.6423,
+    41.9423 to -87.633,
+    41.9479 to -87.6421,
+    41.9398 to -87.6371,
+    41.9415 to -87.6339,
+    41.9176 to -87.6279,
+    41.9146 to -87.6202,
+    41.9103 to -87.6251,
+    41.904 to -87.6237,
+    41.8931 to -87.6137,
+    41.8962 to -87.6102,
+    41.8964 to -87.6024,
+    41.8933 to -87.6024,
+    41.8922 to -87.6098,
+    41.8923 to -87.5985,
+    41.891 to -87.6095,
+    41.8883 to -87.6025,
+    41.888 to -87.6098,
+    41.8841 to -87.61,
+    41.8817 to -87.6165,
+    41.8689 to -87.6162,
+    41.8665 to -87.6056,
+    41.8534 to -87.6065,
+    41.8538 to -87.6099,
+    41.8659 to -87.6105,
+    41.8631 to -87.6135,
+    41.8442 to -87.6092,
+    41.8386 to -87.6062,
+    41.8398 to -87.6042,
+    41.8338 to -87.6049,
+    41.8038 to -87.58,
+    41.7984 to -87.5799,
+    41.7966 to -87.5753,
+    41.792 to -87.5796,
+    41.7837 to -87.5761,
+    41.7813 to -87.5697,
+    41.7846 to -87.5675,
+    41.7758 to -87.575,
+    41.7759 to -87.5719,
+    41.7792 to -87.5722,
+    41.7692 to -87.5595,
+    41.7656 to -87.5606,
+    41.7628 to -87.5576,
+    41.7587 to -87.5487,
+    41.7606 to -87.5443,
+    41.7573 to -87.5406,
+    41.7522 to -87.5435,
+    41.748 to -87.5309,
+    41.7415 to -87.5298,
+    41.7415 to -87.5245,
+    41.741 to -87.5399,
+    41.7406 to -87.5299,
+    41.7324 to -87.5295,
+    41.7311 to -87.5247,
+    41.7174 to -87.5245,
+    41.7154 to -87.5287,
+    41.7123 to -87.5264,
+    41.7108 to -87.5284,
+    41.7093 to -87.5241,
+    41.7095 to -87.5262,
+    41.6445 to -87.5252,
+    41.6447 to -87.5868,
+    41.6489 to -87.5923,
+    41.648 to -87.5979,
+    41.6446 to -87.5978,
+    41.6446 to -87.6172,
+    41.6503 to -87.6172,
+    41.6509 to -87.6203,
+    41.6591 to -87.6177,
+    41.6611 to -87.6199,
+    41.6576 to -87.647,
+    41.6632 to -87.6472,
+    41.6632 to -87.6414,
+    41.6705 to -87.6417,
+    41.6703 to -87.6612,
+    41.6775 to -87.6614,
+    41.6772 to -87.6862,
+    41.6845 to -87.6857,
+    41.6843 to -87.6956,
+    41.6881 to -87.6958,
+    41.6842 to -87.7054,
+    41.6805 to -87.7053,
+    41.6805 to -87.7114,
+    41.6841 to -87.7115,
+    41.6837 to -87.7393,
+    41.6908 to -87.7397,
+    41.6913 to -87.7203,
+    41.7132 to -87.7211,
+    41.7133 to -87.7126,
+    41.7061 to -87.7111,
+    41.7062 to -87.7017,
+    41.7072 to -87.6915,
+    41.7136 to -87.6917,
+    41.7137 to -87.6818,
+    41.7355 to -87.6825,
+    41.7345 to -87.7411,
+    41.7748 to -87.7422,
+    41.7738 to -87.8008,
+    41.7948 to -87.8016,
+    41.798 to -87.8016,
+    41.7994 to -87.797,
+    41.8002 to -87.7527,
+    41.8133 to -87.7531,
+    41.816 to -87.7447,
+    41.822 to -87.7448,
+    41.8221 to -87.7385,
+    41.866 to -87.74,
+    41.8655 to -87.7741,
+    41.9093 to -87.7756,
+    41.9088 to -87.8057,
+    41.9345 to -87.8066,
+    41.9343 to -87.8164,
+    41.9379 to -87.8165,
+    41.9381 to -87.8507,
+    41.9495 to -87.8549,
+    41.9516 to -87.8466,
+    41.9557 to -87.8466,
+    41.956 to -87.8585,
+    41.9725 to -87.8552,
+    41.9729 to -87.8808,
+    41.9572 to -87.8808,
+    41.9581 to -87.8929,
+    41.9508 to -87.8929,
+    41.9529 to -87.9147,
+    41.9572 to -87.9158,
+    41.9523 to -87.9159,
+    41.9568 to -87.9395,
+    41.9935 to -87.9399,
+    42.0009 to -87.9351,
 )

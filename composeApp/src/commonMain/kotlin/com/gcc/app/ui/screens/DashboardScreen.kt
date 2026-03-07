@@ -26,10 +26,16 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.RouteThumbnail
+import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.DashboardViewModel
+import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
 import com.gcc.app.util.padTwo
+import kotlin.math.ln
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.tan
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
@@ -68,6 +74,53 @@ fun DashboardScreen(
         }
     }
     val workerName = uiState.worker?.name?.split(" ")?.firstOrNull() ?: "Worker"
+
+    // Extract route coordinates for the map preview
+    val routeCoordinates: List<List<Coordinates>> = remember(uiState.routes) {
+        uiState.routes.map { route ->
+            route.geometry?.coordinates?.map { point ->
+                Coordinates(lng = point[0], lat = point[1])
+            } ?: route.checkpoints
+                .sortedBy { it.sequenceOrder }
+                .map { it.coordinates }
+        }
+    }
+
+    // Compute map center and zoom to fit all route coordinates
+    val serviceArea = remember { chicagoCommunityAreas.find { it.isServiceArea } }
+    val allPoints = remember(routeCoordinates) { routeCoordinates.flatten() }
+    val mapCenter = remember(allPoints) {
+        if (allPoints.isNotEmpty()) {
+            val minLat = allPoints.minOf { it.lat }
+            val maxLat = allPoints.maxOf { it.lat }
+            val minLng = allPoints.minOf { it.lng }
+            val maxLng = allPoints.maxOf { it.lng }
+            Pair((minLat + maxLat) / 2.0, (minLng + maxLng) / 2.0)
+        } else {
+            // Fallback to service area center
+            val sa = serviceArea
+            if (sa != null) Pair(
+                (sa.bounds.north + sa.bounds.south) / 2.0,
+                (sa.bounds.east + sa.bounds.west) / 2.0,
+            ) else Pair(MapStyles.CHICAGO_CENTER_LAT, MapStyles.CHICAGO_CENTER_LNG)
+        }
+    }
+    val mapZoom = remember(allPoints) {
+        if (allPoints.size >= 2) {
+            val minLat = allPoints.minOf { it.lat }
+            val maxLat = allPoints.maxOf { it.lat }
+            val minLng = allPoints.minOf { it.lng }
+            val maxLng = allPoints.maxOf { it.lng }
+            // Estimate zoom to fit the bounding box with padding
+            val latSpan = (maxLat - minLat) * 1.3 // 30% padding
+            val lngSpan = (maxLng - minLng) * 1.3
+            val latZoom = if (latSpan > 0) ln(360.0 / latSpan) / ln(2.0) else 16.0
+            val lngZoom = if (lngSpan > 0) ln(360.0 / lngSpan) / ln(2.0) else 16.0
+            minOf(latZoom, lngZoom).coerceIn(10.0, 17.0)
+        } else {
+            MapStyles.ZOOM_SERVICE_AREA
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -141,9 +194,10 @@ fun DashboardScreen(
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
-                        centerLat = MapStyles.CHICAGO_CENTER_LAT,
-                        centerLng = MapStyles.CHICAGO_CENTER_LNG,
-                        zoom = MapStyles.ZOOM_AREA,
+                        centerLat = mapCenter.first,
+                        centerLng = mapCenter.second,
+                        zoom = mapZoom,
+                        routeCoordinates = routeCoordinates,
                         showControls = false,
                     )
 

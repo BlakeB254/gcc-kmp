@@ -38,6 +38,8 @@ object MapStyles {
     const val LAYER_CHECKPOINT_END = "checkpoint-end-outer"
     const val LAYER_CHECKPOINT_END_INNER = "checkpoint-end-inner"
     const val LAYER_CHECKPOINTS = "checkpoints"
+    const val LAYER_COMMUNITY_LABELS = "community-labels"
+    const val LAYER_EXPLORER_LABELS = "explorer-labels"
     const val LAYER_GPS_DOT = "gps-dot"
     const val LAYER_STATE_OUTLINE = "state-outline"
     const val LAYER_CITY_OUTLINE = "city-outline"
@@ -73,8 +75,10 @@ object MapStyles {
     // Geographic boundary styles
     val STATE_OUTLINE_COLOR = Color(0xFF9CA3AF)       // gray
     const val STATE_OUTLINE_WIDTH = 1.0f
-    val CITY_OUTLINE_COLOR = Color(0xFF4B5563)        // dark gray
-    const val CITY_OUTLINE_WIDTH = 1.5f
+    val CITY_OUTLINE_COLOR = Color(0xFF1E3A5F)        // deep blue-gray (pronounced)
+    const val CITY_OUTLINE_WIDTH = 3.0f
+    val CITY_OUTLINE_GLOW_COLOR = Color(0xFF1E3A5F)   // same, used at low opacity for glow
+    const val LAYER_CITY_OUTLINE_GLOW = "city-outline-glow"
 
     // Geofence
     const val GEOFENCE_RADIUS_METERS = 15.0
@@ -99,4 +103,15 @@ object MapStyles {
 
     // Bounty pulse orange
     val BOUNTY_PULSE_COLOR = Color(0xFFF97316)
+
+    // Bounty marker layers
+    const val LAYER_BOUNTY_DOTS = "bounty-dots"
+    const val LAYER_BOUNTY_LABELS = "bounty-labels"
+    const val LAYER_BOUNTY_RADIUS = "bounty-radius"
+    val BOUNTY_DOT_COLOR = Color(0xFFEF4444)   // red — matches PIN_RED
+    val BOUNTY_RADIUS_FILL = Color(0x1AEF4444)  // 10% opacity red
+
+    // Spot report marker layers
+    const val LAYER_SPOT_MARKERS = "spot-markers"
+    val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
 }

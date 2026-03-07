@@ -10,6 +10,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.MapGpsBlue
+import com.gcc.shared.model.Bounty
+import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.Coordinates
 import kotlin.math.PI
 import kotlin.math.abs
@@ -67,13 +69,18 @@ expect fun GccMap(
     routeCoordinates: List<List<Coordinates>> = emptyList(),
     animateRoutes: Boolean = false,
     bountyLocations: List<Coordinates> = emptyList(),
+    bounties: List<Bounty> = emptyList(),
+    spots: List<CommunityReport> = emptyList(),
     onAreaTap: ((CommunityArea) -> Unit)? = null,
+    onRouteTap: ((routeIndex: Int) -> Unit)? = null,
     onContextPin: ((lat: Double, lng: Double) -> Unit)? = null,
     showBuildings: Boolean = true,
     showGridLines: Boolean = true,
     showControls: Boolean = false,
     statusBarPadding: Boolean = false,
     zoomPresets: List<ZoomPreset> = overviewZoomPresets,
+    cameraBounds: AreaBounds? = null,
+    mapMode: MapMode = MapMode.MY_AREA,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

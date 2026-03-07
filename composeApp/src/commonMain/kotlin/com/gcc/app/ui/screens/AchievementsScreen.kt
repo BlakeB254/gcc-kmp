@@ -35,7 +35,6 @@ fun AchievementsScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                windowInsets = WindowInsets(0),
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

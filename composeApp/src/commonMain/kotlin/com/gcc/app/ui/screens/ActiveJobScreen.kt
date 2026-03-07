@@ -227,6 +227,7 @@ fun ActiveJobScreen(
         TextButton(
             onClick = onBack,
             modifier = Modifier
+                .statusBarsPadding()
                 .padding(8.dp)
                 .align(Alignment.TopStart),
         ) {

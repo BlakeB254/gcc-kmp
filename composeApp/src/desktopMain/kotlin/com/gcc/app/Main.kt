@@ -41,7 +41,7 @@ fun main(args: Array<String> = emptyArray()) {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = if (isDemo) "GCC Worker App [DEMO]" else "GCC Worker App",
+            title = if (isDemo) "GCC App [DEMO]" else "GCC App",
         ) {
             App(root)
         }

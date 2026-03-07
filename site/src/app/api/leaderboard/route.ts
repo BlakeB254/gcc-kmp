@@ -68,24 +68,22 @@ export async function GET(request: NextRequest) {
       )
       .limit(limit)
 
-    // Format the leaderboard with ranks
+    // Format the leaderboard with ranks (field names match Kotlin LeaderboardEntry model)
     const leaderboard = leaderboardData.map((worker, index) => ({
       rank: index + 1,
-      id: worker.id,
+      workerId: worker.id,
       name: worker.name,
-      neighborhood: worker.neighborhood,
-      jobs: Number(worker.jobsCompleted || 0),
-      earnings: Number(worker.totalEarnings || 0),
-      rating: worker.averageRating ? Number(worker.averageRating) : null,
-      lastJobAt: worker.lastJobAt,
-      tier: worker.earlyAdopterTier,
-      isCurrentUser: workerId ? worker.id === workerId : false,
+      jobsCompleted: Number(worker.jobsCompleted || 0),
+      totalEarnings: Number(worker.totalEarnings || 0),
+      averageRating: worker.averageRating ? Number(worker.averageRating) : null,
+      earlyAdopterTier: worker.earlyAdopterTier || 'standard',
+      badgeCount: 0,
     }))
 
     // If workerId is provided and they're not in the top N, get their position
     let currentUserPosition = null
     if (workerId) {
-      const userInLeaderboard = leaderboard.find((w) => w.id === workerId)
+      const userInLeaderboard = leaderboard.find((w) => w.workerId === workerId)
       if (!userInLeaderboard) {
         // Get the user's data
         const [userData] = await db
@@ -121,15 +119,13 @@ export async function GET(request: NextRequest) {
 
           currentUserPosition = {
             rank: Number(position),
-            id: userData.id,
+            workerId: userData.id,
             name: userData.name,
-            neighborhood: userData.neighborhood,
-            jobs: Number(userData.jobsCompleted || 0),
-            earnings: Number(userData.totalEarnings || 0),
-            rating: userData.averageRating ? Number(userData.averageRating) : null,
-            lastJobAt: userData.lastJobAt,
-            tier: userData.earlyAdopterTier,
-            isCurrentUser: true,
+            jobsCompleted: Number(userData.jobsCompleted || 0),
+            totalEarnings: Number(userData.totalEarnings || 0),
+            averageRating: userData.averageRating ? Number(userData.averageRating) : null,
+            earlyAdopterTier: userData.earlyAdopterTier || 'standard',
+            badgeCount: 0,
           }
         }
       }
@@ -153,13 +149,10 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(workers.statsLastJobAt))
       .limit(1)
 
+    // Wrap in ApiResponse<List<LeaderboardEntry>> for mobile compatibility
     return NextResponse.json({
+      data: leaderboard,
       success: true,
-      scope,
-      leaderboard,
-      currentUserPosition,
-      total: Number(total),
-      lastUpdated: lastUpdated?.lastJobAt || null,
     })
   } catch (error) {
     console.error('Leaderboard API error:', error)

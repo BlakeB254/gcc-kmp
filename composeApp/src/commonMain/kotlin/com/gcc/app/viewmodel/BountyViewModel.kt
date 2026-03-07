@@ -96,16 +96,25 @@ class BountyViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isClaimingBounty = true, claimError = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/bounties/$bountyId/claim")
-                val bounty = response.body<ApiResponse<Bounty>>()
+                val bounty = apiClient.claimBounty(bountyId)
                 _uiState.value = _uiState.value.copy(
-                    selectedBounty = bounty.data,
+                    selectedBounty = bounty,
                     isClaimingBounty = false,
                 )
+                // Refresh the bounties list so claimed bounty disappears from open list
+                refresh()
             } catch (e: Exception) {
+                val message = e.message ?: "Failed to claim bounty"
+                val claimError = if (message.contains("409") || message.contains("Conflict")) {
+                    "Someone else got there first!"
+                } else if (message.contains("403") || message.contains("Forbidden")) {
+                    "You're not authorized to claim this bounty"
+                } else {
+                    message
+                }
                 _uiState.value = _uiState.value.copy(
                     isClaimingBounty = false,
-                    claimError = e.message ?: "Failed to claim bounty",
+                    claimError = claimError,
                 )
             }
         }

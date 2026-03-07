@@ -1,4 +1,4 @@
-# App Store Metadata — GCC Worker
+# App Store Metadata — GCC
 
 All text and selections needed for App Store Connect submission.
 
@@ -6,7 +6,7 @@ All text and selections needed for App Store Connect submission.
 
 ## App Store Listing
 
-**App Name:** GCC Worker
+**App Name:** GCC
 
 **Subtitle:** Clean Streets. Earn Money.
 
@@ -16,11 +16,11 @@ All text and selections needed for App Store Connect submission.
 
 **Description:**
 
-GCC Worker is the official app for Global Community Cleaners, a nonprofit dedicated to revitalizing neighborhoods in Chicago's North Lawndale community. Workers use the app to accept GPS-verified cleaning routes, complete block-by-block assignments, and earn money for every block they clean. Each job is backed by real accountability: workers photograph before-and-after evidence at checkpoints along their route, and GPS verification confirms they walked the assigned blocks. The result is cleaner streets, documented proof of impact, and fair pay for honest work.
+GCC is the official app for Global Community Cleaners, a nonprofit dedicated to revitalizing neighborhoods in Chicago's North Lawndale community. Workers use the app to accept GPS-verified cleaning routes, complete block-by-block assignments, and earn money for every block they clean. Each job is backed by real accountability: workers photograph before-and-after evidence at checkpoints along their route, and GPS verification confirms they walked the assigned blocks. The result is cleaner streets, documented proof of impact, and fair pay for honest work.
 
 The app guides workers through every step of a cleaning job. Real-time maps powered by MapLibre show assigned routes, checkpoint locations, and progress. Workers claim available routes, navigate to their starting point, and tap through checkpoints as they clean. At each checkpoint, the camera captures photographic evidence that is timestamped and geotagged. Once a route is complete, the job enters a verification and approval process before payout is issued to the worker's wallet. The entire flow — from route acceptance to payment — happens inside the app.
 
-GCC Worker also features leaderboards and badges that recognize top performers and consistent contributors. Workers can track their earnings, view completed job history, and monitor their standing in the community. Whether you are looking for flexible work that makes a visible difference in your neighborhood or you want to be part of a movement to restore pride in Chicago's streets, GCC Worker puts the opportunity in your hands. Download the app, get approved, and start earning.
+GCC also features leaderboards and badges that recognize top performers and consistent contributors. Workers can track their earnings, view completed job history, and monitor their standing in the community. Whether you are looking for flexible work that makes a visible difference in your neighborhood or you want to be part of a movement to restore pride in Chicago's streets, GCC puts the opportunity in your hands. Download the app, get approved, and start earning.
 
 **Keywords:** community cleaning,gig work,Chicago,earn money,block cleaning,route,GPS,neighborhood,worker,green jobs
 
@@ -104,7 +104,7 @@ Paste the following into the "Notes" field in App Store Connect:
 
 ---
 
-GCC Worker is a workforce app for Global Community Cleaners NFP, a registered nonprofit organization in Chicago, IL. The app is used by approved cleaning workers to accept, complete, and get paid for neighborhood cleaning routes in the North Lawndale community.
+GCC is a workforce app for Global Community Cleaners NFP, a registered nonprofit organization in Chicago, IL. The app is used by approved cleaning workers to accept, complete, and get paid for neighborhood cleaning routes in the North Lawndale community.
 
 **How the app works:**
 Workers are recruited and verified by the nonprofit before they can access job features. Once approved, workers browse available cleaning routes on a map, accept a route, walk the assigned blocks while cleaning, and photograph before/after evidence at GPS-verified checkpoints. Completed jobs go through an approval process, and workers are paid per block.

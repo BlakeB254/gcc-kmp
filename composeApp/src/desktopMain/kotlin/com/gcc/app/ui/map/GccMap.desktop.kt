@@ -50,13 +50,18 @@ actual fun GccMap(
     routeCoordinates: List<List<Coordinates>>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
+    bounties: List<com.gcc.shared.model.Bounty>,
+    spots: List<com.gcc.shared.model.CommunityReport>,
     onAreaTap: ((CommunityArea) -> Unit)?,
+    onRouteTap: ((routeIndex: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,
     zoomPresets: List<ZoomPreset>,
+    cameraBounds: AreaBounds?,
+    mapMode: MapMode,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -385,41 +390,72 @@ actual fun GccMap(
                 )
             }
 
-            // --- Draw route path lines ---
-            if (animateRoutes) {
-                for (routeCoords in routeCoordinates) {
-                    drawAnimatedRoutePath(
-                        routeCoords = routeCoords,
-                        centerLat = centerLat,
-                        centerLng = centerLng,
-                        zoom = zoom,
-                        w = w,
-                        h = h,
-                        dashOffset = routeDashOffset,
-                    )
-                    for (coord in routeCoords) {
-                        val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-                        drawCircle(color = GccGreenDark, radius = 4f, center = point)
-                    }
+            // --- Draw route path lines (3-layer: glow → casing → core) ---
+            for (routeCoords in routeCoordinates) {
+                if (routeCoords.size < 2) continue
+                // Close the loop
+                val closed = if (routeCoords.first().lat == routeCoords.last().lat &&
+                    routeCoords.first().lng == routeCoords.last().lng) routeCoords
+                else routeCoords + routeCoords.first()
+
+                val path = Path()
+                closed.forEachIndexed { index, coord ->
+                    val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
+                    if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
                 }
-            } else {
-                for (routeCoords in routeCoordinates) {
-                    if (routeCoords.size >= 2) {
-                        val path = Path()
-                        routeCoords.forEachIndexed { index, coord ->
-                            val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-                            if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
-                        }
-                        drawPath(
-                            path = path,
-                            color = GccGreen,
-                            style = Stroke(width = MapStyles.ROUTE_LINE_WIDTH, pathEffect = PathEffect.cornerPathEffect(8f)),
-                        )
-                        for (coord in routeCoords) {
-                            val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-                            drawCircle(color = GccGreenDark, radius = 4f, center = point)
-                        }
+
+                // Layer 1: Glow
+                drawPath(
+                    path = path,
+                    color = MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY),
+                    style = Stroke(width = MapStyles.ROUTE_GLOW_WIDTH, pathEffect = PathEffect.cornerPathEffect(8f)),
+                )
+
+                // Layer 2: Casing (dark border)
+                drawPath(
+                    path = path,
+                    color = MapStyles.ROUTE_CASING_COLOR,
+                    style = Stroke(width = MapStyles.ROUTE_CASING_WIDTH, pathEffect = PathEffect.cornerPathEffect(8f)),
+                )
+
+                // Layer 3: Core line (animated or static)
+                if (animateRoutes) {
+                    drawPath(
+                        path = path,
+                        color = GccGreen,
+                        style = Stroke(
+                            width = MapStyles.ROUTE_LINE_WIDTH,
+                            pathEffect = PathEffect.chainPathEffect(
+                                outer = PathEffect.dashPathEffect(floatArrayOf(20f, 10f), phase = routeDashOffset),
+                                inner = PathEffect.cornerPathEffect(8f),
+                            ),
+                        ),
+                    )
+                } else {
+                    drawPath(
+                        path = path,
+                        color = GccGreen,
+                        style = Stroke(width = MapStyles.ROUTE_LINE_WIDTH, pathEffect = PathEffect.cornerPathEffect(8f)),
+                    )
+                }
+
+                // Checkpoint markers with start/end distinction
+                routeCoords.forEachIndexed { index, coord ->
+                    val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
+                    val isStart = index == 0
+                    val isEnd = index == routeCoords.lastIndex
+                    val outerR = if (isStart || isEnd) MapStyles.CHECKPOINT_START_END_OUTER else MapStyles.CHECKPOINT_OUTER_RADIUS
+                    val innerR = if (isStart || isEnd) MapStyles.CHECKPOINT_START_END_INNER else MapStyles.CHECKPOINT_INNER_RADIUS
+                    val fillColor = when {
+                        isStart -> MapStyles.CHECKPOINT_START_COLOR
+                        isEnd -> MapStyles.CHECKPOINT_END_COLOR
+                        else -> GccGreen
                     }
+                    // White outer ring with border
+                    drawCircle(color = androidx.compose.ui.graphics.Color.White, radius = outerR, center = point)
+                    drawCircle(color = GccGreenDark, radius = outerR, center = point, style = Stroke(width = 1.5f))
+                    // Colored inner fill
+                    drawCircle(color = fillColor, radius = innerR, center = point)
                 }
             }
 
