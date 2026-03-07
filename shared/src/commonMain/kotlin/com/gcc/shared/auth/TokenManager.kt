@@ -37,22 +37,24 @@ open class TokenManager(private val settings: Settings = Settings()) {
 
     fun isLoggedIn(): Boolean = _token.value != null
 
-    /** Check if a previous session token exists for biometric re-authentication. */
+    /** Check if a previous session token exists for biometric re-authentication.
+     *  Does NOT check expiry — the token's existence means the user has authenticated before.
+     *  Actual validity is checked on restore. */
     fun hasBiometricToken(): Boolean {
         val biometricToken = settings.getStringOrNull(KEY_BIOMETRIC_TOKEN) ?: return false
-        // Check it's not expired
-        val exp = getJwtClaim(biometricToken, "exp") ?: return false
-        val expSeconds = exp.toLongOrNull() ?: return false
-        return currentTimeSeconds() < expSeconds
+        // Just verify it's a parseable JWT (3 parts)
+        return biometricToken.split(".").size == 3
     }
 
-    /** Restore the biometric token as the active session token. Returns true if successful. */
+    /** Restore the biometric token as the active session token. Returns true if successful.
+     *  If the token is expired, returns false but keeps the biometric token stored
+     *  so Face ID remains available for next login. */
     fun restoreBiometricToken(): Boolean {
         val biometricToken = settings.getStringOrNull(KEY_BIOMETRIC_TOKEN) ?: return false
         val exp = getJwtClaim(biometricToken, "exp") ?: return false
         val expSeconds = exp.toLongOrNull() ?: return false
         if (currentTimeSeconds() >= expSeconds) {
-            settings.remove(KEY_BIOMETRIC_TOKEN)
+            // Token expired — don't delete it (keep Face ID button visible), just signal failure
             return false
         }
         saveToken(biometricToken)
@@ -62,6 +64,19 @@ open class TokenManager(private val settings: Settings = Settings()) {
     /** Clear biometric token (e.g., when user explicitly disables biometric login). */
     fun clearBiometricToken() {
         settings.remove(KEY_BIOMETRIC_TOKEN)
+    }
+
+    /** Save the user's email for "Remember Me" functionality. */
+    fun saveRememberMe(email: String) {
+        settings.putString(KEY_REMEMBERED_EMAIL, email)
+    }
+
+    /** Get the remembered email, or null if none saved. */
+    fun getRememberedEmail(): String? = settings.getStringOrNull(KEY_REMEMBERED_EMAIL)
+
+    /** Clear the remembered email. */
+    fun clearRememberMe() {
+        settings.remove(KEY_REMEMBERED_EMAIL)
     }
 
     /** Check if onboarding has been completed (stored as a boolean setting). */
@@ -147,6 +162,7 @@ open class TokenManager(private val settings: Settings = Settings()) {
         private const val KEY_AUTH_TOKEN = "auth_token"
         private const val KEY_BIOMETRIC_TOKEN = "biometric_token"
         private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
+        private const val KEY_REMEMBERED_EMAIL = "remembered_email"
 
         /** Platform-independent current time in seconds since epoch. */
         private fun currentTimeSeconds(): Long {

@@ -297,5 +297,5 @@ class GccApiClient(
 
     // Community Spot Reports
     suspend fun getAdminSpotReports(): List<CommunityReport> =
-        get("/api/community-reports")
+        get("/api/spots") { parameter("limit", 100) }
 }

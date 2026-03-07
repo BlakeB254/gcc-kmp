@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
-import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
@@ -36,7 +35,22 @@ fun SpotScreen(
     onNavigateToActiveJob: (jobId: Int, routeId: Int) -> Unit = { _, _ -> },
 ) {
     val viewModel = koinInject<SpotViewModel>()
+    val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
+
+    // Start GPS on entry, stop on leave
+    DisposableEffect(Unit) {
+        locationProvider.startLocationUpdates()
+        onDispose { locationProvider.stopLocationUpdates() }
+    }
+
+    // Update viewModel location when GPS emits
+    LaunchedEffect(currentLocation) {
+        currentLocation?.let { loc ->
+            viewModel.setLocation(loc.lat, loc.lng)
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -163,7 +177,26 @@ private fun CameraPhase(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp)),
         ) {
-            CameraPreview(modifier = Modifier.fillMaxSize())
+            // Styled placeholder instead of redundant live AVCaptureSession preview
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1A1A2E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "\uD83D\uDCF7",
+                        style = MaterialTheme.typography.displayMedium,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Tap capture to open camera",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                }
+            }
 
             // Mini-map "You are here" card (bottom-end, rounded)
             currentLocation?.let { loc ->
@@ -371,6 +404,16 @@ private fun LocationPhase(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                // Minus stepper button
+                OutlinedButton(
+                    onClick = { onRadiusChange((radiusMeters - 5).coerceAtLeast(5.0).toFloat()) },
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                ) {
+                    Text("\u2212", style = MaterialTheme.typography.titleMedium)
+                }
                 Slider(
                     value = radiusMeters.toFloat(),
                     onValueChange = onRadiusChange,
@@ -382,6 +425,16 @@ private fun LocationPhase(
                         activeTrackColor = GccGold,
                     ),
                 )
+                // Plus stepper button
+                OutlinedButton(
+                    onClick = { onRadiusChange((radiusMeters + 5).coerceAtMost(100.0).toFloat()) },
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                ) {
+                    Text("+", style = MaterialTheme.typography.titleMedium)
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     "${radiusMeters.toInt()}m",

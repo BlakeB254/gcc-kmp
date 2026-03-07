@@ -30,25 +30,34 @@ fun LoginScreen(
     biometricAuth: BiometricAuth = koinInject(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var email by remember { mutableStateOf("") }
+    val rememberedEmail = remember { tokenManager.getRememberedEmail() }
+    var email by remember { mutableStateOf(rememberedEmail ?: "") }
     var password by remember { mutableStateOf("") }
     var twoFactorCode by remember { mutableStateOf("") }
+    var rememberMe by remember { mutableStateOf(true) }
     var logoVisible by remember { mutableStateOf(false) }
     var cardVisible by remember { mutableStateOf(false) }
     var biometricAvailable by remember { mutableStateOf(false) }
-    var hasStoredToken by remember { mutableStateOf(false) }
+    var showFaceId by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         logoVisible = true
         delay(300)
         cardVisible = true
-        // Check if Face ID sign-in is possible (active session OR saved biometric token)
-        hasStoredToken = tokenManager.isLoggedIn() || tokenManager.hasBiometricToken()
+        // Show Face ID if biometric hardware available AND user has some stored identity
         biometricAvailable = biometricAuth.isBiometricAvailable()
+        showFaceId = biometricAvailable && (
+            tokenManager.isLoggedIn() || tokenManager.hasBiometricToken() || tokenManager.getRememberedEmail() != null
+        )
     }
 
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
+            if (rememberMe && email.isNotBlank()) {
+                tokenManager.saveRememberMe(email)
+            } else {
+                tokenManager.clearRememberMe()
+            }
             onLoginSuccess()
         }
     }
@@ -200,6 +209,24 @@ fun LoginScreen(
                             enabled = !uiState.isLoading,
                         )
 
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Checkbox(
+                                checked = rememberMe,
+                                onCheckedChange = { rememberMe = it },
+                                colors = CheckboxDefaults.colors(checkedColor = GccGreen),
+                            )
+                            Text(
+                                "Remember me on this device",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
                         if (uiState.error != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
@@ -220,7 +247,7 @@ fun LoginScreen(
                         )
 
                         // Face ID quick sign-in
-                        if (hasStoredToken && biometricAvailable) {
+                        if (showFaceId) {
                             Spacer(modifier = Modifier.height(12.dp))
 
                             val scope = rememberCoroutineScope()

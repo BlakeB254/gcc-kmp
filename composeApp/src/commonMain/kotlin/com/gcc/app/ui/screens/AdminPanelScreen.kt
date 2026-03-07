@@ -128,7 +128,15 @@ fun AdminPanelScreen(
                 AdminTab.SPOTS -> spotReports = apiClient.getAdminSpotReports()
             }
         } catch (e: Exception) {
-            error = e.message ?: "Failed to load data"
+            error = when {
+                e.message?.contains("401") == true || e.message?.contains("403") == true ->
+                    "Not authorized. Try signing out and back in."
+                e.message?.contains("404") == true ->
+                    "Endpoint not found. The server may need updating."
+                e.message?.contains("500") == true ->
+                    "Server error. Please try again later."
+                else -> e.message ?: "Failed to load data"
+            }
         }
         isLoading = false
     }

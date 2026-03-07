@@ -5,6 +5,7 @@ import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +92,10 @@ class SpotViewModel(
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
+                }
+                if (!response.status.isSuccess()) {
+                    val errorBody = response.bodyAsText()
+                    throw Exception("Server error ${response.status.value}: $errorBody")
                 }
                 val spotResponse = response.body<ApiResponse<SpotResponse>>()
                 _uiState.value = _uiState.value.copy(
