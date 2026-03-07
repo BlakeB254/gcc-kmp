@@ -3,7 +3,7 @@ package com.gcc.shared.api
 import com.gcc.shared.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.plugins.*
+import io.ktor.client.plugins.api.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.request.post
@@ -30,14 +30,13 @@ class GccApiClient(
             json(this@GccApiClient.json)
         }
         // Add Bearer token fresh on every request (avoids Ktor Auth plugin caching issue)
-        install(HttpSend) {
-            intercept { request ->
+        install(createClientPlugin("BearerAuth") {
+            onRequest { request, _ ->
                 tokenProvider()?.let { token ->
                     request.headers[HttpHeaders.Authorization] = "Bearer $token"
                 }
-                execute(request)
             }
-        }
+        })
     }
 
     // ── HTTP Helpers ───────────────────────────────────────────────────
