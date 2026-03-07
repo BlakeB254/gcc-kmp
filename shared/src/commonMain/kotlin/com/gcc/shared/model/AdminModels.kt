@@ -42,6 +42,8 @@ data class AdminRouteRequest(
     val checkpoints: List<AdminCheckpointRequest> = emptyList(),
     val imageUrl: String? = null,
     val status: String? = null,
+    val publishAt: String? = null,
+    val unpublishAt: String? = null,
 )
 
 @Serializable
@@ -155,6 +157,48 @@ data class AdminActivityItem(
     val description: String,
     val actorName: String? = null,
     val timestamp: Instant,
+)
+
+// ─── Bounty Analytics Models ────────────────────────────────────────
+
+@Serializable
+data class BountyAnalyticsStats(
+    val totalPosted: Int = 0,
+    val totalValueCents: Long = 0,
+    val avgPriceCents: Int = 0,
+    val completionRate: Double = 0.0,
+    val avgTimeToClaimMinutes: Int = 0,
+)
+
+@Serializable
+data class BountyTimeseriesPoint(
+    val date: String = "",
+    val posted: Int = 0,
+    val claimed: Int = 0,
+    val completed: Int = 0,
+    val expired: Int = 0,
+    val totalValueCents: Long = 0,
+)
+
+@Serializable
+data class BountyLocationStats(
+    val communityAreaId: Int = 0,
+    val communityAreaName: String = "",
+    val bountyCount: Int = 0,
+    val totalValueCents: Long = 0,
+    val avgPriceCents: Int = 0,
+    val completionRate: Double = 0.0,
+    val avgTimeToClaimMinutes: Int = 0,
+)
+
+@Serializable
+data class BountyPosterStats(
+    val userId: Int = 0,
+    val userName: String = "",
+    val posterType: PosterType = PosterType.WORKER,
+    val bountiesPosted: Int = 0,
+    val totalValueCents: Long = 0,
+    val completionRate: Double = 0.0,
 )
 
 // ─── Enums ──────────────────────────────────────────────────────────

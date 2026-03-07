@@ -18,6 +18,8 @@ data class CommunityReport(
     val bountyId: Int? = null,
     val observerRewardPoints: Int = 0,
     val aiAnalysis: AiAnalysis? = null,
+    val affectedRadiusMeters: Double = 15.0,
+    val photoUrl: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant
 )
