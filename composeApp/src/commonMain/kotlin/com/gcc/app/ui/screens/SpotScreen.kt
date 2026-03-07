@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -146,6 +147,8 @@ private fun CameraPhase(
     onNext: () -> Unit,
 ) {
     val cameraManager = remember { CameraManager() }
+    val locationProvider = koinInject<LocationProvider>()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var isCapturing by remember { mutableStateOf(false) }
 
@@ -153,21 +156,68 @@ private fun CameraPhase(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Live camera preview
+        // Live camera preview with mini-map overlay
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.BottomCenter,
         ) {
             CameraPreview(modifier = Modifier.fillMaxSize())
 
-            // Photo count overlay
+            // Mini-map "You are here" card (bottom-end, rounded)
+            currentLocation?.let { loc ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(10.dp)
+                        .size(width = 140.dp, height = 110.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.3f)),
+                ) {
+                    // Mini map
+                    GccMap(
+                        modifier = Modifier.fillMaxSize(),
+                        centerLat = loc.lat,
+                        centerLng = loc.lng,
+                        zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                        currentLocation = loc,
+                    )
+                    // "You are here" label
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "\uD83D\uDCCD",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                "You are here",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GccGreen,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Photo count overlay (bottom-start)
             if (photoCount > 0) {
                 Box(
                     modifier = Modifier
-                        .padding(12.dp)
+                        .align(Alignment.BottomStart)
+                        .padding(10.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black.copy(alpha = 0.6f))
                         .padding(horizontal = 12.dp, vertical = 6.dp),

@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.SettingsViewModel
@@ -23,6 +24,8 @@ fun SettingsScreen(
     onSignOut: () -> Unit = {},
 ) {
     val viewModel = koinInject<SettingsViewModel>()
+    val biometricAuth = koinInject<BiometricAuth>()
+    val biometricAvailable = remember { biometricAuth.isBiometricAvailable() }
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadSettings() }
@@ -112,6 +115,35 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.togglePushNotifications(it) },
                         colors = SwitchDefaults.colors(checkedTrackColor = GccGreen),
                     )
+                }
+            }
+
+            // Biometric Lock Section (only when available)
+            if (biometricAvailable) {
+                SectionHeader(title = "Security")
+                GccCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                "Face ID / Biometric Lock",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                "Require biometric to open app",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                        Switch(
+                            checked = uiState.biometricEnabled,
+                            onCheckedChange = { viewModel.toggleBiometric(it) },
+                            colors = SwitchDefaults.colors(checkedTrackColor = GccGreen),
+                        )
+                    }
                 }
             }
 

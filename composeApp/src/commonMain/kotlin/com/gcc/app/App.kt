@@ -48,6 +48,7 @@ fun App(component: RootComponent) {
                     onFeedClick = component::navigateToFeed,
                     onAchievementsClick = component::navigateToAchievements,
                     onSettingsClick = component::navigateToSettings,
+                    onAdminClick = component::navigateToAdminPanel,
                 )
                 is Screen.RouteDetail -> RouteDetailScreen(
                     routeId = screen.routeId,
@@ -111,6 +112,9 @@ fun App(component: RootComponent) {
                 is Screen.BiometricGate -> BiometricGateScreen(
                     onSuccess = component::onBiometricSuccess,
                     onFallback = component::onBiometricFallback,
+                )
+                is Screen.AdminPanel -> AdminPanelScreen(
+                    onBack = component::navigateBack,
                 )
             }
         }

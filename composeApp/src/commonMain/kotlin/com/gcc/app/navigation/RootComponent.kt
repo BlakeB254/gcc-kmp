@@ -126,6 +126,10 @@ class RootComponent(
         navigation.push(Screen.Feed)
     }
 
+    fun navigateToAdminPanel() {
+        navigation.push(Screen.AdminPanel)
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }

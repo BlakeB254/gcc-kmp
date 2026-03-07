@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val worker: Worker? = null,
     val pushNotificationsEnabled: Boolean = true,
+    val biometricEnabled: Boolean = true,
     val isLoading: Boolean = true,
     val signedOut: Boolean = false,
     val error: String? = null,
@@ -33,6 +34,7 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             pushNotificationsEnabled = settings.getBoolean("push_notifications", true),
+            biometricEnabled = settings.getBoolean("biometric_enabled", true),
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -59,6 +61,11 @@ class SettingsViewModel(
     fun togglePushNotifications(enabled: Boolean) {
         settings.putBoolean("push_notifications", enabled)
         _uiState.value = _uiState.value.copy(pushNotificationsEnabled = enabled)
+    }
+
+    fun toggleBiometric(enabled: Boolean) {
+        settings.putBoolean("biometric_enabled", enabled)
+        _uiState.value = _uiState.value.copy(biometricEnabled = enabled)
     }
 
     fun signOut() {

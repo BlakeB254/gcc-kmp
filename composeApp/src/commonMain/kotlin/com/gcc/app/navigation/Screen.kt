@@ -60,4 +60,7 @@ sealed class Screen {
 
     @Serializable
     data object BiometricGate : Screen()
+
+    @Serializable
+    data object AdminPanel : Screen()
 }

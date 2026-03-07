@@ -26,6 +26,7 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.util.padTwo
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ProfileViewModel
+import com.gcc.shared.auth.TokenManager
 import org.koin.compose.koinInject
 
 @Composable
@@ -37,6 +38,8 @@ fun ProfileScreen(
 ) {
     val viewModel = koinInject<ProfileViewModel>()
     val shareManager = koinInject<ShareManager>()
+    val tokenManager = koinInject<TokenManager>()
+    val isAdmin = remember { tokenManager.isAdmin() }
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
@@ -129,8 +132,10 @@ fun ProfileScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
+            val profileTab = if (isAdmin) 3 else 2
             GccBottomNavBar(
-                selectedTab = 2,
+                selectedTab = profileTab,
+                isAdmin = isAdmin,
                 onTabSelected = { tab ->
                     when (tab) {
                         0 -> onBack()
