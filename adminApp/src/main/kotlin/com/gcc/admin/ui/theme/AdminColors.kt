@@ -43,7 +43,7 @@ val AdminNavAccent = Color(0xFF22C55E)          // GCC green
 // ── Status Badge Colors ──────────────────────────────────────────────────────
 val StatusAvailable = Color(0xFF22C55E)
 val StatusInProgress = Color(0xFF3B82F6)
-val StatusCompleted = Color(0xFF14B8A6)
+val StatusCompleted = Color(0xFF10B981)  // emerald (standardized from teal 0xFF14B8A6)
 val StatusError = Color(0xFFEF4444)
 val StatusWarning = Color(0xFFF59E0B)
 val StatusPending = Color(0xFF8B5CF6)
@@ -51,7 +51,7 @@ val StatusPending = Color(0xFF8B5CF6)
 // ── Status Badge Backgrounds (15% alpha) ─────────────────────────────────────
 val StatusAvailableBg = Color(0x2622C55E)
 val StatusInProgressBg = Color(0x263B82F6)
-val StatusCompletedBg = Color(0x2614B8A6)
+val StatusCompletedBg = Color(0x2610B981)  // emerald bg (standardized from teal)
 val StatusErrorBg = Color(0x26EF4444)
 val StatusWarningBg = Color(0x26F59E0B)
 val StatusPendingBg = Color(0x268B5CF6)

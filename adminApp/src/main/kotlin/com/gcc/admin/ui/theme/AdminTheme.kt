@@ -14,6 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.shared.theme.GccDimensions as SharedDimensions
+import com.gcc.shared.theme.GccElevation as SharedElevation
+import com.gcc.shared.theme.GccShapes as SharedShapes
+import com.gcc.shared.theme.GccSpacing as SharedSpacing
 
 // ── Material3 Dark Color Scheme ──────────────────────────────────────────────
 
@@ -130,63 +134,63 @@ val AdminTypography = Typography(
 )
 
 // ── Shapes ───────────────────────────────────────────────────────────────────
-// Fibonacci-based radii: 3, 5, 8, 13, 21dp
+// Fibonacci-based radii sourced from shared GccShapes tokens
 
 val AdminShapes = Shapes(
-    extraSmall = RoundedCornerShape(3.dp),
-    small = RoundedCornerShape(5.dp),
-    medium = RoundedCornerShape(8.dp),
-    large = RoundedCornerShape(13.dp),
-    extraLarge = RoundedCornerShape(21.dp),
+    extraSmall = RoundedCornerShape(SharedShapes.xs.dp),
+    small = RoundedCornerShape(SharedShapes.sm.dp),
+    medium = RoundedCornerShape(SharedShapes.md.dp),
+    large = RoundedCornerShape(SharedShapes.lg.dp),
+    extraLarge = RoundedCornerShape(SharedShapes.xl.dp),
 )
 
-// ── Fibonacci Spacing Tokens: 3, 5, 8, 13, 21, 34, 55, 89dp ────────────────
+// ── Spacing Tokens sourced from shared GccSpacing ────────────────────────────
 
 @Immutable
 data class AdminSpacing(
-    val xxs: Dp = 3.dp,
-    val xs: Dp = 5.dp,
-    val sm: Dp = 8.dp,
-    val md: Dp = 13.dp,
-    val lg: Dp = 21.dp,
-    val xl: Dp = 34.dp,
-    val xxl: Dp = 55.dp,
-    val xxxl: Dp = 89.dp,
+    val xxs: Dp = SharedSpacing.xxs.dp,
+    val xs: Dp = SharedSpacing.xs.dp,
+    val sm: Dp = SharedSpacing.sm.dp,
+    val md: Dp = SharedSpacing.md.dp,
+    val lg: Dp = SharedSpacing.lg.dp,
+    val xl: Dp = SharedSpacing.xl.dp,
+    val xxl: Dp = SharedSpacing.xxl.dp,
+    val xxxl: Dp = SharedSpacing.xxxl.dp,
 )
 
-// ── Fibonacci-derived Component Dimensions ───────────────────────────────────
+// ── Component Dimensions sourced from shared GccDimensions ───────────────────
 
 @Immutable
 data class AdminDimensions(
-    val phi: Float = 1.618034f,
+    val phi: Float = SharedDimensions.phi,
     // Icons
-    val iconSm: Dp = 21.dp,
-    val iconMd: Dp = 34.dp,
-    val iconLg: Dp = 55.dp,
+    val iconSm: Dp = SharedDimensions.iconSm.dp,
+    val iconMd: Dp = SharedDimensions.iconMd.dp,
+    val iconLg: Dp = SharedDimensions.iconLg.dp,
     // Avatars
-    val avatarSm: Dp = 34.dp,
-    val avatarMd: Dp = 55.dp,
-    val avatarLg: Dp = 89.dp,
+    val avatarSm: Dp = SharedDimensions.avatarSm.dp,
+    val avatarMd: Dp = SharedDimensions.avatarMd.dp,
+    val avatarLg: Dp = SharedDimensions.avatarLg.dp,
     // Cards
-    val cardMinHeight: Dp = 89.dp,
-    val cardRadius: Dp = 13.dp,
+    val cardMinHeight: Dp = SharedDimensions.cardMinHeight.dp,
+    val cardRadius: Dp = SharedDimensions.cardRadius.dp,
     // Buttons
-    val buttonHeight: Dp = 55.dp,
+    val buttonHeight: Dp = SharedDimensions.buttonHeight.dp,
     // Touch targets
-    val touchTarget: Dp = 55.dp,
+    val touchTarget: Dp = SharedDimensions.touchTarget.dp,
 )
 
-// ── Fibonacci Elevation Scale: 0, 1, 2, 3, 5, 8, 13dp ──────────────────────
+// ── Elevation Scale sourced from shared GccElevation ─────────────────────────
 
 @Immutable
 data class AdminElevation(
-    val none: Dp = 0.dp,
-    val subtle: Dp = 1.dp,
-    val card: Dp = 2.dp,
-    val raised: Dp = 3.dp,
-    val floating: Dp = 5.dp,
-    val overlay: Dp = 8.dp,
-    val modal: Dp = 13.dp,
+    val none: Dp = SharedElevation.none.dp,
+    val subtle: Dp = SharedElevation.subtle.dp,
+    val card: Dp = SharedElevation.card.dp,
+    val raised: Dp = SharedElevation.raised.dp,
+    val floating: Dp = SharedElevation.floating.dp,
+    val overlay: Dp = SharedElevation.overlay.dp,
+    val modal: Dp = SharedElevation.modal.dp,
 )
 
 // ── Composition Locals ───────────────────────────────────────────────────────
