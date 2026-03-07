@@ -5,6 +5,7 @@ import Map, { Source, Layer, Marker, Popup, NavigationControl, ScaleControl } fr
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Camera } from 'lucide-react'
+import { MAP_STYLE_URL, CHICAGO_CENTER_LNG_LAT, ZOOM, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, CHECKPOINT_COLORS } from '@/lib/design-tokens'
 
 /**
  * RouteMap Component
@@ -20,21 +21,21 @@ import { Camera } from 'lucide-react'
  */
 
 // ============================================================================
-// ROUTE COLORS - CASED LINE STYLING
+// ROUTE COLORS - CASED LINE STYLING (from design tokens)
 // ============================================================================
 
 const ROUTE_COLORS = {
-  published: { fill: '#22c55e', case: '#14532d' },  // Green
-  claimed: { fill: '#f59e0b', case: '#78350f' },    // Amber
-  active: { fill: '#3b82f6', case: '#1e3a8a' },     // Blue
-  completed: { fill: '#6b7280', case: '#1f2937' },  // Gray
+  published: { fill: ROUTE_STATUS_COLORS.published.line, case: ROUTE_STATUS_COLORS.published.casing },
+  claimed: { fill: ROUTE_STATUS_COLORS.claimed.line, case: ROUTE_STATUS_COLORS.claimed.casing },
+  active: { fill: ROUTE_STATUS_COLORS.active.line, case: ROUTE_STATUS_COLORS.active.casing },
+  completed: { fill: ROUTE_STATUS_COLORS.completed.line, case: ROUTE_STATUS_COLORS.completed.casing },
 } as const
 
 const ROUTE_LINE_WIDTHS = {
-  case: 6,
-  fill: 4,
-  caseSelected: 8,
-  fillSelected: 5,
+  case: ROUTE_WIDTHS.CASING,
+  fill: ROUTE_WIDTHS.CORE,
+  caseSelected: ROUTE_WIDTHS.GLOW,
+  fillSelected: ROUTE_WIDTHS.CASING,
 } as const
 
 const STATUS_LABELS: Record<RouteDisplayStatus, string> = {
@@ -91,11 +92,11 @@ interface RouteMapProps {
 // MAP STYLE
 // ============================================================================
 
-const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+const MAP_STYLE = MAP_STYLE_URL
 
-// North Lawndale default center
-const DEFAULT_CENTER: [number, number] = [-87.7158, 41.8666]
-const DEFAULT_ZOOM = 15
+// North Lawndale default center (from design tokens)
+const DEFAULT_CENTER: [number, number] = CHICAGO_CENTER_LNG_LAT
+const DEFAULT_ZOOM = ZOOM.ROUTE
 
 // ============================================================================
 // COMPONENT
@@ -270,16 +271,14 @@ export function RouteMap({
               anchor="center"
             >
               <div
-                className={`
-                  flex items-center justify-center rounded-full border-2 shadow-sm
-                  ${
-                    cp.type === 'route_start'
-                      ? 'w-7 h-7 bg-green-500 border-green-700'
-                      : cp.type === 'route_end'
-                        ? 'w-7 h-7 bg-red-500 border-red-700'
-                        : 'w-6 h-6 bg-white border-slate-600'
-                  }
-                `}
+                className="flex items-center justify-center rounded-full border-2 shadow-sm"
+                style={
+                  cp.type === 'route_start'
+                    ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.START, borderColor: '#15803d' }
+                    : cp.type === 'route_end'
+                      ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.END, borderColor: '#c2410c' }
+                      : { width: 24, height: 24, backgroundColor: CHECKPOINT_COLORS.DEFAULT, borderColor: '#475569' }
+                }
               >
                 {cp.photoRequired ? (
                   <Camera

@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react'
 import Map, { Source, Layer, Popup, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS } from '@/lib/design-tokens'
 
 /**
  * BlockMap Component
@@ -58,23 +59,23 @@ const GCC_TILE_LAYERS = {
 // BLOCK STATUS COLORS & OPACITY
 // ============================================================================
 
-/** Block status colors - consistent with GCC brand */
+/** Block status colors - from shared design tokens */
 const GCC_BLOCK_COLORS = {
-  unfunded: '#6b7280',      // Gray - not yet sponsored
-  available: '#22c55e',     // Green - funded, ready to claim
-  claimed: '#f59e0b',       // Amber - someone working on it
-  in_progress: '#3b82f6',   // Blue - actively being cleaned
-  pending_review: '#8b5cf6', // Purple - submitted, awaiting review
-  completed: '#10b981',     // Emerald - verified complete
+  unfunded: BLOCK_STATUS_COLORS.unfunded.fill,
+  available: BLOCK_STATUS_COLORS.available.fill,
+  claimed: BLOCK_STATUS_COLORS.claimed.fill,
+  in_progress: BLOCK_STATUS_COLORS.in_progress.fill,
+  pending_review: BLOCK_STATUS_COLORS.pending_review.fill,
+  completed: BLOCK_STATUS_COLORS.completed.fill,
 }
 
 const GCC_BLOCK_OPACITY = {
-  unfunded: 0.2,
-  available: 0.5,
-  claimed: 0.6,
-  in_progress: 0.7,
-  pending_review: 0.6,
-  completed: 0.4,
+  unfunded: BLOCK_STATUS_COLORS.unfunded.opacity,
+  available: BLOCK_STATUS_COLORS.available.opacity,
+  claimed: BLOCK_STATUS_COLORS.claimed.opacity,
+  in_progress: BLOCK_STATUS_COLORS.in_progress.opacity,
+  pending_review: BLOCK_STATUS_COLORS.pending_review.opacity,
+  completed: BLOCK_STATUS_COLORS.completed.opacity,
 }
 
 const STATUS_LABELS: Record<BlockStatus, string> = {
@@ -133,8 +134,8 @@ interface BlockMapProps {
 // MAP STYLE
 // ============================================================================
 
-// Using Carto Positron (light) as requested - clean base for tile overlays
-const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+// OpenFreeMap Liberty style - from shared design tokens
+const MAP_STYLE = MAP_STYLE_URL
 
 // ============================================================================
 // COMPONENT
@@ -320,8 +321,8 @@ export function BlockMap({
                 filter={['==', ['get', 'area_number'], 29]}
                 minzoom={8}
                 paint={{
-                  'line-color': '#10b981',
-                  'line-width': 3,
+                  'line-color': COMMUNITY_AREA_COLORS.STROKE,
+                  'line-width': COMMUNITY_AREA_COLORS.STROKE_WIDTH,
                   'line-opacity': 0.8,
                   'line-dasharray': [2, 1],
                 }}
@@ -333,8 +334,8 @@ export function BlockMap({
                 filter={['==', ['get', 'area_number'], 29]}
                 minzoom={8}
                 paint={{
-                  'fill-color': '#10b981',
-                  'fill-opacity': 0.05,
+                  'fill-color': COMMUNITY_AREA_COLORS.FILL,
+                  'fill-opacity': 0.08,
                 }}
               />
             </Source>
