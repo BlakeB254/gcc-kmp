@@ -29,6 +29,8 @@ data class Bounty(
     val aiAnalysis: AiAnalysis? = null,
     val expiresAt: Instant? = null,
     val pledgeCount: Int = 1,
+    val spotterTipAmount: Int? = null,
+    val spotterTipPaidAt: Instant? = null,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

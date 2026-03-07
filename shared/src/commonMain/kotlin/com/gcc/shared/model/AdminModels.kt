@@ -168,6 +168,7 @@ data class BountyAnalyticsStats(
     val avgPriceCents: Int = 0,
     val completionRate: Double = 0.0,
     val avgTimeToClaimMinutes: Int = 0,
+    val totalSpotterTipsCents: Long = 0,
 )
 
 @Serializable
