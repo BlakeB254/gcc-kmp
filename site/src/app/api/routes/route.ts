@@ -88,7 +88,7 @@ export async function GET(request: Request) {
       })),
     }))
 
-    return NextResponse.json(result)
+    return NextResponse.json({ data: result, success: true })
   } catch (error) {
     console.error('Error fetching routes:', error)
     return NextResponse.json(

@@ -3,11 +3,22 @@ import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
+import { verifyMobileToken } from '@/lib/mobile-auth'
+import { mapWorkerToMobile } from '@/lib/worker-mapper'
 
 export const runtime = 'nodejs'
 
-// Helper to authenticate and get worker ID from JWT
+// Authenticate via cookie (web) or Bearer token (mobile)
 async function getAuthenticatedWorkerId(request: NextRequest): Promise<number | null> {
+  // Try Bearer token first (mobile app)
+  const authHeader = request.headers.get('authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.substring(7)
+    const result = await verifyMobileToken(token)
+    if (result) return result.workerId
+  }
+
+  // Fall back to cookie auth (web dashboard)
   const token = request.cookies.get('worker-token')?.value
   if (!token) return null
 
@@ -25,7 +36,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Fetch the worker
     const [worker] = await db
       .select()
       .from(workers)
@@ -36,7 +46,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
     }
 
-    // Return worker data (excluding sensitive fields like hash/salt)
+    // Check if request is from mobile app (Bearer token)
+    const isMobile = request.headers.get('authorization')?.startsWith('Bearer ')
+
+    if (isMobile) {
+      // Mobile format: ApiResponse<Worker>
+      return NextResponse.json({
+        data: mapWorkerToMobile(worker as unknown as Record<string, unknown>),
+        success: true,
+      })
+    }
+
+    // Web format (keep backwards compatible)
     return NextResponse.json({
       success: true,
       user: {
@@ -67,7 +88,6 @@ export async function GET(request: NextRequest) {
             : null,
         lastAddressChangeAt: worker.lastAddressChangeAt,
         stripeOnboardingStatus: worker.stripeOnboardingStatus || 'not_started',
-        // Movement rankings
         signupRankings: {
           global: worker.signupRankingsGlobal ? Number(worker.signupRankingsGlobal) : null,
           country: worker.signupRankingsCountry ? Number(worker.signupRankingsCountry) : null,
