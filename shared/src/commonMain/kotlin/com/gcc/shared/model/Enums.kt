@@ -288,3 +288,72 @@ enum class CommunityReportStatus {
     @SerialName("acknowledged") ACKNOWLEDGED,
     @SerialName("rejected") REJECTED
 }
+
+// ─── Admin Enums ────────────────────────────────────────────────────
+
+@Serializable
+enum class UserRole {
+    @SerialName("worker") WORKER,
+    @SerialName("admin") ADMIN,
+    @SerialName("super_admin") SUPER_ADMIN,
+}
+
+@Serializable
+enum class BulkAction {
+    @SerialName("verify") VERIFY,
+    @SerialName("suspend") SUSPEND,
+    @SerialName("activate") ACTIVATE,
+    @SerialName("delete") DELETE,
+}
+
+@Serializable
+enum class AdminActivityType {
+    @SerialName("worker_registered") WORKER_REGISTERED,
+    @SerialName("worker_verified") WORKER_VERIFIED,
+    @SerialName("job_completed") JOB_COMPLETED,
+    @SerialName("bounty_posted") BOUNTY_POSTED,
+    @SerialName("bounty_claimed") BOUNTY_CLAIMED,
+    @SerialName("bounty_completed") BOUNTY_COMPLETED,
+    @SerialName("dispute_opened") DISPUTE_OPENED,
+    @SerialName("dispute_resolved") DISPUTE_RESOLVED,
+    @SerialName("sponsor_registered") SPONSOR_REGISTERED,
+    @SerialName("block_funded") BLOCK_FUNDED,
+    @SerialName("route_published") ROUTE_PUBLISHED,
+}
+
+// ─── Dispute Enums ──────────────────────────────────────────────────
+
+@Serializable
+enum class DisputeType {
+    @SerialName("quality") QUALITY,
+    @SerialName("incomplete") INCOMPLETE,
+    @SerialName("no_show") NO_SHOW,
+    @SerialName("payment") PAYMENT,
+    @SerialName("misconduct") MISCONDUCT,
+    @SerialName("other") OTHER,
+}
+
+@Serializable
+enum class DisputeStatus {
+    @SerialName("open") OPEN,
+    @SerialName("under_review") UNDER_REVIEW,
+    @SerialName("resolved") RESOLVED,
+    @SerialName("escalated") ESCALATED,
+}
+
+@Serializable
+enum class DisputePartyType {
+    @SerialName("worker") WORKER,
+    @SerialName("sponsor") SPONSOR,
+    @SerialName("admin") ADMIN,
+}
+
+@Serializable
+enum class DisputeResolution {
+    @SerialName("refund_full") REFUND_FULL,
+    @SerialName("refund_partial") REFUND_PARTIAL,
+    @SerialName("pay_worker") PAY_WORKER,
+    @SerialName("split") SPLIT,
+    @SerialName("dismissed") DISMISSED,
+    @SerialName("escalated") ESCALATED,
+}

@@ -41,37 +41,3 @@ data class ResolveDisputeRequest(
     val payoutAmount: Int? = null,
 )
 
-@Serializable
-enum class DisputeType {
-    QUALITY,
-    INCOMPLETE,
-    NO_SHOW,
-    PAYMENT,
-    MISCONDUCT,
-    OTHER,
-}
-
-@Serializable
-enum class DisputeStatus {
-    OPEN,
-    UNDER_REVIEW,
-    RESOLVED,
-    ESCALATED,
-}
-
-@Serializable
-enum class DisputePartyType {
-    WORKER,
-    SPONSOR,
-    ADMIN,
-}
-
-@Serializable
-enum class DisputeResolution {
-    REFUND_FULL,
-    REFUND_PARTIAL,
-    PAY_WORKER,
-    SPLIT,
-    DISMISSED,
-    ESCALATED,
-}

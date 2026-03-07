@@ -202,25 +202,3 @@ data class BountyPosterStats(
     val completionRate: Double = 0.0,
 )
 
-// ─── Enums ──────────────────────────────────────────────────────────
-
-@Serializable
-enum class UserRole { WORKER, ADMIN, SUPER_ADMIN }
-
-@Serializable
-enum class BulkAction { VERIFY, SUSPEND, ACTIVATE, DELETE }
-
-@Serializable
-enum class AdminActivityType {
-    WORKER_REGISTERED,
-    WORKER_VERIFIED,
-    JOB_COMPLETED,
-    BOUNTY_POSTED,
-    BOUNTY_CLAIMED,
-    BOUNTY_COMPLETED,
-    DISPUTE_OPENED,
-    DISPUTE_RESOLVED,
-    SPONSOR_REGISTERED,
-    BLOCK_FUNDED,
-    ROUTE_PUBLISHED,
-}
