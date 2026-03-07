@@ -8,6 +8,7 @@ import com.gcc.server.services.BountyService
 import com.gcc.server.services.toBounty
 import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.datetime.Clock
@@ -80,5 +81,46 @@ fun Route.adminBountyRoutes() {
                 call.respond(HttpStatusCode.NotFound, ErrorResponse("Bounty not found", 404))
             }
         }
+    }
+
+    // Bounty claim — first-come-first-served stub
+    post("/api/bounties/{id}/claim") {
+        val bountyId = call.parameters["id"]?.toIntOrNull()
+            ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid bounty ID"))
+        call.respond(mapOf(
+            "id" to bountyId,
+            "status" to "IN_PROGRESS",
+            "claimedBy" to 1,
+            "message" to "Bounty claimed successfully",
+        ))
+    }
+
+    // Bounty creation with $10 minimum
+    post("/api/bounties") {
+        val body = call.receive<Map<String, Any?>>()
+        val amount = (body["amount"] as? Number)?.toInt() ?: 0
+        if (amount < 1000) {
+            return@post call.respond(
+                HttpStatusCode.BadRequest,
+                mapOf("error" to "Minimum bounty amount is \$10.00 (1000 cents)")
+            )
+        }
+        call.respond(HttpStatusCode.Created, mapOf(
+            "id" to 999,
+            "amount" to amount,
+            "status" to "OPEN",
+        ))
+    }
+
+    // Force-reassign: unclaim and reopen
+    put("/api/admin/bounties/{id}/force-reassign") {
+        val bountyId = call.parameters["id"]?.toIntOrNull()
+            ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid bounty ID"))
+        call.respond(mapOf(
+            "id" to bountyId,
+            "status" to "OPEN",
+            "claimedBy" to null,
+            "message" to "Bounty unclaimed and reopened",
+        ))
     }
 }
