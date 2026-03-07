@@ -7,12 +7,16 @@ import com.gcc.shared.model.CameraMode
 import com.gcc.shared.model.CheckpointType
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.RouteBountyPrompt
+import com.gcc.shared.model.RouteStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class RouteManagementViewModel(private val api: GccApiClient) {
@@ -42,6 +46,27 @@ class RouteManagementViewModel(private val api: GccApiClient) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _selectedCheckpointIndex = MutableStateFlow<Int?>(null)
+    val selectedCheckpointIndex: StateFlow<Int?> = _selectedCheckpointIndex.asStateFlow()
+
+    // Status filter and search for list view
+    private val _filterStatus = MutableStateFlow<RouteStatus?>(null)
+    val filterStatus: StateFlow<RouteStatus?> = _filterStatus.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    /** Filtered routes based on status filter and search query. */
+    val filteredRoutes: StateFlow<List<Route>> = combine(
+        _routes, _filterStatus, _searchQuery,
+    ) { routes, status, query ->
+        routes.filter { route ->
+            (status == null || route.status == status) &&
+                (query.isBlank() || route.code.contains(query, ignoreCase = true) ||
+                    route.displayName.contains(query, ignoreCase = true))
+        }
+    }.stateIn(scope, SharingStarted.Lazily, emptyList())
+
     init {
         loadRoutes()
     }
@@ -64,10 +89,12 @@ class RouteManagementViewModel(private val api: GccApiClient) {
         _editingRouteId.value = null
         _editingCheckpoints.value = emptyList()
         _editingBountyPrompts.value = emptyList()
+        _selectedCheckpointIndex.value = null
         _editingRoute.value = AdminRouteRequest(
             code = "",
             displayName = "",
             serviceAreaId = 0,
+            status = "draft",
         )
     }
 
@@ -97,6 +124,7 @@ class RouteManagementViewModel(private val api: GccApiClient) {
             payoutAmount = route.payoutAmount,
             checkpoints = _editingCheckpoints.value,
             imageUrl = route.imageUrl,
+            status = route.status.name.lowercase(),
         )
     }
 
@@ -110,8 +138,21 @@ class RouteManagementViewModel(private val api: GccApiClient) {
             "estimatedDurationMinutes" -> current.copy(estimatedDurationMinutes = value as? Int)
             "payoutAmount" -> current.copy(payoutAmount = value as? Int)
             "imageUrl" -> current.copy(imageUrl = value as? String)
+            "status" -> current.copy(status = value as? String)
             else -> current
         }
+    }
+
+    fun selectCheckpoint(index: Int?) {
+        _selectedCheckpointIndex.value = index
+    }
+
+    fun setFilterStatus(status: RouteStatus?) {
+        _filterStatus.value = status
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
     }
 
     fun addCheckpoint(
@@ -150,6 +191,7 @@ class RouteManagementViewModel(private val api: GccApiClient) {
         instructions: String? = null,
         cameraMode: CameraMode? = null,
         bountyPrompts: List<String>? = null,
+        imageUrl: String? = null,
     ) {
         val current = _editingCheckpoints.value.toMutableList()
         if (index !in current.indices) return
@@ -164,6 +206,7 @@ class RouteManagementViewModel(private val api: GccApiClient) {
             instructions = if (instructions != null) instructions.ifBlank { null } else cp.instructions,
             cameraMode = if (cameraMode != null) cameraMode.name.lowercase() else if (type != null) cp.cameraMode else cp.cameraMode,
             bountyPrompts = bountyPrompts ?: cp.bountyPrompts,
+            imageUrl = imageUrl ?: cp.imageUrl,
         )
         _editingCheckpoints.value = current
     }

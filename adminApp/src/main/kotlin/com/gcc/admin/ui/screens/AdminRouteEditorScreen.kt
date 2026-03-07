@@ -1,11 +1,14 @@
 package com.gcc.admin.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -23,6 +27,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,7 +47,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.gcc.admin.ui.map.AdminMap
 import com.gcc.admin.ui.theme.AdminError
 import com.gcc.admin.ui.theme.AdminOnSurfaceVariant
 import com.gcc.admin.ui.theme.AdminOutline
@@ -51,6 +61,7 @@ import com.gcc.admin.ui.theme.AdminTheme
 import com.gcc.admin.viewmodel.RouteManagementViewModel
 import com.gcc.shared.model.CameraMode
 import com.gcc.shared.model.CheckpointType
+import com.gcc.shared.model.RouteStatus
 import org.koin.compose.koinInject
 
 // ── Friendly display labels ────────────────────────────────────────────────────
@@ -151,34 +162,87 @@ fun AdminRouteEditorScreen(routeId: Int?, onBack: () -> Unit) {
                     modifier = Modifier.weight(0.35f).fillMaxHeight(),
                 )
 
-                // ── Center Column (35%): Map Placeholder ─────────────
-                Surface(
+                // ── Center Column (35%): Route Map ─────────────────
+                val selectedCheckpointIndex by viewModel.selectedCheckpointIndex.collectAsState()
+                var isPlacingCheckpoint by remember { mutableStateOf(false) }
+
+                // Compute map center from existing checkpoints or default to North Lawndale
+                val mapCenter = remember(editingCheckpoints) {
+                    if (editingCheckpoints.isNotEmpty()) {
+                        val avgLat = editingCheckpoints.map { it.lat }.average()
+                        val avgLng = editingCheckpoints.map { it.lng }.average()
+                        avgLat to avgLng
+                    } else {
+                        41.8603 to -87.7228 // North Lawndale default
+                    }
+                }
+
+                Box(
                     modifier = Modifier.weight(0.35f).fillMaxHeight(),
-                    shape = MaterialTheme.shapes.medium,
-                    tonalElevation = AdminTheme.elevation.card,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .border(1.dp, AdminOutline, MaterialTheme.shapes.medium),
-                        contentAlignment = Alignment.Center,
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = MaterialTheme.shapes.medium,
+                        tonalElevation = AdminTheme.elevation.card,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AdminMap(
+                            centerLat = mapCenter.first,
+                            centerLng = mapCenter.second,
+                            zoom = if (editingCheckpoints.isEmpty()) 15.0 else 16.0,
+                            placedCheckpoints = editingCheckpoints.map { it.lat to it.lng },
+                            selectedCheckpointIndex = selectedCheckpointIndex,
+                            onCheckpointClick = { index ->
+                                viewModel.selectCheckpoint(index)
+                            },
+                            onMapClick = { lat, lng ->
+                                if (isPlacingCheckpoint) {
+                                    viewModel.addCheckpoint(
+                                        name = "Checkpoint ${editingCheckpoints.size + 1}",
+                                        lat = lat,
+                                        lng = lng,
+                                    )
+                                } else {
+                                    // Deselect checkpoint when clicking empty map area
+                                    viewModel.selectCheckpoint(null)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    // Place Checkpoint toggle + checkpoint count overlay
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isPlacingCheckpoint) AdminPrimary else MaterialTheme.colorScheme.surface,
+                            shadowElevation = 4.dp,
+                            onClick = { isPlacingCheckpoint = !isPlacingCheckpoint },
+                        ) {
                             Text(
-                                "Route Map",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = AdminOnSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(AdminTheme.spacing.xs))
-                            Text(
-                                "Canvas map integration pending",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AdminOnSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(AdminTheme.spacing.sm))
-                            Text(
-                                "${editingCheckpoints.size} checkpoint(s) placed",
+                                text = if (isPlacingCheckpoint) "✓ Placing..." else "+ Place Checkpoint",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 style = MaterialTheme.typography.labelMedium,
+                                color = if (isPlacingCheckpoint) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            shadowElevation = 2.dp,
+                        ) {
+                            Text(
+                                text = "${editingCheckpoints.size} checkpoint(s)",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelSmall,
                                 color = AdminPrimary,
                             )
                         }
@@ -194,6 +258,7 @@ fun AdminRouteEditorScreen(routeId: Int?, onBack: () -> Unit) {
                     CheckpointEditorPanel(
                         checkpoints = editingCheckpoints,
                         viewModel = viewModel,
+                        selectedIndex = selectedCheckpointIndex,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
 
@@ -325,14 +390,89 @@ private fun RouteDetailsPanel(
                 )
             }
 
+            // ── Route Status ─────────────────────────────
             item {
-                OutlinedTextField(
-                    value = route.imageUrl ?: "",
-                    onValueChange = { viewModel.updateField("imageUrl", it.ifBlank { null }) },
-                    label = { Text("Image URL") },
-                    singleLine = true,
+                Text("Status", style = MaterialTheme.typography.labelMedium, color = AdminOnSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RouteStatus.entries.forEach { status ->
+                        val isSelected = route.status == status.name.lowercase()
+                        val chipColor = when (status) {
+                            RouteStatus.DRAFT -> AdminOnSurfaceVariant
+                            RouteStatus.PUBLISHED -> AdminSuccess
+                            RouteStatus.ARCHIVED -> com.gcc.admin.ui.theme.StatusWarning
+                        }
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.updateField("status", status.name.lowercase()) },
+                            label = { Text(status.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = chipColor.copy(alpha = 0.15f),
+                                selectedLabelColor = chipColor,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            // ── Hero Image ──────────────────────────────
+            item {
+                Text("Hero Image", style = MaterialTheme.typography.labelMedium, color = AdminOnSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = route.imageUrl ?: "",
+                        onValueChange = { viewModel.updateField("imageUrl", it.ifBlank { null }) },
+                        label = { Text("Image URL") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    var showFilePicker by remember { mutableStateOf(false) }
+                    OutlinedButton(onClick = { showFilePicker = true }) {
+                        Text("Browse")
+                    }
+                    if (showFilePicker) {
+                        LaunchedEffect(Unit) {
+                            val dialog = java.awt.FileDialog(
+                                null as java.awt.Frame?,
+                                "Select Image",
+                                java.awt.FileDialog.LOAD,
+                            )
+                            dialog.setFilenameFilter { _, name ->
+                                name.lowercase().let {
+                                    it.endsWith(".png") || it.endsWith(".jpg") ||
+                                        it.endsWith(".jpeg") || it.endsWith(".webp")
+                                }
+                            }
+                            dialog.isVisible = true
+                            val file = dialog.file
+                            val dir = dialog.directory
+                            if (file != null && dir != null) {
+                                viewModel.updateField("imageUrl", "file://$dir$file")
+                            }
+                            showFilePicker = false
+                        }
+                    }
+                }
+                // Image preview
+                val currentImageUrl = route.imageUrl
+                if (!currentImageUrl.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = currentImageUrl,
+                        contentDescription = "Route hero image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, AdminOutline, RoundedCornerShape(8.dp)),
+                    )
+                }
             }
         }
     }
@@ -344,6 +484,7 @@ private fun RouteDetailsPanel(
 private fun CheckpointEditorPanel(
     checkpoints: List<com.gcc.shared.model.AdminCheckpointRequest>,
     viewModel: RouteManagementViewModel,
+    selectedIndex: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -393,6 +534,8 @@ private fun CheckpointEditorPanel(
                             index = index,
                             checkpoint = cp,
                             viewModel = viewModel,
+                            isSelected = index == selectedIndex,
+                            onSelect = { viewModel.selectCheckpoint(index) },
                         )
                         if (index < checkpoints.lastIndex) {
                             HorizontalDivider(color = AdminOutline, thickness = 0.5.dp)
@@ -411,15 +554,32 @@ private fun CheckpointItem(
     index: Int,
     checkpoint: com.gcc.shared.model.AdminCheckpointRequest,
     viewModel: RouteManagementViewModel,
+    isSelected: Boolean = false,
+    onSelect: () -> Unit = {},
 ) {
     val currentType = parseCheckpointType(checkpoint.type)
     val currentCameraMode = parseCameraMode(checkpoint.cameraMode)
 
+    val selectedBg = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+    }
+
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = AdminTheme.spacing.xs),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(selectedBg, RoundedCornerShape(6.dp))
+            .clickable { onSelect() }
+            .padding(vertical = AdminTheme.spacing.xs)
+            .then(
+                if (isSelected) Modifier.border(1.dp, AdminPrimary.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp)
+                else Modifier,
+            ),
         verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs),
     ) {
-        // Row 1: Sequence number, editable name, delete
+        // Row 1: Sequence number, type thumbnail, editable name, delete
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -429,6 +589,10 @@ private fun CheckpointItem(
                 "${index + 1}.",
                 style = MaterialTheme.typography.labelMedium,
                 color = AdminOnSurfaceVariant,
+            )
+            com.gcc.admin.ui.components.AdminCheckpointThumbnail(
+                type = currentType,
+                modifier = Modifier.size(28.dp),
             )
             OutlinedTextField(
                 value = checkpoint.name,
@@ -540,6 +704,35 @@ private fun CheckpointItem(
                         }
                     }
                 }
+            }
+        }
+
+        // Row 6: Reference image URL with small preview
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.xs),
+        ) {
+            OutlinedTextField(
+                value = checkpoint.imageUrl ?: "",
+                onValueChange = {
+                    viewModel.updateCheckpoint(index, imageUrl = it.ifBlank { null })
+                },
+                label = { Text("Image URL") },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).height(44.dp),
+            )
+            if (!checkpoint.imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = checkpoint.imageUrl,
+                    contentDescription = "Checkpoint image",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .border(0.5.dp, AdminOutline, RoundedCornerShape(4.dp)),
+                )
             }
         }
 

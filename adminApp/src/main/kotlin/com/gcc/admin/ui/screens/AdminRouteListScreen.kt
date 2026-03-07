@@ -11,8 +11,10 @@ import androidx.compose.ui.unit.dp
 import com.gcc.admin.ui.components.DataColumn
 import com.gcc.admin.ui.components.DataTable
 import com.gcc.admin.ui.components.RouteStatusBadge
+import com.gcc.admin.ui.components.SearchBar
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.RouteManagementViewModel
+import com.gcc.shared.model.RouteStatus
 import org.koin.compose.koinInject
 
 @Composable
@@ -21,9 +23,11 @@ fun AdminRouteListScreen(
     onNewRoute: () -> Unit,
 ) {
     val viewModel = koinInject<RouteManagementViewModel>()
-    val routes by viewModel.routes.collectAsState()
+    val filteredRoutes by viewModel.filteredRoutes.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val filterStatus by viewModel.filterStatus.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
@@ -60,9 +64,51 @@ fun AdminRouteListScreen(
             Text(it, color = AdminError, style = MaterialTheme.typography.bodySmall)
         }
 
+        // ── Search + Status Filters ─────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AdminTheme.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SearchBar(
+                query = searchQuery,
+                onQueryChange = { viewModel.setSearchQuery(it) },
+                placeholder = "Search by code or name...",
+                modifier = Modifier.weight(1f),
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // "All" chip
+                FilterChip(
+                    selected = filterStatus == null,
+                    onClick = { viewModel.setFilterStatus(null) },
+                    label = { Text("All") },
+                )
+
+                RouteStatus.entries.forEach { status ->
+                    val chipColor = when (status) {
+                        RouteStatus.DRAFT -> AdminOnSurfaceVariant
+                        RouteStatus.PUBLISHED -> StatusAvailable
+                        RouteStatus.ARCHIVED -> StatusWarning
+                    }
+                    FilterChip(
+                        selected = filterStatus == status,
+                        onClick = { viewModel.setFilterStatus(status) },
+                        label = {
+                            Text(status.name.lowercase().replaceFirstChar { it.uppercase() })
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = chipColor.copy(alpha = 0.15f),
+                            selectedLabelColor = chipColor,
+                        ),
+                    )
+                }
+            }
+        }
+
         // ── Data Table ──────────────────────────────────────────────
         DataTable(
-            items = routes,
+            items = filteredRoutes,
             columns = listOf(
                 DataColumn(header = "Code", weight = 0.8f) { route ->
                     Text(route.code, style = MaterialTheme.typography.bodyMedium)

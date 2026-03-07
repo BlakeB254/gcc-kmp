@@ -49,6 +49,7 @@ private val BlockSelectedFill = Color(0x40EF4444)        // red 25%
 private val RouteLineColor = Color(0xFF22C55E)           // GCC green
 private val RouteLineShadow = Color(0x4422C55E)          // green 27%
 private val CheckpointColor = Color(0xFFEF4444)          // red
+private val SelectedCheckpointColor = Color(0xFF3B82F6)  // blue-500 (selected)
 private val CheckpointOutline = Color(0xFFFFFFFF)
 private val ServiceAreaBorder = Color(0xFF8B5CF6)        // purple-500
 private val ServiceAreaFill = Color(0x1A8B5CF6)          // purple 10%
@@ -118,9 +119,11 @@ fun adminPixelToLng(
  * @param selectedBlockId Currently selected block ID (highlighted with red border)
  * @param selectedRouteId Currently selected route ID (its path is drawn)
  * @param placedCheckpoints List of (lat, lng) pairs for checkpoint placement mode
+ * @param selectedCheckpointIndex Index of the currently selected checkpoint (highlighted)
  * @param isLoading Whether data is currently loading
  * @param onBlockClick Callback when a block is clicked
  * @param onMapClick Callback when the map is clicked (for checkpoint placement)
+ * @param onCheckpointClick Callback when a placed checkpoint is clicked (index)
  * @param modifier Composable modifier
  */
 @Composable
@@ -134,9 +137,11 @@ fun AdminMap(
     selectedBlockId: Int? = null,
     selectedRouteId: Int? = null,
     placedCheckpoints: List<Pair<Double, Double>> = emptyList(),
+    selectedCheckpointIndex: Int? = null,
     isLoading: Boolean = false,
     onBlockClick: ((Int) -> Unit)? = null,
     onMapClick: ((lat: Double, lng: Double) -> Unit)? = null,
+    onCheckpointClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -252,21 +257,40 @@ fun AdminMap(
                         val tapLat = adminPixelToLat(canvasY, centerLat, zoom, h)
                         val tapLng = adminPixelToLng(canvasX, centerLng, zoom, w)
 
-                        // Check block hit testing
-                        var hitBlockId: Int? = null
-                        for ((blockId, bounds) in blockBounds) {
-                            if (tapLat in bounds.south..bounds.north &&
-                                tapLng in bounds.west..bounds.east
-                            ) {
-                                hitBlockId = blockId
-                                break
+                        // Check placed checkpoint hit testing first (within ~20px radius)
+                        var hitCheckpointIndex: Int? = null
+                        if (placedCheckpoints.isNotEmpty() && onCheckpointClick != null) {
+                            val tapPos = Offset(canvasX, canvasY)
+                            val hitRadius = 20f / totalScale
+                            placedCheckpoints.forEachIndexed { index, (lat, lng) ->
+                                val cpPos = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+                                val dx = tapPos.x - cpPos.x
+                                val dy = tapPos.y - cpPos.y
+                                if (sqrt((dx * dx + dy * dy).toDouble()) <= hitRadius) {
+                                    hitCheckpointIndex = index
+                                }
                             }
                         }
 
-                        if (hitBlockId != null) {
-                            onBlockClick?.invoke(hitBlockId)
+                        if (hitCheckpointIndex != null) {
+                            onCheckpointClick?.invoke(hitCheckpointIndex!!)
                         } else {
-                            onMapClick?.invoke(tapLat, tapLng)
+                            // Check block hit testing
+                            var hitBlockId: Int? = null
+                            for ((blockId, bounds) in blockBounds) {
+                                if (tapLat in bounds.south..bounds.north &&
+                                    tapLng in bounds.west..bounds.east
+                                ) {
+                                    hitBlockId = blockId
+                                    break
+                                }
+                            }
+
+                            if (hitBlockId != null) {
+                                onBlockClick?.invoke(hitBlockId)
+                            } else {
+                                onMapClick?.invoke(tapLat, tapLng)
+                            }
                         }
                     },
                 )
@@ -398,32 +422,50 @@ fun AdminMap(
                     )
                 }
 
-                // Draw each checkpoint marker with pulse
+                // Draw each checkpoint marker with pulse and selection highlight
                 placedCheckpoints.forEachIndexed { index, (lat, lng) ->
                     val pos = adminLatLngToPixel(lat, lng, centerLat, centerLng, zoom, w, h)
+                    val isSelected = index == selectedCheckpointIndex
+                    val markerColor = if (isSelected) SelectedCheckpointColor else CheckpointColor
 
-                    // Pulse ring
-                    drawCircle(
-                        color = CheckpointColor.copy(alpha = checkpointPulseAlpha),
-                        radius = checkpointPulseRadius,
-                        center = pos,
-                    )
+                    if (isSelected) {
+                        // Larger pulse ring for selected checkpoint
+                        drawCircle(
+                            color = SelectedCheckpointColor.copy(alpha = checkpointPulseAlpha),
+                            radius = checkpointPulseRadius * 1.8f,
+                            center = pos,
+                        )
+                        // Selection glow ring
+                        drawCircle(
+                            color = SelectedCheckpointColor.copy(alpha = 0.3f),
+                            radius = 16f,
+                            center = pos,
+                        )
+                    } else {
+                        // Standard pulse ring
+                        drawCircle(
+                            color = CheckpointColor.copy(alpha = checkpointPulseAlpha),
+                            radius = checkpointPulseRadius,
+                            center = pos,
+                        )
+                    }
+
                     // Outer circle
                     drawCircle(
                         color = CheckpointOutline,
-                        radius = 9f,
+                        radius = if (isSelected) 12f else 9f,
                         center = pos,
                     )
                     // Inner filled circle
                     drawCircle(
-                        color = CheckpointColor,
-                        radius = 7f,
+                        color = markerColor,
+                        radius = if (isSelected) 10f else 7f,
                         center = pos,
                     )
                     // Sequence number label
                     val label = "${index + 1}"
                     val labelStyle = TextStyle(
-                        fontSize = 9.sp,
+                        fontSize = if (isSelected) 10.sp else 9.sp,
                         color = Color.White,
                         textAlign = TextAlign.Center,
                     )
