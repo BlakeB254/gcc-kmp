@@ -2,6 +2,7 @@ package com.gcc.server.routes
 
 import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.Sponsors
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.requireAdmin
 import com.gcc.shared.model.ApiResponse
 import com.gcc.shared.model.Sponsor

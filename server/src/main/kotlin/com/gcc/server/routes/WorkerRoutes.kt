@@ -1,5 +1,6 @@
 package com.gcc.server.routes
 
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.workerId
 import com.gcc.server.services.ServiceAreaService
 import com.gcc.server.services.WorkerService
@@ -104,9 +105,6 @@ fun Route.authenticatedWorkerRoutes() {
         }
     }
 }
-
-@Serializable
-data class ErrorResponse(val message: String, val code: Int)
 
 @Serializable
 data class DeviceTokenRequest(val platform: String, val token: String)

@@ -3,6 +3,7 @@ package com.gcc.server.routes
 import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.RouteCheckpoints
 import com.gcc.server.db.tables.Routes
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.requireAdmin
 import com.gcc.server.services.RouteService
 import com.gcc.server.services.toRoute

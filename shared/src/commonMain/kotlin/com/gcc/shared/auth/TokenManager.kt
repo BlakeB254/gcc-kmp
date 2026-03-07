@@ -46,49 +46,48 @@ open class TokenManager(private val settings: Settings = Settings()) {
      * Decode the JWT payload and check the "exp" claim.
      * Returns true if the token is expired or unparseable.
      */
-    @OptIn(ExperimentalEncodingApi::class)
     fun isTokenExpired(): Boolean {
         val token = _token.value ?: return true
-        return try {
-            val parts = token.split(".")
-            if (parts.size != 3) return true
-            // JWT payload is base64url-encoded
-            val payload = parts[1]
-                .replace('-', '+')
-                .replace('_', '/')
-            val decoded = Base64.decode(payload)
-            val json = decoded.decodeToString()
-            // Simple regex extraction of "exp" claim (avoids pulling in a JSON parser)
-            val expMatch = Regex(""""exp"\s*:\s*(\d+)""").find(json)
-                ?: return true
-            val expSeconds = expMatch.groupValues[1].toLong()
-            val nowSeconds = currentTimeSeconds()
-            nowSeconds >= expSeconds
-        } catch (_: Exception) {
-            true
-        }
+        val exp = getJwtClaim(token, "exp") ?: return true
+        val expSeconds = exp.toLongOrNull() ?: return true
+        return currentTimeSeconds() >= expSeconds
     }
 
     /**
      * Extract the worker ID from the JWT payload's "workerId" claim.
      * Returns null if the token is missing or the claim cannot be parsed.
      */
-    @OptIn(ExperimentalEncodingApi::class)
     fun getWorkerId(): Int? {
         val token = _token.value ?: return null
+        return getJwtClaim(token, "workerId")?.toIntOrNull()
+    }
+
+    /**
+     * Decode the base64url-encoded JWT payload section.
+     * Returns the decoded JSON string, or null if the token is malformed.
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun decodeJwtPayload(token: String): String? {
+        val parts = token.split(".")
+        if (parts.size != 3) return null
+        val payload = parts[1]
+            .replace('-', '+')
+            .replace('_', '/')
         return try {
-            val parts = token.split(".")
-            if (parts.size != 3) return null
-            val payload = parts[1]
-                .replace('-', '+')
-                .replace('_', '/')
-            val decoded = Base64.decode(payload)
-            val json = decoded.decodeToString()
-            val idMatch = Regex(""""workerId"\s*:\s*(\d+)""").find(json)
-            idMatch?.groupValues?.get(1)?.toIntOrNull()
+            Base64.decode(payload).decodeToString()
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Extract a single claim value from a JWT token using regex.
+     * Handles both string and numeric claim values.
+     */
+    private fun getJwtClaim(token: String, claimName: String): String? {
+        val json = decodeJwtPayload(token) ?: return null
+        val regex = """"$claimName"\s*:\s*"?([^"\},]+)"?""".toRegex()
+        return regex.find(json)?.groupValues?.get(1)
     }
 
     companion object {

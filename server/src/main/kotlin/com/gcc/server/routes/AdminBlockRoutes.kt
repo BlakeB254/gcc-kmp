@@ -2,8 +2,12 @@ package com.gcc.server.routes
 
 import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.Blocks
-import com.gcc.server.plugins.requireAdmin
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.services.toBlock
+import com.gcc.server.util.adminRoute
+import com.gcc.server.util.intPathParam
+import com.gcc.server.util.intQueryParam
+import com.gcc.server.util.longQueryParam
 import com.gcc.shared.model.AdminBlockRequest
 import com.gcc.shared.model.ApiResponse
 import io.ktor.http.*
@@ -15,12 +19,11 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
 fun Route.adminBlockRoutes() {
-    route("/api/admin/blocks") {
+    adminRoute("/api/admin/blocks") {
         get {
-            call.requireAdmin()
-            val limit = call.parameters["limit"]?.toIntOrNull() ?: 50
-            val offset = call.parameters["offset"]?.toLongOrNull() ?: 0
-            val serviceAreaId = call.parameters["serviceAreaId"]?.toIntOrNull()
+            val limit = call.intQueryParam("limit", 50) ?: 50
+            val offset = call.longQueryParam("offset", 0) ?: 0
+            val serviceAreaId = call.intQueryParam("serviceAreaId")
             val blocks = dbQuery {
                 val query = Blocks.selectAll()
                 serviceAreaId?.let { query.andWhere { Blocks.serviceAreaId eq it } }
@@ -32,7 +35,6 @@ fun Route.adminBlockRoutes() {
         }
 
         post {
-            call.requireAdmin()
             val request = call.receive<AdminBlockRequest>()
             val now = Clock.System.now()
             val block = dbQuery {
@@ -54,9 +56,7 @@ fun Route.adminBlockRoutes() {
         }
 
         put("/{id}") {
-            call.requireAdmin()
-            val id = call.parameters["id"]?.toIntOrNull()
-                ?: throw IllegalArgumentException("Block ID required")
+            val id = call.intPathParam("id")
             val request = call.receive<AdminBlockRequest>()
             val now = Clock.System.now()
             val updated = dbQuery {
@@ -79,9 +79,7 @@ fun Route.adminBlockRoutes() {
         }
 
         delete("/{id}") {
-            call.requireAdmin()
-            val id = call.parameters["id"]?.toIntOrNull()
-                ?: throw IllegalArgumentException("Block ID required")
+            val id = call.intPathParam("id")
             val deleted = dbQuery {
                 Blocks.deleteWhere { Blocks.id eq id } > 0
             }

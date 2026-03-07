@@ -1,5 +1,6 @@
 package com.gcc.server.routes
 
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.services.AuthService
 import com.gcc.shared.model.*
 import io.ktor.http.*

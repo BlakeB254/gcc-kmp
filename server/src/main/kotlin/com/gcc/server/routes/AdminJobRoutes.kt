@@ -2,6 +2,7 @@ package com.gcc.server.routes
 
 import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.Jobs
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.requireAdmin
 import com.gcc.server.services.DisputeService
 import com.gcc.server.services.JobService

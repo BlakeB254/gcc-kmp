@@ -1,5 +1,6 @@
 package com.gcc.server.routes
 
+import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.requireAdmin
 import com.gcc.server.plugins.workerId
 import com.gcc.server.services.DisputeService
