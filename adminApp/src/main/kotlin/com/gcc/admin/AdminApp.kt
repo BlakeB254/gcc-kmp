@@ -61,6 +61,7 @@ fun AdminApp(root: AdminRootComponent) {
                         is AdminScreen.DisputeList -> AdminDisputeListScreen(onDisputeClick = { root.push(AdminScreen.DisputeDetail(it)) })
                         is AdminScreen.DisputeDetail -> AdminDisputeDetailScreen(disputeId = screen.disputeId, onBack = root::navigateBack)
                         is AdminScreen.Analytics -> AdminAnalyticsScreen()
+                        is AdminScreen.BountyAnalytics -> AdminBountyAnalyticsScreen()
                         is AdminScreen.FeedbackList -> AdminFeedbackListScreen()
                         is AdminScreen.AddressChanges -> AdminAddressChangesScreen()
                         is AdminScreen.Settings -> AdminSettingsScreen()

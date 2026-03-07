@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -108,6 +109,7 @@ private val navSections = listOf(
         header = "Data",
         items = listOf(
             NavItem("Analytics", Icons.Default.BarChart, AdminScreen.Analytics),
+            NavItem("Bounty Analytics", Icons.Default.TrendingUp, AdminScreen.BountyAnalytics),
             NavItem("Service Areas", Icons.Default.Map, AdminScreen.ServiceAreaMap),
         ),
     ),

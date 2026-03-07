@@ -21,6 +21,7 @@ sealed class AdminScreen {
     @Serializable data object DisputeList : AdminScreen()
     @Serializable data class DisputeDetail(val disputeId: Int) : AdminScreen()
     @Serializable data object Analytics : AdminScreen()
+    @Serializable data object BountyAnalytics : AdminScreen()
     @Serializable data object FeedbackList : AdminScreen()
     @Serializable data object AddressChanges : AdminScreen()
     @Serializable data object Settings : AdminScreen()

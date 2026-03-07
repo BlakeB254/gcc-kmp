@@ -5,6 +5,7 @@ import com.gcc.admin.viewmodel.AdminDashboardViewModel
 import com.gcc.admin.viewmodel.AdminLoginViewModel
 import com.gcc.admin.viewmodel.AnalyticsViewModel
 import com.gcc.admin.viewmodel.BlockManagementViewModel
+import com.gcc.admin.viewmodel.BountyAnalyticsViewModel
 import com.gcc.admin.viewmodel.BountyManagementViewModel
 import com.gcc.admin.viewmodel.DisputeViewModel
 import com.gcc.admin.viewmodel.FeedbackViewModel
@@ -40,6 +41,7 @@ val demoAdminModule = module {
     singleOf(::RouteManagementViewModel)
     singleOf(::BlockManagementViewModel)
     singleOf(::BountyManagementViewModel)
+    singleOf(::BountyAnalyticsViewModel)
     singleOf(::DisputeViewModel)
     singleOf(::AnalyticsViewModel)
     singleOf(::ServiceAreaViewModel)

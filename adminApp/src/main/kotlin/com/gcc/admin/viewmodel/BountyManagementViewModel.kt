@@ -65,4 +65,20 @@ class BountyManagementViewModel(private val api: GccApiClient) {
             }
         }
     }
+
+    fun forceReassign(bountyId: Int) {
+        scope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val updated = api.forceReassignBounty(bountyId)
+                _selectedBounty.value = updated
+                loadBounties()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to reassign bounty"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 }

@@ -13,6 +13,7 @@ import com.gcc.admin.ui.components.ConfirmDialog
 import com.gcc.admin.ui.components.DetailRow
 import com.gcc.admin.ui.theme.*
 import com.gcc.admin.viewmodel.BountyManagementViewModel
+import com.gcc.shared.model.BountyStatus
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
@@ -27,6 +28,7 @@ fun AdminBountyDetailScreen(bountyId: Int, onBack: () -> Unit) {
     val bounty = bounties.find { it.id == bountyId }
 
     var showForceCloseDialog by remember { mutableStateOf(false) }
+    var showForceReassignDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(AdminTheme.spacing.lg),
@@ -99,6 +101,51 @@ fun AdminBountyDetailScreen(bountyId: Int, onBack: () -> Unit) {
             }
         }
 
+        // -- Claimer Info ---------------------------------------------------
+        if (bounty.claimedBy != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = AdminTheme.elevation.card,
+            ) {
+                Column(
+                    modifier = Modifier.padding(AdminTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                ) {
+                    Text("Claimer Info", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(AdminTheme.spacing.xs))
+                    DetailRow("Claimed By (Worker ID)", bounty.claimedBy.toString())
+                    bounty.jobId?.let { DetailRow("Linked Job ID", it.toString()) }
+                }
+            }
+        }
+
+        // -- Spotter Tip Info -----------------------------------------------
+        val tipAmount = bounty.spotterTipAmount
+        if (tipAmount != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = AdminTheme.elevation.card,
+            ) {
+                Column(
+                    modifier = Modifier.padding(AdminTheme.spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(AdminTheme.spacing.sm),
+                ) {
+                    Text("Spotter Tip", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(AdminTheme.spacing.xs))
+                    DetailRow("Tip Amount", "$${"%,d".format(tipAmount / 100)}")
+                    bounty.spotterTipPaidAt?.let { paidAt ->
+                        val local = paidAt.toLocalDateTime(TimeZone.currentSystemDefault())
+                        DetailRow(
+                            "Paid At",
+                            "${local.monthNumber}/${local.dayOfMonth}/${local.year} ${local.hour}:${local.minute.toString().padStart(2, '0')}",
+                        )
+                    } ?: DetailRow("Status", "Unpaid")
+                }
+            }
+        }
+
         // -- Media URLs -----------------------------------------------------
         if (bounty.mediaUrls.isNotEmpty()) {
             Surface(
@@ -128,6 +175,24 @@ fun AdminBountyDetailScreen(bountyId: Int, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
+            val isReassignable = bounty.status == BountyStatus.IN_PROGRESS || bounty.status == BountyStatus.CLAIMED
+
+            if (isReassignable) {
+                OutlinedButton(
+                    onClick = { showForceReassignDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AdminWarning),
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(AdminTheme.spacing.xs))
+                    Text("Force Reassign")
+                }
+                Spacer(Modifier.width(AdminTheme.spacing.md))
+            }
+
             Button(
                 onClick = { showForceCloseDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = AdminError),
@@ -143,7 +208,7 @@ fun AdminBountyDetailScreen(bountyId: Int, onBack: () -> Unit) {
         }
     }
 
-    // -- Confirm Dialog -----------------------------------------------------
+    // -- Force Close Confirm Dialog -----------------------------------------
     if (showForceCloseDialog) {
         ConfirmDialog(
             title = "Force Close Bounty",
@@ -154,6 +219,21 @@ fun AdminBountyDetailScreen(bountyId: Int, onBack: () -> Unit) {
                 onBack()
             },
             onDismiss = { showForceCloseDialog = false },
+        )
+    }
+
+    // -- Force Reassign Confirm Dialog --------------------------------------
+    if (showForceReassignDialog) {
+        ConfirmDialog(
+            title = "Force Reassign Bounty",
+            message = "Are you sure you want to force reassign bounty #${bounty?.id}? " +
+                "The current claimer will be removed and the bounty returned to OPEN status.",
+            confirmText = "Reassign",
+            onConfirm = {
+                bounty?.let { viewModel.forceReassign(it.id) }
+                showForceReassignDialog = false
+            },
+            onDismiss = { showForceReassignDialog = false },
         )
     }
 }
