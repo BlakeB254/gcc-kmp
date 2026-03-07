@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     if (!email || !password) {
       return Response.json(
-        { error: 'Invalid email or password', status: 401 },
+        { data: null, success: false, message: 'Invalid email or password' },
         { status: 401 }
       )
     }
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     if (!worker || !worker.salt || !worker.hash) {
       return Response.json(
-        { error: 'Invalid email or password', status: 401 },
+        { data: null, success: false, message: 'Invalid email or password' },
         { status: 401 }
       )
     }
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Verify password
     if (!verifyPassword(password, worker.hash, worker.salt)) {
       return Response.json(
-        { error: 'Invalid email or password', status: 401 },
+        { data: null, success: false, message: 'Invalid email or password' },
         { status: 401 }
       )
     }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Login error:', error)
     return Response.json(
-      { error: 'Authentication failed', status: 500 },
+      { data: null, success: false, message: 'Authentication failed' },
       { status: 500 }
     )
   }

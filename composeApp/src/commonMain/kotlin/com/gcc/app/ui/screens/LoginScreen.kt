@@ -12,9 +12,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.LoginViewModel
+import com.gcc.shared.auth.TokenManager
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 
@@ -23,6 +26,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit = {},
     onRegisterClick: () -> Unit = {},
     viewModel: LoginViewModel = koinInject(),
+    tokenManager: TokenManager = koinInject(),
+    biometricAuth: BiometricAuth = koinInject(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var email by remember { mutableStateOf("") }
@@ -30,11 +35,16 @@ fun LoginScreen(
     var twoFactorCode by remember { mutableStateOf("") }
     var logoVisible by remember { mutableStateOf(false) }
     var cardVisible by remember { mutableStateOf(false) }
+    var biometricAvailable by remember { mutableStateOf(false) }
+    var hasStoredToken by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         logoVisible = true
         delay(300)
         cardVisible = true
+        // Check if Face ID sign-in is possible
+        hasStoredToken = tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()
+        biometricAvailable = biometricAuth.isBiometricAvailable()
     }
 
     LaunchedEffect(uiState.isLoggedIn) {
@@ -208,6 +218,30 @@ fun LoginScreen(
                             isLoading = uiState.isLoading,
                             enabled = email.isNotBlank() && password.isNotBlank(),
                         )
+
+                        // Face ID quick sign-in (when stored valid token exists)
+                        if (hasStoredToken && biometricAvailable) {
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            val scope = rememberCoroutineScope()
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        val success = biometricAuth.authenticate("Sign in to GCC")
+                                        if (success) onLoginSuccess()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = GccGreen,
+                                ),
+                            ) {
+                                Text(
+                                    "\uD83D\uDD13  Sign in with Face ID",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(8.dp))
                     }

@@ -25,6 +25,7 @@ class GccApiClient(
     val json = GccJson
 
     val httpClient = httpClientOverride ?: HttpClient {
+        expectSuccess = false // Don't throw on non-2xx; let callers inspect status
         install(ContentNegotiation) {
             json(this@GccApiClient.json)
         }
