@@ -22,9 +22,9 @@ export async function GET(request: Request) {
     // Build conditions
     const conditions = []
 
-    // Only return published routes by default for the public API
-    if (status === 'published') {
-      conditions.push(eq(routes.status, 'published'))
+    // Filter by status unless 'all' is requested
+    if (status !== 'all') {
+      conditions.push(eq(routes.status, status as 'draft' | 'published' | 'archived'))
     }
 
     if (serviceAreaId) {

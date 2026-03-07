@@ -26,16 +26,14 @@ const CombinedMap = dynamic(
 
 const ROUTE_STATUS_COLORS: Record<string, string> = {
   published: 'bg-green-100 text-green-700',
-  claimed: 'bg-amber-100 text-amber-700',
-  active: 'bg-blue-100 text-blue-700',
-  completed: 'bg-neutral-100 text-neutral-600',
+  draft: 'bg-neutral-100 text-neutral-500',
+  archived: 'bg-amber-100 text-amber-700',
 }
 
 const ROUTE_STATUS_LABELS: Record<string, string> = {
   published: 'Available',
-  claimed: 'Claimed',
-  active: 'In Progress',
-  completed: 'Completed',
+  draft: 'Coming Soon',
+  archived: 'Archived',
 }
 
 // ============================================================================
@@ -55,7 +53,7 @@ export default function BountiesPage() {
       const [bountiesResult, spotsResult, routesResult] = await Promise.allSettled([
         fetch('/api/bounties?limit=50').then(res => res.ok ? res.json() : null),
         fetch('/api/spots?limit=100').then(res => res.ok ? res.json() : null),
-        fetch('/api/routes?status=published').then(res => res.ok ? res.json() : null),
+        fetch('/api/routes?status=all').then(res => res.ok ? res.json() : null),
       ])
 
       // Process bounties (from community reports/sightings)
@@ -267,7 +265,7 @@ export default function BountiesPage() {
             <div className="mt-10">
               <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
                 <RouteIcon className="w-5 h-5 text-green-600" />
-                Available Routes
+                Cleanup Routes
               </h3>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {routes.map((route) => (
