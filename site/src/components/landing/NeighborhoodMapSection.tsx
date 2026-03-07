@@ -5,6 +5,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 
 /**
@@ -21,27 +22,26 @@ import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/
  * - Interactive block selection
  */
 
-// Free OpenStreetMap-based style for MapLibre
-const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+// Map style from shared design tokens (OpenFreeMap Liberty)
+const MAP_STYLE = MAP_STYLE_URL
 
-// Block status colors - designed for clear visibility
-// Maps database status to display colors
+// Block status colors - derived from shared design tokens
 const STATUS_COLORS = {
-  unfunded: '#9CA3AF',    // gray-400 - needs sponsor (muted, neutral)
-  available: '#22C55E',   // green-500 - ready to claim (bright green)
-  funded: '#22C55E',      // green-500 - funded = available (alias)
-  claimed: '#EF4444',     // red-500 - not available (taken)
-  in_progress: '#EF4444', // red-500 - not available (in use)
-  pending_review: '#EF4444', // red-500 - not available (under review)
-  completed: '#3B82F6',   // blue-500 - done (distinct from green)
+  unfunded: BLOCK_STATUS_COLORS.unfunded.fill,
+  available: BLOCK_STATUS_COLORS.available.fill,
+  funded: BLOCK_STATUS_COLORS.available.fill,       // funded = available (alias)
+  claimed: BLOCK_STATUS_COLORS.claimed.fill,
+  in_progress: BLOCK_STATUS_COLORS.in_progress.fill,
+  pending_review: BLOCK_STATUS_COLORS.pending_review.fill,
+  completed: BLOCK_STATUS_COLORS.completed.fill,
 } as const
 
-// Simplified legend for the map key
+// Simplified legend for the map key - colors from design tokens
 const LEGEND_STATUSES = {
-  unfunded: { label: 'Needs Sponsor', icon: '💰', color: '#9CA3AF' },
-  available: { label: 'Available Now', icon: '✅', color: '#22C55E' },
-  not_available: { label: 'Not Available', icon: '🚫', color: '#EF4444' },
-  completed: { label: 'Completed', icon: '🏆', color: '#3B82F6' },
+  unfunded: { label: 'Needs Sponsor', icon: '💰', color: BLOCK_STATUS_COLORS.unfunded.fill },
+  available: { label: 'Available Now', icon: '✅', color: BLOCK_STATUS_COLORS.available.fill },
+  not_available: { label: 'Not Available', icon: '🚫', color: BLOCK_STATUS_COLORS.claimed.fill },
+  completed: { label: 'Completed', icon: '🏆', color: BLOCK_STATUS_COLORS.completed.fill },
 } as const
 
 // Full label map for popups and detail views

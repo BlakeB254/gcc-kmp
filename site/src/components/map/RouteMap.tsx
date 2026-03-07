@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import Map, { Source, Layer, Marker, Popup, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
+import { Source, Layer, Marker, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
-import 'maplibre-gl/dist/maplibre-gl.css'
 import { Camera } from 'lucide-react'
-import { MAP_STYLE_URL, CHICAGO_CENTER_LNG_LAT, ZOOM, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, CHECKPOINT_COLORS } from '@/lib/design-tokens'
+import { CHICAGO_CENTER_LNG_LAT, ZOOM, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, CHECKPOINT_COLORS, CHECKPOINT_BORDER_COLORS } from '@/lib/design-tokens'
+import { BaseMap } from './BaseMap'
 
 /**
  * RouteMap Component
@@ -89,10 +89,8 @@ interface RouteMapProps {
 }
 
 // ============================================================================
-// MAP STYLE
+// MAP DEFAULTS
 // ============================================================================
-
-const MAP_STYLE = MAP_STYLE_URL
 
 // North Lawndale default center (from design tokens)
 const DEFAULT_CENTER: [number, number] = CHICAGO_CENTER_LNG_LAT
@@ -164,144 +162,31 @@ export function RouteMap({
   }
 
   return (
-    <div style={{ height, width: '100%' }} className="rounded-xl overflow-hidden relative">
-      <Map
-        initialViewState={initialViewState}
-        mapStyle={MAP_STYLE}
-        interactiveLayerIds={interactive ? ['route-fill-layer'] : []}
-        onClick={interactive ? onClick : undefined}
-        cursor={interactive ? 'pointer' : 'default'}
-      >
-        <NavigationControl position="top-right" />
-        <ScaleControl position="bottom-left" />
-
-        {/* ============================================================ */}
-        {/* ROUTE LINES - Cased Line Technique                          */}
-        {/* ============================================================ */}
-
-        <Source id="routes" type="geojson" data={routeGeoJson}>
-          {/* Route case (shadow/outline) - rendered first, below fill */}
-          <Layer
-            id="route-case-layer"
-            type="line"
-            paint={{
-              'line-color': [
-                'match',
-                ['get', 'status'],
-                'published', ROUTE_COLORS.published.case,
-                'claimed', ROUTE_COLORS.claimed.case,
-                'active', ROUTE_COLORS.active.case,
-                'completed', ROUTE_COLORS.completed.case,
-                ROUTE_COLORS.published.case,
-              ],
-              'line-width': [
-                'case',
-                ['==', ['get', 'isSelected'], true],
-                ROUTE_LINE_WIDTHS.caseSelected,
-                ROUTE_LINE_WIDTHS.case,
-              ],
-              'line-opacity': 0.8,
-            }}
-          />
-
-          {/* Route fill (bright inner line) - rendered on top */}
-          <Layer
-            id="route-fill-layer"
-            type="line"
-            layout={{
-              'line-cap': 'round',
-              'line-join': 'round',
-            }}
-            paint={{
-              'line-color': [
-                'match',
-                ['get', 'status'],
-                'published', ROUTE_COLORS.published.fill,
-                'claimed', ROUTE_COLORS.claimed.fill,
-                'active', ROUTE_COLORS.active.fill,
-                'completed', ROUTE_COLORS.completed.fill,
-                ROUTE_COLORS.published.fill,
-              ],
-              'line-width': [
-                'case',
-                ['==', ['get', 'isSelected'], true],
-                ROUTE_LINE_WIDTHS.fillSelected,
-                ROUTE_LINE_WIDTHS.fill,
-              ],
-            }}
-          />
-
-          {/* Route labels - show display name instead of code */}
-          <Layer
-            id="route-label-layer"
-            type="symbol"
-            layout={{
-              'symbol-placement': 'line-center',
-              'text-field': ['get', 'displayName'],
-              'text-size': 11,
-              'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-              'text-max-width': 12,
-            }}
-            paint={{
-              'text-color': '#ffffff',
-              'text-halo-color': [
-                'match',
-                ['get', 'status'],
-                'published', ROUTE_COLORS.published.case,
-                'claimed', ROUTE_COLORS.claimed.case,
-                'active', ROUTE_COLORS.active.case,
-                'completed', ROUTE_COLORS.completed.case,
-                ROUTE_COLORS.published.case,
-              ],
-              'text-halo-width': 2,
-            }}
-          />
-        </Source>
-
-        {/* ============================================================ */}
-        {/* CHECKPOINT MARKERS                                          */}
-        {/* ============================================================ */}
-
-        {showCheckpoints &&
-          allCheckpoints.map((cp, idx) => (
-            <Marker
-              key={`cp-${cp.routeId}-${idx}`}
-              longitude={cp.coordinates[0]}
-              latitude={cp.coordinates[1]}
-              anchor="center"
-            >
-              <div
-                className="flex items-center justify-center rounded-full border-2 shadow-sm"
-                style={
-                  cp.type === 'route_start'
-                    ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.START, borderColor: '#15803d' }
-                    : cp.type === 'route_end'
-                      ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.END, borderColor: '#c2410c' }
-                      : { width: 24, height: 24, backgroundColor: CHECKPOINT_COLORS.DEFAULT, borderColor: '#475569' }
-                }
-              >
-                {cp.photoRequired ? (
-                  <Camera
-                    className={`w-3 h-3 ${
-                      cp.type === 'route_start' || cp.type === 'route_end'
-                        ? 'text-white'
-                        : 'text-slate-600'
-                    }`}
+    <BaseMap
+      height={height}
+      initialViewState={initialViewState}
+      interactiveLayerIds={interactive ? ['route-fill-layer'] : []}
+      onClick={interactive ? onClick : undefined}
+      cursor={interactive ? 'pointer' : 'default'}
+      legend={
+        showLegend ? (
+          <div className="mt-4 flex flex-wrap gap-4 justify-center text-xs">
+            {(Object.entries(STATUS_LABELS) as [RouteDisplayStatus, string][]).map(
+              ([status, label]) => (
+                <div key={status} className="flex items-center gap-1.5">
+                  <span
+                    className="w-6 h-1 rounded-full"
+                    style={{ backgroundColor: ROUTE_COLORS[status].fill }}
                   />
-                ) : (
-                  <span className="text-xs font-bold text-slate-600">
-                    {cp.sequenceOrder + 1}
-                  </span>
-                )}
-              </div>
-            </Marker>
-          ))}
-
-        {/* ============================================================ */}
-        {/* POPUP                                                       */}
-        {/* ============================================================ */}
-
-        {popupInfo && (
+                  <span className="text-neutral-600">{label}</span>
+                </div>
+              )
+            )}
+          </div>
+        ) : undefined
+      }
+      popup={
+        popupInfo ? (
           <Popup
             longitude={popupInfo.geometry.coordinates[0][0]}
             latitude={popupInfo.geometry.coordinates[0][1]}
@@ -350,26 +235,131 @@ export function RouteMap({
               </div>
             </div>
           </Popup>
-        )}
-      </Map>
+        ) : undefined
+      }
+    >
+      {/* ============================================================ */}
+      {/* ROUTE LINES - Cased Line Technique                          */}
+      {/* ============================================================ */}
 
-      {/* Legend */}
-      {showLegend && (
-        <div className="mt-4 flex flex-wrap gap-4 justify-center text-xs">
-          {(Object.entries(STATUS_LABELS) as [RouteDisplayStatus, string][]).map(
-            ([status, label]) => (
-              <div key={status} className="flex items-center gap-1.5">
-                <span
-                  className="w-6 h-1 rounded-full"
-                  style={{ backgroundColor: ROUTE_COLORS[status].fill }}
+      <Source id="routes" type="geojson" data={routeGeoJson}>
+        {/* Route case (shadow/outline) - rendered first, below fill */}
+        <Layer
+          id="route-case-layer"
+          type="line"
+          paint={{
+            'line-color': [
+              'match',
+              ['get', 'status'],
+              'published', ROUTE_COLORS.published.case,
+              'claimed', ROUTE_COLORS.claimed.case,
+              'active', ROUTE_COLORS.active.case,
+              'completed', ROUTE_COLORS.completed.case,
+              ROUTE_COLORS.published.case,
+            ],
+            'line-width': [
+              'case',
+              ['==', ['get', 'isSelected'], true],
+              ROUTE_LINE_WIDTHS.caseSelected,
+              ROUTE_LINE_WIDTHS.case,
+            ],
+            'line-opacity': 0.8,
+          }}
+        />
+
+        {/* Route fill (bright inner line) - rendered on top */}
+        <Layer
+          id="route-fill-layer"
+          type="line"
+          layout={{
+            'line-cap': 'round',
+            'line-join': 'round',
+          }}
+          paint={{
+            'line-color': [
+              'match',
+              ['get', 'status'],
+              'published', ROUTE_COLORS.published.fill,
+              'claimed', ROUTE_COLORS.claimed.fill,
+              'active', ROUTE_COLORS.active.fill,
+              'completed', ROUTE_COLORS.completed.fill,
+              ROUTE_COLORS.published.fill,
+            ],
+            'line-width': [
+              'case',
+              ['==', ['get', 'isSelected'], true],
+              ROUTE_LINE_WIDTHS.fillSelected,
+              ROUTE_LINE_WIDTHS.fill,
+            ],
+          }}
+        />
+
+        {/* Route labels - show display name instead of code */}
+        <Layer
+          id="route-label-layer"
+          type="symbol"
+          layout={{
+            'symbol-placement': 'line-center',
+            'text-field': ['get', 'displayName'],
+            'text-size': 11,
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-max-width': 12,
+          }}
+          paint={{
+            'text-color': '#ffffff',
+            'text-halo-color': [
+              'match',
+              ['get', 'status'],
+              'published', ROUTE_COLORS.published.case,
+              'claimed', ROUTE_COLORS.claimed.case,
+              'active', ROUTE_COLORS.active.case,
+              'completed', ROUTE_COLORS.completed.case,
+              ROUTE_COLORS.published.case,
+            ],
+            'text-halo-width': 2,
+          }}
+        />
+      </Source>
+
+      {/* ============================================================ */}
+      {/* CHECKPOINT MARKERS                                          */}
+      {/* ============================================================ */}
+
+      {showCheckpoints &&
+        allCheckpoints.map((cp, idx) => (
+          <Marker
+            key={`cp-${cp.routeId}-${idx}`}
+            longitude={cp.coordinates[0]}
+            latitude={cp.coordinates[1]}
+            anchor="center"
+          >
+            <div
+              className="flex items-center justify-center rounded-full border-2 shadow-sm"
+              style={
+                cp.type === 'route_start'
+                  ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.START, borderColor: CHECKPOINT_BORDER_COLORS.start }
+                  : cp.type === 'route_end'
+                    ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.END, borderColor: CHECKPOINT_BORDER_COLORS.end }
+                    : { width: 24, height: 24, backgroundColor: CHECKPOINT_COLORS.DEFAULT, borderColor: CHECKPOINT_BORDER_COLORS.default }
+              }
+            >
+              {cp.photoRequired ? (
+                <Camera
+                  className={`w-3 h-3 ${
+                    cp.type === 'route_start' || cp.type === 'route_end'
+                      ? 'text-white'
+                      : 'text-slate-600'
+                  }`}
                 />
-                <span className="text-neutral-600">{label}</span>
-              </div>
-            )
-          )}
-        </div>
-      )}
-    </div>
+              ) : (
+                <span className="text-xs font-bold text-slate-600">
+                  {cp.sequenceOrder + 1}
+                </span>
+              )}
+            </div>
+          </Marker>
+        ))}
+    </BaseMap>
   )
 }
 

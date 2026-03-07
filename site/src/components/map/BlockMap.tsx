@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import Map, { Source, Layer, Popup, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
+import { Source, Layer, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
-import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS } from '@/lib/design-tokens'
+import { BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS } from '@/lib/design-tokens'
+import { BaseMap, MapLegend } from './BaseMap'
 
 /**
  * BlockMap Component
@@ -129,13 +129,6 @@ interface BlockMapProps {
   showTileLayers?: boolean
   showLegend?: boolean
 }
-
-// ============================================================================
-// MAP STYLE
-// ============================================================================
-
-// OpenFreeMap Liberty style - from shared design tokens
-const MAP_STYLE = MAP_STYLE_URL
 
 // ============================================================================
 // COMPONENT
@@ -287,259 +280,37 @@ export function BlockMap({
     ? ['blocks-fill', 'blocks-circle', 'gcc-blocks-fill']
     : []
 
+  // Build legend items
+  const legendItems = Object.entries(STATUS_LABELS).map(([status, label]) => ({
+    color: GCC_BLOCK_COLORS[status as BlockStatus],
+    label,
+  }))
+
   return (
-    <div style={{ height, width: '100%' }} className="rounded-xl overflow-hidden relative">
-      <Map
-        ref={(ref) => setMapRef(ref)}
-        initialViewState={initialViewState}
-        mapStyle={MAP_STYLE}
-        interactiveLayerIds={interactiveLayerIds}
-        onClick={interactive ? onClick : undefined}
-        cursor={interactive ? 'pointer' : 'default'}
-      >
-        <NavigationControl position="top-right" />
-        <ScaleControl position="bottom-left" />
-
-        {/* ============================================================ */}
-        {/* VECTOR TILE LAYERS (from CDX Tile Server)                   */}
-        {/* ============================================================ */}
-
-        {showTileLayers && tileServerAvailable && (
-          <>
-            {/* Community Areas - North Lawndale Boundary */}
-            <Source
-              id={GCC_TILE_LAYERS.communityAreas.sourceId}
-              type="vector"
-              tiles={[GCC_TILE_LAYERS.communityAreas.url]}
-              minzoom={GCC_TILE_LAYERS.communityAreas.minZoom}
-              maxzoom={GCC_TILE_LAYERS.communityAreas.maxZoom}
-            >
-              <Layer
-                id="community-area-boundary"
-                type="line"
-                source-layer={GCC_TILE_LAYERS.communityAreas.sourceLayer}
-                filter={['==', ['get', 'area_number'], 29]}
-                minzoom={8}
-                paint={{
-                  'line-color': COMMUNITY_AREA_COLORS.STROKE,
-                  'line-width': COMMUNITY_AREA_COLORS.STROKE_WIDTH,
-                  'line-opacity': 0.8,
-                  'line-dasharray': [2, 1],
-                }}
-              />
-              <Layer
-                id="community-area-fill"
-                type="fill"
-                source-layer={GCC_TILE_LAYERS.communityAreas.sourceLayer}
-                filter={['==', ['get', 'area_number'], 29]}
-                minzoom={8}
-                paint={{
-                  'fill-color': COMMUNITY_AREA_COLORS.FILL,
-                  'fill-opacity': 0.08,
-                }}
-              />
-            </Source>
-
-            {/* Streets Layer - Context */}
-            <Source
-              id={GCC_TILE_LAYERS.streets.sourceId}
-              type="vector"
-              tiles={[GCC_TILE_LAYERS.streets.url]}
-              minzoom={GCC_TILE_LAYERS.streets.minZoom}
-              maxzoom={GCC_TILE_LAYERS.streets.maxZoom}
-            >
-              <Layer
-                id="streets-network"
-                type="line"
-                source-layer={GCC_TILE_LAYERS.streets.sourceLayer}
-                minzoom={14}
-                paint={{
-                  'line-color': '#9ca3af',
-                  'line-width': 1,
-                  'line-opacity': 0.4,
-                }}
-              />
-            </Source>
-
-            {/* GCC Blocks - Status-based styling */}
-            <Source
-              id={GCC_TILE_LAYERS.gccBlocks.sourceId}
-              type="vector"
-              tiles={[GCC_TILE_LAYERS.gccBlocks.url]}
-              minzoom={GCC_TILE_LAYERS.gccBlocks.minZoom}
-              maxzoom={GCC_TILE_LAYERS.gccBlocks.maxZoom}
-            >
-              {/* Block fill with status-based coloring */}
-              <Layer
-                id="gcc-blocks-fill"
-                type="fill"
-                source-layer={GCC_TILE_LAYERS.gccBlocks.sourceLayer}
-                minzoom={14}
-                paint={{
-                  'fill-color': [
-                    'match',
-                    ['get', 'status'],
-                    'available', GCC_BLOCK_COLORS.available,
-                    'claimed', GCC_BLOCK_COLORS.claimed,
-                    'in_progress', GCC_BLOCK_COLORS.in_progress,
-                    'pending_review', GCC_BLOCK_COLORS.pending_review,
-                    'completed', GCC_BLOCK_COLORS.completed,
-                    GCC_BLOCK_COLORS.unfunded,
-                  ],
-                  'fill-opacity': [
-                    'match',
-                    ['get', 'status'],
-                    'available', GCC_BLOCK_OPACITY.available,
-                    'claimed', GCC_BLOCK_OPACITY.claimed,
-                    'in_progress', GCC_BLOCK_OPACITY.in_progress,
-                    'pending_review', GCC_BLOCK_OPACITY.pending_review,
-                    'completed', GCC_BLOCK_OPACITY.completed,
-                    GCC_BLOCK_OPACITY.unfunded,
-                  ],
-                }}
-              />
-              {/* Block outline */}
-              <Layer
-                id="gcc-blocks-outline"
-                type="line"
-                source-layer={GCC_TILE_LAYERS.gccBlocks.sourceLayer}
-                minzoom={14}
-                paint={{
-                  'line-color': [
-                    'match',
-                    ['get', 'status'],
-                    'available', GCC_BLOCK_COLORS.available,
-                    'claimed', GCC_BLOCK_COLORS.claimed,
-                    'in_progress', GCC_BLOCK_COLORS.in_progress,
-                    'pending_review', GCC_BLOCK_COLORS.pending_review,
-                    'completed', GCC_BLOCK_COLORS.completed,
-                    GCC_BLOCK_COLORS.unfunded,
-                  ],
-                  'line-width': 2,
-                  'line-opacity': 0.9,
-                }}
-              />
-            </Source>
-          </>
-        )}
-
-        {/* ============================================================ */}
-        {/* GEOJSON LAYERS (local blocks data - always shown)           */}
-        {/* ============================================================ */}
-
-        <Source id="blocks" type="geojson" data={geojsonData}>
-          {/* Polygon fill layer */}
-          <Layer
-            id="blocks-fill"
-            type="fill"
-            filter={['==', ['geometry-type'], 'Polygon']}
-            paint={{
-              'fill-color': [
-                'match',
-                ['get', 'status'],
-                'available', GCC_BLOCK_COLORS.available,
-                'claimed', GCC_BLOCK_COLORS.claimed,
-                'in_progress', GCC_BLOCK_COLORS.in_progress,
-                'pending_review', GCC_BLOCK_COLORS.pending_review,
-                'completed', GCC_BLOCK_COLORS.completed,
-                GCC_BLOCK_COLORS.unfunded,
-              ],
-              'fill-opacity': [
-                'case',
-                ['==', ['get', 'id'], selectedBlockId || ''],
-                0.8,
-                [
-                  'match',
-                  ['get', 'status'],
-                  'available', GCC_BLOCK_OPACITY.available,
-                  'claimed', GCC_BLOCK_OPACITY.claimed,
-                  'in_progress', GCC_BLOCK_OPACITY.in_progress,
-                  'pending_review', GCC_BLOCK_OPACITY.pending_review,
-                  'completed', GCC_BLOCK_OPACITY.completed,
-                  GCC_BLOCK_OPACITY.unfunded,
-                ],
-              ],
-            }}
-          />
-
-          {/* Polygon outline */}
-          <Layer
-            id="blocks-outline"
-            type="line"
-            filter={['==', ['geometry-type'], 'Polygon']}
-            paint={{
-              'line-color': [
-                'match',
-                ['get', 'status'],
-                'available', GCC_BLOCK_COLORS.available,
-                'claimed', GCC_BLOCK_COLORS.claimed,
-                'in_progress', GCC_BLOCK_COLORS.in_progress,
-                'pending_review', GCC_BLOCK_COLORS.pending_review,
-                'completed', GCC_BLOCK_COLORS.completed,
-                GCC_BLOCK_COLORS.unfunded,
-              ],
-              'line-width': [
-                'case',
-                ['==', ['get', 'id'], selectedBlockId || ''],
-                4,
-                2,
-              ],
-            }}
-          />
-
-          {/* Point circles for blocks without polygon data */}
-          <Layer
-            id="blocks-circle"
-            type="circle"
-            filter={['==', ['geometry-type'], 'Point']}
-            paint={{
-              'circle-radius': [
-                'case',
-                ['==', ['get', 'id'], selectedBlockId || ''],
-                16,
-                12,
-              ],
-              'circle-color': [
-                'match',
-                ['get', 'status'],
-                'available', GCC_BLOCK_COLORS.available,
-                'claimed', GCC_BLOCK_COLORS.claimed,
-                'in_progress', GCC_BLOCK_COLORS.in_progress,
-                'pending_review', GCC_BLOCK_COLORS.pending_review,
-                'completed', GCC_BLOCK_COLORS.completed,
-                GCC_BLOCK_COLORS.unfunded,
-              ],
-              'circle-stroke-color': '#ffffff',
-              'circle-stroke-width': 2,
-            }}
-          />
-
-          {/* Labels - show street corners instead of block codes */}
-          <Layer
-            id="blocks-label"
-            type="symbol"
-            layout={{
-              'text-field': [
-                'case',
-                ['all', ['has', 'fromCorner'], ['has', 'toCorner']],
-                ['concat', ['get', 'fromCorner'], ' → ', ['get', 'toCorner']],
-                ['get', 'streetName'],
-              ],
-              'text-size': 10,
-              'text-anchor': 'center',
-              'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-              'text-max-width': 12,
-            }}
-            paint={{
-              'text-color': '#ffffff',
-              'text-halo-color': '#000000',
-              'text-halo-width': 1.5,
-            }}
-          />
-        </Source>
-
-        {/* Popup */}
-        {popupInfo && (
+    <BaseMap
+      height={height}
+      initialViewState={initialViewState}
+      interactiveLayerIds={interactiveLayerIds}
+      onClick={interactive ? onClick : undefined}
+      cursor={interactive ? 'pointer' : 'default'}
+      mapRef={(ref) => setMapRef(ref)}
+      legend={
+        showLegend ? (
+          <div className="mt-4 flex flex-wrap gap-4 justify-center text-xs">
+            {legendItems.map(item => (
+              <div key={item.label} className="flex items-center gap-1.5">
+                <span
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="text-neutral-600">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : undefined
+      }
+      popup={
+        popupInfo ? (
           <Popup
             longitude={popupInfo.geo.center.coordinates[0]}
             latitude={popupInfo.geo.center.coordinates[1]}
@@ -583,8 +354,246 @@ export function BlockMap({
               )}
             </div>
           </Popup>
-        )}
-      </Map>
+        ) : undefined
+      }
+    >
+      {/* ============================================================ */}
+      {/* VECTOR TILE LAYERS (from CDX Tile Server)                   */}
+      {/* ============================================================ */}
+
+      {showTileLayers && tileServerAvailable && (
+        <>
+          {/* Community Areas - North Lawndale Boundary */}
+          <Source
+            id={GCC_TILE_LAYERS.communityAreas.sourceId}
+            type="vector"
+            tiles={[GCC_TILE_LAYERS.communityAreas.url]}
+            minzoom={GCC_TILE_LAYERS.communityAreas.minZoom}
+            maxzoom={GCC_TILE_LAYERS.communityAreas.maxZoom}
+          >
+            <Layer
+              id="community-area-boundary"
+              type="line"
+              source-layer={GCC_TILE_LAYERS.communityAreas.sourceLayer}
+              filter={['==', ['get', 'area_number'], 29]}
+              minzoom={8}
+              paint={{
+                'line-color': COMMUNITY_AREA_COLORS.STROKE,
+                'line-width': COMMUNITY_AREA_COLORS.STROKE_WIDTH,
+                'line-opacity': 0.8,
+                'line-dasharray': [2, 1],
+              }}
+            />
+            <Layer
+              id="community-area-fill"
+              type="fill"
+              source-layer={GCC_TILE_LAYERS.communityAreas.sourceLayer}
+              filter={['==', ['get', 'area_number'], 29]}
+              minzoom={8}
+              paint={{
+                'fill-color': COMMUNITY_AREA_COLORS.FILL,
+                'fill-opacity': 0.08,
+              }}
+            />
+          </Source>
+
+          {/* Streets Layer - Context */}
+          <Source
+            id={GCC_TILE_LAYERS.streets.sourceId}
+            type="vector"
+            tiles={[GCC_TILE_LAYERS.streets.url]}
+            minzoom={GCC_TILE_LAYERS.streets.minZoom}
+            maxzoom={GCC_TILE_LAYERS.streets.maxZoom}
+          >
+            <Layer
+              id="streets-network"
+              type="line"
+              source-layer={GCC_TILE_LAYERS.streets.sourceLayer}
+              minzoom={14}
+              paint={{
+                'line-color': '#9ca3af',
+                'line-width': 1,
+                'line-opacity': 0.4,
+              }}
+            />
+          </Source>
+
+          {/* GCC Blocks - Status-based styling */}
+          <Source
+            id={GCC_TILE_LAYERS.gccBlocks.sourceId}
+            type="vector"
+            tiles={[GCC_TILE_LAYERS.gccBlocks.url]}
+            minzoom={GCC_TILE_LAYERS.gccBlocks.minZoom}
+            maxzoom={GCC_TILE_LAYERS.gccBlocks.maxZoom}
+          >
+            {/* Block fill with status-based coloring */}
+            <Layer
+              id="gcc-blocks-fill"
+              type="fill"
+              source-layer={GCC_TILE_LAYERS.gccBlocks.sourceLayer}
+              minzoom={14}
+              paint={{
+                'fill-color': [
+                  'match',
+                  ['get', 'status'],
+                  'available', GCC_BLOCK_COLORS.available,
+                  'claimed', GCC_BLOCK_COLORS.claimed,
+                  'in_progress', GCC_BLOCK_COLORS.in_progress,
+                  'pending_review', GCC_BLOCK_COLORS.pending_review,
+                  'completed', GCC_BLOCK_COLORS.completed,
+                  GCC_BLOCK_COLORS.unfunded,
+                ],
+                'fill-opacity': [
+                  'match',
+                  ['get', 'status'],
+                  'available', GCC_BLOCK_OPACITY.available,
+                  'claimed', GCC_BLOCK_OPACITY.claimed,
+                  'in_progress', GCC_BLOCK_OPACITY.in_progress,
+                  'pending_review', GCC_BLOCK_OPACITY.pending_review,
+                  'completed', GCC_BLOCK_OPACITY.completed,
+                  GCC_BLOCK_OPACITY.unfunded,
+                ],
+              }}
+            />
+            {/* Block outline */}
+            <Layer
+              id="gcc-blocks-outline"
+              type="line"
+              source-layer={GCC_TILE_LAYERS.gccBlocks.sourceLayer}
+              minzoom={14}
+              paint={{
+                'line-color': [
+                  'match',
+                  ['get', 'status'],
+                  'available', GCC_BLOCK_COLORS.available,
+                  'claimed', GCC_BLOCK_COLORS.claimed,
+                  'in_progress', GCC_BLOCK_COLORS.in_progress,
+                  'pending_review', GCC_BLOCK_COLORS.pending_review,
+                  'completed', GCC_BLOCK_COLORS.completed,
+                  GCC_BLOCK_COLORS.unfunded,
+                ],
+                'line-width': 2,
+                'line-opacity': 0.9,
+              }}
+            />
+          </Source>
+        </>
+      )}
+
+      {/* ============================================================ */}
+      {/* GEOJSON LAYERS (local blocks data - always shown)           */}
+      {/* ============================================================ */}
+
+      <Source id="blocks" type="geojson" data={geojsonData}>
+        {/* Polygon fill layer */}
+        <Layer
+          id="blocks-fill"
+          type="fill"
+          filter={['==', ['geometry-type'], 'Polygon']}
+          paint={{
+            'fill-color': [
+              'match',
+              ['get', 'status'],
+              'available', GCC_BLOCK_COLORS.available,
+              'claimed', GCC_BLOCK_COLORS.claimed,
+              'in_progress', GCC_BLOCK_COLORS.in_progress,
+              'pending_review', GCC_BLOCK_COLORS.pending_review,
+              'completed', GCC_BLOCK_COLORS.completed,
+              GCC_BLOCK_COLORS.unfunded,
+            ],
+            'fill-opacity': [
+              'case',
+              ['==', ['get', 'id'], selectedBlockId || ''],
+              0.8,
+              [
+                'match',
+                ['get', 'status'],
+                'available', GCC_BLOCK_OPACITY.available,
+                'claimed', GCC_BLOCK_OPACITY.claimed,
+                'in_progress', GCC_BLOCK_OPACITY.in_progress,
+                'pending_review', GCC_BLOCK_OPACITY.pending_review,
+                'completed', GCC_BLOCK_OPACITY.completed,
+                GCC_BLOCK_OPACITY.unfunded,
+              ],
+            ],
+          }}
+        />
+
+        {/* Polygon outline */}
+        <Layer
+          id="blocks-outline"
+          type="line"
+          filter={['==', ['geometry-type'], 'Polygon']}
+          paint={{
+            'line-color': [
+              'match',
+              ['get', 'status'],
+              'available', GCC_BLOCK_COLORS.available,
+              'claimed', GCC_BLOCK_COLORS.claimed,
+              'in_progress', GCC_BLOCK_COLORS.in_progress,
+              'pending_review', GCC_BLOCK_COLORS.pending_review,
+              'completed', GCC_BLOCK_COLORS.completed,
+              GCC_BLOCK_COLORS.unfunded,
+            ],
+            'line-width': [
+              'case',
+              ['==', ['get', 'id'], selectedBlockId || ''],
+              4,
+              2,
+            ],
+          }}
+        />
+
+        {/* Point circles for blocks without polygon data */}
+        <Layer
+          id="blocks-circle"
+          type="circle"
+          filter={['==', ['geometry-type'], 'Point']}
+          paint={{
+            'circle-radius': [
+              'case',
+              ['==', ['get', 'id'], selectedBlockId || ''],
+              16,
+              12,
+            ],
+            'circle-color': [
+              'match',
+              ['get', 'status'],
+              'available', GCC_BLOCK_COLORS.available,
+              'claimed', GCC_BLOCK_COLORS.claimed,
+              'in_progress', GCC_BLOCK_COLORS.in_progress,
+              'pending_review', GCC_BLOCK_COLORS.pending_review,
+              'completed', GCC_BLOCK_COLORS.completed,
+              GCC_BLOCK_COLORS.unfunded,
+            ],
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2,
+          }}
+        />
+
+        {/* Labels - show street corners instead of block codes */}
+        <Layer
+          id="blocks-label"
+          type="symbol"
+          layout={{
+            'text-field': [
+              'case',
+              ['all', ['has', 'fromCorner'], ['has', 'toCorner']],
+              ['concat', ['get', 'fromCorner'], ' → ', ['get', 'toCorner']],
+              ['get', 'streetName'],
+            ],
+            'text-size': 10,
+            'text-anchor': 'center',
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-max-width': 12,
+          }}
+          paint={{
+            'text-color': '#ffffff',
+            'text-halo-color': '#000000',
+            'text-halo-width': 1.5,
+          }}
+        />
+      </Source>
 
       {/* Tile Server Status Indicator */}
       {showTileLayers && tileServerAvailable === false && (
@@ -592,22 +601,7 @@ export function BlockMap({
           Tile server offline - showing local data
         </div>
       )}
-
-      {/* Legend */}
-      {showLegend && (
-        <div className="mt-4 flex flex-wrap gap-4 justify-center text-xs">
-          {Object.entries(STATUS_LABELS).map(([status, label]) => (
-            <div key={status} className="flex items-center gap-1.5">
-              <span
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: GCC_BLOCK_COLORS[status as BlockStatus] }}
-              />
-              <span className="text-neutral-600">{label}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </BaseMap>
   )
 }
 

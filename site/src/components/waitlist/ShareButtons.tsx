@@ -13,6 +13,7 @@ import {
   getReferralUrl,
   type ShareData,
 } from '@/lib/waitlist/sharing'
+import { SOCIAL_COLORS } from '@/lib/design-tokens'
 
 interface ShareButtonsProps {
   shareData: ShareData
@@ -43,7 +44,7 @@ export function ShareButtons({ shareData, className = '' }: ShareButtonsProps) {
         </svg>
       ),
       href: getTwitterShareUrl(shareData),
-      color: 'bg-black hover:bg-neutral-800',
+      color: `bg-[${SOCIAL_COLORS.twitter}] hover:bg-neutral-800`,
     },
     {
       name: 'Facebook',
@@ -53,7 +54,7 @@ export function ShareButtons({ shareData, className = '' }: ShareButtonsProps) {
         </svg>
       ),
       href: getFacebookShareUrl(shareData),
-      color: 'bg-[#1877F2] hover:bg-[#166FE5]',
+      color: `bg-[${SOCIAL_COLORS.facebook}] hover:bg-[#166FE5]`,
     },
     {
       name: 'LinkedIn',
@@ -63,7 +64,7 @@ export function ShareButtons({ shareData, className = '' }: ShareButtonsProps) {
         </svg>
       ),
       href: getLinkedInShareUrl(shareData),
-      color: 'bg-[#0A66C2] hover:bg-[#004182]',
+      color: `bg-[${SOCIAL_COLORS.linkedin}] hover:bg-[#004182]`,
     },
     {
       name: 'SMS',

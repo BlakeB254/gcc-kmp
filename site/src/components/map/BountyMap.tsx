@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import Map, { Source, Layer, Marker, Popup, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import { Source, Layer, Marker, Popup } from 'react-map-gl/maplibre'
 import {
-  MAP_STYLE_URL,
   CHICAGO_CENTER_LNG_LAT,
   ZOOM,
   BOUNTY_COLORS,
   SPOT_COLORS,
 } from '@/lib/design-tokens'
+import { BaseMap, MapLegend } from './BaseMap'
 
 // ============================================================================
 // TYPES
@@ -123,22 +122,72 @@ export function BountyMap({
     zoom: ZOOM.NEIGHBORHOOD,
   }
 
+  // Build legend items
+  const legendItems = (
+    Object.entries(STATUS_LABELS) as [BountyStatus, string][]
+  ).map(([status, label]) => ({
+    color: BOUNTY_STATUS_COLOR[status],
+    label,
+  }))
+
+  if (spots.length > 0) {
+    legendItems.push({ color: SPOT_COLORS.MARKER, label: 'Spot Report' })
+  }
+
   return (
-    <div
-      style={{ height, width: '100%' }}
-      className="rounded-xl overflow-hidden relative"
-    >
+    <>
       {/* Inject pulse animation */}
       <style dangerouslySetInnerHTML={{ __html: pulseKeyframes }} />
 
-      <Map
+      <BaseMap
+        height={height}
         initialViewState={initialViewState}
-        mapStyle={MAP_STYLE_URL}
         cursor="pointer"
+        legend={
+          showLegend ? (
+            <MapLegend items={legendItems} title="Bounties" />
+          ) : undefined
+        }
+        popup={
+          popupInfo ? (
+            <Popup
+              longitude={popupInfo.coordinates[0]}
+              latitude={popupInfo.coordinates[1]}
+              anchor="bottom"
+              onClose={() => setPopupInfo(null)}
+              closeButton={true}
+            >
+              <div className="p-3 min-w-[240px]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-bold text-neutral-900">
+                    {popupInfo.title}
+                  </span>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full text-white font-medium"
+                    style={{
+                      backgroundColor: BOUNTY_STATUS_COLOR[popupInfo.status],
+                    }}
+                  >
+                    {STATUS_LABELS[popupInfo.status]}
+                  </span>
+                </div>
+                <p className="text-sm text-neutral-600 mb-2 line-clamp-2">
+                  {popupInfo.description}
+                </p>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                  <span className="font-semibold text-green-600 text-lg">
+                    ${(popupInfo.amountCents / 100).toFixed(0)}
+                  </span>
+                  <span className="text-xs text-neutral-500">
+                    {popupInfo.pledgeCount}{' '}
+                    {popupInfo.pledgeCount === 1 ? 'pledge' : 'pledges'}
+                  </span>
+                </div>
+              </div>
+            </Popup>
+          ) : undefined
+        }
       >
-        <NavigationControl position="top-right" />
-        <ScaleControl position="bottom-left" />
-
         {/* ============================================================ */}
         {/* SPOT REPORT RADIUS CIRCLES                                  */}
         {/* ============================================================ */}
@@ -211,84 +260,8 @@ export function BountyMap({
             </div>
           </Marker>
         ))}
-
-        {/* ============================================================ */}
-        {/* POPUP                                                       */}
-        {/* ============================================================ */}
-
-        {popupInfo && (
-          <Popup
-            longitude={popupInfo.coordinates[0]}
-            latitude={popupInfo.coordinates[1]}
-            anchor="bottom"
-            onClose={() => setPopupInfo(null)}
-            closeButton={true}
-          >
-            <div className="p-3 min-w-[240px]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-bold text-neutral-900">
-                  {popupInfo.title}
-                </span>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full text-white font-medium"
-                  style={{
-                    backgroundColor: BOUNTY_STATUS_COLOR[popupInfo.status],
-                  }}
-                >
-                  {STATUS_LABELS[popupInfo.status]}
-                </span>
-              </div>
-              <p className="text-sm text-neutral-600 mb-2 line-clamp-2">
-                {popupInfo.description}
-              </p>
-              <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                <span className="font-semibold text-green-600 text-lg">
-                  ${(popupInfo.amountCents / 100).toFixed(0)}
-                </span>
-                <span className="text-xs text-neutral-500">
-                  {popupInfo.pledgeCount}{' '}
-                  {popupInfo.pledgeCount === 1 ? 'pledge' : 'pledges'}
-                </span>
-              </div>
-            </div>
-          </Popup>
-        )}
-      </Map>
-
-      {/* Legend */}
-      {showLegend && (
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-md">
-          <p className="text-xs font-semibold text-neutral-700 mb-1.5">
-            Bounties
-          </p>
-          <div className="flex flex-col gap-1">
-            {(
-              Object.entries(STATUS_LABELS) as [BountyStatus, string][]
-            ).map(([status, label]) => (
-              <div key={status} className="flex items-center gap-1.5">
-                <span
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: BOUNTY_STATUS_COLOR[status] }}
-                />
-                <span className="text-xs text-neutral-600">{label}</span>
-              </div>
-            ))}
-            {spots.length > 0 && (
-              <>
-                <div className="border-t border-neutral-200 my-1" />
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: SPOT_COLORS.MARKER }}
-                  />
-                  <span className="text-xs text-neutral-600">Spot Report</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      </BaseMap>
+    </>
   )
 }
 
