@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { workers, sponsors, blocks, transactions, waitlistEntries } from '@/db/schema'
+import { workers, sponsors, blocks, transactions, waitlistEntries, communityReports } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
@@ -16,6 +16,7 @@ export async function GET() {
       blocksFundedResult,
       totalRaisedResult,
       waitlistCountResult,
+      communityReportsCountResult,
     ] = await Promise.all([
       // Total workers (approved only)
       db
@@ -50,6 +51,11 @@ export async function GET() {
       db
         .select({ count: sql<number>`count(*)` })
         .from(waitlistEntries),
+
+      // Community reports count
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(communityReports),
     ])
 
     // Also get pending workers for context
@@ -78,6 +84,9 @@ export async function GET() {
       },
       waitlist: {
         total: Number(waitlistCountResult[0]?.count) || 0,
+      },
+      communityReports: {
+        total: Number(communityReportsCountResult[0]?.count) || 0,
       },
       movement: {
         // Total people in the movement (workers + sponsors + waitlist)

@@ -5,7 +5,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 
 /**
@@ -184,6 +184,7 @@ export function NeighborhoodMapSection() {
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [blocksWithStatus, setBlocksWithStatus] = useState<BlockWithStatus[]>([])
+  const [routeFeatures, setRouteFeatures] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Fetch blocks from database API, fall back to hardcoded data
@@ -218,6 +219,43 @@ export function NeighborhoodMapSection() {
 
     fetchBlocks()
   }, [])
+
+  // Fetch routes from database API for green line overlay
+  useEffect(() => {
+    async function fetchRoutes() {
+      try {
+        const res = await fetch('/api/routes?status=published')
+        if (!res.ok) return
+        const data = await res.json()
+        const apiRoutes = data.data || data.routes || []
+        if (apiRoutes.length > 0) {
+          // Convert to GeoJSON features for the map layer
+          const features = apiRoutes
+            .filter((r: any) => r.geometry && r.geometry.coordinates && r.geometry.coordinates.length > 0)
+            .map((r: any) => ({
+              type: 'Feature' as const,
+              properties: {
+                id: r.id,
+                code: r.code,
+                displayName: r.displayName,
+                status: r.status || 'published',
+              },
+              geometry: r.geometry,
+            }))
+          setRouteFeatures(features)
+        }
+      } catch (error) {
+        console.warn('Failed to fetch routes for map overlay:', error)
+      }
+    }
+    fetchRoutes()
+  }, [])
+
+  // Route GeoJSON for green line overlay
+  const routeGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: routeFeatures,
+  }), [routeFeatures])
 
   // Convert to GeoJSON for MapLibre
   const geojsonData = useMemo(() => ({
@@ -513,6 +551,49 @@ export function NeighborhoodMapSection() {
                   }}
                 />
               </Source>
+
+              {/* Route Lines - green overlay showing cleaning routes */}
+              {routeFeatures.length > 0 && (
+                <Source id="homepage-routes" type="geojson" data={routeGeoJson}>
+                  {/* Route casing (dark outline) */}
+                  <Layer
+                    id="homepage-route-case"
+                    type="line"
+                    paint={{
+                      'line-color': ROUTE_STATUS_COLORS.published.casing,
+                      'line-width': ROUTE_WIDTHS.CASING,
+                      'line-opacity': 0.7,
+                    }}
+                  />
+                  {/* Route fill (bright green line) */}
+                  <Layer
+                    id="homepage-route-fill"
+                    type="line"
+                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                    paint={{
+                      'line-color': DESIGN_ROUTE_COLORS.LINE,
+                      'line-width': ROUTE_WIDTHS.CORE,
+                    }}
+                  />
+                  {/* Route labels */}
+                  <Layer
+                    id="homepage-route-labels"
+                    type="symbol"
+                    layout={{
+                      'symbol-placement': 'line-center',
+                      'text-field': ['get', 'displayName'],
+                      'text-size': 10,
+                      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                      'text-max-width': 12,
+                    }}
+                    paint={{
+                      'text-color': '#ffffff',
+                      'text-halo-color': ROUTE_STATUS_COLORS.published.casing,
+                      'text-halo-width': 1.5,
+                    }}
+                  />
+                </Source>
+              )}
 
               {/* No in-map popup — detail card is rendered outside the map below */}
             </Map>

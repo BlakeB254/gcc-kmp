@@ -21,40 +21,6 @@ const CombinedMap = dynamic(
 )
 
 // ============================================================================
-// FALLBACK DATA
-// ============================================================================
-
-const FALLBACK_BOUNTIES: Bounty[] = [
-  {
-    id: '1',
-    title: 'Illegal dumping on Pulaski',
-    description: 'Large pile of construction debris blocking the sidewalk near the bus stop.',
-    amountCents: 250000,
-    status: 'open',
-    coordinates: [-87.7260, 41.8612],
-    pledgeCount: 2,
-  },
-  {
-    id: '2',
-    title: 'Mattress dumped in alley',
-    description: 'Two mattresses blocking alley entrance between Pulaski and Kostner.',
-    amountCents: 150000,
-    status: 'open',
-    coordinates: [-87.7195, 41.8580],
-    pledgeCount: 1,
-  },
-  {
-    id: '3',
-    title: 'Tire pile on vacant lot',
-    description: 'Approximately 30 tires stacked on a vacant lot. Potential mosquito breeding ground.',
-    amountCents: 500000,
-    status: 'in_progress',
-    coordinates: [-87.7310, 41.8635],
-    pledgeCount: 3,
-  },
-]
-
-// ============================================================================
 // STATUS HELPERS
 // ============================================================================
 
@@ -77,7 +43,7 @@ const ROUTE_STATUS_LABELS: Record<string, string> = {
 // ============================================================================
 
 export default function BountiesPage() {
-  const [bounties, setBounties] = useState<Bounty[]>(FALLBACK_BOUNTIES)
+  const [bounties, setBounties] = useState<Bounty[]>([])
   const [spots, setSpots] = useState<SpotReport[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -92,14 +58,11 @@ export default function BountiesPage() {
         fetch('/api/routes?status=published').then(res => res.ok ? res.json() : null),
       ])
 
-      // Process bounties
+      // Process bounties (from community reports/sightings)
       if (bountiesResult.status === 'fulfilled' && bountiesResult.value) {
         const data = bountiesResult.value
         const apiBounties = data.bounties || data.data || []
-        if (apiBounties.length > 0) {
-          setBounties(apiBounties)
-        }
-        // else keep fallback
+        setBounties(apiBounties)
       }
 
       // Process spots
@@ -111,12 +74,33 @@ export default function BountiesPage() {
         }
       }
 
-      // Process routes
+      // Process routes - transform API response to match Route type
       if (routesResult.status === 'fulfilled' && routesResult.value) {
         const data = routesResult.value
         const apiRoutes = data.routes || data.data || []
         if (apiRoutes.length > 0) {
-          setRoutes(apiRoutes)
+          const transformed = apiRoutes.map((r: any) => ({
+            id: r.id,
+            code: r.code,
+            displayName: r.displayName,
+            geometry: r.geometry,
+            lengthMeters: r.distanceMeters || r.lengthMeters || null,
+            estimatedMinutes: r.estimatedDurationMinutes || r.estimatedMinutes || null,
+            payoutAmount: r.payoutAmount || 10000,
+            status: r.status || 'published',
+            checkpoints: (r.checkpoints || []).map((cp: any) => ({
+              name: cp.name,
+              sequenceOrder: cp.sequenceOrder,
+              coordinates: Array.isArray(cp.coordinates)
+                ? cp.coordinates
+                : [cp.coordinates?.lng ?? 0, cp.coordinates?.lat ?? 0],
+              photoRequired: cp.photoRequired ?? true,
+              photoInstructions: cp.photoInstructions,
+              geofenceRadius: cp.geofenceRadius || 15,
+              type: cp.type || 'photo_point',
+            })),
+          }))
+          setRoutes(transformed)
         }
       }
 
@@ -231,6 +215,13 @@ export default function BountiesPage() {
           {/* Bounty Cards */}
           <div className="mt-8">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">Active Bounties</h3>
+            {bounties.length === 0 && !isLoading && (
+              <div className="text-center py-12 bg-neutral-50 rounded-xl border border-neutral-200">
+                <MapPin className="w-10 h-10 mx-auto mb-3 text-neutral-300" />
+                <p className="text-neutral-500 mb-2">No active bounties yet</p>
+                <p className="text-sm text-neutral-400">Community sightings will appear here as bounties. Be the first to report an area that needs cleaning!</p>
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {bounties.map((bounty) => (
                 <div
