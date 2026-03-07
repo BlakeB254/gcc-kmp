@@ -9,11 +9,10 @@ import kotlin.coroutines.resume
 
 actual class BiometricAuth actual constructor() {
 
-    private val context = LAContext()
-
     @OptIn(ExperimentalForeignApi::class)
     actual fun isBiometricAvailable(): Boolean {
-        return context.canEvaluatePolicy(
+        // Fresh LAContext each time — previous context may be invalidated after use
+        return LAContext().canEvaluatePolicy(
             LAPolicyDeviceOwnerAuthenticationWithBiometrics,
             error = null,
         )
@@ -21,7 +20,10 @@ actual class BiometricAuth actual constructor() {
 
     @OptIn(ExperimentalForeignApi::class)
     actual suspend fun authenticate(reason: String): Boolean {
-        if (!isBiometricAvailable()) return false
+        val context = LAContext() // Must be fresh per authentication attempt
+        if (!context.canEvaluatePolicy(LAPolicyDeviceOwnerAuthenticationWithBiometrics, error = null)) {
+            return false
+        }
 
         return suspendCancellableCoroutine { continuation ->
             context.evaluatePolicy(

@@ -89,9 +89,14 @@ open class TokenManager(private val settings: Settings = Settings()) {
     private fun decodeJwtPayload(token: String): String? {
         val parts = token.split(".")
         if (parts.size != 3) return null
-        val payload = parts[1]
+        var payload = parts[1]
             .replace('-', '+')
             .replace('_', '/')
+        // Add standard Base64 padding (JWT omits it)
+        when (payload.length % 4) {
+            2 -> payload += "=="
+            3 -> payload += "="
+        }
         return try {
             Base64.decode(payload).decodeToString()
         } catch (_: Exception) {
