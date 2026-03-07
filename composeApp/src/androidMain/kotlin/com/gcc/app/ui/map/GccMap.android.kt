@@ -444,8 +444,31 @@ actual fun GccMap(
                 textIgnorePlacement = const(true),
             )
 
-            // ── Spot report markers: orange circles ──
+            // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
+
+            // Heatmap-style large circles — visible at overview zoom (8-12), fades by zoom 13
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_HEATMAP,
+                source = spotSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_FAR.dp),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_CLOSE.dp),
+                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(0.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_FAR),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.15f),
+                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                ),
+            )
+
+            // Individual spot dots — appear at zoom 12+
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -453,7 +476,7 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    12 to const(0.dp),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
                     13 to const(3.dp),
                     15 to const(6.dp),
                 ),

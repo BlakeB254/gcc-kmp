@@ -4,6 +4,7 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.SecureStorage
+import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
@@ -30,6 +31,7 @@ val appModule = module {
     single { LocationTrackingController() }
     single { ShareManager() }
     single { PushNotificationManager() }
+    single { BiometricAuth() }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(

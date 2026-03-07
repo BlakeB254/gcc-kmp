@@ -459,6 +459,11 @@ actual fun GccMap(
                 }
             }
 
+            // --- Spot report markers (heatmap wash + dots) ---
+            if (spots.isNotEmpty()) {
+                drawSpotMarkers(spots, centerLat, centerLng, zoom, w, h, effectiveZoom)
+            }
+
             // --- Bounty zone pulse markers ---
             if (bountyPulse != null) {
                 for (bountyLoc in bountyLocations) {

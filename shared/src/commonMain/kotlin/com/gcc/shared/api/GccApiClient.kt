@@ -122,6 +122,9 @@ class GccApiClient(
 
     // ── Public API ────────────────────────────────────────────────────
 
+    suspend fun verify2FA(twoFactorToken: String, code: String): AuthResponse =
+        postJson("/api/auth/verify-2fa", Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
+
     suspend fun getLeaderboard(period: String = "all_time", limit: Int = 50): List<LeaderboardEntry> =
         get("/api/leaderboard") {
             parameter("period", period)

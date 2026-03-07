@@ -73,6 +73,7 @@ fun ResultRow.toRoute(): Route = Route(
     estimatedDurationMinutes = this[Routes.estimatedMinutes]?.toIntOrNull(),
     payoutAmount = this[Routes.payoutAmount]?.toIntOrNull(),
     checkpoints = emptyList(), // populated by service after batch-loading
+    imageUrl = this[Routes.imageUrl],
     createdAt = this[Routes.createdAt],
     updatedAt = this[Routes.updatedAt]
 )
@@ -89,6 +90,7 @@ fun ResultRow.toCheckpoint(): RouteCheckpoint {
         ),
         photoRequired = this[RouteCheckpoints.photoRequired],
         geofenceRadius = this[RouteCheckpoints.geofenceRadius]?.toDoubleOrNull() ?: 15.0,
-        type = enumValueOfOrDefault(this[RouteCheckpoints.type])
+        type = enumValueOfOrDefault(this[RouteCheckpoints.type]),
+        imageUrl = this[RouteCheckpoints.imageUrl]
     )
 }

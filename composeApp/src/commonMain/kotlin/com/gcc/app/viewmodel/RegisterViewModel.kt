@@ -51,7 +51,7 @@ class RegisterViewModel(
                 }
                 if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
                     val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    tokenManager.saveToken(apiResponse.data.token)
+                    apiResponse.data.token?.let { tokenManager.saveToken(it) }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isRegistered = true,

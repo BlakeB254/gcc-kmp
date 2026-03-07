@@ -30,7 +30,9 @@ data class PaginatedResponse<T>(
 
 @Serializable
 data class AuthResponse(
-    val token: String,
-    val worker: Worker,
-    val exp: Long
+    val token: String? = null,
+    val worker: Worker? = null,
+    val exp: Long = 0,
+    val requiresTwoFactor: Boolean = false,
+    val twoFactorToken: String? = null,
 )

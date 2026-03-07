@@ -421,6 +421,55 @@ internal fun DrawScope.drawCityBoundary(
     )
 }
 
+/** Draw spot report markers: orange heatmap wash at far zoom, orange dots at close zoom. */
+internal fun DrawScope.drawSpotMarkers(
+    spots: List<com.gcc.shared.model.CommunityReport>,
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+    effectiveZoom: Double,
+) {
+    if (spots.isEmpty()) return
+
+    val filteredSpots = spots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
+
+    for (spot in filteredSpots) {
+        val pos = latLngToPixel(spot.coordinates.lat, spot.coordinates.lng, centerLat, centerLng, zoom, w, h)
+        // Skip if off screen
+        if (pos.x < -50f || pos.x > w + 50f || pos.y < -50f || pos.y > h + 50f) continue
+
+        if (effectiveZoom < MapStyles.SPOT_HEATMAP_MAX_ZOOM) {
+            // Far zoom: large translucent orange circles (heatmap wash)
+            val t = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
+                (MapStyles.SPOT_HEATMAP_MAX_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
+            val radius = MapStyles.SPOT_HEATMAP_RADIUS_FAR + (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
+            val opacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR + (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
+            if (opacity > 0f) {
+                drawCircle(
+                    color = MapStyles.SPOT_MARKER_COLOR.copy(alpha = opacity),
+                    radius = radius,
+                    center = pos,
+                )
+            }
+        }
+
+        if (effectiveZoom >= MapStyles.SPOT_DOTS_MIN_ZOOM) {
+            // Close zoom: individual orange dots
+            val t = ((effectiveZoom - MapStyles.SPOT_DOTS_MIN_ZOOM) / 3.0).toFloat().coerceIn(0f, 1f)
+            val dotRadius = 2f + 4f * t
+            drawCircle(
+                color = MapStyles.SPOT_MARKER_COLOR,
+                radius = dotRadius,
+                center = pos,
+            )
+            drawCircle(
+                color = Color.White,
+                radius = dotRadius,
+                center = pos,
+                style = Stroke(width = 1f),
+            )
+        }
+    }
+}
+
 /** Draw a context pin marker (red teardrop shape). */
 internal fun DrawScope.drawContextPin(position: Offset) {
     val pinHeight = 21f

@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
@@ -36,14 +37,16 @@ data class ActiveJobUiState(
     val isCompleting: Boolean = false,
     val jobStarted: Boolean = false,
     val jobCompleted: Boolean = false,
+    val isAdminMode: Boolean = false,
 )
 
 class ActiveJobViewModel(
     private val apiClient: GccApiClient,
     private val locationTrackingController: LocationTrackingController,
+    private val tokenManager: TokenManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val _uiState = MutableStateFlow(ActiveJobUiState())
+    private val _uiState = MutableStateFlow(ActiveJobUiState(isAdminMode = tokenManager.isAdmin()))
     val uiState: StateFlow<ActiveJobUiState> = _uiState.asStateFlow()
 
     fun loadJob(jobId: Int, routeId: Int) {
@@ -153,6 +156,18 @@ class ActiveJobViewModel(
             isWithinGeofence = withinGeofence,
             checkpoints = updatedCheckpoints,
         )
+    }
+
+    /** Admin shortcut: mark all checkpoints done and complete the job. */
+    fun adminCompleteAll() {
+        val state = _uiState.value
+        if (!state.isAdminMode) return
+        val allCompleted = state.checkpoints.map { it.copy(status = CheckpointStatus.COMPLETED) }
+        _uiState.value = state.copy(
+            checkpoints = allCompleted,
+            currentCheckpointIndex = allCompleted.size,
+        )
+        completeJob()
     }
 
     fun completeCurrentCheckpoint() {

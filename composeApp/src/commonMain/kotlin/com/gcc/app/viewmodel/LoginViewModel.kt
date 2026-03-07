@@ -21,6 +21,9 @@ data class LoginUiState(
     val error: String? = null,
     val isLoggedIn: Boolean = false,
     val worker: Worker? = null,
+    val isAdmin: Boolean = false,
+    val requiresTwoFactor: Boolean = false,
+    val twoFactorToken: String? = null,
 )
 
 class LoginViewModel(
@@ -42,14 +45,24 @@ class LoginViewModel(
                 }
                 if (response.status == HttpStatusCode.OK) {
                     val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    tokenManager.saveToken(apiResponse.data.token)
+                    val authData = apiResponse.data
+                    if (authData.requiresTwoFactor) {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            requiresTwoFactor = true,
+                            twoFactorToken = authData.twoFactorToken,
+                        )
+                    } else {
+                    tokenManager.saveToken(authData.token!!)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isLoggedIn = true,
-                        worker = apiResponse.data.worker,
+                        worker = authData.worker,
+                        isAdmin = tokenManager.isAdmin(),
                     )
                     // Register for push notifications after successful login
                     registerPushToken()
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -65,8 +78,49 @@ class LoginViewModel(
         }
     }
 
+    fun verify2FA(code: String) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val twoFactorToken = _uiState.value.twoFactorToken ?: return@launch
+                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/verify-2fa") {
+                    contentType(ContentType.Application.Json)
+                    setBody(Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
+                    val authData = apiResponse.data
+                    tokenManager.saveToken(authData.token!!)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        worker = authData.worker,
+                        isAdmin = tokenManager.isAdmin(),
+                        requiresTwoFactor = false,
+                        twoFactorToken = null,
+                    )
+                    registerPushToken()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Invalid verification code",
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Verification failed",
+                )
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun cancel2FA() {
+        _uiState.value = LoginUiState()
     }
 
     private fun registerPushToken() {

@@ -18,9 +18,11 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.map.findCommunityAreaForLocation
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
+import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.Coordinates
 import org.koin.compose.koinInject
 
@@ -33,12 +35,24 @@ fun MapFullScreen(
     val uiState by viewModel.uiState.collectAsState()
     val bountyViewModel = koinInject<BountyViewModel>()
     val bountyState by bountyViewModel.uiState.collectAsState()
+    val locationProvider = koinInject<LocationProvider>()
+    val tokenManager = koinInject<TokenManager>()
+    val isAdmin = remember { tokenManager.isAdmin() }
+
+    // Wire real GPS location
+    val currentLocation by locationProvider.currentLocation.collectAsState()
 
     LaunchedEffect(Unit) {
+        locationProvider.startLocationUpdates()
         if (uiState.routes.isEmpty()) viewModel.loadDashboard()
         if (uiState.worker == null) viewModel.loadWorkerProfile()
         if (uiState.serviceAreaName == null) viewModel.loadServiceArea()
+        if (uiState.spots.isEmpty()) viewModel.loadSpots()
         bountyViewModel.loadBounties()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { locationProvider.stopLocationUpdates() }
     }
 
     // Dual-mode state
@@ -69,23 +83,43 @@ fun MapFullScreen(
     val centerLng = if (mapMode == MapMode.MY_AREA) myAreaCenterLng else MapStyles.CHICAGO_CENTER_LNG
     val mapZoom = if (mapMode == MapMode.MY_AREA) MapStyles.ZOOM_SERVICE_AREA else MapStyles.ZOOM_CITY
 
-    // GPS-gated bounty visibility: in Explorer mode, only show bounties
-    // in the community area the user is physically located in.
-    // TODO: Wire real GPS location from LocationProvider when available
-    val currentLocation: Coordinates? = null // placeholder until GPS is wired
+    // GPS-gated visibility: admin sees all data globally,
+    // normal users see only their current community area
     val currentGpsArea = remember(currentLocation) {
         currentLocation?.let { findCommunityAreaForLocation(it.lat, it.lng) }
     }
-    val visibleBounties = remember(bountyState.bounties, mapMode, currentGpsArea) {
-        when (mapMode) {
-            MapMode.MY_AREA -> emptyList()
-            MapMode.EXPLORER -> {
-                val areaName = currentGpsArea?.name
-                if (areaName != null) {
-                    bountyState.bounties.filter { it.communityArea == areaName }
+    val visibleBounties = remember(bountyState.bounties, mapMode, currentGpsArea, isAdmin) {
+        when {
+            mapMode == MapMode.MY_AREA -> emptyList()
+            isAdmin -> bountyState.bounties // admin sees all bounties globally
+            else -> {
+                val area = currentGpsArea
+                if (area != null) {
+                    bountyState.bounties.filter { bounty ->
+                        bounty.communityArea == area.name ||
+                        (bounty.communityArea == null &&
+                            bounty.locationLat in area.bounds.south..area.bounds.north &&
+                            bounty.locationLng in area.bounds.west..area.bounds.east)
+                    }
                 } else {
-                    // No GPS fix yet — show all bounties so the map isn't empty during dev
-                    bountyState.bounties
+                    emptyList() // no GPS fix = no bounties for normal users
+                }
+            }
+        }
+    }
+    val visibleSpots = remember(uiState.spots, mapMode, currentGpsArea, isAdmin) {
+        when {
+            mapMode == MapMode.MY_AREA -> uiState.spots // show all spots in service area view
+            isAdmin -> uiState.spots // admin sees all spots globally
+            else -> {
+                val area = currentGpsArea
+                if (area != null) {
+                    uiState.spots.filter { spot ->
+                        spot.coordinates.lat in area.bounds.south..area.bounds.north &&
+                        spot.coordinates.lng in area.bounds.west..area.bounds.east
+                    }
+                } else {
+                    emptyList()
                 }
             }
         }
@@ -118,6 +152,7 @@ fun MapFullScreen(
             } else null,
             cameraBounds = if (mapMode == MapMode.MY_AREA) serviceArea?.bounds else null,
             bounties = visibleBounties,
+            spots = visibleSpots,
             mapMode = mapMode,
         ) {
             // Mode toggle (centered near top)

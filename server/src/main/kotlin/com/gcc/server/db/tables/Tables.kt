@@ -313,6 +313,9 @@ object Routes : Table("routes") {
     // Admin who created this route
     val createdById = integer("created_by_id").nullable()
 
+    // Cover image URL
+    val imageUrl = varchar("image_url", 2048).nullable()
+
     // Timestamps
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
@@ -341,6 +344,9 @@ object RouteCheckpoints : Table("route_checkpoints") {
 
     // Type of checkpoint
     val type = varchar("type", 50)
+
+    // Checkpoint image URL
+    val imageUrl = varchar("image_url", 2048).nullable()
 
     // Timestamps
     val createdAt = timestamp("created_at")

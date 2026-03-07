@@ -57,4 +57,7 @@ sealed class Screen {
 
     @Serializable
     data object Feed : Screen()
+
+    @Serializable
+    data object BiometricGate : Screen()
 }

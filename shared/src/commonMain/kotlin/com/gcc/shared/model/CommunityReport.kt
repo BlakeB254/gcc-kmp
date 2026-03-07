@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 data class CommunityReport(
     val id: Int,
     val reporterId: Int? = null,
+    val reporterName: String? = null,
     val type: CommunityReportType,
     val coordinates: Coordinates,
     val description: String? = null,

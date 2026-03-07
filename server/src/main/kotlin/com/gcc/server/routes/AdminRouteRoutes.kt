@@ -53,6 +53,7 @@ fun Route.adminRouteRoutes() {
                     it[lengthMeters] = request.distanceMeters?.toString()
                     it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
                     it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
+                    it[imageUrl] = request.imageUrl
                     it[createdAt] = now
                     it[updatedAt] = now
                 }[Routes.id]
@@ -66,6 +67,7 @@ fun Route.adminRouteRoutes() {
                         it[photoRequired] = cp.photoRequired
                         it[geofenceRadius] = cp.geofenceRadius.toString()
                         it[type] = cp.type
+                        it[imageUrl] = cp.imageUrl
                         it[createdAt] = now
                         it[updatedAt] = now
                     }
@@ -91,6 +93,7 @@ fun Route.adminRouteRoutes() {
                     it[lengthMeters] = request.distanceMeters?.toString()
                     it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
                     it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
+                    it[imageUrl] = request.imageUrl
                     it[updatedAt] = now
                 }
                 Routes.selectAll().where { Routes.id eq id }

@@ -1,6 +1,7 @@
 package com.gcc.server.routes
 
 import com.gcc.server.plugins.ErrorResponse
+import com.gcc.server.plugins.isAdmin
 import com.gcc.server.plugins.workerId
 import com.gcc.server.services.JobService
 import com.gcc.shared.model.ApiResponse
@@ -73,21 +74,21 @@ fun Route.authenticatedJobRoutes() {
         post("/{id}/claim") {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Job ID must be an integer")
-            val job = jobService.claimJob(id, call.workerId())
+            val job = jobService.claimJob(id, call.workerId(), isAdmin = call.isAdmin())
             call.respond(HttpStatusCode.OK, ApiResponse(data = job))
         }
 
         patch("/{id}/start") {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Job ID must be an integer")
-            val job = jobService.startJob(id, call.workerId())
+            val job = jobService.startJob(id, call.workerId(), isAdmin = call.isAdmin())
             call.respond(HttpStatusCode.OK, ApiResponse(data = job))
         }
 
         patch("/{id}/complete") {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Job ID must be an integer")
-            val job = jobService.completeJob(id, call.workerId())
+            val job = jobService.completeJob(id, call.workerId(), isAdmin = call.isAdmin())
             call.respond(HttpStatusCode.OK, ApiResponse(data = job))
         }
     }

@@ -114,4 +114,22 @@ object MapStyles {
     // Spot report marker layers
     const val LAYER_SPOT_MARKERS = "spot-markers"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
+
+    // Spot heatmap layer (visible at overview zoom, fades at close zoom)
+    const val LAYER_SPOT_HEATMAP = "spot-heatmap"
+    const val SPOT_HEATMAP_RADIUS_FAR = 30.0f    // large radius at overview zoom
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 8.0f   // shrinks as you zoom in
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.5f
+    const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
+
+    // Heatmap color ramp: green (low) → yellow → orange → red (high density)
+    val SPOT_HEATMAP_COLOR_LOW = Color(0xFF22C55E)     // green
+    val SPOT_HEATMAP_COLOR_MED = Color(0xFFEAB308)     // yellow
+    val SPOT_HEATMAP_COLOR_HIGH = Color(0xFFF97316)    // orange
+    val SPOT_HEATMAP_COLOR_PEAK = Color(0xFFEF4444)    // red
+
+    // Zoom thresholds for heatmap vs. individual dots
+    const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
+    const val SPOT_HEATMAP_MAX_ZOOM = 13.0   // heatmap fades above this zoom
+    const val SPOT_DOTS_MIN_ZOOM = 12.0      // individual dots appear from this zoom
 }

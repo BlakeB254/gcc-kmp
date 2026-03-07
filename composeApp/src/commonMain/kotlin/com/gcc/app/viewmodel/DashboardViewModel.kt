@@ -16,6 +16,7 @@ data class DashboardUiState(
     val routes: List<Route> = emptyList(),
     val worker: Worker? = null,
     val leaderboard: List<LeaderboardEntry> = emptyList(),
+    val spots: List<CommunityReport> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val serviceAreaName: String? = null,
@@ -104,6 +105,20 @@ class DashboardViewModel(
                 _uiState.value = _uiState.value.copy(worker = worker.data)
             } catch (_: Exception) {
                 // Profile loading is non-critical; silently fail
+            }
+        }
+    }
+
+    fun loadSpots() {
+        scope.launch {
+            try {
+                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/spots") {
+                    parameter("limit", 100)
+                }
+                val spots = response.body<ApiResponse<List<CommunityReport>>>()
+                _uiState.value = _uiState.value.copy(spots = spots.data)
+            } catch (_: Exception) {
+                // Spot loading is non-critical; silently fail
             }
         }
     }

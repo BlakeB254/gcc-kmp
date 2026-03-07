@@ -21,6 +21,7 @@ class SpotService {
         lng: Double,
         description: String?,
         mediaUrls: List<String>,
+        isAdmin: Boolean = false,
     ): CommunityReport = dbQuery {
         val now = Clock.System.now()
         val coordsJson = kotlinx.serialization.json.buildJsonArray {
@@ -28,9 +29,9 @@ class SpotService {
             add(JsonPrimitive(lat))
         }
         val id = CommunityReports.insert {
-            it[reporterType] = "worker"
+            it[reporterType] = if (isAdmin) "admin" else "worker"
             it[CommunityReports.reporterId] = reporterId
-            it[reporterName] = "" // filled by caller or trigger
+            it[reporterName] = if (isAdmin) "GCC" else ""
             it[CommunityReports.type] = type.name.lowercase()
             it[CommunityReports.coordinates] = listOf(lng, lat)
             it[CommunityReports.description] = description
@@ -114,6 +115,7 @@ fun ResultRow.toReport(): CommunityReport {
     return CommunityReport(
         id = this[CommunityReports.id],
         reporterId = this[CommunityReports.reporterId],
+        reporterName = this[CommunityReports.reporterName]?.takeIf { it.isNotBlank() },
         type = enumValueOfOrDefault(this[CommunityReports.type]),
         coordinates = Coordinates(
             lng = coords.getOrElse(0) { 0.0 },

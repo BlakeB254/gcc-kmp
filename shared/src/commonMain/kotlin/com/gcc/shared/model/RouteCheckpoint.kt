@@ -14,4 +14,5 @@ data class RouteCheckpoint(
     val instructions: String? = null,
     val cameraMode: CameraMode? = null,
     val bountyPrompts: List<String> = emptyList(),
+    val imageUrl: String? = null,
 )

@@ -143,6 +143,17 @@ fun ActiveJobScreen(
                         SectionHeader(title = "Checkpoint Checklist")
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Admin skip-to-complete shortcut
+                        if (uiState.isAdminMode) {
+                            GccButton(
+                                text = "Admin: Skip to Complete",
+                                onClick = { viewModel.adminCompleteAll() },
+                                variant = GccButtonVariant.SECONDARY,
+                                isLoading = uiState.isCompleting,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
                         LazyColumn(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -160,10 +171,11 @@ fun ActiveJobScreen(
 
                         // Action button for current checkpoint
                         val currentCheckpoint = uiState.checkpoints.getOrNull(uiState.currentCheckpointIndex)
+                        val canComplete = uiState.isWithinGeofence || uiState.isAdminMode
                         if (currentCheckpoint != null) {
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            if (currentCheckpoint.checkpoint.photoRequired && uiState.isWithinGeofence) {
+                            if (currentCheckpoint.checkpoint.photoRequired && canComplete && !uiState.isAdminMode) {
                                 PhotoComparisonSheet(
                                     checkpointName = currentCheckpoint.checkpoint.name,
                                     hasBeforePhoto = hasBeforePhoto,
@@ -176,7 +188,7 @@ fun ActiveJobScreen(
                                         hasAfterPhoto = false
                                     },
                                 )
-                            } else if (uiState.isWithinGeofence) {
+                            } else if (canComplete) {
                                 GccButton(
                                     text = "Complete Checkpoint",
                                     onClick = { viewModel.completeCurrentCheckpoint() },
@@ -192,8 +204,6 @@ fun ActiveJobScreen(
                             }
                         }
 
-                        // "Complete Job" button when all checkpoints are done
-                        // (fallback — allCheckpointsDone above should catch most cases)
                         uiState.error?.let { error ->
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)

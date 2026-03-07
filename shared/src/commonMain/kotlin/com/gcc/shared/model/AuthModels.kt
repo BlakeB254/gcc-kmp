@@ -15,3 +15,9 @@ data class RegisterRequest(
     val phone: String,
     val password: String
 )
+
+@Serializable
+data class Verify2FARequest(
+    val twoFactorToken: String,
+    val code: String,
+)

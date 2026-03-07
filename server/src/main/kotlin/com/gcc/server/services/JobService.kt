@@ -44,66 +44,77 @@ class JobService {
         Jobs.selectAll().where { Jobs.status eq status.name.lowercase() }.count()
     }
 
-    suspend fun claimJob(jobId: Int, workerId: Int): Job = dbQuery {
+    // ── Job transitions (with optional admin bypass) ────────────────────
+
+    suspend fun claimJob(jobId: Int, workerId: Int, isAdmin: Boolean = false): Job =
+        transitionJob(jobId, JobStatus.CLAIMED, isAdmin) { job ->
+            if (!isAdmin && job.status != JobStatus.AVAILABLE)
+                throw IllegalStateException("Job is not available (current status: ${job.status})")
+            mapOf(
+                Jobs.workerId to workerId,
+                Jobs.claimedAt to Clock.System.now(),
+            )
+        }
+
+    suspend fun startJob(jobId: Int, workerId: Int, isAdmin: Boolean = false): Job =
+        transitionJob(jobId, JobStatus.IN_PROGRESS, isAdmin) { job ->
+            if (!isAdmin) {
+                if (job.status != JobStatus.CLAIMED)
+                    throw IllegalStateException("Job must be claimed before starting (current status: ${job.status})")
+                if (job.workerId != workerId)
+                    throw IllegalStateException("Job belongs to a different worker")
+            }
+            mapOf(
+                Jobs.workerId to workerId,
+                Jobs.startedAt to Clock.System.now(),
+            )
+        }
+
+    suspend fun completeJob(jobId: Int, workerId: Int? = null, isAdmin: Boolean = false): Job =
+        transitionJob(jobId, JobStatus.COMPLETED, isAdmin) { job ->
+            if (!isAdmin) {
+                if (job.status != JobStatus.IN_PROGRESS)
+                    throw IllegalStateException("Job must be in progress to complete (current status: ${job.status})")
+                if (job.workerId != workerId)
+                    throw IllegalStateException("Job belongs to a different worker")
+            }
+            buildMap {
+                put(Jobs.completedAt, Clock.System.now())
+                if (isAdmin) {
+                    put(Jobs.payoutAmount, "0")
+                    put(Jobs.payoutStatus, "test_completion")
+                }
+            }
+        }
+
+    /**
+     * Shared job transition: validate → update status + extra columns → return refreshed job.
+     * [extraColumns] returns additional column values to set (beyond status and updatedAt).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun transitionJob(
+        jobId: Int,
+        newStatus: JobStatus,
+        isAdmin: Boolean,
+        extraColumns: (Job) -> Map<Column<*>, Any?>,
+    ): Job = dbQuery {
         val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
             ?: throw IllegalArgumentException("Job not found")
 
-        if (job.status != JobStatus.AVAILABLE) {
-            throw IllegalStateException("Job is not available (current status: ${job.status})")
-        }
-
+        val extras = extraColumns(job)
         val now = Clock.System.now()
-        Jobs.update({ Jobs.id eq jobId }) {
-            it[Jobs.workerId] = workerId
-            it[status] = JobStatus.CLAIMED.name.lowercase()
-            it[claimedAt] = now
-            it[updatedAt] = now
-        }
 
-        Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()
-    }
-
-    suspend fun startJob(jobId: Int, workerId: Int): Job = dbQuery {
-        val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
-            ?: throw IllegalArgumentException("Job not found")
-
-        if (job.status != JobStatus.CLAIMED) {
-            throw IllegalStateException("Job must be claimed before starting (current status: ${job.status})")
-        }
-        if (job.workerId != workerId) {
-            throw IllegalStateException("Job belongs to a different worker")
-        }
-
-        val now = Clock.System.now()
-        Jobs.update({ Jobs.id eq jobId }) {
-            it[status] = JobStatus.IN_PROGRESS.name.lowercase()
-            it[startedAt] = now
-            it[updatedAt] = now
-        }
-
-        Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()
-    }
-
-    suspend fun completeJob(jobId: Int, workerId: Int): Job = dbQuery {
-        val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
-            ?: throw IllegalArgumentException("Job not found")
-
-        if (job.status != JobStatus.IN_PROGRESS) {
-            throw IllegalStateException("Job must be in progress to complete (current status: ${job.status})")
-        }
-        if (job.workerId != workerId) {
-            throw IllegalStateException("Job belongs to a different worker")
-        }
-
-        val now = Clock.System.now()
-        val duration = job.timing.startedAt?.let { startedAt ->
-            ((now - startedAt).inWholeMinutes).toInt()
-        }
-
-        Jobs.update({ Jobs.id eq jobId }) {
-            it[status] = JobStatus.COMPLETED.name.lowercase()
-            it[completedAt] = now
-            it[updatedAt] = now
+        Jobs.update({ Jobs.id eq jobId }) { stmt ->
+            stmt[status] = newStatus.name.lowercase()
+            stmt[updatedAt] = now
+            for ((col, value) in extras) {
+                when (value) {
+                    is Int -> stmt[col as Column<Int?>] = value
+                    is String -> stmt[col as Column<String?>] = value
+                    is kotlinx.datetime.Instant -> stmt[col as Column<kotlinx.datetime.Instant?>] = value
+                    null -> {} // skip nulls
+                }
+            }
         }
 
         Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()

@@ -9,8 +9,16 @@ import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.insert
 import java.security.SecureRandom
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
+
+data class TwoFactorEntry(
+    val code: String,
+    val workerId: Int,
+    val email: String,
+    val expiresAt: Long,
+)
 
 class AuthService(
     private val workerService: WorkerService
@@ -21,6 +29,8 @@ class AuthService(
     private val tokenLifetimeMs = 7L * 24 * 60 * 60 * 1000 // 7 days
     private val adminEmails = System.getenv("ADMIN_EMAILS")
         ?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
+
+    private val twoFactorCodes = ConcurrentHashMap<String, TwoFactorEntry>()
 
     suspend fun register(request: RegisterRequest): AuthResponse {
         val existing = workerService.getByEmail(request.email)
@@ -93,7 +103,46 @@ class AuthService(
         val worker = workerService.getByEmail(request.email)
             ?: throw IllegalStateException("Worker not found after password verification")
 
-        val role = if (request.email.lowercase() in adminEmails) "admin" else "worker"
+        // Generate 2FA code and return challenge
+        val code = "%06d".format(SecureRandom().nextInt(1_000_000))
+        val twoFactorToken = UUID.randomUUID().toString()
+        val ttlMs = 5L * 60 * 1000 // 5 minutes
+
+        twoFactorCodes[twoFactorToken] = TwoFactorEntry(
+            code = code,
+            workerId = worker.id,
+            email = request.email,
+            expiresAt = System.currentTimeMillis() + ttlMs,
+        )
+
+        println("2FA code for ${worker.email}: $code")
+
+        return AuthResponse(
+            requiresTwoFactor = true,
+            twoFactorToken = twoFactorToken,
+        )
+    }
+
+    suspend fun verify2FA(twoFactorToken: String, code: String): AuthResponse {
+        val entry = twoFactorCodes[twoFactorToken]
+            ?: throw IllegalArgumentException("Invalid or expired verification token")
+
+        if (System.currentTimeMillis() > entry.expiresAt) {
+            twoFactorCodes.remove(twoFactorToken)
+            throw IllegalArgumentException("Verification code has expired")
+        }
+
+        if (entry.code != code) {
+            throw IllegalArgumentException("Invalid verification code")
+        }
+
+        // Code is valid — remove it and issue JWT
+        twoFactorCodes.remove(twoFactorToken)
+
+        val worker = workerService.getById(entry.workerId)
+            ?: throw IllegalStateException("Worker not found")
+
+        val role = if (entry.email.lowercase() in adminEmails) "admin" else "worker"
         val expiresAt = System.currentTimeMillis() + tokenLifetimeMs
         val token = generateToken(worker.id, role, expiresAt)
         return AuthResponse(token = token, worker = worker, exp = expiresAt / 1000)

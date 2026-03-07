@@ -23,7 +23,7 @@ class RootComponent(
         get() {
             val tm = tokenManager ?: return Screen.Login
             return when {
-                tm.isLoggedIn() && !tm.isTokenExpired() -> Screen.Dashboard
+                tm.isLoggedIn() && !tm.isTokenExpired() -> Screen.BiometricGate
                 tm.isLoggedIn() && tm.isTokenExpired() -> {
                     tm.clearToken()
                     Screen.Login
@@ -41,7 +41,15 @@ class RootComponent(
     )
 
     fun onLoginSuccess() {
+        navigation.replaceAll(Screen.BiometricGate)
+    }
+
+    fun onBiometricSuccess() {
         navigation.replaceAll(Screen.Dashboard)
+    }
+
+    fun onBiometricFallback() {
+        navigation.replaceAll(Screen.Login)
     }
 
     fun onRegisterSuccess() {

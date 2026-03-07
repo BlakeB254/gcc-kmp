@@ -1,0 +1,53 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Create Apple Distribution certificate if needed"
+  lane :create_cert do
+    get_certificates(
+      development: false,
+      force: false,
+    )
+    get_provisioning_profile(
+      development: false,
+      app_identifier: "com.globalcommunitycleaners.worker",
+    )
+  end
+
+  desc "Build and upload to App Store Connect"
+  lane :release do
+    # Ensure distribution cert + profile exist
+    get_certificates(development: false, force: false)
+    profile = get_provisioning_profile(
+      development: false,
+      app_identifier: "com.globalcommunitycleaners.worker",
+    )
+
+    # Build the Kotlin framework first (release config for device)
+    sh("cd ../.. && ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks")
+
+    # Archive
+    build_app(
+      project: "iosApp.xcodeproj",
+      scheme: "iosApp",
+      configuration: "Release",
+      export_method: "app-store",
+      destination: "generic/platform=iOS",
+      output_directory: "/tmp/gcc-build",
+      output_name: "GCC.ipa",
+      clean: true,
+      export_options: {
+        provisioningProfiles: {
+          "com.globalcommunitycleaners.worker" => profile["provisioningProfile"]
+        }
+      }
+    )
+
+    # Upload to App Store Connect
+    upload_to_app_store(
+      skip_metadata: true,
+      skip_screenshots: true,
+      force: true,
+      ipa: "/tmp/gcc-build/GCC.ipa",
+    )
+  end
+end

@@ -108,6 +108,10 @@ fun App(component: RootComponent) {
                 is Screen.Feed -> FeedScreen(
                     onBack = component::navigateBack,
                 )
+                is Screen.BiometricGate -> BiometricGateScreen(
+                    onSuccess = component::onBiometricSuccess,
+                    onFallback = component::onBiometricFallback,
+                )
             }
         }
     }

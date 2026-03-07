@@ -1,5 +1,6 @@
 package com.gcc.server.routes
 
+import com.gcc.server.plugins.isAdmin
 import com.gcc.server.plugins.workerId
 import com.gcc.server.services.SpotService
 import com.gcc.server.services.VolunteerService
@@ -71,6 +72,7 @@ fun Route.authenticatedSpotRoutes() {
                 lng = request.lng,
                 description = request.description,
                 mediaUrls = request.mediaUrls,
+                isAdmin = call.isAdmin(),
             )
 
             // Check for matching bounty zones

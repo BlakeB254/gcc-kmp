@@ -91,6 +91,8 @@ fun SpotScreen(
                 SpotPhase.LOCATION -> LocationPhase(
                     lat = uiState.currentLat,
                     lng = uiState.currentLng,
+                    radiusMeters = uiState.affectedRadiusMeters,
+                    onRadiusChange = { viewModel.setRadius(it.toDouble()) },
                     onNext = { viewModel.nextPhase() },
                 )
 
@@ -234,6 +236,8 @@ private fun CameraPhase(
 private fun LocationPhase(
     lat: Double,
     lng: Double,
+    radiusMeters: Double,
+    onRadiusChange: (Float) -> Unit,
     onNext: () -> Unit,
 ) {
     Column(
@@ -252,7 +256,7 @@ private fun LocationPhase(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Map with location pin
+        // Map with location pin and "You Are Here" card
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -266,25 +270,73 @@ private fun LocationPhase(
                 zoom = MapStyles.ZOOM_ROUTE,
                 currentLocation = Coordinates(lng = lng, lat = lat),
             )
+
+            // Floating "You Are Here" card
+            GccCard(
+                accentColor = CardAccentGreen,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "\uD83D\uDCCD",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Column {
+                        Text(
+                            "You are here",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = GccGreen,
+                        )
+                        Text(
+                            "${formatLat(lat)}, ${formatLng(lng)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Coordinates display
-        GccCard(accentColor = CardAccentBlue) {
+        // Mess radius slider
+        GccCard(accentColor = CardAccentGold) {
+            Text(
+                "Affected Area",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Drag to set how far the mess extends.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    "Lat: $lat",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
+                Slider(
+                    value = radiusMeters.toFloat(),
+                    onValueChange = onRadiusChange,
+                    valueRange = 5f..100f,
+                    steps = 18,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = GccGold,
+                        activeTrackColor = GccGold,
+                    ),
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "Lng: $lng",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
+                    "${radiusMeters.toInt()}m",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = GccGold,
                 )
             }
         }
@@ -399,6 +451,14 @@ private fun ResultPhase(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 report?.let {
+                    if (it.reporterName == "GCC") {
+                        Text(
+                            "Spotted by GCC",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = GccGreen,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                     Text(
                         "Report #${it.id} submitted successfully.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -547,6 +607,22 @@ private fun AiAnalysisCard(analysis: com.gcc.shared.model.AiAnalysis) {
             )
         }
     }
+}
+
+private fun formatLat(lat: Double): String {
+    val abs = kotlin.math.abs(lat)
+    val intPart = abs.toInt()
+    val fracPart = ((abs - intPart) * 10000).toInt().toString().padStart(4, '0')
+    val dir = if (lat >= 0) "N" else "S"
+    return "$intPart.$fracPart\u00B0$dir"
+}
+
+private fun formatLng(lng: Double): String {
+    val abs = kotlin.math.abs(lng)
+    val intPart = abs.toInt()
+    val fracPart = ((abs - intPart) * 10000).toInt().toString().padStart(4, '0')
+    val dir = if (lng >= 0) "E" else "W"
+    return "$intPart.$fracPart\u00B0$dir"
 }
 
 @Composable

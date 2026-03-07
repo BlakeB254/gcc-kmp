@@ -60,6 +60,25 @@ open class TokenManager(private val settings: Settings = Settings()) {
     fun getWorkerId(): Int? {
         val token = _token.value ?: return null
         return getJwtClaim(token, "workerId")?.toIntOrNull()
+            ?: getJwtClaim(token, "worker_id")?.toIntOrNull()
+    }
+
+    /**
+     * Extract the user role from the JWT payload's "role" claim.
+     * Returns null if the token is missing or the claim cannot be parsed.
+     */
+    fun getUserRole(): String? {
+        val token = _token.value ?: return null
+        return getJwtClaim(token, "role")
+    }
+
+    /**
+     * Check if the current user has admin privileges.
+     * Returns true for "admin" or "super_admin" roles.
+     */
+    fun isAdmin(): Boolean {
+        val role = getUserRole() ?: return false
+        return role == "admin" || role == "super_admin"
     }
 
     /**

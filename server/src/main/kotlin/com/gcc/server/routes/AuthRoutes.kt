@@ -34,6 +34,16 @@ fun Routing.authRoutes() {
                 call.respond(HttpStatusCode.Unauthorized, ErrorResponse(e.message ?: "Authentication failed", 401))
             }
         }
+
+        post("/verify-2fa") {
+            try {
+                val request = call.receive<Verify2FARequest>()
+                val response = authService.verify2FA(request.twoFactorToken, request.code)
+                call.respond(HttpStatusCode.OK, ApiResponse(data = response))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse(e.message ?: "Verification failed", 401))
+            }
+        }
     }
     }
 }

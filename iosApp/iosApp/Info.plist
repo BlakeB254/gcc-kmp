@@ -54,6 +54,8 @@
         <string>location</string>
         <string>remote-notification</string>
     </array>
+    <key>NSFaceIDUsageDescription</key>
+    <string>GCC uses Face ID to securely unlock the app</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>CADisableMinimumFrameDurationOnPhone</key>

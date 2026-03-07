@@ -1,13 +1,15 @@
 'use client'
 
+import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight } from 'lucide-react'
-import type { Bounty } from '@/components/map/BountyMap'
+import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon } from 'lucide-react'
+import type { Bounty, SpotReport } from '@/components/map/BountyMap'
+import type { Route } from '@/components/map/RouteMap'
 
-// Dynamically import BountyMap to avoid SSR issues with MapLibre
-const BountyMap = dynamic(
-  () => import('@/components/map/BountyMap').then(mod => ({ default: mod.BountyMap })),
+// Dynamically import CombinedMap to avoid SSR issues with MapLibre
+const CombinedMap = dynamic(
+  () => import('@/components/map/CombinedMap').then(mod => ({ default: mod.CombinedMap })),
   {
     ssr: false,
     loading: () => (
@@ -18,7 +20,11 @@ const BountyMap = dynamic(
   }
 )
 
-const bounties: Bounty[] = [
+// ============================================================================
+// FALLBACK DATA
+// ============================================================================
+
+const FALLBACK_BOUNTIES: Bounty[] = [
   {
     id: '1',
     title: 'Illegal dumping on Pulaski',
@@ -48,7 +54,93 @@ const bounties: Bounty[] = [
   },
 ]
 
+// ============================================================================
+// STATUS HELPERS
+// ============================================================================
+
+const ROUTE_STATUS_COLORS: Record<string, string> = {
+  published: 'bg-green-100 text-green-700',
+  claimed: 'bg-amber-100 text-amber-700',
+  active: 'bg-blue-100 text-blue-700',
+  completed: 'bg-neutral-100 text-neutral-600',
+}
+
+const ROUTE_STATUS_LABELS: Record<string, string> = {
+  published: 'Available',
+  claimed: 'Claimed',
+  active: 'In Progress',
+  completed: 'Completed',
+}
+
+// ============================================================================
+// PAGE COMPONENT
+// ============================================================================
+
 export default function BountiesPage() {
+  const [bounties, setBounties] = useState<Bounty[]>(FALLBACK_BOUNTIES)
+  const [spots, setSpots] = useState<SpotReport[]>([])
+  const [routes, setRoutes] = useState<Route[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch data from API endpoints
+  useEffect(() => {
+    async function fetchData() {
+      // Fetch bounties, spots, and routes in parallel
+      const [bountiesResult, spotsResult, routesResult] = await Promise.allSettled([
+        fetch('/api/bounties?limit=50').then(res => res.ok ? res.json() : null),
+        fetch('/api/spots?limit=100').then(res => res.ok ? res.json() : null),
+        fetch('/api/routes?status=published').then(res => res.ok ? res.json() : null),
+      ])
+
+      // Process bounties
+      if (bountiesResult.status === 'fulfilled' && bountiesResult.value) {
+        const data = bountiesResult.value
+        const apiBounties = data.bounties || data.data || []
+        if (apiBounties.length > 0) {
+          setBounties(apiBounties)
+        }
+        // else keep fallback
+      }
+
+      // Process spots
+      if (spotsResult.status === 'fulfilled' && spotsResult.value) {
+        const data = spotsResult.value
+        const apiSpots = data.spots || data.data || []
+        if (apiSpots.length > 0) {
+          setSpots(apiSpots)
+        }
+      }
+
+      // Process routes
+      if (routesResult.status === 'fulfilled' && routesResult.value) {
+        const data = routesResult.value
+        const apiRoutes = data.routes || data.data || []
+        if (apiRoutes.length > 0) {
+          setRoutes(apiRoutes)
+        }
+      }
+
+      setIsLoading(false)
+    }
+
+    fetchData()
+  }, [])
+
+  // Compute dynamic stats from fetched data
+  const stats = useMemo(() => {
+    const activeBounties = bounties.filter(b => b.status === 'open' || b.status === 'in_progress').length
+    const totalPostedCents = bounties.reduce((sum, b) => sum + b.amountCents, 0)
+    const cleanedCount = bounties.filter(b => b.status === 'completed').length
+    const availableRoutes = routes.filter(r => r.status === 'published').length
+
+    return {
+      activeBounties,
+      totalPosted: `$${(totalPostedCents / 100).toLocaleString()}`,
+      cleaned: cleanedCount,
+      availableRoutes,
+    }
+  }, [bounties, routes])
+
   return (
     <div className="min-h-screen">
       {/* Hero */}
@@ -83,80 +175,155 @@ export default function BountiesPage() {
       {/* Stats Bar */}
       <section className="bg-neutral-900 text-white py-6">
         <div className="section-container">
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className={`grid ${routes.length > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-center`}>
             <div>
-              <p className="text-2xl sm:text-3xl font-bold text-red-400">12</p>
+              <p className="text-2xl sm:text-3xl font-bold text-red-400">
+                {isLoading ? '...' : stats.activeBounties}
+              </p>
               <p className="text-sm text-neutral-400">Active Bounties</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-bold text-orange-400">$4,200</p>
+              <p className="text-2xl sm:text-3xl font-bold text-orange-400">
+                {isLoading ? '...' : stats.totalPosted}
+              </p>
               <p className="text-sm text-neutral-400">Total Posted</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-bold text-green-400">8</p>
-              <p className="text-sm text-neutral-400">Cleaned This Week</p>
+              <p className="text-2xl sm:text-3xl font-bold text-green-400">
+                {isLoading ? '...' : stats.cleaned}
+              </p>
+              <p className="text-sm text-neutral-400">Cleaned</p>
             </div>
+            {routes.length > 0 && (
+              <div>
+                <p className="text-2xl sm:text-3xl font-bold text-blue-400">
+                  {stats.availableRoutes}
+                </p>
+                <p className="text-sm text-neutral-400">Routes Available</p>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Map */}
+      {/* Combined Map */}
       <section className="py-8 lg:py-12">
         <div className="section-container">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-xl font-bold text-neutral-900">
               <MapPin className="w-5 h-5 inline-block mr-2 text-red-500" />
-              Bounty Map
+              Service Area Map
             </h2>
             <span className="text-sm text-neutral-500">
-              {bounties.length} bounties shown
+              {bounties.length} bounties
+              {spots.length > 0 && ` \u00B7 ${spots.length} spots`}
+              {routes.length > 0 && ` \u00B7 ${routes.length} routes`}
             </span>
           </div>
-          <BountyMap
+          <CombinedMap
             bounties={bounties}
+            spots={spots}
+            routes={routes}
             height="500px"
             showLegend={true}
           />
 
-          {/* Bounty List */}
-          <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bounties.map((bounty) => (
-              <div
-                key={bounty.id}
-                className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="font-semibold text-neutral-900">{bounty.title}</h3>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      bounty.status === 'open'
-                        ? 'bg-red-100 text-red-700'
+          {/* Bounty Cards */}
+          <div className="mt-8">
+            <h3 className="text-lg font-bold text-neutral-900 mb-4">Active Bounties</h3>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {bounties.map((bounty) => (
+                <div
+                  key={bounty.id}
+                  className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="font-semibold text-neutral-900">{bounty.title}</h3>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        bounty.status === 'open'
+                          ? 'bg-red-100 text-red-700'
+                          : bounty.status === 'in_progress'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-green-100 text-green-700'
+                      }`}
+                    >
+                      {bounty.status === 'open'
+                        ? 'Open'
                         : bounty.status === 'in_progress'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-green-100 text-green-700'
-                    }`}
-                  >
-                    {bounty.status === 'open'
-                      ? 'Open'
-                      : bounty.status === 'in_progress'
-                      ? 'In Progress'
-                      : 'Completed'}
-                  </span>
+                        ? 'In Progress'
+                        : 'Completed'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-neutral-600 mb-4 line-clamp-2">
+                    {bounty.description}
+                  </p>
+                  <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
+                    <span className="text-lg font-bold text-green-600">
+                      ${(bounty.amountCents / 100).toFixed(0)}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      {bounty.pledgeCount} {bounty.pledgeCount === 1 ? 'pledge' : 'pledges'}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-sm text-neutral-600 mb-4 line-clamp-2">
-                  {bounty.description}
-                </p>
-                <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
-                  <span className="text-lg font-bold text-green-600">
-                    ${(bounty.amountCents / 100).toFixed(0)}
-                  </span>
-                  <span className="text-xs text-neutral-500">
-                    {bounty.pledgeCount} {bounty.pledgeCount === 1 ? 'pledge' : 'pledges'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+
+          {/* Routes Section */}
+          {routes.length > 0 && (
+            <div className="mt-10">
+              <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                <RouteIcon className="w-5 h-5 text-green-600" />
+                Available Routes
+              </h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {routes.map((route) => (
+                  <div
+                    key={route.id}
+                    className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-neutral-900">{route.displayName}</h4>
+                        <p className="text-xs text-neutral-500 mt-0.5">{route.code}</p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          ROUTE_STATUS_COLORS[route.status] || 'bg-neutral-100 text-neutral-600'
+                        }`}
+                      >
+                        {ROUTE_STATUS_LABELS[route.status] || route.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-neutral-500 mb-3">
+                      {route.lengthMeters && (
+                        <span>{(route.lengthMeters / 1000).toFixed(1)} km</span>
+                      )}
+                      {route.estimatedMinutes && (
+                        <span>{route.estimatedMinutes} min</span>
+                      )}
+                      <span>{route.checkpoints.length} checkpoints</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
+                      <span className="text-lg font-bold text-green-600">
+                        ${(route.payoutAmount / 100).toFixed(0)}
+                      </span>
+                      {route.status === 'published' && (
+                        <Link
+                          href="/worker/signup"
+                          className="text-sm font-medium text-green-600 hover:text-green-700 transition-colors"
+                        >
+                          Claim Route &rarr;
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

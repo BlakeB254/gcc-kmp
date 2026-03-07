@@ -19,6 +19,7 @@ data class SpotUiState(
     val capturedPhotoUrls: List<String> = emptyList(),
     val currentLat: Double = 41.8604,
     val currentLng: Double = -87.7225,
+    val affectedRadiusMeters: Double = 15.0,
     val description: String = "",
     val isSubmitting: Boolean = false,
     val submittedReport: CommunityReport? = null,
@@ -46,6 +47,10 @@ class SpotViewModel(
 
     fun setDescription(text: String) {
         _uiState.value = _uiState.value.copy(description = text)
+    }
+
+    fun setRadius(meters: Double) {
+        _uiState.value = _uiState.value.copy(affectedRadiusMeters = meters)
     }
 
     fun nextPhase() {
@@ -78,6 +83,7 @@ class SpotViewModel(
                     lng = state.currentLng,
                     description = state.description.ifBlank { null },
                     mediaUrls = state.capturedPhotoUrls,
+                    affectedRadiusMeters = state.affectedRadiusMeters,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)
