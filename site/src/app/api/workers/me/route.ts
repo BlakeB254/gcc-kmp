@@ -33,6 +33,11 @@ export async function GET(request: NextRequest) {
     const workerId = await getAuthenticatedWorkerId(request)
 
     if (!workerId) {
+      // Check if mobile request - return ApiResponse format
+      const isMobileReq = request.headers.get('authorization')?.startsWith('Bearer ')
+      if (isMobileReq) {
+        return NextResponse.json({ data: null, success: false, message: 'Not authenticated' }, { status: 401 })
+      }
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
@@ -43,6 +48,10 @@ export async function GET(request: NextRequest) {
       .limit(1)
 
     if (!worker) {
+      const isMobileReq = request.headers.get('authorization')?.startsWith('Bearer ')
+      if (isMobileReq) {
+        return NextResponse.json({ data: null, success: false, message: 'Worker not found' }, { status: 404 })
+      }
       return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
     }
 
