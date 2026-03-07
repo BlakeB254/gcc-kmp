@@ -119,6 +119,10 @@ class LoginViewModel(
         _uiState.value = _uiState.value.copy(error = null)
     }
 
+    fun setError(message: String) {
+        _uiState.value = _uiState.value.copy(error = message, isLoading = false)
+    }
+
     fun cancel2FA() {
         _uiState.value = LoginUiState()
     }

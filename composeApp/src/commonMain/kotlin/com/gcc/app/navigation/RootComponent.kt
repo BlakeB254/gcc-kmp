@@ -25,7 +25,7 @@ class RootComponent(
             return when {
                 tm.isLoggedIn() && !tm.isTokenExpired() -> Screen.BiometricGate
                 tm.isLoggedIn() && tm.isTokenExpired() -> {
-                    tm.clearToken()
+                    // Don't clear token here — keep it so LoginScreen can offer Face ID
                     Screen.Login
                 }
                 else -> Screen.Login

@@ -42,8 +42,8 @@ fun LoginScreen(
         logoVisible = true
         delay(300)
         cardVisible = true
-        // Check if Face ID sign-in is possible
-        hasStoredToken = tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()
+        // Check if Face ID sign-in is possible (show even with expired token — user still has an account)
+        hasStoredToken = tokenManager.isLoggedIn()
         biometricAvailable = biometricAuth.isBiometricAvailable()
     }
 
@@ -219,7 +219,7 @@ fun LoginScreen(
                             enabled = email.isNotBlank() && password.isNotBlank(),
                         )
 
-                        // Face ID quick sign-in (when stored valid token exists)
+                        // Face ID quick sign-in
                         if (hasStoredToken && biometricAvailable) {
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -228,7 +228,14 @@ fun LoginScreen(
                                 onClick = {
                                     scope.launch {
                                         val success = biometricAuth.authenticate("Sign in to GCC")
-                                        if (success) onLoginSuccess()
+                                        if (success) {
+                                            if (!tokenManager.isTokenExpired()) {
+                                                onLoginSuccess()
+                                            } else {
+                                                // Token expired — Face ID passed but need fresh login
+                                                viewModel.setError("Session expired. Please sign in with your password.")
+                                            }
+                                        }
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
