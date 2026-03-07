@@ -29,11 +29,40 @@ open class TokenManager(private val settings: Settings = Settings()) {
     fun getToken(): String? = _token.value
 
     fun clearToken() {
+        // Save token for biometric re-auth before clearing active session
+        _token.value?.let { settings.putString(KEY_BIOMETRIC_TOKEN, it) }
         settings.remove(KEY_AUTH_TOKEN)
         _token.value = null
     }
 
     fun isLoggedIn(): Boolean = _token.value != null
+
+    /** Check if a previous session token exists for biometric re-authentication. */
+    fun hasBiometricToken(): Boolean {
+        val biometricToken = settings.getStringOrNull(KEY_BIOMETRIC_TOKEN) ?: return false
+        // Check it's not expired
+        val exp = getJwtClaim(biometricToken, "exp") ?: return false
+        val expSeconds = exp.toLongOrNull() ?: return false
+        return currentTimeSeconds() < expSeconds
+    }
+
+    /** Restore the biometric token as the active session token. Returns true if successful. */
+    fun restoreBiometricToken(): Boolean {
+        val biometricToken = settings.getStringOrNull(KEY_BIOMETRIC_TOKEN) ?: return false
+        val exp = getJwtClaim(biometricToken, "exp") ?: return false
+        val expSeconds = exp.toLongOrNull() ?: return false
+        if (currentTimeSeconds() >= expSeconds) {
+            settings.remove(KEY_BIOMETRIC_TOKEN)
+            return false
+        }
+        saveToken(biometricToken)
+        return true
+    }
+
+    /** Clear biometric token (e.g., when user explicitly disables biometric login). */
+    fun clearBiometricToken() {
+        settings.remove(KEY_BIOMETRIC_TOKEN)
+    }
 
     /** Check if onboarding has been completed (stored as a boolean setting). */
     fun isOnboardingComplete(): Boolean = settings.getBoolean(KEY_ONBOARDING_COMPLETE, false)
@@ -116,6 +145,7 @@ open class TokenManager(private val settings: Settings = Settings()) {
 
     companion object {
         private const val KEY_AUTH_TOKEN = "auth_token"
+        private const val KEY_BIOMETRIC_TOKEN = "biometric_token"
         private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
 
         /** Platform-independent current time in seconds since epoch. */

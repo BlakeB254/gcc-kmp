@@ -1,22 +1,135 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.theme.GccGold
 import com.gcc.app.ui.theme.GccGoldDark
+import com.gcc.app.ui.theme.GccGreen
+import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.model.*
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+
+// ── Reusable admin components ────────────────────────────────────────
+
+@Composable
+private fun StatCard(label: String, value: String, icon: String, color: Color = GccGold) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(icon, fontSize = 28.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(value, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = color)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = GccGoldDark,
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+    )
+}
+
+@Composable
+private fun AdminListItem(
+    title: String,
+    subtitle: String,
+    trailing: String? = null,
+    trailingColor: Color = GccGold,
+    onClick: (() -> Unit)? = null,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (trailing != null) {
+                Text(trailing, style = MaterialTheme.typography.labelLarge, color = trailingColor, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// ── Admin Panel Tabs ─────────────────────────────────────────────────
+
+private enum class AdminTab(val label: String, val icon: String) {
+    OVERVIEW("Overview", "\uD83D\uDCCA"),
+    WORKERS("Workers", "\uD83D\uDC77"),
+    ROUTES("Routes", "\uD83D\uDDFA"),
+    BOUNTIES("Bounties", "\uD83C\uDFAF"),
+}
+
+// ── Main Screen ──────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminPanelScreen(
     onBack: () -> Unit = {},
 ) {
+    val apiClient = koinInject<GccApiClient>()
+    val scope = rememberCoroutineScope()
+
+    var selectedTab by remember { mutableStateOf(AdminTab.OVERVIEW) }
+    var stats by remember { mutableStateOf<AdminStatsResponse?>(null) }
+    var workers by remember { mutableStateOf<List<Worker>>(emptyList()) }
+    var routes by remember { mutableStateOf<List<Route>>(emptyList()) }
+    var bounties by remember { mutableStateOf<List<Bounty>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(selectedTab) {
+        isLoading = true
+        error = null
+        try {
+            when (selectedTab) {
+                AdminTab.OVERVIEW -> stats = apiClient.getAdminStats()
+                AdminTab.WORKERS -> workers = apiClient.getAdminWorkers()
+                AdminTab.ROUTES -> routes = apiClient.getAdminRoutes()
+                AdminTab.BOUNTIES -> bounties = apiClient.getAdminBounties()
+            }
+        } catch (e: Exception) {
+            error = e.message ?: "Failed to load data"
+        }
+        isLoading = false
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
@@ -34,31 +147,165 @@ fun AdminPanelScreen(
             )
         },
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+            // Tab row
+            ScrollableTabRow(
+                selectedTabIndex = selectedTab.ordinal,
+                containerColor = GccGoldDark.copy(alpha = 0.1f),
+                contentColor = GccGoldDark,
+                edgePadding = 8.dp,
             ) {
-                Text(
-                    "\uD83D\uDEE1\uFE0F",
-                    fontSize = 64.sp,
-                )
-                Text(
-                    "Admin Panel",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                    color = GccGoldDark,
-                )
-                Text(
-                    "Management tools coming soon",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = GccGold,
-                )
+                AdminTab.entries.forEach { tab ->
+                    Tab(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        text = { Text("${tab.icon} ${tab.label}") },
+                    )
+                }
             }
+
+            when {
+                isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = GccGold)
+                }
+                error != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(error!!, color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { selectedTab = selectedTab }) { Text("Retry") }
+                    }
+                }
+                else -> when (selectedTab) {
+                    AdminTab.OVERVIEW -> OverviewTab(stats)
+                    AdminTab.WORKERS -> WorkersTab(workers, apiClient)
+                    AdminTab.ROUTES -> RoutesTab(routes)
+                    AdminTab.BOUNTIES -> BountiesTab(bounties, apiClient)
+                }
+            }
+        }
+    }
+}
+
+// ── Overview Tab ─────────────────────────────────────────────────────
+
+@Composable
+private fun OverviewTab(stats: AdminStatsResponse?) {
+    if (stats == null) return
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item { SectionHeader("Platform") }
+        item { StatCard("Total Workers", stats.totalWorkers.toString(), "\uD83D\uDC77") }
+        item { StatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen) }
+        item { StatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", Color(0xFFFF9800)) }
+        item { SectionHeader("Operations") }
+        item { StatCard("Active Jobs", stats.activeJobs.toString(), "\u26A1", GccGreen) }
+        item { StatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
+        item { StatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA") }
+        item { SectionHeader("Bounties") }
+        item { StatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen) }
+        item { StatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0") }
+        item { SectionHeader("Issues") }
+        item { StatCard("Open Disputes", stats.openDisputes.toString(), "\u26A0\uFE0F", if (stats.openDisputes > 0) Color(0xFFFF5252) else GccGold) }
+    }
+}
+
+// ── Workers Tab ──────────────────────────────────────────────────────
+
+@Composable
+private fun WorkersTab(workers: List<Worker>, apiClient: GccApiClient) {
+    val scope = rememberCoroutineScope()
+    var workerList by remember(workers) { mutableStateOf(workers) }
+
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item {
+            Text(
+                "${workerList.size} workers",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        items(workerList, key = { it.id }) { worker ->
+            val verified = worker.verification.status == VerificationStatus.APPROVED
+            AdminListItem(
+                title = worker.name,
+                subtitle = "${worker.email} \u2022 ${if (verified) "Verified" else worker.verification.status.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                trailing = worker.role,
+                trailingColor = if (worker.role == "admin") GccGold else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ── Routes Tab ───────────────────────────────────────────────────────
+
+@Composable
+private fun RoutesTab(routes: List<Route>) {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item {
+            Text(
+                "${routes.size} routes",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        items(routes, key = { it.id }) { route ->
+            val distMi = route.distanceMeters?.let { m -> val mi = (m / 1609.34 * 10).toInt() / 10.0; "${mi} mi" } ?: "N/A"
+            AdminListItem(
+                title = route.displayName,
+                subtitle = "$distMi \u2022 ${route.checkpoints.size} checkpoints \u2022 ${route.status.name.lowercase()}",
+                trailing = route.payoutAmount?.let { "$${it}" },
+                trailingColor = GccGreen,
+            )
+        }
+    }
+}
+
+// ── Bounties Tab ─────────────────────────────────────────────────────
+
+@Composable
+private fun BountiesTab(bounties: List<Bounty>, apiClient: GccApiClient) {
+    val scope = rememberCoroutineScope()
+
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item {
+            Text(
+                "${bounties.size} bounties",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        items(bounties, key = { it.id }) { bounty ->
+            val statusColor = when (bounty.status) {
+                BountyStatus.OPEN -> GccGreen
+                BountyStatus.CLAIMED, BountyStatus.FIRST_REFUSAL -> Color(0xFFFF9800)
+                BountyStatus.COMPLETED -> GccGold
+                BountyStatus.IN_PROGRESS -> Color(0xFF2196F3)
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            AdminListItem(
+                title = bounty.title,
+                subtitle = "${bounty.status.name.lowercase().replace('_', ' ')} \u2022 ${bounty.communityArea ?: "Unknown area"}",
+                trailing = "$${bounty.amount}",
+                trailingColor = statusColor,
+            )
         }
     }
 }
