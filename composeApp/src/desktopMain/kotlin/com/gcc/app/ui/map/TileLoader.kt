@@ -14,9 +14,15 @@ import kotlin.math.*
  *
  * Tiles are 256x256 PNG images fetched from the OSM tile server.
  * A global in-memory cache avoids re-downloading tiles that have already been
- * loaded (shared across all GccMap instances — dashboard, feed mini-maps, etc.).
+ * loaded (shared across all GccMap instances -- dashboard, feed mini-maps, etc.).
  *
  * On Android/iOS, real MapLibre vector tiles are used instead (this is desktop-only).
+ *
+ * NOTE: This is functionally identical to `adminApp/.../AdminTileLoader.kt`
+ * (only class name and User-Agent string differ). Both use JVM-specific APIs
+ * (java.net, javax.imageio, Compose Desktop ImageBitmap) which prevents moving
+ * them to the shared KMP module. If a shared jvmMain source set is added in the
+ * future, these should be consolidated into a single parameterized loader.
  */
 object TileLoader {
     private val cache = ConcurrentHashMap<String, ImageBitmap?>()

@@ -16,7 +16,11 @@ import kotlin.math.*
  * A global in-memory cache avoids re-downloading tiles that have already been
  * loaded (shared across all AdminMap instances).
  *
- * This is a copy of the composeApp TileLoader adapted for the admin package.
+ * NOTE: This is functionally identical to `composeApp/.../TileLoader.kt`
+ * (only class name and User-Agent string differ). Both use JVM-specific APIs
+ * (java.net, javax.imageio, Compose Desktop ImageBitmap) which prevents moving
+ * them to the shared KMP module. If a shared jvmMain source set is added in the
+ * future, these should be consolidated into a single parameterized loader.
  */
 object AdminTileLoader {
     private val cache = ConcurrentHashMap<String, ImageBitmap?>()

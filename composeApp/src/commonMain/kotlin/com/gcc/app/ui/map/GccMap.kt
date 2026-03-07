@@ -10,14 +10,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.MapGpsBlue
+import com.gcc.shared.geo.MapProjection
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.Coordinates
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.ln
-import kotlin.math.tan
 
 /**
  * Data class for a long-press context pin marker.
@@ -105,53 +102,38 @@ fun GpsDot(modifier: Modifier = Modifier) {
 
 /**
  * Simple Mercator projection converting lat/lng to pixel coordinates.
+ * Delegates to [MapProjection.latLngToPixel] and wraps the result as a Compose [Offset].
  */
 fun latLngToPixel(
     lat: Double, lng: Double,
     centerLat: Double, centerLng: Double,
     zoom: Double, canvasWidth: Float, canvasHeight: Float,
 ): Offset {
-    val scale = (256.0 * (1 shl zoom.toInt())).toFloat()
-    val worldX = ((lng + 180.0) / 360.0 * scale).toFloat()
-    val worldY = ((1.0 - ln(tan(lat * PI / 180.0) + 1.0 / cos(lat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
-    val centerWorldX = ((centerLng + 180.0) / 360.0 * scale).toFloat()
-    val centerWorldY = ((1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
-    return Offset(
-        x = canvasWidth / 2f + (worldX - centerWorldX),
-        y = canvasHeight / 2f + (worldY - centerWorldY),
-    )
+    val (px, py) = MapProjection.latLngToPixel(lat, lng, centerLat, centerLng, zoom, canvasWidth, canvasHeight)
+    return Offset(px, py)
 }
 
 /**
  * Inverse Mercator: convert pixel Y to latitude.
+ * Delegates to [MapProjection.pixelToLat].
  */
 fun pixelToLat(
     pixelY: Float,
     centerLat: Double,
     zoom: Double,
     canvasHeight: Float,
-): Double {
-    val scale = (256.0 * (1 shl zoom.toInt()))
-    val centerWorldY = (1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale
-    val worldY = centerWorldY + (pixelY - canvasHeight / 2.0)
-    val n = PI - 2.0 * PI * worldY / scale
-    return 180.0 / PI * kotlin.math.atan(0.5 * (kotlin.math.exp(n) - kotlin.math.exp(-n)))
-}
+): Double = MapProjection.pixelToLat(pixelY, centerLat, zoom, canvasHeight)
 
 /**
  * Inverse Mercator: convert pixel X to longitude.
+ * Delegates to [MapProjection.pixelToLng].
  */
 fun pixelToLng(
     pixelX: Float,
     centerLng: Double,
     zoom: Double,
     canvasWidth: Float,
-): Double {
-    val scale = (256.0 * (1 shl zoom.toInt()))
-    val centerWorldX = (centerLng + 180.0) / 360.0 * scale
-    val worldX = centerWorldX + (pixelX - canvasWidth / 2.0)
-    return worldX / scale * 360.0 - 180.0
-}
+): Double = MapProjection.pixelToLng(pixelX, centerLng, zoom, canvasWidth)
 
 /** Format a coordinate value to 4 decimal places (no String.format). */
 internal fun formatCoord(value: Double): String {

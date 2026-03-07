@@ -13,19 +13,14 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.setBody
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
+import com.gcc.shared.serialization.GccJson
 
 class GccApiClient(
     val baseUrl: String,
     private val tokenProvider: suspend () -> String? = { null },
     httpClientOverride: HttpClient? = null,
 ) {
-    val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        encodeDefaults = true
-        prettyPrint = false
-    }
+    val json = GccJson
 
     val httpClient = httpClientOverride ?: HttpClient {
         install(ContentNegotiation) {

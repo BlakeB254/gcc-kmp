@@ -1,5 +1,6 @@
 package com.gcc.shared.model
 
+import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -25,8 +26,8 @@ data class Worker(
 @Serializable
 data class WorkerAddress(
     val street: String,
-    val city: String = "Chicago",
-    val state: String = "IL",
+    val city: String = GccConstants.DEFAULT_CITY,
+    val state: String = GccConstants.DEFAULT_STATE,
     val zip: String,
     val neighborhood: String? = null,
     val isNorthLawndale: Boolean? = null,

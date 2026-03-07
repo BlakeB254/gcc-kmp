@@ -1,5 +1,6 @@
 package com.gcc.shared.model
 
+import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -27,8 +28,8 @@ data class WaitlistEntry(
 data class WaitlistLocation(
     val zip: String? = null,
     val neighborhood: String? = null,
-    val city: String = "Chicago",
-    val state: String = "IL"
+    val city: String = GccConstants.DEFAULT_CITY,
+    val state: String = GccConstants.DEFAULT_STATE,
 )
 
 @Serializable

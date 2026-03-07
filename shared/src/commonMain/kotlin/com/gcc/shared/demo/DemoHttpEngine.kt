@@ -8,12 +8,9 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import com.gcc.shared.serialization.GccJson
 
-private val json = Json {
-    encodeDefaults = true
-    ignoreUnknownKeys = true
-}
+private val json = GccJson
 
 private val jsonHeaders = headersOf(HttpHeaders.ContentType, "application/json")
 
@@ -301,11 +298,7 @@ fun createDemoHttpEngine(): MockEngine = MockEngine { request ->
 fun createDemoApiClient(): GccApiClient {
     val mockClient = HttpClient(createDemoHttpEngine()) {
         install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-                encodeDefaults = true
-            })
+            json(GccJson)
         }
     }
     return GccApiClient(

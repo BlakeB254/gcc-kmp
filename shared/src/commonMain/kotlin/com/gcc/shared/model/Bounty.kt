@@ -1,5 +1,6 @@
 package com.gcc.shared.model
 
+import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -16,7 +17,7 @@ data class Bounty(
     val locationLat: Double,
     val locationLng: Double,
     val radiusMeters: Double = 200.0,
-    val city: String = "Chicago",
+    val city: String = GccConstants.DEFAULT_CITY,
     val communityArea: String? = null,
     val neighborhood: String? = null,
     val triggerReportId: Int? = null,

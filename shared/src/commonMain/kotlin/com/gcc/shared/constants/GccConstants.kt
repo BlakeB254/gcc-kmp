@@ -12,6 +12,10 @@ object GccConstants {
     // North Lawndale
     val NORTH_LAWNDALE_CENTER = Coordinates(lng = -87.7158, lat = 41.8666)
 
+    // Defaults
+    const val DEFAULT_CITY = "Chicago"
+    const val DEFAULT_STATE = "IL"
+
     // API
     const val DEFAULT_API_PORT = 7310
 }

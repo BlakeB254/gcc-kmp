@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -13,10 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 enum class CheckpointStatus { COMPLETED, CURRENT, UPCOMING }
 
@@ -137,14 +134,14 @@ class ActiveJobViewModel(
         if (checkpoints.isEmpty()) return
 
         val currentCheckpoint = checkpoints[currentIndex].checkpoint
-        val distance = haversineDistance(
+        val distance = GeofenceVerification.distanceMeters(
             location.lat, location.lng,
             currentCheckpoint.coordinates.lat, currentCheckpoint.coordinates.lng,
         )
         val withinGeofence = distance <= currentCheckpoint.geofenceRadius
 
         val updatedCheckpoints = checkpoints.mapIndexed { index, item ->
-            val cpDistance = haversineDistance(
+            val cpDistance = GeofenceVerification.distanceMeters(
                 location.lat, location.lng,
                 item.checkpoint.coordinates.lat, item.checkpoint.coordinates.lng,
             )
@@ -186,19 +183,4 @@ class ActiveJobViewModel(
         }
     }
 
-    companion object {
-        private const val EARTH_RADIUS_METERS = 6371000.0
-        private fun Double.toRad(): Double = this * kotlin.math.PI / 180.0
-
-        /** Haversine distance in meters between two lat/lng points */
-        fun haversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-            val dLat = (lat2 - lat1).toRad()
-            val dLng = (lng2 - lng1).toRad()
-            val a = sin(dLat / 2) * sin(dLat / 2) +
-                cos(lat1.toRad()) * cos(lat2.toRad()) *
-                sin(dLng / 2) * sin(dLng / 2)
-            val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-            return EARTH_RADIUS_METERS * c
-        }
-    }
 }

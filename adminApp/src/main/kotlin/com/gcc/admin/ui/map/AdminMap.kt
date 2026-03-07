@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.admin.ui.theme.*
+import com.gcc.shared.geo.MapProjection
 import com.gcc.shared.model.*
 import kotlinx.coroutines.launch
 import kotlin.math.*
@@ -58,50 +59,32 @@ private val ServiceAreaFill = Color(0x1A8B5CF6)          // purple 10%
 
 /**
  * Simple Mercator projection converting lat/lng to pixel coordinates
- * relative to the canvas center. Matches the composeApp implementation.
+ * relative to the canvas center. Delegates to [MapProjection.latLngToPixel].
  */
 fun adminLatLngToPixel(
     lat: Double, lng: Double,
     centerLat: Double, centerLng: Double,
     zoom: Double, canvasWidth: Float, canvasHeight: Float,
 ): Offset {
-    val scale = (256.0 * (1 shl zoom.toInt())).toFloat()
-    val worldX = ((lng + 180.0) / 360.0 * scale).toFloat()
-    val worldY = ((1.0 - ln(tan(lat * PI / 180.0) + 1.0 / cos(lat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
-    val centerWorldX = ((centerLng + 180.0) / 360.0 * scale).toFloat()
-    val centerWorldY = ((1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale).toFloat()
-    return Offset(
-        x = canvasWidth / 2f + (worldX - centerWorldX),
-        y = canvasHeight / 2f + (worldY - centerWorldY),
-    )
+    val (px, py) = MapProjection.latLngToPixel(lat, lng, centerLat, centerLng, zoom, canvasWidth, canvasHeight)
+    return Offset(px, py)
 }
 
-/** Inverse Mercator: convert pixel Y to latitude. */
+/** Inverse Mercator: convert pixel Y to latitude. Delegates to [MapProjection.pixelToLat]. */
 fun adminPixelToLat(
     pixelY: Float,
     centerLat: Double,
     zoom: Double,
     canvasHeight: Float,
-): Double {
-    val scale = (256.0 * (1 shl zoom.toInt()))
-    val centerWorldY = (1.0 - ln(tan(centerLat * PI / 180.0) + 1.0 / cos(centerLat * PI / 180.0)) / PI) / 2.0 * scale
-    val worldY = centerWorldY + (pixelY - canvasHeight / 2.0)
-    val n = PI - 2.0 * PI * worldY / scale
-    return 180.0 / PI * atan(0.5 * (exp(n) - exp(-n)))
-}
+): Double = MapProjection.pixelToLat(pixelY, centerLat, zoom, canvasHeight)
 
-/** Inverse Mercator: convert pixel X to longitude. */
+/** Inverse Mercator: convert pixel X to longitude. Delegates to [MapProjection.pixelToLng]. */
 fun adminPixelToLng(
     pixelX: Float,
     centerLng: Double,
     zoom: Double,
     canvasWidth: Float,
-): Double {
-    val scale = (256.0 * (1 shl zoom.toInt()))
-    val centerWorldX = (centerLng + 180.0) / 360.0 * scale
-    val worldX = centerWorldX + (pixelX - canvasWidth / 2.0)
-    return worldX / scale * 360.0 - 180.0
-}
+): Double = MapProjection.pixelToLng(pixelX, centerLng, zoom, canvasWidth)
 
 // ── Main Admin Map Composable ──────────────────────────────────────────────
 
