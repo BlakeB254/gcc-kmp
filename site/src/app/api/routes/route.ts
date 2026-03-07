@@ -44,6 +44,8 @@ export async function GET(request: Request) {
         estimatedMinutes: routes.estimatedMinutes,
         status: routes.status,
         payoutAmount: routes.payoutAmount,
+        createdAt: routes.createdAt,
+        updatedAt: routes.updatedAt,
       })
       .from(routes)
       .leftJoin(serviceAreas, eq(routes.serviceAreaId, serviceAreas.id))
@@ -71,21 +73,28 @@ export async function GET(request: Request) {
       }
     }
 
-    // Combine routes with checkpoints
+    // Combine routes with checkpoints (field names match Kotlin Route model)
     const result = routeList.map((route) => ({
-      ...route,
-      lengthMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
-      estimatedMinutes: route.estimatedMinutes ? parseFloat(route.estimatedMinutes) : null,
-      payoutAmount: parseFloat(route.payoutAmount || '10000'),
+      id: route.id,
+      code: route.code,
+      displayName: route.displayName,
+      serviceAreaId: route.serviceAreaId,
+      geometry: route.geometry,
+      status: route.status,
+      distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
+      estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
+      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
       checkpoints: (checkpointsMap.get(route.id) || []).map((cp) => ({
         name: cp.name,
         sequenceOrder: cp.sequenceOrder,
-        coordinates: cp.coordinates as [number, number],
+        coordinates: { lat: (cp.coordinates as [number, number])?.[1] ?? 0, lng: (cp.coordinates as [number, number])?.[0] ?? 0 },
         photoRequired: cp.photoRequired ?? true,
-        photoInstructions: cp.photoInstructions,
         geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
-        type: cp.type,
+        type: cp.type ?? 'photo_point',
       })),
+      imageUrl: null,
+      createdAt: new Date(route.createdAt).toISOString(),
+      updatedAt: new Date(route.updatedAt).toISOString(),
     }))
 
     return NextResponse.json({ data: result, success: true })
