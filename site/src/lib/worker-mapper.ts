@@ -1,3 +1,11 @@
+/** Convert a Postgres timestamp string to ISO 8601 format for kotlinx.datetime */
+function toIso8601(ts: unknown): string {
+  if (!ts) return new Date().toISOString()
+  const str = String(ts)
+  // Postgres returns "2026-03-07 03:54:34.968+00" — needs T separator and full TZ offset
+  return new Date(str).toISOString()
+}
+
 /**
  * Maps a flat DB worker row into the nested Worker shape the mobile app expects.
  */
@@ -32,7 +40,7 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       jobsCompleted: Number(row.statsJobsCompleted ?? 0),
       totalEarnings: Number(row.statsTotalEarnings ?? 0),
       averageRating: row.statsAverageRating ? Number(row.statsAverageRating) : null,
-      lastJobAt: row.statsLastJobAt ?? null,
+      lastJobAt: row.statsLastJobAt ? toIso8601(row.statsLastJobAt) : null,
     },
     earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
     role: 'worker',
@@ -42,7 +50,7 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       smsEnabled: row.notificationsSmsEnabled ?? true,
       emailEnabled: row.notificationsEmailEnabled ?? true,
     },
-    createdAt: row.createdAt ?? new Date().toISOString(),
-    updatedAt: row.updatedAt ?? new Date().toISOString(),
+    createdAt: toIso8601(row.createdAt),
+    updatedAt: toIso8601(row.updatedAt),
   }
 }
