@@ -2,6 +2,8 @@
  * Thank Volunteer API
  * POST /api/community-reports/[id]/thank - Thank a volunteer for their cleanup
  */
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { communityReports, communityReportThanks } from '@/db/schema'
