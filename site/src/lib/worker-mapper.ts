@@ -1,0 +1,48 @@
+/**
+ * Maps a flat DB worker row into the nested Worker shape the mobile app expects.
+ */
+export function mapWorkerToMobile(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    emailVerified: row.emailVerified ?? false,
+    address: {
+      street: row.addressStreet ?? '',
+      city: row.addressCity ?? 'Chicago',
+      state: row.addressState ?? 'IL',
+      zip: row.addressZip ?? '',
+      neighborhood: row.addressNeighborhood ?? null,
+      isNorthLawndale: row.addressIsNorthLawndale ?? null,
+    },
+    verification: {
+      status: row.verificationStatus ?? 'pending',
+      governmentIdStatus: row.verificationGovernmentIdStatus ?? 'pending',
+      proofOfAddressStatus: row.verificationProofOfAddressStatus ?? 'pending',
+      reviewNotes: row.verificationReviewNotes ?? null,
+    },
+    stripe: {
+      accountId: row.stripeAccountId ?? null,
+      onboardingStatus: row.stripeOnboardingStatus ?? 'not_started',
+      instantPayoutsEnabled: row.stripeInstantPayoutsEnabled ?? false,
+      defaultPayoutMethod: row.stripeDefaultPayoutMethod ?? 'standard',
+    },
+    stats: {
+      jobsCompleted: Number(row.statsJobsCompleted ?? 0),
+      totalEarnings: Number(row.statsTotalEarnings ?? 0),
+      averageRating: row.statsAverageRating ? Number(row.statsAverageRating) : null,
+      lastJobAt: row.statsLastJobAt ?? null,
+    },
+    earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
+    role: 'worker',
+    referralCode: row.referralCode ?? null,
+    notifications: {
+      pushEnabled: row.notificationsPushEnabled ?? false,
+      smsEnabled: row.notificationsSmsEnabled ?? true,
+      emailEnabled: row.notificationsEmailEnabled ?? true,
+    },
+    createdAt: row.createdAt ?? new Date().toISOString(),
+    updatedAt: row.updatedAt ?? new Date().toISOString(),
+  }
+}
