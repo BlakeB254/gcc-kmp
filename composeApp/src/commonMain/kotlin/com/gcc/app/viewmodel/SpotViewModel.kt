@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -30,6 +31,7 @@ data class SpotUiState(
 
 class SpotViewModel(
     private val apiClient: GccApiClient,
+    private val tokenManager: TokenManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(SpotUiState())
@@ -84,6 +86,7 @@ class SpotViewModel(
                     description = state.description.ifBlank { null },
                     mediaUrls = state.capturedPhotoUrls,
                     affectedRadiusMeters = state.affectedRadiusMeters,
+                    reporterName = if (tokenManager.isAdmin()) "GCC" else null,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)

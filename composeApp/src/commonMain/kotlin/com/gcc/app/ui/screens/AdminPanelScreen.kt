@@ -94,6 +94,7 @@ private enum class AdminTab(val label: String, val icon: String) {
     WORKERS("Workers", "\uD83D\uDC77"),
     ROUTES("Routes", "\uD83D\uDDFA"),
     BOUNTIES("Bounties", "\uD83C\uDFAF"),
+    SPOTS("Spots", "\uD83D\uDCCD"),
 }
 
 // ── Main Screen ──────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ fun AdminPanelScreen(
     var workers by remember { mutableStateOf<List<Worker>>(emptyList()) }
     var routes by remember { mutableStateOf<List<Route>>(emptyList()) }
     var bounties by remember { mutableStateOf<List<Bounty>>(emptyList()) }
+    var spotReports by remember { mutableStateOf<List<CommunityReport>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -123,6 +125,7 @@ fun AdminPanelScreen(
                 AdminTab.WORKERS -> workers = apiClient.getAdminWorkers()
                 AdminTab.ROUTES -> routes = apiClient.getAdminRoutes()
                 AdminTab.BOUNTIES -> bounties = apiClient.getAdminBounties()
+                AdminTab.SPOTS -> spotReports = apiClient.getAdminSpotReports()
             }
         } catch (e: Exception) {
             error = e.message ?: "Failed to load data"
@@ -182,8 +185,9 @@ fun AdminPanelScreen(
                 else -> when (selectedTab) {
                     AdminTab.OVERVIEW -> OverviewTab(stats)
                     AdminTab.WORKERS -> WorkersTab(workers, apiClient)
-                    AdminTab.ROUTES -> RoutesTab(routes)
+                    AdminTab.ROUTES -> RoutesTab(routes, apiClient) { routes = it }
                     AdminTab.BOUNTIES -> BountiesTab(bounties, apiClient)
+                    AdminTab.SPOTS -> SpotsTab(spotReports)
                 }
             }
         }
@@ -249,29 +253,183 @@ private fun WorkersTab(workers: List<Worker>, apiClient: GccApiClient) {
 // ── Routes Tab ───────────────────────────────────────────────────────
 
 @Composable
-private fun RoutesTab(routes: List<Route>) {
+private fun RoutesTab(
+    routes: List<Route>,
+    apiClient: GccApiClient,
+    onRoutesUpdated: (List<Route>) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var routeList by remember(routes) { mutableStateOf(routes) }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         item {
             Text(
-                "${routes.size} routes",
+                "${routeList.size} routes",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
         }
-        items(routes, key = { it.id }) { route ->
+        items(routeList, key = { it.id }) { route ->
             val distMi = route.distanceMeters?.let { m -> val mi = (m / 1609.34 * 10).toInt() / 10.0; "${mi} mi" } ?: "N/A"
-            AdminListItem(
-                title = route.displayName,
-                subtitle = "$distMi \u2022 ${route.checkpoints.size} checkpoints \u2022 ${route.status.name.lowercase()}",
-                trailing = route.payoutAmount?.let { "$${it}" },
-                trailingColor = GccGreen,
-            )
+            val statusColor = when (route.status) {
+                RouteStatus.PUBLISHED -> GccGreen
+                RouteStatus.DRAFT -> Color.Gray
+                RouteStatus.ARCHIVED -> Color(0xFFFFC107)
+            }
+            val nextStatus = when (route.status) {
+                RouteStatus.PUBLISHED -> "draft"
+                RouteStatus.DRAFT -> "archived"
+                RouteStatus.ARCHIVED -> "published"
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(route.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text(
+                            "$distMi \u2022 ${route.checkpoints.size} checkpoints",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    route.payoutAmount?.let {
+                        Text(
+                            "$${it}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = GccGreen,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.clickable {
+                            scope.launch {
+                                try {
+                                    val updated = apiClient.updateRouteStatus(route.id, nextStatus)
+                                    routeList = routeList.map { if (it.id == route.id) updated else it }
+                                    onRoutesUpdated(routeList)
+                                } catch (_: Exception) { }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = statusColor.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            route.status.name.lowercase(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = statusColor,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+// ── Spots Tab ────────────────────────────────────────────────────────
+
+@Composable
+private fun SpotsTab(spotReports: List<CommunityReport>) {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item {
+            Text(
+                "${spotReports.size} spot reports",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        items(spotReports, key = { it.id }) { report ->
+            val reporterDisplay = if (report.reporterName == "GCC") "GCC" else (report.reporterName ?: "Anonymous")
+            val descSnippet = report.description?.take(60)?.let {
+                if ((report.description?.length ?: 0) > 60) "$it..." else it
+            } ?: "No description"
+            val mediaCount = report.mediaUrls.size
+            val statusColor = when (report.status) {
+                CommunityReportStatus.PENDING -> Color(0xFFFF9800)
+                CommunityReportStatus.VERIFIED -> GccGreen
+                CommunityReportStatus.RESOLVED -> GccGold
+                CommunityReportStatus.ACKNOWLEDGED -> Color(0xFF2196F3)
+                CommunityReportStatus.REJECTED -> Color(0xFFFF5252)
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                reporterDisplay,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = if (report.reporterName == "GCC") GccGreen else MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (mediaCount > 0) {
+                                Text(
+                                    " \u2022 $mediaCount photo${if (mediaCount != 1) "s" else ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(
+                            "${formatCoord(report.coordinates.lat)}, ${formatCoord(report.coordinates.lng)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            descSnippet,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = statusColor.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            report.status.name.lowercase(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = statusColor,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatCoord(value: Double): String {
+    val intPart = value.toInt()
+    val fracPart = ((kotlin.math.abs(value) - kotlin.math.abs(intPart.toDouble())) * 10000).toInt()
+    return "$intPart.${fracPart.toString().padStart(4, '0')}"
 }
 
 // ── Bounties Tab ─────────────────────────────────────────────────────

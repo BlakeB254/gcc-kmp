@@ -232,6 +232,9 @@ class GccApiClient(
     suspend fun updateRoute(routeId: Int, request: AdminRouteRequest): Route =
         putJson("/api/admin/routes/$routeId", request)
 
+    suspend fun updateRouteStatus(routeId: Int, status: String): Route =
+        putJson("/api/admin/routes/$routeId", mapOf("status" to status))
+
     suspend fun deleteRoute(routeId: Int) =
         deleteUnit("/api/admin/routes/$routeId")
 
@@ -291,4 +294,8 @@ class GccApiClient(
     // Address Changes
     suspend fun getAddressChanges(): List<AddressChangeRequest> =
         get("/api/admin/address-changes")
+
+    // Community Spot Reports
+    suspend fun getAdminSpotReports(): List<CommunityReport> =
+        get("/api/community-reports")
 }
