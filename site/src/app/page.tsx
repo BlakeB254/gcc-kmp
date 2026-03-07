@@ -1,6 +1,7 @@
 import { HeroSection } from '@/components/landing/HeroSection'
 import { DonateCTASection } from '@/components/landing/DonateCTASection'
 import { NeighborhoodMapSection } from '@/components/landing/NeighborhoodMapSection'
+import { BountyCTASection } from '@/components/landing/BountyCTASection'
 import { ImpactCounterSection } from '@/components/landing/ImpactCounterSection'
 import { FAQSection } from '@/components/landing/FAQSection'
 import { FooterSection } from '@/components/landing/FooterSection'
@@ -17,6 +18,9 @@ export default function HomePage() {
 
       {/* === NORTH LAWNDALE BLOCK MAP === */}
       <NeighborhoodMapSection />
+
+      {/* === COMMUNITY BOUNTIES === */}
+      <BountyCTASection />
 
       {/* === IMPACT & TRANSPARENCY === */}
       <ImpactCounterSection />

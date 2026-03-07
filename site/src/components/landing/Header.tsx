@@ -39,6 +39,7 @@ export function Header() {
   const navLinks = [
     { label: 'Workers', href: '/worker/benefits' },
     { label: 'Sponsors', href: '/sponsor/benefits' },
+    { label: 'Bounties', href: '/bounties' },
     { label: 'Impact', href: '/impact' },
     { label: 'FAQ', href: '/faq' },
   ]
