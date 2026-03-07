@@ -255,6 +255,40 @@ class GccApiClient(
         return response.body<ApiResponse<Bounty>>().data
     }
 
+    suspend fun getBountyAnalyticsStats(): BountyAnalyticsStats {
+        val response = httpClient.get("$baseUrl/api/admin/analytics/bounty-stats")
+        return response.body<ApiResponse<BountyAnalyticsStats>>().data
+    }
+
+    suspend fun getBountyTimeseries(days: Int = 30): List<BountyTimeseriesPoint> {
+        val response = httpClient.get("$baseUrl/api/admin/analytics/bounty-timeseries") {
+            parameter("days", days)
+        }
+        return response.body<ApiResponse<List<BountyTimeseriesPoint>>>().data
+    }
+
+    suspend fun getBountyByLocation(): List<BountyLocationStats> {
+        val response = httpClient.get("$baseUrl/api/admin/analytics/bounty-by-location")
+        return response.body<ApiResponse<List<BountyLocationStats>>>().data
+    }
+
+    suspend fun getBountyLeaderboard(limit: Int = 10): List<BountyPosterStats> {
+        val response = httpClient.get("$baseUrl/api/admin/analytics/bounty-leaderboard") {
+            parameter("limit", limit)
+        }
+        return response.body<ApiResponse<List<BountyPosterStats>>>().data
+    }
+
+    suspend fun claimBounty(bountyId: Int): Bounty {
+        val response = httpClient.post("$baseUrl/api/bounties/$bountyId/claim")
+        return response.body<ApiResponse<Bounty>>().data
+    }
+
+    suspend fun forceReassignBounty(bountyId: Int): Bounty {
+        val response = httpClient.put("$baseUrl/api/admin/bounties/$bountyId/force-reassign")
+        return response.body<ApiResponse<Bounty>>().data
+    }
+
     // Disputes
     suspend fun getAdminDisputes(status: String? = null): List<Dispute> {
         val response = httpClient.get("$baseUrl/api/admin/disputes") {
