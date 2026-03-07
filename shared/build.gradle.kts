@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
 }
 
 kotlin {
@@ -36,6 +38,8 @@ kotlin {
             implementation(libs.multiplatform.settings)
             implementation(libs.ktor.client.mock)
             implementation(libs.multiplatform.settings.test)
+            // Compose UI for shared DrawScope drawing functions (CheckpointDrawing)
+            implementation(compose.ui)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
