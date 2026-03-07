@@ -77,18 +77,51 @@ fun RouteDetailScreen(
     val sortedCheckpoints = remember(route) {
         route.checkpoints.sortedBy { it.sequenceOrder }
     }
-    val routePath = remember(sortedCheckpoints) {
-        listOf(sortedCheckpoints.map { it.coordinates })
+    // Prefer server geometry (full road-following path), fall back to checkpoint coords
+    val routePath = remember(route) {
+        val geomCoords = route.geometry?.coordinates?.map { point ->
+            Coordinates(lng = point[0], lat = point[1])
+        }
+        listOf(geomCoords ?: sortedCheckpoints.map { it.coordinates })
     }
 
-    // Compute map center as centroid of all checkpoints
-    val mapCenter = remember(sortedCheckpoints) {
-        if (sortedCheckpoints.isEmpty()) {
-            Coordinates(lng = MapStyles.CHICAGO_CENTER_LNG, lat = MapStyles.CHICAGO_CENTER_LAT)
-        } else {
-            val avgLat = sortedCheckpoints.sumOf { it.coordinates.lat } / sortedCheckpoints.size
-            val avgLng = sortedCheckpoints.sumOf { it.coordinates.lng } / sortedCheckpoints.size
+    // Collect all route points (prefer geometry, fall back to checkpoints)
+    val allRoutePoints = remember(route) {
+        val geomCoords = route.geometry?.coordinates?.map { point ->
+            Coordinates(lng = point[0], lat = point[1])
+        }
+        geomCoords ?: sortedCheckpoints.map { it.coordinates }
+    }
+
+    // Compute bounding box + center from all route points
+    val mapCenter = remember(allRoutePoints) {
+        if (allRoutePoints.isNotEmpty()) {
+            val avgLat = allRoutePoints.sumOf { it.lat } / allRoutePoints.size
+            val avgLng = allRoutePoints.sumOf { it.lng } / allRoutePoints.size
             Coordinates(lng = avgLng, lat = avgLat)
+        } else {
+            Coordinates(lng = MapStyles.CHICAGO_CENTER_LNG, lat = MapStyles.CHICAGO_CENTER_LAT)
+        }
+    }
+
+    // Compute zoom that fits the route extent with padding
+    val mapZoom = remember(allRoutePoints) {
+        if (allRoutePoints.size < 2) {
+            MapStyles.ZOOM_ROUTE
+        } else {
+            val latSpan = allRoutePoints.maxOf { it.lat } - allRoutePoints.minOf { it.lat }
+            val lngSpan = allRoutePoints.maxOf { it.lng } - allRoutePoints.minOf { it.lng }
+            val maxSpan = maxOf(latSpan, lngSpan)
+            // Approximate zoom: each zoom level halves the span; 0.004° ≈ zoom 16
+            when {
+                maxSpan < 0.002 -> 17.0
+                maxSpan < 0.005 -> 16.0
+                maxSpan < 0.01  -> 15.5
+                maxSpan < 0.02  -> 15.0
+                maxSpan < 0.04  -> 14.5
+                maxSpan < 0.08  -> 14.0
+                else            -> 13.0
+            }
         }
     }
 
@@ -103,7 +136,7 @@ fun RouteDetailScreen(
                         modifier = Modifier.fillMaxSize(),
                         centerLat = mapCenter.lat,
                         centerLng = mapCenter.lng,
-                        zoom = MapStyles.ZOOM_ROUTE,
+                        zoom = mapZoom,
                         enableGestures = true,
                         routeCoordinates = routePath,
                         animateRoutes = true,
@@ -148,7 +181,7 @@ fun RouteDetailScreen(
             item {
                 GccCard(
                     modifier = Modifier
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = 24.dp)
                         .offset(y = (-24).dp),
                     elevation = 6.dp,
                 ) {
@@ -201,7 +234,7 @@ fun RouteDetailScreen(
             item {
                 SectionHeader(
                     title = "Checkpoints (${route.checkpoints.size})",
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -212,7 +245,7 @@ fun RouteDetailScreen(
                 key = { _, cp -> cp.sequenceOrder },
             ) { index, checkpoint ->
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -280,19 +313,20 @@ fun RouteDetailScreen(
                         error,
                         style = MaterialTheme.typography.bodySmall,
                         color = GccError,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                val isClaimable = route.status == com.gcc.shared.model.RouteStatus.PUBLISHED
                 GccButton(
-                    text = "Claim Route",
+                    text = if (isClaimable) "Claim Route" else "Not Available",
                     onClick = { viewModel.claimRoute(routeId) },
                     variant = GccButtonVariant.PRIMARY,
-                    trailingText = payoutString,
-                    enabled = !uiState.isClaiming,
+                    trailingText = if (isClaimable) payoutString else null,
+                    enabled = isClaimable && !uiState.isClaiming,
                     isLoading = uiState.isClaiming,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp),
                 )
                 Spacer(modifier = Modifier.height(24.dp))
             }
