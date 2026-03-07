@@ -1,54 +1,51 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Logo } from '@/components/brand/Logo'
+import { useAuthForm } from '@/hooks/useAuthForm'
 
 export default function SponsorLoginPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+  const { formData, updateField, isLoading, error, handleSubmit: baseSubmit, setError } = useAuthForm({
+    apiEndpoint: '/api/sponsors/login',
+    successRedirect: '/sponsor/dashboard',
   })
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/sponsors/login', {
+      const res = await fetch('/api/sponsors/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ email: formData.email || '', password: formData.password || '' }),
       })
 
       let data
       try {
-        data = await response.json()
+        data = await res.json()
       } catch {
-        throw new Error('Unable to connect to server. Please try again.')
+        setError('Unable to connect to server. Please try again.')
+        return
       }
 
-      if (!response.ok) {
+      if (!res.ok) {
         // Check for specific error codes
         if (data.code === 'EMAIL_NOT_VERIFIED') {
           // Redirect to verification page
           router.push(`/sponsor/verify-email?id=${data.sponsorId}`)
           return
         }
-        throw new Error(data.error || 'Login failed')
+        setError(data.error || 'Login failed')
+        return
       }
 
       // Redirect to dashboard on success
       router.push('/sponsor/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -85,8 +82,8 @@ export default function SponsorLoginPage() {
               <input
                 type="email"
                 required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                value={formData.email || ''}
+                onChange={(e) => updateField('email', e.target.value)}
                 className="input-field"
                 placeholder="you@example.com"
               />
@@ -99,8 +96,8 @@ export default function SponsorLoginPage() {
               <input
                 type="password"
                 required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                value={formData.password || ''}
+                onChange={(e) => updateField('password', e.target.value)}
                 className="input-field"
                 placeholder="Your password"
               />

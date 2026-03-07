@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Logo } from '@/components/brand/Logo'
+import { useAuthForm } from '@/hooks/useAuthForm'
 
 interface LoginError {
   message: string
@@ -15,31 +16,33 @@ interface LoginError {
 
 export default function WorkerLoginPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+  const [detailedError, setDetailedError] = useState<LoginError | null>(null)
+
+  const { formData, updateField, isLoading, error, handleSubmit: baseSubmit, setError } = useAuthForm({
+    apiEndpoint: '/api/workers/login',
+    successRedirect: '/worker/dashboard',
   })
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<LoginError | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    setDetailedError(null)
     setError(null)
 
+    const { formData: fd, updateField: uf, ...rest } = { formData, updateField }
+
+    // Manual submission to handle special error codes
     try {
-      const response = await fetch('/api/workers/login', {
+      const res = await fetch('/api/workers/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ email: formData.email || '', password: formData.password || '' }),
       })
 
-      const data = await response.json()
+      const data = await res.json()
 
-      if (!response.ok) {
-        // Handle specific error codes
+      if (!res.ok) {
         if (data.code === 'EMAIL_NOT_VERIFIED') {
-          setError({
+          setDetailedError({
             message: data.error,
             code: data.code,
             workerId: data.workerId,
@@ -47,24 +50,24 @@ export default function WorkerLoginPage() {
           return
         }
         if (data.code === 'VERIFICATION_REJECTED') {
-          setError({
+          setDetailedError({
             message: data.error,
             code: data.code,
             reason: data.reason,
           })
           return
         }
-        throw new Error(data.error || 'Login failed')
+        setDetailedError({ message: data.error || 'Login failed' })
+        return
       }
 
-      // Redirect to dashboard on success
       router.push('/worker/dashboard')
     } catch (err) {
-      setError({ message: err instanceof Error ? err.message : 'Login failed' })
-    } finally {
-      setIsLoading(false)
+      setDetailedError({ message: err instanceof Error ? err.message : 'Login failed' })
     }
   }
+
+  const displayError = detailedError || (error ? { message: error } : null)
 
   return (
     <div className="min-h-screen flex">
@@ -109,20 +112,20 @@ export default function WorkerLoginPage() {
             Enter your credentials to access your dashboard
           </p>
 
-          {error && (
+          {displayError && (
             <div className={`mb-6 p-4 rounded-xl border text-sm ${
-              error.code === 'EMAIL_NOT_VERIFIED'
+              detailedError?.code === 'EMAIL_NOT_VERIFIED'
                 ? 'bg-amber-50 border-amber-200 text-amber-800'
-                : error.code === 'VERIFICATION_REJECTED'
+                : detailedError?.code === 'VERIFICATION_REJECTED'
                 ? 'bg-red-50 border-red-200 text-red-700'
                 : 'bg-red-50 border-red-200 text-red-700'
             }`}>
-              <p className="font-medium">{error.message}</p>
+              <p className="font-medium">{displayError.message}</p>
 
-              {error.code === 'EMAIL_NOT_VERIFIED' && error.workerId && (
+              {detailedError?.code === 'EMAIL_NOT_VERIFIED' && detailedError.workerId && (
                 <div className="mt-3">
                   <Link
-                    href={`/worker/verify-email?id=${error.workerId}`}
+                    href={`/worker/verify-email?id=${detailedError.workerId}`}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -133,8 +136,8 @@ export default function WorkerLoginPage() {
                 </div>
               )}
 
-              {error.code === 'VERIFICATION_REJECTED' && error.reason && (
-                <p className="mt-2 text-xs">{error.reason}</p>
+              {detailedError?.code === 'VERIFICATION_REJECTED' && detailedError.reason && (
+                <p className="mt-2 text-xs">{detailedError.reason}</p>
               )}
             </div>
           )}
@@ -148,8 +151,8 @@ export default function WorkerLoginPage() {
                 id="email"
                 type="email"
                 required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                value={formData.email || ''}
+                onChange={(e) => updateField('email', e.target.value)}
                 className="input-field"
                 placeholder="you@example.com"
               />
@@ -163,8 +166,8 @@ export default function WorkerLoginPage() {
                 id="password"
                 type="password"
                 required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                value={formData.password || ''}
+                onChange={(e) => updateField('password', e.target.value)}
                 className="input-field"
                 placeholder="Enter your password"
               />

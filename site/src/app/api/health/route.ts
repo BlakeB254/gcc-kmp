@@ -1,5 +1,7 @@
+import { apiSuccess } from '@/lib/api-helpers'
+
 export async function GET() {
-  return Response.json({
+  return apiSuccess({
     status: 'ok',
     service: 'gcc-api',
     version: '0.1.0',
