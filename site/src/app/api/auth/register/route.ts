@@ -13,18 +13,32 @@ export async function POST(request: NextRequest) {
     const { name, email, phone, password } = body
 
     if (!name || !email || !password) {
-      return Response.json({ error: 'Email already registered', status: 409 }, { status: 409 })
+      return Response.json({ error: 'Name, email, and password are required', status: 400 }, { status: 400 })
     }
 
     // Check existing
-    const existing = await db
-      .select({ id: workers.id })
+    const [existing] = await db
+      .select()
       .from(workers)
       .where(eq(workers.email, email))
       .limit(1)
 
-    if (existing.length > 0) {
+    // If user exists with a password already, reject
+    if (existing && existing.hash) {
       return Response.json({ error: 'Email already registered', status: 409 }, { status: 409 })
+    }
+
+    // If user exists without a password (magic-link user), set their password
+    if (existing && !existing.hash) {
+      const { hash: newHash, salt: newSalt } = hashPassword(password)
+      await db
+        .update(workers)
+        .set({ hash: newHash, salt: newSalt, updatedAt: new Date().toISOString() })
+        .where(eq(workers.id, existing.id))
+
+      const { token, exp } = await createMobileToken(existing.id, email)
+      const worker = mapWorkerToMobile({ ...existing, hash: newHash, salt: newSalt })
+      return Response.json({ data: { token, worker, exp } })
     }
 
     // Hash password
