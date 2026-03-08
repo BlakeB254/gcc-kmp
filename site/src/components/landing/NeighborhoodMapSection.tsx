@@ -452,148 +452,79 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
+              {/* Block polygons — light semi-transparent fill (matching app style) */}
               <Source id="blocks" type="geojson" data={geojsonData}>
-                {/* Block fill - different opacity for different statuses */}
+                {/* Light green fill for route coverage area */}
                 <Layer
                   id="blocks-fill"
                   type="fill"
                   paint={{
-                    'fill-color': ['get', 'color'],
+                    'fill-color': '#22C55E',
                     'fill-opacity': [
                       'case',
-                      // Hovered block
                       ['==', ['get', 'id'], hoveredBlockId || ''],
-                      0.9,
-                      // Selected block
+                      0.25,
                       ['==', ['get', 'id'], selectedBlock?.id || ''],
-                      0.85,
-                      // Available blocks (more visible)
-                      ['get', 'isAvailable'],
-                      0.75,
-                      // Unfunded blocks (muted)
-                      ['get', 'isUnfunded'],
-                      0.4,
-                      // Default
-                      0.6,
+                      0.2,
+                      0.08,
                     ],
-                  }}
-                />
-
-                {/* Block outline - thicker for available blocks */}
-                <Layer
-                  id="blocks-outline"
-                  type="line"
-                  paint={{
-                    'line-color': [
-                      'case',
-                      ['get', 'isAvailable'],
-                      '#16A34A', // darker green for available
-                      ['get', 'color'],
-                    ],
-                    'line-width': [
-                      'case',
-                      ['==', ['get', 'id'], hoveredBlockId || ''],
-                      5,
-                      ['==', ['get', 'id'], selectedBlock?.id || ''],
-                      4,
-                      ['get', 'isAvailable'],
-                      3,
-                      2,
-                    ],
-                  }}
-                />
-
-                {/* Block labels - always show cross streets, scale with zoom */}
-                <Layer
-                  id="blocks-label"
-                  type="symbol"
-                  layout={{
-                    'text-field': [
-                      'case',
-                      ['all', ['has', 'fromCorner'], ['has', 'toCorner'], ['!=', ['get', 'fromCorner'], ''], ['!=', ['get', 'toCorner'], '']],
-                      ['concat', ['get', 'fromCorner'], '\n→ ', ['get', 'toCorner']],
-                      ['get', 'streetName'],
-                    ],
-                    'text-size': [
-                      'interpolate', ['linear'], ['zoom'],
-                      14, 7,
-                      15, 9,
-                      16, 11,
-                      17, 13,
-                      18, 15,
-                    ],
-                    'text-anchor': 'center',
-                    'text-justify': 'center',
-                    'text-allow-overlap': false,
-                    'text-ignore-placement': false,
-                    'text-optional': true,
-                    'text-padding': 2,
-                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-max-width': 10,
-                    'text-line-height': 1.15,
-                    'symbol-sort-key': [
-                      'case',
-                      ['get', 'isAvailable'], 0,
-                      ['get', 'isUnfunded'], 2,
-                      1,
-                    ],
-                  }}
-                  paint={{
-                    'text-color': '#ffffff',
-                    'text-halo-color': ['get', 'color'],
-                    'text-halo-width': [
-                      'interpolate', ['linear'], ['zoom'],
-                      14, 1.5,
-                      16, 2,
-                      18, 2.5,
-                    ],
-                    'text-halo-blur': 0.5,
                   }}
                 />
               </Source>
 
-              {/* Route Lines - green overlay showing cleaning routes */}
-              {routeFeatures.length > 0 && (
-                <Source id="homepage-routes" type="geojson" data={routeGeoJson}>
-                  {/* Route casing (dark outline) */}
-                  <Layer
-                    id="homepage-route-case"
-                    type="line"
-                    paint={{
-                      'line-color': ROUTE_STATUS_COLORS.published.casing,
-                      'line-width': ROUTE_WIDTHS.CASING,
-                      'line-opacity': 0.7,
-                    }}
-                  />
-                  {/* Route fill (bright green line) */}
-                  <Layer
-                    id="homepage-route-fill"
-                    type="line"
-                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                    paint={{
-                      'line-color': DESIGN_ROUTE_COLORS.LINE,
-                      'line-width': ROUTE_WIDTHS.CORE,
-                    }}
-                  />
-                  {/* Route labels */}
-                  <Layer
-                    id="homepage-route-labels"
-                    type="symbol"
-                    layout={{
-                      'symbol-placement': 'line-center',
-                      'text-field': ['get', 'displayName'],
-                      'text-size': 10,
-                      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                      'text-max-width': 12,
-                    }}
-                    paint={{
-                      'text-color': '#ffffff',
-                      'text-halo-color': ROUTE_STATUS_COLORS.published.casing,
-                      'text-halo-width': 1.5,
-                    }}
-                  />
-                </Source>
-              )}
+              {/* Route Lines — 3-layer stack matching iOS app (glow → casing → core) */}
+              <Source id="homepage-routes" type="geojson" data={routeGeoJson}>
+                {/* Route glow — wide semi-transparent halo for emphasis */}
+                <Layer
+                  id="homepage-route-glow"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': DESIGN_ROUTE_COLORS.GLOW,
+                    'line-width': ROUTE_WIDTHS.GLOW,
+                    'line-opacity': 0.25,
+                  }}
+                />
+                {/* Route casing — dark border for depth */}
+                <Layer
+                  id="homepage-route-case"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': ROUTE_STATUS_COLORS.published.casing,
+                    'line-width': ROUTE_WIDTHS.CASING,
+                    'line-opacity': 0.9,
+                  }}
+                />
+                {/* Route core — bright green main line */}
+                <Layer
+                  id="homepage-route-fill"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': DESIGN_ROUTE_COLORS.LINE,
+                    'line-width': ROUTE_WIDTHS.CORE,
+                    'line-opacity': 1,
+                  }}
+                />
+                {/* Route labels — street names along the lines */}
+                <Layer
+                  id="homepage-route-labels"
+                  type="symbol"
+                  layout={{
+                    'symbol-placement': 'line-center',
+                    'text-field': ['get', 'displayName'],
+                    'text-size': 10,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-max-width': 12,
+                  }}
+                  paint={{
+                    'text-color': '#ffffff',
+                    'text-halo-color': ROUTE_STATUS_COLORS.published.casing,
+                    'text-halo-width': 1.5,
+                  }}
+                />
+              </Source>
 
               {/* No in-map popup — detail card is rendered outside the map below */}
             </Map>
