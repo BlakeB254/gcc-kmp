@@ -23,7 +23,6 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
-import com.gcc.app.util.padTwo
 import com.gcc.shared.model.Coordinates
 import org.koin.compose.koinInject
 
@@ -69,9 +68,7 @@ fun RouteDetailScreen(
         return
     }
 
-    val payoutString = route.payoutAmount?.let { cents ->
-        "$${cents / 100}.${(cents % 100).padTwo()}"
-    }
+    val payoutString = route.payoutAmount?.let { "\$$it" }
 
     // Compute route path from checkpoints for polyline rendering
     val sortedCheckpoints = remember(route) {
@@ -111,16 +108,16 @@ fun RouteDetailScreen(
         } else {
             val latSpan = allRoutePoints.maxOf { it.lat } - allRoutePoints.minOf { it.lat }
             val lngSpan = allRoutePoints.maxOf { it.lng } - allRoutePoints.minOf { it.lng }
-            val maxSpan = maxOf(latSpan, lngSpan)
-            // Approximate zoom: each zoom level halves the span; 0.004° ≈ zoom 16
+            // Weight lngSpan 1.5x for landscape hero panel aspect ratio
+            val effectiveSpan = maxOf(latSpan, lngSpan * 1.5)
             when {
-                maxSpan < 0.002 -> 17.0
-                maxSpan < 0.005 -> 16.0
-                maxSpan < 0.01  -> 15.5
-                maxSpan < 0.02  -> 15.0
-                maxSpan < 0.04  -> 14.5
-                maxSpan < 0.08  -> 14.0
-                else            -> 13.0
+                effectiveSpan < 0.002 -> 16.5
+                effectiveSpan < 0.005 -> 15.5
+                effectiveSpan < 0.01  -> 15.0
+                effectiveSpan < 0.02  -> 14.5
+                effectiveSpan < 0.04  -> 14.0
+                effectiveSpan < 0.08  -> 13.5
+                else                  -> 12.5
             }
         }
     }

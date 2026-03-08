@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.theme.GccGold
 import com.gcc.app.ui.theme.GccGoldDark
 import com.gcc.app.ui.theme.GccGreen
@@ -195,7 +196,7 @@ fun AdminPanelScreen(
                     AdminTab.WORKERS -> WorkersTab(workers, apiClient)
                     AdminTab.ROUTES -> RoutesTab(routes, apiClient) { routes = it }
                     AdminTab.BOUNTIES -> BountiesTab(bounties, apiClient)
-                    AdminTab.SPOTS -> SpotsTab(spotReports)
+                    AdminTab.SPOTS -> SpotsTab(spotReports, apiClient) { spotReports = it }
                 }
             }
         }
@@ -351,87 +352,230 @@ private fun RoutesTab(
 // ── Spots Tab ────────────────────────────────────────────────────────
 
 @Composable
-private fun SpotsTab(spotReports: List<CommunityReport>) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        item {
-            Text(
-                "${spotReports.size} spot reports",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-        items(spotReports, key = { it.id }) { report ->
-            val reporterDisplay = if (report.reporterName == "GCC") "GCC" else (report.reporterName ?: "Anonymous")
-            val descSnippet = report.description?.take(60)?.let {
-                if ((report.description?.length ?: 0) > 60) "$it..." else it
-            } ?: "No description"
-            val mediaCount = report.mediaUrls.size
-            val statusColor = when (report.status) {
-                CommunityReportStatus.PENDING -> Color(0xFFFF9800)
-                CommunityReportStatus.VERIFIED -> GccGreen
-                CommunityReportStatus.RESOLVED -> GccGold
-                CommunityReportStatus.ACKNOWLEDGED -> Color(0xFF2196F3)
-                CommunityReportStatus.REJECTED -> Color(0xFFFF5252)
-            }
+private fun SpotsTab(
+    spotReports: List<CommunityReport>,
+    apiClient: GccApiClient,
+    onSpotsUpdated: (List<CommunityReport>) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val locationProvider = koinInject<LocationProvider>()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
+    var showCreateDialog by remember { mutableStateOf(false) }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+    DisposableEffect(Unit) {
+        locationProvider.startLocationUpdates()
+        onDispose { locationProvider.stopLocationUpdates() }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            item {
+                Text(
+                    "${spotReports.size} spot reports",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            items(spotReports, key = { it.id }) { report ->
+                val reporterDisplay = if (report.reporterName == "GCC") "GCC" else (report.reporterName ?: "Anonymous")
+                val descSnippet = report.description?.take(60)?.let {
+                    if ((report.description?.length ?: 0) > 60) "$it..." else it
+                } ?: "No description"
+                val mediaCount = report.mediaUrls.size
+                val statusColor = when (report.status) {
+                    CommunityReportStatus.PENDING -> Color(0xFFFF9800)
+                    CommunityReportStatus.VERIFIED -> GccGreen
+                    CommunityReportStatus.RESOLVED -> GccGold
+                    CommunityReportStatus.ACKNOWLEDGED -> Color(0xFF2196F3)
+                    CommunityReportStatus.REJECTED -> Color(0xFFFF5252)
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                reporterDisplay,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium,
-                                color = if (report.reporterName == "GCC") GccGreen else MaterialTheme.colorScheme.onSurface,
-                            )
-                            if (mediaCount > 0) {
-                                Text(
-                                    " \u2022 $mediaCount photo${if (mediaCount != 1) "s" else ""}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        Text(
-                            "${formatCoord(report.coordinates.lat)}, ${formatCoord(report.coordinates.lng)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            descSnippet,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = statusColor.copy(alpha = 0.15f),
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            report.status.name.lowercase(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = statusColor,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    reporterDisplay,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (report.reporterName == "GCC") GccGreen else MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (mediaCount > 0) {
+                                    Text(
+                                        " \u2022 $mediaCount photo${if (mediaCount != 1) "s" else ""}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Text(
+                                "${formatCoord(report.coordinates.lat)}, ${formatCoord(report.coordinates.lng)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                descSnippet,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = statusColor.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                report.status.name.lowercase(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = statusColor,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            )
+                        }
                     }
                 }
             }
         }
+
+        // FAB to create admin spot
+        FloatingActionButton(
+            onClick = { showCreateDialog = true },
+            containerColor = GccGreen,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+        ) {
+            Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        }
     }
+
+    if (showCreateDialog) {
+        AdminCreateSpotDialog(
+            currentLat = currentLocation?.lat ?: 0.0,
+            currentLng = currentLocation?.lng ?: 0.0,
+            onDismiss = { showCreateDialog = false },
+            onSubmit = { request ->
+                scope.launch {
+                    try {
+                        apiClient.createAdminSpot(request)
+                        val updated = apiClient.getAdminSpotReports()
+                        onSpotsUpdated(updated)
+                    } catch (_: Exception) { }
+                    showCreateDialog = false
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun AdminCreateSpotDialog(
+    currentLat: Double,
+    currentLng: Double,
+    onDismiss: () -> Unit,
+    onSubmit: (CreateSpotRequest) -> Unit,
+) {
+    var isSighting by remember { mutableStateOf(true) }
+    var description by remember { mutableStateOf("") }
+    var radiusMeters by remember { mutableStateOf(15f) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create Spot Report") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Type toggle
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = isSighting,
+                        onClick = { isSighting = true },
+                        label = { Text("Sighting") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                            selectedLabelColor = GccGreen,
+                        ),
+                    )
+                    FilterChip(
+                        selected = !isSighting,
+                        onClick = { isSighting = false },
+                        label = { Text("Volunteer Cleanup") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                            selectedLabelColor = GccGreen,
+                        ),
+                    )
+                }
+
+                // GPS coordinates
+                Text(
+                    "Location: ${formatCoord(currentLat)}, ${formatCoord(currentLng)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                // Description
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+
+                // Radius slider
+                Text(
+                    "Radius: ${radiusMeters.toInt()}m",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Slider(
+                    value = radiusMeters,
+                    onValueChange = { radiusMeters = it },
+                    valueRange = 5f..100f,
+                    steps = 18,
+                    colors = SliderDefaults.colors(
+                        thumbColor = GccGold,
+                        activeTrackColor = GccGold,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSubmit(
+                        CreateSpotRequest(
+                            type = if (isSighting) CommunityReportType.SIGHTING else CommunityReportType.VOLUNTEER_CLEANUP,
+                            lat = currentLat,
+                            lng = currentLng,
+                            description = description.ifBlank { null },
+                            affectedRadiusMeters = radiusMeters.toDouble(),
+                            reporterName = "GCC",
+                        )
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                enabled = currentLat != 0.0 || currentLng != 0.0,
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 private fun formatCoord(value: Double): String {

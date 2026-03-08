@@ -2,36 +2,50 @@ import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * Subdomain routing middleware.
- * Detects north-lawndale.globalcommunitycleaners.org and rewrites
- * requests to the /north-lawndale route directory.
+ *
+ * 1. api.globalcommunitycleaners.org — only allow /api/* routes through;
+ *    redirect all other requests to www.globalcommunitycleaners.org
+ * 2. north-lawndale.globalcommunitycleaners.org — rewrite to /north-lawndale
  *
  * For local dev, use ?subdomain=north-lawndale to simulate.
  */
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
+  const { pathname } = request.nextUrl
 
-  // Fast path: most requests are not for the subdomain
-  if (!host.startsWith('north-lawndale.')) {
-    if (request.nextUrl.searchParams.get('subdomain') !== 'north-lawndale') {
+  // --- api. subdomain: block frontend, allow API routes only ---
+  if (host.startsWith('api.')) {
+    if (pathname.startsWith('/api/')) {
       return NextResponse.next()
     }
+    // Redirect everything else to the main domain
+    const mainUrl = new URL(pathname, 'https://www.globalcommunitycleaners.org')
+    mainUrl.search = request.nextUrl.search
+    return NextResponse.redirect(mainUrl, 301)
   }
 
-  // Only rewrite page routes — pass through API, assets, and files with extensions
-  const { pathname } = request.nextUrl
+  // --- north-lawndale subdomain routing ---
   if (
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/images/') ||
-    pathname.startsWith('/fonts/') ||
-    pathname.includes('.')
+    host.startsWith('north-lawndale.') ||
+    request.nextUrl.searchParams.get('subdomain') === 'north-lawndale'
   ) {
-    return NextResponse.next()
+    // Only rewrite page routes — pass through API, assets, and files with extensions
+    if (
+      pathname.startsWith('/api/') ||
+      pathname.startsWith('/_next/') ||
+      pathname.startsWith('/images/') ||
+      pathname.startsWith('/fonts/') ||
+      pathname.includes('.')
+    ) {
+      return NextResponse.next()
+    }
+
+    const url = request.nextUrl.clone()
+    url.pathname = `/north-lawndale${pathname}`
+    return NextResponse.rewrite(url)
   }
 
-  const url = request.nextUrl.clone()
-  url.pathname = `/north-lawndale${pathname}`
-  return NextResponse.rewrite(url)
+  return NextResponse.next()
 }
 
 export const config = {

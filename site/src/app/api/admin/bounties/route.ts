@@ -16,26 +16,28 @@ export async function GET(request: Request) {
       const lat = Array.isArray(coords) ? coords[1] : coords?.lat ?? 0
       const lng = Array.isArray(coords) ? coords[0] : coords?.lng ?? 0
 
-      // Map report status to bounty status
+      // Map report status to bounty status (lowercase to match Kotlin @SerialName)
       const statusMap: Record<string, string> = {
-        pending: 'OPEN',
-        new: 'OPEN',
-        verified: 'OPEN',
-        in_progress: 'IN_PROGRESS',
-        cleaned: 'COMPLETED',
-        resolved: 'COMPLETED',
-        dismissed: 'EXPIRED',
+        pending: 'open',
+        new: 'open',
+        verified: 'open',
+        acknowledged: 'in_progress',
+        in_progress: 'in_progress',
+        cleaned: 'completed',
+        resolved: 'completed',
+        rejected: 'expired',
+        dismissed: 'expired',
       }
 
       return {
         id: r.id,
-        posterType: r.reporterType === 'sponsor' ? 'SPONSOR' : 'WORKER',
+        posterType: r.reporterType === 'sponsor' ? 'sponsor' : 'worker',
         posterId: r.reporterId || 0,
         walletId: 0,
         title: r.title || r.description || `${r.type} report`,
         description: r.description,
         amount: 0,
-        status: statusMap[r.status] || 'OPEN',
+        status: statusMap[r.status] || 'open',
         locationLat: lat,
         locationLng: lng,
         radiusMeters: 25,

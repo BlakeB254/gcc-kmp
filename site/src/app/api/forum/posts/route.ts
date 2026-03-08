@@ -52,9 +52,7 @@ async function getCurrentUser(request: NextRequest): Promise<{
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+    // Allow unauthenticated reads — community page is public
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
@@ -111,7 +109,7 @@ export async function GET(request: NextRequest) {
       posts: posts.map((p) => ({
         ...p,
         content: p.content.slice(0, 300) + (p.content.length > 300 ? '...' : ''), // Preview only
-        isOwner: p.authorType === user.type && p.authorId === user.id,
+        isOwner: user ? (p.authorType === user.type && p.authorId === user.id) : false,
       })),
       pagination: {
         page,

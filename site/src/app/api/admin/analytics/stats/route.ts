@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const [workerStats] = await db
       .select({
         total: sql<number>`count(*)::int`,
-        verified: sql<number>`count(*) filter (where ${workers.verificationStatus} = 'verified')::int`,
+        verified: sql<number>`count(*) filter (where ${workers.verificationStatus} = 'approved')::int`,
         pending: sql<number>`count(*) filter (where ${workers.verificationStatus} = 'pending')::int`,
       })
       .from(workers)
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     const [bountyStats] = await db
       .select({
         total: sql<number>`count(*)::int`,
-        active: sql<number>`count(*) filter (where ${communityReports.status} in ('new', 'verified'))::int`,
+        active: sql<number>`count(*) filter (where ${communityReports.status} in ('pending', 'verified'))::int`,
       })
       .from(communityReports)
 

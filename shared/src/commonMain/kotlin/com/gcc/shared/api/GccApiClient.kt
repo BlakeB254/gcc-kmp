@@ -298,4 +298,8 @@ class GccApiClient(
     // Community Spot Reports
     suspend fun getAdminSpotReports(): List<CommunityReport> =
         get("/api/spots") { parameter("limit", 100) }
+
+    // Admin: Create spot report
+    suspend fun createAdminSpot(request: CreateSpotRequest): SpotResponse =
+        postJson("/api/admin/spots", request)
 }

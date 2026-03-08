@@ -23,6 +23,7 @@ open class TokenManager(private val settings: Settings = Settings()) {
 
     fun saveToken(token: String) {
         settings.putString(KEY_AUTH_TOKEN, token)
+        settings.putString(KEY_BIOMETRIC_TOKEN, token)
         _token.value = token
     }
 

@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       status: route.status,
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
-      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
+      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000') / 100),
       checkpoints: (checkpointsMap.get(route.id) || []).map((cp) => ({
         name: cp.name,
         sequenceOrder: cp.sequenceOrder,

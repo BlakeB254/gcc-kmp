@@ -280,6 +280,8 @@ private fun CameraPhase(
                             val photo = cameraManager.capturePhoto()
                             if (photo != null) {
                                 onCapture()
+                                // Auto-advance to location/radius phase after first photo
+                                if (photoCount == 0) onNext()
                             }
                             isCapturing = false
                         }
@@ -350,7 +352,7 @@ private fun LocationPhase(
                 modifier = Modifier.fillMaxSize(),
                 centerLat = lat,
                 centerLng = lng,
-                zoom = MapStyles.ZOOM_ROUTE,
+                zoom = MapStyles.ZOOM_NEIGHBORHOOD,
                 currentLocation = Coordinates(lng = lng, lat = lat),
             )
 
