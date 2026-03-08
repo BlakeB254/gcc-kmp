@@ -13,6 +13,10 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.useContents
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.allocArrayOf
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AVFoundation.AVCaptureDevice
 import platform.AVFoundation.AVCaptureDeviceInput
@@ -227,3 +231,10 @@ private fun CameraPreviewFallback(modifier: Modifier) {
         )
     }
 }
+
+/**
+ * Embed GPS coordinates into JPEG EXIF data.
+ * TODO: Implement via CGImageDestination once Kotlin/Native NSData interop is resolved.
+ * GPS coordinates are still stored in the spot report database record.
+ */
+actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes

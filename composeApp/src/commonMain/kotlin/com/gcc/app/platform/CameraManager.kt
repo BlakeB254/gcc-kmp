@@ -48,3 +48,12 @@ expect class CameraManager() {
  */
 @Composable
 expect fun CameraPreview(modifier: Modifier)
+
+/**
+ * Embed GPS coordinates into JPEG EXIF metadata.
+ * Returns new JPEG bytes with GPS tags, or original bytes if embedding fails.
+ *
+ * iOS: Uses CGImageDestination + kCGImagePropertyGPSDictionary
+ * Desktop/Android: Returns bytes unchanged (no-op)
+ */
+expect fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray

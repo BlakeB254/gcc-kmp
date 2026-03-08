@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
@@ -98,8 +100,9 @@ fun SpotScreen(
         ) {
             when (uiState.phase) {
                 SpotPhase.CAMERA -> CameraPhase(
-                    photoCount = uiState.capturedPhotoUrls.size,
-                    onCapture = { viewModel.addPhoto("photo_${uiState.capturedPhotoUrls.size + 1}.jpg") },
+                    photos = uiState.capturedPhotos,
+                    onCapture = { photo -> viewModel.addPhoto(photo) },
+                    onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
                 )
 
@@ -114,7 +117,7 @@ fun SpotScreen(
                 SpotPhase.DESCRIPTION -> DescriptionPhase(
                     description = uiState.description,
                     onDescriptionChange = { viewModel.setDescription(it) },
-                    photoCount = uiState.capturedPhotoUrls.size,
+                    photoCount = uiState.capturedPhotos.size,
                     error = uiState.error,
                     onSubmit = { viewModel.nextPhase() },
                 )
@@ -156,8 +159,9 @@ fun SpotScreen(
 
 @Composable
 private fun CameraPhase(
-    photoCount: Int,
-    onCapture: () -> Unit,
+    photos: List<CapturedPhoto>,
+    onCapture: (CapturedPhoto) -> Unit,
+    onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
 ) {
     val cameraManager = remember { CameraManager() }
@@ -165,6 +169,7 @@ private fun CameraPhase(
     val currentLocation by locationProvider.currentLocation.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var isCapturing by remember { mutableStateOf(false) }
+    val photoCount = photos.size
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -177,26 +182,10 @@ private fun CameraPhase(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp)),
         ) {
-            // Styled placeholder instead of redundant live AVCaptureSession preview
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF1A1A2E)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "\uD83D\uDCF7",
-                        style = MaterialTheme.typography.displayMedium,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Tap capture to open camera",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
-                }
-            }
+            // Live camera preview from AVCaptureSession
+            CameraPreview(
+                modifier = Modifier.fillMaxSize(),
+            )
 
             // Mini-map "You are here" card (bottom-end, rounded)
             currentLocation?.let { loc ->
@@ -208,7 +197,6 @@ private fun CameraPhase(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),
                 ) {
-                    // Mini map
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
                         centerLat = loc.lat,
@@ -216,7 +204,6 @@ private fun CameraPhase(
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         currentLocation = loc,
                     )
-                    // "You are here" label
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -264,7 +251,49 @@ private fun CameraPhase(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Thumbnail strip of captured photos
+        if (photos.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(photos.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2A2A3E)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Thumbnail placeholder (shows photo number)
+                        Text(
+                            "${index + 1}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GccGreen,
+                        )
+                        // Remove button
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(Color.Red.copy(alpha = 0.8f))
+                                .clickable { onRemovePhoto(index) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "\u2715",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Capture button — triggers native camera (UIImagePickerController on iOS)
         Row(
@@ -279,9 +308,7 @@ private fun CameraPhase(
                         coroutineScope.launch {
                             val photo = cameraManager.capturePhoto()
                             if (photo != null) {
-                                onCapture()
-                                // Auto-advance to location/radius phase after first photo
-                                if (photoCount == 0) onNext()
+                                onCapture(photo)
                             }
                             isCapturing = false
                         }

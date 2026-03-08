@@ -1,12 +1,16 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.embedGpsExif
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,7 +22,7 @@ import kotlinx.coroutines.launch
 enum class SpotPhase { CAMERA, LOCATION, DESCRIPTION, SUBMITTING, RESULT }
 
 data class SpotUiState(
-    val capturedPhotoUrls: List<String> = emptyList(),
+    val capturedPhotos: List<CapturedPhoto> = emptyList(),
     val currentLat: Double = 41.8604,
     val currentLng: Double = -87.7225,
     val affectedRadiusMeters: Double = 15.0,
@@ -38,10 +42,18 @@ class SpotViewModel(
     private val _uiState = MutableStateFlow(SpotUiState())
     val uiState: StateFlow<SpotUiState> = _uiState.asStateFlow()
 
-    fun addPhoto(url: String) {
+    fun addPhoto(photo: CapturedPhoto) {
         _uiState.value = _uiState.value.copy(
-            capturedPhotoUrls = _uiState.value.capturedPhotoUrls + url,
+            capturedPhotos = _uiState.value.capturedPhotos + photo,
         )
+    }
+
+    fun removePhoto(index: Int) {
+        val current = _uiState.value.capturedPhotos.toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            _uiState.value = _uiState.value.copy(capturedPhotos = current)
+        }
     }
 
     fun setLocation(lat: Double, lng: Double) {
@@ -80,12 +92,34 @@ class SpotViewModel(
             )
             try {
                 val state = _uiState.value
+
+                // Embed GPS EXIF into photos and upload
+                val uploadedUrls = mutableListOf<String>()
+                if (state.capturedPhotos.isNotEmpty()) {
+                    val uploadResponse = apiClient.httpClient.submitFormWithBinaryData(
+                        url = "${apiClient.baseUrl}/api/spots/upload",
+                        formData = formData {
+                            state.capturedPhotos.forEachIndexed { index, photo ->
+                                val gpsBytes = embedGpsExif(photo.bytes, state.currentLat, state.currentLng)
+                                append("photo_$index", gpsBytes, Headers.build {
+                                    append(HttpHeaders.ContentType, "image/jpeg")
+                                    append(HttpHeaders.ContentDisposition, "filename=\"photo_$index.jpg\"")
+                                })
+                            }
+                        },
+                    )
+                    if (uploadResponse.status.isSuccess()) {
+                        val result = uploadResponse.body<ApiResponse<PhotoUploadResponse>>()
+                        uploadedUrls.addAll(result.data.urls)
+                    }
+                }
+
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
                     lat = state.currentLat,
                     lng = state.currentLng,
                     description = state.description.ifBlank { null },
-                    mediaUrls = state.capturedPhotoUrls,
+                    mediaUrls = uploadedUrls.ifEmpty { null },
                     affectedRadiusMeters = state.affectedRadiusMeters,
                     reporterName = if (tokenManager.isAdmin()) "GCC" else null,
                 )

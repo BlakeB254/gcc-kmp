@@ -43,3 +43,5 @@ actual fun CameraPreview(modifier: Modifier) {
         }
     }
 }
+
+actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes

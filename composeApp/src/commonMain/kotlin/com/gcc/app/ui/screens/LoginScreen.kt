@@ -47,7 +47,8 @@ fun LoginScreen(
         // Show Face ID if biometric hardware available AND user has some stored identity
         biometricAvailable = biometricAuth.isBiometricAvailable()
         showFaceId = biometricAvailable && (
-            tokenManager.isLoggedIn() || tokenManager.hasBiometricToken() || tokenManager.getRememberedEmail() != null
+            tokenManager.isLoggedIn() || tokenManager.hasBiometricToken() ||
+            tokenManager.hasStoredCredentials() || tokenManager.getRememberedEmail() != null
         )
     }
 
@@ -256,13 +257,7 @@ fun LoginScreen(
                                     scope.launch {
                                         val success = biometricAuth.authenticate("Sign in to GCC")
                                         if (success) {
-                                            if (tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()) {
-                                                onLoginSuccess()
-                                            } else if (tokenManager.restoreBiometricToken()) {
-                                                onLoginSuccess()
-                                            } else {
-                                                viewModel.setError("Session expired. Please sign in with your password.")
-                                            }
+                                            viewModel.loginWithBiometric(onSuccess = onLoginSuccess)
                                         }
                                     }
                                 },

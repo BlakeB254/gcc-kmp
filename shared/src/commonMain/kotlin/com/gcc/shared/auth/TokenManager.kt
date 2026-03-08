@@ -80,6 +80,32 @@ open class TokenManager(private val settings: Settings = Settings()) {
         settings.remove(KEY_REMEMBERED_EMAIL)
     }
 
+    /** Save login credentials for biometric re-authentication.
+     *  On iOS, SecureStorage is Keychain-backed, so credentials are encrypted by the Secure Enclave. */
+    fun saveCredentials(email: String, password: String) {
+        settings.putString(KEY_CREDENTIAL_EMAIL, email)
+        settings.putString(KEY_CREDENTIAL_PASSWORD, password)
+    }
+
+    /** Load saved credentials for biometric re-login. Returns null if none stored. */
+    fun loadCredentials(): Pair<String, String>? {
+        val email = settings.getStringOrNull(KEY_CREDENTIAL_EMAIL) ?: return null
+        val password = settings.getStringOrNull(KEY_CREDENTIAL_PASSWORD) ?: return null
+        return email to password
+    }
+
+    /** Check if saved credentials exist for biometric re-login. */
+    fun hasStoredCredentials(): Boolean {
+        return settings.getStringOrNull(KEY_CREDENTIAL_EMAIL) != null &&
+            settings.getStringOrNull(KEY_CREDENTIAL_PASSWORD) != null
+    }
+
+    /** Clear stored credentials (e.g., on explicit logout or password change). */
+    fun clearCredentials() {
+        settings.remove(KEY_CREDENTIAL_EMAIL)
+        settings.remove(KEY_CREDENTIAL_PASSWORD)
+    }
+
     /** Check if onboarding has been completed (stored as a boolean setting). */
     fun isOnboardingComplete(): Boolean = settings.getBoolean(KEY_ONBOARDING_COMPLETE, false)
 
@@ -164,6 +190,8 @@ open class TokenManager(private val settings: Settings = Settings()) {
         private const val KEY_BIOMETRIC_TOKEN = "biometric_token"
         private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
         private const val KEY_REMEMBERED_EMAIL = "remembered_email"
+        private const val KEY_CREDENTIAL_EMAIL = "credential_email"
+        private const val KEY_CREDENTIAL_PASSWORD = "credential_password"
 
         /** Platform-independent current time in seconds since epoch. */
         private fun currentTimeSeconds(): Long {

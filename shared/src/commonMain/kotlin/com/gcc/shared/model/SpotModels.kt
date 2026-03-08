@@ -8,7 +8,7 @@ data class CreateSpotRequest(
     val lat: Double,
     val lng: Double,
     val description: String? = null,
-    val mediaUrls: List<String> = emptyList(),
+    val mediaUrls: List<String>? = null,
     val affectedRadiusMeters: Double = 15.0,
     val reporterName: String? = null,
 )
@@ -17,6 +17,11 @@ data class CreateSpotRequest(
 data class SpotResponse(
     val report: CommunityReport,
     val matchingBounties: List<Bounty> = emptyList(),
+)
+
+@Serializable
+data class PhotoUploadResponse(
+    val urls: List<String> = emptyList(),
 )
 
 @Serializable

@@ -54,6 +54,8 @@ class LoginViewModel(
                         )
                     } else {
                     tokenManager.saveToken(authData.token!!)
+                    // Save credentials in Keychain for Face ID re-login
+                    tokenManager.saveCredentials(email, password)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isLoggedIn = true,
@@ -125,6 +127,74 @@ class LoginViewModel(
 
     fun cancel2FA() {
         _uiState.value = LoginUiState()
+    }
+
+    /**
+     * Biometric re-login: tries fast-path (restore unexpired biometric token),
+     * then falls back to reading saved credentials from Keychain and doing a
+     * full login request for a fresh JWT.
+     */
+    fun loginWithBiometric(onSuccess: () -> Unit) {
+        // Fast path: biometric token still valid
+        if (tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()) {
+            onSuccess()
+            return
+        }
+        if (tokenManager.restoreBiometricToken()) {
+            onSuccess()
+            return
+        }
+
+        // Slow path: re-login with saved credentials
+        val credentials = tokenManager.loadCredentials()
+        if (credentials == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "No saved credentials. Please sign in with your password."
+            )
+            return
+        }
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val (email, password) = credentials
+                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
+                    contentType(ContentType.Application.Json)
+                    setBody(LoginRequest(email = email, password = password))
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
+                    val authData = apiResponse.data
+                    if (authData.requiresTwoFactor) {
+                        // 2FA required — can't auto-complete, show password form
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = "Two-factor authentication required. Please sign in with your password.",
+                        )
+                    } else {
+                        tokenManager.saveToken(authData.token!!)
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isLoggedIn = true,
+                            worker = authData.worker,
+                            isAdmin = tokenManager.isAdmin(),
+                        )
+                        registerPushToken()
+                    }
+                } else {
+                    // Credentials invalid (password changed?) — clear them
+                    tokenManager.clearCredentials()
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Saved credentials expired. Please sign in with your password.",
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Biometric login failed",
+                )
+            }
+        }
     }
 
     private fun registerPushToken() {
