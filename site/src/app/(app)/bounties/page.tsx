@@ -113,15 +113,15 @@ export default function BountiesPage() {
     const activeBounties = bounties.filter(b => b.status === 'open' || b.status === 'in_progress').length
     const totalPostedCents = bounties.reduce((sum, b) => sum + b.amountCents, 0)
     const cleanedCount = bounties.filter(b => b.status === 'completed').length
-    const availableRoutes = routes.filter(r => r.status === 'published').length
+    const activeSpots = spots.length
 
     return {
       activeBounties,
       totalPosted: `$${(totalPostedCents / 100).toLocaleString()}`,
       cleaned: cleanedCount,
-      availableRoutes,
+      activeSpots,
     }
-  }, [bounties, routes])
+  }, [bounties, spots])
 
   return (
     <div className="min-h-screen">
@@ -157,7 +157,7 @@ export default function BountiesPage() {
       {/* Stats Bar */}
       <section className="bg-neutral-900 text-white py-6">
         <div className="section-container">
-          <div className={`grid ${routes.length > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-center`}>
+          <div className={`grid ${spots.length > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-center`}>
             <div>
               <p className="text-2xl sm:text-3xl font-bold text-red-400">
                 {isLoading ? '...' : stats.activeBounties}
@@ -176,12 +176,12 @@ export default function BountiesPage() {
               </p>
               <p className="text-sm text-neutral-400">Cleaned</p>
             </div>
-            {routes.length > 0 && (
+            {spots.length > 0 && (
               <div>
                 <p className="text-2xl sm:text-3xl font-bold text-blue-400">
-                  {stats.availableRoutes}
+                  {stats.activeSpots}
                 </p>
-                <p className="text-sm text-neutral-400">Routes Available</p>
+                <p className="text-sm text-neutral-400">Active Spots</p>
               </div>
             )}
           </div>
