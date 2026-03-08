@@ -5,7 +5,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 
 /**
@@ -185,6 +185,8 @@ export function NeighborhoodMapSection() {
   const [mapLoaded, setMapLoaded] = useState(false)
   const [blocksWithStatus, setBlocksWithStatus] = useState<BlockWithStatus[]>([])
   const [routeFeatures, setRouteFeatures] = useState<any[]>([])
+  const [bountyFeatures, setBountyFeatures] = useState<any[]>([])
+  const [spotFeatures, setSpotFeatures] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Fetch blocks from database API, fall back to hardcoded data
@@ -251,11 +253,86 @@ export function NeighborhoodMapSection() {
     fetchRoutes()
   }, [])
 
+  // Fetch bounties (community reports mapped as bounties)
+  useEffect(() => {
+    async function fetchBounties() {
+      try {
+        const res = await fetch('/api/bounties')
+        if (!res.ok) return
+        const data = await res.json()
+        const items = data.bounties || data.data || []
+        if (items.length > 0) {
+          const features = items
+            .filter((b: any) => b.coordinates || (b.locationLat && b.locationLng))
+            .map((b: any) => {
+              const lat = b.locationLat ?? b.coordinates?.lat ?? 0
+              const lng = b.locationLng ?? b.coordinates?.lng ?? 0
+              return {
+                type: 'Feature' as const,
+                properties: {
+                  id: b.id,
+                  status: b.status || 'open',
+                  amount: b.amountCents ? `$${Math.round(b.amountCents / 100)}` : b.amount ? `$${b.amount}` : '',
+                },
+                geometry: { type: 'Point' as const, coordinates: [lng, lat] },
+              }
+            })
+          setBountyFeatures(features)
+        }
+      } catch (error) {
+        console.warn('Failed to fetch bounties:', error)
+      }
+    }
+    fetchBounties()
+  }, [])
+
+  // Fetch spot reports
+  useEffect(() => {
+    async function fetchSpots() {
+      try {
+        const res = await fetch('/api/spots')
+        if (!res.ok) return
+        const data = await res.json()
+        const items = data.spots || data.data || []
+        if (items.length > 0) {
+          const features = items
+            .filter((s: any) => s.coordinates)
+            .map((s: any) => {
+              const coords = s.coordinates
+              const lat = Array.isArray(coords) ? coords[1] : coords?.lat ?? 0
+              const lng = Array.isArray(coords) ? coords[0] : coords?.lng ?? 0
+              return {
+                type: 'Feature' as const,
+                properties: { id: s.id, label: s.label || s.type || 'report' },
+                geometry: { type: 'Point' as const, coordinates: [lng, lat] },
+              }
+            })
+          setSpotFeatures(features)
+        }
+      } catch (error) {
+        console.warn('Failed to fetch spots:', error)
+      }
+    }
+    fetchSpots()
+  }, [])
+
   // Route GeoJSON for green line overlay
   const routeGeoJson = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: routeFeatures,
   }), [routeFeatures])
+
+  // Bounty GeoJSON
+  const bountyGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: bountyFeatures,
+  }), [bountyFeatures])
+
+  // Spot GeoJSON
+  const spotGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: spotFeatures,
+  }), [spotFeatures])
 
   // Convert to GeoJSON for MapLibre
   const geojsonData = useMemo(() => ({
@@ -452,9 +529,8 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Block polygons — light semi-transparent fill (matching app style) */}
+              {/* Block polygons — semi-transparent fill with visible outline */}
               <Source id="blocks" type="geojson" data={geojsonData}>
-                {/* Light green fill for route coverage area */}
                 <Layer
                   id="blocks-fill"
                   type="fill"
@@ -463,26 +539,43 @@ export function NeighborhoodMapSection() {
                     'fill-opacity': [
                       'case',
                       ['==', ['get', 'id'], hoveredBlockId || ''],
-                      0.25,
+                      0.3,
                       ['==', ['get', 'id'], selectedBlock?.id || ''],
-                      0.2,
-                      0.08,
+                      0.25,
+                      0.12,
                     ],
+                  }}
+                />
+                {/* Block outlines — visible borders around each block */}
+                <Layer
+                  id="blocks-outline"
+                  type="line"
+                  paint={{
+                    'line-color': '#14532D',
+                    'line-width': [
+                      'case',
+                      ['==', ['get', 'id'], hoveredBlockId || ''],
+                      4,
+                      ['==', ['get', 'id'], selectedBlock?.id || ''],
+                      3.5,
+                      2,
+                    ],
+                    'line-opacity': 0.5,
                   }}
                 />
               </Source>
 
-              {/* Route Lines — 3-layer stack matching iOS app (glow → casing → core) */}
+              {/* Route Lines — 3-layer stack (glow → casing → core), more pronounced */}
               <Source id="homepage-routes" type="geojson" data={routeGeoJson}>
-                {/* Route glow — wide semi-transparent halo for emphasis */}
+                {/* Route glow — wide semi-transparent halo */}
                 <Layer
                   id="homepage-route-glow"
                   type="line"
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                   paint={{
                     'line-color': DESIGN_ROUTE_COLORS.GLOW,
-                    'line-width': ROUTE_WIDTHS.GLOW,
-                    'line-opacity': 0.25,
+                    'line-width': 18,
+                    'line-opacity': 0.3,
                   }}
                 />
                 {/* Route casing — dark border for depth */}
@@ -492,8 +585,8 @@ export function NeighborhoodMapSection() {
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                   paint={{
                     'line-color': ROUTE_STATUS_COLORS.published.casing,
-                    'line-width': ROUTE_WIDTHS.CASING,
-                    'line-opacity': 0.9,
+                    'line-width': 10,
+                    'line-opacity': 1,
                   }}
                 />
                 {/* Route core — bright green main line */}
@@ -503,7 +596,7 @@ export function NeighborhoodMapSection() {
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                   paint={{
                     'line-color': DESIGN_ROUTE_COLORS.LINE,
-                    'line-width': ROUTE_WIDTHS.CORE,
+                    'line-width': 6,
                     'line-opacity': 1,
                   }}
                 />
@@ -514,14 +607,60 @@ export function NeighborhoodMapSection() {
                   layout={{
                     'symbol-placement': 'line-center',
                     'text-field': ['get', 'displayName'],
-                    'text-size': 10,
+                    'text-size': 11,
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-max-width': 12,
+                    'text-max-width': 14,
                   }}
                   paint={{
                     'text-color': '#ffffff',
                     'text-halo-color': ROUTE_STATUS_COLORS.published.casing,
+                    'text-halo-width': 2,
+                  }}
+                />
+              </Source>
+
+              {/* Bounty markers — red dots (renders when bounty data exists) */}
+              <Source id="homepage-bounties" type="geojson" data={bountyGeoJson}>
+                <Layer
+                  id="homepage-bounty-dots"
+                  type="circle"
+                  paint={{
+                    'circle-color': BOUNTY_COLORS.OPEN,
+                    'circle-radius': 7,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-width': 2,
+                    'circle-opacity': 0.9,
+                  }}
+                />
+                <Layer
+                  id="homepage-bounty-labels"
+                  type="symbol"
+                  layout={{
+                    'text-field': ['get', 'amount'],
+                    'text-size': 11,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-offset': [0, -1.5],
+                    'text-allow-overlap': true,
+                  }}
+                  paint={{
+                    'text-color': BOUNTY_COLORS.OPEN,
+                    'text-halo-color': '#ffffff',
                     'text-halo-width': 1.5,
+                  }}
+                />
+              </Source>
+
+              {/* Spot report markers — orange dots (renders when spot data exists) */}
+              <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
+                <Layer
+                  id="homepage-spot-dots"
+                  type="circle"
+                  paint={{
+                    'circle-color': SPOT_COLORS.MARKER,
+                    'circle-radius': 5,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-width': 1.5,
+                    'circle-opacity': 0.85,
                   }}
                 />
               </Source>
