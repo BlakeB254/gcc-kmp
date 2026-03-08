@@ -40,14 +40,17 @@ fun LoginScreen(
     var biometricAvailable by remember { mutableStateOf(false) }
     var showFaceId by remember { mutableStateOf(false) }
 
+    // Reset ViewModel state to prevent stale isLoggedIn from a previous session
+    // (LoginViewModel is a Koin singleton — its state survives navigation)
     LaunchedEffect(Unit) {
+        viewModel.resetState()
         logoVisible = true
         delay(300)
         cardVisible = true
         // Show Face ID if biometric hardware available AND user has some stored identity
         biometricAvailable = biometricAuth.isBiometricAvailable()
         showFaceId = biometricAvailable && (
-            tokenManager.isLoggedIn() || tokenManager.hasBiometricToken() ||
+            tokenManager.hasBiometricToken() ||
             tokenManager.hasStoredCredentials() || tokenManager.getRememberedEmail() != null
         )
     }

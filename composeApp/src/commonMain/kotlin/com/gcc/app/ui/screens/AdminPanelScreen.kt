@@ -3,6 +3,7 @@ package com.gcc.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,14 +16,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
-import com.gcc.app.ui.theme.GccGold
-import com.gcc.app.ui.theme.GccGoldDark
-import com.gcc.app.ui.theme.GccGreen
+import com.gcc.app.ui.components.GccButton
+import com.gcc.app.ui.components.GccButtonVariant
+import com.gcc.app.ui.components.GccCard
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.theme.*
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import kotlin.math.cos
+import kotlin.math.pow
 
 // ── Reusable admin components ────────────────────────────────────────
 
@@ -481,6 +490,13 @@ private fun SpotsTab(
     }
 }
 
+private enum class AdminSpotStep { CAMERA, MAP, DETAILS }
+
+private fun adminMetersToPixels(meters: Double, lat: Double, zoom: Double): Float {
+    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
+    return (meters / metersPerPixel).toFloat()
+}
+
 @Composable
 private fun AdminCreateSpotDialog(
     currentLat: Double,
@@ -488,92 +504,300 @@ private fun AdminCreateSpotDialog(
     onDismiss: () -> Unit,
     onSubmit: (CreateSpotRequest) -> Unit,
 ) {
+    var step by remember { mutableStateOf(AdminSpotStep.CAMERA) }
     var isSighting by remember { mutableStateOf(true) }
     var description by remember { mutableStateOf("") }
     var radiusMeters by remember { mutableStateOf(15f) }
+    var capturedPhotos by remember { mutableStateOf<List<CapturedPhoto>>(emptyList()) }
+    val cameraManager = remember { CameraManager() }
+    val coroutineScope = rememberCoroutineScope()
+    var isCapturing by remember { mutableStateOf(false) }
+    val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
 
+    // Full-screen dialog
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Spot Report") },
+        modifier = Modifier.fillMaxSize().padding(vertical = 24.dp),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    when (step) {
+                        AdminSpotStep.CAMERA -> "Take Photo"
+                        AdminSpotStep.MAP -> "Set Affected Area"
+                        AdminSpotStep.DETAILS -> "Add Details"
+                    },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                )
+                TextButton(onClick = onDismiss) { Text("Cancel", color = GccGold) }
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Type toggle
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = isSighting,
-                        onClick = { isSighting = true },
-                        label = { Text("Sighting") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = GccGreen.copy(alpha = 0.15f),
-                            selectedLabelColor = GccGreen,
-                        ),
-                    )
-                    FilterChip(
-                        selected = !isSighting,
-                        onClick = { isSighting = false },
-                        label = { Text("Volunteer Cleanup") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = GccGreen.copy(alpha = 0.15f),
-                            selectedLabelColor = GccGreen,
-                        ),
-                    )
+            when (step) {
+                AdminSpotStep.CAMERA -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        // Camera preview
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp)),
+                        ) {
+                            CameraPreview(modifier = Modifier.fillMaxSize())
+
+                            if (capturedPhotos.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(10.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.6f))
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                ) {
+                                    Text(
+                                        "${capturedPhotos.size} photo${if (capturedPhotos.size != 1) "s" else ""}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = GccGreen,
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Capture button
+                        OutlinedButton(
+                            onClick = {
+                                if (!isCapturing) {
+                                    isCapturing = true
+                                    coroutineScope.launch {
+                                        val photo = cameraManager.capturePhoto()
+                                        if (photo != null) capturedPhotos = capturedPhotos + photo
+                                        isCapturing = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(64.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                            enabled = !isCapturing,
+                        ) {
+                            if (isCapturing) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = GccGreen, strokeWidth = 2.dp)
+                            } else {
+                                Text("\uD83D\uDCF8", style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
+                    }
                 }
 
-                // GPS coordinates
-                Text(
-                    "Location: ${formatCoord(currentLat)}, ${formatCoord(currentLng)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                AdminSpotStep.MAP -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Map with radius circle
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp)),
+                        ) {
+                            GccMap(
+                                modifier = Modifier.fillMaxSize(),
+                                centerLat = currentLat,
+                                centerLng = currentLng,
+                                zoom = mapZoom,
+                                currentLocation = Coordinates(lng = currentLng, lat = currentLat),
+                            )
 
-                // Description
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                )
+                            // Radius circle overlay
+                            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                                val pixelRadius = adminMetersToPixels(radiusMeters.toDouble(), currentLat, mapZoom)
+                                val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                                drawCircle(
+                                    color = GccGold.copy(alpha = 0.2f),
+                                    radius = pixelRadius,
+                                    center = center,
+                                )
+                                drawCircle(
+                                    color = GccGold,
+                                    radius = pixelRadius,
+                                    center = center,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f),
+                                )
+                            }
 
-                // Radius slider
-                Text(
-                    "Radius: ${radiusMeters.toInt()}m",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Slider(
-                    value = radiusMeters,
-                    onValueChange = { radiusMeters = it },
-                    valueRange = 5f..100f,
-                    steps = 18,
-                    colors = SliderDefaults.colors(
-                        thumbColor = GccGold,
-                        activeTrackColor = GccGold,
-                    ),
-                )
+                            // Radius label
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 12.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.Black.copy(alpha = 0.6f))
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    "${radiusMeters.toInt()}m radius",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = GccGold,
+                                )
+                            }
+
+                            // Location info
+                            Surface(
+                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                shadowElevation = 2.dp,
+                            ) {
+                                Text(
+                                    "${formatCoord(currentLat)}, ${formatCoord(currentLng)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Radius slider
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            OutlinedButton(
+                                onClick = { radiusMeters = (radiusMeters - 5).coerceAtLeast(5f) },
+                                modifier = Modifier.size(36.dp),
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(0.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                            ) {
+                                Text("\u2212", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Slider(
+                                value = radiusMeters,
+                                onValueChange = { radiusMeters = it },
+                                valueRange = 5f..100f,
+                                steps = 18,
+                                modifier = Modifier.weight(1f),
+                                colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                            )
+                            OutlinedButton(
+                                onClick = { radiusMeters = (radiusMeters + 5).coerceAtMost(100f) },
+                                modifier = Modifier.size(36.dp),
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(0.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                            ) {
+                                Text("+", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("${radiusMeters.toInt()}m", color = GccGold, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                AdminSpotStep.DETAILS -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // Type toggle
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = isSighting,
+                                onClick = { isSighting = true },
+                                label = { Text("Sighting") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                                    selectedLabelColor = GccGreen,
+                                ),
+                            )
+                            FilterChip(
+                                selected = !isSighting,
+                                onClick = { isSighting = false },
+                                label = { Text("Volunteer Cleanup") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                                    selectedLabelColor = GccGreen,
+                                ),
+                            )
+                        }
+
+                        // Summary
+                        Text(
+                            "${capturedPhotos.size} photo${if (capturedPhotos.size != 1) "s" else ""} \u2022 ${radiusMeters.toInt()}m radius",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it },
+                            label = { Text("Description") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    onSubmit(
-                        CreateSpotRequest(
-                            type = if (isSighting) CommunityReportType.SIGHTING else CommunityReportType.VOLUNTEER_CLEANUP,
-                            lat = currentLat,
-                            lng = currentLng,
-                            description = description.ifBlank { null },
-                            affectedRadiusMeters = radiusMeters.toDouble(),
-                            reporterName = "GCC",
-                        )
-                    )
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                enabled = currentLat != 0.0 || currentLng != 0.0,
-            ) {
-                Text("Create")
+            when (step) {
+                AdminSpotStep.CAMERA -> {
+                    Button(
+                        onClick = { step = AdminSpotStep.MAP },
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                    ) {
+                        Text(if (capturedPhotos.isNotEmpty()) "Next: Set Area" else "Skip Photo")
+                    }
+                }
+                AdminSpotStep.MAP -> {
+                    Button(
+                        onClick = { step = AdminSpotStep.DETAILS },
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                    ) {
+                        Text("Next: Details")
+                    }
+                }
+                AdminSpotStep.DETAILS -> {
+                    Button(
+                        onClick = {
+                            onSubmit(
+                                CreateSpotRequest(
+                                    type = if (isSighting) CommunityReportType.SIGHTING else CommunityReportType.VOLUNTEER_CLEANUP,
+                                    lat = currentLat,
+                                    lng = currentLng,
+                                    description = description.ifBlank { null },
+                                    affectedRadiusMeters = radiusMeters.toDouble(),
+                                    reporterName = "GCC",
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                        enabled = currentLat != 0.0 || currentLng != 0.0,
+                    ) {
+                        Text("Create Report")
+                    }
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            if (step != AdminSpotStep.CAMERA) {
+                TextButton(onClick = {
+                    step = when (step) {
+                        AdminSpotStep.MAP -> AdminSpotStep.CAMERA
+                        AdminSpotStep.DETAILS -> AdminSpotStep.MAP
+                        else -> step
+                    }
+                }) {
+                    Text("\u2190 Back")
+                }
+            }
         },
     )
 }

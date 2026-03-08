@@ -129,6 +129,12 @@ class LoginViewModel(
         _uiState.value = LoginUiState()
     }
 
+    /** Reset to initial state. Call when LoginScreen enters composition
+     *  to prevent stale isLoggedIn from a previous session. */
+    fun resetState() {
+        _uiState.value = LoginUiState()
+    }
+
     /**
      * Biometric re-login: tries fast-path (restore unexpired biometric token),
      * then falls back to reading saved credentials from Keychain and doing a

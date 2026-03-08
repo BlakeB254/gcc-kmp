@@ -22,6 +22,8 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import kotlin.math.cos
+import kotlin.math.pow
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
@@ -344,6 +346,15 @@ private fun CameraPhase(
     }
 }
 
+/**
+ * Convert a radius in meters to screen pixels at a given Mercator zoom level and latitude.
+ * Formula: pixels = meters / (156543.03392 * cos(lat) / 2^zoom)
+ */
+private fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
+    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
+    return (meters / metersPerPixel).toFloat()
+}
+
 @Composable
 private fun LocationPhase(
     lat: Double,
@@ -352,23 +363,25 @@ private fun LocationPhase(
     onRadiusChange: (Float) -> Unit,
     onNext: () -> Unit,
 ) {
+    val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
     ) {
         Text(
-            "Pin Location",
+            "Set Affected Area",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Confirm where you spotted the issue.",
+            "Drag the slider to show how far the mess extends.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Map with location pin and "You Are Here" card
+        // Map with location pin and radius circle overlay
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -379,11 +392,32 @@ private fun LocationPhase(
                 modifier = Modifier.fillMaxSize(),
                 centerLat = lat,
                 centerLng = lng,
-                zoom = MapStyles.ZOOM_NEIGHBORHOOD,
+                zoom = mapZoom,
                 currentLocation = Coordinates(lng = lng, lat = lat),
             )
 
-            // Floating "You Are Here" card
+            // Radius circle overlay — drawn as Compose Canvas centered on the map
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                val pixelRadius = metersToPixels(radiusMeters, lat, mapZoom)
+                val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                // Semi-transparent fill
+                drawCircle(
+                    color = GccGold.copy(alpha = 0.2f),
+                    radius = pixelRadius,
+                    center = center,
+                )
+                // Stroke border
+                drawCircle(
+                    color = GccGold,
+                    radius = pixelRadius,
+                    center = center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f),
+                )
+            }
+
+            // Floating info card
             GccCard(
                 accentColor = CardAccentGreen,
                 modifier = Modifier
@@ -412,28 +446,37 @@ private fun LocationPhase(
                     }
                 }
             }
+
+            // Radius label badge at bottom center
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    "${radiusMeters.toInt()}m radius",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = GccGold,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Mess radius slider
+        // Radius slider card
         GccCard(accentColor = CardAccentGold) {
             Text(
                 "Affected Area",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Drag to set how far the mess extends.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                // Minus stepper button
                 OutlinedButton(
                     onClick = { onRadiusChange((radiusMeters - 5).coerceAtLeast(5.0).toFloat()) },
                     modifier = Modifier.size(36.dp),
@@ -454,7 +497,6 @@ private fun LocationPhase(
                         activeTrackColor = GccGold,
                     ),
                 )
-                // Plus stepper button
                 OutlinedButton(
                     onClick = { onRadiusChange((radiusMeters + 5).coerceAtMost(100.0).toFloat()) },
                     modifier = Modifier.size(36.dp),
