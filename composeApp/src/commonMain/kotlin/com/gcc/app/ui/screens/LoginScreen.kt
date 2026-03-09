@@ -248,39 +248,37 @@ fun LoginScreen(
                         )
 
                         // Face ID / biometric quick sign-in
-                        if (biometricAvailable) {
-                            Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                            val scope = rememberCoroutineScope()
-                            if (hasCredentials) {
-                                OutlinedButton(
-                                    onClick = {
-                                        scope.launch {
-                                            val success = biometricAuth.authenticate("Sign in to GCC")
-                                            if (success) {
-                                                viewModel.loginWithBiometric(onSuccess = onLoginSuccess)
-                                            }
+                        val scope = rememberCoroutineScope()
+                        if (biometricAvailable && hasCredentials) {
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        val success = biometricAuth.authenticate("Sign in to GCC")
+                                        if (success) {
+                                            viewModel.loginWithBiometric(onSuccess = onLoginSuccess)
                                         }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = GccGreen,
-                                    ),
-                                ) {
-                                    Text(
-                                        "\uD83D\uDD13  Sign in with Face ID",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                    )
-                                }
-                            } else {
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = GccGreen,
+                                ),
+                            ) {
                                 Text(
-                                    "\uD83D\uDD13 Face ID available after first sign-in",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    "\uD83D\uDD13  Sign in with Face ID",
+                                    style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
+                        } else if (biometricAvailable) {
+                            Text(
+                                "\uD83D\uDD13 Face ID available after first sign-in",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = GccGreen,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))

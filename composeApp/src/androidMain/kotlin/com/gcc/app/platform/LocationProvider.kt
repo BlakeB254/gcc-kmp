@@ -51,6 +51,9 @@ actual class LocationProvider actual constructor() {
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 
+    /** Reference count — multiple screens can start/stop without interfering. */
+    private var refCount = 0
+
     private var locationManager: LocationManager? = null
 
     private val locationListener = object : LocationListener {
@@ -86,6 +89,7 @@ actual class LocationProvider actual constructor() {
      */
     @SuppressLint("MissingPermission")
     actual fun startLocationUpdates() {
+        refCount++
         if (_isTracking) return
 
         val ctx = appContext
@@ -160,6 +164,8 @@ actual class LocationProvider actual constructor() {
      * battery and release GPS hardware.
      */
     actual fun stopLocationUpdates() {
+        if (refCount > 0) refCount--
+        if (refCount > 0) return  // Other screens still need location
         if (!_isTracking) return
         _isTracking = false
 

@@ -31,6 +31,9 @@ actual class LocationProvider actual constructor() {
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 
+    /** Reference count — multiple screens can start/stop without interfering. */
+    private var refCount = 0
+
     private val locationManager = CLLocationManager()
     private var locationDelegate: NSObject? = null
 
@@ -88,6 +91,7 @@ actual class LocationProvider actual constructor() {
      * Call [stopLocationUpdates] to stop.
      */
     actual fun startLocationUpdates() {
+        refCount++
         if (_isTracking) return
         _isTracking = true
 
@@ -129,6 +133,8 @@ actual class LocationProvider actual constructor() {
      * Stop receiving location updates to conserve battery.
      */
     actual fun stopLocationUpdates() {
+        if (refCount > 0) refCount--
+        if (refCount > 0) return  // Other screens still need location
         if (!_isTracking) return
         _isTracking = false
         locationDelegate = null
