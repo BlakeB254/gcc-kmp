@@ -7,7 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.components.NetworkImage
 import com.gcc.shared.model.CheckpointType
 import com.gcc.shared.model.Route
 import com.gcc.shared.ui.drawAlleyPointScene
@@ -48,7 +50,8 @@ fun CheckpointThumbnail(
 }
 
 /**
- * Route-level thumbnail showing the start scene as a visual preview.
+ * Route-level thumbnail showing either the route's cover image (if set via admin)
+ * or a procedural start scene as a visual preview.
  *
  * Used in route list items and map overlay chips to give
  * both iOS and Android a consistent visual for each route.
@@ -58,24 +61,33 @@ fun RouteThumbnail(
     route: Route,
     modifier: Modifier = Modifier,
 ) {
-    val firstCheckpoint = route.checkpoints
-        .minByOrNull { it.sequenceOrder }
+    if (route.imageUrl != null) {
+        NetworkImage(
+            url = route.imageUrl!!,
+            contentDescription = route.displayName,
+            modifier = modifier.clip(RoundedCornerShape(6.dp)),
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        val firstCheckpoint = route.checkpoints
+            .minByOrNull { it.sequenceOrder }
 
-    val type = firstCheckpoint?.type ?: CheckpointType.ROUTE_START
+        val type = firstCheckpoint?.type ?: CheckpointType.ROUTE_START
 
-    Box(
-        modifier = modifier.clip(RoundedCornerShape(6.dp)),
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            when (type) {
-                CheckpointType.ROUTE_START -> drawStartScene()
-                CheckpointType.ROUTE_END -> drawEndScene()
-                CheckpointType.PHOTO_POINT -> drawPhotoPointScene()
-                CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
-                CheckpointType.RECORD -> drawPhotoPointScene()
-                CheckpointType.CLEAN -> drawStartScene()
-                CheckpointType.VERIFY -> drawEndScene()
-                CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene()
+        Box(
+            modifier = modifier.clip(RoundedCornerShape(6.dp)),
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                when (type) {
+                    CheckpointType.ROUTE_START -> drawStartScene()
+                    CheckpointType.ROUTE_END -> drawEndScene()
+                    CheckpointType.PHOTO_POINT -> drawPhotoPointScene()
+                    CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
+                    CheckpointType.RECORD -> drawPhotoPointScene()
+                    CheckpointType.CLEAN -> drawStartScene()
+                    CheckpointType.VERIFY -> drawEndScene()
+                    CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene()
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { communityReports } from '@/db/schema'
+import { desc } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 
 function toCommunityReport(r: any) {
@@ -22,10 +23,29 @@ function toCommunityReport(r: any) {
     bountyId: null,
     observerRewardPoints: 0,
     aiAnalysis: null,
-    affectedRadiusMeters: 15.0,
+    affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const reports = await db
+      .select()
+      .from(communityReports)
+      .orderBy(desc(communityReports.createdAt))
+
+    const fullReports = reports.map(toCommunityReport)
+
+    return NextResponse.json({ data: fullReports, success: true })
+  } catch (error) {
+    console.error('Admin list spots error:', error)
+    return NextResponse.json({ error: 'Failed to list spots' }, { status: 500 })
   }
 }
 
@@ -51,6 +71,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         coordinates: [lng, lat],
         mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
+        affectedRadiusMeters: affectedRadiusMeters ? String(affectedRadiusMeters) : '15',
         status: 'pending',
         showOnMap: true,
         capturedAt: new Date().toISOString(),

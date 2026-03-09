@@ -25,6 +25,9 @@ data class SpotUiState(
     val capturedPhotos: List<CapturedPhoto> = emptyList(),
     val currentLat: Double = 41.8604,
     val currentLng: Double = -87.7225,
+    /** Spot pin position — null means use GPS position (currentLat/currentLng). */
+    val spotLat: Double? = null,
+    val spotLng: Double? = null,
     val affectedRadiusMeters: Double = 15.0,
     val description: String = "",
     val isSubmitting: Boolean = false,
@@ -68,6 +71,10 @@ class SpotViewModel(
         _uiState.value = _uiState.value.copy(affectedRadiusMeters = meters)
     }
 
+    fun setSpotLocation(lat: Double, lng: Double) {
+        _uiState.value = _uiState.value.copy(spotLat = lat, spotLng = lng)
+    }
+
     fun nextPhase() {
         val current = _uiState.value.phase
         val next = when (current) {
@@ -92,6 +99,8 @@ class SpotViewModel(
             )
             try {
                 val state = _uiState.value
+                val submitLat = state.spotLat ?: state.currentLat
+                val submitLng = state.spotLng ?: state.currentLng
 
                 // Embed GPS EXIF into photos and upload
                 val uploadedUrls = mutableListOf<String>()
@@ -100,7 +109,7 @@ class SpotViewModel(
                         url = "${apiClient.baseUrl}/api/spots/upload",
                         formData = formData {
                             state.capturedPhotos.forEachIndexed { index, photo ->
-                                val gpsBytes = embedGpsExif(photo.bytes, state.currentLat, state.currentLng)
+                                val gpsBytes = embedGpsExif(photo.bytes, submitLat, submitLng)
                                 append("photo_$index", gpsBytes, Headers.build {
                                     append(HttpHeaders.ContentType, "image/jpeg")
                                     append(HttpHeaders.ContentDisposition, "filename=\"photo_$index.jpg\"")
@@ -116,8 +125,8 @@ class SpotViewModel(
 
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
-                    lat = state.currentLat,
-                    lng = state.currentLng,
+                    lat = submitLat,
+                    lng = submitLng,
                     description = state.description.ifBlank { null },
                     mediaUrls = uploadedUrls.ifEmpty { null },
                     affectedRadiusMeters = state.affectedRadiusMeters,

@@ -135,6 +135,7 @@ export const workers = pgTable('workers', {
   statsTotalEarnings: numeric('stats_total_earnings').default('0'),
   statsAverageRating: numeric('stats_average_rating'),
   statsLastJobAt: timestamp('stats_last_job_at', { mode: 'string', withTimezone: true }),
+  statsCommunityPoints: integer('stats_community_points').default(0),
 
   // Movement rankings
   signupTimestamp: timestamp('signup_timestamp', { mode: 'string', withTimezone: true }),
@@ -822,6 +823,9 @@ export const communityReports = pgTable('community_reports', {
   cleanupBagsCollected: integer('cleanup_bags_collected'),
   cleanupNotes: text('cleanup_notes'),
 
+  // Affected radius in meters (for map display)
+  affectedRadiusMeters: numeric('affected_radius_meters').default('15'),
+
   // Status and moderation
   status: communityReportStatusEnum('status').default('pending').notNull(),
   reviewedAt: timestamp('reviewed_at', { mode: 'string', withTimezone: true }),
@@ -839,6 +843,13 @@ export const communityReports = pgTable('community_reports', {
   viewCount: integer('view_count').default(0),
   thankCount: integer('thank_count').default(0), // Community "thanks" for volunteers
 
+  // Verification lifecycle (24h re-verification cycle)
+  lastVerifiedAt: timestamp('last_verified_at', { mode: 'string', withTimezone: true }),
+  verificationCount: integer('verification_count').default(0),
+  nextVerificationDue: timestamp('next_verification_due', { mode: 'string', withTimezone: true }),
+  missedVerifications: integer('missed_verifications').default(0),
+  maxMissedVerifications: integer('max_missed_verifications').default(3),
+
   // Timestamps
   capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }), // When photo/video was taken
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -853,6 +864,65 @@ export const communityReportThanks = pgTable('community_report_thanks', {
   // User who thanked
   userType: userTypeEnum('user_type').notNull(),
   userId: integer('user_id').notNull(),
+
+  // Timestamp
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
+// SPOT VERIFICATION LIFECYCLE
+// =====================
+
+// Spot verification result enum
+export const spotVerificationResultEnum = pgEnum('enum_spot_verifications_result', [
+  'still_dirty',    // Mess is still there
+  'already_clean',  // Someone already cleaned it
+])
+
+// Points action enum
+export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
+  'spot_created',           // Observer reported a new spot (10 pts)
+  'verification_dirty',     // Verified spot is still dirty (5 pts)
+  'verification_clean',     // Verified spot is already clean (10 pts)
+  'volunteer_cleanup',      // Completed a volunteer cleanup (50 pts)
+  'already_clean_report',   // Reported spot was already clean (5 pts)
+])
+
+// Spot verifications table (audit trail of each verification event)
+export const spotVerifications = pgTable('spot_verifications', {
+  id: serial('id').primaryKey(),
+  reportId: integer('report_id').notNull(),         // FK to community_reports
+  verifierId: integer('verifier_id').notNull(),      // Worker who verified
+  verifierName: varchar('verifier_name'),
+
+  // Result
+  result: spotVerificationResultEnum('result').notNull(),
+  photoUrl: varchar('photo_url'),                    // Verification evidence photo
+
+  // GPS at verification time
+  verifierLat: numeric('verifier_lat'),
+  verifierLng: numeric('verifier_lng'),
+  distanceFromSpotMeters: numeric('distance_from_spot_meters'),
+
+  // Points
+  pointsAwarded: integer('points_awarded').default(0),
+
+  // Timestamp
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Points ledger table (immutable log of all points transactions)
+export const pointsLedger = pgTable('points_ledger', {
+  id: serial('id').primaryKey(),
+  workerId: integer('worker_id').notNull(),          // FK to workers
+
+  // Action
+  action: pointsActionEnum('action').notNull(),
+  points: integer('points').notNull(),
+
+  // Polymorphic reference to what earned the points
+  referenceType: varchar('reference_type'),          // 'spot', 'verification', 'cleanup'
+  referenceId: integer('reference_id'),              // ID in the referenced table
 
   // Timestamp
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -925,6 +995,9 @@ export const routes = pgTable('routes', {
 
   // Funding
   payoutAmount: numeric('payout_amount').default('10000'), // In cents ($100 default)
+
+  // Display picture URL
+  imageUrl: varchar('image_url'),
 
   // Admin who created this route
   createdById: integer('created_by_id'),
@@ -1050,3 +1123,7 @@ export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
 export type NewCommunityReportThanks = typeof communityReportThanks.$inferInsert
 export type MaterialDonation = typeof materialDonations.$inferSelect
 export type NewMaterialDonation = typeof materialDonations.$inferInsert
+export type SpotVerification = typeof spotVerifications.$inferSelect
+export type NewSpotVerification = typeof spotVerifications.$inferInsert
+export type PointsLedgerEntry = typeof pointsLedger.$inferSelect
+export type NewPointsLedgerEntry = typeof pointsLedger.$inferInsert

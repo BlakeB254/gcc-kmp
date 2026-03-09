@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.platform.saveToSystemCredentials
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -56,6 +57,8 @@ class LoginViewModel(
                     tokenManager.saveToken(authData.token!!)
                     // Save credentials in Keychain for Face ID re-login
                     tokenManager.saveCredentials(email, password)
+                    // Offer to save in iOS Passwords app for AutoFill
+                    saveToSystemCredentials(email, password)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isLoggedIn = true,
@@ -136,70 +139,74 @@ class LoginViewModel(
     }
 
     /**
-     * Biometric re-login: tries fast-path (restore unexpired biometric token),
-     * then falls back to reading saved credentials from Keychain and doing a
-     * full login request for a fresh JWT.
+     * Suspending biometric re-login for BiometricGateScreen.
+     * Returns true if login succeeded, false otherwise.
+     * No race conditions — caller can simply await the result.
      */
-    fun loginWithBiometric(onSuccess: () -> Unit) {
-        // Fast path: biometric token still valid
+    suspend fun loginWithBiometricSuspend(): Boolean {
+        // Fast path: active token still valid
         if (tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()) {
-            onSuccess()
-            return
+            _uiState.value = _uiState.value.copy(
+                isLoggedIn = true,
+                isAdmin = tokenManager.isAdmin(),
+            )
+            return true
         }
+        // Fast path: biometric token still valid
         if (tokenManager.restoreBiometricToken()) {
-            onSuccess()
-            return
+            _uiState.value = _uiState.value.copy(
+                isLoggedIn = true,
+                isAdmin = tokenManager.isAdmin(),
+            )
+            return true
         }
 
         // Slow path: re-login with saved credentials
-        val credentials = tokenManager.loadCredentials()
-        if (credentials == null) {
-            _uiState.value = _uiState.value.copy(
-                error = "No saved credentials. Please sign in with your password."
-            )
-            return
-        }
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                val (email, password) = credentials
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
-                    contentType(ContentType.Application.Json)
-                    setBody(LoginRequest(email = email, password = password))
-                }
-                if (response.status == HttpStatusCode.OK) {
-                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    val authData = apiResponse.data
-                    if (authData.requiresTwoFactor) {
-                        // 2FA required — can't auto-complete, show password form
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = "Two-factor authentication required. Please sign in with your password.",
-                        )
-                    } else {
-                        tokenManager.saveToken(authData.token!!)
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            isLoggedIn = true,
-                            worker = authData.worker,
-                            isAdmin = tokenManager.isAdmin(),
-                        )
-                        registerPushToken()
-                    }
+        val credentials = tokenManager.loadCredentials() ?: return false
+
+        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        return try {
+            val (email, password) = credentials
+            val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
+                contentType(ContentType.Application.Json)
+                setBody(LoginRequest(email = email, password = password))
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val apiResponse = response.body<ApiResponse<AuthResponse>>()
+                val authData = apiResponse.data
+                if (authData.requiresTwoFactor) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    false
                 } else {
-                    // Credentials invalid (password changed?) — clear them
-                    tokenManager.clearCredentials()
+                    tokenManager.saveToken(authData.token!!)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = "Saved credentials expired. Please sign in with your password.",
+                        isLoggedIn = true,
+                        worker = authData.worker,
+                        isAdmin = tokenManager.isAdmin(),
                     )
+                    registerPushToken()
+                    true
                 }
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Biometric login failed",
-                )
+            } else {
+                tokenManager.clearCredentials()
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                false
             }
+        } catch (_: Exception) {
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            false
+        }
+    }
+
+    /**
+     * Fire-and-forget biometric re-login for the LoginScreen Face ID button.
+     * Updates uiState so the screen can react to isLoggedIn/error.
+     */
+    fun loginWithBiometric(onSuccess: () -> Unit) {
+        scope.launch {
+            val success = loginWithBiometricSuspend()
+            if (success) onSuccess()
         }
     }
 

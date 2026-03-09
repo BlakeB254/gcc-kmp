@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     )
     const activeJobs = await safeCount(
       db.select({ total: sql<number>`count(*)::int` }).from(jobs)
-        .where(eq(jobs.status, 'active'))
+        .where(or(eq(jobs.status, 'available'), eq(jobs.status, 'in_progress'), eq(jobs.status, 'claimed')))
     )
 
     // Route stats

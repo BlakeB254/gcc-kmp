@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -34,7 +35,17 @@ fun BountyDetailScreen(
     onNavigateToActiveJob: (jobId: Int, routeId: Int) -> Unit = { _, _ -> },
 ) {
     val viewModel = koinInject<BountyViewModel>()
+    val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
+
+    LaunchedEffect(Unit) {
+        locationProvider.startLocationUpdates()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { locationProvider.stopLocationUpdates() }
+    }
 
     LaunchedEffect(bountyId) {
         viewModel.loadBountyById(bountyId)
@@ -84,6 +95,7 @@ fun BountyDetailScreen(
                         centerLat = bounty.locationLat,
                         centerLng = bounty.locationLng,
                         zoom = MapStyles.ZOOM_ROUTE,
+                        currentLocation = currentLocation,
                     )
                     // Bounty zone circle indicator
                     Box(
@@ -199,20 +211,11 @@ fun BountyDetailScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                     ) {
                         items(bounty.mediaUrls) { url ->
-                            // Placeholder card for media — real image loading with Coil later
-                            Box(
-                                modifier = Modifier
-                                    .size(120.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(SurfaceMuted),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "Photo",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted,
-                                )
-                            }
+                            NetworkImage(
+                                url = url,
+                                contentDescription = "Bounty photo",
+                                modifier = Modifier.size(120.dp),
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

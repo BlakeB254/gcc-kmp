@@ -5,8 +5,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { communityReports } from '@/db/schema'
-import { eq, and, or, gt, isNull, desc } from 'drizzle-orm'
+import { communityReports, pointsLedger, workers } from '@/db/schema'
+import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 
 export const dynamic = 'force-dynamic'
@@ -31,8 +31,13 @@ function toCommunityReport(r: any) {
     bountyId: null,
     observerRewardPoints: 0,
     aiAnalysis: null,
-    affectedRadiusMeters: 15.0,
+    affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
+    // Verification lifecycle
+    lastVerifiedAt: r.lastVerifiedAt || null,
+    verificationCount: r.verificationCount || 0,
+    nextVerificationDue: r.nextVerificationDue || null,
+    needsVerification: r.nextVerificationDue ? new Date(r.nextVerificationDue) <= new Date() : false,
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }
@@ -49,7 +54,8 @@ export async function GET(request: NextRequest) {
       .from(communityReports)
       .where(
         and(
-          eq(communityReports.showOnMap, true),
+          // showOnMap: treat NULL as true (column was added after initial data)
+          or(eq(communityReports.showOnMap, true), isNull(communityReports.showOnMap)),
           or(
             eq(communityReports.status, 'pending'),
             eq(communityReports.status, 'verified'),
@@ -64,13 +70,24 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(communityReports.createdAt))
       .limit(limit)
 
-    // Map markers for website frontend
-    const spots = reports.map((report) => ({
-      id: String(report.id),
-      coordinates: report.coordinates as [number, number],
-      radiusMeters: 15,
-      label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
-    }))
+    // Map markers for website frontend - normalize coordinates to [lng, lat]
+    const spots = reports.map((report) => {
+      const raw = report.coordinates as any
+      let coords: [number, number]
+      if (Array.isArray(raw)) {
+        coords = [raw[0], raw[1]]
+      } else if (raw && typeof raw === 'object') {
+        coords = [raw.lng ?? raw.lon ?? 0, raw.lat ?? 0]
+      } else {
+        coords = [0, 0]
+      }
+      return {
+        id: String(report.id),
+        coordinates: coords,
+        radiusMeters: parseFloat(report.affectedRadiusMeters || '15'),
+        label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
+      }
+    })
 
     // Full CommunityReport objects for iOS admin panel (via ApiResponse<T>.data)
     const fullReports = reports.map(toCommunityReport)
@@ -122,7 +139,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'lat and lng are required' }, { status: 400 })
     }
 
-    // Create the community report
+    // Create the community report with verification lifecycle fields
+    const next24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     const [newReport] = await db
       .insert(communityReports)
       .values({
@@ -133,11 +151,35 @@ export async function POST(request: NextRequest) {
         description: description || null,
         coordinates: [lng, lat], // GeoJSON [lng, lat]
         mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
+        affectedRadiusMeters: affectedRadiusMeters ? String(affectedRadiusMeters) : '15',
         status: 'pending',
         showOnMap: true,
         capturedAt: new Date().toISOString(),
+        // Verification lifecycle
+        lastVerifiedAt: new Date().toISOString(),
+        verificationCount: 0,
+        nextVerificationDue: next24h,
+        missedVerifications: 0,
       })
       .returning()
+
+    // Award 10 observer points for creating a spot report
+    const observerPoints = 10
+    await db.insert(pointsLedger).values({
+      workerId: auth.workerId,
+      action: 'spot_created',
+      points: observerPoints,
+      referenceType: 'spot',
+      referenceId: newReport.id,
+    })
+
+    // Update worker's denormalized points total
+    await db
+      .update(workers)
+      .set({
+        statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${observerPoints}`,
+      })
+      .where(eq(workers.id, auth.workerId))
 
     // Build response matching SpotResponse { report, matchingBounties }
     const report = toCommunityReport(newReport)
@@ -145,7 +187,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       data: {
         report,
-        matchingBounties: [], // No bounty matching implemented yet
+        matchingBounties: [],
+        pointsAwarded: observerPoints,
       },
     })
   } catch (error) {

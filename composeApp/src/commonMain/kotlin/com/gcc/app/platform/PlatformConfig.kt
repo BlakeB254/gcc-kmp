@@ -12,3 +12,10 @@ expect fun getApiBaseUrl(): String
 
 /** Returns "android", "ios", or "desktop" for push notification token registration. */
 expect fun getPlatformName(): String
+
+/**
+ * Save login credentials to the system credential store (iOS Passwords app).
+ * On iOS, uses SecAddSharedWebCredential to store in the Passwords app.
+ * On other platforms, this is a no-op.
+ */
+expect fun saveToSystemCredentials(email: String, password: String)

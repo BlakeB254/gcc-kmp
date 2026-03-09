@@ -28,6 +28,7 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.RouteThumbnail
 import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.Coordinates
@@ -58,13 +59,20 @@ fun DashboardScreen(
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val tokenManager = koinInject<TokenManager>()
+    val locationProvider = koinInject<LocationProvider>()
     val isAdmin = remember { tokenManager.isAdmin() }
     val uiState by viewModel.uiState.collectAsState()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
 
     LaunchedEffect(Unit) {
+        locationProvider.startLocationUpdates()
         viewModel.loadDashboard()
         viewModel.loadWorkerProfile()
         viewModel.loadServiceArea()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { locationProvider.stopLocationUpdates() }
     }
 
     val greeting = remember {
@@ -204,6 +212,7 @@ fun DashboardScreen(
                         centerLat = mapCenter.first,
                         centerLng = mapCenter.second,
                         zoom = mapZoom,
+                        currentLocation = currentLocation,
                         routeCoordinates = routeCoordinates,
                         showControls = false,
                     )
@@ -328,10 +337,10 @@ fun DashboardScreen(
                 }
             }
 
-            // --- Available Routes header ---
+            // --- Registered Routes header ---
             item {
                 SectionHeader(
-                    title = "Available Routes",
+                    title = "Registered Routes",
                     modifier = Modifier.padding(horizontal = 13.dp),
                 )
             }
@@ -344,7 +353,7 @@ fun DashboardScreen(
             } else if (uiState.routes.isEmpty()) {
                 item {
                     Text(
-                        "No routes available yet. Check back soon!",
+                        "No registered routes yet. Check back soon!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMuted,
                         modifier = Modifier.padding(horizontal = 13.dp),
@@ -466,7 +475,7 @@ private fun RouteListItem(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     StatusChip(
-                        text = "Available",
+                        text = "Registered",
                         dotColor = GccAvailable,
                         backgroundColor = ChipBgAvailable,
                     )

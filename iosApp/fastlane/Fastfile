@@ -42,12 +42,10 @@ platform :ios do
       }
     )
 
-    # Upload to App Store Connect
-    upload_to_app_store(
-      skip_metadata: true,
-      skip_screenshots: true,
-      force: true,
+    # Upload to TestFlight
+    upload_to_testflight(
       ipa: "/tmp/gcc-build/GCC.ipa",
+      skip_waiting_for_build_processing: true,
     )
   end
 end

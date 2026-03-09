@@ -23,11 +23,11 @@ class RootComponent(
         get() {
             val tm = tokenManager ?: return Screen.Login
             return when {
+                // Valid token — gate with Face ID before entering app
                 tm.isLoggedIn() && !tm.isTokenExpired() -> Screen.BiometricGate
-                tm.isLoggedIn() && tm.isTokenExpired() -> {
-                    // Don't clear token here — keep it so LoginScreen can offer Face ID
-                    Screen.Login
-                }
+                // Expired token or logged out BUT has saved credentials —
+                // go to Face ID gate which will re-login silently via saved creds
+                tm.hasBiometricToken() || tm.hasStoredCredentials() -> Screen.BiometricGate
                 else -> Screen.Login
             }
         }
@@ -41,7 +41,9 @@ class RootComponent(
     )
 
     fun onLoginSuccess() {
-        navigation.replaceAll(Screen.BiometricGate)
+        // After manual login (credentials already verified), skip biometric gate
+        // and go straight to Dashboard. Face ID only gates cold app launch.
+        navigation.replaceAll(Screen.Dashboard)
     }
 
     fun onBiometricSuccess() {
@@ -130,12 +132,28 @@ class RootComponent(
         navigation.push(Screen.AdminPanel)
     }
 
+    fun navigateToAdminSpotCreate(lat: Double, lng: Double) {
+        navigation.push(Screen.AdminSpotCreate(lat, lng))
+    }
+
+    fun navigateToAdminSpotDetail(spotId: Int) {
+        navigation.push(Screen.AdminSpotDetail(spotId))
+    }
+
+    fun navigateToAdminRouteDetail(routeId: Int) {
+        navigation.push(Screen.AdminRouteDetail(routeId))
+    }
+
+    fun navigateToSpotVerification(reportId: Int) {
+        navigation.push(Screen.SpotVerification(reportId))
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }
 
     fun signOut() {
-        tokenManager?.clearToken()
+        tokenManager?.logout()
         navigation.replaceAll(Screen.Login)
     }
 

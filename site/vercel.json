@@ -43,6 +43,11 @@
       ]
     }
   ],
+  "functions": {
+    "src/app/api/spots/upload/route.ts": {
+      "maxDuration": 30
+    }
+  },
   "redirects": [
     {
       "source": "/home",

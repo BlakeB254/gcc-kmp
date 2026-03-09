@@ -70,6 +70,8 @@ expect fun GccMap(
     spots: List<CommunityReport> = emptyList(),
     onAreaTap: ((CommunityArea) -> Unit)? = null,
     onRouteTap: ((routeIndex: Int) -> Unit)? = null,
+    onSpotTap: ((spotId: Int) -> Unit)? = null,
+    onBountyTap: ((bountyId: Int) -> Unit)? = null,
     onContextPin: ((lat: Double, lng: Double) -> Unit)? = null,
     showBuildings: Boolean = true,
     showGridLines: Boolean = true,

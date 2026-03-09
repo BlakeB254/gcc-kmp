@@ -239,4 +239,6 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
+actual suspend fun pickFromLibrary(): CapturedPhoto? = null // TODO: Android photo picker
+
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes

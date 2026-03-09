@@ -12,6 +12,7 @@ import {
   CHECKPOINT_BORDER_COLORS,
   BOUNTY_COLORS,
   SPOT_COLORS,
+  SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
@@ -37,6 +38,7 @@ interface CombinedMapProps {
 type PopupTarget =
   | { kind: 'bounty'; data: Bounty }
   | { kind: 'route'; data: Route }
+  | { kind: 'spot'; data: SpotReport; lng: number; lat: number }
 
 // ============================================================================
 // COLOR MAPS
@@ -65,7 +67,7 @@ const ROUTE_COLORS = {
 } as const
 
 const ROUTE_STATUS_LABELS: Record<RouteDisplayStatus, string> = {
-  published: 'Route Available',
+  published: 'Registered',
   claimed: 'Route Claimed',
   active: 'Route Active',
   completed: 'Route Done',
@@ -193,20 +195,38 @@ export function CombinedMap({
     [routes]
   )
 
-  // ----- handle route line click -----
+  // ----- handle map feature click (routes + spots) -----
   const handleMapClick = useCallback(
     (event: any) => {
       const feature = event.features?.[0]
-      if (feature && feature.properties) {
-        const routeId = feature.properties.id
-        const route = routes.find((r) => r.id === routeId)
-        if (route) {
-          setPopup({ kind: 'route', data: route })
-          onRouteSelect?.(route)
+      if (!feature || !feature.properties) return
+
+      const layerId = feature.layer?.id || ''
+
+      // Spot click
+      if (layerId.includes('spot')) {
+        const spotId = feature.properties.id
+        const spot = spots.find((s) => String(s.id) === String(spotId))
+        if (spot) {
+          setPopup({
+            kind: 'spot',
+            data: spot,
+            lng: spot.coordinates[0],
+            lat: spot.coordinates[1],
+          })
         }
+        return
+      }
+
+      // Route click
+      const routeId = feature.properties.id
+      const route = routes.find((r) => r.id === routeId)
+      if (route) {
+        setPopup({ kind: 'route', data: route })
+        onRouteSelect?.(route)
       }
     },
-    [routes, onRouteSelect]
+    [routes, spots, onRouteSelect]
   )
 
   // ----- initial view (will be overridden by fitBounds) -----
@@ -278,6 +298,55 @@ export function CombinedMap({
       )
     }
 
+    // spot popup
+    if (popup.kind === 'spot') {
+      const s = popup.data
+      return (
+        <Popup
+          longitude={popup.lng}
+          latitude={popup.lat}
+          anchor="bottom"
+          onClose={() => setPopup(null)}
+          closeButton
+        >
+          <div className="p-3 min-w-[220px] max-w-[300px]">
+            <div className="flex items-center gap-2 mb-2">
+              <span
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ backgroundColor: SPOT_COLORS.MARKER }}
+              />
+              <span className="font-bold text-neutral-900">Spot Report</span>
+              {s.status && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto"
+                  style={{ backgroundColor: s.status === 'verified' ? '#22C55E' : s.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                >
+                  {s.status}
+                </span>
+              )}
+            </div>
+            {s.photoUrl && (
+              <img
+                src={s.photoUrl}
+                alt="Spot report"
+                className="w-full h-28 object-cover rounded-lg mb-2"
+              />
+            )}
+            {s.label && (
+              <p className="text-sm text-neutral-600 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
+            )}
+            {s.description && (
+              <p className="text-sm text-neutral-500 mb-1 line-clamp-2">{s.description}</p>
+            )}
+            <div className="flex items-center gap-3 text-xs text-neutral-500 mt-1">
+              <span>Radius: {s.radiusMeters}m</span>
+              {s.reporterName && <span>By: {s.reporterName}</span>}
+            </div>
+          </div>
+        </Popup>
+      )
+    }
+
     // route popup
     const r = popup.data
     return (
@@ -320,7 +389,7 @@ export function CombinedMap({
         </div>
       </Popup>
     )
-  }, [popup, onRouteSelect])
+  }, [popup, onRouteSelect, spots])
 
   // ----- combined legend -----
   const legendNode = showLegend ? (
@@ -354,8 +423,11 @@ export function CombinedMap({
       <BaseMap
         height={height}
         initialViewState={initialViewState}
-        interactiveLayerIds={routes.length > 0 ? ['combined-route-fill-layer'] : []}
-        onClick={routes.length > 0 ? handleMapClick : undefined}
+        interactiveLayerIds={[
+          ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
+          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-radius-fill'] : []),
+        ]}
+        onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         cursor="pointer"
         legend={legendNode}
         popup={popupNode}
@@ -485,37 +557,94 @@ export function CombinedMap({
         ))}
 
         {/* ============================================================ */}
-        {/* SPOT REPORT RADIUS CIRCLES                                  */}
+        {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
+            {/* Heatmap layer — visible at overview zoom, fades as you zoom in */}
+            <Layer
+              id="combined-spot-heatmap"
+              type="heatmap"
+              maxzoom={SPOT_ZOOM.HEATMAP_MAX}
+              paint={{
+                // Weight each point equally (could use radiusMeters for intensity)
+                'heatmap-weight': 1,
+                // Intensity increases with zoom to keep heat visible as radius shrinks
+                'heatmap-intensity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.HEATMAP_MIN, 0.3,
+                  SPOT_ZOOM.HEATMAP_MAX, 1,
+                ],
+                // Color ramp: transparent → green → yellow → orange → red
+                'heatmap-color': [
+                  'interpolate', ['linear'], ['heatmap-density'],
+                  0,    'rgba(0,0,0,0)',
+                  0.2,  SPOT_COLORS.HEATMAP_LOW,
+                  0.4,  SPOT_COLORS.HEATMAP_MED,
+                  0.7,  SPOT_COLORS.HEATMAP_HIGH,
+                  1.0,  SPOT_COLORS.HEATMAP_PEAK,
+                ],
+                // Radius grows with zoom so density estimation covers appropriate area
+                'heatmap-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.HEATMAP_MIN, 8,
+                  11, 15,
+                  SPOT_ZOOM.DOTS_MIN, 20,
+                ],
+                // Fade out as individual dots take over
+                'heatmap-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.HEATMAP_MIN, 0.6,
+                  SPOT_ZOOM.DOTS_MIN, 0.3,
+                  SPOT_ZOOM.HEATMAP_MAX, 0,
+                ],
+              }}
+            />
+
+            {/* Radius fill — visible at close zoom */}
             <Layer
               id="combined-spot-radius-fill"
               type="circle"
+              minzoom={SPOT_ZOOM.DOTS_MIN}
               paint={{
                 'circle-radius': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  12, 4,
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 4,
                   16, ['get', 'radiusMeters'],
                   20, ['*', ['get', 'radiusMeters'], 4],
                 ],
                 'circle-color': SPOT_COLORS.RADIUS_FILL,
                 'circle-stroke-color': SPOT_COLORS.RADIUS_STROKE,
                 'circle-stroke-width': 1.5,
-                'circle-opacity': 0.6,
+                'circle-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 0,
+                  14, 0.6,
+                ],
               }}
             />
+
+            {/* Individual spot dots — appear at close zoom */}
             <Layer
               id="combined-spot-center"
               type="circle"
+              minzoom={SPOT_ZOOM.DOTS_MIN}
               paint={{
-                'circle-radius': 5,
+                'circle-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 3,
+                  15, 5,
+                  17, 7,
+                ],
                 'circle-color': SPOT_COLORS.MARKER,
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
+                'circle-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 0,
+                  14, 1,
+                ],
               }}
             />
           </Source>

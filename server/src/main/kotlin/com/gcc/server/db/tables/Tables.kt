@@ -1046,3 +1046,37 @@ object AnalyticsSnapshots : Table("analytics_snapshots") {
 
     override val primaryKey = PrimaryKey(id)
 }
+
+// ===========================================================================
+// Spot Verifications (audit trail of each verification event)
+// ===========================================================================
+object SpotVerifications : Table("spot_verifications") {
+    val id = integer("id").autoIncrement()
+    val reportId = integer("report_id")
+    val verifierId = integer("verifier_id")
+    val verifierName = varchar("verifier_name", 255).nullable()
+    val result = varchar("result", 50)
+    val photoUrl = varchar("photo_url", 2048).nullable()
+    val verifierLat = varchar("verifier_lat", 50).nullable()
+    val verifierLng = varchar("verifier_lng", 50).nullable()
+    val distanceFromSpotMeters = varchar("distance_from_spot_meters", 50).nullable()
+    val pointsAwarded = integer("points_awarded").default(0)
+    val createdAt = timestamp("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ===========================================================================
+// Points Ledger (immutable log of all points transactions)
+// ===========================================================================
+object PointsLedger : Table("points_ledger") {
+    val id = integer("id").autoIncrement()
+    val workerId = integer("worker_id")
+    val action = varchar("action", 50)
+    val points = integer("points")
+    val referenceType = varchar("reference_type", 50).nullable()
+    val referenceId = integer("reference_id").nullable()
+    val createdAt = timestamp("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}

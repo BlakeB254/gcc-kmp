@@ -18,7 +18,9 @@ import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.LeaderboardViewModel
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
+import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.FeedViewModel
+import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
@@ -52,4 +54,6 @@ val appModule = module {
     singleOf(::WalletViewModel)
     singleOf(::LeaderboardViewModel)
     singleOf(::FeedViewModel)
+    singleOf(::AdminPanelViewModel)
+    singleOf(::SpotVerificationViewModel)
 }

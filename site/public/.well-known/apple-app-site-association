@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "7BBNW25LZM.com.globalcommunitycleaners.worker",
+        "paths": ["*"]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "7BBNW25LZM.com.globalcommunitycleaners.worker"
+    ]
+  }
+}

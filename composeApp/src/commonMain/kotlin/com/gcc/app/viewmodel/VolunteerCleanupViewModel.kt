@@ -2,9 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,18 +11,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class VolunteerPhase { IN_PROGRESS, AFTER_PHOTOS, TRASH_HEAP_PHOTO, SUBMITTING, COMPLETE }
+enum class VolunteerPhase {
+    BEFORE_PHOTOS,
+    IN_PROGRESS,
+    AFTER_PHOTOS,
+    TRASH_HEAP_PHOTO,
+    SUBMITTING,
+    COMPLETE,
+    ALREADY_CLEAN_COMPLETE,
+}
 
 data class VolunteerCleanupUiState(
     val reportId: Int = 0,
     val cleanup: VolunteerCleanup? = null,
     val elapsedSeconds: Long = 0,
+    val beforePhotoUrls: List<String> = emptyList(),
     val afterPhotoUrls: List<String> = emptyList(),
     val trashHeapUrl: String? = null,
     val isSubmitting: Boolean = false,
     val isCompleted: Boolean = false,
     val error: String? = null,
-    val phase: VolunteerPhase = VolunteerPhase.IN_PROGRESS,
+    val phase: VolunteerPhase = VolunteerPhase.BEFORE_PHOTOS,
+    val pointsAwarded: Int = 0,
 )
 
 class VolunteerCleanupViewModel(
@@ -35,26 +42,84 @@ class VolunteerCleanupViewModel(
     private val _uiState = MutableStateFlow(VolunteerCleanupUiState())
     val uiState: StateFlow<VolunteerCleanupUiState> = _uiState.asStateFlow()
 
-    fun startCleanup(reportId: Int, beforeMediaUrls: List<String>) {
+    fun initForReport(reportId: Int) {
+        _uiState.value = VolunteerCleanupUiState(
+            reportId = reportId,
+            phase = VolunteerPhase.BEFORE_PHOTOS,
+        )
+    }
+
+    fun addBeforePhoto(url: String) {
+        _uiState.value = _uiState.value.copy(
+            beforePhotoUrls = _uiState.value.beforePhotoUrls + url,
+        )
+    }
+
+    fun uploadBeforePhotos(photoBytes: List<ByteArray>) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(reportId = reportId, error = null)
             try {
-                val request = StartVolunteerRequest(beforeMediaUrls = beforeMediaUrls)
-                val response = apiClient.httpClient.post(
-                    "${apiClient.baseUrl}/api/spots/$reportId/volunteer"
-                ) {
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                val cleanup = response.body<ApiResponse<VolunteerCleanup>>()
+                _uiState.value = _uiState.value.copy(isSubmitting = true, error = null)
+                val urls = apiClient.uploadSpotPhotos(photoBytes)
                 _uiState.value = _uiState.value.copy(
-                    cleanup = cleanup.data,
+                    beforePhotoUrls = _uiState.value.beforePhotoUrls + urls,
+                    isSubmitting = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSubmitting = false,
+                    error = "Failed to upload photos: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun startCleanup() {
+        val state = _uiState.value
+        scope.launch {
+            _uiState.value = state.copy(isSubmitting = true, error = null)
+            try {
+                val request = StartVolunteerRequest(beforeMediaUrls = state.beforePhotoUrls)
+                val cleanup = apiClient.startVolunteerCleanup(state.reportId, request)
+                _uiState.value = _uiState.value.copy(
+                    cleanup = cleanup,
                     phase = VolunteerPhase.IN_PROGRESS,
+                    isSubmitting = false,
                 )
                 startTimer()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
+                    isSubmitting = false,
                     error = e.message ?: "Failed to start cleanup",
+                )
+            }
+        }
+    }
+
+    fun reportAlreadyClean() {
+        val state = _uiState.value
+        scope.launch {
+            _uiState.value = state.copy(
+                isSubmitting = true,
+                error = null,
+                phase = VolunteerPhase.SUBMITTING,
+            )
+            try {
+                val cleanup = apiClient.reportSpotAlreadyClean(
+                    state.reportId,
+                    state.beforePhotoUrls,
+                )
+                _uiState.value = _uiState.value.copy(
+                    cleanup = cleanup,
+                    isSubmitting = false,
+                    isCompleted = true,
+                    pointsAwarded = cleanup.pointsAwarded,
+                    phase = VolunteerPhase.ALREADY_CLEAN_COMPLETE,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSubmitting = false,
+                    phase = VolunteerPhase.BEFORE_PHOTOS,
+                    error = e.message ?: "Failed to report spot as clean",
                 )
             }
         }
@@ -72,6 +137,7 @@ class VolunteerCleanupViewModel(
 
     fun advancePhase() {
         val next = when (_uiState.value.phase) {
+            VolunteerPhase.BEFORE_PHOTOS -> return // handled by startCleanup/reportAlreadyClean
             VolunteerPhase.IN_PROGRESS -> VolunteerPhase.AFTER_PHOTOS
             VolunteerPhase.AFTER_PHOTOS -> VolunteerPhase.TRASH_HEAP_PHOTO
             VolunteerPhase.TRASH_HEAP_PHOTO -> {
@@ -80,13 +146,13 @@ class VolunteerCleanupViewModel(
             }
             VolunteerPhase.SUBMITTING -> return
             VolunteerPhase.COMPLETE -> return
+            VolunteerPhase.ALREADY_CLEAN_COMPLETE -> return
         }
         _uiState.value = _uiState.value.copy(phase = next, error = null)
     }
 
     private fun completeCleanup() {
         val state = _uiState.value
-        val cleanup = state.cleanup ?: return
         scope.launch {
             _uiState.value = state.copy(
                 phase = VolunteerPhase.SUBMITTING,
@@ -94,21 +160,17 @@ class VolunteerCleanupViewModel(
                 error = null,
             )
             try {
+                val durationMinutes = (state.elapsedSeconds / 60).toInt()
                 val request = CompleteVolunteerRequest(
                     afterMediaUrls = state.afterPhotoUrls,
                     trashHeapMediaUrl = state.trashHeapUrl,
                 )
-                val response = apiClient.httpClient.patch(
-                    "${apiClient.baseUrl}/api/spots/${state.reportId}/volunteer/${cleanup.id}/complete"
-                ) {
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                val updated = response.body<ApiResponse<VolunteerCleanup>>()
+                val cleanup = apiClient.completeVolunteerCleanup(state.reportId, request)
                 _uiState.value = _uiState.value.copy(
-                    cleanup = updated.data,
+                    cleanup = cleanup,
                     isSubmitting = false,
                     isCompleted = true,
+                    pointsAwarded = cleanup.pointsAwarded,
                     phase = VolunteerPhase.COMPLETE,
                 )
             } catch (e: Exception) {
@@ -121,7 +183,7 @@ class VolunteerCleanupViewModel(
         }
     }
 
-    fun startTimer() {
+    private fun startTimer() {
         scope.launch {
             while (!_uiState.value.isCompleted) {
                 delay(1000L)

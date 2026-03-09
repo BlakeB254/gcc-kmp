@@ -21,6 +21,11 @@ data class CommunityReport(
     val aiAnalysis: AiAnalysis? = null,
     val affectedRadiusMeters: Double = 15.0,
     val photoUrl: String? = null,
+    // Verification lifecycle
+    val lastVerifiedAt: Instant? = null,
+    val verificationCount: Int = 0,
+    val nextVerificationDue: Instant? = null,
+    val needsVerification: Boolean = false,
     val createdAt: Instant,
     val updatedAt: Instant
 )

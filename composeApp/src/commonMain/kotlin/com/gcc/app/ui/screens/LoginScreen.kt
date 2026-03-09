@@ -38,7 +38,7 @@ fun LoginScreen(
     var logoVisible by remember { mutableStateOf(false) }
     var cardVisible by remember { mutableStateOf(false) }
     var biometricAvailable by remember { mutableStateOf(false) }
-    var showFaceId by remember { mutableStateOf(false) }
+    var hasCredentials by remember { mutableStateOf(false) }
 
     // Reset ViewModel state to prevent stale isLoggedIn from a previous session
     // (LoginViewModel is a Koin singleton — its state survives navigation)
@@ -47,12 +47,9 @@ fun LoginScreen(
         logoVisible = true
         delay(300)
         cardVisible = true
-        // Show Face ID if biometric hardware available AND user has some stored identity
         biometricAvailable = biometricAuth.isBiometricAvailable()
-        showFaceId = biometricAvailable && (
-            tokenManager.hasBiometricToken() ||
-            tokenManager.hasStoredCredentials() || tokenManager.getRememberedEmail() != null
-        )
+        hasCredentials = tokenManager.hasBiometricToken() ||
+            tokenManager.hasStoredCredentials()
     }
 
     LaunchedEffect(uiState.isLoggedIn) {
@@ -250,28 +247,38 @@ fun LoginScreen(
                             enabled = email.isNotBlank() && password.isNotBlank(),
                         )
 
-                        // Face ID quick sign-in
-                        if (showFaceId) {
+                        // Face ID / biometric quick sign-in
+                        if (biometricAvailable) {
                             Spacer(modifier = Modifier.height(12.dp))
 
                             val scope = rememberCoroutineScope()
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        val success = biometricAuth.authenticate("Sign in to GCC")
-                                        if (success) {
-                                            viewModel.loginWithBiometric(onSuccess = onLoginSuccess)
+                            if (hasCredentials) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            val success = biometricAuth.authenticate("Sign in to GCC")
+                                            if (success) {
+                                                viewModel.loginWithBiometric(onSuccess = onLoginSuccess)
+                                            }
                                         }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = GccGreen,
-                                ),
-                            ) {
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = GccGreen,
+                                    ),
+                                ) {
+                                    Text(
+                                        "\uD83D\uDD13  Sign in with Face ID",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            } else {
                                 Text(
-                                    "\uD83D\uDD13  Sign in with Face ID",
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    "\uD83D\uDD13 Face ID available after first sign-in",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }

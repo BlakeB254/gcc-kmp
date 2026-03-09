@@ -31,6 +31,10 @@ interface SpotReport {
   coordinates: [number, number] // [lng, lat]
   radiusMeters: number
   label?: string
+  description?: string
+  photoUrl?: string
+  status?: string
+  reporterName?: string
 }
 
 interface BountyMapProps {

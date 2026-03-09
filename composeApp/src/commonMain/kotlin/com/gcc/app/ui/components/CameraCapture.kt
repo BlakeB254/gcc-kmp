@@ -1,0 +1,252 @@
+package com.gcc.app.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.pickFromLibrary
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.theme.*
+import com.gcc.shared.model.Coordinates
+import kotlinx.coroutines.launch
+import org.jetbrains.skia.Image as SkiaImage
+
+/**
+ * Reusable full-screen camera composable for capturing photos.
+ *
+ * Shows a live camera preview with:
+ * - Photo count badge (top-left)
+ * - Circular capture button + library button (bottom)
+ * - Optional mini-map overlay (bottom-end)
+ * - Thumbnail strip of captured photos
+ *
+ * Used by both SpotScreen camera phase and admin spot creation.
+ */
+@Composable
+fun CameraCapture(
+    capturedPhotos: List<CapturedPhoto>,
+    onCapture: (CapturedPhoto) -> Unit,
+    onRemovePhoto: ((Int) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    showMiniMap: Boolean = false,
+    currentLocation: Coordinates? = null,
+) {
+    val cameraManager = remember { CameraManager() }
+    val coroutineScope = rememberCoroutineScope()
+    var isCapturing by remember { mutableStateOf(false) }
+    val photoCount = capturedPhotos.size
+
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Live camera preview with overlays
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp)),
+        ) {
+            CameraPreview(modifier = Modifier.fillMaxSize())
+
+            // Mini-map overlay (bottom-end)
+            if (showMiniMap && currentLocation != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(10.dp)
+                        .size(width = 140.dp, height = 110.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.3f)),
+                ) {
+                    GccMap(
+                        modifier = Modifier.fillMaxSize(),
+                        centerLat = currentLocation.lat,
+                        centerLng = currentLocation.lng,
+                        zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                        currentLocation = currentLocation,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "\uD83D\uDCCD",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                "You are here",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GccGreen,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Photo count badge (bottom-start)
+            if (photoCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        "$photoCount photo${if (photoCount != 1) "s" else ""} captured",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GccGreen,
+                    )
+                }
+            }
+        }
+
+        // Thumbnail strip of captured photos
+        if (capturedPhotos.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(capturedPhotos.size) { index ->
+                    val photo = capturedPhotos[index]
+                    val bitmap = remember(photo) {
+                        try {
+                            SkiaImage.makeFromEncoded(photo.bytes).toComposeImageBitmap()
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2A2A3E)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "Photo ${index + 1}",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            Text(
+                                "${index + 1}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = GccGreen,
+                            )
+                        }
+                        if (onRemovePhoto != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Red.copy(alpha = 0.8f))
+                                    .clickable { onRemovePhoto(index) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "\u2715",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Capture + Library buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Capture button
+            OutlinedButton(
+                onClick = {
+                    if (!isCapturing) {
+                        isCapturing = true
+                        coroutineScope.launch {
+                            val photo = cameraManager.capturePhoto()
+                            if (photo != null) onCapture(photo)
+                            isCapturing = false
+                        }
+                    }
+                },
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                enabled = !isCapturing,
+            ) {
+                if (isCapturing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = GccGreen,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(
+                        "\uD83D\uDCF8",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                }
+            }
+
+            // Library button
+            OutlinedButton(
+                onClick = {
+                    coroutineScope.launch {
+                        val photo = pickFromLibrary()
+                        if (photo != null) onCapture(photo)
+                    }
+                },
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                enabled = !isCapturing,
+            ) {
+                Text(
+                    "\uD83D\uDDBC",
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
+        }
+    }
+}

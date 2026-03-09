@@ -50,6 +50,16 @@ expect class CameraManager() {
 expect fun CameraPreview(modifier: Modifier)
 
 /**
+ * Pick a photo from the device photo library.
+ * Returns the selected photo as CapturedPhoto, or null if cancelled.
+ *
+ * iOS: Uses UIImagePickerController with photoLibrary source
+ * Android: Uses system photo picker intent
+ * Desktop: No-op (returns null)
+ */
+expect suspend fun pickFromLibrary(): CapturedPhoto?
+
+/**
  * Embed GPS coordinates into JPEG EXIF metadata.
  * Returns new JPEG bytes with GPS tags, or original bytes if embedding fails.
  *

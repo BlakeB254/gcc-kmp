@@ -29,6 +29,9 @@ val appModule = module {
     single { VolunteerService() }
     single { GamificationService() }
     single { FeedService() }
+    single { VerificationService() }
+    single { PointsService() }
+    single { CleanlinessService() }
 
     // Auth (depends on WorkerService)
     single { AuthService(workerService = get()) }

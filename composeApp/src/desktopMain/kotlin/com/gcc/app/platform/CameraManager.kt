@@ -44,4 +44,6 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
+actual suspend fun pickFromLibrary(): CapturedPhoto? = null
+
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes

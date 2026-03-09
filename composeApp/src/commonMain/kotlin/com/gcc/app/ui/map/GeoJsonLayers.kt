@@ -122,7 +122,7 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
     val features = spots
         .filter { it.status != CommunityReportStatus.RESOLVED }
         .map { s ->
-            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"hasBounty":${s.bountyId != null}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
         }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
 }

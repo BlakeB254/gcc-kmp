@@ -56,6 +56,18 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
+  // Heatmap color ramp (low density → high density)
+  HEATMAP_LOW: '#22C55E',     // green
+  HEATMAP_MED: '#EAB308',     // yellow
+  HEATMAP_HIGH: '#F97316',    // orange
+  HEATMAP_PEAK: '#EF4444',    // red
+} as const
+
+// Zoom thresholds for heatmap vs individual dot transition
+export const SPOT_ZOOM = {
+  HEATMAP_MIN: 8,      // heatmap appears
+  HEATMAP_MAX: 14,     // heatmap fades out
+  DOTS_MIN: 13,        // individual dots appear
 } as const
 
 export const COMMUNITY_AREA_COLORS = {

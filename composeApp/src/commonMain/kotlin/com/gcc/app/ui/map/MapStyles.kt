@@ -117,9 +117,10 @@ object MapStyles {
 
     // Spot heatmap layer (visible at overview zoom, fades at close zoom)
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val SPOT_HEATMAP_RADIUS_FAR = 30.0f    // large radius at overview zoom
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 8.0f   // shrinks as you zoom in
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.5f
+    const val SPOT_HEATMAP_RADIUS_FAR = 6.0f     // small blip at city overview
+    const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 4.0f   // shrinks before individual dots take over
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.35f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
     // Heatmap color ramp: green (low) → yellow → orange → red (high density)

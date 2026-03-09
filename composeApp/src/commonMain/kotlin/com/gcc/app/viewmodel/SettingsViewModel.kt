@@ -76,7 +76,7 @@ class SettingsViewModel(
                 // Best-effort: server token cleanup is non-critical
             }
             pushNotificationManager.unregister()
-            tokenManager.clearToken()
+            tokenManager.logout()
             _uiState.value = _uiState.value.copy(signedOut = true)
         }
     }

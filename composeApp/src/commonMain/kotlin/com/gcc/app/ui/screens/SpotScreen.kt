@@ -15,8 +15,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gcc.app.platform.CameraManager
-import com.gcc.app.platform.CameraPreview
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
@@ -109,10 +109,13 @@ fun SpotScreen(
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
-                    lat = uiState.currentLat,
-                    lng = uiState.currentLng,
+                    gpsLat = uiState.currentLat,
+                    gpsLng = uiState.currentLng,
+                    spotLat = uiState.spotLat ?: uiState.currentLat,
+                    spotLng = uiState.spotLng ?: uiState.currentLng,
                     radiusMeters = uiState.affectedRadiusMeters,
                     onRadiusChange = { viewModel.setRadius(it.toDouble()) },
+                    onSpotMoved = { lat, lng -> viewModel.setSpotLocation(lat, lng) },
                     onNext = { viewModel.nextPhase() },
                 )
 
@@ -166,182 +169,28 @@ private fun CameraPhase(
     onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
 ) {
-    val cameraManager = remember { CameraManager() }
     val locationProvider = koinInject<LocationProvider>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
-    var isCapturing by remember { mutableStateOf(false) }
-    val photoCount = photos.size
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Live camera preview with mini-map overlay
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp)),
-        ) {
-            // Live camera preview from AVCaptureSession
-            CameraPreview(
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            // Mini-map "You are here" card (bottom-end, rounded)
-            currentLocation?.let { loc ->
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(10.dp)
-                        .size(width = 140.dp, height = 110.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.3f)),
-                ) {
-                    GccMap(
-                        modifier = Modifier.fillMaxSize(),
-                        centerLat = loc.lat,
-                        centerLng = loc.lng,
-                        zoom = MapStyles.ZOOM_ACTIVE_JOB,
-                        currentLocation = loc,
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                "\uD83D\uDCCD",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                "You are here",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GccGreen,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Photo count overlay (bottom-start)
-            if (photoCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(10.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text(
-                        "$photoCount photo${if (photoCount != 1) "s" else ""} captured",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GccGreen,
-                    )
-                }
-            }
-        }
-
-        // Thumbnail strip of captured photos
-        if (photos.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(photos.size) { index ->
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF2A2A3E)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // Thumbnail placeholder (shows photo number)
-                        Text(
-                            "${index + 1}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GccGreen,
-                        )
-                        // Remove button
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(Color.Red.copy(alpha = 0.8f))
-                                .clickable { onRemovePhoto(index) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "\u2715",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Capture button — triggers native camera (UIImagePickerController on iOS)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedButton(
-                onClick = {
-                    if (!isCapturing) {
-                        isCapturing = true
-                        coroutineScope.launch {
-                            val photo = cameraManager.capturePhoto()
-                            if (photo != null) {
-                                onCapture(photo)
-                            }
-                            isCapturing = false
-                        }
-                    }
-                },
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                enabled = !isCapturing,
-            ) {
-                if (isCapturing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = GccGreen,
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(
-                        "\uD83D\uDCF8",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
-            }
-        }
+        CameraCapture(
+            capturedPhotos = photos,
+            onCapture = onCapture,
+            onRemovePhoto = onRemovePhoto,
+            modifier = Modifier.weight(1f),
+            showMiniMap = true,
+            currentLocation = currentLocation,
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
         GccButton(
-            text = if (photoCount > 0) "Next: Set Location" else "Skip Photo",
+            text = if (photos.isNotEmpty()) "Next: Set Location" else "Skip Photo",
             onClick = onNext,
-            variant = if (photoCount > 0) GccButtonVariant.PRIMARY else GccButtonVariant.OUTLINED,
+            variant = if (photos.isNotEmpty()) GccButtonVariant.PRIMARY else GccButtonVariant.OUTLINED,
         )
     }
 }
@@ -355,15 +204,38 @@ private fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
     return (meters / metersPerPixel).toFloat()
 }
 
+/**
+ * Converts a pixel drag delta into a latitude/longitude delta at the given zoom level.
+ * Uses Mercator projection: meters per pixel ≈ 156543 * cos(lat) / 2^zoom,
+ * then converts meters to degrees (111320 m/deg for lat, cos-adjusted for lng).
+ */
+private fun pixelDeltaToLatLng(
+    dx: Float,
+    dy: Float,
+    lat: Double,
+    zoom: Double,
+): Pair<Double, Double> {
+    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
+    val dLat = -(dy * metersPerPixel) / 111320.0 // negative because screen Y is inverted
+    val dLng = (dx * metersPerPixel) / (111320.0 * cos(lat * kotlin.math.PI / 180.0))
+    return Pair(dLat, dLng)
+}
+
 @Composable
 private fun LocationPhase(
-    lat: Double,
-    lng: Double,
+    gpsLat: Double,
+    gpsLng: Double,
+    spotLat: Double,
+    spotLng: Double,
     radiusMeters: Double,
     onRadiusChange: (Float) -> Unit,
+    onSpotMoved: (lat: Double, lng: Double) -> Unit,
     onNext: () -> Unit,
 ) {
     val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
+
+    // Track whether user has dragged the spot away from GPS
+    val hasMoved = spotLat != gpsLat || spotLng != gpsLng
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -374,14 +246,14 @@ private fun LocationPhase(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Drag the slider to show how far the mess extends.",
+            "Drag the circle to position it on the mess. Adjust the slider for radius.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Map with location pin and radius circle overlay
+        // Map with location pin and draggable radius circle overlay
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -390,17 +262,35 @@ private fun LocationPhase(
         ) {
             GccMap(
                 modifier = Modifier.fillMaxSize(),
-                centerLat = lat,
-                centerLng = lng,
+                centerLat = spotLat,
+                centerLng = spotLng,
                 zoom = mapZoom,
-                currentLocation = Coordinates(lng = lng, lat = lat),
+                currentLocation = Coordinates(lng = gpsLng, lat = gpsLat),
+                enableGestures = false,
             )
 
-            // Radius circle overlay — drawn as Compose Canvas centered on the map
+            // Draggable radius circle overlay
             androidx.compose.foundation.Canvas(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(spotLat, spotLng, mapZoom) {
+                        detectDragGestures { _, dragAmount ->
+                            val (dLat, dLng) = pixelDeltaToLatLng(
+                                dragAmount.x, dragAmount.y, spotLat, mapZoom,
+                            )
+                            // Bound within ~500m of GPS position for regular users
+                            val maxOffsetDeg = 500.0 / 111320.0 // ~0.0045 degrees
+                            val newLat = (spotLat + dLat).coerceIn(
+                                gpsLat - maxOffsetDeg, gpsLat + maxOffsetDeg,
+                            )
+                            val newLng = (spotLng + dLng).coerceIn(
+                                gpsLng - maxOffsetDeg, gpsLng + maxOffsetDeg,
+                            )
+                            onSpotMoved(newLat, newLng)
+                        }
+                    },
             ) {
-                val pixelRadius = metersToPixels(radiusMeters, lat, mapZoom)
+                val pixelRadius = metersToPixels(radiusMeters, spotLat, mapZoom)
                 val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                 // Semi-transparent fill
                 drawCircle(
@@ -414,6 +304,12 @@ private fun LocationPhase(
                     radius = pixelRadius,
                     center = center,
                     style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f),
+                )
+                // Center crosshair dot
+                drawCircle(
+                    color = GccGold,
+                    radius = 4f,
+                    center = center,
                 )
             }
 
@@ -434,12 +330,12 @@ private fun LocationPhase(
                     )
                     Column {
                         Text(
-                            "You are here",
+                            if (hasMoved) "Spot Location" else "You are here",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                             color = GccGreen,
                         )
                         Text(
-                            "${formatLat(lat)}, ${formatLng(lng)}",
+                            "${formatLat(spotLat)}, ${formatLng(spotLng)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted,
                         )

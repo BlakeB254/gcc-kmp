@@ -3,12 +3,13 @@ package com.gcc.app
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import com.arkivanov.decompose.defaultComponentContext
 import com.gcc.app.di.appModule
 import com.gcc.app.di.demoAppModule
 import com.gcc.app.navigation.RootComponent
+import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
@@ -18,7 +19,7 @@ import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private var rootComponent: RootComponent? = null
 
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
         LocationTrackingController.initContext(this)
         ShareManager.initContext(this)
         PushNotificationManager.initContext(this)
+        BiometricAuth.initActivity(this)
 
         val isDemo = intent.getBooleanExtra("GCC_DEMO", false)
             || System.getenv("GCC_DEMO") == "true"

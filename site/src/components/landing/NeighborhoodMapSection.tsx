@@ -5,7 +5,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 
 /**
@@ -187,6 +187,8 @@ export function NeighborhoodMapSection() {
   const [routeFeatures, setRouteFeatures] = useState<any[]>([])
   const [bountyFeatures, setBountyFeatures] = useState<any[]>([])
   const [spotFeatures, setSpotFeatures] = useState<any[]>([])
+  const [spotRawData, setSpotRawData] = useState<any[]>([])
+  const [selectedSpot, setSelectedSpot] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Fetch blocks from database API, fall back to hardcoded data
@@ -294,8 +296,11 @@ export function NeighborhoodMapSection() {
         if (!res.ok) return
         const data = await res.json()
         const items = data.spots || data.data || []
-        if (items.length > 0) {
-          const features = items
+        // Get both map markers and full reports
+        const mapItems = data.spots || []
+        const fullReports = data.data || []
+        if (mapItems.length > 0) {
+          const features = mapItems
             .filter((s: any) => s.coordinates)
             .map((s: any) => {
               const coords = s.coordinates
@@ -303,11 +308,16 @@ export function NeighborhoodMapSection() {
               const lng = Array.isArray(coords) ? coords[0] : coords?.lng ?? 0
               return {
                 type: 'Feature' as const,
-                properties: { id: s.id, label: s.label || s.type || 'report' },
+                properties: {
+                  id: s.id,
+                  label: s.label || s.type || 'report',
+                  radiusMeters: s.radiusMeters || s.affectedRadiusMeters || 15,
+                },
                 geometry: { type: 'Point' as const, coordinates: [lng, lat] },
               }
             })
           setSpotFeatures(features)
+          setSpotRawData(fullReports)
         }
       } catch (error) {
         console.warn('Failed to fetch spots:', error)
@@ -403,14 +413,29 @@ export function NeighborhoodMapSection() {
 
   const onClick = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0]
-    if (feature && feature.properties) {
-      const block = blocksWithStatus.find(b => b.id === feature.properties?.id)
-      if (block) {
-        setSelectedBlock(block)
-        zoomToBlock(block)
+    if (!feature || !feature.properties) return
+
+    const layerId = feature.layer?.id || ''
+
+    // Spot click
+    if (layerId.includes('spot')) {
+      const spotId = feature.properties.id
+      const fullReport = spotRawData.find((s: any) => String(s.id) === String(spotId))
+      if (fullReport) {
+        setSelectedSpot(fullReport)
+        setSelectedBlock(null)
       }
+      return
     }
-  }, [blocksWithStatus, zoomToBlock])
+
+    // Block click
+    const block = blocksWithStatus.find(b => b.id === feature.properties?.id)
+    if (block) {
+      setSelectedBlock(block)
+      setSelectedSpot(null)
+      zoomToBlock(block)
+    }
+  }, [blocksWithStatus, spotRawData, zoomToBlock])
 
   const onHover = useCallback((event: MapLayerMouseEvent) => {
     const feature = event.features?.[0]
@@ -500,7 +525,7 @@ export function NeighborhoodMapSection() {
               }}
               style={{ width: '100%', height: '100%' }}
               mapStyle={MAP_STYLE}
-              interactiveLayerIds={['blocks-fill']}
+              interactiveLayerIds={['blocks-fill', 'homepage-spot-dots']}
               onClick={onClick}
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
@@ -510,7 +535,7 @@ export function NeighborhoodMapSection() {
                 [MAP_BOUNDS.west - 0.01, MAP_BOUNDS.south - 0.01],
                 [MAP_BOUNDS.east + 0.01, MAP_BOUNDS.north + 0.01],
               ]}
-              minZoom={14}
+              minZoom={11}
               maxZoom={18}
             >
               <NavigationControl position="top-right" />
@@ -650,17 +675,62 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Spot report markers — orange dots (renders when spot data exists) */}
+              {/* Spot reports — heatmap (zoomed out) + dots (zoomed in) */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
+                {/* Heatmap — density visualization at overview zoom */}
+                <Layer
+                  id="homepage-spot-heatmap"
+                  type="heatmap"
+                  maxzoom={SPOT_ZOOM.HEATMAP_MAX}
+                  paint={{
+                    'heatmap-weight': 1,
+                    'heatmap-intensity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      11, 0.4,
+                      SPOT_ZOOM.HEATMAP_MAX, 1,
+                    ],
+                    'heatmap-color': [
+                      'interpolate', ['linear'], ['heatmap-density'],
+                      0,    'rgba(0,0,0,0)',
+                      0.2,  SPOT_COLORS.HEATMAP_LOW,
+                      0.4,  SPOT_COLORS.HEATMAP_MED,
+                      0.7,  SPOT_COLORS.HEATMAP_HIGH,
+                      1.0,  SPOT_COLORS.HEATMAP_PEAK,
+                    ],
+                    'heatmap-radius': [
+                      'interpolate', ['linear'], ['zoom'],
+                      11, 10,
+                      13, 18,
+                      SPOT_ZOOM.HEATMAP_MAX, 25,
+                    ],
+                    'heatmap-opacity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      11, 0.5,
+                      SPOT_ZOOM.DOTS_MIN, 0.3,
+                      SPOT_ZOOM.HEATMAP_MAX, 0,
+                    ],
+                  }}
+                />
+                {/* Individual dots — appear as heatmap fades */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
+                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': SPOT_COLORS.MARKER,
-                    'circle-radius': 5,
+                    'circle-radius': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 3,
+                      15, 5,
+                      17, 7,
+                    ],
                     'circle-stroke-color': '#ffffff',
                     'circle-stroke-width': 1.5,
-                    'circle-opacity': 0.85,
+                    'circle-opacity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 0,
+                      14, 0.85,
+                    ],
                   }}
                 />
               </Source>
@@ -725,6 +795,65 @@ export function NeighborhoodMapSection() {
                     🚫 Currently being handled
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Spot detail card */}
+          {selectedSpot && (
+            <div className="absolute bottom-8 left-3 right-3 sm:left-4 sm:right-auto sm:max-w-sm z-20">
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: SPOT_COLORS.MARKER }}
+                      />
+                      <h3 className="font-bold text-neutral-900 text-base leading-tight">
+                        Spot Report
+                      </h3>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-0.5 capitalize">
+                      {(selectedSpot.type || 'report').replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span
+                      className="text-xs px-2.5 py-1 rounded-full text-white font-semibold"
+                      style={{ backgroundColor: selectedSpot.status === 'verified' ? '#22C55E' : selectedSpot.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                    >
+                      {selectedSpot.status || 'pending'}
+                    </span>
+                    <button
+                      onClick={() => { setSelectedSpot(null); resetMapView() }}
+                      className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors rounded-full hover:bg-neutral-100"
+                      aria-label="Close"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {selectedSpot.photoUrl && (
+                  <img
+                    src={selectedSpot.photoUrl}
+                    alt="Spot report"
+                    className="w-full h-32 object-cover rounded-lg mb-2"
+                  />
+                )}
+                {selectedSpot.description && (
+                  <p className="text-sm text-neutral-600 mb-2 line-clamp-3">{selectedSpot.description}</p>
+                )}
+                <div className="flex items-center gap-4 text-xs text-neutral-500">
+                  {selectedSpot.affectedRadiusMeters && (
+                    <span>Radius: {Math.round(selectedSpot.affectedRadiusMeters)}m</span>
+                  )}
+                  {selectedSpot.reporterName && (
+                    <span>By: {selectedSpot.reporterName}</span>
+                  )}
+                </div>
               </div>
             </div>
           )}

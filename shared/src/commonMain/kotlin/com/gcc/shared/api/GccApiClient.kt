@@ -6,14 +6,10 @@ import io.ktor.client.call.*
 import io.ktor.client.plugins.api.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.client.request.post
-import io.ktor.client.request.put
-import io.ktor.client.request.delete
-import io.ktor.client.request.setBody
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.statement.*
-import io.ktor.http.contentType
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import com.gcc.shared.serialization.GccJson
 
@@ -47,6 +43,10 @@ class GccApiClient(
         crossinline block: HttpRequestBuilder.() -> Unit = {},
     ): T {
         val response = httpClient.get("$baseUrl$path", block)
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
         return response.body<ApiResponse<T>>().data
     }
 
@@ -73,6 +73,10 @@ class GccApiClient(
             }
             block()
         }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
         return response.body<ApiResponse<R>>().data
     }
 
@@ -86,6 +90,10 @@ class GccApiClient(
             contentType(ContentType.Application.Json)
             setBody(body)
             block()
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
         }
         return response.body<ApiResponse<R>>().data
     }
@@ -114,12 +122,34 @@ class GccApiClient(
         return response.body<ApiResponse<R>>().data
     }
 
+    /** PATCH [path] with JSON body, unwrap ApiResponse<R>.data */
+    private suspend inline fun <reified B, reified R> patchJson(
+        path: String,
+        body: B,
+        crossinline block: HttpRequestBuilder.() -> Unit = {},
+    ): R {
+        val response = httpClient.patch("$baseUrl$path") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+            block()
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
+        return response.body<ApiResponse<R>>().data
+    }
+
     /** DELETE [path] with no response body expected. */
     private suspend inline fun deleteUnit(
         path: String,
         crossinline block: HttpRequestBuilder.() -> Unit = {},
     ) {
-        httpClient.delete("$baseUrl$path", block)
+        val response = httpClient.delete("$baseUrl$path", block)
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
     }
 
     // ── Public API ────────────────────────────────────────────────────
@@ -235,6 +265,9 @@ class GccApiClient(
     suspend fun updateRouteStatus(routeId: Int, status: String): Route =
         putJson("/api/admin/routes/$routeId", mapOf("status" to status))
 
+    suspend fun updateRouteImage(routeId: Int, imageUrl: String?): Route =
+        putJson("/api/admin/routes/$routeId", mapOf("imageUrl" to imageUrl))
+
     suspend fun deleteRoute(routeId: Int) =
         deleteUnit("/api/admin/routes/$routeId")
 
@@ -297,9 +330,90 @@ class GccApiClient(
 
     // Community Spot Reports
     suspend fun getAdminSpotReports(): List<CommunityReport> =
-        get("/api/spots") { parameter("limit", 100) }
+        get("/api/admin/spots")
+
+    // Upload spot photos (multipart form data), returns list of public URLs
+    suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> {
+        if (photos.isEmpty()) return emptyList()
+        val token = tokenProvider()
+        val response = httpClient.submitFormWithBinaryData(
+            url = "$baseUrl/api/spots/upload",
+            formData = formData {
+                photos.forEachIndexed { index, bytes ->
+                    append("photo_$index", bytes, Headers.build {
+                        append(HttpHeaders.ContentType, "image/jpeg")
+                        append(HttpHeaders.ContentDisposition, "filename=\"photo_$index.jpg\"")
+                    })
+                }
+            },
+        ) {
+            // Explicitly set auth header for multipart uploads
+            if (token != null) {
+                headers[HttpHeaders.Authorization] = "Bearer $token"
+            }
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("Upload failed (${response.status.value}): $errorBody")
+        }
+        return response.body<ApiResponse<PhotoUploadResponse>>().data.urls
+    }
+
+    // Volunteer cleanup flow
+    suspend fun startVolunteerCleanup(reportId: Int, request: StartVolunteerRequest): VolunteerCleanup =
+        postJson("/api/spots/$reportId/volunteer", request)
+
+    suspend fun completeVolunteerCleanup(reportId: Int, request: CompleteVolunteerRequest): VolunteerCleanup =
+        postJson("/api/spots/$reportId/volunteer?complete", request)
+
+    suspend fun reportSpotAlreadyClean(reportId: Int, beforeMediaUrls: List<String>): VolunteerCleanup =
+        postJson("/api/spots/$reportId/volunteer?already-clean", mapOf("beforeMediaUrls" to beforeMediaUrls))
 
     // Admin: Create spot report
     suspend fun createAdminSpot(request: CreateSpotRequest): SpotResponse =
         postJson("/api/admin/spots", request)
+
+    // Admin: Update spot report status (resolve, verify, reject)
+    suspend fun updateSpotStatus(spotId: Int, status: String) =
+        patchJson<Map<String, String>, Map<String, Any>>(
+            "/api/spots/$spotId",
+            mapOf("status" to status),
+        )
+
+    // Admin: Delete a spot report
+    suspend fun deleteSpot(spotId: Int) =
+        deleteUnit("/api/spots/$spotId")
+
+    // Admin: Add checkpoint to route
+    suspend fun addCheckpoint(routeId: Int, request: AdminCheckpointRequest): RouteCheckpoint =
+        postJson("/api/admin/routes/$routeId/checkpoints", request)
+
+    // Admin: Add photos to an existing spot report
+    suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =
+        patchJson<Map<String, Any>, CommunityReport>(
+            "/api/spots/$spotId",
+            mapOf("addMediaUrls" to newUrls),
+        )
+
+    // ── Spot Verification Lifecycle ──────────────────────────────────
+
+    suspend fun verifySpot(spotId: Int, request: VerifySpotRequest): VerifySpotResponse =
+        postJson("/api/spots/$spotId/verify", request)
+
+    suspend fun getSpotsNeedingVerification(limit: Int = 50): List<CommunityReport> =
+        get("/api/spots/needs-verification") { parameter("limit", limit) }
+
+    suspend fun getSpotVerifications(spotId: Int): List<SpotVerification> =
+        get("/api/spots/$spotId/verifications")
+
+    suspend fun getMyPoints(): PointsSummary =
+        get("/api/workers/me/points")
+
+    // ── Cleanliness Analytics ─────────────────────────────────────
+
+    suspend fun getCityCleanlinessOverview(): CityCleanlinessOverview =
+        get("/api/analytics/cleanliness")
+
+    suspend fun getAreaCleanliness(area: String): CleanlinessStats =
+        get("/api/analytics/cleanliness/${area.encodeURLPathPart()}")
 }

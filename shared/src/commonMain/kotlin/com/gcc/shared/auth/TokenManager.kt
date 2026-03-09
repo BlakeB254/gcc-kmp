@@ -36,6 +36,17 @@ open class TokenManager(private val settings: Settings = Settings()) {
         _token.value = null
     }
 
+    /** Full logout: clears ALL auth state so the user must re-enter credentials.
+     *  Use this for explicit sign-out. Use clearToken() for soft session clear. */
+    fun logout() {
+        settings.remove(KEY_AUTH_TOKEN)
+        settings.remove(KEY_BIOMETRIC_TOKEN)
+        settings.remove(KEY_CREDENTIAL_EMAIL)
+        settings.remove(KEY_CREDENTIAL_PASSWORD)
+        settings.remove(KEY_REMEMBERED_EMAIL)
+        _token.value = null
+    }
+
     fun isLoggedIn(): Boolean = _token.value != null
 
     /** Check if a previous session token exists for biometric re-authentication.

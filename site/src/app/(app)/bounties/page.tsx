@@ -63,12 +63,24 @@ export default function BountiesPage() {
         setBounties(apiBounties)
       }
 
-      // Process spots
+      // Process spots — merge map markers with full report data for descriptions/photos
       if (spotsResult.status === 'fulfilled' && spotsResult.value) {
         const data = spotsResult.value
-        const apiSpots = data.spots || data.data || []
-        if (apiSpots.length > 0) {
-          setSpots(apiSpots)
+        const mapSpots = data.spots || []
+        const fullReports = data.data || []
+        if (mapSpots.length > 0) {
+          // Enrich map spots with description, photoUrl, status from full reports
+          const enriched = mapSpots.map((s: any) => {
+            const full = fullReports.find((r: any) => String(r.id) === String(s.id))
+            return {
+              ...s,
+              description: full?.description || undefined,
+              photoUrl: full?.photoUrl || (full?.mediaUrls?.[0]) || undefined,
+              status: full?.status || undefined,
+              reporterName: full?.reporterName || undefined,
+            }
+          })
+          setSpots(enriched)
         }
       }
 

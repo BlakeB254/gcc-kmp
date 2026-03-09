@@ -71,7 +71,7 @@ fun Route.authenticatedSpotRoutes() {
                 lat = request.lat,
                 lng = request.lng,
                 description = request.description,
-                mediaUrls = request.mediaUrls,
+                mediaUrls = request.mediaUrls ?: emptyList(),
                 isAdmin = call.isAdmin(),
             )
 

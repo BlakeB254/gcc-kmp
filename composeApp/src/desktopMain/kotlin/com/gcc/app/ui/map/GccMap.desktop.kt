@@ -54,6 +54,8 @@ actual fun GccMap(
     spots: List<com.gcc.shared.model.CommunityReport>,
     onAreaTap: ((CommunityArea) -> Unit)?,
     onRouteTap: ((routeIndex: Int) -> Unit)?,
+    onSpotTap: ((spotId: Int) -> Unit)?,
+    onBountyTap: ((bountyId: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     showGridLines: Boolean,

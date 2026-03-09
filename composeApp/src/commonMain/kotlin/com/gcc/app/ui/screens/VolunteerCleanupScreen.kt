@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
 import com.gcc.app.ui.components.*
@@ -33,9 +34,7 @@ fun VolunteerCleanupScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(reportId) {
-        if (uiState.cleanup == null) {
-            viewModel.startCleanup(reportId, beforeMediaUrls = emptyList())
-        }
+        viewModel.initForReport(reportId)
     }
 
     Scaffold(
@@ -47,6 +46,16 @@ fun VolunteerCleanupScreen(
                 .padding(padding),
         ) {
             when (uiState.phase) {
+                VolunteerPhase.BEFORE_PHOTOS -> BeforePhotosPhase(
+                    beforePhotoCount = uiState.beforePhotoUrls.size,
+                    isSubmitting = uiState.isSubmitting,
+                    error = uiState.error,
+                    onCapture = { viewModel.addBeforePhoto("before_${uiState.beforePhotoUrls.size + 1}.jpg") },
+                    onConfirmMessStillHere = { viewModel.startCleanup() },
+                    onAlreadyClean = { viewModel.reportAlreadyClean() },
+                    onBack = onBack,
+                )
+
                 VolunteerPhase.IN_PROGRESS -> InProgressPhase(
                     elapsedSeconds = uiState.elapsedSeconds,
                     cleanup = uiState.cleanup,
@@ -87,12 +96,20 @@ fun VolunteerCleanupScreen(
                 VolunteerPhase.COMPLETE -> CompletionPhase(
                     cleanup = uiState.cleanup,
                     elapsedSeconds = uiState.elapsedSeconds,
+                    pointsAwarded = uiState.pointsAwarded,
+                    onBack = onBack,
+                )
+
+                VolunteerPhase.ALREADY_CLEAN_COMPLETE -> AlreadyCleanCompletionPhase(
+                    pointsAwarded = uiState.pointsAwarded,
                     onBack = onBack,
                 )
             }
 
             // Floating back button
-            if (uiState.phase != VolunteerPhase.COMPLETE) {
+            if (uiState.phase != VolunteerPhase.COMPLETE &&
+                uiState.phase != VolunteerPhase.ALREADY_CLEAN_COMPLETE
+            ) {
                 TextButton(
                     onClick = onBack,
                     modifier = Modifier
@@ -119,6 +136,189 @@ fun VolunteerCleanupScreen(
     }
 }
 
+// ── Before Photos Phase ──────────────────────────────────────────────
+
+@Composable
+private fun BeforePhotosPhase(
+    beforePhotoCount: Int,
+    isSubmitting: Boolean,
+    error: String?,
+    onCapture: () -> Unit,
+    onConfirmMessStillHere: () -> Unit,
+    onAlreadyClean: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .padding(top = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SectionHeader(title = "Verify Spot")
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Take a photo to verify the mess is still here before starting cleanup.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Camera placeholder
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(GccOnBackground.copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "\uD83D\uDCF7",
+                    style = MaterialTheme.typography.displayLarge,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Before Photo",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+                if (beforePhotoCount > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "$beforePhotoCount photo${if (beforePhotoCount != 1) "s" else ""} captured",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GccGreen,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Capture button
+        OutlinedButton(
+            onClick = onCapture,
+            modifier = Modifier.size(72.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+        ) {
+            Text(
+                "\uD83D\uDCF8",
+                style = MaterialTheme.typography.headlineMedium,
+            )
+        }
+
+        error?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Action buttons
+        if (beforePhotoCount > 0) {
+            GccButton(
+                text = if (isSubmitting) "Starting..." else "Mess is still here - Start Cleanup",
+                onClick = onConfirmMessStillHere,
+                variant = GccButtonVariant.PRIMARY,
+                enabled = !isSubmitting,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            GccButton(
+                text = if (isSubmitting) "Reporting..." else "Already Clean",
+                onClick = onAlreadyClean,
+                variant = GccButtonVariant.OUTLINED,
+                enabled = !isSubmitting,
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Report a bonus if someone already cleaned it",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSubtle,
+            )
+        }
+    }
+}
+
+// ── Already Clean Completion ─────────────────────────────────────────
+
+@Composable
+private fun AlreadyCleanCompletionPhase(
+    pointsAwarded: Int,
+    onBack: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "\u2728",
+            style = MaterialTheme.typography.displayMedium,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Spot Already Clean!",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+            color = GccGreen,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Thank you for verifying. The spot has been marked as resolved.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+        )
+
+        if (pointsAwarded > 0) {
+            Spacer(modifier = Modifier.height(24.dp))
+            GccCard(accentColor = CardAccentGold) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            "Report Bonus",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        )
+                        Text(
+                            "Thanks for checking on this spot!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                    Text(
+                        "+$pointsAwarded",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = GccGold,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        GccButton(
+            text = "Back to Map",
+            onClick = onBack,
+            variant = GccButtonVariant.PRIMARY,
+        )
+    }
+}
+
+// ── Timer ────────────────────────────────────────────────────────────
+
 @Composable
 private fun TimerDisplay(
     elapsedSeconds: Long,
@@ -141,6 +341,8 @@ private fun TimerDisplay(
         modifier = modifier,
     )
 }
+
+// ── In Progress Phase ────────────────────────────────────────────────
 
 @Composable
 private fun InProgressPhase(
@@ -242,6 +444,8 @@ private fun InProgressPhase(
     }
 }
 
+// ── After Photos Phase ───────────────────────────────────────────────
+
 @Composable
 private fun AfterPhotosPhase(
     afterPhotoCount: Int,
@@ -320,6 +524,8 @@ private fun AfterPhotosPhase(
         )
     }
 }
+
+// ── Trash Heap Phase ─────────────────────────────────────────────────
 
 @Composable
 private fun TrashHeapPhase(
@@ -402,10 +608,13 @@ private fun TrashHeapPhase(
     }
 }
 
+// ── Completion Phase ─────────────────────────────────────────────────
+
 @Composable
 private fun CompletionPhase(
     cleanup: com.gcc.shared.model.VolunteerCleanup?,
     elapsedSeconds: Long,
+    pointsAwarded: Int,
     onBack: () -> Unit,
 ) {
     LazyColumn(
@@ -473,31 +682,29 @@ private fun CompletionPhase(
 
         // Points card
         item {
-            cleanup?.let {
-                if (it.pointsAwarded > 0) {
-                    GccCard(accentColor = CardAccentGold) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column {
-                                Text(
-                                    "Points Earned",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                )
-                                Text(
-                                    "Thank you for volunteering!",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextMuted,
-                                )
-                            }
+            if (pointsAwarded > 0) {
+                GccCard(accentColor = CardAccentGold) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
                             Text(
-                                "+${it.pointsAwarded}",
-                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                                color = GccGold,
+                                "Points Earned",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Text(
+                                "Thank you for volunteering!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
                             )
                         }
+                        Text(
+                            "+$pointsAwarded",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            color = GccGold,
+                        )
                     }
                 }
             }
@@ -555,6 +762,8 @@ private fun CompletionPhase(
         item { Spacer(modifier = Modifier.height(8.dp)) }
     }
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────
 
 @Composable
 private fun SummaryRow(

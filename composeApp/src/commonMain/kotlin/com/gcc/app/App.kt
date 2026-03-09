@@ -9,6 +9,10 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.navigation.Screen
 import com.gcc.app.ui.screens.*
+import com.gcc.app.ui.screens.admin.AdminPanelScreen
+import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
+import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
+import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
 import com.gcc.app.ui.theme.GccTheme
 
 @Composable
@@ -72,6 +76,8 @@ fun App(component: RootComponent) {
                 is Screen.MapFullScreen -> MapFullScreen(
                     onBack = component::navigateBack,
                     onRouteClick = component::navigateToRouteDetail,
+                    onVolunteerCleanup = component::navigateToVolunteerCleanup,
+                    onSpotVerification = component::navigateToSpotVerification,
                 )
                 is Screen.Settings -> SettingsScreen(
                     onBack = component::navigateBack,
@@ -114,6 +120,26 @@ fun App(component: RootComponent) {
                     onFallback = component::onBiometricFallback,
                 )
                 is Screen.AdminPanel -> AdminPanelScreen(
+                    onBack = component::navigateBack,
+                    onNavigateToSpotCreate = component::navigateToAdminSpotCreate,
+                    onNavigateToSpotDetail = component::navigateToAdminSpotDetail,
+                    onNavigateToRouteDetail = component::navigateToAdminRouteDetail,
+                )
+                is Screen.AdminSpotCreate -> AdminSpotCreateScreen(
+                    initialLat = screen.lat,
+                    initialLng = screen.lng,
+                    onBack = component::navigateBack,
+                )
+                is Screen.AdminSpotDetail -> AdminSpotDetailScreen(
+                    spotId = screen.spotId,
+                    onBack = component::navigateBack,
+                )
+                is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
+                    routeId = screen.routeId,
+                    onBack = component::navigateBack,
+                )
+                is Screen.SpotVerification -> SpotVerificationScreen(
+                    reportId = screen.reportId,
                     onBack = component::navigateBack,
                 )
             }

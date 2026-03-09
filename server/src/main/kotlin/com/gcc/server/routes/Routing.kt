@@ -32,6 +32,8 @@ fun Application.configureRouting() {
             bountyRoutes()
             gamificationRoutes()
             feedRoutes()
+            verificationRoutes()
+            cleanlinessRoutes()
         }
 
         // Authenticated endpoints (auth first — reject bad tokens before consuming rate limit)
@@ -40,6 +42,8 @@ fun Application.configureRouting() {
                 authenticatedWorkerRoutes()
                 authenticatedJobRoutes()
                 authenticatedSpotRoutes()
+                authenticatedVerificationRoutes()
+                authenticatedPointsRoutes()
                 authenticatedWalletRoutes()
                 authenticatedBountyRoutes()
                 authenticatedGamificationRoutes()

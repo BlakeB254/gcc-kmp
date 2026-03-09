@@ -63,4 +63,16 @@ sealed class Screen {
 
     @Serializable
     data object AdminPanel : Screen()
+
+    @Serializable
+    data class AdminSpotCreate(val lat: Double, val lng: Double) : Screen()
+
+    @Serializable
+    data class AdminSpotDetail(val spotId: Int) : Screen()
+
+    @Serializable
+    data class AdminRouteDetail(val routeId: Int) : Screen()
+
+    @Serializable
+    data class SpotVerification(val reportId: Int) : Screen()
 }

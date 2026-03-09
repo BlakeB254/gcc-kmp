@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
+import com.gcc.app.util.padTwo
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.map.CheckpointMarker
 import com.gcc.app.ui.map.CheckpointThumbnail
 import com.gcc.app.ui.map.GccMap
@@ -33,7 +35,17 @@ fun RouteDetailScreen(
     onStartJob: (jobId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<RouteDetailViewModel>()
+    val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
+    val currentLocation by locationProvider.currentLocation.collectAsState()
+
+    LaunchedEffect(Unit) {
+        locationProvider.startLocationUpdates()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { locationProvider.stopLocationUpdates() }
+    }
 
     LaunchedEffect(routeId) {
         viewModel.loadRoute(routeId)
@@ -68,7 +80,9 @@ fun RouteDetailScreen(
         return
     }
 
-    val payoutString = route.payoutAmount?.let { "\$$it" }
+    val payoutString = route.payoutAmount?.let { cents ->
+        "$${cents / 100}" + if (cents % 100 != 0) ".${(cents % 100).padTwo()}" else ""
+    }
 
     // Compute route path from checkpoints for polyline rendering
     val sortedCheckpoints = remember(route) {
@@ -126,18 +140,27 @@ fun RouteDetailScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
         ) {
-            // Hero map with route polyline, back button, and gradient overlay
+            // Hero: route image or map with route polyline
             item {
                 Box(modifier = Modifier.height(280.dp)) {
-                    GccMap(
-                        modifier = Modifier.fillMaxSize(),
-                        centerLat = mapCenter.lat,
-                        centerLng = mapCenter.lng,
-                        zoom = mapZoom,
-                        enableGestures = true,
-                        routeCoordinates = routePath,
-                        animateRoutes = true,
-                    )
+                    if (route.imageUrl != null) {
+                        NetworkImage(
+                            url = route.imageUrl!!,
+                            contentDescription = route.displayName,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        GccMap(
+                            modifier = Modifier.fillMaxSize(),
+                            centerLat = mapCenter.lat,
+                            centerLng = mapCenter.lng,
+                            zoom = mapZoom,
+                            currentLocation = currentLocation,
+                            enableGestures = true,
+                            routeCoordinates = routePath,
+                            animateRoutes = true,
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -317,7 +340,7 @@ fun RouteDetailScreen(
 
                 val isClaimable = route.status == com.gcc.shared.model.RouteStatus.PUBLISHED
                 GccButton(
-                    text = if (isClaimable) "Claim Route" else "Not Available",
+                    text = if (isClaimable) "Claim Route" else "Not Claimable",
                     onClick = { viewModel.claimRoute(routeId) },
                     variant = GccButtonVariant.PRIMARY,
                     trailingText = if (isClaimable) payoutString else null,

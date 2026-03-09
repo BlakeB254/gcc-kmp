@@ -21,6 +21,7 @@ export async function GET(request: Request) {
         estimatedMinutes: routes.estimatedMinutes,
         status: routes.status,
         payoutAmount: routes.payoutAmount,
+        imageUrl: routes.imageUrl,
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
       })
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
       status: route.status,
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
-      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000') / 100),
+      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
       checkpoints: (checkpointsMap.get(route.id) || []).map((cp) => ({
         name: cp.name,
         sequenceOrder: cp.sequenceOrder,
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
         geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
         type: cp.type ?? 'photo_point',
       })),
-      imageUrl: null,
+      imageUrl: route.imageUrl || null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
     }))

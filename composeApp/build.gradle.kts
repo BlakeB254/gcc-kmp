@@ -83,6 +83,8 @@ kotlin {
             implementation(libs.compass.geolocation.mobile)
             // Encrypted storage for secure token persistence
             implementation(libs.androidx.security.crypto)
+            // Biometric authentication (fingerprint / face)
+            implementation(libs.androidx.biometric)
         }
         iosMain.dependencies {
             // MapLibre + Compass mobile implementation (iOS)

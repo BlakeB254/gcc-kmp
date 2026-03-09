@@ -7,6 +7,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:globalcommunitycleaners.org</string>
+		<string>webcredentials:globalcommunitycleaners.org</string>
 	</array>
 </dict>
 </plist>
