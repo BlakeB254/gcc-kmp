@@ -11,11 +11,13 @@ import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFDictionarySetValue
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
+import platform.Foundation.NSLog
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
@@ -24,6 +26,7 @@ import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecDuplicateItem
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
@@ -93,6 +96,23 @@ actual class SecureStorage actual constructor() : Settings {
                 kSecValueData to dataRef,
                 kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlock,
             )
+            val addStatus = SecItemAdd(addQuery, null)
+            if (addStatus == errSecDuplicateItem) {
+                // Stale item exists — delete and retry
+                SecItemDelete(baseQuery(key))
+                SecItemAdd(addQuery, null)
+            }
+        } else {
+            // Unexpected error on update — delete and re-add
+            NSLog("GCC Keychain: update failed for key=$key status=$updateStatus, deleting and re-adding")
+            SecItemDelete(baseQuery(key))
+            val addQuery = cfDict(
+                kSecClass to kSecClassGenericPassword,
+                kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
+                kSecAttrAccount to CFBridgingRetain(key as NSString),
+                kSecValueData to dataRef,
+                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlock,
+            )
             SecItemAdd(addQuery, null)
         }
     }
@@ -104,7 +124,7 @@ actual class SecureStorage actual constructor() : Settings {
             kSecClass to kSecClassGenericPassword,
             kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
             kSecAttrAccount to CFBridgingRetain(key as NSString),
-            kSecReturnData to CFBridgingRetain(true as Any),
+            kSecReturnData to kCFBooleanTrue,
             kSecMatchLimit to kSecMatchLimitOne,
         )
         val result = alloc<CFTypeRefVar>()
