@@ -61,7 +61,7 @@ function toCommunityReport(r: any) {
     aiAnalysis: r.onDeviceAiResult || null,
     affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
     affectedArea: r.affectedArea || null,
-    tags: (r.tags as string[] | null)?.length ? r.tags : autoTagFromDescription(r.description),
+    tags: r.tags || autoTagFromDescription(r.description),
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
     // Verification lifecycle
     lastVerifiedAt: r.lastVerifiedAt || null,
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
         coordinates: coords,
         radiusMeters: parseFloat(report.affectedRadiusMeters || '15'),
         label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
-        tags: ((report as any).tags as string[] | null)?.length ? (report as any).tags : autoTagFromDescription(report.description),
+        tags: (report as any).tags || autoTagFromDescription(report.description),
         affectedArea: (report as any).affectedArea || null,
         needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : false,
       }

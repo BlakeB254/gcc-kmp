@@ -3,10 +3,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight, Clock, AlertTriangle, Grid3X3 } from 'lucide-react'
+import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
-import type { BlockOnMap } from '@/components/map/CombinedMap'
 
 // Dynamically import CombinedMap to avoid SSR issues with MapLibre
 const CombinedMap = dynamic(
@@ -37,53 +36,25 @@ const ROUTE_STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
 }
 
-const BLOCK_STATUS_BADGE: Record<string, string> = {
-  available: 'bg-green-100 text-green-700',
-  funded: 'bg-emerald-100 text-emerald-700',
-  in_progress: 'bg-blue-100 text-blue-700',
-  completed: 'bg-neutral-100 text-neutral-600',
-}
-
-// ============================================================================
-// TIME HELPERS
-// ============================================================================
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  if (hours < 1) return 'Just now'
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days === 1) return '1 day ago'
-  return `${days} days ago`
-}
-
-function isOverdue(dateStr: string | undefined | null): boolean {
-  if (!dateStr) return false
-  return new Date(dateStr) <= new Date()
-}
-
 // ============================================================================
 // PAGE COMPONENT
 // ============================================================================
 
 export default function BountiesPage() {
   const [bounties, setBounties] = useState<Bounty[]>([])
-  const [spots, setSpots] = useState<(SpotReport & { needsVerification?: boolean; nextVerificationDue?: string; lastVerifiedAt?: string })[]>([])
+  const [spots, setSpots] = useState<SpotReport[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
-  const [blocks, setBlocks] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null)
 
   // Fetch data from API endpoints
   useEffect(() => {
     async function fetchData() {
-      // Fetch bounties, spots, routes, and blocks in parallel
-      const [bountiesResult, spotsResult, routesResult, blocksResult] = await Promise.allSettled([
+      // Fetch bounties, spots, and routes in parallel
+      const [bountiesResult, spotsResult, routesResult] = await Promise.allSettled([
         fetch('/api/bounties?limit=50').then(res => res.ok ? res.json() : null),
         fetch('/api/spots?limit=100').then(res => res.ok ? res.json() : null),
         fetch('/api/routes?status=all').then(res => res.ok ? res.json() : null),
-        fetch('/api/blocks?limit=50').then(res => res.ok ? res.json() : null),
       ])
 
       // Process bounties (from community reports/sightings)
@@ -110,10 +81,6 @@ export default function BountiesPage() {
               status: full?.status || undefined,
               reporterName: full?.reporterName || undefined,
               createdAt: full?.createdAt || undefined,
-              needsVerification: full?.needsVerification ?? s.needsVerification ?? false,
-              nextVerificationDue: full?.nextVerificationDue || undefined,
-              lastVerifiedAt: full?.lastVerifiedAt || undefined,
-              tags: full?.tags || s.tags || [],
             }
           })
           setSpots(enriched)
@@ -150,47 +117,11 @@ export default function BountiesPage() {
         }
       }
 
-      // Process blocks
-      if (blocksResult.status === 'fulfilled' && blocksResult.value) {
-        const data = blocksResult.value
-        const apiBlocks = data.blocks || data.data || []
-        setBlocks(apiBlocks)
-      }
-
       setIsLoading(false)
     }
 
     fetchData()
   }, [])
-
-  // Build BlockOnMap objects from API data (displayImages come from the API)
-  const blocksWithImages = useMemo<BlockOnMap[]>(() => {
-    if (blocks.length === 0) return []
-
-    return blocks
-      .filter((b: any) => b.location?.boundary?.coordinates)
-      .map((block: any) => {
-        const boundary = block.location.boundary
-        const center: [number, number] = block.location.center?.coordinates || [0, 0]
-        const displayImages: string[] = block.displayImages || []
-
-        return {
-          id: block.id,
-          code: block.code,
-          name: block.name,
-          status: block.status,
-          boundary,
-          center,
-          funding: block.funding || { goal: 10000, current: 0 },
-          displayImages,
-          spotCount: displayImages.length,
-          streetName: block.streetName,
-          fromCorner: block.fromCorner,
-          toCorner: block.toCorner,
-          side: block.side,
-        } satisfies BlockOnMap
-      })
-  }, [blocks])
 
   // Compute dynamic stats from fetched data
   const stats = useMemo(() => {
@@ -198,18 +129,14 @@ export default function BountiesPage() {
     const totalPostedCents = bounties.reduce((sum, b) => sum + b.amountCents, 0)
     const cleanedCount = bounties.filter(b => b.status === 'completed').length
     const activeSpots = spots.length
-    const totalBlocks = blocksWithImages.length
-    const blocksWithPhotos = blocksWithImages.filter(b => b.displayImages.length > 0).length
 
     return {
       activeBounties,
       totalPosted: `$${(totalPostedCents / 100).toLocaleString()}`,
       cleaned: cleanedCount,
       activeSpots,
-      totalBlocks,
-      blocksWithPhotos,
     }
-  }, [bounties, spots, blocksWithImages])
+  }, [bounties, spots])
 
   return (
     <div className="min-h-screen">
@@ -245,7 +172,7 @@ export default function BountiesPage() {
       {/* Stats Bar */}
       <section className="bg-neutral-900 text-white py-6">
         <div className="section-container">
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 text-center">
+          <div className={`grid ${spots.length > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-center`}>
             <div>
               <p className="text-2xl sm:text-3xl font-bold text-red-400">
                 {isLoading ? '...' : stats.activeBounties}
@@ -264,20 +191,12 @@ export default function BountiesPage() {
               </p>
               <p className="text-sm text-neutral-400">Cleaned</p>
             </div>
-            {stats.activeSpots > 0 && (
+            {spots.length > 0 && (
               <div>
                 <p className="text-2xl sm:text-3xl font-bold text-blue-400">
                   {stats.activeSpots}
                 </p>
                 <p className="text-sm text-neutral-400">Active Spots</p>
-              </div>
-            )}
-            {stats.totalBlocks > 0 && (
-              <div>
-                <p className="text-2xl sm:text-3xl font-bold text-emerald-400">
-                  {stats.totalBlocks}
-                </p>
-                <p className="text-sm text-neutral-400">Blocks</p>
               </div>
             )}
           </div>
@@ -295,7 +214,6 @@ export default function BountiesPage() {
             <span className="text-sm text-neutral-500">
               {bounties.length} bounties
               {spots.length > 0 && ` \u00B7 ${spots.length} spots`}
-              {blocksWithImages.length > 0 && ` \u00B7 ${blocksWithImages.length} blocks`}
               {routes.length > 0 && ` \u00B7 ${routes.length} routes`}
             </span>
           </div>
@@ -303,7 +221,6 @@ export default function BountiesPage() {
             bounties={bounties}
             spots={spots}
             routes={routes}
-            blocks={blocksWithImages}
             height="500px"
             showLegend={true}
           />
@@ -358,97 +275,6 @@ export default function BountiesPage() {
             </div>
           </div>
 
-          {/* Block Reports Section — shows blocks with matched spot images */}
-          {blocksWithImages.length > 0 && (
-            <div className="mt-10">
-              <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
-                <Grid3X3 className="w-5 h-5 text-emerald-600" />
-                Block Reports
-                {stats.blocksWithPhotos > 0 && (
-                  <span className="text-sm font-normal text-neutral-500">
-                    ({stats.blocksWithPhotos} with photos)
-                  </span>
-                )}
-              </h3>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {blocksWithImages.map((block) => {
-                  const fundingPct = block.funding.goal > 0
-                    ? Math.min(100, (block.funding.current / block.funding.goal) * 100)
-                    : 0
-                  return (
-                    <div
-                      key={block.id}
-                      className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
-                    >
-                      {/* Block display image */}
-                      {block.displayImages.length > 0 && (
-                        <div className="relative">
-                          <img
-                            src={block.displayImages[0]}
-                            alt={`${block.name} report`}
-                            className="w-full h-48 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                            onClick={() => setLightbox({ urls: block.displayImages, index: 0 })}
-                          />
-                          {block.displayImages.length > 1 && (
-                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
-                              {block.displayImages.length} photos
-                            </div>
-                          )}
-                          <span
-                            className={`absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
-                              BLOCK_STATUS_BADGE[block.status] || 'bg-neutral-100 text-neutral-600'
-                            }`}
-                          >
-                            {block.status.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                      )}
-                      <div className="p-4">
-                        <div className="flex items-start justify-between mb-1">
-                          <h4 className="font-semibold text-neutral-900">{block.name}</h4>
-                          <span className="text-xs text-neutral-500 ml-2 flex-shrink-0">{block.code}</span>
-                        </div>
-                        {block.streetName && (
-                          <p className="text-xs text-neutral-500 mb-2">
-                            {block.streetName} &middot; {block.fromCorner} to {block.toCorner}
-                            {block.side && ` (${block.side} side)`}
-                          </p>
-                        )}
-                        {/* Funding progress */}
-                        <div className="mb-2">
-                          <div className="flex justify-between text-xs text-neutral-500 mb-1">
-                            <span>${(block.funding.current / 100).toFixed(0)} raised</span>
-                            <span>${(block.funding.goal / 100).toFixed(0)} goal</span>
-                          </div>
-                          <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-green-500 rounded-full transition-all"
-                              style={{ width: `${fundingPct}%` }}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-                          {block.spotCount > 0 && (
-                            <span>{block.spotCount} spot report{block.spotCount !== 1 ? 's' : ''}</span>
-                          )}
-                          {!block.displayImages.length && (
-                            <span
-                              className={`px-2 py-0.5 rounded-full font-medium capitalize ${
-                                BLOCK_STATUS_BADGE[block.status] || 'bg-neutral-100 text-neutral-600'
-                              }`}
-                            >
-                              {block.status.replace(/_/g, ' ')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Spot Reports Section */}
           {spots.length > 0 && (
             <div className="mt-10">
@@ -459,13 +285,10 @@ export default function BountiesPage() {
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {spots.map((spot) => {
                   const allPhotos = spot.mediaUrls?.length ? spot.mediaUrls : spot.photoUrl ? [spot.photoUrl] : []
-                  const verificationOverdue = spot.needsVerification || isOverdue(spot.nextVerificationDue)
                   return (
                     <div
                       key={spot.id}
-                      className={`bg-white rounded-xl border overflow-hidden hover:shadow-md transition-shadow ${
-                        verificationOverdue ? 'border-amber-300' : 'border-neutral-200'
-                      }`}
+                      className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
                     >
                       {/* Photo area — large hero image or photo strip */}
                       {allPhotos.length > 0 && (
@@ -481,20 +304,12 @@ export default function BountiesPage() {
                               {allPhotos.length} photos
                             </div>
                           )}
-                          {/* Status badge */}
                           {spot.status && (
                             <span
                               className="absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full text-white font-medium capitalize"
                               style={{ backgroundColor: spot.status === 'verified' ? '#22C55E' : spot.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
                             >
                               {spot.status}
-                            </span>
-                          )}
-                          {/* Verification overdue indicator */}
-                          {verificationOverdue && (
-                            <span className="absolute top-2 left-2 flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500 text-white font-medium">
-                              <AlertTriangle className="w-3 h-3" />
-                              Needs Re-check
                             </span>
                           )}
                         </div>
@@ -504,7 +319,7 @@ export default function BountiesPage() {
                           <div className="flex items-center gap-2">
                             <span
                               className="w-3 h-3 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: verificationOverdue ? '#F59E0B' : '#F97316' }}
+                              style={{ backgroundColor: '#F97316' }}
                             />
                             <h4 className="font-semibold text-neutral-900 capitalize">
                               {spot.label?.replace(/_/g, ' ') || 'Spot Report'}
@@ -522,26 +337,6 @@ export default function BountiesPage() {
                             </span>
                           )}
                         </div>
-                        {/* Tags */}
-                        {(spot as any).tags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {((spot as any).tags as string[]).map((tag: string) => (
-                              <span
-                                key={tag}
-                                className="text-[11px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium capitalize"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {/* Verification due warning (no-photo cards) */}
-                        {verificationOverdue && !allPhotos.length && (
-                          <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 rounded-md px-2 py-1 mb-2">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Due for re-verification</span>
-                          </div>
-                        )}
                         {spot.description && (
                           <p className="text-sm text-neutral-600 mb-3 line-clamp-2">{spot.description}</p>
                         )}
@@ -549,9 +344,8 @@ export default function BountiesPage() {
                           <span>~{spot.radiusMeters}m radius</span>
                           {spot.reporterName && <span>By {spot.reporterName}</span>}
                           {spot.createdAt && (
-                            <span className="ml-auto flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {timeAgo(spot.createdAt)}
+                            <span className="ml-auto">
+                              {new Date(spot.createdAt).toLocaleDateString()}
                             </span>
                           )}
                         </div>

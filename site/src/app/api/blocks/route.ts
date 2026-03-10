@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/db'
-import { blocks, serviceAreas, communityReports } from '@/db/schema'
-import { eq, desc, sql, and, isNotNull } from 'drizzle-orm'
+import { blocks, serviceAreas } from '@/db/schema'
+import { eq, desc, sql, and } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
@@ -87,49 +87,6 @@ export async function GET(request: NextRequest) {
   const total = Number(countResult?.count) || 0
   const totalPages = Math.ceil(total / limit)
 
-  // Fetch community reports that have photos to match with blocks by proximity
-  let reportsWithMedia: { id: number; mediaIds: unknown; coordinates: unknown }[] = []
-  try {
-    reportsWithMedia = await db
-      .select({
-        id: communityReports.id,
-        mediaIds: communityReports.mediaIds,
-        coordinates: communityReports.coordinates,
-      })
-      .from(communityReports)
-      .where(isNotNull(communityReports.mediaIds))
-      .limit(200)
-    // Filter to only reports that actually have media URLs
-    reportsWithMedia = reportsWithMedia.filter((r) => {
-      const ids = r.mediaIds as string[] | null
-      return ids && ids.length > 0
-    })
-  } catch {
-    // Non-fatal — blocks still work without images
-  }
-
-  // Match reports to blocks by proximity (~200m from block center)
-  const PROXIMITY_DEG = 0.002 // ~200m at Chicago latitude
-  function getBlockDisplayImages(blockCenter: any): string[] {
-    if (!blockCenter?.coordinates) return []
-    const [blockLng, blockLat] = blockCenter.coordinates as [number, number]
-    const images: string[] = []
-    for (const report of reportsWithMedia) {
-      const raw = report.coordinates as any
-      let rLng: number, rLat: number
-      if (Array.isArray(raw)) {
-        rLng = raw[0]; rLat = raw[1]
-      } else if (raw && typeof raw === 'object') {
-        rLng = raw.lng ?? raw.lon ?? 0; rLat = raw.lat ?? 0
-      } else continue
-      if (Math.abs(rLng - blockLng) < PROXIMITY_DEG && Math.abs(rLat - blockLat) < PROXIMITY_DEG) {
-        const mediaUrls = report.mediaIds as string[]
-        if (mediaUrls) images.push(...mediaUrls)
-      }
-    }
-    return images
-  }
-
   // Transform to API format with full geometry
   const formattedBlocks = blockList.map((block) => ({
     id: String(block.id),
@@ -169,8 +126,6 @@ export async function GET(request: NextRequest) {
     completedAt: block.completedAt,
     createdAt: block.createdAt,
     updatedAt: block.updatedAt,
-    // Display images from nearby community reports
-    displayImages: getBlockDisplayImages(block.locationCenter),
   }))
 
   return Response.json({

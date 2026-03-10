@@ -13,7 +13,6 @@ import {
   BOUNTY_COLORS,
   SPOT_COLORS,
   SPOT_ZOOM,
-  BLOCK_STATUS_COLORS,
   CHICAGO_CENTER_LNG_LAT,
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
@@ -25,32 +24,14 @@ import type { Route } from './RouteMap'
 // TYPES
 // ============================================================================
 
-export interface BlockOnMap {
-  id: string
-  code: string
-  name: string
-  status: string
-  boundary: { type: 'Polygon'; coordinates: number[][][] }
-  center: [number, number] // [lng, lat]
-  funding: { goal: number; current: number }
-  displayImages: string[]
-  spotCount: number
-  streetName?: string | null
-  fromCorner?: string | null
-  toCorner?: string | null
-  side?: string | null
-}
-
 interface CombinedMapProps {
   bounties: Bounty[]
   spots?: SpotReport[]
   routes?: Route[]
-  blocks?: BlockOnMap[]
   height?: string
   showLegend?: boolean
   onBountySelect?: (bounty: Bounty) => void
   onRouteSelect?: (route: Route) => void
-  onBlockSelect?: (block: BlockOnMap) => void
   selectedRouteId?: number
 }
 
@@ -58,7 +39,6 @@ type PopupTarget =
   | { kind: 'bounty'; data: Bounty }
   | { kind: 'route'; data: Route }
   | { kind: 'spot'; data: SpotReport; lng: number; lat: number }
-  | { kind: 'block'; data: BlockOnMap }
 
 // ============================================================================
 // COLOR MAPS
@@ -126,12 +106,10 @@ export function CombinedMap({
   bounties,
   spots = [],
   routes = [],
-  blocks = [],
   height = '500px',
   showLegend = true,
   onBountySelect,
   onRouteSelect,
-  onBlockSelect,
   selectedRouteId,
 }: CombinedMapProps) {
   const mapRef = useRef<MapRef | null>(null)
@@ -206,31 +184,6 @@ export function CombinedMap({
     [spots]
   )
 
-  // ----- block GeoJSON -----
-  const blockGeoJson = useMemo(
-    () => ({
-      type: 'FeatureCollection' as const,
-      features: blocks
-        .filter((b) => b.boundary)
-        .map((block) => ({
-          type: 'Feature' as const,
-          id: block.id,
-          properties: {
-            id: block.id,
-            code: block.code,
-            name: block.name,
-            status: block.status,
-            fundingGoal: block.funding.goal,
-            fundingCurrent: block.funding.current,
-            hasImages: block.displayImages.length > 0,
-            spotCount: block.spotCount,
-          },
-          geometry: block.boundary,
-        })),
-    }),
-    [blocks]
-  )
-
   // ----- all checkpoints -----
   const allCheckpoints = useMemo(
     () =>
@@ -244,24 +197,13 @@ export function CombinedMap({
     [routes]
   )
 
-  // ----- handle map feature click (routes + spots + blocks) -----
+  // ----- handle map feature click (routes + spots) -----
   const handleMapClick = useCallback(
     (event: any) => {
       const feature = event.features?.[0]
       if (!feature || !feature.properties) return
 
       const layerId = feature.layer?.id || ''
-
-      // Block click
-      if (layerId.includes('block')) {
-        const blockId = feature.properties.id
-        const block = blocks.find((b) => String(b.id) === String(blockId))
-        if (block) {
-          setPopup({ kind: 'block', data: block })
-          onBlockSelect?.(block)
-        }
-        return
-      }
 
       // Spot click
       if (layerId.includes('spot')) {
@@ -286,7 +228,7 @@ export function CombinedMap({
         onRouteSelect?.(route)
       }
     },
-    [routes, spots, blocks, onRouteSelect, onBlockSelect]
+    [routes, spots, onRouteSelect]
   )
 
   // ----- initial view (will be overridden by fitBounds) -----
@@ -313,12 +255,6 @@ export function CombinedMap({
     if (bountyStatuses.has(status)) {
       legendItems.push({ color: BOUNTY_STATUS_COLOR[status], label: `Bounty: ${label}`, shape: 'circle' })
     }
-  }
-
-  // Blocks
-  if (blocks.length > 0) {
-    legendItems.push({ color: BLOCK_STATUS_COLORS.available.fill, label: 'Block (Available)' })
-    legendItems.push({ color: BLOCK_STATUS_COLORS.in_progress.fill, label: 'Block (In Progress)' })
   }
 
   // Spots
@@ -431,68 +367,6 @@ export function CombinedMap({
       )
     }
 
-    // block popup
-    if (popup.kind === 'block') {
-      const block = popup.data
-      return (
-        <Popup
-          longitude={block.center[0]}
-          latitude={block.center[1]}
-          anchor="bottom"
-          onClose={() => setPopup(null)}
-          closeButton
-          maxWidth="360px"
-        >
-          <div className="p-4 min-w-[300px] max-w-[360px]">
-            {block.displayImages.length > 0 && (
-              <div className={`mb-3 ${block.displayImages.length > 1 ? 'flex gap-2 overflow-x-auto' : ''}`}>
-                {block.displayImages.slice(0, 3).map((url, i) => (
-                  <img
-                    key={i}
-                    src={url}
-                    alt={`${block.name} photo ${i + 1}`}
-                    className={`object-cover rounded-lg ${
-                      block.displayImages.length === 1 ? 'w-full h-44' : 'w-40 h-32 flex-shrink-0'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-bold text-neutral-900">{block.name}</span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full text-white font-medium capitalize"
-                style={{ backgroundColor: (BLOCK_STATUS_COLORS as any)[block.status]?.fill || '#6B7280' }}
-              >
-                {block.status.replace(/_/g, ' ')}
-              </span>
-            </div>
-            <p className="text-xs text-neutral-500 mb-1">{block.code}</p>
-            {block.streetName && (
-              <p className="text-xs text-neutral-500 mb-2">
-                {block.streetName} &middot; {block.fromCorner} to {block.toCorner}
-              </p>
-            )}
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-neutral-500 mb-1">
-                <span>${(block.funding.current / 100).toFixed(0)} raised</span>
-                <span>${(block.funding.goal / 100).toFixed(0)} goal</span>
-              </div>
-              <div className="h-1.5 bg-neutral-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-green-500 rounded-full"
-                  style={{ width: `${Math.min(100, block.funding.goal > 0 ? (block.funding.current / block.funding.goal) * 100 : 0)}%` }}
-                />
-              </div>
-            </div>
-            {block.spotCount > 0 && (
-              <p className="text-xs text-neutral-500 mt-2">{block.spotCount} spot report{block.spotCount !== 1 ? 's' : ''}</p>
-            )}
-          </div>
-        </Popup>
-      )
-    }
-
     // route popup
     const r = popup.data
     return (
@@ -542,7 +416,7 @@ export function CombinedMap({
         </div>
       </Popup>
     )
-  }, [popup, onRouteSelect, spots, blocks])
+  }, [popup, onRouteSelect, spots])
 
   // ----- combined legend -----
   const legendNode = showLegend ? (
@@ -577,11 +451,10 @@ export function CombinedMap({
         height={height}
         initialViewState={initialViewState}
         interactiveLayerIds={[
-          ...(blocks.length > 0 ? ['combined-block-fill'] : []),
           ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
           ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-radius-fill', 'combined-spot-verification-ring'] : []),
         ]}
-        onClick={routes.length > 0 || spots.length > 0 || blocks.length > 0 ? handleMapClick : undefined}
+        onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         cursor="pointer"
         legend={legendNode}
         popup={popupNode}
@@ -590,106 +463,6 @@ export function CombinedMap({
           if (ref) setMapLoaded(true)
         }}
       >
-        {/* ============================================================ */}
-        {/* BLOCK POLYGONS                                              */}
-        {/* ============================================================ */}
-
-        {blocks.length > 0 && (
-          <Source id="combined-blocks" type="geojson" data={blockGeoJson}>
-            {/* Block polygon fill */}
-            <Layer
-              id="combined-block-fill"
-              type="fill"
-              paint={{
-                'fill-color': [
-                  'match', ['get', 'status'],
-                  'available', BLOCK_STATUS_COLORS.available.fill,
-                  'claimed', BLOCK_STATUS_COLORS.claimed.fill,
-                  'in_progress', BLOCK_STATUS_COLORS.in_progress.fill,
-                  'pending_review', BLOCK_STATUS_COLORS.pending_review.fill,
-                  'completed', BLOCK_STATUS_COLORS.completed.fill,
-                  BLOCK_STATUS_COLORS.unfunded.fill,
-                ],
-                'fill-opacity': [
-                  'match', ['get', 'status'],
-                  'available', BLOCK_STATUS_COLORS.available.opacity,
-                  'claimed', BLOCK_STATUS_COLORS.claimed.opacity,
-                  'in_progress', BLOCK_STATUS_COLORS.in_progress.opacity,
-                  'pending_review', BLOCK_STATUS_COLORS.pending_review.opacity,
-                  'completed', BLOCK_STATUS_COLORS.completed.opacity,
-                  BLOCK_STATUS_COLORS.unfunded.opacity,
-                ],
-              }}
-            />
-            {/* Block polygon outline */}
-            <Layer
-              id="combined-block-outline"
-              type="line"
-              paint={{
-                'line-color': [
-                  'match', ['get', 'status'],
-                  'available', BLOCK_STATUS_COLORS.available.fill,
-                  'claimed', BLOCK_STATUS_COLORS.claimed.fill,
-                  'in_progress', BLOCK_STATUS_COLORS.in_progress.fill,
-                  'pending_review', BLOCK_STATUS_COLORS.pending_review.fill,
-                  'completed', BLOCK_STATUS_COLORS.completed.fill,
-                  BLOCK_STATUS_COLORS.unfunded.fill,
-                ],
-                'line-width': 2,
-                'line-opacity': 0.8,
-              }}
-            />
-            {/* Block code labels */}
-            <Layer
-              id="combined-block-label"
-              type="symbol"
-              layout={{
-                'text-field': ['get', 'code'],
-                'text-size': 11,
-                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-              }}
-              paint={{
-                'text-color': '#1F2937',
-                'text-halo-color': '#FFFFFF',
-                'text-halo-width': 1.5,
-              }}
-            />
-          </Source>
-        )}
-
-        {/* ============================================================ */}
-        {/* BLOCK IMAGE MARKERS (thumbnail at block center)             */}
-        {/* ============================================================ */}
-
-        {blocks
-          .filter((b) => b.displayImages.length > 0)
-          .map((block) => (
-            <Marker
-              key={`block-img-${block.id}`}
-              longitude={block.center[0]}
-              latitude={block.center[1]}
-              anchor="bottom"
-              onClick={(e) => {
-                e.originalEvent.stopPropagation()
-                setPopup({ kind: 'block', data: block })
-                onBlockSelect?.(block)
-              }}
-            >
-              <div className="flex flex-col items-center cursor-pointer group">
-                <div className="w-16 h-12 rounded-lg overflow-hidden border-2 border-white shadow-md group-hover:shadow-lg transition-shadow">
-                  <img
-                    src={block.displayImages[0]}
-                    alt={block.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="bg-white/95 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm -mt-1 text-neutral-800">
-                  {block.code}
-                </div>
-              </div>
-            </Marker>
-          ))}
-
         {/* ============================================================ */}
         {/* ROUTE LINES - Cased Line Technique                          */}
         {/* ============================================================ */}

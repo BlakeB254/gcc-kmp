@@ -100,7 +100,6 @@ interface APIBlock {
     goal: number
     current: number
   }
-  displayImages?: string[]
 }
 
 interface BlockWithStatus {
@@ -111,7 +110,6 @@ interface BlockWithStatus {
   toCorner: string
   side: 'north' | 'south'
   status: BlockStatus
-  displayImages: string[]
   geo: {
     center: { type: 'Point'; coordinates: [number, number] }
     polygon: { type: 'Polygon'; coordinates: [number, number][][] }
@@ -159,7 +157,6 @@ function apiBlockToDisplayBlock(block: APIBlock): BlockWithStatus | null {
     toCorner: block.toCorner || '',
     side: (block.side as 'north' | 'south') || 'north',
     status: displayStatus,
-    displayImages: block.displayImages || [],
     geo: {
       center: block.location.center,
       polygon: block.location.boundary,
@@ -177,7 +174,6 @@ function hardcodedBlockToDisplayBlock(block: BlockDefinition): BlockWithStatus {
     toCorner: block.toCorner,
     side: block.side,
     status: 'unfunded', // Default status for hardcoded blocks
-    displayImages: [],
     geo: block.geo,
   }
 }
@@ -746,76 +742,59 @@ export function NeighborhoodMapSection() {
           {/* Block detail card — overlaid inside the map canvas */}
           {selectedBlock && (
             <div className="absolute bottom-8 left-3 right-3 sm:left-4 sm:right-auto sm:max-w-sm z-20">
-              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 overflow-hidden">
-                {/* Block display image from nearby spot reports */}
-                {selectedBlock.displayImages.length > 0 && (
-                  <div className="relative">
-                    <img
-                      src={selectedBlock.displayImages[0]}
-                      alt={`${selectedBlock.code} block report`}
-                      className="w-full h-40 object-cover"
-                    />
-                    {selectedBlock.displayImages.length > 1 && (
-                      <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full">
-                        {selectedBlock.displayImages.length} photos
-                      </div>
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-neutral-900 text-base leading-tight">
+                      {selectedBlock.fromCorner && selectedBlock.toCorner
+                        ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
+                        : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
+                    </h3>
+                    {selectedBlock.streetName && (
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        📍 {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North' : 'South'} side
+                      </p>
                     )}
                   </div>
-                )}
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-neutral-900 text-base leading-tight">
-                        {selectedBlock.fromCorner && selectedBlock.toCorner
-                          ? `${selectedBlock.fromCorner} to ${selectedBlock.toCorner}`
-                          : formatStreetName(selectedBlock.streetName) || selectedBlock.code}
-                      </h3>
-                      {selectedBlock.streetName && (
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          {formatStreetName(selectedBlock.streetName)} &middot; {selectedBlock.side === 'north' ? 'North' : 'South'} side
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span
-                        className="text-xs px-2.5 py-1 rounded-full text-white font-semibold flex items-center gap-1"
-                        style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
-                      >
-                        {STATUS_ICONS[selectedBlock.status]} {STATUS_LABELS[selectedBlock.status]}
-                      </span>
-                      <button
-                        onClick={() => { setSelectedBlock(null); resetMapView() }}
-                        className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors rounded-full hover:bg-neutral-100"
-                        aria-label="Close"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span
+                      className="text-xs px-2.5 py-1 rounded-full text-white font-semibold flex items-center gap-1"
+                      style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
+                    >
+                      {STATUS_ICONS[selectedBlock.status]} {STATUS_LABELS[selectedBlock.status]}
+                    </span>
+                    <button
+                      onClick={() => { setSelectedBlock(null); resetMapView() }}
+                      className="p-1 text-neutral-400 hover:text-neutral-700 transition-colors rounded-full hover:bg-neutral-100"
+                      aria-label="Close"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
-
-                  {selectedBlock.status === 'available' && (
-                    <Link href="/worker/signup" className="btn-primary w-full text-sm py-2 text-center block font-semibold mt-2">
-                      Claim This Block — Earn $100
-                    </Link>
-                  )}
-                  {selectedBlock.status === 'unfunded' && (
-                    <Link href="/sponsor" className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
-                      Fund This Block — $100
-                    </Link>
-                  )}
-                  {selectedBlock.status === 'completed' && (
-                    <p className="text-sm text-blue-700 font-medium bg-blue-50 rounded-lg px-3 py-1.5 mt-2 text-center">
-                      Recently cleaned!
-                    </p>
-                  )}
-                  {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
-                    <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-3 py-1.5 mt-2 text-center">
-                      Currently being handled
-                    </p>
-                  )}
                 </div>
+
+                {selectedBlock.status === 'available' && (
+                  <Link href="/worker/signup" className="btn-primary w-full text-sm py-2 text-center block font-semibold mt-2">
+                    🧹 Claim This Block — Earn $100
+                  </Link>
+                )}
+                {selectedBlock.status === 'unfunded' && (
+                  <Link href="/sponsor" className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
+                    💰 Fund This Block — $100
+                  </Link>
+                )}
+                {selectedBlock.status === 'completed' && (
+                  <p className="text-sm text-blue-700 font-medium bg-blue-50 rounded-lg px-3 py-1.5 mt-2 text-center">
+                    🏆 Recently cleaned!
+                  </p>
+                )}
+                {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
+                  <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-3 py-1.5 mt-2 text-center">
+                    🚫 Currently being handled
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -875,19 +854,6 @@ export function NeighborhoodMapSection() {
                     </div>
                   )
                 })()}
-                {/* Tags from auto-tagging system */}
-                {selectedSpot.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {(selectedSpot.tags as string[]).map((tag: string) => (
-                      <span
-                        key={tag}
-                        className="text-[11px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium capitalize"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
                 {selectedSpot.description && (
                   <p className="text-sm text-neutral-600 mb-2 line-clamp-3">{selectedSpot.description}</p>
                 )}
