@@ -792,7 +792,7 @@ export function NeighborhoodMapSection() {
                   </Link>
                 )}
                 {selectedBlock.status === 'unfunded' && (
-                  <Link href="/sponsor" className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
+                  <Link href={`/sponsor?block=${selectedBlock.id}`} className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
                     💰 Fund This Block — $100
                   </Link>
                 )}

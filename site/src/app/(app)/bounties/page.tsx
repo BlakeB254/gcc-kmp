@@ -466,6 +466,14 @@ export default function BountiesPage() {
                         <div className="text-xs text-neutral-500">
                           ${block.funding.current.toLocaleString()} / ${block.funding.goal.toLocaleString()}
                         </div>
+                        {block.status === 'unfunded' && (
+                          <Link
+                            href={`/sponsor?block=${block.id}`}
+                            className="text-sm font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                          >
+                            Fund This Block &rarr;
+                          </Link>
+                        )}
                         {(block.status === 'available' || block.status === 'funded') && (
                           <Link
                             href="/worker/signup"

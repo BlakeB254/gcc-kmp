@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { Building2, Sparkles, ChevronRight, Calendar, Clock, MapPin, Users, X, Check } from 'lucide-react'
+import { Building2, Sparkles, ChevronRight, Calendar, Clock, MapPin, Users, X, Check, CheckCircle2 } from 'lucide-react'
 
 /** Format street name to include 1500 block number for Roosevelt Rd */
 function formatStreetName(streetName: string | undefined | null): string {
@@ -50,7 +51,22 @@ interface Block {
 type SponsorshipMode = 'specific' | 'general'
 const GENERAL_BLOCK_COUNTS = [1, 3, 5, 10]
 
-export default function SponsorPage() {
+export default function SponsorPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600" />
+      </div>
+    }>
+      <SponsorPage />
+    </Suspense>
+  )
+}
+
+function SponsorPage() {
+  const searchParams = useSearchParams()
+  const preselectedBlockId = searchParams.get('block')
+
   const [blocks, setBlocks] = useState<Block[]>([])
   const [mode, setMode] = useState<SponsorshipMode>('specific')
   const [selectedBlocks, setSelectedBlocks] = useState<Block[]>([])
@@ -58,6 +74,7 @@ export default function SponsorPage() {
   const [sponsorType, setSponsorType] = useState<'single' | 'monthly'>('single')
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [preselectedBlock, setPreselectedBlock] = useState<Block | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -70,6 +87,9 @@ export default function SponsorPage() {
   const [cleaningDate, setCleaningDate] = useState('')
   const [cleaningTimeStart, setCleaningTimeStart] = useState('')
   const [cleaningTimeEnd, setCleaningTimeEnd] = useState('')
+
+  // Ref for scrolling to block selection after preselection
+  const blockSectionRef = useRef<HTMLDivElement>(null)
 
   // Calculate minimum date (tomorrow)
   const tomorrow = new Date()
@@ -85,11 +105,31 @@ export default function SponsorPage() {
     fetchUnfundedBlocks()
   }, [])
 
+  // Auto-select block from URL param once blocks are loaded
+  useEffect(() => {
+    if (!preselectedBlockId || blocks.length === 0) return
+    const match = blocks.find(b => b.id === preselectedBlockId)
+    if (match && !selectedBlocks.some(b => b.id === match.id)) {
+      setSelectedBlocks([match])
+      setPreselectedBlock(match)
+      setMode('specific')
+      // Smooth scroll to the block selection after a short delay for render
+      setTimeout(() => {
+        blockSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 300)
+    }
+  }, [preselectedBlockId, blocks])
+
   const fetchUnfundedBlocks = async () => {
     try {
-      const response = await fetch('/api/blocks?status=available')
+      const response = await fetch('/api/blocks?limit=50')
       const data = await response.json()
-      setBlocks(data.blocks || [])
+      // Show blocks that can be funded (unfunded or available without a sponsor)
+      const allBlocks: Block[] = data.blocks || []
+      const fundable = allBlocks.filter(b =>
+        b.status === 'unfunded' || b.status === 'available'
+      )
+      setBlocks(fundable)
     } catch (error) {
       console.error('Failed to fetch blocks:', error)
     } finally {
@@ -218,6 +258,38 @@ export default function SponsorPage() {
             )}
           </div>
 
+          {/* Pre-selected block confirmation */}
+          {preselectedBlock && (
+            <div className="mb-golden-lg animate-fade-in-up">
+              <div className="bg-gradient-to-r from-brand-green-50 to-emerald-50 border-2 border-brand-green-200 rounded-2xl p-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-brand-green-100 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-brand-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-brand-green-900 text-lg">
+                      Funding: {preselectedBlock.fromCorner} to {preselectedBlock.toCorner}
+                    </h3>
+                    <p className="text-brand-green-700 text-sm">
+                      {formatStreetName(preselectedBlock.streetName)} — Your $100 pays a local resident to clean this block
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-2xl font-bold text-brand-green-700">$100</p>
+                    <p className="text-xs text-brand-green-600">per block</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs text-brand-green-600">
+                  <span className="inline-flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Block selected
+                  </span>
+                  <span className="text-brand-green-300">•</span>
+                  <span>Fill in your details below and choose a cleaning date to complete</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Calculator Upsell Banner */}
           <div className="mb-golden-xl animate-fade-in-up stagger-1">
             <div className="bg-gradient-to-r from-brand-gold-500 to-amber-500 rounded-2xl p-6 text-white">
@@ -340,7 +412,7 @@ export default function SponsorPage() {
             <div className="animate-fade-in-up stagger-1">
               {mode === 'specific' ? (
                 <>
-                  <h2 className="text-xl font-semibold text-neutral-900 mb-golden-md flex items-center gap-2">
+                  <h2 ref={blockSectionRef} className="text-xl font-semibold text-neutral-900 mb-golden-md flex items-center gap-2">
                     <span className="w-7 h-7 rounded-full bg-brand-gold-100 text-brand-gold-700 flex items-center justify-center text-sm font-bold">2</span>
                     Select Blocks
                   </h2>
