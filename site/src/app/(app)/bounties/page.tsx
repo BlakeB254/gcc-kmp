@@ -45,23 +45,6 @@ const BLOCK_STATUS_BADGE: Record<string, string> = {
 }
 
 // ============================================================================
-// SPATIAL MATCHING — point-in-polygon (ray-casting)
-// ============================================================================
-
-function pointInPolygon(point: [number, number], ring: number[][]): boolean {
-  const [x, y] = point
-  let inside = false
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1]
-    const xj = ring[j][0], yj = ring[j][1]
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside
-    }
-  }
-  return inside
-}
-
-// ============================================================================
 // TIME HELPERS
 // ============================================================================
 
@@ -130,6 +113,7 @@ export default function BountiesPage() {
               needsVerification: full?.needsVerification ?? s.needsVerification ?? false,
               nextVerificationDue: full?.nextVerificationDue || undefined,
               lastVerifiedAt: full?.lastVerifiedAt || undefined,
+              tags: full?.tags || s.tags || [],
             }
           })
           setSpots(enriched)
@@ -179,7 +163,7 @@ export default function BountiesPage() {
     fetchData()
   }, [])
 
-  // Match spots to blocks using point-in-polygon and build BlockOnMap objects
+  // Build BlockOnMap objects from API data (displayImages come from the API)
   const blocksWithImages = useMemo<BlockOnMap[]>(() => {
     if (blocks.length === 0) return []
 
@@ -187,21 +171,8 @@ export default function BountiesPage() {
       .filter((b: any) => b.location?.boundary?.coordinates)
       .map((block: any) => {
         const boundary = block.location.boundary
-        const outerRing = boundary.coordinates[0]
         const center: [number, number] = block.location.center?.coordinates || [0, 0]
-
-        // Find spots that fall within this block's polygon
-        const matchedSpots = spots.filter((spot) => {
-          if (!spot.coordinates) return false
-          return pointInPolygon(spot.coordinates, outerRing)
-        })
-
-        // Collect all images from matched spots
-        const displayImages: string[] = []
-        for (const spot of matchedSpots) {
-          const photos = spot.mediaUrls?.length ? spot.mediaUrls : spot.photoUrl ? [spot.photoUrl] : []
-          displayImages.push(...photos)
-        }
+        const displayImages: string[] = block.displayImages || []
 
         return {
           id: block.id,
@@ -212,14 +183,14 @@ export default function BountiesPage() {
           center,
           funding: block.funding || { goal: 10000, current: 0 },
           displayImages,
-          spotCount: matchedSpots.length,
+          spotCount: displayImages.length,
           streetName: block.streetName,
           fromCorner: block.fromCorner,
           toCorner: block.toCorner,
           side: block.side,
         } satisfies BlockOnMap
       })
-  }, [blocks, spots])
+  }, [blocks])
 
   // Compute dynamic stats from fetched data
   const stats = useMemo(() => {
@@ -551,6 +522,19 @@ export default function BountiesPage() {
                             </span>
                           )}
                         </div>
+                        {/* Tags */}
+                        {(spot as any).tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {((spot as any).tags as string[]).map((tag: string) => (
+                              <span
+                                key={tag}
+                                className="text-[11px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium capitalize"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {/* Verification due warning (no-photo cards) */}
                         {verificationOverdue && !allPhotos.length && (
                           <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 rounded-md px-2 py-1 mb-2">
