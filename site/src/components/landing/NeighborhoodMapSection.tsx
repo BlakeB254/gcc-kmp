@@ -92,6 +92,7 @@ interface APIBlock {
     boundary: { type: 'Polygon'; coordinates: [number, number][][] } | null
     center: { type: 'Point'; coordinates: [number, number] } | null
   }
+  displayImage: string | null
   streetName: string
   fromCorner: string
   toCorner: string
@@ -110,6 +111,7 @@ interface BlockWithStatus {
   toCorner: string
   side: 'north' | 'south'
   status: BlockStatus
+  displayImage: string | null
   geo: {
     center: { type: 'Point'; coordinates: [number, number] }
     polygon: { type: 'Polygon'; coordinates: [number, number][][] }
@@ -157,6 +159,7 @@ function apiBlockToDisplayBlock(block: APIBlock): BlockWithStatus | null {
     toCorner: block.toCorner || '',
     side: (block.side as 'north' | 'south') || 'north',
     status: displayStatus,
+    displayImage: block.displayImage || null,
     geo: {
       center: block.location.center,
       polygon: block.location.boundary,
@@ -174,6 +177,7 @@ function hardcodedBlockToDisplayBlock(block: BlockDefinition): BlockWithStatus {
     toCorner: block.toCorner,
     side: block.side,
     status: 'unfunded', // Default status for hardcoded blocks
+    displayImage: null,
     geo: block.geo,
   }
 }
@@ -742,7 +746,16 @@ export function NeighborhoodMapSection() {
           {/* Block detail card — overlaid inside the map canvas */}
           {selectedBlock && (
             <div className="absolute bottom-8 left-3 right-3 sm:left-4 sm:right-auto sm:max-w-sm z-20">
-              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 p-4">
+              <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-neutral-200 overflow-hidden">
+                {/* Block display image */}
+                {selectedBlock.displayImage && (
+                  <img
+                    src={selectedBlock.displayImage}
+                    alt={selectedBlock.code}
+                    className="w-full h-40 object-cover"
+                  />
+                )}
+                <div className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="min-w-0">
                     <h3 className="font-bold text-neutral-900 text-base leading-tight">
@@ -795,6 +808,7 @@ export function NeighborhoodMapSection() {
                     🚫 Currently being handled
                   </p>
                 )}
+                </div>{/* end p-4 */}
               </div>
             </div>
           )}
@@ -854,17 +868,35 @@ export function NeighborhoodMapSection() {
                     </div>
                   )
                 })()}
+                {/* Tags */}
+                {selectedSpot.tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {(selectedSpot.tags as string[]).map((tag: string) => (
+                      <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
+                    ))}
+                  </div>
+                )}
                 {selectedSpot.description && (
                   <p className="text-sm text-neutral-600 mb-2 line-clamp-3">{selectedSpot.description}</p>
                 )}
-                <div className="flex items-center gap-4 text-xs text-neutral-500">
+                <div className="flex items-center flex-wrap gap-3 text-xs text-neutral-500">
                   {selectedSpot.affectedRadiusMeters && (
                     <span>Radius: {Math.round(selectedSpot.affectedRadiusMeters)}m</span>
                   )}
                   {selectedSpot.reporterName && (
                     <span>By: {selectedSpot.reporterName}</span>
                   )}
+                  {selectedSpot.createdAt && (
+                    <span>{new Date(selectedSpot.createdAt).toLocaleDateString()}</span>
+                  )}
                 </div>
+                {/* 24h verification due indicator */}
+                {selectedSpot.needsVerification && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5">
+                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                    Verification overdue — needs re-confirmation
+                  </div>
+                )}
               </div>
             </div>
           )}

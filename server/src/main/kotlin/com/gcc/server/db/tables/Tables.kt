@@ -263,6 +263,9 @@ object Blocks : Table("blocks") {
     val includesAlley = bool("includes_alley").default(true)
     val checkpoints = jsonbCol<kotlinx.serialization.json.JsonElement>("checkpoints").nullable()
 
+    // Display image URL (Vercel Blob)
+    val displayImage = varchar("display_image", 2048).nullable()
+
     // Funding (numeric stored as varchar)
     val fundingGoal = varchar("funding_goal", 50).default("100")
     val fundingCurrent = varchar("funding_current", 50).default("0")

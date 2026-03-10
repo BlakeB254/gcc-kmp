@@ -47,6 +47,7 @@ fun ResultRow.toBlock(): Block = Block(
     status = enumValueOfOrDefault(this[Blocks.status]),
     boundary = this[Blocks.locationBoundary],
     center = this[Blocks.locationCenter],
+    displayImage = this[Blocks.displayImage],
     fundingGoal = this[Blocks.fundingGoal]?.toIntOrNull(),
     fundingCurrent = this[Blocks.fundingCurrent]?.toIntOrNull() ?: 0,
     sponsorId = this[Blocks.fundedById],

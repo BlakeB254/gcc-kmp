@@ -361,6 +361,9 @@ export const blocks = pgTable('blocks', {
   locationBoundary: jsonb('location_boundary'), // GeoJSON polygon
   locationCenter: jsonb('location_center'), // GeoJSON point for map centering
 
+  // Display image (Vercel Blob URL set via admin app)
+  displayImage: varchar('display_image'),
+
   // Block metadata
   streetName: varchar('street_name'),
   fromCorner: varchar('from_corner'),

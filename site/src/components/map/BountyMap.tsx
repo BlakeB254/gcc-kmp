@@ -37,6 +37,8 @@ interface SpotReport {
   status?: string
   reporterName?: string
   createdAt?: string
+  tags?: string[]
+  needsVerification?: boolean
 }
 
 interface BountyMapProps {

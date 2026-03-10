@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
       locationNeighborhood: blocks.locationNeighborhood,
       locationBoundary: blocks.locationBoundary,
       locationCenter: blocks.locationCenter,
+      displayImage: blocks.displayImage,
       streetName: blocks.streetName,
       fromCorner: blocks.fromCorner,
       toCorner: blocks.toCorner,
@@ -102,6 +103,8 @@ export async function GET(request: NextRequest) {
       boundary: block.locationBoundary,
       center: block.locationCenter,
     },
+    // Display image (Vercel Blob URL)
+    displayImage: block.displayImage || null,
     // Block metadata
     streetName: block.streetName,
     fromCorner: block.fromCorner,

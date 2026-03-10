@@ -12,6 +12,7 @@ data class Block(
     val status: BlockStatus = BlockStatus.AVAILABLE,
     val boundary: GeoJSONPolygon? = null,
     val center: GeoJSONPoint? = null,
+    val displayImage: String? = null,
     val fundingGoal: Int? = null,
     val fundingCurrent: Int = 0,
     val sponsorId: Int? = null,

@@ -69,6 +69,7 @@ data class AdminBlockRequest(
     val serviceAreaId: Int? = null,
     val fundingGoal: Int? = null,
     val sponsorId: Int? = null,
+    val displayImage: String? = null,
 )
 
 @Serializable

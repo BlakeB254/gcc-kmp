@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
 
@@ -40,21 +40,36 @@ const ROUTE_STATUS_LABELS: Record<string, string> = {
 // PAGE COMPONENT
 // ============================================================================
 
+interface BlockCard {
+  id: string
+  code: string
+  name: string
+  status: string
+  displayImage: string | null
+  streetName: string | null
+  fromCorner: string | null
+  toCorner: string | null
+  side: string | null
+  funding: { goal: number; current: number }
+}
+
 export default function BountiesPage() {
   const [bounties, setBounties] = useState<Bounty[]>([])
   const [spots, setSpots] = useState<SpotReport[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
+  const [blockCards, setBlockCards] = useState<BlockCard[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null)
 
   // Fetch data from API endpoints
   useEffect(() => {
     async function fetchData() {
-      // Fetch bounties, spots, and routes in parallel
-      const [bountiesResult, spotsResult, routesResult] = await Promise.allSettled([
+      // Fetch bounties, spots, routes, and blocks in parallel
+      const [bountiesResult, spotsResult, routesResult, blocksResult] = await Promise.allSettled([
         fetch('/api/bounties?limit=50').then(res => res.ok ? res.json() : null),
         fetch('/api/spots?limit=100').then(res => res.ok ? res.json() : null),
         fetch('/api/routes?status=all').then(res => res.ok ? res.json() : null),
+        fetch('/api/blocks?limit=50').then(res => res.ok ? res.json() : null),
       ])
 
       // Process bounties (from community reports/sightings)
@@ -81,6 +96,9 @@ export default function BountiesPage() {
               status: full?.status || undefined,
               reporterName: full?.reporterName || undefined,
               createdAt: full?.createdAt || undefined,
+              tags: full?.tags || s.tags || [],
+              needsVerification: full?.needsVerification ?? false,
+              nextVerificationDue: full?.nextVerificationDue || null,
             }
           })
           setSpots(enriched)
@@ -114,6 +132,26 @@ export default function BountiesPage() {
             })),
           }))
           setRoutes(transformed)
+        }
+      }
+
+      // Process blocks
+      if (blocksResult.status === 'fulfilled' && blocksResult.value) {
+        const data = blocksResult.value
+        const apiBlocks = data.blocks || []
+        if (apiBlocks.length > 0) {
+          setBlockCards(apiBlocks.map((b: any) => ({
+            id: String(b.id),
+            code: b.code,
+            name: b.name,
+            status: b.status,
+            displayImage: b.displayImage || null,
+            streetName: b.streetName,
+            fromCorner: b.fromCorner,
+            toCorner: b.toCorner,
+            side: b.side,
+            funding: b.funding || { goal: 0, current: 0 },
+          })))
         }
       }
 
@@ -214,6 +252,7 @@ export default function BountiesPage() {
             <span className="text-sm text-neutral-500">
               {bounties.length} bounties
               {spots.length > 0 && ` \u00B7 ${spots.length} spots`}
+              {blockCards.length > 0 && ` \u00B7 ${blockCards.length} blocks`}
               {routes.length > 0 && ` \u00B7 ${routes.length} routes`}
             </span>
           </div>
@@ -337,14 +376,30 @@ export default function BountiesPage() {
                             </span>
                           )}
                         </div>
+                        {/* Tags */}
+                        {(spot as any).tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {((spot as any).tags as string[]).map((tag: string) => (
+                              <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
+                            ))}
+                          </div>
+                        )}
                         {spot.description && (
-                          <p className="text-sm text-neutral-600 mb-3 line-clamp-2">{spot.description}</p>
+                          <p className="text-sm text-neutral-600 mb-2 line-clamp-2">{spot.description}</p>
+                        )}
+                        {/* 24h verification indicator */}
+                        {(spot as any).needsVerification && (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5 mb-2">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Verification overdue
+                          </div>
                         )}
                         <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
                           <span>~{spot.radiusMeters}m radius</span>
                           {spot.reporterName && <span>By {spot.reporterName}</span>}
                           {spot.createdAt && (
-                            <span className="ml-auto">
+                            <span className="ml-auto flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
                               {new Date(spot.createdAt).toLocaleDateString()}
                             </span>
                           )}
@@ -353,6 +408,75 @@ export default function BountiesPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Block Cards Section */}
+          {blockCards.length > 0 && (
+            <div className="mt-10">
+              <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-emerald-600" />
+                Service Blocks
+              </h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {blockCards.map((block) => (
+                  <div
+                    key={block.id}
+                    className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
+                  >
+                    {block.displayImage && (
+                      <img
+                        src={block.displayImage}
+                        alt={block.name}
+                        className="w-full h-44 object-cover"
+                      />
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <h4 className="font-semibold text-neutral-900">
+                            {block.fromCorner && block.toCorner
+                              ? `${block.fromCorner} to ${block.toCorner}`
+                              : block.name}
+                          </h4>
+                          <p className="text-xs text-neutral-500 mt-0.5">{block.code}</p>
+                        </div>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                            block.status === 'available' || block.status === 'funded'
+                              ? 'bg-green-100 text-green-700'
+                              : block.status === 'completed'
+                              ? 'bg-blue-100 text-blue-700'
+                              : block.status === 'in_progress'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-neutral-100 text-neutral-600'
+                          }`}
+                        >
+                          {block.status === 'available' ? 'Available' : block.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      {block.streetName && (
+                        <p className="text-sm text-neutral-600 mb-2">
+                          {block.streetName}{block.side ? ` \u00B7 ${block.side} side` : ''}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
+                        <div className="text-xs text-neutral-500">
+                          ${block.funding.current.toLocaleString()} / ${block.funding.goal.toLocaleString()}
+                        </div>
+                        {(block.status === 'available' || block.status === 'funded') && (
+                          <Link
+                            href="/worker/signup"
+                            className="text-sm font-medium text-green-600 hover:text-green-700 transition-colors"
+                          >
+                            Claim Block &rarr;
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
