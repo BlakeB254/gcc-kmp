@@ -103,8 +103,10 @@ data class AdminStatsResponse(
     val totalRevenue: Int,
     val totalRoutes: Int,
     val totalBlocks: Int,
-    val totalBounties: Int,
-    val activeBounties: Int,
+    val totalSpots: Int = 0,
+    val activeSpots: Int = 0,
+    val totalBounties: Int = 0,
+    val activeBounties: Int = 0,
     val totalDisputes: Int,
     val openDisputes: Int,
 )

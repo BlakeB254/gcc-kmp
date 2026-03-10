@@ -735,8 +735,10 @@ object DemoData {
         totalRevenue = 28470000,
         totalRoutes = 42,
         totalBlocks = 10,
-        totalBounties = 67,
-        activeBounties = 23,
+        totalSpots = 67,
+        activeSpots = 23,
+        totalBounties = 12,
+        activeBounties = 5,
         totalDisputes = 8,
         openDisputes = 2,
     )

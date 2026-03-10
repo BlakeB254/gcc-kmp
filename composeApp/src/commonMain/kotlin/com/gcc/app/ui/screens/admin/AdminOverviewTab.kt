@@ -32,6 +32,9 @@ internal fun AdminOverviewTab(stats: AdminStatsResponse?) {
         item { AdminStatCard("Active Jobs", stats.activeJobs.toString(), "\u26A1", GccGreen) }
         item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
         item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA") }
+        item { SectionHeader("Spots") }
+        item { AdminStatCard("Active Spots", stats.activeSpots.toString(), "\uD83D\uDCCD", GccGreen) }
+        item { AdminStatCard("Total Spots", stats.totalSpots.toString(), "\uD83D\uDDFA") }
         item { SectionHeader("Bounties") }
         item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen) }
         item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0") }

@@ -51,11 +51,11 @@ export async function GET(request: Request) {
       db.select({ total: sql<number>`count(*)::int` }).from(routes)
     )
 
-    // Community report / bounty stats
-    const totalBounties = await safeCount(
+    // Spot (community report) stats
+    const totalSpots = await safeCount(
       db.select({ total: sql<number>`count(*)::int` }).from(communityReports)
     )
-    const activeBounties = await safeCount(
+    const activeSpots = await safeCount(
       db.select({ total: sql<number>`count(*)::int` }).from(communityReports)
         .where(or(
           eq(communityReports.status, 'pending'),
@@ -74,8 +74,10 @@ export async function GET(request: Request) {
       totalRevenue: 0,
       totalRoutes,
       totalBlocks: 0,
-      totalBounties,
-      activeBounties,
+      totalSpots,
+      activeSpots,
+      totalBounties: 0,
+      activeBounties: 0,
       totalDisputes: 0,
       openDisputes: 0,
     } })
