@@ -322,16 +322,19 @@ actual fun GccMap(
                 textOpacity = const(if (isMyArea) 0f else 1f),
             )
 
-            // ── Route polygon fill — visible at overview zooms, fades at street level ──
+            // ── Route polygon fill — tappable at all zoom levels ──
+            // Visible green at overview, fades to near-invisible at street level
+            // but stays non-transparent so taps still register on the polygon.
             FillLayer(
                 id = MapStyles.LAYER_ROUTE_FILL,
                 source = routePolygonsSrc,
-                color = interpolate(
+                color = const(MapStyles.ROUTE_FILL_COLOR),
+                opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    10 to const(MapStyles.ROUTE_FILL_COLOR),
-                    14 to const(MapStyles.ROUTE_FILL_COLOR),
-                    16 to const(Color.Transparent),
+                    10 to const(1f),
+                    14 to const(0.8f),
+                    16 to const(0.05f),
                 ),
                 onClick = if (onRouteTap != null) { features ->
                     val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
