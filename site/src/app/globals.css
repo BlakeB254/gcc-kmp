@@ -89,6 +89,11 @@
     @apply bg-white text-neutral-900;
   }
 
+  /* Auto-rotate images from EXIF orientation (landscape phone photos) */
+  img {
+    image-orientation: from-image;
+  }
+
   /* Better focus styles */
   :focus-visible {
     @apply outline-none ring-2 ring-brand-sky-500 ring-offset-2;

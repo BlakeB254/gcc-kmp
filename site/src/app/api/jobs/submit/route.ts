@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { jobs, blocks, media } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { put } from '@vercel/blob'
+import { processImage } from '@/lib/image-utils'
 
 export const runtime = 'nodejs'
 
@@ -75,9 +76,9 @@ export async function POST(request: NextRequest) {
     const afterPhotoIds: number[] = []
 
     for (const photo of photos as PhotoSubmission[]) {
-      // Decode base64 image
-      const imageBuffer = Buffer.from(photo.imageData.split(',')[1], 'base64')
-      const mimeType = photo.imageData.match(/data:(.+);base64/)?.[1] || 'image/jpeg'
+      // Decode base64, auto-rotate from EXIF, strip metadata
+      const rawBuffer = Buffer.from(photo.imageData.split(',')[1], 'base64')
+      const imageBuffer = await processImage(rawBuffer)
 
       // Upload to Vercel Blob
       const timestamp = Date.now()
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
       const blob = await put(blobPath, imageBuffer, {
         access: 'public',
-        contentType: mimeType,
+        contentType: 'image/jpeg',
       })
 
       // Create media record
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
           category: 'job_photo',
           url: blob.url,
           filename: `job-${jobId}-${photo.checkpointType}-${photo.timing}.jpg`,
-          mimeType,
+          mimeType: 'image/jpeg',
           filesize: String(imageBuffer.length),
         })
         .returning({ id: media.id })

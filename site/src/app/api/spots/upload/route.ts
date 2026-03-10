@@ -1,11 +1,13 @@
 /**
  * POST /api/spots/upload - Upload spot report photos
  * Accepts multipart form data with JPEG images.
+ * Auto-rotates based on EXIF orientation (fixes landscape phone photos).
  * Stores in Vercel Blob and returns public URLs.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { processImage } from '@/lib/image-utils'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -29,10 +31,14 @@ export async function POST(request: NextRequest) {
     for (const [key, value] of formData.entries()) {
       if (!(value instanceof File)) continue
 
+      // Auto-rotate from EXIF, strip metadata, cap at 2048px
+      const raw = await value.arrayBuffer()
+      const processed = await processImage(raw)
+
       const timestamp = Date.now()
       const filename = `spots/${auth.workerId}/${timestamp}-${key}.jpg`
 
-      const blob = await put(filename, value, {
+      const blob = await put(filename, processed, {
         access: 'public',
         contentType: 'image/jpeg',
       })

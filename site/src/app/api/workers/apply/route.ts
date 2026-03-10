@@ -8,6 +8,7 @@ import { getEarlyAdopterTier, generateReferralCode } from '@/lib/movement-rankin
 import { getChicagoCommunityArea, isInLaunchArea, LAUNCH_AREA_ZIPS } from '@/lib/chicago-community-areas'
 import crypto from 'crypto'
 import { put } from '@vercel/blob'
+import { processImage } from '@/lib/image-utils'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -45,7 +46,11 @@ function base64ToBuffer(dataUrl: string): Buffer {
 
 async function uploadFile(fileData: FileData, category: string): Promise<number | null> {
   try {
-    const buffer = base64ToBuffer(fileData.data)
+    const raw = base64ToBuffer(fileData.data)
+    // Auto-rotate from EXIF and strip metadata for document photos
+    const buffer = fileData.type.startsWith('image/')
+      ? await processImage(raw)
+      : raw
     const filename = `${category}/${Date.now()}-${fileData.name}`
 
     // Upload to Vercel Blob if token available, otherwise skip
@@ -53,7 +58,7 @@ async function uploadFile(fileData: FileData, category: string): Promise<number 
     if (process.env.BLOB_READ_WRITE_TOKEN) {
       const blob = await put(filename, buffer, {
         access: 'public',
-        contentType: fileData.type,
+        contentType: fileData.type.startsWith('image/') ? 'image/jpeg' : fileData.type,
       })
       url = blob.url
     }
