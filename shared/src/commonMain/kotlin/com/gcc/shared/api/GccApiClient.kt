@@ -338,6 +338,19 @@ class GccApiClient(
     suspend fun getAdminSpotReports(): List<CommunityReport> =
         get("/api/admin/spots")
 
+    /** Fetch nearby spots for duplicate detection. Returns spots within [radiusMeters] of (lat, lng). */
+    suspend fun getSpots(
+        lat: Double? = null,
+        lng: Double? = null,
+        radiusMeters: Double? = null,
+        limit: Int = 50,
+    ): List<CommunityReport> = get("/api/spots") {
+        lat?.let { parameter("lat", it) }
+        lng?.let { parameter("lng", it) }
+        radiusMeters?.let { parameter("radius", it) }
+        parameter("limit", limit)
+    }
+
     // Upload spot photos (multipart form data), returns list of public URLs
     suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> {
         if (photos.isEmpty()) return emptyList()

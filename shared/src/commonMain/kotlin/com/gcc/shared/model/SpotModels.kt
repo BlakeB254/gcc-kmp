@@ -3,6 +3,28 @@ package com.gcc.shared.model
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class CaptureAttestation(
+    val capturedAt: Long,
+    val capturedLat: Double? = null,
+    val capturedLng: Double? = null,
+    val deviceModel: String,
+    val osVersion: String,
+    val sessionId: String,
+    val captureIndex: Int,
+    val isLiveCapture: Boolean = true,
+)
+
+@Serializable
+data class OnDeviceAiResult(
+    val trashTypes: List<String> = emptyList(),
+    val estimatedWeightLbs: Double? = null,
+    val severity: Int? = null,
+    val confidence: Float? = null,
+    val suggestedTags: List<SpotTag> = emptyList(),
+    val generatedDescription: String? = null,
+)
+
+@Serializable
 data class CreateSpotRequest(
     val type: CommunityReportType = CommunityReportType.SIGHTING,
     val lat: Double,
@@ -14,6 +36,9 @@ data class CreateSpotRequest(
     val tags: List<SpotTag> = emptyList(),
     val reporterName: String? = null,
     val depthAnalysis: DepthAnalysis? = null,
+    val captureAttestation: CaptureAttestation? = null,
+    val onDeviceAiResult: OnDeviceAiResult? = null,
+    val duplicateOverrideReason: String? = null,
 )
 
 @Serializable

@@ -128,6 +128,7 @@ fun AdminSpotCreateScreen(
                         modifier = Modifier.weight(1f),
                         showMiniMap = true,
                         currentLocation = currentLocation,
+                        allowLibraryPick = true,
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))

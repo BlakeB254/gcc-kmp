@@ -258,12 +258,23 @@ actual class CameraManager actual constructor() {
                 val width = image.size.useContents { width.toInt() }
                 val height = image.size.useContents { height.toInt() }
 
+                captureCount++
+                val attestation = CaptureAttestation(
+                    capturedAt = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+                    deviceModel = getDeviceModel(),
+                    osVersion = getOsVersion(),
+                    sessionId = sessionId,
+                    captureIndex = captureCount,
+                    isLiveCapture = true,
+                )
+
                 continuation.resume(
                     CapturedPhoto(
                         bytes = bytes,
                         width = width,
                         height = height,
                         depthAnalysis = depthAnalysis,
+                        attestation = attestation,
                     )
                 )
             }
@@ -362,6 +373,8 @@ actual class CameraManager actual constructor() {
         internal var activePhotoOutput: AVCapturePhotoOutput? = null
         internal var activeSession: AVCaptureSession? = null
         internal var hasDepthCapability: Boolean = false
+        internal var sessionId: String = platform.Foundation.NSUUID().UUIDString()
+        internal var captureCount: Int = 0
     }
 }
 
@@ -546,6 +559,8 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
     CameraManager.activePhotoOutput = photoOutput
     CameraManager.activeSession = captureSession
     CameraManager.hasDepthCapability = depthCapable
+    CameraManager.sessionId = platform.Foundation.NSUUID().UUIDString()
+    CameraManager.captureCount = 0
 
     androidx.compose.ui.interop.UIKitView(
         factory = {
@@ -600,3 +615,13 @@ private fun CameraPreviewFallback(modifier: Modifier) {
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes
 
 actual fun hasLiDAR(): Boolean = CameraManager.hasDepthCapability
+
+actual fun getDeviceModel(): String {
+    val device = platform.UIKit.UIDevice.currentDevice
+    return "${device.model} (${device.systemName})"
+}
+
+actual fun getOsVersion(): String {
+    val device = platform.UIKit.UIDevice.currentDevice
+    return "${device.systemName} ${device.systemVersion}"
+}

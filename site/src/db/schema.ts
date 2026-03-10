@@ -817,6 +817,9 @@ export const communityReports = pgTable('community_reports', {
   mediaIds: jsonb('media_ids'),                // Photos and/or videos
   mediaCaptions: jsonb('media_captions'),      // Per-photo captions (parallel array to mediaIds)
   depthAnalysis: jsonb('depth_analysis'),       // LiDAR depth data (DepthAnalysis JSON)
+  captureAttestation: jsonb('capture_attestation'), // Anti-fraud: device, GPS, timestamp, session
+  onDeviceAiResult: jsonb('on_device_ai_result'),   // On-device AI analysis (trash types, severity, weight)
+  duplicateOverrideReason: text('duplicate_override_reason'), // Why user overrode duplicate warning
   beforePhotos: jsonb('before_photos'),        // For volunteer_cleanup: before state
   afterPhotos: jsonb('after_photos'),          // For volunteer_cleanup: after state
 

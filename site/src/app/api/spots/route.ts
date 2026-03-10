@@ -58,7 +58,7 @@ function toCommunityReport(r: any) {
     resolvedAt: r.resolvedByJobId ? r.updatedAt : null,
     bountyId: null,
     observerRewardPoints: 0,
-    aiAnalysis: null,
+    aiAnalysis: r.onDeviceAiResult || null,
     affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
     affectedArea: r.affectedArea || null,
     tags: r.tags || autoTagFromDescription(r.description),
@@ -78,6 +78,29 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10), 500)
+    const lat = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : null
+    const lng = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : null
+    const radiusMeters = searchParams.get('radius') ? parseFloat(searchParams.get('radius')!) : null
+
+    // Build proximity bounding box filter if lat/lng/radius provided
+    // ~0.000009 degrees per meter at Chicago latitude
+    const degPerMeter = 0.000009
+    const proximityFilter = lat != null && lng != null && radiusMeters != null
+      ? and(
+          or(
+            // Object-style coordinates {lat, lng}
+            and(
+              sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - radiusMeters * degPerMeter} AND ${lng + radiusMeters * degPerMeter}`,
+              sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - radiusMeters * degPerMeter} AND ${lat + radiusMeters * degPerMeter}`,
+            ),
+            // Array-style coordinates [lng, lat]
+            and(
+              sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - radiusMeters * degPerMeter} AND ${lng + radiusMeters * degPerMeter}`,
+              sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - radiusMeters * degPerMeter} AND ${lat + radiusMeters * degPerMeter}`,
+            ),
+          ),
+        )
+      : undefined
 
     // Fetch community reports that should be visible on the map
     const reports = await db
@@ -95,7 +118,8 @@ export async function GET(request: NextRequest) {
           or(
             isNull(communityReports.mapExpiresAt),
             gt(communityReports.mapExpiresAt, new Date().toISOString())
-          )
+          ),
+          proximityFilter,
         )
       )
       .orderBy(desc(communityReports.createdAt))
@@ -170,6 +194,9 @@ export async function POST(request: NextRequest) {
       tags,
       reporterName,
       depthAnalysis,
+      captureAttestation,
+      onDeviceAiResult,
+      duplicateOverrideReason,
     } = body
 
     // Validate coordinates
@@ -183,24 +210,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Duplicate spot check: reject if another spot exists within 50m
-    const duplicateCheck = await db
-      .select({ id: communityReports.id, coordinates: communityReports.coordinates })
-      .from(communityReports)
-      .where(
-        and(
-          or(
-            eq(communityReports.status, 'pending'),
-            eq(communityReports.status, 'verified')
-          ),
-          // Rough bounding box filter (~50m ≈ 0.00045 degrees)
-          sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
-          sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+    // Skip if user provided a duplicate override reason (they acknowledged the duplicate)
+    if (!duplicateOverrideReason) {
+      const duplicateCheck = await db
+        .select({ id: communityReports.id, coordinates: communityReports.coordinates })
+        .from(communityReports)
+        .where(
+          and(
+            or(
+              eq(communityReports.status, 'pending'),
+              eq(communityReports.status, 'verified')
+            ),
+            // Rough bounding box filter (~50m ≈ 0.00045 degrees)
+            sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
+            sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+          )
         )
-      )
-      .limit(1)
+        .limit(1)
 
-    // Also check array-style coordinates [lng, lat]
-    if (duplicateCheck.length === 0) {
+      // Also check array-style coordinates [lng, lat]
+      if (duplicateCheck.length > 0) {
+        return NextResponse.json(
+          { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
+          { status: 409 }
+        )
+      }
+
       const dupCheckArray = await db
         .select({ id: communityReports.id })
         .from(communityReports)
@@ -222,11 +257,6 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         )
       }
-    } else {
-      return NextResponse.json(
-        { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
-        { status: 409 }
-      )
     }
 
     // Derive affectedRadiusMeters from affectedArea if present
@@ -270,6 +300,9 @@ export async function POST(request: NextRequest) {
         nextVerificationDue: next24h,
         missedVerifications: 0,
         depthAnalysis: depthAnalysis || null,
+        captureAttestation: captureAttestation || null,
+        onDeviceAiResult: onDeviceAiResult || null,
+        duplicateOverrideReason: duplicateOverrideReason || null,
       })
       .returning()
 

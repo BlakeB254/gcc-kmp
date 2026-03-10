@@ -19,6 +19,23 @@ data class DepthAnalysis(
 )
 
 /**
+ * Cryptographic attestation proving a photo was captured live in-app.
+ * Used for anti-fraud verification — timestamps, GPS, and device info
+ * recorded at the exact moment of capture.
+ */
+@Serializable
+data class CaptureAttestation(
+    val capturedAt: Long,
+    val capturedLat: Double? = null,
+    val capturedLng: Double? = null,
+    val deviceModel: String,
+    val osVersion: String,
+    val sessionId: String,
+    val captureIndex: Int,
+    val isLiveCapture: Boolean = true,
+)
+
+/**
  * Captured photo result.
  */
 data class CapturedPhoto(
@@ -26,6 +43,7 @@ data class CapturedPhoto(
     val width: Int,
     val height: Int,
     val depthAnalysis: DepthAnalysis? = null,
+    val attestation: CaptureAttestation? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -92,3 +110,9 @@ expect fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArr
  * Android/Desktop: False
  */
 expect fun hasLiDAR(): Boolean
+
+/** Returns device model string (e.g. "iPhone 15 Pro", "Pixel 8"). */
+expect fun getDeviceModel(): String
+
+/** Returns OS version string (e.g. "iOS 18.4", "Android 15"). */
+expect fun getOsVersion(): String

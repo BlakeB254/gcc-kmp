@@ -50,6 +50,7 @@ fun CameraCapture(
     maxPhotos: Int = 3,
     showMiniMap: Boolean = false,
     currentLocation: Coordinates? = null,
+    allowLibraryPick: Boolean = false,
 ) {
     val cameraManager = remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
@@ -269,25 +270,27 @@ fun CameraCapture(
                 }
             }
 
-            // Library button
-            OutlinedButton(
-                onClick = {
-                    if (!atLimit) {
-                        coroutineScope.launch {
-                            val photo = pickFromLibrary()
-                            if (photo != null) onCapture(photo)
+            // Library button — only visible for admins (anti-fraud: users must use live capture)
+            if (allowLibraryPick) {
+                OutlinedButton(
+                    onClick = {
+                        if (!atLimit) {
+                            coroutineScope.launch {
+                                val photo = pickFromLibrary()
+                                if (photo != null) onCapture(photo)
+                            }
                         }
-                    }
-                },
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (atLimit) Color.Gray else GccGreen),
-                enabled = !isCapturing && !atLimit,
-            ) {
-                Text(
-                    "\uD83D\uDDBC",
-                    style = MaterialTheme.typography.headlineMedium,
-                )
+                    },
+                    modifier = Modifier.size(72.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = if (atLimit) Color.Gray else GccGreen),
+                    enabled = !isCapturing && !atLimit,
+                ) {
+                    Text(
+                        "\uD83D\uDDBC",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                }
             }
         }
     }

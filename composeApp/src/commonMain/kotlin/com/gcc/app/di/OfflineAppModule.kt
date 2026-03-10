@@ -2,6 +2,7 @@ package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
+import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ActiveJobViewModel
@@ -29,6 +30,7 @@ val offlineAppModule = module {
     single { LocationTrackingController() }
     single { ShareManager() }
     single { PushNotificationManager() }
+    single { OnDeviceAnalyzer() }
     single { createOfflineApiClient() }
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)

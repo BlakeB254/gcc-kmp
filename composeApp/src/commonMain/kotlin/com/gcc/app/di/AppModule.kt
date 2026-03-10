@@ -2,6 +2,7 @@ package com.gcc.app.di
 
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
+import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.SecureStorage
 import com.gcc.app.platform.BiometricAuth
@@ -34,6 +35,7 @@ val appModule = module {
     single { ShareManager() }
     single { PushNotificationManager() }
     single { BiometricAuth() }
+    single { OnDeviceAnalyzer() }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(

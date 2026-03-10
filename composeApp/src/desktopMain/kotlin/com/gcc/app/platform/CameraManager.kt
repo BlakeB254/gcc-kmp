@@ -49,3 +49,7 @@ actual suspend fun pickFromLibrary(): CapturedPhoto? = null
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes
 
 actual fun hasLiDAR(): Boolean = false
+
+actual fun getDeviceModel(): String = "Desktop (${System.getProperty("os.name")})"
+
+actual fun getOsVersion(): String = "${System.getProperty("os.name")} ${System.getProperty("os.version")}"

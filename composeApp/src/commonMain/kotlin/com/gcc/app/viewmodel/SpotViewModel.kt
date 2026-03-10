@@ -1,6 +1,8 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.OnDeviceAnalysisResult
+import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.embedGpsExif
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
@@ -42,11 +44,25 @@ data class SpotUiState(
     val matchingBounties: List<Bounty> = emptyList(),
     val error: String? = null,
     val phase: SpotPhase = SpotPhase.CAMERA,
+    // On-device AI analysis
+    val aiAnalysis: OnDeviceAnalysisResult? = null,
+    val isAnalyzing: Boolean = false,
+    val aiDescriptionApplied: Boolean = false,
+    // Duplicate detection
+    val duplicateMatch: DuplicateMatch? = null,
+    val duplicateOverrideReason: String? = null,
+)
+
+data class DuplicateMatch(
+    val existingSpot: CommunityReport,
+    val visualSimilarity: Float,
+    val distanceMeters: Double,
 )
 
 class SpotViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
+    private val analyzer: OnDeviceAnalyzer,
 ) {
     companion object {
         const val MAX_PHOTOS = 3
@@ -62,6 +78,29 @@ class SpotViewModel(
         _uiState.value = current.copy(
             capturedPhotos = current.capturedPhotos + photo,
         )
+
+        // Trigger on-device AI analysis on the first photo
+        if (current.capturedPhotos.isEmpty() && analyzer.isAvailable()) {
+            scope.launch {
+                _uiState.value = _uiState.value.copy(isAnalyzing = true)
+                try {
+                    val result = analyzer.analyzePhoto(photo.bytes, photo.depthAnalysis)
+                    if (result != null) {
+                        _uiState.value = _uiState.value.copy(
+                            aiAnalysis = result,
+                            isAnalyzing = false,
+                            // Pre-populate tags from AI if user hasn't selected any
+                            selectedTags = if (_uiState.value.selectedTags.isEmpty())
+                                result.suggestedTags else _uiState.value.selectedTags,
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                    }
+                } catch (_: Exception) {
+                    _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                }
+            }
+        }
     }
 
     fun removePhoto(index: Int) {
@@ -100,6 +139,24 @@ class SpotViewModel(
         _uiState.value = _uiState.value.copy(rectRotation = deg)
     }
 
+    fun applyAiDescription() {
+        val ai = _uiState.value.aiAnalysis ?: return
+        if (ai.generatedDescription != null && _uiState.value.description.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                description = ai.generatedDescription,
+                aiDescriptionApplied = true,
+            )
+        }
+    }
+
+    fun setDuplicateOverrideReason(reason: String) {
+        _uiState.value = _uiState.value.copy(duplicateOverrideReason = reason)
+    }
+
+    fun dismissDuplicate() {
+        _uiState.value = _uiState.value.copy(duplicateMatch = null)
+    }
+
     fun toggleTag(tag: SpotTag) {
         val current = _uiState.value.selectedTags.toMutableList()
         if (tag in current) current.remove(tag) else current.add(tag)
@@ -110,7 +167,11 @@ class SpotViewModel(
         val current = _uiState.value.phase
         val next = when (current) {
             SpotPhase.CAMERA -> SpotPhase.LOCATION
-            SpotPhase.LOCATION -> SpotPhase.DESCRIPTION
+            SpotPhase.LOCATION -> {
+                // Check for nearby duplicates before advancing to DESCRIPTION
+                checkForDuplicates()
+                SpotPhase.DESCRIPTION
+            }
             SpotPhase.DESCRIPTION -> {
                 submitReport()
                 return
@@ -119,6 +180,60 @@ class SpotViewModel(
             SpotPhase.RESULT -> return
         }
         _uiState.value = _uiState.value.copy(phase = next, error = null)
+        // Auto-apply AI description when entering DESCRIPTION phase
+        if (next == SpotPhase.DESCRIPTION) applyAiDescription()
+    }
+
+    private fun checkForDuplicates() {
+        scope.launch {
+            try {
+                val state = _uiState.value
+                val lat = state.spotLat ?: state.currentLat
+                val lng = state.spotLng ?: state.currentLng
+
+                // Query API for spots within 50m
+                val nearbySpots = apiClient.getSpots(lat = lat, lng = lng, radiusMeters = 50.0)
+                if (nearbySpots.isEmpty()) return@launch
+
+                // If we have photos and the analyzer supports comparison, check visual similarity
+                val firstPhoto = state.capturedPhotos.firstOrNull()
+                var bestMatch: DuplicateMatch? = null
+
+                for (spot in nearbySpots) {
+                    val distance = haversineDistance(lat, lng, spot.coordinates.lat, spot.coordinates.lng)
+                    // GPS proximity alone is a strong signal at <50m
+                    var similarity = if (distance < 20.0) 0.8f else 0.6f
+
+                    // TODO: download spot photo and compare visually when compareImages is available
+                    if (similarity > 0.7f) {
+                        if (bestMatch == null || similarity > bestMatch.visualSimilarity) {
+                            bestMatch = DuplicateMatch(
+                                existingSpot = spot,
+                                visualSimilarity = similarity,
+                                distanceMeters = distance,
+                            )
+                        }
+                    }
+                }
+
+                if (bestMatch != null) {
+                    _uiState.value = _uiState.value.copy(duplicateMatch = bestMatch)
+                }
+            } catch (_: Exception) {
+                // Don't block the flow if duplicate check fails
+            }
+        }
+    }
+
+    private fun haversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371000.0 // Earth radius in meters
+        val dLat = kotlin.math.PI / 180.0 * (lat2 - lat1)
+        val dLng = kotlin.math.PI / 180.0 * (lng2 - lng1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+                kotlin.math.cos(kotlin.math.PI / 180.0 * lat1) * kotlin.math.cos(kotlin.math.PI / 180.0 * lat2) *
+                kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+        return r * c
     }
 
     fun submitReport() {
@@ -178,6 +293,34 @@ class SpotViewModel(
                     )
                 }
 
+                // Collect capture attestation from the first photo
+                val captureAttestation = state.capturedPhotos
+                    .firstNotNullOfOrNull { it.attestation }
+                    ?.let { att ->
+                        com.gcc.shared.model.CaptureAttestation(
+                            capturedAt = att.capturedAt,
+                            capturedLat = att.capturedLat,
+                            capturedLng = att.capturedLng,
+                            deviceModel = att.deviceModel,
+                            osVersion = att.osVersion,
+                            sessionId = att.sessionId,
+                            captureIndex = att.captureIndex,
+                            isLiveCapture = att.isLiveCapture,
+                        )
+                    }
+
+                // Include on-device AI analysis
+                val onDeviceAiResult = state.aiAnalysis?.let { ai ->
+                    OnDeviceAiResult(
+                        trashTypes = ai.trashTypes,
+                        estimatedWeightLbs = ai.estimatedWeightLbs,
+                        severity = ai.severity,
+                        confidence = ai.confidence,
+                        suggestedTags = ai.suggestedTags,
+                        generatedDescription = ai.generatedDescription,
+                    )
+                }
+
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
                     lat = submitLat,
@@ -189,6 +332,9 @@ class SpotViewModel(
                     tags = state.selectedTags,
                     reporterName = if (tokenManager.isAdmin()) "GCC" else null,
                     depthAnalysis = depthAnalysis,
+                    captureAttestation = captureAttestation,
+                    onDeviceAiResult = onDeviceAiResult,
+                    duplicateOverrideReason = state.duplicateOverrideReason,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)

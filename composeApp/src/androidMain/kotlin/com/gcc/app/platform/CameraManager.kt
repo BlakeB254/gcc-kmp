@@ -244,3 +244,7 @@ actual suspend fun pickFromLibrary(): CapturedPhoto? = null // TODO: Android pho
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes
 
 actual fun hasLiDAR(): Boolean = false
+
+actual fun getDeviceModel(): String = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+
+actual fun getOsVersion(): String = "Android ${android.os.Build.VERSION.RELEASE}"

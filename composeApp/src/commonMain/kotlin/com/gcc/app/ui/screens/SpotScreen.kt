@@ -27,8 +27,10 @@ import kotlin.math.cos
 import kotlin.math.pow
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AreaMode
+import com.gcc.app.viewmodel.DuplicateMatch
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
+import com.gcc.app.platform.OnDeviceAnalysisResult
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.SpotTag
@@ -133,6 +135,14 @@ fun SpotScreen(
                     photoCount = uiState.capturedPhotos.size,
                     selectedTags = uiState.selectedTags,
                     onToggleTag = { viewModel.toggleTag(it) },
+                    aiAnalysis = uiState.aiAnalysis,
+                    isAnalyzing = uiState.isAnalyzing,
+                    duplicateMatch = uiState.duplicateMatch,
+                    onDuplicateOverride = { reason ->
+                        viewModel.setDuplicateOverrideReason(reason)
+                        viewModel.dismissDuplicate()
+                    },
+                    onDuplicateDismiss = { viewModel.dismissDuplicate() },
                     error = uiState.error,
                     onSubmit = { viewModel.nextPhase() },
                 )
@@ -496,99 +506,279 @@ private fun DescriptionPhase(
     photoCount: Int,
     selectedTags: List<SpotTag>,
     onToggleTag: (SpotTag) -> Unit,
+    aiAnalysis: OnDeviceAnalysisResult?,
+    isAnalyzing: Boolean,
+    duplicateMatch: DuplicateMatch?,
+    onDuplicateOverride: (String) -> Unit,
+    onDuplicateDismiss: () -> Unit,
     error: String?,
     onSubmit: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-    ) {
-        Text(
-            "Describe What You See",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            "Tag the types of debris and add a description.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextMuted,
-        )
+    // Duplicate override reason state
+    var overrideReason by remember { mutableStateOf("") }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Tag multiselect chips
-        Text(
-            "Tags (select all that apply)",
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
         ) {
-            SpotTag.entries.forEach { tag ->
-                FilterChip(
-                    selected = tag in selectedTags,
-                    onClick = { onToggleTag(tag) },
-                    label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                        selectedLabelColor = GccGold,
-                    ),
-                )
+            // AI Analysis preview card (when available)
+            if (isAnalyzing) {
+                GccCard(accentColor = CardAccentPurple) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = CardAccentPurple,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            "Analyzing photo...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CardAccentPurple,
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (aiAnalysis != null) {
+                OnDeviceAiCard(aiAnalysis)
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            Text(
+                "Describe What You See",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Tag the types of debris and add a description.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Tag multiselect chips
+            Text(
+                "Tags (select all that apply)",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SpotTag.entries.forEach { tag ->
+                    FilterChip(
+                        selected = tag in selectedTags,
+                        onClick = { onToggleTag(tag) },
+                        label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = GccGold.copy(alpha = 0.15f),
+                            selectedLabelColor = GccGold,
+                        ),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = description,
+                onValueChange = onDescriptionChange,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                placeholder = {
+                    Text(
+                        "e.g. Dumped tires near alley entrance...",
+                        color = TextSubtle,
+                    )
+                },
+                shape = MaterialTheme.shapes.medium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = GccGreen,
+                    cursorColor = GccGreen,
+                ),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Summary row
+            GccCard(accentColor = CardAccentGreen) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "$photoCount photo${if (photoCount != 1) "s" else ""}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        if (selectedTags.isNotEmpty()) "${selectedTags.size} tag${if (selectedTags.size != 1) "s" else ""}" else "No tags",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (selectedTags.isNotEmpty()) GccGold else TextSubtle,
+                    )
+                }
+            }
+
+            error?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            GccButton(
+                text = "Submit Report",
+                onClick = onSubmit,
+                variant = GccButtonVariant.PRIMARY,
+            )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        // Duplicate detection blocking overlay
+        if (duplicateMatch != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable(enabled = false) { },
+                contentAlignment = Alignment.Center,
+            ) {
+                GccCard(
+                    accentColor = CardAccentRed,
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                ) {
+                    Text(
+                        "Possible Duplicate",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = GccError,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "A spot report already exists ${duplicateMatch.distanceMeters.toInt()}m away.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    duplicateMatch.existingSpot.description?.let { desc ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "\"$desc\"",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            maxLines = 2,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "If this is a different spot, explain why:",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = overrideReason,
+                        onValueChange = { overrideReason = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("e.g. Different alley, other side of street...", color = TextSubtle) },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GccError,
+                            cursorColor = GccError,
+                        ),
+                        minLines = 2,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        GccButton(
+                            text = "Go Back",
+                            onClick = onDuplicateDismiss,
+                            variant = GccButtonVariant.OUTLINED,
+                            modifier = Modifier.weight(1f),
+                        )
+                        GccButton(
+                            text = "Override",
+                            onClick = {
+                                if (overrideReason.isNotBlank()) {
+                                    onDuplicateOverride(overrideReason)
+                                }
+                            },
+                            variant = GccButtonVariant.PRIMARY,
+                            modifier = Modifier.weight(1f),
+                            enabled = overrideReason.isNotBlank(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
-        OutlinedTextField(
-            value = description,
-            onValueChange = onDescriptionChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
-            placeholder = {
-                Text(
-                    "e.g. Dumped tires near alley entrance...",
-                    color = TextSubtle,
-                )
-            },
-            shape = MaterialTheme.shapes.medium,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = GccGreen,
-                cursorColor = GccGreen,
-            ),
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Summary row
-        GccCard(accentColor = CardAccentGreen) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+/** On-device AI analysis preview card shown in the DESCRIPTION phase. */
+@Composable
+private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
+    GccCard(accentColor = CardAccentPurple) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(CardAccentPurple)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
                 Text(
-                    "$photoCount photo${if (photoCount != 1) "s" else ""}",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "AI",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
                 )
+            }
+            Text(
+                "On-Device Analysis",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = CardAccentPurple,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            analysis.confidence?.let {
                 Text(
-                    if (selectedTags.isNotEmpty()) "${selectedTags.size} tag${if (selectedTags.size != 1) "s" else ""}" else "No tags",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (selectedTags.isNotEmpty()) GccGold else TextSubtle,
+                    "${(it * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
                 )
             }
         }
-
-        error?.let {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
+        Spacer(modifier = Modifier.height(6.dp))
+        if (analysis.trashTypes.isNotEmpty()) {
+            Text(
+                "Detected: ${analysis.trashTypes.joinToString(", ")}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        GccButton(
-            text = "Submit Report",
-            onClick = onSubmit,
-            variant = GccButtonVariant.PRIMARY,
-        )
+        analysis.severity?.let { sev ->
+            val label = when (sev) {
+                1 -> "Minor"; 2 -> "Small"; 3 -> "Moderate"; 4 -> "Large"; 5 -> "Severe"; else -> "Unknown"
+            }
+            Text(
+                "Severity: $label ($sev/5)",
+                style = MaterialTheme.typography.bodySmall,
+                color = when {
+                    sev >= 4 -> GccError
+                    sev >= 3 -> CardAccentGold
+                    else -> TextMuted
+                },
+            )
+        }
+        analysis.estimatedWeightLbs?.let {
+            Text(
+                "Est. Weight: ~${it.toInt()} lbs",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
     }
 }
 
