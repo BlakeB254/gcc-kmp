@@ -206,7 +206,7 @@ export function CombinedMap({
 
       const layerId = feature.layer?.id || ''
 
-      // Spot click
+      // Spot click — pan map so popup (which renders upward) isn't clipped
       if (layerId.includes('spot')) {
         const spotId = feature.properties.id
         const spot = spots.find((s) => String(s.id) === String(spotId))
@@ -217,6 +217,20 @@ export function CombinedMap({
             lng: spot.coordinates[0],
             lat: spot.coordinates[1],
           })
+
+          // Offset the map center so the spot sits in the lower portion of the
+          // viewport, giving the popup card (images + details) room above it.
+          // offset [0, Y] shifts the target Y pixels below map center.
+          const map = mapRef.current
+          if (map) {
+            const currentZoom = map.getZoom()
+            map.flyTo({
+              center: [spot.coordinates[0], spot.coordinates[1]],
+              zoom: Math.max(currentZoom, ZOOM.ROUTE),
+              offset: [0, 140],
+              duration: 600,
+            })
+          }
         }
         return
       }
@@ -314,55 +328,59 @@ export function CombinedMap({
           onClose={() => setPopup(null)}
           closeButton
           maxWidth="360px"
+          offset={[0, -8] as [number, number]}
         >
-          <div className="p-4 min-w-[300px] max-w-[360px]">
-            <div className="flex items-center gap-2 mb-3">
-              <span
-                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: SPOT_COLORS.MARKER }}
-              />
-              <span className="font-bold text-neutral-900 text-base">Spot Report</span>
-              {s.status && (
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto capitalize"
-                  style={{ backgroundColor: SPOT_STATUS_COLORS[s.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
-                >
-                  {s.status}
-                </span>
-              )}
-            </div>
+          <div className="min-w-[280px] max-w-[340px] max-h-[60vh] overflow-y-auto">
+            {/* Images first — full-bleed at top of card for visual impact */}
             {allPhotos.length > 0 && (
-              <div className={`mb-3 ${allPhotos.length > 1 ? 'flex gap-2 overflow-x-auto' : ''}`}>
+              <div className={`${allPhotos.length > 1 ? 'flex gap-1 overflow-x-auto' : ''}`}>
                 {allPhotos.map((url, i) => (
                   <img
                     key={i}
                     src={url}
                     alt={`Spot report photo ${i + 1}`}
-                    className={`object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity ${
-                      allPhotos.length === 1 ? 'w-full h-44' : 'w-40 h-32 flex-shrink-0'
+                    className={`object-cover cursor-pointer hover:opacity-90 transition-opacity ${
+                      allPhotos.length === 1 ? 'w-full h-48' : 'w-44 h-36 flex-shrink-0'
                     }`}
                     onClick={() => window.open(url, '_blank')}
                   />
                 ))}
               </div>
             )}
-            {s.label && (
-              <p className="text-sm font-medium text-neutral-700 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
-            )}
-            {(s.tags?.length ?? 0) > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {s.tags!.map((tag) => (
-                  <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
-                ))}
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: SPOT_COLORS.MARKER }}
+                />
+                <span className="font-bold text-neutral-900 text-sm">Spot Report</span>
+                {s.status && (
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto capitalize"
+                    style={{ backgroundColor: SPOT_STATUS_COLORS[s.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
+                  >
+                    {s.status}
+                  </span>
+                )}
               </div>
-            )}
-            {s.description && (
-              <p className="text-sm text-neutral-500 mb-2 line-clamp-3">{s.description}</p>
-            )}
-            <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-              <span>Radius: {s.radiusMeters}m</span>
-              {s.reporterName && <span>By: {s.reporterName}</span>}
-              {allPhotos.length > 1 && <span className="ml-auto">{allPhotos.length} photos</span>}
+              {s.label && (
+                <p className="text-sm font-medium text-neutral-700 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
+              )}
+              {(s.tags?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {s.tags!.map((tag) => (
+                    <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
+                  ))}
+                </div>
+              )}
+              {s.description && (
+                <p className="text-sm text-neutral-500 mb-2 line-clamp-3">{s.description}</p>
+              )}
+              <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
+                <span>Radius: {s.radiusMeters}m</span>
+                {s.reporterName && <span>By: {s.reporterName}</span>}
+                {allPhotos.length > 1 && <span className="ml-auto">{allPhotos.length} photos</span>}
+              </div>
             </div>
           </div>
         </Popup>
