@@ -87,7 +87,8 @@ object DemoData {
         Route(
             id = 1,
             code = "NL-PULASKI-01",
-            displayName = "Pulaski Road Sweep",
+            displayName = "Pulaski Rd Block",
+            description = "S Pulaski Rd to S Karlov Ave, W Roosevelt Rd south to W Cermak Rd — both sides",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7260, 41.8665), listOf(-87.7260, 41.8625), listOf(-87.7260, 41.8585),
@@ -113,7 +114,8 @@ object DemoData {
         Route(
             id = 2,
             code = "NL-HOMAN-01",
-            displayName = "Homan Ave Corridor",
+            displayName = "Homan Ave Block",
+            description = "S Homan Ave to S St Louis Ave, W Roosevelt Rd south to W Ogden Ave — both sides",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7105, 41.8665), listOf(-87.7105, 41.8625), listOf(-87.7105, 41.8585),
@@ -138,7 +140,8 @@ object DemoData {
         Route(
             id = 3,
             code = "NL-OGDEN-01",
-            displayName = "Ogden Ave Loop",
+            displayName = "Ogden Ave Diagonal",
+            description = "W Ogden Ave from S Pulaski Rd northeast to S Kedzie Ave — both sides of the diagonal",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7260, 41.8545), listOf(-87.7210, 41.8555), listOf(-87.7165, 41.8570),
@@ -164,7 +167,8 @@ object DemoData {
         Route(
             id = 4,
             code = "NL-CPARK-01",
-            displayName = "Central Park Strip",
+            displayName = "Central Park Ave Block",
+            description = "S Central Park Ave to S Lawndale Ave, W Roosevelt Rd south to W Ogden Ave — both sides",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7165, 41.8665), listOf(-87.7165, 41.8625), listOf(-87.7165, 41.8585),
@@ -189,7 +193,8 @@ object DemoData {
         Route(
             id = 5,
             code = "NL-INDEP-01",
-            displayName = "Independence Blvd",
+            displayName = "Independence Blvd Block",
+            description = "S Independence Blvd to S Springfield Ave, W Roosevelt Rd south to W Ogden Ave — both sides",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7000, 41.8665), listOf(-87.7000, 41.8625), listOf(-87.7000, 41.8585),
@@ -215,7 +220,8 @@ object DemoData {
         Route(
             id = 6,
             code = "NL-16TH-E-01",
-            displayName = "16th Street East",
+            displayName = "W 16th St Corridor",
+            description = "W 16th St from S Pulaski Rd east to S Homan Ave — north and south sidewalks",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7260, 41.8585), listOf(-87.7210, 41.8585), listOf(-87.7165, 41.8585),
@@ -240,7 +246,8 @@ object DemoData {
         Route(
             id = 7,
             code = "NL-ROOSE-01",
-            displayName = "Roosevelt Road West",
+            displayName = "Roosevelt Rd Corridor",
+            description = "W Roosevelt Rd from S Kedzie Ave west to S Pulaski Rd — north and south sidewalks",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7045, 41.8665), listOf(-87.7105, 41.8665), listOf(-87.7165, 41.8665),
@@ -266,7 +273,8 @@ object DemoData {
         Route(
             id = 8,
             code = "NL-KOST-01",
-            displayName = "Kostner Ave Circuit",
+            displayName = "Kostner Ave Block",
+            description = "S Kostner Ave to S Kildare Ave, W Roosevelt Rd south to W 16th St — both sides",
             serviceAreaId = 1,
             geometry = GeoJSONLineString(coordinates = listOf(
                 listOf(-87.7340, 41.8665), listOf(-87.7340, 41.8625), listOf(-87.7340, 41.8585),
