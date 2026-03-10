@@ -45,6 +45,10 @@ fun AdminRouteDetailScreen(
     var showAddCheckpoint by remember { mutableStateOf(false) }
     var uploadSuccess by remember { mutableStateOf(false) }
     var checkpointList by remember(route) { mutableStateOf(route?.checkpoints ?: emptyList()) }
+    var editDisplayName by remember(route) { mutableStateOf(route?.displayName ?: "") }
+    var editDescription by remember(route) { mutableStateOf(route?.description ?: "") }
+    var nameDescDirty by remember { mutableStateOf(false) }
+    var savingNameDesc by remember { mutableStateOf(false) }
     // Track imageUrl to detect when upload completes
     var previousImageUrl by remember { mutableStateOf(route?.imageUrl) }
 
@@ -252,6 +256,53 @@ fun AdminRouteDetailScreen(
                         ),
                     ) {
                         Text("\uD83D\uDDD1 Remove Cover Image")
+                    }
+                }
+            }
+
+            // Editable name + description
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("Display Name", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = editDisplayName,
+                    onValueChange = { editDisplayName = it; nameDescDirty = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    placeholder = { Text("e.g. S Pulaski Block 1") },
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Street Description", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = editDescription,
+                    onValueChange = { editDescription = it; nameDescDirty = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 3,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    placeholder = { Text("e.g. S Pulaski Rd from W Roosevelt Rd to W 16th St") },
+                )
+                if (nameDescDirty) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            savingNameDesc = true
+                            nameDescDirty = false
+                            viewModel.updateRouteNameDesc(
+                                routeId,
+                                editDisplayName.trim(),
+                                editDescription.trim().ifEmpty { null },
+                            )
+                            savingNameDesc = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                        enabled = !savingNameDesc && editDisplayName.isNotBlank(),
+                    ) {
+                        Text(if (savingNameDesc) "Saving..." else "Save Name & Description")
                     }
                 }
             }

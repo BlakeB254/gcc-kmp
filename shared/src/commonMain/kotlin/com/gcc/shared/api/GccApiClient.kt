@@ -268,6 +268,12 @@ class GccApiClient(
     suspend fun updateRouteImage(routeId: Int, imageUrl: String?): Route =
         putJson("/api/admin/routes/$routeId", mapOf("imageUrl" to imageUrl))
 
+    suspend fun updateRouteNameDesc(routeId: Int, displayName: String, description: String?): Route =
+        putJson("/api/admin/routes/$routeId", buildMap {
+            put("displayName", displayName)
+            if (description != null) put("description", description)
+        })
+
     suspend fun deleteRoute(routeId: Int) =
         deleteUnit("/api/admin/routes/$routeId")
 

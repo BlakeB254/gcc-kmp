@@ -36,6 +36,8 @@ export async function GET(
         payoutAmount: routes.payoutAmount,
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
+        imageUrl: routes.imageUrl,
+        description: routes.description,
       })
       .from(routes)
       .leftJoin(serviceAreas, eq(routes.serviceAreaId, serviceAreas.id))
@@ -79,7 +81,8 @@ export async function GET(
         geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
         type: cp.type ?? 'photo_point',
       })),
-      imageUrl: null,
+      imageUrl: route.imageUrl || null,
+      description: route.description || null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
     }

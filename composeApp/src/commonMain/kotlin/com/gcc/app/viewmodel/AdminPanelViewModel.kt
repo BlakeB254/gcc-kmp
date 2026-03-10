@@ -137,6 +137,22 @@ class AdminPanelViewModel(
         }
     }
 
+    fun updateRouteNameDesc(routeId: Int, displayName: String, description: String?) {
+        scope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(error = null)
+                val updated = apiClient.updateRouteNameDesc(routeId, displayName, description)
+                _uiState.value = _uiState.value.copy(
+                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Failed to update name: ${e.message}",
+                )
+            }
+        }
+    }
+
     fun updateSpotStatus(spotId: Int, newStatus: String) {
         scope.launch {
             try {

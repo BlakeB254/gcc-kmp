@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -284,6 +285,23 @@ fun RouteDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
+                // Cover image
+                if (route.imageUrl != null) {
+                    item {
+                        NetworkImage(
+                            url = route.imageUrl!!,
+                            contentDescription = route.displayName,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp)
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            contentScale = ContentScale.Crop,
+                            decodeWidth = 800,
+                            decodeHeight = 400,
+                        )
+                    }
+                }
+
                 // Route info card
                 item {
                     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
@@ -291,11 +309,19 @@ fun RouteDetailScreen(
                             route.displayName,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         )
-                        Text(
-                            "Code: ${route.code}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSubtle,
-                        )
+                        if (route.description != null) {
+                            Text(
+                                route.description!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        } else {
+                            Text(
+                                "Code: ${route.code}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSubtle,
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Row(

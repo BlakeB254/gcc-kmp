@@ -1007,6 +1007,9 @@ export const routes = pgTable('routes', {
   // Display picture URL
   imageUrl: varchar('image_url'),
 
+  // Street description (e.g. "S Pulaski Rd between W Roosevelt Rd and W 16th St")
+  description: varchar('description', { length: 500 }),
+
   // Admin who created this route
   createdById: integer('created_by_id'),
 
