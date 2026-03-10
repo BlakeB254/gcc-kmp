@@ -39,7 +39,7 @@ function autoTagFromDescription(description: string | null): string[] {
 }
 
 // Helper to convert DB row to CommunityReport shape the iOS app expects
-function toCommunityReport(r: any) {
+function toCommunityReport(r: any, precomputedTags?: string[]) {
   const coords = r.coordinates as { lat?: number; lng?: number } | [number, number] | null
   return {
     id: r.id,
@@ -61,7 +61,7 @@ function toCommunityReport(r: any) {
     aiAnalysis: r.onDeviceAiResult || null,
     affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
     affectedArea: r.affectedArea || null,
-    tags: (Array.isArray(r.tags) && r.tags.length > 0) ? r.tags : autoTagFromDescription(r.description),
+    tags: precomputedTags || ((Array.isArray(r.tags) && r.tags.length > 0) ? r.tags : autoTagFromDescription(r.description)),
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
     // Verification lifecycle
     lastVerifiedAt: r.lastVerifiedAt || null,
@@ -125,6 +125,13 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(communityReports.createdAt))
       .limit(limit)
 
+    // Pre-compute tags once per report to avoid double autoTagFromDescription calls
+    const tagsCache = new Map<number, string[]>()
+    for (const r of reports) {
+      const raw = (r as any).tags
+      tagsCache.set(r.id, (Array.isArray(raw) && raw.length > 0) ? raw : autoTagFromDescription(r.description))
+    }
+
     // Map markers for website frontend - normalize coordinates to [lng, lat]
     const spots = reports.map((report) => {
       const raw = report.coordinates as any
@@ -141,14 +148,14 @@ export async function GET(request: NextRequest) {
         coordinates: coords,
         radiusMeters: parseFloat(report.affectedRadiusMeters || '15'),
         label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
-        tags: (Array.isArray((report as any).tags) && (report as any).tags.length > 0) ? (report as any).tags : autoTagFromDescription(report.description),
+        tags: tagsCache.get(report.id) || [],
         affectedArea: (report as any).affectedArea || null,
         needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : false,
       }
     })
 
     // Full CommunityReport objects for iOS admin panel (via ApiResponse<T>.data)
-    const fullReports = reports.map(toCommunityReport)
+    const fullReports = reports.map((r) => toCommunityReport(r, tagsCache.get(r.id)))
 
     return NextResponse.json({ spots, data: fullReports, success: true })
   } catch (error) {

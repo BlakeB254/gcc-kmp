@@ -299,8 +299,6 @@ export function NeighborhoodMapSection() {
         const res = await fetch('/api/spots')
         if (!res.ok) return
         const data = await res.json()
-        const items = data.spots || data.data || []
-        // Get both map markers and full reports
         const mapItems = data.spots || []
         const fullReports = data.data || []
         if (mapItems.length > 0) {

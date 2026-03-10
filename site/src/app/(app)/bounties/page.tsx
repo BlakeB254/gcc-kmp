@@ -377,9 +377,9 @@ export default function BountiesPage() {
                           )}
                         </div>
                         {/* Tags */}
-                        {(spot as any).tags?.length > 0 && (
+                        {(spot.tags?.length ?? 0) > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-2">
-                            {((spot as any).tags as string[]).map((tag: string) => (
+                            {spot.tags!.map((tag) => (
                               <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
                             ))}
                           </div>
@@ -388,7 +388,7 @@ export default function BountiesPage() {
                           <p className="text-sm text-neutral-600 mb-2 line-clamp-2">{spot.description}</p>
                         )}
                         {/* 24h verification indicator */}
-                        {(spot as any).needsVerification && (
+                        {spot.needsVerification && (
                           <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5 mb-2">
                             <AlertCircle className="w-3.5 h-3.5" />
                             Verification overdue

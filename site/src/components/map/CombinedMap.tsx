@@ -172,8 +172,8 @@ export function CombinedMap({
           id: spot.id,
           radiusMeters: spot.radiusMeters,
           label: spot.label || '',
-          needsVerification: (spot as any).needsVerification ?? false,
-          tags: JSON.stringify((spot as any).tags ?? []),
+          needsVerification: spot.needsVerification ?? false,
+          tags: JSON.stringify(spot.tags ?? []),
         },
         geometry: {
           type: 'Point' as const,
@@ -239,28 +239,29 @@ export function CombinedMap({
   }
 
   // ----- legend items -----
-  const legendItems: { color: string; label: string; shape?: 'line' | 'circle' }[] = []
+  const legendItems = useMemo(() => {
+    const items: { color: string; label: string; shape?: 'line' | 'circle' }[] = []
 
-  // Routes
-  const routeStatuses = new Set(routes.map((r) => r.status))
-  for (const [status, label] of Object.entries(ROUTE_STATUS_LABELS) as [RouteDisplayStatus, string][]) {
-    if (routeStatuses.has(status)) {
-      legendItems.push({ color: ROUTE_COLORS[status].fill, label, shape: 'line' })
+    const routeStatuses = new Set(routes.map((r) => r.status))
+    for (const [status, label] of Object.entries(ROUTE_STATUS_LABELS) as [RouteDisplayStatus, string][]) {
+      if (routeStatuses.has(status)) {
+        items.push({ color: ROUTE_COLORS[status].fill, label, shape: 'line' })
+      }
     }
-  }
 
-  // Bounties
-  const bountyStatuses = new Set(bounties.map((b) => b.status))
-  for (const [status, label] of Object.entries(BOUNTY_STATUS_LABELS) as [BountyStatus, string][]) {
-    if (bountyStatuses.has(status)) {
-      legendItems.push({ color: BOUNTY_STATUS_COLOR[status], label: `Bounty: ${label}`, shape: 'circle' })
+    const bountyStatuses = new Set(bounties.map((b) => b.status))
+    for (const [status, label] of Object.entries(BOUNTY_STATUS_LABELS) as [BountyStatus, string][]) {
+      if (bountyStatuses.has(status)) {
+        items.push({ color: BOUNTY_STATUS_COLOR[status], label: `Bounty: ${label}`, shape: 'circle' })
+      }
     }
-  }
 
-  // Spots
-  if (spots.length > 0) {
-    legendItems.push({ color: SPOT_COLORS.MARKER, label: 'Spot Report', shape: 'circle' })
-  }
+    if (spots.length > 0) {
+      items.push({ color: SPOT_COLORS.MARKER, label: 'Spot Report', shape: 'circle' })
+    }
+
+    return items
+  }, [routes, bounties, spots.length])
 
   // ----- build popup -----
   const popupNode = useMemo(() => {
@@ -347,9 +348,9 @@ export function CombinedMap({
             {s.label && (
               <p className="text-sm font-medium text-neutral-700 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
             )}
-            {(s as any).tags?.length > 0 && (
+            {(s.tags?.length ?? 0) > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {((s as any).tags as string[]).map((tag: string) => (
+                {s.tags!.map((tag) => (
                   <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
                 ))}
               </div>
