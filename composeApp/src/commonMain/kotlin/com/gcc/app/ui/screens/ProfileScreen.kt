@@ -35,6 +35,7 @@ fun ProfileScreen(
     onAchievementsClick: () -> Unit = {},
     onMapClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onAdminClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<ProfileViewModel>()
     val shareManager = koinInject<ShareManager>()
@@ -140,6 +141,7 @@ fun ProfileScreen(
                     when (tab) {
                         0 -> onBack()
                         1 -> onMapClick()
+                        2 -> if (isAdmin) onAdminClick()
                     }
                 },
             )

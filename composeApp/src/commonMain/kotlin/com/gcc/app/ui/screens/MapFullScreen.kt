@@ -1,6 +1,8 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,7 +12,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.CommunityInfoPanel
 import com.gcc.app.ui.map.GccMap
@@ -21,6 +25,8 @@ import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.ui.components.GccBottomNavBar
+import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.components.PhotoStrip
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.BountyViewModel
@@ -38,6 +44,8 @@ fun MapFullScreen(
     onBountyClick: (Int) -> Unit = {},
     onVolunteerCleanup: (reportId: Int) -> Unit = {},
     onSpotVerification: (reportId: Int) -> Unit = {},
+    onAdminClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -153,6 +161,14 @@ fun MapFullScreen(
         }
     }
 
+    // Check if user is outside their service area
+    val isExploring = remember(currentLocation, serviceArea) {
+        val loc = currentLocation ?: return@remember false
+        val sa = serviceArea ?: return@remember false
+        loc.lat !in sa.bounds.south..sa.bounds.north ||
+        loc.lng !in sa.bounds.west..sa.bounds.east
+    }
+
     // Worker info for the panel
     val workerName = uiState.worker?.name?.split(" ")?.firstOrNull()
     val areaName = uiState.serviceAreaName
@@ -162,7 +178,25 @@ fun MapFullScreen(
     val jobsCompleted = uiState.worker?.stats?.jobsCompleted ?: 0
     val totalEarnings = uiState.worker?.stats?.totalEarnings ?: 0
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        contentWindowInsets = WindowInsets(0),
+        bottomBar = {
+            val profileTab = if (isAdmin) 3 else 2
+            GccBottomNavBar(
+                selectedTab = 1,
+                isAdmin = isAdmin,
+                onTabSelected = { tab ->
+                    when (tab) {
+                        0 -> onBack()
+                        1 -> { /* already on map */ }
+                        2 -> if (isAdmin) onAdminClick() else onProfileClick()
+                        profileTab -> if (isAdmin) onProfileClick() else Unit
+                    }
+                },
+            )
+        },
+    ) { padding ->
+    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         GccMap(
             modifier = Modifier.fillMaxSize(),
             centerLat = centerLat,
@@ -230,6 +264,35 @@ fun MapFullScreen(
                     .padding(top = 8.dp),
             )
 
+            // "Currently Exploring" banner — when user is far from service area
+            if (isExploring && mapMode == MapMode.MY_AREA && selectedSpot == null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 50.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xCC1E293B),
+                    shadowElevation = 4.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            "\uD83C\uDF0D",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "Currently Exploring",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
             // Community info panel (top-left, below mode toggle) — only in My Area
             if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
                 CommunityInfoPanel(
@@ -246,28 +309,8 @@ fun MapFullScreen(
                 )
             }
 
-            // Floating close button (top-right, below status bar)
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(top = 5.dp, end = 4.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.9f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "\u2715",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GccGreenDark,
-                    )
-                }
-            }
+            // Spot create FAB (top-right)
+            // (close button removed — bottom nav bar provides navigation)
 
             // Route chips at the bottom — only in My Area mode, hidden when spot selected
             if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty() && selectedSpot == null) {
@@ -322,6 +365,7 @@ fun MapFullScreen(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -339,6 +383,9 @@ private fun SpotInfoCard(
         com.gcc.shared.model.CommunityReportStatus.ACKNOWLEDGED -> Color(0xFF2196F3)
         com.gcc.shared.model.CommunityReportStatus.REJECTED -> Color(0xFFFF5252)
     }
+
+    // Full-screen image viewer state
+    var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -382,12 +429,16 @@ private fun SpotInfoCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Photos
+            // Photos — larger thumbnails, tappable for full-screen view
             if (spot.mediaUrls.isNotEmpty()) {
-                PhotoStrip(urls = spot.mediaUrls)
-                Spacer(modifier = Modifier.height(8.dp))
+                PhotoStrip(
+                    urls = spot.mediaUrls,
+                    photoSize = 120,
+                    onPhotoClick = { index -> fullScreenImageIndex = index },
+                )
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
             spot.description?.let { desc ->
@@ -395,9 +446,9 @@ private fun SpotInfoCard(
                     desc,
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted,
-                    maxLines = 3,
+                    maxLines = 4,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
 
             Row(
@@ -415,7 +466,7 @@ private fun SpotInfoCard(
                 )
                 if (spot.mediaUrls.isNotEmpty()) {
                     Text(
-                        "${spot.mediaUrls.size} photo${if (spot.mediaUrls.size != 1) "s" else ""}",
+                        "${spot.mediaUrls.size} photo${if (spot.mediaUrls.size != 1) "s" else ""} \u2022 tap to enlarge",
                         style = MaterialTheme.typography.bodySmall,
                         color = GccGreen,
                     )
@@ -426,12 +477,11 @@ private fun SpotInfoCard(
             if (spot.status == com.gcc.shared.model.CommunityReportStatus.PENDING ||
                 spot.status == com.gcc.shared.model.CommunityReportStatus.VERIFIED
             ) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // Verify button — confirm mess is still there or already clean
                     OutlinedButton(
                         onClick = onVerifySpot,
                         modifier = Modifier.weight(1f),
@@ -443,7 +493,6 @@ private fun SpotInfoCard(
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         )
                     }
-                    // Volunteer to clean
                     Button(
                         onClick = onVolunteerCleanup,
                         modifier = Modifier.weight(1f),
@@ -463,6 +512,140 @@ private fun SpotInfoCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFFF9800),
                     )
+                }
+            }
+        }
+    }
+
+    // Full-screen image gallery overlay
+    fullScreenImageIndex?.let { startIndex ->
+        FullScreenImageGallery(
+            urls = spot.mediaUrls,
+            captions = spot.mediaCaptions,
+            startIndex = startIndex,
+            onDismiss = { fullScreenImageIndex = null },
+        )
+    }
+}
+
+@Composable
+private fun FullScreenImageGallery(
+    urls: List<String>,
+    captions: List<String> = emptyList(),
+    startIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    var currentIndex by remember { mutableStateOf(startIndex) }
+    val currentCaption = captions.getOrNull(currentIndex)?.takeIf { it.isNotBlank() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.95f))
+            .clickable(onClick = onDismiss)
+            .pointerInput(urls.size) {
+                // Swipe left/right to navigate
+                var totalDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (totalDrag < -80f && currentIndex < urls.size - 1) {
+                            currentIndex++
+                        } else if (totalDrag > 80f && currentIndex > 0) {
+                            currentIndex--
+                        }
+                        totalDrag = 0f
+                    },
+                    onDragCancel = { totalDrag = 0f },
+                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                )
+            },
+    ) {
+        // Close button
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("\u2715", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+
+        // Current image — large
+        NetworkImage(
+            url = urls[currentIndex],
+            contentDescription = "Photo ${currentIndex + 1} of ${urls.size}",
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.65f)
+                .align(Alignment.Center)
+                .padding(16.dp),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        )
+
+        // Navigation, caption, and counter at bottom
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp, start = 24.dp, end = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Caption
+            currentCaption?.let { caption ->
+                Text(
+                    caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Page indicator
+            Text(
+                "${currentIndex + 1} / ${urls.size}",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+            )
+
+            if (urls.size > 1) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Swipe to navigate",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.5f),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    TextButton(
+                        onClick = { if (currentIndex > 0) currentIndex-- },
+                        enabled = currentIndex > 0,
+                    ) {
+                        Text(
+                            "\u2190 Prev",
+                            color = if (currentIndex > 0) Color.White else Color.White.copy(alpha = 0.3f),
+                        )
+                    }
+                    TextButton(
+                        onClick = { if (currentIndex < urls.size - 1) currentIndex++ },
+                        enabled = currentIndex < urls.size - 1,
+                    ) {
+                        Text(
+                            "Next \u2192",
+                            color = if (currentIndex < urls.size - 1) Color.White else Color.White.copy(alpha = 0.3f),
+                        )
+                    }
                 }
             }
         }

@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
+import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
 import org.maplibre.spatialk.geojson.Position
 import kotlinx.coroutines.launch
@@ -86,6 +87,7 @@ actual fun GccMap(
     val explorerLabelsJson = remember(bounties) { buildExplorerLabelsGeoJson(bounties) }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
+    val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -555,15 +557,73 @@ actual fun GccMap(
                 )
             }
 
+            // ── Spot rectangle area fills — rendered as polygons for rectangle-type spots ──
+            val spotRectSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotRectJson))
+            FillLayer(
+                id = "spot-rect-fill",
+                source = spotRectSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.15f)),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    14 to const(0.7f),
+                ),
+            )
+            LineLayer(
+                id = "spot-rect-outline",
+                source = spotRectSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.6f)),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(1.5.dp),
+                    17 to const(2.dp),
+                ),
+            )
+
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap-style circles — visible at overview zoom (8-12), fades by zoom 13
-            // Radius is intentionally small at far zoom to avoid covering the city
+            // Spot affected-area circles — visible at close zoom (14+), size scales by radiusMeters
+            // Shows the actual area affected by each spot report
+            // Uses zoom-dependent sizing: at zoom 14 starts small, grows to represent real meters at 16+
+            CircleLayer(
+                id = "spot-affected-area",
+                source = spotSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.12f)),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    14 to const(4.dp),
+                    16 to const(20.dp),
+                    18 to const(50.dp),
+                ),
+                strokeColor = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.4f)),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(1.dp),
+                    17 to const(1.5.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    14 to const(0.6f),
+                ),
+            )
+
+            // Heatmap-style circles — light pink at overview, red where spots cluster
+            // Each spot renders as a large semi-transparent circle; overlapping circles
+            // blend additively so dense clusters appear deeper red.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
+                color = const(MapStyles.SPOT_HEATMAP_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
@@ -575,8 +635,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_FAR),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.15f),
+                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(0.20f),
+                    10 to const(0.25f),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.10f),
                     MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
                 ),
                 onClick = if (onSpotTap != null) { features ->
@@ -593,7 +654,7 @@ actual fun GccMap(
 
             // Spot tap target — near-invisible larger circle for easier tapping
             // Note: fully transparent colors don't register taps in MapLibre,
-            // so we use a very low opacity instead
+            // so we use a very low opacity instead. Sized larger (28dp) for overlap areas.
             CircleLayer(
                 id = "spot-tap-target",
                 source = spotSrc,
@@ -602,9 +663,9 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(8.dp),
-                    13 to const(20.dp),
-                    15 to const(22.dp),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(12.dp),
+                    13 to const(24.dp),
+                    15 to const(28.dp),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -642,6 +703,39 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
+            )
+
+            // ── Verification indicator — orange ring on spots needing verification ──
+            val verificationSpots = remember(spots) {
+                val needsVerif = spots.filter { it.needsVerification && it.status != CommunityReportStatus.RESOLVED }
+                if (needsVerif.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                else {
+                    val features = needsVerif.joinToString(",") { s ->
+                        """{"type":"Feature","properties":{"id":${s.id}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+                    }
+                    """{"type":"FeatureCollection","features":[$features]}"""
+                }
+            }
+            val verifSrc = rememberGeoJsonSource(GeoJsonData.JsonString(verificationSpots))
+            CircleLayer(
+                id = "spot-verification-ring",
+                source = verifSrc,
+                color = const(Color.Transparent),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
+                    13 to const(11.dp),
+                    15 to const(14.dp),
+                ),
+                strokeColor = const(Color(0xFFFF8C00)),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
+                    13 to const(2.dp),
+                    15 to const(3.dp),
+                ),
             )
         }
 

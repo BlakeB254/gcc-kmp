@@ -282,6 +282,22 @@ enum class PledgeStatus {
 }
 
 @Serializable
+enum class SpotTag {
+    @SerialName("trash") TRASH,
+    @SerialName("leaves") LEAVES,
+    @SerialName("glass") GLASS,
+    @SerialName("metal") METAL,
+    @SerialName("tires") TIRES,
+    @SerialName("furniture") FURNITURE,
+    @SerialName("construction") CONSTRUCTION,
+    @SerialName("organic") ORGANIC,
+    @SerialName("hazardous") HAZARDOUS,
+    @SerialName("electronics") ELECTRONICS,
+    @SerialName("clothing") CLOTHING,
+    @SerialName("other") OTHER,
+}
+
+@Serializable
 enum class SpotVerificationResult {
     @SerialName("still_dirty") STILL_DIRTY,
     @SerialName("already_clean") ALREADY_CLEAN

@@ -10,7 +10,10 @@ data class CreateSpotRequest(
     val description: String? = null,
     val mediaUrls: List<String>? = null,
     val affectedRadiusMeters: Double = 15.0,
+    val affectedArea: AffectedArea? = null,
+    val tags: List<SpotTag> = emptyList(),
     val reporterName: String? = null,
+    val depthAnalysis: DepthAnalysis? = null,
 )
 
 @Serializable

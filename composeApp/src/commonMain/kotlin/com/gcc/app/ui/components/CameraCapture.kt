@@ -22,6 +22,7 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.pickFromLibrary
+import com.gcc.app.platform.hasLiDAR
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
@@ -46,6 +47,7 @@ fun CameraCapture(
     onCapture: (CapturedPhoto) -> Unit,
     onRemovePhoto: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    maxPhotos: Int = 3,
     showMiniMap: Boolean = false,
     currentLocation: Coordinates? = null,
 ) {
@@ -53,6 +55,7 @@ fun CameraCapture(
     val coroutineScope = rememberCoroutineScope()
     var isCapturing by remember { mutableStateOf(false) }
     val photoCount = capturedPhotos.size
+    val atLimit = photoCount >= maxPhotos
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -112,20 +115,39 @@ fun CameraCapture(
                 }
             }
 
-            // Photo count badge (bottom-start)
-            if (photoCount > 0) {
+            // Photo count badge (bottom-start) with limit indicator
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    if (atLimit) "$photoCount/$maxPhotos (max)"
+                    else if (photoCount > 0) "$photoCount/$maxPhotos photos"
+                    else "0/$maxPhotos photos",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (atLimit) Color(0xFFF59E0B) else GccGreen,
+                )
+            }
+
+            // LiDAR active indicator
+            if (capturedPhotos.any { it.depthAnalysis?.hasDepth == true } ||
+                (capturedPhotos.isEmpty() && hasLiDAR())) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.TopEnd)
                         .padding(10.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .background(Color(0xFF3B82F6).copy(alpha = 0.85f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
                 ) {
                     Text(
-                        "$photoCount photo${if (photoCount != 1) "s" else ""} captured",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GccGreen,
+                        "LiDAR",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
                     )
                 }
             }
@@ -185,6 +207,24 @@ fun CameraCapture(
                                 )
                             }
                         }
+
+                        // "3D" badge for depth-enhanced photos
+                        if (photo.depthAnalysis?.hasDepth == true) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(2.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0xFF3B82F6).copy(alpha = 0.9f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(
+                                    "3D",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -201,7 +241,7 @@ fun CameraCapture(
             // Capture button
             OutlinedButton(
                 onClick = {
-                    if (!isCapturing) {
+                    if (!isCapturing && !atLimit) {
                         isCapturing = true
                         coroutineScope.launch {
                             val photo = cameraManager.capturePhoto()
@@ -212,8 +252,8 @@ fun CameraCapture(
                 },
                 modifier = Modifier.size(72.dp),
                 shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                enabled = !isCapturing,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (atLimit) Color.Gray else GccGreen),
+                enabled = !isCapturing && !atLimit,
             ) {
                 if (isCapturing) {
                     CircularProgressIndicator(
@@ -232,15 +272,17 @@ fun CameraCapture(
             // Library button
             OutlinedButton(
                 onClick = {
-                    coroutineScope.launch {
-                        val photo = pickFromLibrary()
-                        if (photo != null) onCapture(photo)
+                    if (!atLimit) {
+                        coroutineScope.launch {
+                            val photo = pickFromLibrary()
+                            if (photo != null) onCapture(photo)
+                        }
                     }
                 },
                 modifier = Modifier.size(72.dp),
                 shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                enabled = !isCapturing,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (atLimit) Color.Gray else GccGreen),
+                enabled = !isCapturing && !atLimit,
             ) {
                 Text(
                     "\uD83D\uDDBC",

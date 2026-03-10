@@ -33,8 +33,10 @@ interface SpotReport {
   label?: string
   description?: string
   photoUrl?: string
+  mediaUrls?: string[]
   status?: string
   reporterName?: string
+  createdAt?: string
 }
 
 interface BountyMapProps {

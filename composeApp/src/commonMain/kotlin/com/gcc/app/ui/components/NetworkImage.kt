@@ -18,6 +18,10 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import coil3.size.Size
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.TextSubtle
 
@@ -27,9 +31,19 @@ fun NetworkImage(
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    decodeWidth: Int = 512,
+    decodeHeight: Int = 512,
 ) {
+    val request = ImageRequest.Builder(coil3.compose.LocalPlatformContext.current)
+        .data(url)
+        .size(Size(decodeWidth, decodeHeight))
+        .memoryCachePolicy(CachePolicy.ENABLED)
+        .diskCachePolicy(CachePolicy.ENABLED)
+        .crossfade(200)
+        .build()
+
     SubcomposeAsyncImage(
-        model = url,
+        model = request,
         contentDescription = contentDescription,
         modifier = modifier.clip(RoundedCornerShape(8.dp)),
         contentScale = contentScale,
@@ -68,7 +82,8 @@ fun NetworkImage(
 fun PhotoStrip(
     urls: List<String>,
     modifier: Modifier = Modifier,
-    onPhotoClick: ((String) -> Unit)? = null,
+    photoSize: Int = 80,
+    onPhotoClick: ((index: Int) -> Unit)? = null,
 ) {
     if (urls.isEmpty()) return
 
@@ -76,14 +91,14 @@ fun PhotoStrip(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(urls) { url ->
+        items(urls.size) { index ->
             NetworkImage(
-                url = url,
-                contentDescription = "Photo",
+                url = urls[index],
+                contentDescription = "Photo ${index + 1}",
                 modifier = Modifier
-                    .size(80.dp)
+                    .size(photoSize.dp)
                     .then(
-                        if (onPhotoClick != null) Modifier.clickable { onPhotoClick(url) }
+                        if (onPhotoClick != null) Modifier.clickable { onPhotoClick(index) }
                         else Modifier
                     ),
             )

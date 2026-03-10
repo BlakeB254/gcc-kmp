@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,10 +26,12 @@ import com.gcc.app.ui.map.MapStyles
 import kotlin.math.cos
 import kotlin.math.pow
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.AreaMode
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.SpotTag
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -114,7 +117,12 @@ fun SpotScreen(
                     spotLat = uiState.spotLat ?: uiState.currentLat,
                     spotLng = uiState.spotLng ?: uiState.currentLng,
                     radiusMeters = uiState.affectedRadiusMeters,
+                    areaMode = uiState.areaMode,
+                    rectWidth = uiState.rectWidth,
+                    rectHeight = uiState.rectHeight,
+                    onAreaModeChange = { viewModel.setAreaMode(it) },
                     onRadiusChange = { viewModel.setRadius(it.toDouble()) },
+                    onRectDimensionsChange = { w, h -> viewModel.setRectDimensions(w, h) },
                     onSpotMoved = { lat, lng -> viewModel.setSpotLocation(lat, lng) },
                     onNext = { viewModel.nextPhase() },
                 )
@@ -123,6 +131,8 @@ fun SpotScreen(
                     description = uiState.description,
                     onDescriptionChange = { viewModel.setDescription(it) },
                     photoCount = uiState.capturedPhotos.size,
+                    selectedTags = uiState.selectedTags,
+                    onToggleTag = { viewModel.toggleTag(it) },
                     error = uiState.error,
                     onSubmit = { viewModel.nextPhase() },
                 )
@@ -221,6 +231,7 @@ private fun pixelDeltaToLatLng(
     return Pair(dLat, dLng)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LocationPhase(
     gpsLat: Double,
@@ -228,7 +239,12 @@ private fun LocationPhase(
     spotLat: Double,
     spotLng: Double,
     radiusMeters: Double,
+    areaMode: AreaMode,
+    rectWidth: Double,
+    rectHeight: Double,
+    onAreaModeChange: (AreaMode) -> Unit,
     onRadiusChange: (Float) -> Unit,
+    onRectDimensionsChange: (Double, Double) -> Unit,
     onSpotMoved: (lat: Double, lng: Double) -> Unit,
     onNext: () -> Unit,
 ) {
@@ -246,14 +262,38 @@ private fun LocationPhase(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Drag the circle to position it on the mess. Adjust the slider for radius.",
+            "Drag to position. Choose circle or rectangle shape.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Map with location pin and draggable radius circle overlay
+        // Area mode toggle
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = areaMode == AreaMode.CIRCLE,
+                onClick = { onAreaModeChange(AreaMode.CIRCLE) },
+                label = { Text("Circle") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = GccGold.copy(alpha = 0.15f),
+                    selectedLabelColor = GccGold,
+                ),
+            )
+            FilterChip(
+                selected = areaMode == AreaMode.RECTANGLE,
+                onClick = { onAreaModeChange(AreaMode.RECTANGLE) },
+                label = { Text("Rectangle") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = GccGold.copy(alpha = 0.15f),
+                    selectedLabelColor = GccGold,
+                ),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Map with draggable overlay
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -269,17 +309,17 @@ private fun LocationPhase(
                 enableGestures = false,
             )
 
-            // Draggable radius circle overlay
+            // Draggable area overlay
             androidx.compose.foundation.Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(spotLat, spotLng, mapZoom) {
-                        detectDragGestures { _, dragAmount ->
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
                             val (dLat, dLng) = pixelDeltaToLatLng(
                                 dragAmount.x, dragAmount.y, spotLat, mapZoom,
                             )
-                            // Bound within ~500m of GPS position for regular users
-                            val maxOffsetDeg = 500.0 / 111320.0 // ~0.0045 degrees
+                            val maxOffsetDeg = 500.0 / 111320.0
                             val newLat = (spotLat + dLat).coerceIn(
                                 gpsLat - maxOffsetDeg, gpsLat + maxOffsetDeg,
                             )
@@ -290,27 +330,29 @@ private fun LocationPhase(
                         }
                     },
             ) {
-                val pixelRadius = metersToPixels(radiusMeters, spotLat, mapZoom)
                 val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-                // Semi-transparent fill
-                drawCircle(
-                    color = GccGold.copy(alpha = 0.2f),
-                    radius = pixelRadius,
-                    center = center,
-                )
-                // Stroke border
-                drawCircle(
-                    color = GccGold,
-                    radius = pixelRadius,
-                    center = center,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f),
-                )
-                // Center crosshair dot
-                drawCircle(
-                    color = GccGold,
-                    radius = 4f,
-                    center = center,
-                )
+
+                when (areaMode) {
+                    AreaMode.CIRCLE -> {
+                        val pixelRadius = metersToPixels(radiusMeters, spotLat, mapZoom)
+                        drawCircle(color = GccGold.copy(alpha = 0.2f), radius = pixelRadius, center = center)
+                        drawCircle(color = GccGold, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                    }
+                    AreaMode.RECTANGLE -> {
+                        val pxW = metersToPixels(rectWidth, spotLat, mapZoom)
+                        val pxH = metersToPixels(rectHeight, spotLat, mapZoom)
+                        val topLeft = androidx.compose.ui.geometry.Offset(center.x - pxW, center.y - pxH)
+                        val rectSize = androidx.compose.ui.geometry.Size(pxW * 2, pxH * 2)
+                        drawRect(color = GccGold.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
+                        drawRect(color = GccGold, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                    }
+                }
+
+                // Center crosshair — big target ring + crosshair lines
+                drawCircle(color = GccGold, radius = 20f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x - 30f, center.y), end = androidx.compose.ui.geometry.Offset(center.x + 30f, center.y), strokeWidth = 1.5f)
+                drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x, center.y - 30f), end = androidx.compose.ui.geometry.Offset(center.x, center.y + 30f), strokeWidth = 1.5f)
+                drawCircle(color = GccGold, radius = 3f, center = center)
             }
 
             // Floating info card
@@ -324,10 +366,7 @@ private fun LocationPhase(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        "\uD83D\uDCCD",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Text("\uD83D\uDCCD", style = MaterialTheme.typography.titleMedium)
                     Column {
                         Text(
                             if (hasMoved) "Spot Location" else "You are here",
@@ -343,7 +382,7 @@ private fun LocationPhase(
                 }
             }
 
-            // Radius label badge at bottom center
+            // "Drag to position" hint
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -352,8 +391,12 @@ private fun LocationPhase(
                     .background(Color.Black.copy(alpha = 0.6f))
                     .padding(horizontal = 16.dp, vertical = 6.dp),
             ) {
+                val label = when (areaMode) {
+                    AreaMode.CIRCLE -> "${radiusMeters.toInt()}m radius"
+                    AreaMode.RECTANGLE -> "${rectWidth.toInt()}m x ${rectHeight.toInt()}m"
+                }
                 Text(
-                    "${radiusMeters.toInt()}m radius",
+                    label,
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                     color = GccGold,
                 )
@@ -362,52 +405,76 @@ private fun LocationPhase(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Radius slider card
+        // Size controls
         GccCard(accentColor = CardAccentGold) {
             Text(
                 "Affected Area",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                OutlinedButton(
-                    onClick = { onRadiusChange((radiusMeters - 5).coerceAtLeast(5.0).toFloat()) },
-                    modifier = Modifier.size(36.dp),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
-                ) {
-                    Text("\u2212", style = MaterialTheme.typography.titleMedium)
+
+            when (areaMode) {
+                AreaMode.CIRCLE -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        OutlinedButton(
+                            onClick = { onRadiusChange((radiusMeters - 5).coerceAtLeast(5.0).toFloat()) },
+                            modifier = Modifier.size(36.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                        ) { Text("\u2212", style = MaterialTheme.typography.titleMedium) }
+                        Slider(
+                            value = radiusMeters.toFloat(),
+                            onValueChange = onRadiusChange,
+                            valueRange = 5f..100f,
+                            steps = 18,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                        )
+                        OutlinedButton(
+                            onClick = { onRadiusChange((radiusMeters + 5).coerceAtMost(100.0).toFloat()) },
+                            modifier = Modifier.size(36.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                        ) { Text("+", style = MaterialTheme.typography.titleMedium) }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("${radiusMeters.toInt()}m", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                    }
                 }
-                Slider(
-                    value = radiusMeters.toFloat(),
-                    onValueChange = onRadiusChange,
-                    valueRange = 5f..100f,
-                    steps = 18,
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(
-                        thumbColor = GccGold,
-                        activeTrackColor = GccGold,
-                    ),
-                )
-                OutlinedButton(
-                    onClick = { onRadiusChange((radiusMeters + 5).coerceAtMost(100.0).toFloat()) },
-                    modifier = Modifier.size(36.dp),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
-                ) {
-                    Text("+", style = MaterialTheme.typography.titleMedium)
+                AreaMode.RECTANGLE -> {
+                    // Width slider
+                    Text("Width", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = rectWidth.toFloat(),
+                            onValueChange = { onRectDimensionsChange(it.toDouble(), rectHeight) },
+                            valueRange = 5f..100f,
+                            steps = 18,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("${rectWidth.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                    }
+                    // Height slider
+                    Text("Height", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = rectHeight.toFloat(),
+                            onValueChange = { onRectDimensionsChange(rectWidth, it.toDouble()) },
+                            valueRange = 5f..100f,
+                            steps = 18,
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("${rectHeight.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                    }
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "${radiusMeters.toInt()}m",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = GccGold,
-                )
             }
         }
 
@@ -421,11 +488,14 @@ private fun LocationPhase(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DescriptionPhase(
     description: String,
     onDescriptionChange: (String) -> Unit,
     photoCount: Int,
+    selectedTags: List<SpotTag>,
+    onToggleTag: (SpotTag) -> Unit,
     error: String?,
     onSubmit: () -> Unit,
 ) {
@@ -438,17 +508,42 @@ private fun DescriptionPhase(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Optional: Add a description to help others.",
+            "Tag the types of debris and add a description.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Tag multiselect chips
+        Text(
+            "Tags (select all that apply)",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            SpotTag.entries.forEach { tag ->
+                FilterChip(
+                    selected = tag in selectedTags,
+                    onClick = { onToggleTag(tag) },
+                    label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = GccGold.copy(alpha = 0.15f),
+                        selectedLabelColor = GccGold,
+                    ),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = description,
             onValueChange = onDescriptionChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
             placeholder = {
                 Text(
                     "e.g. Dumped tires near alley entrance...",
@@ -462,7 +557,7 @@ private fun DescriptionPhase(
             ),
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Summary row
         GccCard(accentColor = CardAccentGreen) {
@@ -475,9 +570,9 @@ private fun DescriptionPhase(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    if (description.isNotBlank()) "Description added" else "No description",
+                    if (selectedTags.isNotEmpty()) "${selectedTags.size} tag${if (selectedTags.size != 1) "s" else ""}" else "No tags",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (description.isNotBlank()) GccGreen else TextSubtle,
+                    color = if (selectedTags.isNotEmpty()) GccGold else TextSubtle,
                 )
             }
         }
@@ -545,6 +640,12 @@ private fun ResultPhase(
                     it.aiAnalysis?.let { analysis ->
                         Spacer(modifier = Modifier.height(8.dp))
                         AiAnalysisCard(analysis)
+                    }
+                    it.depthAnalysis?.let { depth ->
+                        if (depth.hasDepth) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            DepthDataCard(depth)
+                        }
                     }
                 }
             }
@@ -674,6 +775,61 @@ private fun AiAnalysisCard(analysis: com.gcc.shared.model.AiAnalysis) {
                 "Types: ${analysis.trashTypes.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DepthDataCard(depth: com.gcc.shared.model.DepthAnalysis) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF3B82F6))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    "3D SCAN",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                "LiDAR Depth Analysis",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = Color(0xFF3B82F6),
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        depth.estimatedVolumeCubicFt?.let {
+            Text(
+                "Est. Volume: ~${it} cu ft",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        depth.estimatedAreaSqFt?.let {
+            Text(
+                "Est. Area: ~${it} sq ft",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        depth.maxDepthMeters?.let {
+            Text(
+                "Max Height: ${it}m",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        depth.depthConfidence?.let {
+            Text(
+                "Confidence: ${(it * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSubtle,
             )
         }
     }

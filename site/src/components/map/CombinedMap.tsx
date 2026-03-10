@@ -172,6 +172,8 @@ export function CombinedMap({
           id: spot.id,
           radiusMeters: spot.radiusMeters,
           label: spot.label || '',
+          needsVerification: (spot as any).needsVerification ?? false,
+          tags: JSON.stringify((spot as any).tags ?? []),
         },
         geometry: {
           type: 'Point' as const,
@@ -301,6 +303,7 @@ export function CombinedMap({
     // spot popup
     if (popup.kind === 'spot') {
       const s = popup.data
+      const allPhotos = s.mediaUrls?.length ? s.mediaUrls : s.photoUrl ? [s.photoUrl] : []
       return (
         <Popup
           longitude={popup.lng}
@@ -308,39 +311,56 @@ export function CombinedMap({
           anchor="bottom"
           onClose={() => setPopup(null)}
           closeButton
+          maxWidth="360px"
         >
-          <div className="p-3 min-w-[220px] max-w-[300px]">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="p-4 min-w-[300px] max-w-[360px]">
+            <div className="flex items-center gap-2 mb-3">
               <span
-                className="w-3 h-3 rounded-full flex-shrink-0"
+                className="w-3.5 h-3.5 rounded-full flex-shrink-0"
                 style={{ backgroundColor: SPOT_COLORS.MARKER }}
               />
-              <span className="font-bold text-neutral-900">Spot Report</span>
+              <span className="font-bold text-neutral-900 text-base">Spot Report</span>
               {s.status && (
                 <span
-                  className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto"
+                  className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto capitalize"
                   style={{ backgroundColor: s.status === 'verified' ? '#22C55E' : s.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
                 >
                   {s.status}
                 </span>
               )}
             </div>
-            {s.photoUrl && (
-              <img
-                src={s.photoUrl}
-                alt="Spot report"
-                className="w-full h-28 object-cover rounded-lg mb-2"
-              />
+            {allPhotos.length > 0 && (
+              <div className={`mb-3 ${allPhotos.length > 1 ? 'flex gap-2 overflow-x-auto' : ''}`}>
+                {allPhotos.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt={`Spot report photo ${i + 1}`}
+                    className={`object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity ${
+                      allPhotos.length === 1 ? 'w-full h-44' : 'w-40 h-32 flex-shrink-0'
+                    }`}
+                    onClick={() => window.open(url, '_blank')}
+                  />
+                ))}
+              </div>
             )}
             {s.label && (
-              <p className="text-sm text-neutral-600 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
+              <p className="text-sm font-medium text-neutral-700 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
+            )}
+            {(s as any).tags?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {((s as any).tags as string[]).map((tag: string) => (
+                  <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
+                ))}
+              </div>
             )}
             {s.description && (
-              <p className="text-sm text-neutral-500 mb-1 line-clamp-2">{s.description}</p>
+              <p className="text-sm text-neutral-500 mb-2 line-clamp-3">{s.description}</p>
             )}
-            <div className="flex items-center gap-3 text-xs text-neutral-500 mt-1">
+            <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
               <span>Radius: {s.radiusMeters}m</span>
               {s.reporterName && <span>By: {s.reporterName}</span>}
+              {allPhotos.length > 1 && <span className="ml-auto">{allPhotos.length} photos</span>}
             </div>
           </div>
         </Popup>
@@ -357,7 +377,14 @@ export function CombinedMap({
         onClose={() => setPopup(null)}
         closeButton
       >
-        <div className="p-3 min-w-[220px]">
+        <div className="p-3 min-w-[220px] max-w-[320px]">
+          {r.imageUrl && (
+            <img
+              src={r.imageUrl}
+              alt={r.displayName}
+              className="w-full h-32 object-cover rounded-lg mb-2"
+            />
+          )}
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-neutral-900">{r.displayName}</span>
             <span
@@ -425,7 +452,7 @@ export function CombinedMap({
         initialViewState={initialViewState}
         interactiveLayerIds={[
           ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
-          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-radius-fill'] : []),
+          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-radius-fill', 'combined-spot-verification-ring'] : []),
         ]}
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         cursor="pointer"
@@ -640,6 +667,34 @@ export function CombinedMap({
                 'circle-color': SPOT_COLORS.MARKER,
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
+                'circle-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 0,
+                  14, 1,
+                ],
+              }}
+            />
+
+            {/* Verification indicator — orange ring on spots needing verification */}
+            <Layer
+              id="combined-spot-verification-ring"
+              type="circle"
+              minzoom={SPOT_ZOOM.DOTS_MIN}
+              filter={['==', ['get', 'needsVerification'], true]}
+              paint={{
+                'circle-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 5,
+                  15, 9,
+                  17, 12,
+                ],
+                'circle-color': 'transparent',
+                'circle-stroke-color': '#FF8C00',
+                'circle-stroke-width': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN, 1.5,
+                  15, 2.5,
+                ],
                 'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
                   SPOT_ZOOM.DOTS_MIN, 0,

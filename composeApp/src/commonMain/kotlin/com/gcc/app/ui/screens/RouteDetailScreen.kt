@@ -27,13 +27,17 @@ import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
 import com.gcc.shared.model.Coordinates
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import org.koin.compose.koinInject
 
 @Composable
 fun RouteDetailScreen(
     routeId: Int = 0,
+    allRouteIds: List<Int> = emptyList(),
     onBack: () -> Unit = {},
     onStartJob: (jobId: Int) -> Unit = {},
+    onNavigateToRoute: (routeId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<RouteDetailViewModel>()
     val locationProvider = koinInject<LocationProvider>()
@@ -160,11 +164,31 @@ fun RouteDetailScreen(
         }
     }
 
+    // Route navigation: find prev/next in allRouteIds
+    val currentIdx = allRouteIds.indexOf(routeId)
+    val prevRouteId = if (currentIdx > 0) allRouteIds[currentIdx - 1] else null
+    val nextRouteId = if (currentIdx in 0 until allRouteIds.size - 1) allRouteIds[currentIdx + 1] else null
+
     // Full-screen layout: map behind, compact panel pinned at bottom
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { totalHeightPx = it.height },
+            .onSizeChanged { totalHeightPx = it.height }
+            .pointerInput(prevRouteId, nextRouteId) {
+                var totalDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (totalDrag < -100f && nextRouteId != null) {
+                            onNavigateToRoute(nextRouteId)
+                        } else if (totalDrag > 100f && prevRouteId != null) {
+                            onNavigateToRoute(prevRouteId)
+                        }
+                        totalDrag = 0f
+                    },
+                    onDragCancel = { totalDrag = 0f },
+                    onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                )
+            },
     ) {
         // Full-screen map
         GccMap(
@@ -178,26 +202,59 @@ fun RouteDetailScreen(
             animateRoutes = true,
         )
 
-        // Back button
-        IconButton(
-            onClick = onBack,
+        // Top nav: back + prev/next route arrows
+        Row(
             modifier = Modifier
-                .padding(8.dp)
                 .align(Alignment.TopStart)
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                .padding(8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "\u2190",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = GccGreenDark,
-                )
+            IconButton(onClick = onBack) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+                }
+            }
+
+            if (allRouteIds.size > 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(
+                        onClick = { prevRouteId?.let { onNavigateToRoute(it) } },
+                        enabled = prevRouteId != null,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = if (prevRouteId != null) 0.9f else 0.4f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("\u25C0", style = MaterialTheme.typography.bodyLarge, color = GccGreenDark)
+                        }
+                    }
+                    IconButton(
+                        onClick = { nextRouteId?.let { onNavigateToRoute(it) } },
+                        enabled = nextRouteId != null,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = if (nextRouteId != null) 0.9f else 0.4f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("\u25B6", style = MaterialTheme.typography.bodyLarge, color = GccGreenDark)
+                        }
+                    }
+                }
             }
         }
 

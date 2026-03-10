@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon } from 'lucide-react'
+import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
 
@@ -45,6 +45,7 @@ export default function BountiesPage() {
   const [spots, setSpots] = useState<SpotReport[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null)
 
   // Fetch data from API endpoints
   useEffect(() => {
@@ -69,15 +70,17 @@ export default function BountiesPage() {
         const mapSpots = data.spots || []
         const fullReports = data.data || []
         if (mapSpots.length > 0) {
-          // Enrich map spots with description, photoUrl, status from full reports
+          // Enrich map spots with description, photos, status from full reports
           const enriched = mapSpots.map((s: any) => {
             const full = fullReports.find((r: any) => String(r.id) === String(s.id))
             return {
               ...s,
               description: full?.description || undefined,
               photoUrl: full?.photoUrl || (full?.mediaUrls?.[0]) || undefined,
+              mediaUrls: full?.mediaUrls || [],
               status: full?.status || undefined,
               reporterName: full?.reporterName || undefined,
+              createdAt: full?.createdAt || undefined,
             }
           })
           setSpots(enriched)
@@ -272,6 +275,88 @@ export default function BountiesPage() {
             </div>
           </div>
 
+          {/* Spot Reports Section */}
+          {spots.length > 0 && (
+            <div className="mt-10">
+              <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-orange-500" />
+                Active Spot Reports
+              </h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {spots.map((spot) => {
+                  const allPhotos = spot.mediaUrls?.length ? spot.mediaUrls : spot.photoUrl ? [spot.photoUrl] : []
+                  return (
+                    <div
+                      key={spot.id}
+                      className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
+                    >
+                      {/* Photo area — large hero image or photo strip */}
+                      {allPhotos.length > 0 && (
+                        <div className="relative">
+                          <img
+                            src={allPhotos[0]}
+                            alt="Spot report"
+                            className="w-full h-48 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                            onClick={() => setLightbox({ urls: allPhotos, index: 0 })}
+                          />
+                          {allPhotos.length > 1 && (
+                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+                              {allPhotos.length} photos
+                            </div>
+                          )}
+                          {spot.status && (
+                            <span
+                              className="absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full text-white font-medium capitalize"
+                              style={{ backgroundColor: spot.status === 'verified' ? '#22C55E' : spot.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                            >
+                              {spot.status}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: '#F97316' }}
+                            />
+                            <h4 className="font-semibold text-neutral-900 capitalize">
+                              {spot.label?.replace(/_/g, ' ') || 'Spot Report'}
+                            </h4>
+                          </div>
+                          {!allPhotos.length && spot.status && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                                spot.status === 'verified' ? 'bg-green-100 text-green-700'
+                                : spot.status === 'acknowledged' ? 'bg-blue-100 text-blue-700'
+                                : 'bg-amber-100 text-amber-700'
+                              }`}
+                            >
+                              {spot.status}
+                            </span>
+                          )}
+                        </div>
+                        {spot.description && (
+                          <p className="text-sm text-neutral-600 mb-3 line-clamp-2">{spot.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
+                          <span>~{spot.radiusMeters}m radius</span>
+                          {spot.reporterName && <span>By {spot.reporterName}</span>}
+                          {spot.createdAt && (
+                            <span className="ml-auto">
+                              {new Date(spot.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Routes Section */}
           {routes.length > 0 && (
             <div className="mt-10">
@@ -327,6 +412,54 @@ export default function BountiesPage() {
           )}
         </div>
       </section>
+
+      {/* Image Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white z-10"
+            onClick={() => setLightbox(null)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          {lightbox.urls.length > 1 && (
+            <>
+              <button
+                className="absolute left-4 text-white/80 hover:text-white z-10 p-2"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox({ ...lightbox, index: (lightbox.index - 1 + lightbox.urls.length) % lightbox.urls.length })
+                }}
+              >
+                <ChevronLeft className="w-10 h-10" />
+              </button>
+              <button
+                className="absolute right-4 text-white/80 hover:text-white z-10 p-2"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox({ ...lightbox, index: (lightbox.index + 1) % lightbox.urls.length })
+                }}
+              >
+                <ChevronRight className="w-10 h-10" />
+              </button>
+            </>
+          )}
+          <img
+            src={lightbox.urls[lightbox.index]}
+            alt={`Photo ${lightbox.index + 1} of ${lightbox.urls.length}`}
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          {lightbox.urls.length > 1 && (
+            <div className="absolute bottom-6 text-white/80 text-sm">
+              {lightbox.index + 1} / {lightbox.urls.length}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* CTA */}
       <section className="bg-gradient-to-r from-neutral-900 to-neutral-800 text-white py-16">

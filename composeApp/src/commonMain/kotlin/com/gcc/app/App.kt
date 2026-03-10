@@ -54,30 +54,39 @@ fun App(component: RootComponent) {
                     onSettingsClick = component::navigateToSettings,
                     onAdminClick = component::navigateToAdminPanel,
                 )
-                is Screen.RouteDetail -> RouteDetailScreen(
-                    routeId = screen.routeId,
-                    onBack = component::navigateBack,
-                    onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
-                )
+                is Screen.RouteDetail -> {
+                    val dashVm = org.koin.compose.koinInject<com.gcc.app.viewmodel.DashboardViewModel>()
+                    val dashState by dashVm.uiState.collectAsState()
+                    RouteDetailScreen(
+                        routeId = screen.routeId,
+                        allRouteIds = dashState.routes.map { it.id },
+                        onBack = component::navigateBack,
+                        onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
+                        onNavigateToRoute = component::replaceRouteDetail,
+                    )
+                }
                 is Screen.ActiveJob -> ActiveJobScreen(
                     jobId = screen.jobId,
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
                 )
                 is Screen.Profile -> ProfileScreen(
-                    onBack = component::navigateBack,
+                    onBack = { component.switchToTab(Screen.Dashboard) },
                     onAchievementsClick = component::navigateToAchievements,
                     onMapClick = component::navigateToMap,
                     onSettingsClick = component::navigateToSettings,
+                    onAdminClick = component::navigateToAdminPanel,
                 )
                 is Screen.Achievements -> AchievementsScreen(
                     onBack = component::navigateBack,
                 )
                 is Screen.MapFullScreen -> MapFullScreen(
-                    onBack = component::navigateBack,
+                    onBack = { component.switchToTab(Screen.Dashboard) },
                     onRouteClick = component::navigateToRouteDetail,
                     onVolunteerCleanup = component::navigateToVolunteerCleanup,
                     onSpotVerification = component::navigateToSpotVerification,
+                    onAdminClick = component::navigateToAdminPanel,
+                    onProfileClick = component::navigateToProfile,
                 )
                 is Screen.Settings -> SettingsScreen(
                     onBack = component::navigateBack,

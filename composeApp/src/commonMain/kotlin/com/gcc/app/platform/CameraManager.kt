@@ -2,6 +2,21 @@ package com.gcc.app.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import kotlinx.serialization.Serializable
+
+/**
+ * Depth data captured from LiDAR-capable devices.
+ * Null on devices without LiDAR/TrueDepth.
+ */
+@Serializable
+data class DepthAnalysis(
+    val hasDepth: Boolean = false,
+    val estimatedVolumeCubicFt: Double? = null,
+    val estimatedAreaSqFt: Double? = null,
+    val maxDepthMeters: Double? = null,
+    val depthConfidence: Float? = null,
+    val depthMapThumbnailBase64: String? = null,
+)
 
 /**
  * Captured photo result.
@@ -10,16 +25,18 @@ data class CapturedPhoto(
     val bytes: ByteArray,
     val width: Int,
     val height: Int,
+    val depthAnalysis: DepthAnalysis? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is CapturedPhoto) return false
-        return bytes.contentEquals(other.bytes) && width == other.width && height == other.height
+        return bytes.contentEquals(other.bytes) && width == other.width && height == other.height && depthAnalysis == other.depthAnalysis
     }
     override fun hashCode(): Int {
         var result = bytes.contentHashCode()
         result = 31 * result + width
         result = 31 * result + height
+        result = 31 * result + (depthAnalysis?.hashCode() ?: 0)
         return result
     }
 }
@@ -67,3 +84,11 @@ expect suspend fun pickFromLibrary(): CapturedPhoto?
  * Desktop/Android: Returns bytes unchanged (no-op)
  */
 expect fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray
+
+/**
+ * Check if device has LiDAR sensor.
+ *
+ * iOS: True for devices with LiDAR scanner (iPhone Pro, iPad Pro)
+ * Android/Desktop: False
+ */
+expect fun hasLiDAR(): Boolean

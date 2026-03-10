@@ -123,11 +123,8 @@ object MapStyles {
     const val SPOT_HEATMAP_OPACITY_FAR = 0.35f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
-    // Heatmap color ramp: green (low) → yellow → orange → red (high density)
-    val SPOT_HEATMAP_COLOR_LOW = Color(0xFF22C55E)     // green
-    val SPOT_HEATMAP_COLOR_MED = Color(0xFFEAB308)     // yellow
-    val SPOT_HEATMAP_COLOR_HIGH = Color(0xFFF97316)    // orange
-    val SPOT_HEATMAP_COLOR_PEAK = Color(0xFFEF4444)    // red
+    // Heatmap color: light pink (few spots) → deep red (dense clusters)
+    val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
 
     // Zoom thresholds for heatmap vs. individual dots
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom

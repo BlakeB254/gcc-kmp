@@ -8,6 +8,7 @@ import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.router.stack.pop
 import com.arkivanov.decompose.router.stack.push
 import com.arkivanov.decompose.router.stack.replaceAll
+import com.arkivanov.decompose.router.stack.replaceCurrent
 import com.arkivanov.decompose.value.Value
 import com.gcc.shared.auth.TokenManager
 
@@ -70,6 +71,10 @@ class RootComponent(
 
     fun navigateToRouteDetail(routeId: Int) {
         navigation.push(Screen.RouteDetail(routeId))
+    }
+
+    fun replaceRouteDetail(routeId: Int) {
+        navigation.replaceCurrent(Screen.RouteDetail(routeId))
     }
 
     fun navigateToActiveJob(jobId: Int, routeId: Int) {

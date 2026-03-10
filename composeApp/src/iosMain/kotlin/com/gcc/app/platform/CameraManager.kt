@@ -48,6 +48,19 @@ import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
+import platform.Foundation.NSNumber
+import platform.Foundation.valueForKey
+import platform.Foundation.setValue
+import platform.CoreVideo.CVPixelBufferGetWidth
+import platform.CoreVideo.CVPixelBufferGetHeight
+import platform.CoreVideo.CVPixelBufferGetBaseAddress
+import platform.CoreVideo.CVPixelBufferLockBaseAddress
+import platform.CoreVideo.CVPixelBufferUnlockBaseAddress
+import platform.CoreVideo.kCVPixelBufferLock_ReadOnly
+import platform.CoreVideo.CVPixelBufferGetBytesPerRow
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.get
+import kotlin.math.abs
 
 /**
  * Resize a UIImage so its longest side is at most [maxDimension] pixels.
@@ -70,13 +83,93 @@ private fun UIImage.resizedToMax(maxDimension: Double = 1920.0): UIImage {
     return resized ?: this
 }
 
+@OptIn(ExperimentalForeignApi::class)
+private fun processDepthData(photo: AVCapturePhoto): DepthAnalysis? {
+    val depthData = photo.depthData ?: return null
+    val pixelBuffer = depthData.depthDataMap
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
+    try {
+        val width = CVPixelBufferGetWidth(pixelBuffer).toInt()
+        val height = CVPixelBufferGetHeight(pixelBuffer).toInt()
+        val bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer).toInt()
+        val baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) ?: return null
+
+        val floatPtr = baseAddress.reinterpret<kotlinx.cinterop.FloatVar>()
+        val floatsPerRow = bytesPerRow / 4
+
+        val depths = mutableListOf<Float>()
+        val bottomDepths = mutableListOf<Float>()
+
+        for (y in 0 until height step 4) {
+            for (x in 0 until width step 4) {
+                val d = floatPtr[y * floatsPerRow + x]
+                if (d.isFinite() && d > 0f && d < 10f) {
+                    depths.add(d)
+                    if (y > height * 0.8) {
+                        bottomDepths.add(d)
+                    }
+                }
+            }
+        }
+
+        if (depths.isEmpty()) return null
+
+        bottomDepths.sort()
+        val groundPlane = if (bottomDepths.isNotEmpty()) {
+            bottomDepths[bottomDepths.size / 2]
+        } else {
+            depths.sorted()[depths.size / 2]
+        }
+
+        val hFovRad = 1.047
+        var totalVolumeM3 = 0.0
+        var aboveGroundCount = 0
+        var maxDepth = 0f
+
+        for (y in (height * 0.1).toInt() until (height * 0.9).toInt() step 4) {
+            for (x in (width * 0.1).toInt() until (width * 0.9).toInt() step 4) {
+                val d = floatPtr[y * floatsPerRow + x]
+                if (d.isFinite() && d > 0f && d < groundPlane) {
+                    val heightAboveGround = (groundPlane - d).toDouble()
+                    val pixelWidthM = (d * hFovRad / width) * 4
+                    val pixelAreaM2 = pixelWidthM * pixelWidthM
+                    totalVolumeM3 += heightAboveGround * pixelAreaM2
+                    aboveGroundCount++
+                    if (d > maxDepth) maxDepth = d
+                }
+            }
+        }
+
+        val volumeCuFt = totalVolumeM3 * 35.3147
+        val groundPixelWidthM = (groundPlane * hFovRad / width) * 4
+        val areaSqFt = aboveGroundCount * groundPixelWidthM * groundPixelWidthM * 10.7639
+
+        val confidence = if (depths.size > 0) {
+            val validRatio = depths.count { abs(it - groundPlane) < 0.05f }.toFloat() / depths.size
+            (1f - validRatio).coerceIn(0.3f, 0.95f)
+        } else 0.5f
+
+        return DepthAnalysis(
+            hasDepth = true,
+            estimatedVolumeCubicFt = if (volumeCuFt > 0.01) (volumeCuFt * 10).toInt() / 10.0 else null,
+            estimatedAreaSqFt = if (areaSqFt > 0.1) (areaSqFt * 10).toInt() / 10.0 else null,
+            maxDepthMeters = if (maxDepth > 0f) (maxDepth * 100).toInt() / 100.0 else null,
+            depthConfidence = (confidence * 100).toInt() / 100f,
+            depthMapThumbnailBase64 = null,
+        )
+    } finally {
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
+    }
+}
+
 /**
  * Delegate object for AVCapturePhotoOutput that receives captured photos.
  * Declared as a concrete class to properly satisfy Kotlin/Native ObjC interop
  * requirements for the AVCapturePhotoCaptureDelegate protocol.
  */
 private class PhotoCaptureDelegate(
-    private val onComplete: (NSData?) -> Unit,
+    private val onComplete: (NSData?, DepthAnalysis?) -> Unit,
 ) : NSObject(), platform.AVFoundation.AVCapturePhotoCaptureDelegateProtocol {
     @Suppress("CONFLICTING_OVERLOADS")
     override fun captureOutput(
@@ -85,10 +178,11 @@ private class PhotoCaptureDelegate(
         error: NSError?,
     ) {
         if (error != null) {
-            onComplete(null)
+            onComplete(null, null)
             return
         }
-        onComplete(didFinishProcessingPhoto.fileDataRepresentation())
+        val depthAnalysis = processDepthData(didFinishProcessingPhoto)
+        onComplete(didFinishProcessingPhoto.fileDataRepresentation(), depthAnalysis)
     }
 }
 
@@ -132,8 +226,17 @@ actual class CameraManager actual constructor() {
     ): CapturedPhoto? = suspendCancellableCoroutine { continuation ->
         dispatch_async(dispatch_get_main_queue()) {
             val settings = AVCapturePhotoSettings.photoSettings()
+            // Enable depth data delivery if supported (KVO since K/N may not expose these)
+            try {
+                val supported = (photoOutput as platform.darwin.NSObject)
+                    .valueForKey("depthDataDeliverySupported") as? Boolean ?: false
+                if (supported) {
+                    (settings as platform.darwin.NSObject)
+                        .setValue(true, forKey = "depthDataDeliveryEnabled")
+                }
+            } catch (_: Throwable) { /* depth not available on this device */ }
 
-            val delegate = PhotoCaptureDelegate { fileData ->
+            val delegate = PhotoCaptureDelegate { fileData, depthAnalysis ->
                 if (fileData == null || fileData.length.toInt() == 0) {
                     continuation.resume(null)
                     return@PhotoCaptureDelegate
@@ -160,6 +263,7 @@ actual class CameraManager actual constructor() {
                         bytes = bytes,
                         width = width,
                         height = height,
+                        depthAnalysis = depthAnalysis,
                     )
                 )
             }
@@ -257,6 +361,7 @@ actual class CameraManager actual constructor() {
     companion object {
         internal var activePhotoOutput: AVCapturePhotoOutput? = null
         internal var activeSession: AVCaptureSession? = null
+        internal var hasDepthCapability: Boolean = false
     }
 }
 
@@ -400,6 +505,7 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
         sessionPreset = AVCaptureSessionPresetHigh
     }
 
+    // Use the standard back camera (LiDAR depth is detected via photo output capabilities)
     val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
     if (device == null) {
         CameraPreviewFallback(modifier)
@@ -425,9 +531,21 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
         captureSession.addOutput(photoOutput)
     }
 
+    // Try to enable depth data delivery (works on LiDAR-capable devices)
+    val depthCapable = try {
+        val supported = (photoOutput as platform.darwin.NSObject)
+            .valueForKey("depthDataDeliverySupported") as? Boolean ?: false
+        if (supported) {
+            (photoOutput as platform.darwin.NSObject)
+                .setValue(true, forKey = "depthDataDeliveryEnabled")
+        }
+        supported
+    } catch (_: Throwable) { false }
+
     // Store refs so capturePhoto() can use the live session
     CameraManager.activePhotoOutput = photoOutput
     CameraManager.activeSession = captureSession
+    CameraManager.hasDepthCapability = depthCapable
 
     androidx.compose.ui.interop.UIKitView(
         factory = {
@@ -455,6 +573,7 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
         onRelease = {
             CameraManager.activePhotoOutput = null
             CameraManager.activeSession = null
+            CameraManager.hasDepthCapability = false
             dispatch_async(dispatch_get_main_queue()) {
                 captureSession.stopRunning()
             }
@@ -479,3 +598,5 @@ private fun CameraPreviewFallback(modifier: Modifier) {
 }
 
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes
+
+actual fun hasLiDAR(): Boolean = CameraManager.hasDepthCapability

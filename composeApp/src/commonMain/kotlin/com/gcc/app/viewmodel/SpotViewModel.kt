@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 
 enum class SpotPhase { CAMERA, LOCATION, DESCRIPTION, SUBMITTING, RESULT }
 
+enum class AreaMode { CIRCLE, RECTANGLE }
+
 data class SpotUiState(
     val capturedPhotos: List<CapturedPhoto> = emptyList(),
     val currentLat: Double = 41.8604,
@@ -29,6 +31,11 @@ data class SpotUiState(
     val spotLat: Double? = null,
     val spotLng: Double? = null,
     val affectedRadiusMeters: Double = 15.0,
+    val areaMode: AreaMode = AreaMode.CIRCLE,
+    val rectWidth: Double = 20.0,
+    val rectHeight: Double = 10.0,
+    val rectRotation: Double = 0.0,
+    val selectedTags: List<SpotTag> = emptyList(),
     val description: String = "",
     val isSubmitting: Boolean = false,
     val submittedReport: CommunityReport? = null,
@@ -41,13 +48,19 @@ class SpotViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
 ) {
+    companion object {
+        const val MAX_PHOTOS = 3
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(SpotUiState())
     val uiState: StateFlow<SpotUiState> = _uiState.asStateFlow()
 
     fun addPhoto(photo: CapturedPhoto) {
-        _uiState.value = _uiState.value.copy(
-            capturedPhotos = _uiState.value.capturedPhotos + photo,
+        val current = _uiState.value
+        if (current.capturedPhotos.size >= MAX_PHOTOS) return
+        _uiState.value = current.copy(
+            capturedPhotos = current.capturedPhotos + photo,
         )
     }
 
@@ -73,6 +86,24 @@ class SpotViewModel(
 
     fun setSpotLocation(lat: Double, lng: Double) {
         _uiState.value = _uiState.value.copy(spotLat = lat, spotLng = lng)
+    }
+
+    fun setAreaMode(mode: AreaMode) {
+        _uiState.value = _uiState.value.copy(areaMode = mode)
+    }
+
+    fun setRectDimensions(width: Double, height: Double) {
+        _uiState.value = _uiState.value.copy(rectWidth = width, rectHeight = height)
+    }
+
+    fun setRectRotation(deg: Double) {
+        _uiState.value = _uiState.value.copy(rectRotation = deg)
+    }
+
+    fun toggleTag(tag: SpotTag) {
+        val current = _uiState.value.selectedTags.toMutableList()
+        if (tag in current) current.remove(tag) else current.add(tag)
+        _uiState.value = _uiState.value.copy(selectedTags = current)
     }
 
     fun nextPhase() {
@@ -123,6 +154,30 @@ class SpotViewModel(
                     }
                 }
 
+                // Collect depth analysis from the first photo that has it
+                val depthAnalysis = state.capturedPhotos
+                    .firstNotNullOfOrNull { it.depthAnalysis }
+                    ?.let { depth ->
+                        com.gcc.shared.model.DepthAnalysis(
+                            hasDepth = depth.hasDepth,
+                            estimatedVolumeCubicFt = depth.estimatedVolumeCubicFt,
+                            estimatedAreaSqFt = depth.estimatedAreaSqFt,
+                            maxDepthMeters = depth.maxDepthMeters,
+                            depthConfidence = depth.depthConfidence,
+                            depthMapThumbnailBase64 = depth.depthMapThumbnailBase64,
+                        )
+                    }
+
+                // Build affected area from mode
+                val affectedArea: AffectedArea? = when (state.areaMode) {
+                    AreaMode.CIRCLE -> AffectedArea.Circle(radiusMeters = state.affectedRadiusMeters)
+                    AreaMode.RECTANGLE -> AffectedArea.Rectangle(
+                        widthMeters = state.rectWidth,
+                        heightMeters = state.rectHeight,
+                        rotationDeg = state.rectRotation,
+                    )
+                }
+
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
                     lat = submitLat,
@@ -130,11 +185,22 @@ class SpotViewModel(
                     description = state.description.ifBlank { null },
                     mediaUrls = uploadedUrls.ifEmpty { null },
                     affectedRadiusMeters = state.affectedRadiusMeters,
+                    affectedArea = affectedArea,
+                    tags = state.selectedTags,
                     reporterName = if (tokenManager.isAdmin()) "GCC" else null,
+                    depthAnalysis = depthAnalysis,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
+                }
+                if (response.status.value == 409) {
+                    _uiState.value = _uiState.value.copy(
+                        isSubmitting = false,
+                        phase = SpotPhase.DESCRIPTION,
+                        error = "A spot report already exists within 50m of this location",
+                    )
+                    return@launch
                 }
                 if (!response.status.isSuccess()) {
                     val errorBody = response.bodyAsText()

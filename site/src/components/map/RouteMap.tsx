@@ -74,6 +74,7 @@ interface Route {
   payoutAmount: number
   status: RouteDisplayStatus
   checkpoints: Checkpoint[]
+  imageUrl?: string
 }
 
 interface RouteMapProps {

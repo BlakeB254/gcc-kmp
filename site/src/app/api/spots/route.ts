@@ -11,6 +11,33 @@ import { verifyMobileToken } from '@/lib/mobile-auth'
 
 export const dynamic = 'force-dynamic'
 
+// Tag keywords for auto-tagging existing spots based on description
+const TAG_KEYWORDS: Record<string, string[]> = {
+  trash: ['trash', 'garbage', 'rubbish', 'waste', 'litter', 'dump'],
+  leaves: ['leaves', 'leaf', 'yard waste', 'branches', 'twigs'],
+  glass: ['glass', 'bottle', 'broken glass', 'shattered'],
+  metal: ['metal', 'can', 'cans', 'aluminum', 'steel', 'scrap'],
+  tires: ['tire', 'tires', 'rubber'],
+  furniture: ['furniture', 'couch', 'sofa', 'chair', 'mattress', 'bed', 'table', 'dresser'],
+  construction: ['construction', 'concrete', 'brick', 'drywall', 'lumber', 'debris', 'demolition'],
+  organic: ['organic', 'food', 'compost', 'rot'],
+  hazardous: ['hazardous', 'chemical', 'paint', 'oil', 'asbestos', 'toxic'],
+  electronics: ['electronics', 'tv', 'computer', 'monitor', 'appliance', 'fridge', 'refrigerator'],
+  clothing: ['clothing', 'clothes', 'fabric', 'shoes', 'textile'],
+}
+
+function autoTagFromDescription(description: string | null): string[] {
+  if (!description) return []
+  const lower = description.toLowerCase()
+  const tags: string[] = []
+  for (const [tag, keywords] of Object.entries(TAG_KEYWORDS)) {
+    if (keywords.some((kw) => lower.includes(kw))) {
+      tags.push(tag)
+    }
+  }
+  return tags
+}
+
 // Helper to convert DB row to CommunityReport shape the iOS app expects
 function toCommunityReport(r: any) {
   const coords = r.coordinates as { lat?: number; lng?: number } | [number, number] | null
@@ -24,6 +51,7 @@ function toCommunityReport(r: any) {
       : coords ?? { lng: 0, lat: 0 },
     description: r.description,
     mediaUrls: (r.mediaIds as string[]) || [],
+    mediaCaptions: (r.mediaCaptions as string[]) || [],
     status: r.status,
     upvotes: r.thankCount || 0,
     verifiedBy: r.reviewedById,
@@ -32,12 +60,15 @@ function toCommunityReport(r: any) {
     observerRewardPoints: 0,
     aiAnalysis: null,
     affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
+    affectedArea: r.affectedArea || null,
+    tags: r.tags || autoTagFromDescription(r.description),
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
     // Verification lifecycle
     lastVerifiedAt: r.lastVerifiedAt || null,
     verificationCount: r.verificationCount || 0,
     nextVerificationDue: r.nextVerificationDue || null,
     needsVerification: r.nextVerificationDue ? new Date(r.nextVerificationDue) <= new Date() : false,
+    depthAnalysis: r.depthAnalysis || null,
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }
@@ -86,6 +117,9 @@ export async function GET(request: NextRequest) {
         coordinates: coords,
         radiusMeters: parseFloat(report.affectedRadiusMeters || '15'),
         label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
+        tags: (report as any).tags || autoTagFromDescription(report.description),
+        affectedArea: (report as any).affectedArea || null,
+        needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : false,
       }
     })
 
@@ -130,14 +164,86 @@ export async function POST(request: NextRequest) {
       lng,
       description,
       mediaUrls,
+      mediaCaptions,
       affectedRadiusMeters,
+      affectedArea,
+      tags,
       reporterName,
+      depthAnalysis,
     } = body
 
     // Validate coordinates
     if (lat == null || lng == null) {
       return NextResponse.json({ error: 'lat and lng are required' }, { status: 400 })
     }
+
+    // Server-side image limit: max 3 photos
+    if (mediaUrls && mediaUrls.length > 3) {
+      return NextResponse.json({ error: 'Maximum 3 photos allowed per spot report' }, { status: 400 })
+    }
+
+    // Duplicate spot check: reject if another spot exists within 50m
+    const duplicateCheck = await db
+      .select({ id: communityReports.id, coordinates: communityReports.coordinates })
+      .from(communityReports)
+      .where(
+        and(
+          or(
+            eq(communityReports.status, 'pending'),
+            eq(communityReports.status, 'verified')
+          ),
+          // Rough bounding box filter (~50m ≈ 0.00045 degrees)
+          sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
+          sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+        )
+      )
+      .limit(1)
+
+    // Also check array-style coordinates [lng, lat]
+    if (duplicateCheck.length === 0) {
+      const dupCheckArray = await db
+        .select({ id: communityReports.id })
+        .from(communityReports)
+        .where(
+          and(
+            or(
+              eq(communityReports.status, 'pending'),
+              eq(communityReports.status, 'verified')
+            ),
+            sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
+            sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+          )
+        )
+        .limit(1)
+
+      if (dupCheckArray.length > 0) {
+        return NextResponse.json(
+          { error: 'A spot report already exists within 50m of this location', existingSpotId: dupCheckArray[0].id },
+          { status: 409 }
+        )
+      }
+    } else {
+      return NextResponse.json(
+        { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
+        { status: 409 }
+      )
+    }
+
+    // Derive affectedRadiusMeters from affectedArea if present
+    let effectiveRadius = affectedRadiusMeters || 15
+    if (affectedArea) {
+      if (affectedArea.type === 'circle') {
+        effectiveRadius = affectedArea.radiusMeters
+      } else if (affectedArea.type === 'rectangle') {
+        // Use half-diagonal as effective radius
+        const w = affectedArea.widthMeters || 10
+        const h = affectedArea.heightMeters || 10
+        effectiveRadius = Math.sqrt(w * w + h * h) / 2
+      }
+    }
+
+    // Auto-tag from description if no tags provided
+    const effectiveTags = tags && tags.length > 0 ? tags : autoTagFromDescription(description)
 
     // Create the community report with verification lifecycle fields
     const next24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
@@ -151,7 +257,10 @@ export async function POST(request: NextRequest) {
         description: description || null,
         coordinates: [lng, lat], // GeoJSON [lng, lat]
         mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
-        affectedRadiusMeters: affectedRadiusMeters ? String(affectedRadiusMeters) : '15',
+        mediaCaptions: mediaCaptions && mediaCaptions.length > 0 ? mediaCaptions : null,
+        affectedRadiusMeters: String(effectiveRadius),
+        affectedArea: affectedArea || null,
+        tags: effectiveTags.length > 0 ? effectiveTags : null,
         status: 'pending',
         showOnMap: true,
         capturedAt: new Date().toISOString(),
@@ -160,6 +269,7 @@ export async function POST(request: NextRequest) {
         verificationCount: 0,
         nextVerificationDue: next24h,
         missedVerifications: 0,
+        depthAnalysis: depthAnalysis || null,
       })
       .returning()
 

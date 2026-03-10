@@ -836,13 +836,24 @@ export function NeighborhoodMapSection() {
                     </button>
                   </div>
                 </div>
-                {selectedSpot.photoUrl && (
-                  <img
-                    src={selectedSpot.photoUrl}
-                    alt="Spot report"
-                    className="w-full h-32 object-cover rounded-lg mb-2"
-                  />
-                )}
+                {(selectedSpot.photoUrl || selectedSpot.mediaUrls?.length > 0) && (() => {
+                  const photos = selectedSpot.mediaUrls?.length ? selectedSpot.mediaUrls : selectedSpot.photoUrl ? [selectedSpot.photoUrl] : []
+                  return (
+                    <div className={`mb-2 ${photos.length > 1 ? 'flex gap-2 overflow-x-auto' : ''}`}>
+                      {photos.map((url: string, i: number) => (
+                        <img
+                          key={i}
+                          src={url}
+                          alt={`Spot report photo ${i + 1}`}
+                          className={`object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity ${
+                            photos.length === 1 ? 'w-full h-44' : 'w-36 h-28 flex-shrink-0'
+                          }`}
+                          onClick={() => window.open(url, '_blank')}
+                        />
+                      ))}
+                    </div>
+                  )
+                })()}
                 {selectedSpot.description && (
                   <p className="text-sm text-neutral-600 mb-2 line-clamp-3">{selectedSpot.description}</p>
                 )}

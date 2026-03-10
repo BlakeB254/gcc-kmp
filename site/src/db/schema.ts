@@ -815,6 +815,8 @@ export const communityReports = pgTable('community_reports', {
 
   // Media evidence (array of media IDs)
   mediaIds: jsonb('media_ids'),                // Photos and/or videos
+  mediaCaptions: jsonb('media_captions'),      // Per-photo captions (parallel array to mediaIds)
+  depthAnalysis: jsonb('depth_analysis'),       // LiDAR depth data (DepthAnalysis JSON)
   beforePhotos: jsonb('before_photos'),        // For volunteer_cleanup: before state
   afterPhotos: jsonb('after_photos'),          // For volunteer_cleanup: after state
 
@@ -825,6 +827,12 @@ export const communityReports = pgTable('community_reports', {
 
   // Affected radius in meters (for map display)
   affectedRadiusMeters: numeric('affected_radius_meters').default('15'),
+
+  // Affected area geometry (circle or rectangle JSON)
+  affectedArea: jsonb('affected_area'),
+
+  // Spot tags (array of tag strings: trash, leaves, glass, etc.)
+  tags: jsonb('tags'),
 
   // Status and moderation
   status: communityReportStatusEnum('status').default('pending').notNull(),

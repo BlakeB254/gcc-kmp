@@ -1,8 +1,11 @@
 package com.gcc.app.ui.map
 
+import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Builds a GeoJSON FeatureCollection string for community area polygons.
@@ -122,7 +125,15 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
     val features = spots
         .filter { it.status != CommunityReportStatus.RESOLVED }
         .map { s ->
-            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+            val areaType = when (s.affectedArea) {
+                is AffectedArea.Rectangle -> "rectangle"
+                else -> "circle"
+            }
+            val rectWidth = (s.affectedArea as? AffectedArea.Rectangle)?.widthMeters ?: 0.0
+            val rectHeight = (s.affectedArea as? AffectedArea.Rectangle)?.heightMeters ?: 0.0
+            val rectRotation = (s.affectedArea as? AffectedArea.Rectangle)?.rotationDeg ?: 0.0
+            val tagsStr = s.tags.joinToString(",") { "\"${it.name.lowercase()}\"" }
+            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
         }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
@@ -178,6 +189,46 @@ fun buildCommunityAreaLabelsGeoJson(): String {
  * Each point has properties: name, number, isServiceArea, bountyCount, bountyTotal, subtitle.
  * The subtitle is a pre-formatted string like "3 bounties · $150" for display on map labels.
  */
+/**
+ * Builds a GeoJSON FeatureCollection of Polygon features for rectangle-type spot areas.
+ * Computes 4 rotated corner coordinates from center, width/height in meters, and rotation.
+ * Circle-type spots are excluded (rendered by CircleLayer instead).
+ */
+fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
+    val rectSpots = spots.filter {
+        it.status != CommunityReportStatus.RESOLVED && it.affectedArea is AffectedArea.Rectangle
+    }
+    if (rectSpots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+
+    val features = rectSpots.map { s ->
+        val rect = s.affectedArea as AffectedArea.Rectangle
+        val lat = s.coordinates.lat
+        val lng = s.coordinates.lng
+        // Convert meters to degrees (approximate at this latitude)
+        val metersPerDegreeLat = 111320.0
+        val metersPerDegreeLng = 111320.0 * cos(lat * kotlin.math.PI / 180.0)
+        val halfW = (rect.widthMeters / 2.0) / metersPerDegreeLng
+        val halfH = (rect.heightMeters / 2.0) / metersPerDegreeLat
+        val rad = rect.rotationDeg * kotlin.math.PI / 180.0
+        val cosR = cos(rad)
+        val sinR = sin(rad)
+
+        // 4 corners (unrotated: ±halfW, ±halfH), then rotate around center
+        val corners = listOf(
+            -halfW to -halfH, halfW to -halfH,
+            halfW to halfH, -halfW to halfH,
+        ).map { (dx, dy) ->
+            val rx = dx * cosR - dy * sinR
+            val ry = dx * sinR + dy * cosR
+            "[${lng + rx},${lat + ry}]"
+        }
+        // Close the ring
+        val ring = corners.joinToString(",") + ",${corners.first()}"
+        """{"type":"Feature","properties":{"id":${s.id},"needsVerification":${s.needsVerification}},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+    }.joinToString(",")
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
 fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): String {
     // Aggregate open bounties by community area name
     val areaAggregates = bounties
