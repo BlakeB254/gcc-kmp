@@ -39,7 +39,7 @@ fun main(args: Array<String> = emptyArray()) {
         Window(
             onCloseRequest = ::exitApplication,
             state = windowState,
-            title = if (isDemo) "GCC Admin [DEMO]" else "GCC Admin",
+            title = if (isDemo) "GCC Admin [OFFLINE]" else "GCC Admin",
         ) {
             AdminApp(root)
         }

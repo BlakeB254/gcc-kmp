@@ -26,7 +26,7 @@ data class MapBlock(
  * 10 real North Lawndale blocks based on the Chicago street grid.
  *
  * Each block is roughly one city block (~1/8 mile × ~1/16 mile) defined by
- * four street intersections. Coordinates derived from the demo route checkpoints
+ * four street intersections. Coordinates derived from the route checkpoints
  * and real Chicago geography.
  *
  * Block numbering: NL-001 through NL-010, covering the core of North Lawndale
