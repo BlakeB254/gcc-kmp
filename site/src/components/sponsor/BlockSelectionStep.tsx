@@ -8,12 +8,12 @@ import { StepHeader } from './StepHeader'
 import type { SponsorBlock, SponsorshipMode } from './types'
 import { GENERAL_BLOCK_COUNTS, formatStreetName } from './types'
 
-const BlockMap = dynamic(
-  () => import('@/components/map/BlockMap').then(mod => ({ default: mod.BlockMap })),
+const SponsorBlockMap = dynamic(
+  () => import('./SponsorBlockMap').then(mod => ({ default: mod.SponsorBlockMap })),
   {
     ssr: false,
     loading: () => (
-      <div className="h-[350px] bg-neutral-100 rounded-xl animate-pulse flex items-center justify-center">
+      <div className="h-[450px] bg-neutral-100 rounded-xl animate-pulse flex items-center justify-center">
         <span className="text-neutral-400">Loading map...</span>
       </div>
     ),
@@ -107,30 +107,19 @@ function SpecificBlockPicker({
 
   return (
     <div className="space-y-5">
-      {/* Map */}
+      {/* Map — same green polygon + route line visual as home page */}
       <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b bg-neutral-50">
           <p className="text-sm text-neutral-600 flex items-center gap-2">
             <MapPin className="w-4 h-4 text-brand-gold-600" />
-            Click blocks on the map to select them — selected blocks highlight in gold
+            Click the checkboxes inside each block to select — selected blocks turn gold
           </p>
         </div>
-        <BlockMap
-          blocks={blocks.map(b => ({
-            ...b,
-            status: 'unfunded' as const,
-            geo: {
-              center: b.location?.center || { coordinates: [-87.7158, 41.8666] as [number, number] },
-              polygon: b.location?.boundary || undefined,
-            },
-          }))}
-          onBlockSelect={(block) => {
-            const found = blocks.find(bl => bl.id === block.id)
-            if (found) onToggleBlock(found)
-          }}
+        <SponsorBlockMap
+          blocks={blocks}
           selectedBlockIds={selectedBlocks.map(b => b.id)}
-          height="350px"
-          showLegend={false}
+          onToggleBlock={onToggleBlock}
+          height="450px"
         />
       </div>
 
