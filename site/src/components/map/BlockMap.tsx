@@ -124,6 +124,7 @@ interface BlockMapProps {
   blocks: Block[]
   onBlockSelect?: (block: Block) => void
   selectedBlockId?: string
+  selectedBlockIds?: string[]
   interactive?: boolean
   height?: string
   showTileLayers?: boolean
@@ -138,11 +139,18 @@ export function BlockMap({
   blocks,
   onBlockSelect,
   selectedBlockId,
+  selectedBlockIds = [],
   interactive = true,
   height = '400px',
   showTileLayers = true,
   showLegend = true,
 }: BlockMapProps) {
+  // Merge single and multi selection for rendering
+  const allSelectedIds = useMemo(() => {
+    const ids = new Set(selectedBlockIds)
+    if (selectedBlockId) ids.add(selectedBlockId)
+    return ids
+  }, [selectedBlockId, selectedBlockIds])
   const [popupInfo, setPopupInfo] = useState<Block | null>(null)
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
   const [tileServerAvailable, setTileServerAvailable] = useState<boolean | null>(null)
@@ -227,6 +235,7 @@ export function BlockMap({
         fromCorner: block.fromCorner,
         toCorner: block.toCorner,
         status: block.status,
+        selected: allSelectedIds.has(block.id),
       },
       geometry: block.geo.polygon
         ? {
@@ -238,7 +247,7 @@ export function BlockMap({
             coordinates: block.geo.center.coordinates,
           },
     })),
-  }), [blocks])
+  }), [blocks, allSelectedIds])
 
   // Handle block click (both GeoJSON and vector tile layers)
   const onClick = useCallback((event: MapLayerMouseEvent) => {
@@ -492,19 +501,24 @@ export function BlockMap({
           filter={['==', ['geometry-type'], 'Polygon']}
           paint={{
             'fill-color': [
-              'match',
-              ['get', 'status'],
-              'available', GCC_BLOCK_COLORS.available,
-              'claimed', GCC_BLOCK_COLORS.claimed,
-              'in_progress', GCC_BLOCK_COLORS.in_progress,
-              'pending_review', GCC_BLOCK_COLORS.pending_review,
-              'completed', GCC_BLOCK_COLORS.completed,
-              GCC_BLOCK_COLORS.unfunded,
+              'case',
+              ['==', ['get', 'selected'], true],
+              '#D4A017', // brand gold for selected
+              [
+                'match',
+                ['get', 'status'],
+                'available', GCC_BLOCK_COLORS.available,
+                'claimed', GCC_BLOCK_COLORS.claimed,
+                'in_progress', GCC_BLOCK_COLORS.in_progress,
+                'pending_review', GCC_BLOCK_COLORS.pending_review,
+                'completed', GCC_BLOCK_COLORS.completed,
+                GCC_BLOCK_COLORS.unfunded,
+              ],
             ],
             'fill-opacity': [
               'case',
-              ['==', ['get', 'id'], selectedBlockId || ''],
-              0.8,
+              ['==', ['get', 'selected'], true],
+              0.7,
               [
                 'match',
                 ['get', 'status'],
@@ -526,18 +540,23 @@ export function BlockMap({
           filter={['==', ['geometry-type'], 'Polygon']}
           paint={{
             'line-color': [
-              'match',
-              ['get', 'status'],
-              'available', GCC_BLOCK_COLORS.available,
-              'claimed', GCC_BLOCK_COLORS.claimed,
-              'in_progress', GCC_BLOCK_COLORS.in_progress,
-              'pending_review', GCC_BLOCK_COLORS.pending_review,
-              'completed', GCC_BLOCK_COLORS.completed,
-              GCC_BLOCK_COLORS.unfunded,
+              'case',
+              ['==', ['get', 'selected'], true],
+              '#B8860B', // dark gold border for selected
+              [
+                'match',
+                ['get', 'status'],
+                'available', GCC_BLOCK_COLORS.available,
+                'claimed', GCC_BLOCK_COLORS.claimed,
+                'in_progress', GCC_BLOCK_COLORS.in_progress,
+                'pending_review', GCC_BLOCK_COLORS.pending_review,
+                'completed', GCC_BLOCK_COLORS.completed,
+                GCC_BLOCK_COLORS.unfunded,
+              ],
             ],
             'line-width': [
               'case',
-              ['==', ['get', 'id'], selectedBlockId || ''],
+              ['==', ['get', 'selected'], true],
               4,
               2,
             ],
@@ -552,22 +571,37 @@ export function BlockMap({
           paint={{
             'circle-radius': [
               'case',
-              ['==', ['get', 'id'], selectedBlockId || ''],
+              ['==', ['get', 'selected'], true],
               16,
               12,
             ],
             'circle-color': [
-              'match',
-              ['get', 'status'],
-              'available', GCC_BLOCK_COLORS.available,
-              'claimed', GCC_BLOCK_COLORS.claimed,
-              'in_progress', GCC_BLOCK_COLORS.in_progress,
-              'pending_review', GCC_BLOCK_COLORS.pending_review,
-              'completed', GCC_BLOCK_COLORS.completed,
-              GCC_BLOCK_COLORS.unfunded,
+              'case',
+              ['==', ['get', 'selected'], true],
+              '#D4A017',
+              [
+                'match',
+                ['get', 'status'],
+                'available', GCC_BLOCK_COLORS.available,
+                'claimed', GCC_BLOCK_COLORS.claimed,
+                'in_progress', GCC_BLOCK_COLORS.in_progress,
+                'pending_review', GCC_BLOCK_COLORS.pending_review,
+                'completed', GCC_BLOCK_COLORS.completed,
+                GCC_BLOCK_COLORS.unfunded,
+              ],
             ],
-            'circle-stroke-color': '#ffffff',
-            'circle-stroke-width': 2,
+            'circle-stroke-color': [
+              'case',
+              ['==', ['get', 'selected'], true],
+              '#B8860B',
+              '#ffffff',
+            ],
+            'circle-stroke-width': [
+              'case',
+              ['==', ['get', 'selected'], true],
+              3,
+              2,
+            ],
           }}
         />
 
