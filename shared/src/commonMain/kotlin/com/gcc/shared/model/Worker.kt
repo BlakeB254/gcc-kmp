@@ -56,7 +56,8 @@ data class WorkerStats(
     val jobsCompleted: Int = 0,
     val totalEarnings: Int = 0,
     val averageRating: Double? = null,
-    val lastJobAt: Instant? = null
+    val lastJobAt: Instant? = null,
+    val communityPoints: Int = 0,
 )
 
 @Serializable

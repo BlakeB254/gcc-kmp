@@ -20,48 +20,23 @@ export async function GET(request: Request) {
   if (auth instanceof NextResponse) return auth
 
   try {
-    // Worker stats - use separate simple queries to avoid filter clause issues
-    const totalWorkers = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(workers)
-    )
-    const verifiedWorkers = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(workers)
-        .where(eq(workers.verificationStatus, 'approved'))
-    )
-    const pendingVerifications = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(workers)
-        .where(eq(workers.verificationStatus, 'pending'))
-    )
-
-    // Job stats
-    const totalJobs = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(jobs)
-    )
-    const completedJobs = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(jobs)
-        .where(eq(jobs.status, 'completed'))
-    )
-    const activeJobs = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(jobs)
-        .where(or(eq(jobs.status, 'available'), eq(jobs.status, 'in_progress'), eq(jobs.status, 'claimed')))
-    )
-
-    // Route stats
-    const totalRoutes = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(routes)
-    )
-
-    // Spot (community report) stats
-    const totalSpots = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(communityReports)
-    )
-    const activeSpots = await safeCount(
-      db.select({ total: sql<number>`count(*)::int` }).from(communityReports)
-        .where(or(
-          eq(communityReports.status, 'pending'),
-          eq(communityReports.status, 'verified'),
-        ))
-    )
+    // Run all independent count queries in parallel
+    const [
+      totalWorkers, verifiedWorkers, pendingVerifications,
+      totalJobs, completedJobs, activeJobs,
+      totalRoutes,
+      totalSpots, activeSpots,
+    ] = await Promise.all([
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(workers)),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(workers).where(eq(workers.verificationStatus, 'approved'))),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(workers).where(eq(workers.verificationStatus, 'pending'))),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(jobs)),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(eq(jobs.status, 'completed'))),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(or(eq(jobs.status, 'available'), eq(jobs.status, 'in_progress'), eq(jobs.status, 'claimed')))),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(routes)),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(communityReports)),
+      safeCount(db.select({ total: sql<number>`count(*)::int` }).from(communityReports).where(or(eq(communityReports.status, 'pending'), eq(communityReports.status, 'verified')))),
+    ])
 
     return NextResponse.json({ data: {
       totalWorkers,

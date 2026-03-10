@@ -4,6 +4,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,10 +40,12 @@ class VolunteerCleanupViewModel(
     private val apiClient: GccApiClient,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var timerJob: Job? = null
     private val _uiState = MutableStateFlow(VolunteerCleanupUiState())
     val uiState: StateFlow<VolunteerCleanupUiState> = _uiState.asStateFlow()
 
     fun initForReport(reportId: Int) {
+        timerJob?.cancel()
         _uiState.value = VolunteerCleanupUiState(
             reportId = reportId,
             phase = VolunteerPhase.BEFORE_PHOTOS,
@@ -184,7 +187,8 @@ class VolunteerCleanupViewModel(
     }
 
     private fun startTimer() {
-        scope.launch {
+        timerJob?.cancel()
+        timerJob = scope.launch {
             while (!_uiState.value.isCompleted) {
                 delay(1000L)
                 _uiState.value = _uiState.value.copy(
@@ -192,5 +196,9 @@ class VolunteerCleanupViewModel(
                 )
             }
         }
+    }
+
+    fun onCleared() {
+        timerJob?.cancel()
     }
 }

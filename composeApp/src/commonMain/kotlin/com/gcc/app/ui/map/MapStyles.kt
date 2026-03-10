@@ -2,6 +2,9 @@ package com.gcc.app.ui.map
 
 import androidx.compose.ui.graphics.Color
 import com.gcc.app.ui.theme.*
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.pow
 
 /** Style constants for the map layers */
 object MapStyles {
@@ -130,4 +133,19 @@ object MapStyles {
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
     const val SPOT_HEATMAP_MAX_ZOOM = 13.0   // heatmap fades above this zoom
     const val SPOT_DOTS_MIN_ZOOM = 12.0      // individual dots appear from this zoom
+}
+
+/** Convert meters to pixels at a given latitude and zoom level (Mercator projection). */
+fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
+    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
+    return (meters / metersPerPixel).toFloat()
+}
+
+/** Format a coordinate to 4 decimal places, handling negative values correctly. */
+fun formatCoord(value: Double): String {
+    val sign = if (value < 0) "-" else ""
+    val absVal = abs(value)
+    val intPart = absVal.toInt()
+    val fracPart = ((absVal - intPart) * 10000).toInt()
+    return "$sign$intPart.${fracPart.toString().padStart(4, '0')}"
 }

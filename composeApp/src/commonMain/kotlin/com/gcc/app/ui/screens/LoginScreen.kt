@@ -301,7 +301,7 @@ fun LoginScreen(
 
             // Version
             Text(
-                "v0.1.0",
+                "v1.0.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.4f),
                 textAlign = TextAlign.Center,

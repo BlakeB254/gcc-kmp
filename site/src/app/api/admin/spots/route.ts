@@ -22,9 +22,13 @@ function toCommunityReport(r: any) {
     resolvedAt: r.resolvedByJobId ? r.updatedAt : null,
     bountyId: null,
     observerRewardPoints: 0,
-    aiAnalysis: null,
+    aiAnalysis: r.onDeviceAiResult || null,
     affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
+    affectedArea: r.affectedArea || null,
+    tags: r.tags || [],
     photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
+    lastVerifiedAt: r.lastVerifiedAt || null,
+    verificationCount: r.verificationCount || 0,
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }
@@ -39,6 +43,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(communityReports)
       .orderBy(desc(communityReports.createdAt))
+      .limit(500)
 
     const fullReports = reports.map(toCommunityReport)
 

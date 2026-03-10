@@ -217,6 +217,7 @@ fun DashboardScreen(
                 val dollars = totalEarnings / 100
                 val cents = totalEarnings % 100
                 val jobsCompleted = uiState.worker?.stats?.jobsCompleted ?: 0
+                val communityPoints = uiState.worker?.stats?.communityPoints ?: 0
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp),
@@ -235,8 +236,8 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f),
                     )
                     StatCard(
-                        value = "0",
-                        label = "Streak",
+                        value = "$communityPoints",
+                        label = "Points",
                         accentColor = CardAccentGold,
                         modifier = Modifier.weight(1f),
                     )

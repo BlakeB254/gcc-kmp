@@ -41,6 +41,7 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       totalEarnings: Number(row.statsTotalEarnings ?? 0),
       averageRating: row.statsAverageRating ? Number(row.statsAverageRating) : null,
       lastJobAt: row.statsLastJobAt ? toIso8601(row.statsLastJobAt) : null,
+      communityPoints: Number(row.statsCommunityPoints ?? 0),
     },
     earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
     role: 'worker',

@@ -18,79 +18,52 @@ export async function GET(
     const { area } = await params
     const decodedArea = decodeURIComponent(area)
 
-    // Active spots per street
-    const activeByStreet = await db
-      .select({
+    // Run all 4 independent queries in parallel
+    const [activeByStreet, resolvedByStreet, verStatsArr, cleanupsArr] = await Promise.all([
+      // Active spots per street
+      db.select({
         street: communityReports.locationAddress,
         count: sql<number>`count(*)::int`,
-      })
-      .from(communityReports)
-      .where(and(
+      }).from(communityReports).where(and(
         eq(communityReports.locationNeighborhood, decodedArea),
         or(eq(communityReports.status, 'pending'), eq(communityReports.status, 'verified')),
-      ))
-      .groupBy(communityReports.locationAddress)
+      )).groupBy(communityReports.locationAddress),
 
-    // Resolved + avg duration per street
-    const resolvedByStreet = await db
-      .select({
+      // Resolved + avg duration per street
+      db.select({
         street: communityReports.locationAddress,
         count: sql<number>`count(*)::int`,
         avgDurationHours: sql<number>`COALESCE(avg(EXTRACT(EPOCH FROM (${communityReports.updatedAt}::timestamp - ${communityReports.createdAt}::timestamp)) / 3600.0), 0)::float`,
-      })
-      .from(communityReports)
-      .where(and(
+      }).from(communityReports).where(and(
         eq(communityReports.locationNeighborhood, decodedArea),
         eq(communityReports.status, 'resolved'),
-      ))
-      .groupBy(communityReports.locationAddress)
+      )).groupBy(communityReports.locationAddress),
 
-    // Area-level active count
-    const [areaActive] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(communityReports)
-      .where(and(
-        eq(communityReports.locationNeighborhood, decodedArea),
-        or(eq(communityReports.status, 'pending'), eq(communityReports.status, 'verified')),
-      ))
-
-    // Area-level resolved count + avg duration
-    const [areaResolved] = await db
-      .select({
-        count: sql<number>`count(*)::int`,
-        avgDuration: sql<number>`COALESCE(avg(EXTRACT(EPOCH FROM (${communityReports.updatedAt}::timestamp - ${communityReports.createdAt}::timestamp)) / 3600.0), 0)::float`,
-      })
-      .from(communityReports)
-      .where(and(
-        eq(communityReports.locationNeighborhood, decodedArea),
-        eq(communityReports.status, 'resolved'),
-      ))
-
-    // Verification stats
-    const [verStats] = await db
-      .select({
+      // Verification stats
+      db.select({
         total: sql<number>`count(${spotVerifications.id})::int`,
         avgVelocity: sql<number>`COALESCE(avg(EXTRACT(EPOCH FROM (${spotVerifications.createdAt}::timestamp - ${communityReports.createdAt}::timestamp)) / 3600.0), 0)::float`,
-      })
-      .from(spotVerifications)
-      .innerJoin(communityReports, eq(spotVerifications.reportId, communityReports.id))
-      .where(eq(communityReports.locationNeighborhood, decodedArea))
+      }).from(spotVerifications).innerJoin(communityReports, eq(spotVerifications.reportId, communityReports.id)).where(eq(communityReports.locationNeighborhood, decodedArea)),
 
-    // Volunteer cleanups
-    const [cleanups] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(communityReports)
-      .where(and(
+      // Volunteer cleanups
+      db.select({ count: sql<number>`count(*)::int` }).from(communityReports).where(and(
         eq(communityReports.locationNeighborhood, decodedArea),
         eq(communityReports.type, 'volunteer_cleanup'),
         eq(communityReports.status, 'resolved'),
-      ))
+      )),
+    ])
 
-    const active = areaActive?.count || 0
-    const resolved = areaResolved?.count || 0
-    const avgDuration = areaResolved?.avgDuration || 0
+    const verStats = verStatsArr[0]
+    const cleanups = cleanupsArr[0]
+
+    // Derive area-level totals from street-level data (no extra queries needed)
+    const active = activeByStreet.reduce((sum, r) => sum + r.count, 0)
+    const resolvedTotal = resolvedByStreet.reduce((sum, r) => sum + r.count, 0)
+    const avgDuration = resolvedTotal > 0
+      ? resolvedByStreet.reduce((sum, r) => sum + r.avgDurationHours * r.count, 0) / resolvedTotal
+      : 0
     const totalVer = verStats?.total || 0
-    const total = active + resolved
+    const total = active + resolvedTotal
     const verificationRate = total > 0 ? totalVer / total : 0
 
     // Street-level breakdown
@@ -121,7 +94,7 @@ export async function GET(
       data: {
         area: decodedArea,
         activeSpots: active,
-        resolvedSpots: resolved,
+        resolvedSpots: resolvedTotal,
         avgMessDurationHours: Math.round(avgDuration * 10) / 10,
         avgVerificationVelocityHours: Math.round((verStats?.avgVelocity || 0) * 10) / 10,
         verificationRate: Math.round(verificationRate * 100) / 100,

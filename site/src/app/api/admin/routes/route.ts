@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { routes, routeCheckpoints, serviceAreas } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 
 export async function GET(request: Request) {
@@ -32,12 +32,12 @@ export async function GET(request: Request) {
     const checkpointsMap = new Map<number, any[]>()
 
     if (routeIds.length > 0) {
-      const allCheckpoints = await db.select().from(routeCheckpoints).orderBy(routeCheckpoints.sequenceOrder)
-      for (const cp of allCheckpoints) {
-        if (routeIds.includes(cp.routeId)) {
-          if (!checkpointsMap.has(cp.routeId)) checkpointsMap.set(cp.routeId, [])
-          checkpointsMap.get(cp.routeId)!.push(cp)
-        }
+      const filtered = await db.select().from(routeCheckpoints)
+        .where(inArray(routeCheckpoints.routeId, routeIds))
+        .orderBy(routeCheckpoints.sequenceOrder)
+      for (const cp of filtered) {
+        if (!checkpointsMap.has(cp.routeId)) checkpointsMap.set(cp.routeId, [])
+        checkpointsMap.get(cp.routeId)!.push(cp)
       }
     }
 

@@ -23,6 +23,7 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.metersToPixels
 import kotlin.math.cos
 import kotlin.math.pow
 import com.gcc.app.ui.theme.*
@@ -213,15 +214,6 @@ private fun CameraPhase(
             variant = if (photos.isNotEmpty()) GccButtonVariant.PRIMARY else GccButtonVariant.OUTLINED,
         )
     }
-}
-
-/**
- * Convert a radius in meters to screen pixels at a given Mercator zoom level and latitude.
- * Formula: pixels = meters / (156543.03392 * cos(lat) / 2^zoom)
- */
-private fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
-    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
-    return (meters / metersPerPixel).toFloat()
 }
 
 /**

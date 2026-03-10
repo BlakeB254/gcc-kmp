@@ -171,12 +171,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Look up worker name
-    const { workers } = await import('@/db/schema')
-    const { eq: eqOp } = await import('drizzle-orm')
     const [worker] = await db
       .select({ id: workers.id, name: workers.name })
       .from(workers)
-      .where(eqOp(workers.id, auth.workerId))
+      .where(eq(workers.id, auth.workerId))
       .limit(1)
 
     const workerName = worker?.name || 'Anonymous'
@@ -212,31 +210,8 @@ export async function POST(request: NextRequest) {
     // Duplicate spot check: reject if another spot exists within 50m
     // Skip if user provided a duplicate override reason (they acknowledged the duplicate)
     if (!duplicateOverrideReason) {
+      // Single query checks both object-style {lat, lng} and array-style [lng, lat] coordinates
       const duplicateCheck = await db
-        .select({ id: communityReports.id, coordinates: communityReports.coordinates })
-        .from(communityReports)
-        .where(
-          and(
-            or(
-              eq(communityReports.status, 'pending'),
-              eq(communityReports.status, 'verified')
-            ),
-            // Rough bounding box filter (~50m ≈ 0.00045 degrees)
-            sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
-            sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
-          )
-        )
-        .limit(1)
-
-      // Also check array-style coordinates [lng, lat]
-      if (duplicateCheck.length > 0) {
-        return NextResponse.json(
-          { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
-          { status: 409 }
-        )
-      }
-
-      const dupCheckArray = await db
         .select({ id: communityReports.id })
         .from(communityReports)
         .where(
@@ -245,15 +220,25 @@ export async function POST(request: NextRequest) {
               eq(communityReports.status, 'pending'),
               eq(communityReports.status, 'verified')
             ),
-            sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
-            sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+            or(
+              // Object-style coordinates {lat, lng}
+              and(
+                sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
+                sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+              ),
+              // Array-style coordinates [lng, lat]
+              and(
+                sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
+                sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+              ),
+            ),
           )
         )
         .limit(1)
 
-      if (dupCheckArray.length > 0) {
+      if (duplicateCheck.length > 0) {
         return NextResponse.json(
-          { error: 'A spot report already exists within 50m of this location', existingSpotId: dupCheckArray[0].id },
+          { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
           { status: 409 }
         )
       }

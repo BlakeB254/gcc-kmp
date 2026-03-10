@@ -137,12 +137,4 @@ fun pixelToLng(
     canvasWidth: Float,
 ): Double = MapProjection.pixelToLng(pixelX, centerLng, zoom, canvasWidth)
 
-/** Format a coordinate value to 4 decimal places (no String.format). */
-internal fun formatCoord(value: Double): String {
-    val sign = if (value < 0) "-" else ""
-    val absVal = abs(value)
-    val intPart = absVal.toInt()
-    val fracPart = ((absVal - intPart) * 10000).toInt()
-    val fracStr = fracPart.toString().padStart(4, '0')
-    return "$sign$intPart.$fracStr"
-}
+// formatCoord is now in MapStyles.kt

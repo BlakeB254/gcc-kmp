@@ -37,6 +37,10 @@ fun VolunteerCleanupScreen(
         viewModel.initForReport(reportId)
     }
 
+    DisposableEffect(Unit) {
+        onDispose { viewModel.onCleared() }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
     ) { padding ->

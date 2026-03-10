@@ -1,15 +1,10 @@
 package com.gcc.app.ui.screens.admin
 
-import kotlin.math.cos
-import kotlin.math.pow
+// Re-export shared utilities for admin screens
+import com.gcc.app.ui.map.formatCoord as sharedFormatCoord
+import com.gcc.app.ui.map.metersToPixels as sharedMetersToPixels
 
-internal fun formatCoord(value: Double): String {
-    val intPart = value.toInt()
-    val fracPart = ((kotlin.math.abs(value) - kotlin.math.abs(intPart.toDouble())) * 10000).toInt()
-    return "$intPart.${fracPart.toString().padStart(4, '0')}"
-}
+internal fun formatCoord(value: Double): String = sharedFormatCoord(value)
 
-internal fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
-    val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
-    return (meters / metersPerPixel).toFloat()
-}
+internal fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float =
+    sharedMetersToPixels(meters, lat, zoom)

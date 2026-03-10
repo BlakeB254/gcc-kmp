@@ -38,7 +38,7 @@ data class SpotVerificationUiState(
 class SpotVerificationViewModel(
     private val apiClient: GccApiClient,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _uiState = MutableStateFlow(SpotVerificationUiState())
     val uiState: StateFlow<SpotVerificationUiState> = _uiState.asStateFlow()

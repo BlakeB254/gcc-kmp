@@ -36,31 +36,28 @@ class CleanlinessService {
             activeMap[area] = row[CommunityReports.id.count()].toInt()
         }
 
-        // Resolved spots per area + avg duration
+        // Resolved spots per area + avg duration (computed in SQL, not app-side)
+        val avgDurationExpr = object : org.jetbrains.exposed.sql.Expression<Double>() {
+            override fun toQueryBuilder(queryBuilder: org.jetbrains.exposed.sql.QueryBuilder) {
+                queryBuilder.append("COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600.0), 0)")
+            }
+            val columnType = org.jetbrains.exposed.sql.DoubleColumnType()
+        }
+
         val resolvedByArea = CommunityReports.select(
             CommunityReports.locationNeighborhood,
             CommunityReports.id.count(),
+            avgDurationExpr,
         ).where {
             CommunityReports.status eq "resolved"
         }.groupBy(CommunityReports.locationNeighborhood)
 
         val resolvedMap = mutableMapOf<String, Int>()
+        val durationByArea = mutableMapOf<String, Double>()
         for (row in resolvedByArea) {
             val area = row[CommunityReports.locationNeighborhood] ?: continue
             resolvedMap[area] = row[CommunityReports.id.count()].toInt()
-        }
-
-        // Compute avg duration per area via individual records
-        val resolvedRecords = CommunityReports.selectAll()
-            .where { CommunityReports.status eq "resolved" }
-
-        val durationByArea = mutableMapOf<String, MutableList<Double>>()
-        for (row in resolvedRecords) {
-            val area = row[CommunityReports.locationNeighborhood] ?: continue
-            val created = row[CommunityReports.createdAt]
-            val updated = row[CommunityReports.updatedAt]
-            val hours = (updated.epochSeconds - created.epochSeconds) / 3600.0
-            durationByArea.getOrPut(area) { mutableListOf() }.add(hours)
+            durationByArea[area] = row[avgDurationExpr] ?: 0.0
         }
 
         // Collect all area names
@@ -74,8 +71,7 @@ class CleanlinessService {
         val areas = allAreas.map { area ->
             val active = activeMap[area] ?: 0
             val resolved = resolvedMap[area] ?: 0
-            val durations = durationByArea[area] ?: emptyList()
-            val avgDuration = if (durations.isNotEmpty()) durations.average() else 0.0
+            val avgDuration = durationByArea[area] ?: 0.0
 
             totalActive += active
             totalResolved += resolved
@@ -109,49 +105,59 @@ class CleanlinessService {
 
     /** Area detail with street-level breakdown. */
     suspend fun getAreaDetail(area: String): CleanlinessStats = dbQuery {
-        // Active spots for this area
-        val activeRows = CommunityReports.selectAll()
-            .where {
-                (CommunityReports.locationNeighborhood eq area) and
-                    ((CommunityReports.status eq "pending") or (CommunityReports.status eq "verified"))
-            }
+        // Active spots per street (SQL aggregate)
+        val activeByStreetQuery = CommunityReports.select(
+            CommunityReports.locationAddress,
+            CommunityReports.id.count(),
+        ).where {
+            (CommunityReports.locationNeighborhood eq area) and
+                ((CommunityReports.status eq "pending") or (CommunityReports.status eq "verified"))
+        }.groupBy(CommunityReports.locationAddress)
 
         val activeByStreet = mutableMapOf<String, Int>()
         var totalActive = 0
-        for (row in activeRows) {
-            totalActive++
+        for (row in activeByStreetQuery) {
+            val count = row[CommunityReports.id.count()].toInt()
+            totalActive += count
             val street = row[CommunityReports.locationAddress] ?: continue
-            activeByStreet[street] = (activeByStreet[street] ?: 0) + 1
+            activeByStreet[street] = count
         }
 
-        // Resolved spots for this area
-        val resolvedRows = CommunityReports.selectAll()
-            .where {
-                (CommunityReports.locationNeighborhood eq area) and
-                    (CommunityReports.status eq "resolved")
+        // Resolved spots per street + avg duration (SQL aggregate)
+        val streetAvgDurationExpr = object : Expression<Double>() {
+            override fun toQueryBuilder(queryBuilder: QueryBuilder) {
+                queryBuilder.append("COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600.0), 0)")
             }
+        }
 
-        val durationByStreet = mutableMapOf<String, MutableList<Double>>()
+        val resolvedByStreetQuery = CommunityReports.select(
+            CommunityReports.locationAddress,
+            CommunityReports.id.count(),
+            streetAvgDurationExpr,
+        ).where {
+            (CommunityReports.locationNeighborhood eq area) and
+                (CommunityReports.status eq "resolved")
+        }.groupBy(CommunityReports.locationAddress)
+
+        val resolvedByStreet = mutableMapOf<String, Pair<Int, Double>>()
         var totalResolved = 0
         var totalDurationSum = 0.0
-        for (row in resolvedRows) {
-            totalResolved++
-            val created = row[CommunityReports.createdAt]
-            val updated = row[CommunityReports.updatedAt]
-            val hours = (updated.epochSeconds - created.epochSeconds) / 3600.0
-            totalDurationSum += hours
+        for (row in resolvedByStreetQuery) {
+            val count = row[CommunityReports.id.count()].toInt()
+            val avgHours = row[streetAvgDurationExpr] ?: 0.0
+            totalResolved += count
+            totalDurationSum += avgHours * count
             val street = row[CommunityReports.locationAddress] ?: continue
-            durationByStreet.getOrPut(street) { mutableListOf() }.add(hours)
+            resolvedByStreet[street] = Pair(count, avgHours)
         }
 
         val avgDuration = if (totalResolved > 0) totalDurationSum / totalResolved else 0.0
 
         // Build street-level breakdown
-        val allStreets = (activeByStreet.keys + durationByStreet.keys).sorted()
+        val allStreets = (activeByStreet.keys + resolvedByStreet.keys).sorted()
         val streets = allStreets.map { street ->
             val streetActive = activeByStreet[street] ?: 0
-            val streetDurations = durationByStreet[street] ?: emptyList()
-            val streetAvgDuration = if (streetDurations.isNotEmpty()) streetDurations.average() else 0.0
+            val streetAvgDuration = resolvedByStreet[street]?.second ?: 0.0
             StreetCleanlinessStats(
                 street = street,
                 activeSpots = streetActive,

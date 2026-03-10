@@ -96,7 +96,9 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(
                     routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
                 )
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to update status: ${e.message}")
+            }
         }
     }
 
@@ -159,7 +161,9 @@ class AdminPanelViewModel(
                 apiClient.updateSpotStatus(spotId, newStatus)
                 val updated = apiClient.getAdminSpotReports()
                 _uiState.value = _uiState.value.copy(spotReports = updated)
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to update spot: ${e.message}")
+            }
         }
     }
 
@@ -170,7 +174,9 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(
                     spotReports = _uiState.value.spotReports.filter { it.id != spotId },
                 )
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to delete spot: ${e.message}")
+            }
         }
     }
 
@@ -201,7 +207,9 @@ class AdminPanelViewModel(
                 if (urls.isNotEmpty()) {
                     apiClient.addSpotPhotos(spotId, urls)
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to upload photos: ${e.message}")
+            }
         }
     }
 
@@ -210,7 +218,9 @@ class AdminPanelViewModel(
             try {
                 val cp = apiClient.addCheckpoint(routeId, request)
                 onAdded(cp)
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to add checkpoint: ${e.message}")
+            }
         }
     }
 

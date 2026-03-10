@@ -252,7 +252,7 @@ fun AdminRouteDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isUploading,
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFFFF5252),
+                            contentColor = MaterialTheme.colorScheme.error,
                         ),
                     ) {
                         Text("\uD83D\uDDD1 Remove Cover Image")

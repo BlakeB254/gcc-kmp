@@ -64,3 +64,16 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
   const verifyHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
   return hash === verifyHash
 }
+
+/**
+ * Extract and verify Bearer token from request.
+ * Returns { workerId, role } or null if auth fails.
+ * Use in API routes: `const auth = await requireMobileAuth(request); if (!auth) return ...`
+ */
+export async function requireMobileAuth(
+  request: Request
+): Promise<{ workerId: number; role: string } | null> {
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+  return verifyMobileToken(authHeader.substring(7))
+}

@@ -73,18 +73,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Spot was already verified by someone else' }, { status: 409 })
     }
 
-    // Anti-gaming: GPS proximity check
-    if (verifierLat != null && verifierLng != null) {
-      const coords = report.coordinates as [number, number] | { lng: number; lat: number }
-      const spotLat = Array.isArray(coords) ? coords[1] : coords.lat
-      const spotLng = Array.isArray(coords) ? coords[0] : coords.lng
+    // Parse spot coordinates once
+    const coords = report.coordinates as [number, number] | { lng: number; lat: number }
+    const spotLat = Array.isArray(coords) ? coords[1] : coords.lat
+    const spotLng = Array.isArray(coords) ? coords[0] : coords.lng
 
-      const distanceMeters = haversineDistance(verifierLat, verifierLng, spotLat, spotLng)
+    // Anti-gaming: GPS proximity check + distance for record
+    let distanceFromSpot: number | null = null
+    if (verifierLat != null && verifierLng != null) {
+      distanceFromSpot = haversineDistance(verifierLat, verifierLng, spotLat, spotLng)
       const maxDistance = parseFloat(report.affectedRadiusMeters || '15') + 200
 
-      if (distanceMeters > maxDistance) {
+      if (distanceFromSpot > maxDistance) {
         return NextResponse.json({
-          error: `Too far from spot. You are ${Math.round(distanceMeters)}m away, max is ${Math.round(maxDistance)}m`,
+          error: `Too far from spot. You are ${Math.round(distanceFromSpot)}m away, max is ${Math.round(maxDistance)}m`,
         }, { status: 403 })
       }
     }
@@ -93,15 +95,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const pointsAwarded = result === 'still_dirty' ? 5 : 10
     const now = new Date().toISOString()
     const next24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-
-    // Calculate distance for record
-    let distanceFromSpot: number | null = null
-    if (verifierLat != null && verifierLng != null) {
-      const coords = report.coordinates as [number, number] | { lng: number; lat: number }
-      const spotLat = Array.isArray(coords) ? coords[1] : coords.lat
-      const spotLng = Array.isArray(coords) ? coords[0] : coords.lng
-      distanceFromSpot = haversineDistance(verifierLat, verifierLng, spotLat, spotLng)
-    }
 
     // Look up verifier name
     const [worker] = await db
@@ -126,50 +119,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
       .returning()
 
-    // Update the community report
-    if (result === 'already_clean') {
-      // Spot is clean — resolve it
-      await db
-        .update(communityReports)
-        .set({
+    // Run report update, points insert, and worker update in parallel
+    const reportUpdate = result === 'already_clean'
+      ? db.update(communityReports).set({
           status: 'resolved',
           showOnMap: false,
           lastVerifiedAt: now,
           verificationCount: (report.verificationCount || 0) + 1,
           missedVerifications: 0,
           updatedAt: now,
-        })
-        .where(eq(communityReports.id, spotId))
-    } else {
-      // Still dirty — reset verification timer
-      await db
-        .update(communityReports)
-        .set({
+        }).where(eq(communityReports.id, spotId))
+      : db.update(communityReports).set({
           lastVerifiedAt: now,
           verificationCount: (report.verificationCount || 0) + 1,
           nextVerificationDue: next24h,
           missedVerifications: 0,
           updatedAt: now,
-        })
-        .where(eq(communityReports.id, spotId))
-    }
+        }).where(eq(communityReports.id, spotId))
 
-    // Award points
-    await db.insert(pointsLedger).values({
-      workerId: auth.workerId,
-      action: result === 'still_dirty' ? 'verification_dirty' : 'verification_clean',
-      points: pointsAwarded,
-      referenceType: 'verification',
-      referenceId: verification.id,
-    })
-
-    // Update worker's denormalized points total
-    await db
-      .update(workers)
-      .set({
+    await Promise.all([
+      reportUpdate,
+      db.insert(pointsLedger).values({
+        workerId: auth.workerId,
+        action: result === 'still_dirty' ? 'verification_dirty' : 'verification_clean',
+        points: pointsAwarded,
+        referenceType: 'verification',
+        referenceId: verification.id,
+      }),
+      db.update(workers).set({
         statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${pointsAwarded}`,
-      })
-      .where(eq(workers.id, auth.workerId))
+      }).where(eq(workers.id, auth.workerId)),
+    ])
 
     return NextResponse.json({
       data: {

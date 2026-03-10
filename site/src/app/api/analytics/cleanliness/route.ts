@@ -15,70 +15,53 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // Active spots per area
-    const activeByArea = await db
-      .select({
+    // Run all 5 independent aggregate queries in parallel
+    const [activeByArea, resolvedByArea, verificationsByArea, cleanupsByArea, recurrenceByArea] = await Promise.all([
+      // Active spots per area
+      db.select({
         area: communityReports.locationNeighborhood,
         count: sql<number>`count(*)::int`,
-      })
-      .from(communityReports)
-      .where(or(
+      }).from(communityReports).where(or(
         eq(communityReports.status, 'pending'),
         eq(communityReports.status, 'verified'),
-      ))
-      .groupBy(communityReports.locationNeighborhood)
+      )).groupBy(communityReports.locationNeighborhood),
 
-    // Resolved spots per area + avg duration
-    const resolvedByArea = await db
-      .select({
+      // Resolved spots per area + avg duration
+      db.select({
         area: communityReports.locationNeighborhood,
         count: sql<number>`count(*)::int`,
         avgDurationHours: sql<number>`COALESCE(avg(EXTRACT(EPOCH FROM (${communityReports.updatedAt}::timestamp - ${communityReports.createdAt}::timestamp)) / 3600.0), 0)::float`,
-      })
-      .from(communityReports)
-      .where(eq(communityReports.status, 'resolved'))
-      .groupBy(communityReports.locationNeighborhood)
+      }).from(communityReports).where(eq(communityReports.status, 'resolved')).groupBy(communityReports.locationNeighborhood),
 
-    // Verification stats per area
-    const verificationsByArea = await db
-      .select({
+      // Verification stats per area
+      db.select({
         area: communityReports.locationNeighborhood,
         totalVerifications: sql<number>`count(${spotVerifications.id})::int`,
         avgVelocityHours: sql<number>`COALESCE(avg(EXTRACT(EPOCH FROM (${spotVerifications.createdAt}::timestamp - ${communityReports.createdAt}::timestamp)) / 3600.0), 0)::float`,
-      })
-      .from(spotVerifications)
-      .innerJoin(communityReports, eq(spotVerifications.reportId, communityReports.id))
-      .groupBy(communityReports.locationNeighborhood)
+      }).from(spotVerifications).innerJoin(communityReports, eq(spotVerifications.reportId, communityReports.id)).groupBy(communityReports.locationNeighborhood),
 
-    // Volunteer cleanup count per area
-    const cleanupsByArea = await db
-      .select({
+      // Volunteer cleanup count per area
+      db.select({
         area: communityReports.locationNeighborhood,
         count: sql<number>`count(*)::int`,
-      })
-      .from(communityReports)
-      .where(and(
+      }).from(communityReports).where(and(
         eq(communityReports.type, 'volunteer_cleanup'),
         eq(communityReports.status, 'resolved'),
-      ))
-      .groupBy(communityReports.locationNeighborhood)
+      )).groupBy(communityReports.locationNeighborhood),
 
-    // Recurrence: resolved addresses that have new active spots
-    const recurrenceByArea = await db
-      .select({
+      // Recurrence: resolved addresses that have new active spots
+      db.select({
         area: communityReports.locationNeighborhood,
         recurrentCount: sql<number>`count(DISTINCT ${communityReports.locationAddress})::int`,
-      })
-      .from(communityReports)
-      .where(and(
+      }).from(communityReports).where(and(
         eq(communityReports.status, 'resolved'),
         sql`${communityReports.locationAddress} IN (
           SELECT location_address FROM community_reports
           WHERE status IN ('pending','verified')
           AND location_address IS NOT NULL
         )`,
-      ))
-      .groupBy(communityReports.locationNeighborhood)
+      )).groupBy(communityReports.locationNeighborhood),
+    ])
 
     // Merge into area stats
     const areaNames = new Set<string>()
