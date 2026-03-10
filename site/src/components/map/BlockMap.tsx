@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Source, Layer, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
-import { BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS } from '@/lib/design-tokens'
+import { BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS, ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
 import { BaseMap, MapLegend } from './BaseMap'
 
 /**
@@ -154,6 +154,40 @@ export function BlockMap({
   const [popupInfo, setPopupInfo] = useState<Block | null>(null)
   const [mapRef, setMapRef] = useState<MapRef | null>(null)
   const [tileServerAvailable, setTileServerAvailable] = useState<boolean | null>(null)
+  const [routeFeatures, setRouteFeatures] = useState<any[]>([])
+
+  // Fetch routes for line overlay (matches home page visual)
+  useEffect(() => {
+    async function fetchRoutes() {
+      try {
+        const res = await fetch('/api/routes?status=published')
+        if (!res.ok) return
+        const data = await res.json()
+        const apiRoutes = data.data || data.routes || []
+        const features = apiRoutes
+          .filter((r: any) => r.geometry?.coordinates?.length > 0)
+          .map((r: any) => ({
+            type: 'Feature' as const,
+            properties: {
+              id: r.id,
+              code: r.code,
+              displayName: r.displayName,
+              status: r.status || 'published',
+            },
+            geometry: r.geometry,
+          }))
+        setRouteFeatures(features)
+      } catch {
+        // Routes are optional visual context — failing silently is fine
+      }
+    }
+    fetchRoutes()
+  }, [])
+
+  const routeGeoJson = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: routeFeatures,
+  }), [routeFeatures])
 
   // Calculate bounds from all blocks
   const blockBounds = useMemo(() => {
@@ -487,6 +521,65 @@ export function BlockMap({
             />
           </Source>
         </>
+      )}
+
+      {/* ============================================================ */}
+      {/* ROUTE LINE LAYERS (walking paths along blocks)              */}
+      {/* ============================================================ */}
+
+      {routeFeatures.length > 0 && (
+        <Source id="blockmap-routes" type="geojson" data={routeGeoJson}>
+          {/* Route glow */}
+          <Layer
+            id="blockmap-route-glow"
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': ROUTE_COLORS.GLOW,
+              'line-width': ROUTE_WIDTHS.GLOW,
+              'line-opacity': 0.25,
+            }}
+          />
+          {/* Route casing */}
+          <Layer
+            id="blockmap-route-case"
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': ROUTE_STATUS_COLORS.published.casing,
+              'line-width': ROUTE_WIDTHS.CASING,
+              'line-opacity': 1,
+            }}
+          />
+          {/* Route core */}
+          <Layer
+            id="blockmap-route-core"
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': ROUTE_COLORS.LINE,
+              'line-width': ROUTE_WIDTHS.CORE,
+              'line-opacity': 1,
+            }}
+          />
+          {/* Route labels */}
+          <Layer
+            id="blockmap-route-labels"
+            type="symbol"
+            layout={{
+              'symbol-placement': 'line-center',
+              'text-field': ['get', 'displayName'],
+              'text-size': 10,
+              'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+              'text-max-width': 14,
+            }}
+            paint={{
+              'text-color': '#ffffff',
+              'text-halo-color': ROUTE_STATUS_COLORS.published.casing,
+              'text-halo-width': 2,
+            }}
+          />
+        </Source>
       )}
 
       {/* ============================================================ */}

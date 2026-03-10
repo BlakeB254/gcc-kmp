@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
+import { MapPin, DollarSign, Trash2, ArrowRight, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
 import { SPOT_STATUS_COLORS } from '@/lib/design-tokens'
@@ -24,18 +24,6 @@ const CombinedMap = dynamic(
 // ============================================================================
 // STATUS HELPERS
 // ============================================================================
-
-const ROUTE_STATUS_COLORS: Record<string, string> = {
-  published: 'bg-green-100 text-green-700',
-  draft: 'bg-neutral-100 text-neutral-500',
-  archived: 'bg-amber-100 text-amber-700',
-}
-
-const ROUTE_STATUS_LABELS: Record<string, string> = {
-  published: 'Available',
-  draft: 'Coming Soon',
-  archived: 'Archived',
-}
 
 // ============================================================================
 // PAGE COMPONENT
@@ -490,59 +478,6 @@ export default function BountiesPage() {
             </div>
           )}
 
-          {/* Routes Section */}
-          {routes.length > 0 && (
-            <div className="mt-10">
-              <h3 className="text-lg font-bold text-neutral-900 mb-4 flex items-center gap-2">
-                <RouteIcon className="w-5 h-5 text-green-600" />
-                Cleanup Routes
-              </h3>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {routes.map((route) => (
-                  <div
-                    key={route.id}
-                    className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-neutral-900">{route.displayName}</h4>
-                        <p className="text-xs text-neutral-500 mt-0.5">{route.code}</p>
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          ROUTE_STATUS_COLORS[route.status] || 'bg-neutral-100 text-neutral-600'
-                        }`}
-                      >
-                        {ROUTE_STATUS_LABELS[route.status] || route.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-neutral-500 mb-3">
-                      {route.lengthMeters && (
-                        <span>{(route.lengthMeters / 1000).toFixed(1)} km</span>
-                      )}
-                      {route.estimatedMinutes && (
-                        <span>{route.estimatedMinutes} min</span>
-                      )}
-                      <span>{route.checkpoints.length} checkpoints</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
-                      <span className="text-lg font-bold text-green-600">
-                        ${(route.payoutAmount / 100).toFixed(0)}
-                      </span>
-                      {route.status === 'published' && (
-                        <Link
-                          href="/worker/signup"
-                          className="text-sm font-medium text-green-600 hover:text-green-700 transition-colors"
-                        >
-                          Claim Route &rarr;
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
