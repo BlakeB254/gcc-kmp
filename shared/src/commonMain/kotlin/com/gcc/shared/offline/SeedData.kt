@@ -1,21 +1,21 @@
-package com.gcc.shared.demo
+package com.gcc.shared.offline
 
 import com.gcc.shared.model.*
 import kotlinx.datetime.Instant
 
-object DemoData {
+object SeedData {
 
     // ── JWT Token ──────────────────────────────────────────────────────
     // Header: {"alg":"HS256","typ":"JWT"}  -> base64url: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
     // Payload: {"workerId":1,"exp":4102444800,"iat":1705312000} -> base64url: eyJ3b3JrZXJJZCI6MSwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE3MDUzMTIwMDB9
     // Signature: dummy
-    val demoToken: String =
+    val offlineToken: String =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
         ".eyJ3b3JrZXJJZCI6MSwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE3MDUzMTIwMDB9" +
         ".ZGVtby1zaWduYXR1cmU"
 
     // ── Worker ─────────────────────────────────────────────────────────
-    val demoWorker: Worker = Worker(
+    val worker: Worker = Worker(
         id = 1,
         name = "Marcus Johnson",
         email = "marcus.johnson@example.com",
@@ -61,14 +61,14 @@ object DemoData {
     )
 
     // ── Auth Response ──────────────────────────────────────────────────
-    val demoAuthResponse: AuthResponse = AuthResponse(
-        token = demoToken,
-        worker = demoWorker,
+    val authResponse: AuthResponse = AuthResponse(
+        token = offlineToken,
+        worker = worker,
         exp = 4102444800L,
     )
 
     // ── Service Area ───────────────────────────────────────────────────
-    val demoServiceArea: ServiceArea = ServiceArea(
+    val serviceArea: ServiceArea = ServiceArea(
         id = 1,
         name = "North Lawndale",
         city = "Chicago",
@@ -83,7 +83,7 @@ object DemoData {
     )
 
     // ── Routes (8) ─────────────────────────────────────────────────────
-    val demoRoutes: List<Route> = listOf(
+    val routes: List<Route> = listOf(
         Route(
             id = 1,
             code = "NL-PULASKI-01",
@@ -297,7 +297,7 @@ object DemoData {
     )
 
     // ── Leaderboard (10 entries) ───────────────────────────────────────
-    val demoLeaderboard: List<LeaderboardEntry> = listOf(
+    val leaderboard: List<LeaderboardEntry> = listOf(
         LeaderboardEntry(rank = 1, workerId = 5, name = "Deshawn Williams", jobsCompleted = 62, totalEarnings = 310000, averageRating = 4.8, earlyAdopterTier = EarlyAdopterTier.PIONEER, badgeCount = 9),
         LeaderboardEntry(rank = 2, workerId = 3, name = "Keisha Thompson", jobsCompleted = 55, totalEarnings = 275000, averageRating = 5.0, earlyAdopterTier = EarlyAdopterTier.FOUNDER, badgeCount = 8),
         LeaderboardEntry(rank = 3, workerId = 1, name = "Marcus Johnson", jobsCompleted = 47, totalEarnings = 235000, averageRating = 4.9, earlyAdopterTier = EarlyAdopterTier.FOUNDER, badgeCount = 7),
@@ -311,7 +311,7 @@ object DemoData {
     )
 
     // ── Feed Items (12) ────────────────────────────────────────────────
-    val demoFeedItems: List<FeedItem> = listOf(
+    val feedItems: List<FeedItem> = listOf(
         FeedItem(
             id = "feed-01", type = FeedItemType.SPOT_REPORT, actorName = "Marcus Johnson", actorTier = EarlyAdopterTier.FOUNDER,
             title = "Illegal dumping spotted", description = "Large pile of tires found behind 3900 W Ogden Ave. Approximately 15 tires stacked against the fence, blocking the alley entrance.",
@@ -402,7 +402,7 @@ object DemoData {
     )
 
     // ── Bounties (5) ───────────────────────────────────────────────────
-    val demoBounties: List<Bounty> = listOf(
+    val bounties: List<Bounty> = listOf(
         Bounty(
             id = 1, posterType = PosterType.SPONSOR, posterId = 1, walletId = 1,
             title = "Illegal Dumping on Pulaski", description = "Large pile of construction debris dumped on sidewalk near 3800 S Pulaski",
@@ -457,7 +457,7 @@ object DemoData {
     )
 
     // ── Active Job ─────────────────────────────────────────────────────
-    val demoActiveJob: Job = Job(
+    val activeJob: Job = Job(
         id = 1,
         routeId = 1,
         workerId = 1,
@@ -473,7 +473,7 @@ object DemoData {
     )
 
     // ── Wallet ─────────────────────────────────────────────────────────
-    val demoWallet: SponsorWallet = SponsorWallet(
+    val wallet: SponsorWallet = SponsorWallet(
         id = 1,
         workerId = 1,
         totalBalance = 15000,
@@ -487,7 +487,7 @@ object DemoData {
     )
 
     // ── Wallet Transactions (8) ────────────────────────────────────────
-    val demoTransactions: List<WalletTransaction> = listOf(
+    val transactions: List<WalletTransaction> = listOf(
         WalletTransaction(
             id = 1, walletId = 1, type = WalletTransactionType.DEPOSIT, fundType = FundType.GENERAL,
             amount = 10000, balanceAfter = 10000,
@@ -541,7 +541,7 @@ object DemoData {
     )
 
     // ── Badges (7) ─────────────────────────────────────────────────────
-    val demoBadges: List<Badge> = listOf(
+    val badges: List<Badge> = listOf(
         Badge(id = "first-sweep", category = BadgeCategory.JOBS, name = "First Sweep", description = "Complete your first cleanup job", tier = BadgeTier.BRONZE, requirement = 1, progress = 1, isUnlocked = true, unlockedAt = Instant.parse("2024-01-20T14:00:00Z")),
         Badge(id = "street-regular", category = BadgeCategory.JOBS, name = "Street Regular", description = "Complete 10 cleanup jobs", tier = BadgeTier.SILVER, requirement = 10, progress = 10, isUnlocked = true, unlockedAt = Instant.parse("2024-03-15T16:00:00Z")),
         Badge(id = "block-captain", category = BadgeCategory.JOBS, name = "Block Captain", description = "Complete 25 cleanup jobs", tier = BadgeTier.GOLD, requirement = 25, progress = 25, isUnlocked = true, unlockedAt = Instant.parse("2024-05-10T12:00:00Z")),
@@ -552,7 +552,7 @@ object DemoData {
     )
 
     // ── Community Report ───────────────────────────────────────────────
-    val demoCommunityReport: CommunityReport = CommunityReport(
+    val communityReport: CommunityReport = CommunityReport(
         id = 1,
         reporterId = 1,
         type = CommunityReportType.SIGHTING,
@@ -566,13 +566,13 @@ object DemoData {
     )
 
     // ── Spot Response ──────────────────────────────────────────────────
-    val demoSpotResponse: SpotResponse = SpotResponse(
-        report = demoCommunityReport,
+    val spotResponse: SpotResponse = SpotResponse(
+        report = communityReport,
         matchingBounties = emptyList(),
     )
 
     // ── Volunteer Cleanup ──────────────────────────────────────────────
-    val demoVolunteerCleanup: VolunteerCleanup = VolunteerCleanup(
+    val volunteerCleanup: VolunteerCleanup = VolunteerCleanup(
         id = 1,
         reportId = 1,
         workerId = 1,
@@ -589,7 +589,7 @@ object DemoData {
     )
 
     // ── Blocks (10 fundable North Lawndale blocks) ─────────────────────
-    val demoBlocks: List<Block> = listOf(
+    val blocks: List<Block> = listOf(
         Block(
             id = 1, code = "NL-001", name = "Pulaski & Roosevelt", serviceAreaId = 1,
             status = BlockStatus.FUNDED,
@@ -713,7 +713,7 @@ object DemoData {
     )
 
     // ── Stats ──────────────────────────────────────────────────────────
-    val demoStats: Map<String, Int> = mapOf(
+    val stats: Map<String, Int> = mapOf(
         "totalJobs" to 2847,
         "totalWorkers" to 156,
         "totalEarnings" to 142350,
@@ -724,7 +724,7 @@ object DemoData {
 
     // ── Admin Models ─────────────────────────────────────────────────
 
-    val demoAdminStats: AdminStatsResponse = AdminStatsResponse(
+    val adminStats: AdminStatsResponse = AdminStatsResponse(
         totalWorkers = 156,
         verifiedWorkers = 89,
         pendingVerifications = 12,
@@ -743,7 +743,7 @@ object DemoData {
         openDisputes = 2,
     )
 
-    val demoAdminActivity: List<AdminActivityItem> = listOf(
+    val adminActivity: List<AdminActivityItem> = listOf(
         AdminActivityItem(1, AdminActivityType.WORKER_VERIFIED, "Marcus Johnson verified by admin", "Admin", Instant.parse("2024-06-10T14:30:00Z")),
         AdminActivityItem(2, AdminActivityType.JOB_COMPLETED, "Block NL-005 cleaning completed", "Keisha Williams", Instant.parse("2024-06-10T13:15:00Z")),
         AdminActivityItem(3, AdminActivityType.BOUNTY_POSTED, "New bounty: Pulaski & 16th illegal dumping", "Community", Instant.parse("2024-06-10T12:00:00Z")),
@@ -756,19 +756,19 @@ object DemoData {
         AdminActivityItem(10, AdminActivityType.DISPUTE_RESOLVED, "Dispute #5 resolved: payment issued", "Admin", Instant.parse("2024-06-09T15:00:00Z")),
     )
 
-    val demoWorkerList: List<Worker> = listOf(
-        demoWorker,
-        demoWorker.copy(id = 2, name = "Keisha Williams", email = "keisha.w@example.com", phone = "+17735552345",
+    val workerList: List<Worker> = listOf(
+        worker,
+        worker.copy(id = 2, name = "Keisha Williams", email = "keisha.w@example.com", phone = "+17735552345",
             stats = WorkerStats(jobsCompleted = 34, totalEarnings = 340000, averageRating = 4.9)),
-        demoWorker.copy(id = 3, name = "David Thompson", email = "david.t@example.com", phone = "+17735553456",
+        worker.copy(id = 3, name = "David Thompson", email = "david.t@example.com", phone = "+17735553456",
             stats = WorkerStats(jobsCompleted = 12, totalEarnings = 120000, averageRating = 4.5)),
-        demoWorker.copy(id = 4, name = "Angela Davis", email = "angela.d@example.com", phone = "+17735554567",
+        worker.copy(id = 4, name = "Angela Davis", email = "angela.d@example.com", phone = "+17735554567",
             stats = WorkerStats(jobsCompleted = 67, totalEarnings = 670000, averageRating = 4.95)),
-        demoWorker.copy(id = 5, name = "Robert Brown", email = "robert.b@example.com", phone = "+17735555678",
+        worker.copy(id = 5, name = "Robert Brown", email = "robert.b@example.com", phone = "+17735555678",
             stats = WorkerStats(jobsCompleted = 8, totalEarnings = 80000, averageRating = 4.2)),
     )
 
-    val demoSponsorList: List<Sponsor> = listOf(
+    val sponsorList: List<Sponsor> = listOf(
         Sponsor(id = 1, name = "Chicago Foundation", email = "info@chicagofound.org",
             type = SponsorType.ORGANIZATION,
             stats = SponsorStats(totalDonated = 1500000, blocksSponsored = 3),
@@ -784,7 +784,7 @@ object DemoData {
     )
 
     // ── Daily Stats (30 days) ────────────────────────────────────────
-    val demoDailyStats: List<AdminDailyStats> = (0 until 30).map { daysAgo ->
+    val dailyStats: List<AdminDailyStats> = (0 until 30).map { daysAgo ->
         val seed = daysAgo * 7 + 3
         AdminDailyStats(
             date = "2024-${if (daysAgo < 10) "06" else "05"}-${(10 - daysAgo % 28).coerceAtLeast(1).toString().padStart(2, '0')}",
@@ -799,7 +799,7 @@ object DemoData {
     }
 
     // ── Revenue by Area ──────────────────────────────────────────────
-    val demoRevenueByArea: List<RevenueByArea> = listOf(
+    val revenueByArea: List<RevenueByArea> = listOf(
         RevenueByArea(serviceAreaId = 1, serviceAreaName = "North Lawndale", totalRevenue = 18500000, jobCount = 1850, workerCount = 89),
         RevenueByArea(serviceAreaId = 2, serviceAreaName = "East Garfield Park", totalRevenue = 5200000, jobCount = 520, workerCount = 34),
         RevenueByArea(serviceAreaId = 3, serviceAreaName = "Austin", totalRevenue = 3100000, jobCount = 310, workerCount = 21),
@@ -807,7 +807,7 @@ object DemoData {
     )
 
     // ── Worker Metrics ───────────────────────────────────────────────
-    val demoWorkerMetrics: List<WorkerMetrics> = listOf(
+    val workerMetrics: List<WorkerMetrics> = listOf(
         WorkerMetrics(workerId = 5, workerName = "Deshawn Williams", jobsCompleted = 62, totalEarnings = 310000, averageRating = 4.8, volunteersCompleted = 15, badgesEarned = 9),
         WorkerMetrics(workerId = 3, workerName = "Keisha Thompson", jobsCompleted = 55, totalEarnings = 275000, averageRating = 5.0, volunteersCompleted = 22, badgesEarned = 8),
         WorkerMetrics(workerId = 1, workerName = "Marcus Johnson", jobsCompleted = 47, totalEarnings = 235000, averageRating = 4.9, volunteersCompleted = 12, badgesEarned = 7),
@@ -816,14 +816,14 @@ object DemoData {
     )
 
     // ── Sponsor Metrics ──────────────────────────────────────────────
-    val demoSponsorMetrics: List<SponsorMetrics> = listOf(
+    val sponsorMetrics: List<SponsorMetrics> = listOf(
         SponsorMetrics(sponsorId = 1, sponsorName = "Chicago Foundation", totalFunded = 1500000, blocksSponsored = 3, bountiesPosted = 12, walletBalance = 350000),
         SponsorMetrics(sponsorId = 2, sponsorName = "West Side Community Fund", totalFunded = 800000, blocksSponsored = 2, bountiesPosted = 8, walletBalance = 150000),
         SponsorMetrics(sponsorId = 3, sponsorName = "Maria Garcia", totalFunded = 100000, blocksSponsored = 1, bountiesPosted = 3, walletBalance = 25000),
     )
 
     // ── Disputes ─────────────────────────────────────────────────────
-    val demoDisputeList: List<Dispute> = listOf(
+    val disputeList: List<Dispute> = listOf(
         Dispute(
             id = 1, jobId = 2841, reporterId = 101, reporterType = DisputePartyType.SPONSOR,
             respondentId = 8, respondentType = DisputePartyType.WORKER,
@@ -851,7 +851,7 @@ object DemoData {
     )
 
     // ── Feedback ─────────────────────────────────────────────────────
-    val demoFeedbackList: List<FeedbackTicket> = listOf(
+    val feedbackList: List<FeedbackTicket> = listOf(
         FeedbackTicket(
             id = 1, userId = 1, userType = UserType.WORKER, category = FeedbackCategory.APP_ISSUE,
             subject = "Map not loading on slow connection",
@@ -878,7 +878,7 @@ object DemoData {
     )
 
     // ── Address Changes ──────────────────────────────────────────────
-    val demoAddressChanges: List<AddressChangeRequest> = listOf(
+    val addressChanges: List<AddressChangeRequest> = listOf(
         AddressChangeRequest(
             workerId = 2,
             newAddress = WorkerAddress(

@@ -8,7 +8,7 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.lifecycle.LifecycleController
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.admin.di.adminModule
-import com.gcc.admin.di.demoAdminModule
+import com.gcc.admin.di.offlineAdminModule
 import com.gcc.admin.navigation.AdminRootComponent
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
@@ -19,7 +19,7 @@ fun main(args: Array<String> = emptyArray()) {
     val isDemo = "--demo" in args || System.getenv("GCC_DEMO") == "true"
 
     startKoin {
-        modules(if (isDemo) demoAdminModule else adminModule)
+        modules(if (isDemo) offlineAdminModule else adminModule)
     }
 
     val lifecycle = LifecycleRegistry()

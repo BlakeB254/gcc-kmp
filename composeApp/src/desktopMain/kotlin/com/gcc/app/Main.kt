@@ -9,7 +9,7 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.extensions.compose.lifecycle.LifecycleController
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.app.di.appModule
-import com.gcc.app.di.demoAppModule
+import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
@@ -20,7 +20,7 @@ fun main(args: Array<String> = emptyArray()) {
     val isDemo = "--demo" in args || System.getenv("GCC_DEMO") == "true"
 
     startKoin {
-        modules(if (isDemo) demoAppModule else appModule)
+        modules(if (isDemo) offlineAppModule else appModule)
     }
 
     val lifecycle = LifecycleRegistry()

@@ -4,7 +4,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.app.di.appModule
-import com.gcc.app.di.demoAppModule
+import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
@@ -31,7 +31,7 @@ private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIView
     // Initialize Koin before composable scope (must be stable across recompositions)
     if (runCatching { KoinPlatform.getKoin() }.isFailure) {
         startKoin {
-            modules(if (demoMode) demoAppModule else appModule)
+            modules(if (demoMode) offlineAppModule else appModule)
         }
     }
 

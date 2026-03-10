@@ -16,21 +16,21 @@ import com.gcc.admin.viewmodel.ServiceAreaViewModel
 import com.gcc.admin.viewmodel.SponsorManagementViewModel
 import com.gcc.admin.viewmodel.WorkerManagementViewModel
 import com.gcc.shared.auth.TokenManager
-import com.gcc.shared.demo.DemoTokenManager
-import com.gcc.shared.demo.createDemoApiClient
+import com.gcc.shared.offline.OfflineTokenManager
+import com.gcc.shared.offline.createOfflineApiClient
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 /**
- * Koin DI module for the admin desktop app (demo mode).
+ * Koin DI module for the admin desktop app (offline mode).
  *
- * Uses [DemoTokenManager] (in-memory, pre-loaded with demo JWT) and
- * [createDemoApiClient] (mock HTTP engine with canned responses).
+ * Uses [OfflineTokenManager] (in-memory, pre-loaded with offline JWT) and
+ * [createOfflineApiClient] (mock HTTP engine with canned responses).
  */
-val demoAdminModule = module {
-    // Infrastructure (demo)
-    single<TokenManager> { DemoTokenManager() }
-    single { createDemoApiClient() }
+val offlineAdminModule = module {
+    // Infrastructure (offline)
+    single<TokenManager> { OfflineTokenManager() }
+    single { createOfflineApiClient() }
 
     // ViewModels (same set as production)
     singleOf(::AdminLoginViewModel)

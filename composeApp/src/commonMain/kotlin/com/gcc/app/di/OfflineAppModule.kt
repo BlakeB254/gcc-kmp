@@ -18,18 +18,18 @@ import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.shared.auth.TokenManager
-import com.gcc.shared.demo.DemoTokenManager
-import com.gcc.shared.demo.createDemoApiClient
+import com.gcc.shared.offline.OfflineTokenManager
+import com.gcc.shared.offline.createOfflineApiClient
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
-val demoAppModule = module {
-    single<TokenManager> { DemoTokenManager() }
+val offlineAppModule = module {
+    single<TokenManager> { OfflineTokenManager() }
     single { LocationProvider() }
     single { LocationTrackingController() }
     single { ShareManager() }
     single { PushNotificationManager() }
-    single { createDemoApiClient() }
+    single { createOfflineApiClient() }
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)
     singleOf(::DashboardViewModel)

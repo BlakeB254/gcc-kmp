@@ -7,7 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import com.arkivanov.decompose.defaultComponentContext
 import com.gcc.app.di.appModule
-import com.gcc.app.di.demoAppModule
+import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.LocationProvider
@@ -41,7 +41,7 @@ class MainActivity : FragmentActivity() {
         // Initialize Koin if not already started (matches desktop Main.kt and iOS MainViewController.kt)
         if (GlobalContext.getOrNull() == null) {
             startKoin {
-                modules(if (isDemo) demoAppModule else appModule)
+                modules(if (isDemo) offlineAppModule else appModule)
             }
         }
 
