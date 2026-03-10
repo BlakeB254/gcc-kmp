@@ -637,10 +637,10 @@ export function CombinedMap({
               paint={{
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 4,
-                  15, 8,
-                  17, 14,
-                  20, 22,
+                  SPOT_ZOOM.DOTS_MIN, ['*', ['get', 'radiusMeters'], 0.06],
+                  15, ['*', ['get', 'radiusMeters'], 0.12],
+                  17, ['*', ['get', 'radiusMeters'], 0.25],
+                  20, ['*', ['get', 'radiusMeters'], 0.4],
                 ],
                 'circle-color': SPOT_COLORS.RADIUS_FILL,
                 'circle-stroke-color': SPOT_COLORS.RADIUS_STROKE,
