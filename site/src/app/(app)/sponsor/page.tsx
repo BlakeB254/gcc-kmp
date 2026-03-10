@@ -291,46 +291,59 @@ function PreselectedBlockBanner({ block }: { block: SponsorBlock }) {
 
 function BottomCTAs() {
   return (
-    <section className="space-y-4 mb-8">
-      <h3 className="text-lg font-bold text-neutral-900 text-center mb-6">
-        Want to do more?
-      </h3>
-
-      <Link
-        href="/sponsor/calculator"
-        className="block bg-gradient-to-r from-brand-gold-500 to-amber-500 rounded-2xl p-6 text-white hover:from-brand-gold-600 hover:to-amber-600 transition-all group"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-bold text-lg">Build a Custom Package</h4>
-            <p className="text-white/90 text-sm">
-              Custom branding, dedicated routes, documentary features, and enterprise benefits
-            </p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-white/60 group-hover:translate-x-1 transition-transform" />
+    <section className="mb-8">
+      {/* Decorated section header */}
+      <div className="text-center mb-8">
+        <div className="flex items-center justify-center gap-4 mb-3">
+          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-brand-gold-300" />
+          <Sparkles className="w-5 h-5 text-brand-gold-500" />
+          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-brand-gold-300" />
         </div>
-      </Link>
+        <h3 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-2">
+          Want to do more?
+        </h3>
+        <p className="text-neutral-500 text-sm max-w-md mx-auto">
+          Maximize your community impact with custom branding, dedicated routes, and enterprise-level partnerships
+        </p>
+      </div>
 
-      <Link
-        href="/sponsor/enterprise"
-        className="block bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 rounded-2xl p-6 hover:from-brand-brown-700 hover:to-brand-brown-800 transition-all group"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-brand-gold-500 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-5 h-5 text-brand-brown-900" />
+      <div className="space-y-4">
+        <Link
+          href="/sponsor/calculator"
+          className="block bg-gradient-to-r from-brand-gold-500 to-amber-500 rounded-2xl p-7 text-white hover:from-brand-gold-600 hover:to-amber-600 transition-all group shadow-lg hover:shadow-xl"
+        >
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-7 h-7" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-xl mb-1">Build a Custom Package</h4>
+              <p className="text-white/90 text-sm">
+                Custom branding, dedicated routes, documentary features, and enterprise benefits
+              </p>
+            </div>
+            <ChevronRight className="w-6 h-6 text-white/60 group-hover:translate-x-1 transition-transform" />
           </div>
-          <div className="flex-1">
-            <p className="font-semibold text-white">Enterprise Partnerships — $25,000+</p>
-            <p className="text-sm text-white/70">
-              Dedicated support, documentary production, and full neighborhood impact campaigns
-            </p>
+        </Link>
+
+        <Link
+          href="/sponsor/enterprise"
+          className="block bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 rounded-2xl p-7 hover:from-brand-brown-700 hover:to-brand-brown-800 transition-all group shadow-lg hover:shadow-xl"
+        >
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-full bg-brand-gold-500 flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-6 h-6 text-brand-brown-900" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-xl text-white mb-1">Enterprise Partnerships</h4>
+              <p className="text-sm text-white/70">
+                $25,000+ — Dedicated support, documentary production, and full neighborhood impact campaigns
+              </p>
+            </div>
+            <ChevronRight className="w-6 h-6 text-white/60 group-hover:translate-x-1 transition-transform" />
           </div>
-          <ChevronRight className="w-5 h-5 text-white/60 group-hover:translate-x-1 transition-transform" />
-        </div>
-      </Link>
+        </Link>
+      </div>
     </section>
   )
 }

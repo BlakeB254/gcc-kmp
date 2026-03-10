@@ -51,11 +51,16 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
             <p className="text-white/70 text-sm">Your details are only used for receipts and optional public recognition</p>
           </div>
 
-          <div className="p-6 space-y-5">
-            <div className="grid sm:grid-cols-2 gap-4">
+          <div className="p-6 space-y-0">
+            {/* Required fields label */}
+            <p className="text-xs text-neutral-400 mb-4 flex items-center gap-1">
+              <span className="text-red-400">*</span> Required fields
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4 pb-5 border-b border-neutral-200">
               <div className="group">
                 <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
-                  Your Name *
+                  Your Name <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -68,7 +73,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
               </div>
               <div className="group">
                 <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
-                  Email *
+                  Email <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="email"
@@ -81,9 +86,9 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
               </div>
             </div>
 
-            <div className="group">
+            <div className="group py-5 border-b border-neutral-200">
               <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
-                Company/Organization <span className="text-neutral-400">(optional)</span>
+                Company/Organization <span className="text-neutral-400 text-xs font-normal">(optional)</span>
               </label>
               <input
                 type="text"
@@ -94,9 +99,9 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
               />
             </div>
 
-            <div className="group">
+            <div className="group py-5 border-b border-neutral-200">
               <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
-                Message for the Worker <span className="text-neutral-400">(optional)</span>
+                Message for the Worker <span className="text-neutral-400 text-xs font-normal">(optional)</span>
               </label>
               <textarea
                 value={formData.message}
@@ -106,7 +111,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
               />
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer py-5 border-b border-neutral-200">
               <input
                 type="checkbox"
                 checked={formData.isAnonymous}
@@ -117,7 +122,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
             </label>
 
             {/* Optional cleaning schedule */}
-            <details className="border-t pt-4">
+            <details className="pt-5">
               <summary className="text-sm font-medium text-neutral-700 cursor-pointer flex items-center gap-2 hover:text-brand-gold-600 transition-colors">
                 <Calendar className="w-4 h-4" />
                 Schedule a cleaning date
