@@ -5,7 +5,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 
 /**
@@ -833,7 +833,7 @@ export function NeighborhoodMapSection() {
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span
                       className="text-xs px-2.5 py-1 rounded-full text-white font-semibold"
-                      style={{ backgroundColor: selectedSpot.status === 'verified' ? '#22C55E' : selectedSpot.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                      style={{ backgroundColor: SPOT_STATUS_COLORS[selectedSpot.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
                     >
                       {selectedSpot.status || 'pending'}
                     </span>

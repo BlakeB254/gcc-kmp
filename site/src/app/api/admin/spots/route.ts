@@ -3,36 +3,7 @@ import { db } from '@/db'
 import { communityReports } from '@/db/schema'
 import { desc } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
-
-function toCommunityReport(r: any) {
-  const coords = r.coordinates as { lat?: number; lng?: number } | [number, number] | null
-  return {
-    id: r.id,
-    reporterId: r.reporterId,
-    reporterName: r.reporterName,
-    type: r.type,
-    coordinates: Array.isArray(coords)
-      ? { lng: coords[0], lat: coords[1] }
-      : coords ?? { lng: 0, lat: 0 },
-    description: r.description,
-    mediaUrls: (r.mediaIds as string[]) || [],
-    status: r.status,
-    upvotes: r.thankCount || 0,
-    verifiedBy: r.reviewedById,
-    resolvedAt: r.resolvedByJobId ? r.updatedAt : null,
-    bountyId: null,
-    observerRewardPoints: 0,
-    aiAnalysis: r.onDeviceAiResult || null,
-    affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
-    affectedArea: r.affectedArea || null,
-    tags: r.tags || [],
-    photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
-    lastVerifiedAt: r.lastVerifiedAt || null,
-    verificationCount: r.verificationCount || 0,
-    createdAt: new Date(r.createdAt).toISOString(),
-    updatedAt: new Date(r.updatedAt).toISOString(),
-  }
-}
+import { toCommunityReport } from '@/lib/spot-utils'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request)
@@ -45,7 +16,7 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(communityReports.createdAt))
       .limit(500)
 
-    const fullReports = reports.map(toCommunityReport)
+    const fullReports = reports.map((r) => toCommunityReport(r))
 
     return NextResponse.json({ data: fullReports, success: true })
   } catch (error) {

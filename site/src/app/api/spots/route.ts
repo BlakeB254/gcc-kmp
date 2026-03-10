@@ -8,71 +8,9 @@ import { db } from '@/db'
 import { communityReports, pointsLedger, workers } from '@/db/schema'
 import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { autoTagFromDescription, resolveSpotTags, toCommunityReport } from '@/lib/spot-utils'
 
 export const dynamic = 'force-dynamic'
-
-// Tag keywords for auto-tagging existing spots based on description
-const TAG_KEYWORDS: Record<string, string[]> = {
-  trash: ['trash', 'garbage', 'rubbish', 'waste', 'litter', 'dump'],
-  leaves: ['leaves', 'leaf', 'yard waste', 'branches', 'twigs'],
-  glass: ['glass', 'bottle', 'broken glass', 'shattered'],
-  metal: ['metal', 'can', 'cans', 'aluminum', 'steel', 'scrap'],
-  tires: ['tire', 'tires', 'rubber'],
-  furniture: ['furniture', 'couch', 'sofa', 'chair', 'mattress', 'bed', 'table', 'dresser'],
-  construction: ['construction', 'concrete', 'brick', 'drywall', 'lumber', 'debris', 'demolition'],
-  organic: ['organic', 'food', 'compost', 'rot'],
-  hazardous: ['hazardous', 'chemical', 'paint', 'oil', 'asbestos', 'toxic'],
-  electronics: ['electronics', 'tv', 'computer', 'monitor', 'appliance', 'fridge', 'refrigerator'],
-  clothing: ['clothing', 'clothes', 'fabric', 'shoes', 'textile'],
-}
-
-function autoTagFromDescription(description: string | null): string[] {
-  if (!description) return []
-  const lower = description.toLowerCase()
-  const tags: string[] = []
-  for (const [tag, keywords] of Object.entries(TAG_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) {
-      tags.push(tag)
-    }
-  }
-  return tags
-}
-
-// Helper to convert DB row to CommunityReport shape the iOS app expects
-function toCommunityReport(r: any, precomputedTags?: string[]) {
-  const coords = r.coordinates as { lat?: number; lng?: number } | [number, number] | null
-  return {
-    id: r.id,
-    reporterId: r.reporterId,
-    reporterName: r.reporterName,
-    type: r.type,
-    coordinates: Array.isArray(coords)
-      ? { lng: coords[0], lat: coords[1] }
-      : coords ?? { lng: 0, lat: 0 },
-    description: r.description,
-    mediaUrls: (r.mediaIds as string[]) || [],
-    mediaCaptions: (r.mediaCaptions as string[]) || [],
-    status: r.status,
-    upvotes: r.thankCount || 0,
-    verifiedBy: r.reviewedById,
-    resolvedAt: r.resolvedByJobId ? r.updatedAt : null,
-    bountyId: null,
-    observerRewardPoints: 0,
-    aiAnalysis: r.onDeviceAiResult || null,
-    affectedRadiusMeters: r.affectedRadiusMeters ? parseFloat(r.affectedRadiusMeters) : 15.0,
-    affectedArea: r.affectedArea || null,
-    tags: precomputedTags || ((Array.isArray(r.tags) && r.tags.length > 0) ? r.tags : autoTagFromDescription(r.description)),
-    photoUrl: ((r.mediaIds as string[]) || [])[0] || null,
-    // Verification lifecycle
-    lastVerifiedAt: r.lastVerifiedAt || null,
-    verificationCount: r.verificationCount || 0,
-    nextVerificationDue: r.nextVerificationDue || null,
-    needsVerification: r.nextVerificationDue ? new Date(r.nextVerificationDue) <= new Date() : false,
-    depthAnalysis: r.depthAnalysis || null,
-    createdAt: new Date(r.createdAt).toISOString(),
-    updatedAt: new Date(r.updatedAt).toISOString(),
-  }
-}
 
 export async function GET(request: NextRequest) {
   try {

@@ -52,6 +52,12 @@ export const BOUNTY_COLORS = {
   RADIUS_FILL: 'rgba(239, 68, 68, 0.1)',
 } as const
 
+export const SPOT_STATUS_COLORS: Record<string, string> = {
+  verified: '#22C55E',
+  acknowledged: '#3B82F6',
+  pending: '#F59E0B',
+} as const
+
 export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',

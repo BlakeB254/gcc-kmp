@@ -12,6 +12,7 @@ import {
   CHECKPOINT_BORDER_COLORS,
   BOUNTY_COLORS,
   SPOT_COLORS,
+  SPOT_STATUS_COLORS,
   SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
 } from '@/lib/design-tokens'
@@ -324,7 +325,7 @@ export function CombinedMap({
               {s.status && (
                 <span
                   className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto capitalize"
-                  style={{ backgroundColor: s.status === 'verified' ? '#22C55E' : s.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                  style={{ backgroundColor: SPOT_STATUS_COLORS[s.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
                 >
                   {s.status}
                 </span>

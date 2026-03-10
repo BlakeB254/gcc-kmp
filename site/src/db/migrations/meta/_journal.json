@@ -50,6 +50,13 @@
       "when": 1769600000000,
       "tag": "0006_add_contribution_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773178740483,
+      "tag": "0007_regular_shotgun",
+      "breakpoints": true
     }
   ]
 }

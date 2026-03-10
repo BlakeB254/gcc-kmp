@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { MapPin, DollarSign, Trash2, ArrowRight, Route as RouteIcon, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
+import { SPOT_STATUS_COLORS } from '@/lib/design-tokens'
 
 // Dynamically import CombinedMap to avoid SSR issues with MapLibre
 const CombinedMap = dynamic(
@@ -346,7 +347,7 @@ export default function BountiesPage() {
                           {spot.status && (
                             <span
                               className="absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full text-white font-medium capitalize"
-                              style={{ backgroundColor: spot.status === 'verified' ? '#22C55E' : spot.status === 'acknowledged' ? '#3B82F6' : '#F59E0B' }}
+                              style={{ backgroundColor: SPOT_STATUS_COLORS[spot.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
                             >
                               {spot.status}
                             </span>
