@@ -118,21 +118,29 @@ object MapStyles {
     const val LAYER_SPOT_MARKERS = "spot-markers"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
 
-    // Spot heatmap layer (visible at overview zoom, fades at close zoom)
+    // Spot heatmap layers (stacked circles to simulate density color ramp — matches website)
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val SPOT_HEATMAP_RADIUS_FAR = 6.0f     // small blip at city overview
-    const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 4.0f   // shrinks before individual dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.35f
-    const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
+    const val LAYER_SPOT_HEATMAP_MED = "spot-heatmap-med"
+    const val LAYER_SPOT_HEATMAP_HIGH = "spot-heatmap-high"
 
-    // Heatmap color: light pink (few spots) → deep red (dense clusters)
-    val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
+    // Heatmap radii — broader like the website (10→18→25 at zoom 11→13→14)
+    const val SPOT_HEATMAP_RADIUS_FAR = 10.0f     // overview zoom
+    const val SPOT_HEATMAP_RADIUS_MID = 18.0f     // neighborhood zoom
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 25.0f   // before dots take over
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.5f
+    const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f   // fully transparent at close zoom
 
-    // Zoom thresholds for heatmap vs. individual dots
+    // Heatmap color ramp — matches website design-tokens (low density → high density)
+    val SPOT_HEATMAP_LOW = Color(0xFFFEE2E2)       // light pink (outer, sparse)
+    val SPOT_HEATMAP_MED = Color(0xFFFCA5A5)        // medium pink (mid-range)
+    val SPOT_HEATMAP_HIGH = Color(0xFFEF4444)       // red (dense)
+    val SPOT_HEATMAP_PEAK = Color(0xFF991B1B)       // deep red (peak density)
+    val SPOT_HEATMAP_COLOR = SPOT_HEATMAP_HIGH      // legacy alias
+
+    // Zoom thresholds — matches website SPOT_ZOOM values
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
-    const val SPOT_HEATMAP_MAX_ZOOM = 13.0   // heatmap fades above this zoom
-    const val SPOT_DOTS_MIN_ZOOM = 12.0      // individual dots appear from this zoom
+    const val SPOT_HEATMAP_MAX_ZOOM = 14.0   // heatmap fades above this zoom (was 13)
+    const val SPOT_DOTS_MIN_ZOOM = 13.0      // individual dots appear (was 12)
 }
 
 /** Convert meters to pixels at a given latitude and zoom level (Mercator projection). */

@@ -421,7 +421,8 @@ internal fun DrawScope.drawCityBoundary(
     )
 }
 
-/** Draw spot report markers: orange heatmap wash at far zoom, orange dots at close zoom. */
+/** Draw spot report markers: multi-layer heatmap at far zoom, orange dots at close zoom.
+ *  Matches the website's density color ramp: light pink → medium pink → red → deep red. */
 internal fun DrawScope.drawSpotMarkers(
     spots: List<com.gcc.shared.model.CommunityReport>,
     centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
@@ -437,15 +438,31 @@ internal fun DrawScope.drawSpotMarkers(
         if (pos.x < -50f || pos.x > w + 50f || pos.y < -50f || pos.y > h + 50f) continue
 
         if (effectiveZoom < MapStyles.SPOT_HEATMAP_MAX_ZOOM) {
-            // Far zoom: large translucent orange circles (heatmap wash)
+            // Heatmap zone: stacked circles (outer=light pink, mid=med pink, inner=red)
             val t = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
                 (MapStyles.SPOT_HEATMAP_MAX_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
-            val radius = MapStyles.SPOT_HEATMAP_RADIUS_FAR + (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
-            val opacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR + (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
-            if (opacity > 0f) {
+            val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
+                (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
+            val baseOpacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR +
+                (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
+
+            if (baseOpacity > 0f) {
+                // Outer glow — light pink
                 drawCircle(
-                    color = MapStyles.SPOT_MARKER_COLOR.copy(alpha = opacity),
-                    radius = radius,
+                    color = MapStyles.SPOT_HEATMAP_LOW.copy(alpha = baseOpacity),
+                    radius = baseRadius,
+                    center = pos,
+                )
+                // Mid ring — medium pink, 70% radius
+                drawCircle(
+                    color = MapStyles.SPOT_HEATMAP_MED.copy(alpha = baseOpacity * 0.9f),
+                    radius = baseRadius * 0.7f,
+                    center = pos,
+                )
+                // Core — red, 40% radius
+                drawCircle(
+                    color = MapStyles.SPOT_HEATMAP_HIGH.copy(alpha = baseOpacity * 1.1f),
+                    radius = baseRadius * 0.4f,
                     center = pos,
                 )
             }
