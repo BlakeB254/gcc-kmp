@@ -21,7 +21,8 @@ export default function AppLayout({
     pathname.includes('/profile') ||
     pathname.includes('/job/') ||
     pathname.includes('/enterprise') || // Dark themed page with own header
-    pathname.startsWith('/support') ||
+    pathname === '/support' ||
+    pathname.startsWith('/support/') ||
     pathname.startsWith('/community')
 
   if (isAuthenticatedPage) {

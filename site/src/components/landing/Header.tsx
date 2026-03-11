@@ -20,7 +20,8 @@ export function Header() {
     pathname.includes('/profile') ||
     pathname.includes('/job/') ||
     pathname.includes('/enterprise') ||
-    pathname.startsWith('/support') ||
+    pathname === '/support' ||
+    pathname.startsWith('/support/') ||
     pathname.startsWith('/community')
 
   if (isAuthenticatedPage) {
