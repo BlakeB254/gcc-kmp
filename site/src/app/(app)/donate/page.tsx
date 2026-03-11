@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Heart, MapPin, Sparkles, Users, ChevronRight, X, Check, Package } from 'lucide-react'
+import { InlineError } from '@/components/shared/InlineError'
 
 // Dynamically import BlockMap to avoid SSR issues with MapLibre
 const BlockMap = dynamic(
@@ -126,6 +127,8 @@ function DonateContent() {
   })
   const [isMaterialSubmitting, setIsMaterialSubmitting] = useState(false)
   const [materialSuccess, setMaterialSuccess] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [materialError, setMaterialError] = useState<string | null>(null)
 
   // Fetch real donor count
   useEffect(() => {
@@ -191,6 +194,7 @@ function DonateContent() {
   const handleCheckout = async () => {
     if (!formData.name || !formData.email) return
     setIsProcessing(true)
+    setCheckoutError(null)
 
     try {
       const payload =
@@ -233,7 +237,7 @@ function DonateContent() {
       }
     } catch (error) {
       console.error('Checkout error:', error)
-      alert('Failed to process. Please try again.')
+      setCheckoutError('Failed to process. Please try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -247,6 +251,7 @@ function DonateContent() {
     if (isMaterialSubmitting) return
 
     setIsMaterialSubmitting(true)
+    setMaterialError(null)
     try {
       const response = await fetch('/api/material-donations', {
         method: 'POST',
@@ -279,7 +284,7 @@ function DonateContent() {
       }
     } catch (error) {
       console.error('Material donation error:', error)
-      alert('Failed to submit. Please try again or email us directly.')
+      setMaterialError('Failed to submit. Please try again or email us directly.')
     } finally {
       setIsMaterialSubmitting(false)
     }
@@ -777,6 +782,8 @@ function DonateContent() {
                   />
                 </div>
 
+                <InlineError message={checkoutError} />
+
                 <button
                   type="submit"
                   disabled={isProcessing || !formData.name || !formData.email}
@@ -1130,6 +1137,8 @@ function DonateContent() {
                       placeholder="Anything else we should know?"
                     />
                   </div>
+
+                  <InlineError message={materialError} />
 
                   <button
                     type="submit"

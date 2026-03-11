@@ -314,7 +314,12 @@ export function SponsorBlockMap({
 
       {/* Selection count overlay */}
       {selectedBlockIds.length > 0 && (
-        <div className="absolute top-3 left-3 z-10 bg-brand-gold-500 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold">
+        <div
+          className="absolute top-3 left-3 z-10 bg-brand-gold-500 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold"
+          role="status"
+          aria-live="polite"
+          aria-label={`${selectedBlockIds.length} block${selectedBlockIds.length !== 1 ? 's' : ''} selected`}
+        >
           {selectedBlockIds.length} block{selectedBlockIds.length !== 1 ? 's' : ''} selected
         </div>
       )}

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Gift, Star, MapPin, Shield, Sparkles } from 'lucide-react'
+import { Gift, Star, MapPin, Shield, Sparkles, X } from 'lucide-react'
 
 const UPSELL_ITEMS = [
   { icon: Star, title: 'Custom Branding', desc: 'Your logo on the block marker, worker vest, and impact report' },
@@ -12,16 +12,30 @@ const UPSELL_ITEMS = [
 interface UpsellModalProps {
   onClose: () => void
   onProceed: () => void
+  calculatorUrl: string
 }
 
-export function UpsellModal({ onClose, onProceed }: UpsellModalProps) {
+export function UpsellModal({ onClose, onProceed, calculatorUrl }: UpsellModalProps) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-scale-in" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-brand-gold-500 to-amber-500 p-6 text-white">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose} role="presentation">
+      <div
+        className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upsell-modal-title"
+      >
+        <div className="bg-gradient-to-r from-brand-gold-500 to-amber-500 p-6 text-white relative">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
+            aria-label="Close upsell dialog"
+          >
+            <X className="w-6 h-6" />
+          </button>
           <div className="flex items-center gap-3 mb-2">
             <Gift className="w-7 h-7" />
-            <h3 className="text-xl font-bold">Before you checkout...</h3>
+            <h3 id="upsell-modal-title" className="text-xl font-bold">Before you checkout...</h3>
           </div>
           <p className="text-white/90 text-sm">
             Did you know you can maximize your impact with add-ons?
@@ -41,7 +55,7 @@ export function UpsellModal({ onClose, onProceed }: UpsellModalProps) {
           </div>
           <div className="flex flex-col gap-2 pt-2">
             <Link
-              href="/sponsor/calculator"
+              href={calculatorUrl}
               className="w-full py-3 rounded-xl bg-brand-gold-500 hover:bg-brand-gold-600 text-brand-brown-900 font-bold text-center transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />

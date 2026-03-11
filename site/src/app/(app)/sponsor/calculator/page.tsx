@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Calculator, Sparkles, Building2 } from 'lucide-react'
 import { BlockCountSection } from '@/components/sponsor/calculator/sections/BlockCountSection'
 import { BrandingSection } from '@/components/sponsor/calculator/sections/BrandingSection'
@@ -14,8 +15,43 @@ import {
   type SponsorPackageConfig,
 } from '@/lib/sponsor-pricing'
 
-export default function SponsorCalculatorPage() {
-  const [config, setConfig] = useState<SponsorPackageConfig>(createEmptyPackageConfig())
+export default function SponsorCalculatorPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 to-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600" />
+      </div>
+    }>
+      <SponsorCalculatorPage />
+    </Suspense>
+  )
+}
+
+/** Map sponsor-page frequency values to calculator recurringFrequency */
+const FREQUENCY_MAP: Record<string, SponsorPackageConfig['recurringFrequency']> = {
+  weekly: 'weekly',
+  biweekly: 'biweekly',
+  monthly: 'monthly',
+}
+
+function initConfigFromParams(params: URLSearchParams): SponsorPackageConfig {
+  const base = createEmptyPackageConfig()
+
+  const count = parseInt(params.get('count') || '', 10)
+  if (count > 0) base.blockCount = count
+
+  const freq = params.get('frequency')
+  if (freq && freq in FREQUENCY_MAP) {
+    base.isRecurring = true
+    base.recurringFrequency = FREQUENCY_MAP[freq]
+  }
+
+  return base
+}
+
+function SponsorCalculatorPage() {
+  const searchParams = useSearchParams()
+  const [config, setConfig] = useState<SponsorPackageConfig>(() => initConfigFromParams(searchParams))
   const [activeStep, setActiveStep] = useState(0)
 
   const priceBreakdown = useMemo(() => calculatePackagePrice(config), [config])

@@ -14,7 +14,7 @@ export function SponsorModeSelector({ mode, onModeChange }: SponsorModeSelectorP
     <section className="mb-16">
       <StepHeader step={1} title="How would you like to sponsor?" description="Pick your preferred sponsorship method" />
 
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-2 gap-4" role="radiogroup" aria-label="Sponsorship mode">
         <ModeCard
           active={mode === 'specific'}
           icon={<MapPin className="w-5 h-5" />}
@@ -50,6 +50,8 @@ function ModeCard({
   return (
     <button
       onClick={onClick}
+      role="radio"
+      aria-checked={active}
       className={`p-5 rounded-xl border-2 text-left transition-all duration-200 hover-lift ${
         active
           ? 'border-brand-gold-500 bg-brand-gold-50 shadow-lg ring-2 ring-brand-gold-200'

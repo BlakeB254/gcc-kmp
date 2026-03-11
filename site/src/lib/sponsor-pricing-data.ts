@@ -714,6 +714,8 @@ export const recognitionLevels = {
 
 // Recurring plan discounts
 export const recurringDiscounts = {
+  weekly: 5, // 5% discount
+  biweekly: 7, // 7% discount
   monthly: 10, // 10% discount
   quarterly: 15, // 15% discount
   annual: 20, // 20% discount

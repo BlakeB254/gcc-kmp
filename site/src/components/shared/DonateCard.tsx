@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { InlineError } from '@/components/shared/InlineError'
 
 const PRESET_AMOUNTS = [5, 25, 50, 100]
 
@@ -38,6 +39,7 @@ export function DonateCard({
   const [customAmount, setCustomAmount] = useState('1')
   const [frequency, setFrequency] = useState<'one_time' | 'monthly'>('one_time')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [formData, setFormData] = useState<DonorFormData>({
     name: '',
@@ -60,6 +62,7 @@ export function DonateCard({
     if (isLoading || amount < 1) return
 
     setIsLoading(true)
+    setError(null)
     try {
       if (onCheckout) {
         await onCheckout(amount, frequency, formData)
@@ -86,12 +89,12 @@ export function DonateCard({
           router.push('/support/success?demo=true')
         } else {
           console.error('Checkout failed:', data.error)
-          alert('Failed to start checkout. Please try again.')
+          setError('Failed to start checkout. Please try again.')
         }
       }
     } catch (error) {
       console.error('Checkout error:', error)
-      alert('Failed to start checkout. Please try again.')
+      setError('Failed to start checkout. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -300,6 +303,8 @@ export function DonateCard({
                   maxLength={280}
                 />
               </div>
+
+              <InlineError message={error} />
 
               <button
                 type="submit"

@@ -3,24 +3,34 @@
 import { forwardRef } from 'react'
 import Link from 'next/link'
 import { Check, CreditCard, Sparkles } from 'lucide-react'
+import type { SponsorFrequency } from './FrequencySelector'
+
+const FREQUENCY_LABELS: Record<SponsorFrequency, { suffix: string; period: string }> = {
+  single: { suffix: '', period: 'one-time' },
+  weekly: { suffix: '/wk', period: 'weekly' },
+  biweekly: { suffix: '/2wk', period: 'bi-weekly' },
+  monthly: { suffix: '/mo', period: 'monthly' },
+}
 
 interface CheckoutSummaryProps {
   blockCount: number
-  sponsorType: 'single' | 'monthly'
+  sponsorType: SponsorFrequency
   isFormReady: boolean
   isBlocksSelected: boolean
   isProcessing: boolean
   formName: string
+  calculatorUrl: string
   onCheckoutClick: () => void
 }
 
 export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
   function CheckoutSummary(
-    { blockCount, sponsorType, isFormReady, isBlocksSelected, isProcessing, formName, onCheckoutClick },
+    { blockCount, sponsorType, isFormReady, isBlocksSelected, isProcessing, formName, calculatorUrl, onCheckoutClick },
     ref,
   ) {
     const totalAmount = blockCount * 100
-    const priceLabel = `$${totalAmount}${sponsorType === 'monthly' ? '/mo' : ''}`
+    const freq = FREQUENCY_LABELS[sponsorType]
+    const priceLabel = `$${totalAmount}${freq.suffix}`
 
     return (
       <section className="mb-16" ref={ref}>
@@ -30,7 +40,7 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
               <h3 className="text-2xl font-bold mb-1">Order Summary</h3>
               <p className="text-white/70 text-sm">
                 {blockCount} block{blockCount !== 1 ? 's' : ''} × $100
-                {sponsorType === 'monthly' ? ' / month' : ' one-time'}
+                {sponsorType === 'single' ? ' one-time' : ` ${freq.period}`}
               </p>
               <div className="mt-3 flex items-center gap-4 text-xs text-white/60">
                 <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Before &amp; after photos</span>
@@ -40,8 +50,8 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
             </div>
             <div className="text-center sm:text-right">
               <p className="text-4xl font-bold text-brand-gold-400">{priceLabel}</p>
-              {sponsorType === 'monthly' && (
-                <p className="text-xs text-white/50 mt-1">Billed monthly</p>
+              {sponsorType !== 'single' && (
+                <p className="text-xs text-white/50 mt-1">Billed {freq.period}</p>
               )}
             </div>
           </div>
@@ -50,6 +60,14 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
             <button
               onClick={onCheckoutClick}
               disabled={!isFormReady || isProcessing}
+              aria-disabled={!isFormReady || isProcessing}
+              aria-label={
+                isProcessing
+                  ? 'Processing checkout'
+                  : !isFormReady
+                    ? `Checkout disabled — ${!isBlocksSelected ? 'select blocks first' : !formName ? 'enter your name' : 'enter your email'}`
+                    : `Checkout ${priceLabel}`
+              }
               className={`flex-1 py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
                 isFormReady && !isProcessing
                   ? 'bg-brand-gold-500 hover:bg-brand-gold-600 text-brand-brown-900 shadow-lg animate-breathe cursor-pointer'
@@ -69,7 +87,7 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
               )}
             </button>
             <Link
-              href="/sponsor/calculator"
+              href={calculatorUrl}
               className="py-4 px-6 rounded-xl border-2 border-white/30 text-white font-semibold text-center hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="w-5 h-5" />

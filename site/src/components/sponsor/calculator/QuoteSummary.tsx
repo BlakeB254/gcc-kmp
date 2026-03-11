@@ -233,6 +233,8 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
       <div className="p-4">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          aria-controls="quote-itemized-breakdown"
           className="w-full flex items-center justify-between text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
         >
           <span>Itemized Breakdown</span>
@@ -244,7 +246,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
         </button>
 
         {isExpanded && (
-          <div className="mt-4 space-y-3 text-sm">
+          <div id="quote-itemized-breakdown" className="mt-4 space-y-3 text-sm">
             {/* Base - Worker Pay (never discounted) */}
             <div className="flex justify-between">
               <span className="text-neutral-600">
@@ -467,19 +469,24 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
 
       {/* Checkout / Walkthrough Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" role="presentation">
+          <div
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quote-modal-title"
+          >
             {/* Modal Header */}
             <div className="p-4 border-b flex items-center justify-between">
               <div>
                 {modalMode === 'checkout' ? (
                   <>
-                    <h3 className="text-lg font-bold text-neutral-900">Complete Sponsorship</h3>
+                    <h3 id="quote-modal-title" className="text-lg font-bold text-neutral-900">Complete Sponsorship</h3>
                     <p className="text-sm text-neutral-500">Secure checkout via Stripe</p>
                   </>
                 ) : (
                   <>
-                    <h3 className="text-lg font-bold text-neutral-900">Request a Walkthrough</h3>
+                    <h3 id="quote-modal-title" className="text-lg font-bold text-neutral-900">Request a Walkthrough</h3>
                     <p className="text-sm text-neutral-500">
                       {priceBreakdown.isEnterprise
                         ? "We'll connect you with an enterprise specialist"
@@ -491,6 +498,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
               <button
                 onClick={() => setShowModal(false)}
                 className="p-1 hover:bg-neutral-100 rounded-lg transition-colors"
+                aria-label="Close dialog"
               >
                 <X className="w-5 h-5 text-neutral-500" />
               </button>

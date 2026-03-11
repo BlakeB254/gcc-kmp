@@ -137,7 +137,11 @@ function SpecificBlockPicker({
               >
                 <MapPin className="w-3 h-3" />
                 {block.fromCorner} → {block.toCorner}
-                <button onClick={() => onToggleBlock(block)} className="hover:text-red-500 transition-colors">
+                <button
+                  onClick={() => onToggleBlock(block)}
+                  className="hover:text-red-500 transition-colors"
+                  aria-label={`Remove block ${block.fromCorner} to ${block.toCorner}`}
+                >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </span>
@@ -147,13 +151,15 @@ function SpecificBlockPicker({
       )}
 
       {/* Block list */}
-      <div className="space-y-2 max-h-[200px] overflow-y-auto bg-white rounded-xl border p-3">
+      <div className="space-y-2 max-h-[200px] overflow-y-auto bg-white rounded-xl border p-3" role="listbox" aria-label="Available blocks">
         {blocks.map((block) => {
           const isSelected = selectedBlocks.some(b => b.id === block.id)
           return (
             <button
               key={block.id}
               onClick={() => onToggleBlock(block)}
+              aria-pressed={isSelected}
+              aria-label={`${isSelected ? 'Deselect' : 'Select'} block ${block.fromCorner} to ${block.toCorner} on ${formatStreetName(block.streetName)}`}
               className={`w-full text-left px-4 py-3 rounded-lg border transition-all duration-150 ${
                 isSelected
                   ? 'border-brand-gold-500 bg-brand-gold-50 shadow-sm'
@@ -205,6 +211,8 @@ function GeneralBlockPicker({
               key={count}
               onClick={() => !isDisabled && onCountChange(count)}
               disabled={isDisabled}
+              aria-pressed={generalBlockCount === count && !isDisabled}
+              aria-label={`${count} block${count !== 1 ? 's' : ''} — $${count * 100}`}
               className={`py-4 rounded-xl font-bold text-xl transition-all ${
                 generalBlockCount === count && !isDisabled
                   ? 'bg-brand-gold-500 text-white shadow-lg scale-105'

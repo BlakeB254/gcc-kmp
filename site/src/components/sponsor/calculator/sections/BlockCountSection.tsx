@@ -8,13 +8,22 @@ import {
   formatPrice,
   calculateSavings,
   volumeDiscounts,
+  recurringDiscounts,
   type SponsorPackageConfig,
 } from '@/lib/sponsor-pricing'
+
+const RECURRING_OPTIONS: { value: NonNullable<SponsorPackageConfig['recurringFrequency']>; label: string }[] = [
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Bi-weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'annual', label: 'Annual' },
+]
 
 interface BlockCountSectionProps {
   blockCount: number
   isRecurring: boolean
-  recurringFrequency?: 'monthly' | 'quarterly' | 'annual'
+  recurringFrequency?: SponsorPackageConfig['recurringFrequency']
   onChange: (updates: Partial<SponsorPackageConfig>) => void
   onNext: () => void
 }
@@ -145,39 +154,20 @@ export function BlockCountSection({
             >
               One-time
             </button>
-            <button
-              onClick={() => onChange({ isRecurring: true, recurringFrequency: 'monthly' })}
-              className={cn(
-                'px-4 py-2 rounded-lg border-2 font-medium transition-all',
-                isRecurring && recurringFrequency === 'monthly'
-                  ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
-                  : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-              )}
-            >
-              Monthly <span className="text-brand-green-600 text-xs ml-1">-10%</span>
-            </button>
-            <button
-              onClick={() => onChange({ isRecurring: true, recurringFrequency: 'quarterly' })}
-              className={cn(
-                'px-4 py-2 rounded-lg border-2 font-medium transition-all',
-                isRecurring && recurringFrequency === 'quarterly'
-                  ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
-                  : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-              )}
-            >
-              Quarterly <span className="text-brand-green-600 text-xs ml-1">-15%</span>
-            </button>
-            <button
-              onClick={() => onChange({ isRecurring: true, recurringFrequency: 'annual' })}
-              className={cn(
-                'px-4 py-2 rounded-lg border-2 font-medium transition-all',
-                isRecurring && recurringFrequency === 'annual'
-                  ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
-                  : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
-              )}
-            >
-              Annual <span className="text-brand-green-600 text-xs ml-1">-20%</span>
-            </button>
+            {RECURRING_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => onChange({ isRecurring: true, recurringFrequency: value })}
+                className={cn(
+                  'px-4 py-2 rounded-lg border-2 font-medium transition-all',
+                  isRecurring && recurringFrequency === value
+                    ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
+                    : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                )}
+              >
+                {label} <span className="text-brand-green-600 text-xs ml-1">-{recurringDiscounts[value]}%</span>
+              </button>
+            ))}
           </div>
         </div>
 

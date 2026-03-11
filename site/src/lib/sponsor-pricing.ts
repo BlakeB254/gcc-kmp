@@ -49,7 +49,7 @@ export interface SponsorPackageConfig {
   // Base
   blockCount: number
   isRecurring: boolean
-  recurringFrequency?: 'monthly' | 'quarterly' | 'annual'
+  recurringFrequency?: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual'
 
   // Branding add-ons
   workerBranding: Partial<Record<WorkerBrandingAddon, boolean>>

@@ -1,18 +1,26 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Building2, Sparkles, ChevronRight, CheckCircle2 } from 'lucide-react'
 
 import { SponsorModeSelector } from '@/components/sponsor/SponsorModeSelector'
 import { BlockSelectionStep } from '@/components/sponsor/BlockSelectionStep'
-import { FrequencySelector } from '@/components/sponsor/FrequencySelector'
+import { FrequencySelector, type SponsorFrequency } from '@/components/sponsor/FrequencySelector'
 import { SponsorInfoForm } from '@/components/sponsor/SponsorInfoForm'
 import { CheckoutSummary } from '@/components/sponsor/CheckoutSummary'
 import { UpsellModal } from '@/components/sponsor/UpsellModal'
 import type { SponsorBlock, SponsorshipMode, SponsorFormData } from '@/components/sponsor/types'
 import { formatStreetName } from '@/components/sponsor/types'
+import { InlineError } from '@/components/shared/InlineError'
+
+const FREQUENCY_TO_API: Record<SponsorFrequency, string> = {
+  single: 'one_time',
+  weekly: 'weekly',
+  biweekly: 'biweekly',
+  monthly: 'monthly',
+}
 
 export default function SponsorPageWrapper() {
   return (
@@ -34,11 +42,12 @@ function SponsorPage() {
   const [mode, setMode] = useState<SponsorshipMode>('specific')
   const [selectedBlocks, setSelectedBlocks] = useState<SponsorBlock[]>([])
   const [generalBlockCount, setGeneralBlockCount] = useState(1)
-  const [sponsorType, setSponsorType] = useState<'single' | 'monthly'>('single')
+  const [sponsorType, setSponsorType] = useState<SponsorFrequency>('single')
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [preselectedBlock, setPreselectedBlock] = useState<SponsorBlock | null>(null)
   const [showUpsellModal, setShowUpsellModal] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [formData, setFormData] = useState<SponsorFormData>({
     name: '',
     email: '',
@@ -107,13 +116,25 @@ function SponsorPage() {
   const isBlocksSelected = mode === 'specific' ? selectedBlocks.length > 0 : generalBlockCount <= blocks.length
   const isFormReady = isBlocksSelected && !!formData.name && !!formData.email
 
+  // Build calculator URL with current selections preserved
+  const calculatorUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('count', String(blockCount))
+    if (sponsorType !== 'single') params.set('frequency', sponsorType)
+    if (mode === 'specific' && selectedBlocks.length > 0) {
+      params.set('blocks', selectedBlocks.map(b => b.id).join(','))
+    }
+    return `/sponsor/calculator?${params.toString()}`
+  }, [blockCount, sponsorType, mode, selectedBlocks])
+
   const handleCheckout = async () => {
     if (mode === 'specific' && selectedBlocks.length === 0) return
     setIsProcessing(true)
+    setCheckoutError(null)
 
     try {
       const shared = {
-        frequency: sponsorType === 'monthly' ? 'monthly' : 'one_time',
+        frequency: FREQUENCY_TO_API[sponsorType],
         name: formData.name,
         email: formData.email,
         company: formData.company,
@@ -142,7 +163,7 @@ function SponsorPage() {
       }
     } catch (error) {
       console.error('Checkout error:', error)
-      alert('Failed to process. Please try again.')
+      setCheckoutError('Failed to process. Please try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -199,6 +220,7 @@ function SponsorPage() {
           />
 
           {/* Checkout */}
+          <InlineError message={checkoutError} className="mb-4" />
           <CheckoutSummary
             ref={checkoutSectionRef}
             blockCount={blockCount}
@@ -207,11 +229,12 @@ function SponsorPage() {
             isBlocksSelected={isBlocksSelected}
             isProcessing={isProcessing}
             formName={formData.name}
+            calculatorUrl={calculatorUrl}
             onCheckoutClick={() => isFormReady && setShowUpsellModal(true)}
           />
 
           {/* Bottom: enterprise & custom */}
-          <BottomCTAs />
+          <BottomCTAs calculatorUrl={calculatorUrl} />
         </div>
       </div>
 
@@ -219,6 +242,7 @@ function SponsorPage() {
         <UpsellModal
           onClose={() => setShowUpsellModal(false)}
           onProceed={handleCheckout}
+          calculatorUrl={calculatorUrl}
         />
       )}
     </div>
@@ -289,7 +313,7 @@ function PreselectedBlockBanner({ block }: { block: SponsorBlock }) {
   )
 }
 
-function BottomCTAs() {
+function BottomCTAs({ calculatorUrl }: { calculatorUrl: string }) {
   return (
     <section className="mb-8">
       {/* Decorated section header */}
@@ -309,7 +333,7 @@ function BottomCTAs() {
 
       <div className="space-y-4">
         <Link
-          href="/sponsor/calculator"
+          href={calculatorUrl}
           className="block bg-gradient-to-r from-brand-gold-500 to-amber-500 rounded-2xl p-7 text-white hover:from-brand-gold-600 hover:to-amber-600 transition-all group shadow-lg hover:shadow-xl"
         >
           <div className="flex items-center gap-5">

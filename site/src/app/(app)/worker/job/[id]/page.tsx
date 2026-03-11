@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { InlineError } from '@/components/shared/InlineError'
 
 interface Checkpoint {
   name: string
@@ -50,6 +51,7 @@ export default function JobExecutionPage() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [gpsPath, setGpsPath] = useState<[number, number][]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -156,6 +158,7 @@ export default function JobExecutionPage() {
   }
 
   const startCamera = async () => {
+    setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -171,7 +174,7 @@ export default function JobExecutionPage() {
       setIsCapturing(true)
     } catch (error) {
       console.error('Failed to start camera:', error)
-      alert('Unable to access camera. Please grant camera permissions.')
+      setError('Unable to access camera. Please grant camera permissions.')
     }
   }
 
@@ -225,11 +228,12 @@ export default function JobExecutionPage() {
 
   const handleSubmit = async () => {
     if (photos.length !== 8) {
-      alert('Please complete all 8 photos before submitting')
+      setError('Please complete all 8 photos before submitting')
       return
     }
 
     setIsSubmitting(true)
+    setError(null)
 
     try {
       const res = await fetch('/api/jobs/submit', {
@@ -246,11 +250,11 @@ export default function JobExecutionPage() {
       if (res.ok) {
         router.push(`/worker/job/${jobId}/completed`)
       } else {
-        const error = await res.json()
-        alert(error.message)
+        const errData = await res.json()
+        setError(errData.message || 'Failed to submit job.')
       }
-    } catch (error) {
-      alert('Failed to submit job. Please try again.')
+    } catch (err) {
+      setError('Failed to submit job. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -335,6 +339,8 @@ export default function JobExecutionPage() {
           </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center p-8">
+            <InlineError message={error} className="mb-4 max-w-sm w-full" />
+
             {/* Checkpoint info */}
             {currentCheckpoint && photosTaken < 8 && (
               <div className="text-center max-w-sm">

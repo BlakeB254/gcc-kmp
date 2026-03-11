@@ -211,7 +211,7 @@ function VerifyEmailContent() {
                     className="text-brand-gold-600 font-medium hover:underline"
                     onClick={() => {
                       // TODO: Implement resend verification email
-                      alert('Please check your spam folder or contact support.')
+                      setError('Please check your spam folder or contact support.')
                     }}
                   >
                     Resend
