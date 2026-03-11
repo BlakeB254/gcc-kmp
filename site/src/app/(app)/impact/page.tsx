@@ -180,8 +180,8 @@ export default function ImpactPage() {
           />
           <StatCard
             icon={DollarSign}
-            value={formatCurrency(stats?.workers.totalEarnings || 0)}
-            label="Paid to Workers"
+            value={formatCurrency(stats?.sponsors.totalContributed || 0)}
+            label="Total Raised"
             color="gold"
             isLoading={isLoading}
           />

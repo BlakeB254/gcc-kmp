@@ -16,11 +16,12 @@ export function FooterSection() {
     { href: '/sponsor/calculator', label: 'Custom Package' },
     { href: '/sponsor/enterprise', label: 'Enterprise' },
     { href: '/sponsor/login', label: 'Sponsor Login' },
-    { href: '/sponsor/wall', label: 'Sponsor Wall' },
+    { href: '/supporters', label: 'Our Supporters' },
   ]
 
   const aboutLinks = [
     { href: '/impact', label: 'Our Impact' },
+    { href: '/supporters', label: 'Our Supporters' },
     { href: '/bounties', label: 'Community Bounties' },
     { href: '/join', label: 'Join Movement' },
     { href: '/faq', label: 'FAQ' },

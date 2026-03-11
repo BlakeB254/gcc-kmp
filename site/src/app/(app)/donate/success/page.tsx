@@ -151,11 +151,11 @@ function SuccessContent() {
         {/* Action Buttons */}
         <div className="space-y-3">
           <Link
-            href="/donate/wall"
+            href="/supporters"
             className="btn-primary w-full flex items-center justify-center gap-2"
           >
             <Users className="w-4 h-4" />
-            View Support Wall
+            View Our Supporters
           </Link>
           <Link
             href="/"

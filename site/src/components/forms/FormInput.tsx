@@ -68,7 +68,7 @@ export function FormInput({
           maxLength={maxLength}
           autoComplete={autoComplete}
           className={cn(
-            'w-full rounded-xl border-2 px-4 py-3.5 text-base transition-all duration-200',
+            'w-full rounded-xl border-2 bg-white text-neutral-900 px-4 py-3.5 text-base transition-all duration-200',
             'placeholder:text-neutral-400',
             'focus:outline-none',
             disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',

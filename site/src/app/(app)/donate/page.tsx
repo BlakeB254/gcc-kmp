@@ -927,7 +927,7 @@ function DonateContent() {
         {/* Links */}
         <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm">
           <Link
-            href="/donate/wall"
+            href="/supporters"
             className="text-neutral-600 hover:text-brand-green-600 flex items-center gap-1"
           >
             <Users className="w-4 h-4" />

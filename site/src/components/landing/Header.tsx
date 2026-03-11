@@ -41,6 +41,7 @@ export function Header() {
     { label: 'Sponsors', href: '/sponsor/benefits' },
     { label: 'Bounties', href: '/bounties' },
     { label: 'Impact', href: '/impact' },
+    { label: 'Supporters', href: '/supporters' },
     { label: 'FAQ', href: '/faq' },
   ]
 
