@@ -123,11 +123,12 @@ object MapStyles {
     const val LAYER_SPOT_HEATMAP_MED = "spot-heatmap-med"
     const val LAYER_SPOT_HEATMAP_HIGH = "spot-heatmap-high"
 
-    // Heatmap radii — broader like the website (10→18→25 at zoom 11→13→14)
-    const val SPOT_HEATMAP_RADIUS_FAR = 10.0f     // overview zoom
-    const val SPOT_HEATMAP_RADIUS_MID = 18.0f     // neighborhood zoom
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 25.0f   // before dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.5f
+    // Heatmap radii — large enough for circles to overlap and blend into a cloud
+    // Website uses kernel-density heatmap; we simulate with big overlapping circles.
+    const val SPOT_HEATMAP_RADIUS_FAR = 25.0f     // overview zoom — big blobs merge
+    const val SPOT_HEATMAP_RADIUS_MID = 40.0f     // neighborhood zoom — smooth cloud
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 50.0f   // fading out as dots take over
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.45f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f   // fully transparent at close zoom
 
     // Heatmap color ramp — matches website design-tokens (low density → high density)
@@ -137,10 +138,10 @@ object MapStyles {
     val SPOT_HEATMAP_PEAK = Color(0xFF991B1B)       // deep red (peak density)
     val SPOT_HEATMAP_COLOR = SPOT_HEATMAP_HIGH      // legacy alias
 
-    // Zoom thresholds — matches website SPOT_ZOOM values
+    // Zoom thresholds — dots hidden at overview, only appear after heatmap fades
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
-    const val SPOT_HEATMAP_MAX_ZOOM = 14.0   // heatmap fades above this zoom (was 13)
-    const val SPOT_DOTS_MIN_ZOOM = 13.0      // individual dots appear (was 12)
+    const val SPOT_HEATMAP_MAX_ZOOM = 14.5   // heatmap fades above this zoom
+    const val SPOT_DOTS_MIN_ZOOM = 14.0      // dots ONLY after heatmap mostly gone
 }
 
 /** Convert meters to pixels at a given latitude and zoom level (Mercator projection). */

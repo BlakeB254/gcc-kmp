@@ -589,9 +589,8 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Spot affected-area circles — visible at close zoom (14+), size scales by radiusMeters
-            // Shows the actual area affected by each spot report
-            // Uses zoom-dependent sizing: at zoom 14 starts small, grows to represent real meters at 16+
+            // Spot affected-area circles — visible at close zoom (14.5+), size scales by radiusMeters
+            // Only shows after heatmap cloud has faded
             CircleLayer(
                 id = "spot-affected-area",
                 source = spotSrc,
@@ -599,8 +598,8 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    14 to const(4.dp),
+                    14 to const(0.dp),
+                    15 to const(6.dp),
                     16 to const(20.dp),
                     18 to const(50.dp),
                 ),
@@ -608,23 +607,24 @@ actual fun GccMap(
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
+                    14 to const(0.dp),
                     15 to const(1.dp),
                     17 to const(1.5.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0f),
-                    14 to const(0.6f),
+                    14 to const(0f),
+                    15 to const(0.6f),
                 ),
             )
 
-            // ── Heatmap — multi-layer circles simulating website's density color ramp ──
-            // 3 stacked circle layers: outer (light pink), mid (medium pink), inner (red)
-            // Overlapping circles blend to create deeper colors in dense clusters.
+            // ── Heatmap — large overlapping circles that merge into a smooth cloud ──
+            // Website uses a real MapLibre heatmap layer; we simulate it with 3 stacked
+            // CircleLayers at large radii so nearby spots' circles overlap and blend
+            // into a continuous heat cloud. NO individual dots visible at this zoom.
 
-            // Layer 1: Outer glow — light pink, largest radius (sparse area fill)
+            // Layer 1: Outer wash — light pink, very large radius (blobs merge)
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
@@ -632,21 +632,24 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const(MapStyles.SPOT_HEATMAP_RADIUS_FAR.dp),
-                    13 to const(MapStyles.SPOT_HEATMAP_RADIUS_MID.dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_CLOSE.dp),
+                    8 to const(8.dp),
+                    11 to const(25.dp),
+                    13 to const(40.dp),
+                    14 to const(50.dp),
                     15 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const(0.50f),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.30f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.3f),
+                    11 to const(0.45f),
+                    13 to const(0.35f),
+                    14 to const(0.15f),
+                    15 to const(0f),
                 ),
             )
 
-            // Layer 2: Mid ring — medium pink, 70% of outer radius
+            // Layer 2: Mid cloud — medium pink, 65% of outer radius
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP_MED,
                 source = spotSrc,
@@ -654,21 +657,24 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const((MapStyles.SPOT_HEATMAP_RADIUS_FAR * 0.7f).dp),
-                    13 to const((MapStyles.SPOT_HEATMAP_RADIUS_MID * 0.7f).dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const((MapStyles.SPOT_HEATMAP_RADIUS_CLOSE * 0.7f).dp),
+                    8 to const(5.dp),
+                    11 to const(16.dp),
+                    13 to const(26.dp),
+                    14 to const(32.dp),
                     15 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const(0.45f),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.25f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.25f),
+                    11 to const(0.40f),
+                    13 to const(0.30f),
+                    14 to const(0.12f),
+                    15 to const(0f),
                 ),
             )
 
-            // Layer 3: Core — red, 40% of outer radius (dense cluster centers)
+            // Layer 3: Hot core — red, 35% of outer radius (cluster centers glow)
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP_HIGH,
                 source = spotSrc,
@@ -676,17 +682,20 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const((MapStyles.SPOT_HEATMAP_RADIUS_FAR * 0.4f).dp),
-                    13 to const((MapStyles.SPOT_HEATMAP_RADIUS_MID * 0.4f).dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const((MapStyles.SPOT_HEATMAP_RADIUS_CLOSE * 0.4f).dp),
+                    8 to const(3.dp),
+                    11 to const(10.dp),
+                    13 to const(16.dp),
+                    14 to const(20.dp),
                     15 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const(0.55f),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.35f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.2f),
+                    11 to const(0.50f),
+                    13 to const(0.40f),
+                    14 to const(0.15f),
+                    15 to const(0f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -701,8 +710,7 @@ actual fun GccMap(
             )
 
             // Spot tap target — near-invisible larger circle for easier tapping
-            // Note: fully transparent colors don't register taps in MapLibre,
-            // so we use a very low opacity instead. Sized larger (28dp) for overlap areas.
+            // Only appears at zoom 14+ when individual dots become visible
             CircleLayer(
                 id = "spot-tap-target",
                 source = spotSrc,
@@ -711,9 +719,10 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(12.dp),
-                    13 to const(24.dp),
-                    15 to const(28.dp),
+                    13 to const(0.dp),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(14.dp),
+                    15 to const(24.dp),
+                    16 to const(28.dp),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -727,7 +736,7 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Individual spot dots — appear at zoom 13+
+            // Individual spot dots — appear at zoom 14+ (after heatmap cloud fades)
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -735,8 +744,9 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(3.dp),
-                    14 to const(5.dp),
+                    13 to const(0.dp),
+                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(4.dp),
+                    15 to const(6.dp),
                     16 to const(7.dp),
                 ),
                 strokeColor = const(Color.White),
