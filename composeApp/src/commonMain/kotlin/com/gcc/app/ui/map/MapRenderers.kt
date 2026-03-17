@@ -530,25 +530,3 @@ internal fun DrawScope.drawContextPin(position: Offset) {
     )
 }
 
-/** Draw a gold star at the given canvas position for checkpoints with photos. */
-internal fun DrawScope.drawPhotoStar(cx: Float, cy: Float, radius: Float = 11f) {
-    drawCircle(color = Color(0xFFFFD700), radius = radius, center = Offset(cx, cy))
-    drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy), style = Stroke(width = 2f))
-    drawCircle(color = Color(0xFFFFD700), radius = radius * 0.5f, center = Offset(cx, cy))
-}
-
-/** Draw a semi-transparent route corridor polygon. */
-internal fun DrawScope.drawRoutePolygon(
-    polygon: List<com.gcc.shared.model.Coordinates>,
-    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
-) {
-    if (polygon.size < 3) return
-    val path = Path()
-    polygon.forEachIndexed { i, coord ->
-        val px = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-        if (i == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
-    }
-    path.close()
-    drawPath(path, color = MapRouteGreen.copy(alpha = 0.15f))
-    drawPath(path, color = MapRouteGreen.copy(alpha = 0.4f), style = Stroke(width = 2f))
-}
