@@ -20,6 +20,8 @@ data class ProfileUiState(
     val isLoading: Boolean = true,
     val newlyUnlockedBadge: Badge? = null,
     val error: String? = null,
+    val handleUpdateLoading: Boolean = false,
+    val handleUpdateError: String? = null,
 )
 
 class ProfileViewModel(
@@ -62,6 +64,32 @@ class ProfileViewModel(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Failed to load profile",
+                )
+            }
+        }
+    }
+
+    fun updateDisplayHandle(handle: String) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(handleUpdateLoading = true, handleUpdateError = null)
+            try {
+                val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/workers/me/handle") {
+                    contentType(ContentType.Application.Json)
+                    setBody(mapOf("handle" to handle))
+                }
+                if (response.status.value in 200..299) {
+                    loadProfile()
+                } else {
+                    val errorBody = try { response.body<Map<String, String>>() } catch (_: Exception) { emptyMap() }
+                    _uiState.value = _uiState.value.copy(
+                        handleUpdateLoading = false,
+                        handleUpdateError = errorBody["error"] ?: "Failed to update handle"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    handleUpdateLoading = false,
+                    handleUpdateError = e.message ?: "Failed to update handle"
                 )
             }
         }
