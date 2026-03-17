@@ -146,6 +146,11 @@ export const workers = pgTable('workers', {
   signupRankingsNeighborhood: numeric('signup_rankings_neighborhood'), // Chicago community area rank
   earlyAdopterTier: earlyAdopterTierEnum('early_adopter_tier').default('standard'),
   referralCode: varchar('referral_code').unique(),
+
+  // Viral card
+  displayHandle: varchar('display_handle').unique(),
+  memberNumber: integer('member_number'),
+
   referredBy: varchar('referred_by'),
   convertedFromWaitlistId: integer('converted_from_waitlist_id'),
 
