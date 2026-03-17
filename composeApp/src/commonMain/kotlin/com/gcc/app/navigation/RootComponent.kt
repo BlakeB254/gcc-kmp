@@ -89,6 +89,10 @@ class RootComponent(
         navigation.push(Screen.Achievements)
     }
 
+    fun navigateToUserCard() {
+        navigation.push(Screen.UserCard)
+    }
+
     fun navigateToMap() {
         navigation.push(Screen.MapFullScreen)
     }
