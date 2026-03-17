@@ -5,6 +5,14 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class SignupRankings(
+    val global: Int = 0,
+    val state: Int = 0,
+    val city: Int = 0,
+    val neighborhood: Int = 0,
+)
+
+@Serializable
 data class Worker(
     val id: Int,
     val name: String,
@@ -18,6 +26,9 @@ data class Worker(
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
     val role: String = "worker",
     val referralCode: String? = null,
+    val displayHandle: String? = null,
+    val memberNumber: Int = 0,
+    val signupRankings: SignupRankings = SignupRankings(),
     val notifications: WorkerNotifications = WorkerNotifications(),
     val createdAt: Instant,
     val updatedAt: Instant
