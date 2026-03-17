@@ -76,6 +76,7 @@ fun App(component: RootComponent) {
                     onMapClick = component::navigateToMap,
                     onSettingsClick = component::navigateToSettings,
                     onAdminClick = component::navigateToAdminPanel,
+                    onUserCardClick = component::navigateToUserCard,
                 )
                 is Screen.Achievements -> AchievementsScreen(
                     onBack = component::navigateBack,
