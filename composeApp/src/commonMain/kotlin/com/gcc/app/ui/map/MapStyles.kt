@@ -118,21 +118,21 @@ object MapStyles {
     const val LAYER_SPOT_MARKERS = "spot-markers"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
 
-    // Spot heatmap layer (visible at overview zoom, fades at close zoom)
+    // Spot heatmap layer (visible only when zoomed into service area)
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val SPOT_HEATMAP_RADIUS_FAR = 6.0f     // small blip at city overview
+    const val SPOT_HEATMAP_RADIUS_FAR = 5.0f     // tight at service-area zoom
     const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
     const val SPOT_HEATMAP_RADIUS_CLOSE = 4.0f   // shrinks before individual dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.35f
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.4f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
     // Heatmap color: light pink (few spots) → deep red (dense clusters)
     val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
 
-    // Zoom thresholds for heatmap vs. individual dots
-    const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
-    const val SPOT_HEATMAP_MAX_ZOOM = 13.0   // heatmap fades above this zoom
-    const val SPOT_DOTS_MIN_ZOOM = 12.0      // individual dots appear from this zoom
+    // Zoom thresholds — heatmap only shows when zoomed into the data area
+    const val SPOT_HEATMAP_MIN_ZOOM = 12.0   // heatmap starts at service-area zoom (not city-wide)
+    const val SPOT_HEATMAP_MAX_ZOOM = 14.5   // heatmap fades above this zoom
+    const val SPOT_DOTS_MIN_ZOOM = 13.0      // individual dots appear from this zoom
 }
 
 
