@@ -1,7 +1,11 @@
 package com.gcc.app.platform
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -37,6 +41,23 @@ actual class ShareManager actual constructor() {
         ctx.startActivity(
             Intent.createChooser(intent, "Share via").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
+    }
+
+    actual fun saveImageToGallery(imageBytes: ByteArray, filename: String): Boolean {
+        val ctx = appContext ?: return false
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return false
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$filename.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/GCC")
+        }
+        val uri = ctx.contentResolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
+        ) ?: return false
+        ctx.contentResolver.openOutputStream(uri)?.use {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        } ?: return false
+        return true
     }
 
     companion object {

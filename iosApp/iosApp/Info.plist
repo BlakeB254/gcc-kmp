@@ -49,6 +49,8 @@
     <string>GCC needs camera access to photograph before and after cleaning evidence at each checkpoint</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>GCC needs photo library access to select existing photos as cleaning evidence</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Save your GCC profile card to Photos</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>location</string>

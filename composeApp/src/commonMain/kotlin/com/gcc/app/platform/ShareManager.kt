@@ -12,4 +12,5 @@ package com.gcc.app.platform
 expect class ShareManager() {
     fun shareText(text: String, subject: String = "")
     fun shareImage(imageBytes: ByteArray, text: String = "")
+    fun saveImageToGallery(imageBytes: ByteArray, filename: String = "gcc_card"): Boolean
 }
