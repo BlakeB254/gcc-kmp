@@ -2,9 +2,6 @@ package com.gcc.app.ui.map
 
 import androidx.compose.ui.graphics.Color
 import com.gcc.app.ui.theme.*
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.pow
 
 /** Style constants for the map layers */
 object MapStyles {
@@ -118,31 +115,26 @@ object MapStyles {
     const val LAYER_SPOT_MARKERS = "spot-markers"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
 
-    // Spot heatmap layers (stacked circles to simulate density color ramp — matches website)
+    // Spot heatmap layer (visible at overview zoom, fades at close zoom)
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val LAYER_SPOT_HEATMAP_MED = "spot-heatmap-med"
-    const val LAYER_SPOT_HEATMAP_HIGH = "spot-heatmap-high"
+    const val SPOT_HEATMAP_RADIUS_FAR = 6.0f     // small blip at city overview
+    const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 4.0f   // shrinks before individual dots take over
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.35f
+    const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
-    // Heatmap radii — large enough for circles to overlap and blend into a cloud
-    // Website uses kernel-density heatmap; we simulate with big overlapping circles.
-    const val SPOT_HEATMAP_RADIUS_FAR = 25.0f     // overview zoom — big blobs merge
-    const val SPOT_HEATMAP_RADIUS_MID = 40.0f     // neighborhood zoom — smooth cloud
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 50.0f   // fading out as dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.45f
-    const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f   // fully transparent at close zoom
+    // Heatmap color: light pink (few spots) → deep red (dense clusters)
+    val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
 
-    // Heatmap color ramp — matches website design-tokens (low density → high density)
-    val SPOT_HEATMAP_LOW = Color(0xFFFEE2E2)       // light pink (outer, sparse)
-    val SPOT_HEATMAP_MED = Color(0xFFFCA5A5)        // medium pink (mid-range)
-    val SPOT_HEATMAP_HIGH = Color(0xFFEF4444)       // red (dense)
-    val SPOT_HEATMAP_PEAK = Color(0xFF991B1B)       // deep red (peak density)
-    val SPOT_HEATMAP_COLOR = SPOT_HEATMAP_HIGH      // legacy alias
-
-    // Zoom thresholds — dots hidden at overview, only appear after heatmap fades
+    // Zoom thresholds for heatmap vs. individual dots
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0    // heatmap visible from this zoom
-    const val SPOT_HEATMAP_MAX_ZOOM = 14.5   // heatmap fades above this zoom
-    const val SPOT_DOTS_MIN_ZOOM = 14.0      // dots ONLY after heatmap mostly gone
+    const val SPOT_HEATMAP_MAX_ZOOM = 13.0   // heatmap fades above this zoom
+    const val SPOT_DOTS_MIN_ZOOM = 12.0      // individual dots appear from this zoom
 }
+
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.pow
 
 /** Convert meters to pixels at a given latitude and zoom level (Mercator projection). */
 fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {

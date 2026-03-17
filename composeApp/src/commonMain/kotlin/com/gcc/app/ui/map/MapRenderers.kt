@@ -421,8 +421,7 @@ internal fun DrawScope.drawCityBoundary(
     )
 }
 
-/** Draw spot report markers: multi-layer heatmap at far zoom, orange dots at close zoom.
- *  Matches the website's density color ramp: light pink → medium pink → red → deep red. */
+/** Draw spot report markers: orange heatmap wash at far zoom, orange dots at close zoom. */
 internal fun DrawScope.drawSpotMarkers(
     spots: List<com.gcc.shared.model.CommunityReport>,
     centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
@@ -438,31 +437,15 @@ internal fun DrawScope.drawSpotMarkers(
         if (pos.x < -50f || pos.x > w + 50f || pos.y < -50f || pos.y > h + 50f) continue
 
         if (effectiveZoom < MapStyles.SPOT_HEATMAP_MAX_ZOOM) {
-            // Heatmap zone: stacked circles (outer=light pink, mid=med pink, inner=red)
+            // Far zoom: large translucent orange circles (heatmap wash)
             val t = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
                 (MapStyles.SPOT_HEATMAP_MAX_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
-            val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
-                (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
-            val baseOpacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR +
-                (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
-
-            if (baseOpacity > 0f) {
-                // Outer glow — light pink
+            val radius = MapStyles.SPOT_HEATMAP_RADIUS_FAR + (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
+            val opacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR + (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
+            if (opacity > 0f) {
                 drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_LOW.copy(alpha = baseOpacity),
-                    radius = baseRadius,
-                    center = pos,
-                )
-                // Mid ring — medium pink, 70% radius
-                drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_MED.copy(alpha = baseOpacity * 0.9f),
-                    radius = baseRadius * 0.7f,
-                    center = pos,
-                )
-                // Core — red, 40% radius
-                drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_HIGH.copy(alpha = baseOpacity * 1.1f),
-                    radius = baseRadius * 0.4f,
+                    color = MapStyles.SPOT_MARKER_COLOR.copy(alpha = opacity),
+                    radius = radius,
                     center = pos,
                 )
             }
@@ -545,4 +528,27 @@ internal fun DrawScope.drawContextPin(position: Offset) {
         radius = 3f,
         center = Offset(position.x, position.y - pinHeight * 0.78f),
     )
+}
+
+/** Draw a gold star at the given canvas position for checkpoints with photos. */
+internal fun DrawScope.drawPhotoStar(cx: Float, cy: Float, radius: Float = 11f) {
+    drawCircle(color = Color(0xFFFFD700), radius = radius, center = Offset(cx, cy))
+    drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy), style = Stroke(width = 2f))
+    drawCircle(color = Color(0xFFFFD700), radius = radius * 0.5f, center = Offset(cx, cy))
+}
+
+/** Draw a semi-transparent route corridor polygon. */
+internal fun DrawScope.drawRoutePolygon(
+    polygon: List<com.gcc.shared.model.Coordinates>,
+    centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
+) {
+    if (polygon.size < 3) return
+    val path = Path()
+    polygon.forEachIndexed { i, coord ->
+        val px = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
+        if (i == 0) path.moveTo(px.x, px.y) else path.lineTo(px.x, px.y)
+    }
+    path.close()
+    drawPath(path, color = MapRouteGreen.copy(alpha = 0.15f))
+    drawPath(path, color = MapRouteGreen.copy(alpha = 0.4f), style = Stroke(width = 2f))
 }

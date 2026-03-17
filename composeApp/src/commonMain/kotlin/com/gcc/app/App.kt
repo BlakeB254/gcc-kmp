@@ -59,7 +59,7 @@ fun App(component: RootComponent) {
                     val dashState by dashVm.uiState.collectAsState()
                     RouteDetailScreen(
                         routeId = screen.routeId,
-                        allRouteIds = dashState.routes.map { it.id },
+                        allRouteIds = dashState.routes.sortedBy { it.code }.map { it.id },
                         onBack = component::navigateBack,
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
                         onNavigateToRoute = component::replaceRouteDetail,
