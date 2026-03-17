@@ -87,15 +87,13 @@ fun ProfileScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            val profileTab = if (isAdmin) 3 else 2
             GccBottomNavBar(
-                selectedTab = profileTab,
+                selectedTab = 2,
                 isAdmin = isAdmin,
                 onTabSelected = { tab ->
                     when (tab) {
                         0 -> onBack()
                         1 -> onMapClick()
-                        2 -> if (isAdmin) onAdminClick()
                     }
                 },
             )

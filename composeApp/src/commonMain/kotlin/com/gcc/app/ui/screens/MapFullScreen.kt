@@ -181,7 +181,6 @@ fun MapFullScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            val profileTab = if (isAdmin) 3 else 2
             GccBottomNavBar(
                 selectedTab = 1,
                 isAdmin = isAdmin,
@@ -190,7 +189,6 @@ fun MapFullScreen(
                         0 -> onBack()
                         1 -> { /* already on map */ }
                         2 -> if (isAdmin) onAdminClick() else onProfileClick()
-                        profileTab -> if (isAdmin) onProfileClick() else Unit
                     }
                 },
             )

@@ -18,11 +18,7 @@ fun GccBottomNavBar(
     isAdmin: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    // Tab indices:
-    // 0 = Dashboard, 1 = Map, 2 = Admin (only when isAdmin), last = Profile
-    val profileTab = if (isAdmin) 3 else 2
-    val adminTab = 2 // only used when isAdmin is true
-
+    // Always 3 tabs: Dashboard (0), Map (1), Admin OR Profile (2)
     Column(modifier = modifier) {
         Box(
             modifier = Modifier
@@ -58,8 +54,8 @@ fun GccBottomNavBar(
             )
             if (isAdmin) {
                 NavigationBarItem(
-                    selected = selectedTab == adminTab,
-                    onClick = { onTabSelected(adminTab) },
+                    selected = selectedTab == 2,
+                    onClick = { onTabSelected(2) },
                     icon = { Text("\uD83D\uDEE1\uFE0F") },
                     label = { Text("Admin") },
                     colors = NavigationBarItemDefaults.colors(
@@ -68,18 +64,19 @@ fun GccBottomNavBar(
                         indicatorColor = GccGold.copy(alpha = 0.12f),
                     ),
                 )
+            } else {
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { onTabSelected(2) },
+                    icon = { Text("\uD83D\uDC64") },
+                    label = { Text("Profile") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = GccGreen,
+                        selectedTextColor = GccGreen,
+                        indicatorColor = GccGreen.copy(alpha = 0.12f),
+                    ),
+                )
             }
-            NavigationBarItem(
-                selected = selectedTab == profileTab,
-                onClick = { onTabSelected(profileTab) },
-                icon = { Text("\uD83D\uDC64") },
-                label = { Text("Profile") },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = GccGreen,
-                    selectedTextColor = GccGreen,
-                    indicatorColor = GccGreen.copy(alpha = 0.12f),
-                ),
-            )
         }
     }
 }
