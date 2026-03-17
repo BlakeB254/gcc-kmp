@@ -71,6 +71,7 @@ actual fun GccMap(
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
     checkpointPhotos: List<Pair<Coordinates, String>>,
+    imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -437,6 +438,54 @@ actual fun GccMap(
                     17 to const(9.dp),
                 ),
                 strokeColor = const(Color.White),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(0.5.dp),
+                    17 to const(1.5.dp),
+                ),
+            )
+
+            // ── Image location star markers: amber dots for display image locations ──
+            val imageStarJson = remember(imageStars) {
+                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                else {
+                    val features = imageStars.joinToString(",") { coord ->
+                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                    }
+                    """{"type":"FeatureCollection","features":[$features]}"""
+                }
+            }
+            val imageStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(imageStarJson))
+
+            // White outer ring
+            CircleLayer(
+                id = "image-star-outer",
+                source = imageStarSrc,
+                color = const(Color.White),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(7.dp),
+                    17 to const(14.dp),
+                ),
+            )
+
+            // Amber fill
+            CircleLayer(
+                id = "image-star-inner",
+                source = imageStarSrc,
+                color = const(Color(0xFFFFB300)),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(5.dp),
+                    17 to const(12.dp),
+                ),
+                strokeColor = const(Color(0xFFF57F17)),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),

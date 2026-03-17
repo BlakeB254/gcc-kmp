@@ -268,6 +268,12 @@ class GccApiClient(
     suspend fun updateRouteImage(routeId: Int, imageUrl: String?): Route =
         putJson("/api/admin/routes/$routeId", mapOf("imageUrl" to imageUrl))
 
+    suspend fun updateRouteImageLocation(routeId: Int, lat: Double?, lng: Double?): Route =
+        putJson("/api/admin/routes/$routeId/image-location", mapOf(
+            "imageLocationLat" to lat,
+            "imageLocationLng" to lng,
+        ))
+
     suspend fun updateRouteNameDesc(routeId: Int, displayName: String, description: String?): Route =
         putJson("/api/admin/routes/$routeId", buildMap {
             put("displayName", displayName)

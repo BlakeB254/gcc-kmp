@@ -54,6 +54,8 @@ fun Route.adminRouteRoutes() {
                     it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
                     it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
                     it[imageUrl] = request.imageUrl
+                    it[imageLocationLat] = request.imageLocationLat
+                    it[imageLocationLng] = request.imageLocationLng
                     it[createdAt] = now
                     it[updatedAt] = now
                 }[Routes.id]
@@ -94,6 +96,32 @@ fun Route.adminRouteRoutes() {
                     it[estimatedMinutes] = request.estimatedDurationMinutes?.toString()
                     it[payoutAmount] = request.payoutAmount?.toString() ?: "10000"
                     it[imageUrl] = request.imageUrl
+                    it[imageLocationLat] = request.imageLocationLat
+                    it[imageLocationLng] = request.imageLocationLng
+                    it[updatedAt] = now
+                }
+                Routes.selectAll().where { Routes.id eq id }
+                    .firstOrNull()?.toRoute()
+            }
+            if (updated != null) {
+                call.respond(HttpStatusCode.OK, ApiResponse(data = updated))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Route not found", 404))
+            }
+        }
+
+        put("/{id}/image-location") {
+            call.requireAdmin()
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Route ID required")
+            val body = call.receive<Map<String, Double?>>()
+            val lat = body["imageLocationLat"]
+            val lng = body["imageLocationLng"]
+            val now = Clock.System.now()
+            val updated = dbQuery {
+                Routes.update({ Routes.id eq id }) {
+                    it[imageLocationLat] = lat
+                    it[imageLocationLng] = lng
                     it[updatedAt] = now
                 }
                 Routes.selectAll().where { Routes.id eq id }

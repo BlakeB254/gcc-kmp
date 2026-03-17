@@ -42,6 +42,8 @@ data class AdminRouteRequest(
     val payoutAmount: Int? = null,
     val checkpoints: List<AdminCheckpointRequest> = emptyList(),
     val imageUrl: String? = null,
+    val imageLocationLat: Double? = null,
+    val imageLocationLng: Double? = null,
     val status: String? = null,
     val publishAt: String? = null,
     val unpublishAt: String? = null,
@@ -70,6 +72,8 @@ data class AdminBlockRequest(
     val fundingGoal: Int? = null,
     val sponsorId: Int? = null,
     val displayImage: String? = null,
+    val imageLocationLat: Double? = null,
+    val imageLocationLng: Double? = null,
 )
 
 @Serializable

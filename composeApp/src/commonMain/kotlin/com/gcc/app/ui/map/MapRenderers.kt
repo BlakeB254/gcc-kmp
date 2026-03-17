@@ -17,8 +17,10 @@ import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.BlockStatus
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * Shared map drawing functions used by all platform implementations
@@ -478,6 +480,29 @@ internal fun DrawScope.drawPhotoStar(cx: Float, cy: Float, radius: Float = 11f) 
     drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy), style = Stroke(width = 2f))
     // Inner gold dot
     drawCircle(color = Color(0xFFFFD700), radius = radius * 0.5f, center = Offset(cx, cy))
+}
+
+/** Draw a 5-pointed gold star at the given canvas position for display image locations. */
+internal fun DrawScope.drawImageLocationStar(cx: Float, cy: Float, outerRadius: Float = 14f) {
+    val innerRadius = outerRadius * 0.45f
+    val starColor = Color(0xFFFFB300) // Amber gold
+    val path = Path()
+    val pi = 3.14159265358979
+    for (i in 0 until 10) {
+        val r = if (i % 2 == 0) outerRadius else innerRadius
+        // Start from top (-PI/2 rotation)
+        val angle = (pi / 5.0) * i - pi / 2.0
+        val x = cx + (r * cos(angle)).toFloat()
+        val y = cy + (r * sin(angle)).toFloat()
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    path.close()
+    // White shadow/outline
+    drawPath(path, color = Color.White, style = Stroke(width = 3.5f))
+    // Fill with gold
+    drawPath(path, color = starColor)
+    // Darker stroke for definition
+    drawPath(path, color = Color(0xFFF57F17), style = Stroke(width = 1.2f))
 }
 
 /** Draw a semi-transparent route corridor polygon. */

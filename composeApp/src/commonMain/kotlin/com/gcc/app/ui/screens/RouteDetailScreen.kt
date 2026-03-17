@@ -191,6 +191,14 @@ fun RouteDetailScreen(
                 )
             },
     ) {
+        // Collect image location stars from route
+        val imageStars = remember(route) {
+            val lat = route.imageLocationLat
+            val lng = route.imageLocationLng
+            if (lat != null && lng != null) listOf(Coordinates(lng = lng, lat = lat))
+            else emptyList()
+        }
+
         // Full-screen map
         GccMap(
             modifier = Modifier.fillMaxSize(),
@@ -201,6 +209,7 @@ fun RouteDetailScreen(
             enableGestures = true,
             routeCoordinates = routePath,
             animateRoutes = true,
+            imageStars = imageStars,
         )
 
         // Top nav: back + prev/next route arrows

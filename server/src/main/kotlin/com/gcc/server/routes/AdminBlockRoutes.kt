@@ -45,6 +45,8 @@ fun Route.adminBlockRoutes() {
                     it[fundingGoal] = request.fundingGoal?.toString() ?: "100"
                     it[fundedById] = request.sponsorId
                     it[displayImage] = request.displayImage
+                    it[imageLocationLat] = request.imageLocationLat
+                    it[imageLocationLng] = request.imageLocationLng
                     it[status] = "available"
                     it[createdAt] = now
                     it[updatedAt] = now
@@ -68,6 +70,8 @@ fun Route.adminBlockRoutes() {
                     it[fundingGoal] = request.fundingGoal?.toString() ?: "100"
                     it[fundedById] = request.sponsorId
                     it[displayImage] = request.displayImage
+                    it[imageLocationLat] = request.imageLocationLat
+                    it[imageLocationLng] = request.imageLocationLng
                     it[updatedAt] = now
                 }
                 Blocks.selectAll().where { Blocks.id eq id }

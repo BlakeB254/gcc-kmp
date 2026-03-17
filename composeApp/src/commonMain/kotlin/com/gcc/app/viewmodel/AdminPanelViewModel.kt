@@ -155,6 +155,22 @@ class AdminPanelViewModel(
         }
     }
 
+    fun updateRouteImageLocation(routeId: Int, lat: Double?, lng: Double?) {
+        scope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(error = null)
+                val updated = apiClient.updateRouteImageLocation(routeId, lat, lng)
+                _uiState.value = _uiState.value.copy(
+                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Failed to update image location: ${e.message}",
+                )
+            }
+        }
+    }
+
     fun updateSpotStatus(spotId: Int, newStatus: String) {
         scope.launch {
             try {

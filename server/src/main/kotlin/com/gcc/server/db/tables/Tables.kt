@@ -266,6 +266,10 @@ object Blocks : Table("blocks") {
     // Display image URL (Vercel Blob)
     val displayImage = varchar("display_image", 2048).nullable()
 
+    // Image location (where the display photo was taken)
+    val imageLocationLat = double("image_location_lat").nullable()
+    val imageLocationLng = double("image_location_lng").nullable()
+
     // Funding (numeric stored as varchar)
     val fundingGoal = varchar("funding_goal", 50).default("100")
     val fundingCurrent = varchar("funding_current", 50).default("0")
@@ -318,6 +322,10 @@ object Routes : Table("routes") {
 
     // Cover image URL
     val imageUrl = varchar("image_url", 2048).nullable()
+
+    // Image location (where the display photo was taken)
+    val imageLocationLat = double("image_location_lat").nullable()
+    val imageLocationLng = double("image_location_lng").nullable()
 
     // Timestamps
     val createdAt = timestamp("created_at")

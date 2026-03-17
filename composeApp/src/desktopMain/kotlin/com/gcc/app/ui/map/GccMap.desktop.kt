@@ -65,6 +65,7 @@ actual fun GccMap(
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
     checkpointPhotos: List<Pair<Coordinates, String>>,
+    imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -478,6 +479,14 @@ actual fun GccMap(
                 val pos = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
                 if (pos.x > -20f && pos.x < w + 20f && pos.y > -20f && pos.y < h + 20f) {
                     drawPhotoStar(pos.x, pos.y)
+                }
+            }
+
+            // --- Image location star markers (gold 5-pointed stars) ---
+            for (starCoord in imageStars) {
+                val pos = latLngToPixel(starCoord.lat, starCoord.lng, centerLat, centerLng, zoom, w, h)
+                if (pos.x > -20f && pos.x < w + 20f && pos.y > -20f && pos.y < h + 20f) {
+                    drawImageLocationStar(pos.x, pos.y)
                 }
             }
 

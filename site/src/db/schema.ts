@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  doublePrecision,
 } from 'drizzle-orm/pg-core'
 
 // Enums (matching Payload's generated enums)
@@ -368,6 +369,10 @@ export const blocks = pgTable('blocks', {
 
   // Display image (Vercel Blob URL set via admin app)
   displayImage: varchar('display_image'),
+
+  // Image location (where the display photo was taken)
+  imageLocationLat: doublePrecision('image_location_lat'),
+  imageLocationLng: doublePrecision('image_location_lng'),
 
   // Block metadata
   streetName: varchar('street_name'),
@@ -1017,6 +1022,10 @@ export const routes = pgTable('routes', {
 
   // Display picture URL
   imageUrl: varchar('image_url'),
+
+  // Image location (where the display photo was taken)
+  imageLocationLat: doublePrecision('image_location_lat'),
+  imageLocationLng: doublePrecision('image_location_lng'),
 
   // Street description (e.g. "S Pulaski Rd between W Roosevelt Rd and W 16th St")
   description: varchar('description', { length: 500 }),

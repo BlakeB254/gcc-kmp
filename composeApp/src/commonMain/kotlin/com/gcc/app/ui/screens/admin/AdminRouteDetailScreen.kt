@@ -260,6 +260,75 @@ fun AdminRouteDetailScreen(
                 }
             }
 
+            // Image location (where the photo was taken)
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    "\u2B50 Photo Location",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Mark where this cover photo was taken. Shows as a gold star on the map.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (route.imageLocationLat != null && route.imageLocationLng != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFFB300).copy(alpha = 0.1f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("\u2B50", style = MaterialTheme.typography.titleMedium)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Photo taken at:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "%.6f, %.6f".format(route.imageLocationLat, route.imageLocationLng),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewModel.updateRouteImageLocation(routeId, null, null) },
+                            ) {
+                                Text("Clear", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val loc = currentLocation
+                        if (loc != null) {
+                            viewModel.updateRouteImageLocation(routeId, loc.lat, loc.lng)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300)),
+                    enabled = currentLocation != null,
+                ) {
+                    Text(
+                        if (currentLocation != null) "\uD83D\uDCCD Set to Current Location"
+                        else "\uD83D\uDCCD Waiting for GPS...",
+                        color = Color.White,
+                    )
+                }
+            }
+
             // Editable name + description
             item {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

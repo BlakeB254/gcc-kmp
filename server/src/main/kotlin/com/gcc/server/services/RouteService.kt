@@ -74,6 +74,8 @@ fun ResultRow.toRoute(): Route = Route(
     payoutAmount = this[Routes.payoutAmount]?.toIntOrNull(),
     checkpoints = emptyList(), // populated by service after batch-loading
     imageUrl = this[Routes.imageUrl],
+    imageLocationLat = this[Routes.imageLocationLat],
+    imageLocationLng = this[Routes.imageLocationLng],
     createdAt = this[Routes.createdAt],
     updatedAt = this[Routes.updatedAt]
 )

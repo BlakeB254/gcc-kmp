@@ -105,6 +105,15 @@ fun MapFullScreen(
         }
     }
 
+    // Collect image location stars from all routes
+    val imageStars: List<Coordinates> = remember(uiState.routes) {
+        uiState.routes.mapNotNull { route ->
+            val lat = route.imageLocationLat
+            val lng = route.imageLocationLng
+            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
+        }
+    }
+
     // Compute camera center from the service area bounds (North Lawndale)
     val serviceArea = remember {
         chicagoCommunityAreas.find { it.isServiceArea }
@@ -204,6 +213,7 @@ fun MapFullScreen(
             showControls = true,
             statusBarPadding = true,
             routeCoordinates = if (mapMode == MapMode.MY_AREA) routeCoordinates else emptyList(),
+            imageStars = if (mapMode == MapMode.MY_AREA) imageStars else emptyList(),
             onAreaTap = { /* tooltip handled internally by GccMap */ },
             onRouteTap = if (mapMode == MapMode.MY_AREA) { routeIndex ->
                 uiState.routes.getOrNull(routeIndex)?.let { route ->
