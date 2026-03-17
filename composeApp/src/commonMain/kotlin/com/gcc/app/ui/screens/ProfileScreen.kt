@@ -1,7 +1,6 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,10 +20,8 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.gamification.AchievementPopup
 import com.gcc.app.ui.gamification.AnimatedRating
 import com.gcc.app.ui.gamification.BadgeCard
-import com.gcc.app.ui.gamification.ProfileCard
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.padTwo
-import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ProfileViewModel
 import com.gcc.shared.auth.TokenManager
 import org.koin.compose.koinInject
@@ -36,17 +33,14 @@ fun ProfileScreen(
     onMapClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onAdminClick: () -> Unit = {},
+    onUserCardClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<ProfileViewModel>()
-    val shareManager = koinInject<ShareManager>()
     val tokenManager = koinInject<TokenManager>()
     val isAdmin = remember { tokenManager.isAdmin() }
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
-
-    // Share card overlay state
-    var showShareOverlay by remember { mutableStateOf(false) }
 
     // Achievement popup overlay
     uiState.newlyUnlockedBadge?.let { badge ->
@@ -88,46 +82,6 @@ fun ProfileScreen(
             }
         }
         return
-    }
-
-    // Share card fullscreen overlay
-    if (showShareOverlay) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.8f))
-                .clickable(onClick = { showShareOverlay = false }),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                ProfileCard(
-                    worker = worker,
-                    badges = uiState.badges,
-                    streakDays = uiState.streakDays,
-                    onShareClick = {
-                        val badgeCount = uiState.badges.count { it.isUnlocked }
-                        shareManager.shareText(
-                            text = "I'm ${worker.name} on Global Community Cleaners! " +
-                                "${worker.stats.jobsCompleted} jobs completed, " +
-                                "$badgeCount badges earned. " +
-                                "Join the movement: https://globalcommunitycleaners.org" +
-                                (worker.referralCode?.let { "/refer/$it" } ?: ""),
-                            subject = "My GCC Profile",
-                        )
-                    },
-                )
-
-                Spacer(modifier = Modifier.height(21.dp)) // Fibonacci
-
-                GccButton(
-                    text = "Dismiss",
-                    onClick = { showShareOverlay = false },
-                    variant = GccButtonVariant.OUTLINED,
-                )
-            }
-        }
     }
 
     Scaffold(
@@ -291,10 +245,9 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(13.dp)) // Fibonacci
 
-            // Share Card button
             GccButton(
-                text = "Share Card",
-                onClick = { showShareOverlay = true },
+                text = "My Card",
+                onClick = onUserCardClick,
                 variant = GccButtonVariant.PRIMARY,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
