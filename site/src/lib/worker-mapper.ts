@@ -46,6 +46,14 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
     earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
     role: 'worker',
     referralCode: row.referralCode ?? null,
+    displayHandle: row.displayHandle ?? null,
+    memberNumber: Number(row.memberNumber ?? 0),
+    signupRankings: {
+      global: Number(row.signupRankingsGlobal ?? 0),
+      state: Number(row.signupRankingsState ?? 0),
+      city: Number(row.signupRankingsCity ?? 0),
+      neighborhood: Number(row.signupRankingsNeighborhood ?? 0),
+    },
     notifications: {
       pushEnabled: row.notificationsPushEnabled ?? false,
       smsEnabled: row.notificationsSmsEnabled ?? true,
