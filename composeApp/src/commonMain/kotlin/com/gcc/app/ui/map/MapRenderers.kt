@@ -472,14 +472,13 @@ internal fun DrawScope.drawSpotMarkers(
     }
 }
 
-/** Draw a gold star at the given canvas position for checkpoints with photos. */
+/** Draw a green circle node at the given canvas position for checkpoints with photos. */
 internal fun DrawScope.drawPhotoStar(cx: Float, cy: Float, radius: Float = 11f) {
-    // Outer gold circle
-    drawCircle(color = Color(0xFFFFD700), radius = radius, center = Offset(cx, cy))
     // White border
+    drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy))
+    // Green fill (matching waypoint nodes)
+    drawCircle(color = Color(0xFF22C55E), radius = radius - 2f, center = Offset(cx, cy))
     drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy), style = Stroke(width = 2f))
-    // Inner gold dot
-    drawCircle(color = Color(0xFFFFD700), radius = radius * 0.5f, center = Offset(cx, cy))
 }
 
 /** Draw a 5-pointed gold star at the given canvas position for display image locations. */

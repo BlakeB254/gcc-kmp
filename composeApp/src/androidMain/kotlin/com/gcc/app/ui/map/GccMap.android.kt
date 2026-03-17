@@ -425,11 +425,11 @@ actual fun GccMap(
                 ),
             )
 
-            // Gold circle fill
+            // Checkpoint photo nodes — green circles matching waypoints
             CircleLayer(
                 id = "photo-star-inner",
                 source = photoStarSrc,
-                color = const(Color(0xFFFFD700)),
+                color = const(Color(0xFF22C55E)),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),

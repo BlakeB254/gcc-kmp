@@ -465,7 +465,7 @@ actual fun GccMap(
             }
             val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
 
-            // Gold circle border (white ring)
+            // Checkpoint photo nodes — green circles matching waypoints
             CircleLayer(
                 id = "photo-star-outer",
                 source = photoStarSrc,
@@ -479,11 +479,10 @@ actual fun GccMap(
                 ),
             )
 
-            // Gold circle fill
             CircleLayer(
                 id = "photo-star-inner",
                 source = photoStarSrc,
-                color = const(Color(0xFFFFD700)),
+                color = const(Color(0xFF22C55E)),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
@@ -692,29 +691,30 @@ actual fun GccMap(
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                maxZoom = 14f,
-                // Intensity increases with zoom to keep heat visible
+                minZoom = 12f,
+                maxZoom = 15f,
+                // Intensity ramps up as you zoom into the area
                 intensity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    8 to const(0.3f),
+                    12 to const(0.4f),
                     14 to const(1f),
                 ),
-                // Radius grows with zoom
+                // Tight radius so heatmap stays within the actual data footprint
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    8 to const(8.dp),
-                    11 to const(15.dp),
-                    13 to const(20.dp),
+                    12 to const(6.dp),
+                    13 to const(10.dp),
+                    14 to const(18.dp),
                 ),
                 // Fade out as individual dots take over
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    8 to const(0.6f),
-                    13 to const(0.3f),
-                    14 to const(0f),
+                    12 to const(0.5f),
+                    14 to const(0.2f),
+                    15 to const(0f),
                 ),
             )
 
