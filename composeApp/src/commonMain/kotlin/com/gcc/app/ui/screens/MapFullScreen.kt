@@ -170,7 +170,6 @@ fun MapFullScreen(
     }
 
     // Worker info for the panel
-    val workerName = uiState.worker?.name?.split(" ")?.firstOrNull()
     val areaName = uiState.serviceAreaName
         ?: serviceArea?.displayName?.replace("\n", " ")
         ?: "North Lawndale"
@@ -262,39 +261,9 @@ fun MapFullScreen(
                     .padding(top = 8.dp),
             )
 
-            // "Currently Exploring" banner — when user is far from service area
-            if (isExploring && mapMode == MapMode.MY_AREA && selectedSpot == null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(top = 50.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xCC1E293B),
-                    shadowElevation = 4.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            "\uD83C\uDF0D",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            "Currently Exploring",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-
             // Community info panel (top-left, below mode toggle) — only in My Area
             if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
                 CommunityInfoPanel(
-                    workerName = workerName,
                     communityAreaName = areaName,
                     totalRoutes = totalRoutes,
                     registeredRoutes = 0,
@@ -303,7 +272,7 @@ fun MapFullScreen(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(top = 52.dp),
+                        .padding(top = 48.dp),
                 )
             }
 

@@ -15,18 +15,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.theme.*
-import com.gcc.shared.model.Worker
-
 /**
  * Community info overlay shown on the full-screen map.
  *
- * Displays worker welcome, community area identity, and key metrics
+ * Displays community area identity and key metrics
  * (total routes, registered routes, jobs completed). Designed to sit
  * in the top-start corner over the map.
  */
 @Composable
 fun CommunityInfoPanel(
-    workerName: String?,
     communityAreaName: String?,
     totalRoutes: Int,
     registeredRoutes: Int,
@@ -44,14 +41,6 @@ fun CommunityInfoPanel(
             modifier = Modifier.padding(13.dp).widthIn(max = 200.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Welcome greeting
-            val name = workerName ?: "Worker"
-            Text(
-                "Welcome, $name",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = GccOnSurface,
-            )
-
             // Community area badge
             val areaDisplay = communityAreaName ?: "North Lawndale"
             Row(
