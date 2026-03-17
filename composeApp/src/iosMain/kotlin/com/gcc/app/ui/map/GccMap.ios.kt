@@ -591,9 +591,8 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap-style circles — light pink at overview, red where spots cluster
-            // Each spot renders as a large semi-transparent circle; overlapping circles
-            // blend additively so dense clusters appear deeper red.
+            // Heatmap cloud — large overlapping circles at overview zoom that merge
+            // into a smooth density wash. Fades to zero before individual dots appear.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
@@ -601,29 +600,19 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_FAR.dp),
-                    10 to const(MapStyles.SPOT_HEATMAP_RADIUS_MID.dp),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_CLOSE.dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(0.dp),
+                    8 to const(15.dp),
+                    10 to const(25.dp),
+                    12 to const(20.dp),
+                    13 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(0.20f),
-                    10 to const(0.25f),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.10f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.15f),
+                    10 to const(0.20f),
+                    12 to const(0.10f),
+                    13 to const(0f),
                 ),
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
             )
 
             // Individual spot dots — small solid orange, no stroke
