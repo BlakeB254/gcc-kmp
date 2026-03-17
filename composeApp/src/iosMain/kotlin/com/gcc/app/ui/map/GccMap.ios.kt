@@ -30,6 +30,7 @@ import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.FillLayer
+import org.maplibre.compose.layers.HeatmapLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.GestureOptions
@@ -639,100 +640,48 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Spot affected-area circles — visible at close zoom (14+), size scales by radiusMeters
-            // Shows the actual area affected by each spot report
-            // Uses zoom-dependent sizing: at zoom 14 starts small, grows to represent real meters at 16+
-            CircleLayer(
-                id = "spot-affected-area",
-                source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.12f)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    14 to const(4.dp),
-                    16 to const(20.dp),
-                    18 to const(50.dp),
-                ),
-                strokeColor = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.4f)),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(1.dp),
-                    17 to const(1.5.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    14 to const(0.6f),
-                ),
-            )
-
-            // Heatmap-style circles — light pink at overview, red where spots cluster
-            // Each spot renders as a large semi-transparent circle; overlapping circles
-            // blend additively so dense clusters appear deeper red.
-            CircleLayer(
+            // Native MapLibre heatmap layer — smooth kernel density cloud
+            // Matches the website's heatmap implementation exactly
+            HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                color = const(MapStyles.SPOT_HEATMAP_COLOR),
+                maxZoom = 14f,
+                // Intensity increases with zoom to keep heat visible
+                intensity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    8 to const(0.3f),
+                    14 to const(1f),
+                ),
+                // Color ramp: transparent → pink → red → deep red
+                color = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(), // heatmap-color is auto-mapped to density by MapLibre
+                    0.0f to const(Color(0x00000000)),
+                    0.2f to const(Color(0xFFFEE2E2)),  // light pink
+                    0.4f to const(Color(0xFFFCA5A5)),  // medium pink
+                    0.7f to const(Color(0xFFEF4444)),  // red
+                    1.0f to const(Color(0xFF991B1B)),  // deep red
+                ),
+                // Radius grows with zoom
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_FAR.dp),
-                    10 to const(MapStyles.SPOT_HEATMAP_RADIUS_MID.dp),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_CLOSE.dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(0.dp),
+                    8 to const(8.dp),
+                    11 to const(15.dp),
+                    13 to const(20.dp),
                 ),
+                // Fade out as individual dots take over
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(0.20f),
-                    10 to const(0.25f),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.10f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.6f),
+                    13 to const(0.3f),
+                    14 to const(0f),
                 ),
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
             )
 
-            // Spot tap target — near-invisible larger circle for easier tapping
-            // Note: fully transparent colors don't register taps in MapLibre,
-            // so we use a very low opacity instead. Sized larger (28dp) for overlap areas.
-            CircleLayer(
-                id = "spot-tap-target",
-                source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
-                opacity = const(0.01f),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(12.dp),
-                    13 to const(24.dp),
-                    15 to const(28.dp),
-                ),
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
-
-            // Individual spot dots — appear at zoom 12+
+            // Individual spot dots — small solid orange, appear at zoom 13+
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -740,12 +689,17 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(7.dp),
-                    15 to const(10.dp),
+                    13 to const(0.dp),
+                    14 to const(3.dp),
+                    15 to const(5.dp),
+                    17 to const(7.dp),
                 ),
-                strokeColor = const(Color.White),
-                strokeWidth = const(1.5.dp),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    14 to const(1f),
+                ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
                     val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
