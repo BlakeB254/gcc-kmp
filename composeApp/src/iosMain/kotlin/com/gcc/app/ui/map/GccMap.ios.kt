@@ -653,16 +653,6 @@ actual fun GccMap(
                     8 to const(0.3f),
                     14 to const(1f),
                 ),
-                // Color ramp: transparent → pink → red → deep red
-                color = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(), // heatmap-color is auto-mapped to density by MapLibre
-                    0.0f to const(Color(0x00000000)),
-                    0.2f to const(Color(0xFFFEE2E2)),  // light pink
-                    0.4f to const(Color(0xFFFCA5A5)),  // medium pink
-                    0.7f to const(Color(0xFFEF4444)),  // red
-                    1.0f to const(Color(0xFF991B1B)),  // deep red
-                ),
                 // Radius grows with zoom
                 radius = interpolate(
                     type = exponential(1.5f),
