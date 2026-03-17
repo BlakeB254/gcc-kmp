@@ -19,8 +19,11 @@ import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.pickFromLibrary
 import com.gcc.app.ui.components.NetworkImage
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.RouteCheckpoint
 import kotlinx.coroutines.launch
@@ -260,71 +263,167 @@ fun AdminRouteDetailScreen(
                 }
             }
 
-            // Image location (where the photo was taken)
+            // Image location — slide star along the route line
             item {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text(
-                    "\u2B50 Photo Location",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Mark where this cover photo was taken. Shows as a gold star on the map.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (route.imageLocationLat != null && route.imageLocationLng != null) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFFFB300).copy(alpha = 0.1f),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "\u2B50 Photo Location",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (route.imageLocationLat != null) {
+                        TextButton(
+                            onClick = { viewModel.updateRouteImageLocation(routeId, null, null) },
                         ) {
-                            Text("\u2B50", style = MaterialTheme.typography.titleMedium)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Photo taken at:",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "%.6f, %.6f".format(route.imageLocationLat, route.imageLocationLng),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                            }
-                            TextButton(
-                                onClick = { viewModel.updateRouteImageLocation(routeId, null, null) },
-                            ) {
-                                Text("Clear", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-                            }
+                            Text("Clear", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        val loc = currentLocation
-                        if (loc != null) {
-                            viewModel.updateRouteImageLocation(routeId, loc.lat, loc.lng)
+                // Build route polyline points
+                val routePoints = remember(route) {
+                    route.geometry?.coordinates?.map { pt ->
+                        Coordinates(lng = pt[0], lat = pt[1])
+                    } ?: route.checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
+                }
+
+                if (routePoints.size >= 2) {
+                    // Compute cumulative distances along the polyline
+                    val segmentDistances = remember(routePoints) {
+                        routePoints.zipWithNext().map { (a, b) ->
+                            kotlin.math.sqrt(
+                                (b.lat - a.lat) * (b.lat - a.lat) + (b.lng - a.lng) * (b.lng - a.lng)
+                            )
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300)),
-                    enabled = currentLocation != null,
-                ) {
+                    }
+                    val totalDist = remember(segmentDistances) { segmentDistances.sum() }
+
+                    // Initialize slider position from saved location (or default to midpoint)
+                    val initialFraction = remember(route.imageLocationLat, route.imageLocationLng, routePoints, totalDist) {
+                        val lat = route.imageLocationLat
+                        val lng = route.imageLocationLng
+                        if (lat != null && lng != null && totalDist > 0) {
+                            // Find closest point on polyline
+                            var bestFraction = 0.5f
+                            var bestDistSq = Double.MAX_VALUE
+                            var cumDist = 0.0
+                            for (i in routePoints.indices) {
+                                val dSq = (routePoints[i].lat - lat) * (routePoints[i].lat - lat) +
+                                        (routePoints[i].lng - lng) * (routePoints[i].lng - lng)
+                                if (dSq < bestDistSq) {
+                                    bestDistSq = dSq
+                                    bestFraction = (cumDist / totalDist).toFloat()
+                                }
+                                if (i < segmentDistances.size) cumDist += segmentDistances[i]
+                            }
+                            bestFraction.coerceIn(0f, 1f)
+                        } else 0.5f
+                    }
+                    var sliderFraction by remember(route.id) { mutableStateOf(initialFraction) }
+
+                    // Interpolate position along polyline at the given fraction
+                    fun interpolateAlongPath(fraction: Float): Coordinates {
+                        if (routePoints.size < 2) return routePoints.first()
+                        val targetDist = fraction * totalDist
+                        var cumDist = 0.0
+                        for (i in segmentDistances.indices) {
+                            val nextCum = cumDist + segmentDistances[i]
+                            if (nextCum >= targetDist || i == segmentDistances.size - 1) {
+                                val segFraction = if (segmentDistances[i] > 0)
+                                    ((targetDist - cumDist) / segmentDistances[i]).coerceIn(0.0, 1.0)
+                                else 0.0
+                                val a = routePoints[i]
+                                val b = routePoints[i + 1]
+                                return Coordinates(
+                                    lng = a.lng + (b.lng - a.lng) * segFraction,
+                                    lat = a.lat + (b.lat - a.lat) * segFraction,
+                                )
+                            }
+                            cumDist = nextCum
+                        }
+                        return routePoints.last()
+                    }
+
+                    val starCoord = interpolateAlongPath(sliderFraction)
+
+                    // Map center from route
+                    val mapCenter = remember(routePoints) {
+                        Coordinates(
+                            lng = routePoints.sumOf { it.lng } / routePoints.size,
+                            lat = routePoints.sumOf { it.lat } / routePoints.size,
+                        )
+                    }
+
                     Text(
-                        if (currentLocation != null) "\uD83D\uDCCD Set to Current Location"
-                        else "\uD83D\uDCCD Waiting for GPS...",
-                        color = Color.White,
+                        "Slide to position the star along the route.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Mini map with star preview
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    ) {
+                        GccMap(
+                            modifier = Modifier.fillMaxSize(),
+                            centerLat = mapCenter.lat,
+                            centerLng = mapCenter.lng,
+                            zoom = 16.5,
+                            enableGestures = true,
+                            routeCoordinates = listOf(routePoints),
+                            imageStars = listOf(starCoord),
+                            showBuildings = false,
+                            showGridLines = false,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Slider to move star along route
+                    Slider(
+                        value = sliderFraction,
+                        onValueChange = { sliderFraction = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFFFFB300),
+                            activeTrackColor = Color(0xFFFFB300),
+                            inactiveTrackColor = Color(0xFFFFB300).copy(alpha = 0.3f),
+                        ),
+                    )
+
+                    // Save button
+                    val savedLat = route.imageLocationLat
+                    val savedLng = route.imageLocationLng
+                    val isDirty = savedLat == null || savedLng == null ||
+                            kotlin.math.abs(starCoord.lat - savedLat) > 0.000001 ||
+                            kotlin.math.abs(starCoord.lng - savedLng) > 0.000001
+                    Button(
+                        onClick = {
+                            viewModel.updateRouteImageLocation(routeId, starCoord.lat, starCoord.lng)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300)),
+                        enabled = isDirty,
+                    ) {
+                        Text(
+                            if (isDirty) "\u2B50 Save Photo Location" else "\u2B50 Saved",
+                            color = Color.White,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Route needs at least 2 points to place a photo location.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
