@@ -80,6 +80,8 @@ expect fun GccMap(
     zoomPresets: List<ZoomPreset> = overviewZoomPresets,
     cameraBounds: AreaBounds? = null,
     mapMode: MapMode = MapMode.MY_AREA,
+    checkpointPhotos: List<Pair<Coordinates, String>> = emptyList(),
+    routePolygons: List<Pair<Int, List<Coordinates>>> = emptyList(),
     content: @Composable BoxScope.() -> Unit = {},
 )
 

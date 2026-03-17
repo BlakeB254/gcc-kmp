@@ -64,6 +64,8 @@ actual fun GccMap(
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
+    checkpointPhotos: List<Pair<Coordinates, String>>,
+    routePolygons: List<Pair<Int, List<Coordinates>>>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -392,6 +394,11 @@ actual fun GccMap(
                 )
             }
 
+            // --- Draw route corridor polygons (buffered fill behind route lines) ---
+            for ((_, polygon) in routePolygons) {
+                drawRoutePolygon(polygon, centerLat, centerLng, zoom, w, h)
+            }
+
             // --- Draw route path lines (3-layer: glow → casing → core) ---
             for (routeCoords in routeCoordinates) {
                 if (routeCoords.size < 2) continue
@@ -464,6 +471,14 @@ actual fun GccMap(
             // --- Spot report markers (heatmap wash + dots) ---
             if (spots.isNotEmpty()) {
                 drawSpotMarkers(spots, centerLat, centerLng, zoom, w, h, effectiveZoom)
+            }
+
+            // --- Photo star markers (gold dots at checkpoints with photos) ---
+            for ((coord, _) in checkpointPhotos) {
+                val pos = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
+                if (pos.x > -20f && pos.x < w + 20f && pos.y > -20f && pos.y < h + 20f) {
+                    drawPhotoStar(pos.x, pos.y)
+                }
             }
 
             // --- Bounty zone pulse markers ---

@@ -70,6 +70,8 @@ actual fun GccMap(
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
+    checkpointPhotos: List<Pair<Coordinates, String>>,
+    routePolygons: List<Pair<Int, List<Coordinates>>>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -393,6 +395,54 @@ actual fun GccMap(
                     13 to const(0.dp),
                     15 to const(2.dp),
                     17 to const(5.5.dp),
+                ),
+            )
+
+            // ── Photo star markers: gold dots for checkpoints with photos ──
+            val photoStarJson = remember(checkpointPhotos) {
+                if (checkpointPhotos.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                else {
+                    val features = checkpointPhotos.joinToString(",") { (coord, url) ->
+                        """{"type":"Feature","properties":{"imageUrl":"${url.replace("\"", "\\\"")}"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                    }
+                    """{"type":"FeatureCollection","features":[$features]}"""
+                }
+            }
+            val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
+
+            // Gold circle border (white ring)
+            CircleLayer(
+                id = "photo-star-outer",
+                source = photoStarSrc,
+                color = const(Color.White),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(5.dp),
+                    17 to const(11.dp),
+                ),
+            )
+
+            // Gold circle fill
+            CircleLayer(
+                id = "photo-star-inner",
+                source = photoStarSrc,
+                color = const(Color(0xFFFFD700)),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(4.dp),
+                    17 to const(9.dp),
+                ),
+                strokeColor = const(Color.White),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    15 to const(0.5.dp),
+                    17 to const(1.5.dp),
                 ),
             )
 
