@@ -254,35 +254,40 @@ fun MapFullScreen(
             spots = visibleSpots,
             mapMode = mapMode,
         ) {
-            // Mode toggle (centered near top)
-            MapModeToggle(
-                currentMode = mapMode,
-                onModeChange = {
-                    mapMode = it
-                    // Clear overrides when switching modes
-                    overrideCenterLat = null
-                    overrideCenterLng = null
-                    overrideZoom = null
-                    selectedSpot = null
-                },
+            // Top bar: toggle + community info inline
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(top = 8.dp),
-            )
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Community info panel (left) — only in My Area
+                if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
+                    CommunityInfoPanel(
+                        communityAreaName = areaName,
+                        totalRoutes = totalRoutes,
+                        registeredRoutes = 0,
+                        jobsCompleted = jobsCompleted,
+                        totalEarnings = totalEarnings,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
 
-            // Community info panel (top-left, below mode toggle) — only in My Area
-            if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
-                CommunityInfoPanel(
-                    communityAreaName = areaName,
-                    totalRoutes = totalRoutes,
-                    registeredRoutes = 0,
-                    jobsCompleted = jobsCompleted,
-                    totalEarnings = totalEarnings,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(top = 48.dp),
+                // Mode toggle (right)
+                MapModeToggle(
+                    currentMode = mapMode,
+                    onModeChange = {
+                        mapMode = it
+                        overrideCenterLat = null
+                        overrideCenterLng = null
+                        overrideZoom = null
+                        selectedSpot = null
+                    },
                 )
             }
 

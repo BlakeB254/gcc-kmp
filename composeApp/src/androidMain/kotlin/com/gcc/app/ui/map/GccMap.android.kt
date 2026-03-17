@@ -467,8 +467,8 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(7.dp),
+                    12 to const(4.dp),
+                    14 to const(7.dp),
                     17 to const(14.dp),
                 ),
             )
@@ -481,16 +481,16 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(5.dp),
+                    12 to const(3.dp),
+                    14 to const(5.dp),
                     17 to const(12.dp),
                 ),
                 strokeColor = const(Color(0xFFF57F17)),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(0.5.dp),
+                    12 to const(0.5.dp),
+                    14 to const(1.dp),
                     17 to const(1.5.dp),
                 ),
             )
