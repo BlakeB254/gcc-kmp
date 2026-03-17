@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.ProfileViewModel
 import com.gcc.app.viewmodel.SettingsViewModel
 import org.koin.compose.koinInject
 
@@ -24,11 +25,14 @@ fun SettingsScreen(
     onSignOut: () -> Unit = {},
 ) {
     val viewModel = koinInject<SettingsViewModel>()
+    val profileVm = koinInject<ProfileViewModel>()
     val biometricAuth = koinInject<BiometricAuth>()
     val biometricAvailable = remember { biometricAuth.isBiometricAvailable() }
     val uiState by viewModel.uiState.collectAsState()
+    val profileState by profileVm.uiState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadSettings() }
+    LaunchedEffect(Unit) { profileVm.loadProfile() }
 
     LaunchedEffect(uiState.signedOut) {
         if (uiState.signedOut) onSignOut()
@@ -116,6 +120,41 @@ fun SettingsScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = GccGreen),
                     )
                 }
+            }
+
+            // Display Handle Section
+            HorizontalDivider(color = DividerColor)
+
+            Text(
+                "Display Handle",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            )
+            Text(
+                "Shown on your shareable card instead of your real name",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            var handleInput by remember(profileState.worker?.displayHandle) {
+                mutableStateOf(profileState.worker?.displayHandle ?: "")
+            }
+            GccTextField(
+                value = handleInput,
+                onValueChange = { newVal ->
+                    handleInput = newVal.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' }
+                },
+                label = "@handle",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (handleInput.isNotEmpty() && handleInput != (profileState.worker?.displayHandle ?: "")) {
+                GccButton(
+                    text = if (profileState.handleUpdateLoading) "Saving..." else "Save Handle",
+                    onClick = { profileVm.updateDisplayHandle(handleInput) },
+                    variant = GccButtonVariant.PRIMARY,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            profileState.handleUpdateError?.let { error ->
+                Text(error, color = GccError, style = MaterialTheme.typography.bodySmall)
             }
 
             // Biometric Lock Section (only when available)
