@@ -59,7 +59,12 @@ fun App(component: RootComponent) {
                     val dashState by dashVm.uiState.collectAsState()
                     RouteDetailScreen(
                         routeId = screen.routeId,
-                        allRouteIds = dashState.routes.sortedBy { it.code }.map { it.id },
+                        allRouteIds = dashState.routes.sortedBy { route ->
+                        // Sort geographically west-to-east (by average longitude)
+                        // so left arrow = westward, right arrow = eastward
+                        route.geometry?.coordinates?.map { it[0] }?.average()
+                            ?: route.checkpoints.map { it.coordinates.lng }.average()
+                    }.map { it.id },
                         onBack = component::navigateBack,
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
                         onNavigateToRoute = component::replaceRouteDetail,
