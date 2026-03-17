@@ -591,37 +591,6 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Spot affected-area circles — visible at close zoom (14+), size scales by radiusMeters
-            // Shows the actual area affected by each spot report
-            // Uses zoom-dependent sizing: at zoom 14 starts small, grows to represent real meters at 16+
-            CircleLayer(
-                id = "spot-affected-area",
-                source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.12f)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    14 to const(4.dp),
-                    16 to const(20.dp),
-                    18 to const(50.dp),
-                ),
-                strokeColor = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.4f)),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(1.dp),
-                    17 to const(1.5.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    14 to const(0.6f),
-                ),
-            )
-
             // Heatmap-style circles — light pink at overview, red where spots cluster
             // Each spot renders as a large semi-transparent circle; overlapping circles
             // blend additively so dense clusters appear deeper red.
@@ -657,34 +626,7 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Spot tap target — near-invisible larger circle for easier tapping
-            // Note: fully transparent colors don't register taps in MapLibre,
-            // so we use a very low opacity instead. Sized larger (28dp) for overlap areas.
-            CircleLayer(
-                id = "spot-tap-target",
-                source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
-                opacity = const(0.01f),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(12.dp),
-                    13 to const(24.dp),
-                    15 to const(28.dp),
-                ),
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
-
-            // Individual spot dots — appear at zoom 12+
+            // Individual spot dots — small solid orange, no stroke
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -692,12 +634,11 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(7.dp),
-                    15 to const(10.dp),
+                    12 to const(0.dp),
+                    13 to const(3.dp),
+                    15 to const(5.dp),
+                    17 to const(7.dp),
                 ),
-                strokeColor = const(Color.White),
-                strokeWidth = const(1.5.dp),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
                     val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
