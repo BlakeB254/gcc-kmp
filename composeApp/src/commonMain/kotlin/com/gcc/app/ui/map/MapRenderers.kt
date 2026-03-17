@@ -447,22 +447,10 @@ internal fun DrawScope.drawSpotMarkers(
                 (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
 
             if (baseOpacity > 0f) {
-                // Outer glow — light pink
+                // Single heatmap circle — red, opacity controls density feel
                 drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_LOW.copy(alpha = baseOpacity),
+                    color = MapStyles.SPOT_HEATMAP_COLOR.copy(alpha = baseOpacity),
                     radius = baseRadius,
-                    center = pos,
-                )
-                // Mid ring — medium pink, 70% radius
-                drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_MED.copy(alpha = baseOpacity * 0.9f),
-                    radius = baseRadius * 0.7f,
-                    center = pos,
-                )
-                // Core — red, 40% radius
-                drawCircle(
-                    color = MapStyles.SPOT_HEATMAP_HIGH.copy(alpha = baseOpacity * 1.1f),
-                    radius = baseRadius * 0.4f,
                     center = pos,
                 )
             }
