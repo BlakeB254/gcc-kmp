@@ -80,6 +80,9 @@ fun App(component: RootComponent) {
                 is Screen.Achievements -> AchievementsScreen(
                     onBack = component::navigateBack,
                 )
+                is Screen.UserCard -> UserCardScreen(
+                    onBack = component::navigateBack,
+                )
                 is Screen.MapFullScreen -> MapFullScreen(
                     onBack = { component.switchToTab(Screen.Dashboard) },
                     onRouteClick = component::navigateToRouteDetail,

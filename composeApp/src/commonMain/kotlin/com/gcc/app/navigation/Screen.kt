@@ -29,6 +29,9 @@ sealed class Screen {
     data object Achievements : Screen()
 
     @Serializable
+    data object UserCard : Screen()
+
+    @Serializable
     data object MapFullScreen : Screen()
 
     @Serializable
