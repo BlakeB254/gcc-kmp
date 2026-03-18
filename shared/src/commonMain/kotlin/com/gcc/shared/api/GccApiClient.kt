@@ -268,11 +268,15 @@ class GccApiClient(
     suspend fun updateRouteImage(routeId: Int, imageUrl: String?): Route =
         putJson("/api/admin/routes/$routeId", mapOf("imageUrl" to imageUrl))
 
-    suspend fun updateRouteImageLocation(routeId: Int, lat: Double?, lng: Double?): Route =
-        putJson("/api/admin/routes/$routeId", mapOf(
-            "imageLocationLat" to lat,
-            "imageLocationLng" to lng,
-        ))
+    suspend fun updateRouteImageLocation(routeId: Int, lat: Double?, lng: Double?): Route {
+        val body = kotlinx.serialization.json.buildJsonObject {
+            if (lat != null) put("imageLocationLat", kotlinx.serialization.json.JsonPrimitive(lat))
+            else put("imageLocationLat", kotlinx.serialization.json.JsonNull)
+            if (lng != null) put("imageLocationLng", kotlinx.serialization.json.JsonPrimitive(lng))
+            else put("imageLocationLng", kotlinx.serialization.json.JsonNull)
+        }
+        return putJson("/api/admin/routes/$routeId", body)
+    }
 
     suspend fun updateRouteNameDesc(routeId: Int, displayName: String, description: String?): Route =
         putJson("/api/admin/routes/$routeId", buildMap {

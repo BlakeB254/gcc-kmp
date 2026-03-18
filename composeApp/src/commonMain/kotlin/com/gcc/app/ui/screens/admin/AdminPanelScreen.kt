@@ -10,18 +10,21 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.AdminTab
+import com.gcc.shared.auth.TokenManager
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminPanelScreen(
     onBack: () -> Unit = {},
+    onLogout: () -> Unit = {},
     onNavigateToSpotCreate: (lat: Double, lng: Double) -> Unit = { _, _ -> },
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
     onNavigateToRouteDetail: (routeId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
+    val tokenManager = koinInject<TokenManager>()
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -31,6 +34,14 @@ fun AdminPanelScreen(
                 navigationIcon = {
                     TextButton(onClick = onBack) {
                         Text("\u2190 Back", color = Color.White)
+                    }
+                },
+                actions = {
+                    TextButton(onClick = {
+                        tokenManager.logout()
+                        onLogout()
+                    }) {
+                        Text("Logout", color = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
