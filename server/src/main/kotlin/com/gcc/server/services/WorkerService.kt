@@ -74,11 +74,6 @@ class WorkerService {
         }
     }
 
-    /** Delete a worker account (hard delete). */
-    suspend fun deleteAccount(workerId: Int): Boolean = dbQuery {
-        Workers.deleteWhere { Workers.id eq workerId } > 0
-    }
-
     /** Top workers by jobs completed (from denormalized flat stats columns). */
     suspend fun getLeaderboard(limit: Int = 10): List<Worker> = dbQuery {
         Workers.selectAll()
