@@ -32,6 +32,7 @@ val appModule = module {
     single { VerificationService() }
     single { PointsService() }
     single { CleanlinessService() }
+    single { ScanService() }
 
     // Auth (depends on WorkerService)
     single { AuthService(workerService = get()) }
