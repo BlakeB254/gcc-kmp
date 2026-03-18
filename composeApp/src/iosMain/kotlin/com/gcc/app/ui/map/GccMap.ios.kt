@@ -501,8 +501,34 @@ actual fun GccMap(
                 ),
             )
 
-            // Image location stars are rendered as Compose overlays (not MapLibre layers)
-            // so they can be actual star shapes — see content() block below
+            // ── Image location star markers: amber circles on route lines ──
+            val imageStarJson = remember(imageStars) {
+                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                else {
+                    val features = imageStars.joinToString(",") { coord ->
+                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                    }
+                    """{"type":"FeatureCollection","features":[$features]}"""
+                }
+            }
+            val imageStarSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(imageStarJson))
+
+            // White halo
+            CircleLayer(
+                id = "image-star-halo",
+                source = imageStarSrc,
+                color = const(Color.White),
+                radius = const(10.dp),
+            )
+            // Amber fill with dark border
+            CircleLayer(
+                id = "image-star-fill",
+                source = imageStarSrc,
+                color = const(Color(0xFFFFB300)),
+                radius = const(7.dp),
+                strokeColor = const(Color(0xFFF57F17)),
+                strokeWidth = const(2.dp),
+            )
 
             // ── Bounty markers: red dots with radius and amount labels ──
             val bountySrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountyJson))
@@ -738,33 +764,6 @@ actual fun GccMap(
                     15 to const(3.dp),
                 ),
             )
-        }
-
-        // ── Image location stars as Compose Canvas overlays (actual star shapes) ──
-        if (imageStars.isNotEmpty()) {
-            val camPos = camera.position
-            val density = LocalDensity.current
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val w = constraints.maxWidth.toFloat()
-                val h = constraints.maxHeight.toFloat()
-                val starSizeDp = 28.dp
-                val halfStarPx = with(density) { starSizeDp.toPx() / 2f }
-                for (star in imageStars) {
-                    val pos = latLngToPixel(
-                        star.lat, star.lng,
-                        camPos.target.latitude, camPos.target.longitude,
-                        camPos.zoom, w, h,
-                    )
-                    if (pos.x > -30f && pos.x < w + 30f && pos.y > -30f && pos.y < h + 30f) {
-                        val offsetX = with(density) { (pos.x - halfStarPx).toDp() }
-                        val offsetY = with(density) { (pos.y - halfStarPx).toDp() }
-                        ImageLocationStar(
-                            modifier = Modifier.offset(x = offsetX, y = offsetY),
-                            size = 28f,
-                        )
-                    }
-                }
-            }
         }
 
         // Overlay content (composables positioned in the Box)
