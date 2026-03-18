@@ -40,6 +40,7 @@ fun RouteDetailScreen(
     onBack: () -> Unit = {},
     onStartJob: (jobId: Int) -> Unit = {},
     onNavigateToRoute: (routeId: Int) -> Unit = {},
+    onStartScan: (routeId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<RouteDetailViewModel>()
     val locationProvider = koinInject<LocationProvider>()
@@ -460,6 +461,16 @@ fun RouteDetailScreen(
                         isLoading = uiState.isClaiming,
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
+
+                    if (route.checkpoints.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GccButton(
+                            text = "Scout & Clean",
+                            onClick = { onStartScan(routeId) },
+                            variant = GccButtonVariant.SECONDARY,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
+                    }
                 }
             }
         }

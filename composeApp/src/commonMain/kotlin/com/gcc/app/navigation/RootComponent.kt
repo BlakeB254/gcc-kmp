@@ -157,6 +157,10 @@ class RootComponent(
         navigation.push(Screen.SpotVerification(reportId))
     }
 
+    fun navigateToRouteScan(routeId: Int) {
+        navigation.push(Screen.RouteScan(routeId))
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }

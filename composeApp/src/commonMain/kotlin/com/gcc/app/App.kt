@@ -1,6 +1,11 @@
 package com.gcc.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import com.arkivanov.decompose.extensions.compose.stack.Children
 import com.arkivanov.decompose.extensions.compose.stack.animation.fade
 import com.arkivanov.decompose.extensions.compose.stack.animation.plus
@@ -13,6 +18,7 @@ import com.gcc.app.ui.screens.admin.AdminPanelScreen
 import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
+import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccTheme
 
 @Composable
@@ -68,6 +74,7 @@ fun App(component: RootComponent) {
                         onBack = component::navigateBack,
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
                         onNavigateToRoute = component::replaceRouteDetail,
+                        onStartScan = component::navigateToRouteScan,
                     )
                 }
                 is Screen.ActiveJob -> ActiveJobScreen(
@@ -160,6 +167,25 @@ fun App(component: RootComponent) {
                     reportId = screen.reportId,
                     onBack = component::navigateBack,
                 )
+                is Screen.RouteScan -> {
+                    val dashVm = org.koin.compose.koinInject<com.gcc.app.viewmodel.DashboardViewModel>()
+                    val dashState by dashVm.uiState.collectAsState()
+                    val route = dashState.routes.find { it.id == screen.routeId }
+                    if (route != null) {
+                        RouteScanScreen(
+                            route = route,
+                            onBack = component::navigateBack,
+                            onComplete = component::navigateBack,
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = GccGreen)
+                        }
+                    }
+                }
             }
         }
     }

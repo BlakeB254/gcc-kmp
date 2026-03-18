@@ -78,4 +78,7 @@ sealed class Screen {
 
     @Serializable
     data class SpotVerification(val reportId: Int) : Screen()
+
+    @Serializable
+    data class RouteScan(val routeId: Int) : Screen()
 }
