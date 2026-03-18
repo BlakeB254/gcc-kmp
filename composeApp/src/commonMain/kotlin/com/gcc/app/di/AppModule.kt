@@ -21,6 +21,7 @@ import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.FeedViewModel
+import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.shared.api.GccApiClient
@@ -58,4 +59,5 @@ val appModule = module {
     singleOf(::FeedViewModel)
     singleOf(::AdminPanelViewModel)
     singleOf(::SpotVerificationViewModel)
+    factory { RouteScanViewModel(get(), get()) }
 }
