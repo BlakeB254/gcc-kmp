@@ -1,0 +1,185 @@
+package com.gcc.app.platform
+
+import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.model.Coordinates
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.PI
+import kotlin.math.cos
+
+/**
+ * Grid-based coverage tracker for the Scout lap fog-of-war system.
+ *
+ * The route bounding box is divided into [cellSizeMeters] x [cellSizeMeters] cells.
+ * As the worker moves, cells within [scanRadiusMeters] are marked scanned.
+ * Only cells within [corridorWidthMeters] of the route line are counted toward
+ * the total, so coverage% reflects route corridor coverage, not random wandering.
+ */
+class CoverageTracker {
+
+    companion object {
+        const val cellSizeMeters = 3.0
+        const val scanRadiusMeters = 5.0
+        const val corridorWidthMeters = 15.0
+    }
+
+    // Grid dimensions
+    private var gridRows = 0
+    private var gridCols = 0
+
+    // Bounding box origin (SW corner)
+    private var originLat = 0.0
+    private var originLng = 0.0
+
+    // Degrees per meter at the area latitude
+    private var latPerMeter = 0.0
+    private var lngPerMeter = 0.0
+
+    // Cells that belong to the route corridor
+    private var corridorCells: Set<Pair<Int, Int>> = emptySet()
+
+    // Mutable state
+    private val _scannedCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
+    val scannedCells: StateFlow<Set<Pair<Int, Int>>> = _scannedCells.asStateFlow()
+
+    private val _coveragePercent = MutableStateFlow(0.0)
+    val coveragePercent: StateFlow<Double> = _coveragePercent.asStateFlow()
+
+    // ── Initialisation ───────────────────────────────────────────────
+
+    /**
+     * Build the grid from route waypoints.
+     * Typically called with [RouteCheckpoint] coordinates in sequence order.
+     */
+    fun initFromRoute(waypoints: List<Coordinates>) {
+        if (waypoints.isEmpty()) return
+
+        // Compute bounding box with a 20m padding
+        val minLat = waypoints.minOf { it.lat }
+        val maxLat = waypoints.maxOf { it.lat }
+        val minLng = waypoints.minOf { it.lng }
+        val maxLng = waypoints.maxOf { it.lng }
+
+        // Approx metres per degree at this latitude
+        latPerMeter = 1.0 / 111_320.0
+        lngPerMeter = 1.0 / (111_320.0 * cos(minLat * PI / 180.0))
+
+        val paddingLat = 20.0 * latPerMeter
+        val paddingLng = 20.0 * lngPerMeter
+
+        originLat = minLat - paddingLat
+        originLng = minLng - paddingLng
+
+        val spanLat = (maxLat + paddingLat) - originLat
+        val spanLng = (maxLng + paddingLng) - originLng
+
+        gridRows = (spanLat / (cellSizeMeters * latPerMeter)).toInt() + 1
+        gridCols = (spanLng / (cellSizeMeters * lngPerMeter)).toInt() + 1
+
+        // Identify corridor cells: cells whose centre is within corridorWidthMeters
+        // of at least one segment of the route polyline.
+        val corridor = mutableSetOf<Pair<Int, Int>>()
+        for (row in 0 until gridRows) {
+            for (col in 0 until gridCols) {
+                val cellLat = originLat + (row + 0.5) * cellSizeMeters * latPerMeter
+                val cellLng = originLng + (col + 0.5) * cellSizeMeters * lngPerMeter
+                if (isNearRoute(cellLat, cellLng, waypoints)) {
+                    corridor.add(Pair(row, col))
+                }
+            }
+        }
+        corridorCells = corridor
+        _scannedCells.value = emptySet()
+        _coveragePercent.value = 0.0
+    }
+
+    // ── Position update ──────────────────────────────────────────────
+
+    /**
+     * Called each time the worker's GPS position changes.
+     * Marks all cells within [scanRadiusMeters] as scanned and recomputes coverage %.
+     */
+    fun updatePosition(lat: Double, lng: Double) {
+        if (corridorCells.isEmpty()) return
+
+        // Convert scan radius to grid cell units
+        val radiusRows = (scanRadiusMeters * latPerMeter / (cellSizeMeters * latPerMeter)).toInt() + 1
+        val radiusCols = (scanRadiusMeters * lngPerMeter / (cellSizeMeters * lngPerMeter)).toInt() + 1
+
+        val currentRow = ((lat - originLat) / (cellSizeMeters * latPerMeter)).toInt()
+        val currentCol = ((lng - originLng) / (cellSizeMeters * lngPerMeter)).toInt()
+
+        val newScanned = _scannedCells.value.toMutableSet()
+        for (dr in -radiusRows..radiusRows) {
+            for (dc in -radiusCols..radiusCols) {
+                val r = currentRow + dr
+                val c = currentCol + dc
+                if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
+
+                val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
+                val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
+
+                val dist = GeofenceVerification.distanceMeters(lat, lng, cellLat, cellLng)
+                if (dist <= scanRadiusMeters) {
+                    newScanned.add(Pair(r, c))
+                }
+            }
+        }
+
+        _scannedCells.value = newScanned
+
+        val scannedCorridor = newScanned.count { it in corridorCells }
+        _coveragePercent.value = if (corridorCells.isEmpty()) 0.0
+        else (scannedCorridor.toDouble() / corridorCells.size * 100.0).coerceIn(0.0, 100.0)
+    }
+
+    // ── Reset ────────────────────────────────────────────────────────
+
+    fun reset() {
+        _scannedCells.value = emptySet()
+        _coveragePercent.value = 0.0
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    /** Returns true if (lat, lng) is within corridorWidthMeters of any route segment. */
+    private fun isNearRoute(lat: Double, lng: Double, waypoints: List<Coordinates>): Boolean {
+        for (i in 0 until waypoints.size - 1) {
+            val a = waypoints[i]
+            val b = waypoints[i + 1]
+            if (distanceToSegment(lat, lng, a.lat, a.lng, b.lat, b.lng) <= corridorWidthMeters) {
+                return true
+            }
+        }
+        // Also check proximity to each individual waypoint
+        return waypoints.any { wp ->
+            GeofenceVerification.distanceMeters(lat, lng, wp.lat, wp.lng) <= corridorWidthMeters
+        }
+    }
+
+    /**
+     * Approximate distance from point P to line segment AB in metres.
+     * Uses projected parameter t clamped to [0, 1].
+     */
+    private fun distanceToSegment(
+        pLat: Double, pLng: Double,
+        aLat: Double, aLng: Double,
+        bLat: Double, bLng: Double,
+    ): Double {
+        val abLat = bLat - aLat
+        val abLng = bLng - aLng
+        val apLat = pLat - aLat
+        val apLng = pLng - aLng
+
+        val abLenSq = abLat * abLat + abLng * abLng
+        if (abLenSq == 0.0) {
+            return GeofenceVerification.distanceMeters(pLat, pLng, aLat, aLng)
+        }
+
+        val t = ((apLat * abLat + apLng * abLng) / abLenSq).coerceIn(0.0, 1.0)
+        val closestLat = aLat + t * abLat
+        val closestLng = aLng + t * abLng
+        return GeofenceVerification.distanceMeters(pLat, pLng, closestLat, closestLng)
+    }
+}
