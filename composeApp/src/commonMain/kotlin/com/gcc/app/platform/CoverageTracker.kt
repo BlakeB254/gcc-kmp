@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 
 /**
@@ -122,6 +123,68 @@ class CoverageTracker {
 
                 val dist = GeofenceVerification.distanceMeters(lat, lng, cellLat, cellLng)
                 if (dist <= scanRadiusMeters) {
+                    newScanned.add(Pair(r, c))
+                }
+            }
+        }
+
+        _scannedCells.value = newScanned
+
+        val scannedCorridor = newScanned.count { it in corridorCells }
+        _coveragePercent.value = if (corridorCells.isEmpty()) 0.0
+        else (scannedCorridor.toDouble() / corridorCells.size * 100.0).coerceIn(0.0, 100.0)
+    }
+
+    // ── Frustum (AR-tier) coverage ───────────────────────────────────
+
+    /**
+     * AR tier: clears fog based on the camera frustum rather than a GPS radius.
+     *
+     * Marks corridor cells that are:
+     *  1. Within [rangeMeters] of the user, AND
+     *  2. Within [fovDegrees]/2 of the [headingDegrees] direction.
+     *
+     * @param lat user latitude
+     * @param lng user longitude
+     * @param headingDegrees camera heading (0=north, 90=east)
+     * @param fovDegrees horizontal field of view (default 63° for iPhone wide lens)
+     * @param rangeMeters maximum frustum reach in metres (default 15m)
+     */
+    fun updateWithFrustum(
+        lat: Double,
+        lng: Double,
+        headingDegrees: Float,
+        fovDegrees: Float = 63f,
+        rangeMeters: Double = 15.0,
+    ) {
+        if (corridorCells.isEmpty()) return
+
+        val halfFov = fovDegrees / 2.0
+        val radiusRows = (rangeMeters * latPerMeter / (cellSizeMeters * latPerMeter)).toInt() + 1
+        val radiusCols = (rangeMeters * lngPerMeter / (cellSizeMeters * lngPerMeter)).toInt() + 1
+
+        val currentRow = ((lat - originLat) / (cellSizeMeters * latPerMeter)).toInt()
+        val currentCol = ((lng - originLng) / (cellSizeMeters * lngPerMeter)).toInt()
+
+        val newScanned = _scannedCells.value.toMutableSet()
+        for (dr in -radiusRows..radiusRows) {
+            for (dc in -radiusCols..radiusCols) {
+                val r = currentRow + dr
+                val c = currentCol + dc
+                if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
+
+                val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
+                val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
+
+                val dist = GeofenceVerification.distanceMeters(lat, lng, cellLat, cellLng)
+                if (dist > rangeMeters) continue
+
+                // Compute bearing from user to cell and check it's inside the frustum cone
+                val bearing = AiDirectionEngine.bearingTo(lat, lng, cellLat, cellLng)
+                val angularDiff = abs(
+                    AiDirectionEngine.normalizeDegrees(bearing - headingDegrees.toDouble())
+                )
+                if (angularDiff <= halfFov) {
                     newScanned.add(Pair(r, c))
                 }
             }
