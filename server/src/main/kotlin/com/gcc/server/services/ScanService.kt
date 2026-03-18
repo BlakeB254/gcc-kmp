@@ -123,23 +123,21 @@ class ScanService {
     }
 
     suspend fun getScansForWorker(workerId: Int): List<RouteScan> = dbQuery {
-        RouteScans.selectAll()
+        val rows = RouteScans.selectAll()
             .where { RouteScans.workerId eq workerId }
             .orderBy(RouteScans.createdAt, SortOrder.DESC)
-            .map { row ->
-                val hotspots = getHotspots(row[RouteScans.id])
-                row.toRouteScan(hotspots)
-            }
+            .toList()
+        val hotspotMap = getHotspotsForScans(rows.map { it[RouteScans.id] })
+        rows.map { it.toRouteScan(hotspotMap[it[RouteScans.id]] ?: emptyList()) }
     }
 
     suspend fun getAllScans(limit: Int = 50): List<RouteScan> = dbQuery {
-        RouteScans.selectAll()
+        val rows = RouteScans.selectAll()
             .orderBy(RouteScans.createdAt, SortOrder.DESC)
             .limit(limit)
-            .map { row ->
-                val hotspots = getHotspots(row[RouteScans.id])
-                row.toRouteScan(hotspots)
-            }
+            .toList()
+        val hotspotMap = getHotspotsForScans(rows.map { it[RouteScans.id] })
+        rows.map { it.toRouteScan(hotspotMap[it[RouteScans.id]] ?: emptyList()) }
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
@@ -149,6 +147,16 @@ class ScanService {
             .where { ScanHotspots.scanId eq scanId }
             .orderBy(ScanHotspots.detectedAt, SortOrder.ASC)
             .map { it.toHotspot() }
+
+    /** Batch-loads hotspots for multiple scan IDs in a single query to avoid N+1. */
+    private fun getHotspotsForScans(scanIds: List<Int>): Map<Int, List<ScanHotspot>> {
+        if (scanIds.isEmpty()) return emptyMap()
+        return ScanHotspots.selectAll()
+            .where { ScanHotspots.scanId inList scanIds }
+            .orderBy(ScanHotspots.detectedAt, SortOrder.ASC)
+            .map { it.toHotspot() }
+            .groupBy { it.scanId }
+    }
 
     private fun calculatePoints(hotspots: List<ScanHotspot>, cleanedCount: Int): Int {
         val base = 50

@@ -57,7 +57,9 @@ class RouteScanViewModel(
     private val aiDirectionEngine = AiDirectionEngine()
     private val arScanner = ArScanner()
 
-    // GPS breadcrumb paths for GeoJSON
+    // GPS breadcrumb paths for GeoJSON.
+    // These grow at ~1 Hz; a 30-min scan produces ~1800 entries. Downsampled to
+    // ≤500 points in buildGeoJsonLineString() before transmission to the server.
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
     private val cleanPath = mutableListOf<Pair<Double, Double>>()
 
@@ -455,7 +457,12 @@ class RouteScanViewModel(
 
     fun buildGeoJsonLineString(path: List<Pair<Double, Double>>): String? {
         if (path.size < 2) return null
-        val coords = path.joinToString(",") { (lat, lng) -> "[${lng},${lat}]" }
+        // Downsample long paths to keep GeoJSON payload under ~500 coordinate pairs.
+        val sampled = if (path.size > 500) {
+            val step = path.size / 500
+            path.filterIndexed { i, _ -> i % step == 0 || i == path.size - 1 }
+        } else path
+        val coords = sampled.joinToString(",") { (lat, lng) -> "[${lng},${lat}]" }
         return """{"type":"LineString","coordinates":[$coords]}"""
     }
 

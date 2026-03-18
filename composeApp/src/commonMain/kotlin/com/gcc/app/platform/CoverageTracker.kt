@@ -40,6 +40,9 @@ class CoverageTracker {
     // Cells that belong to the route corridor
     private var corridorCells: Set<Pair<Int, Int>> = emptySet()
 
+    // Total corridor cells — cached to avoid repeated size checks
+    private var totalCells = 0
+
     // Mutable state
     private val _scannedCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> = _scannedCells.asStateFlow()
@@ -91,6 +94,7 @@ class CoverageTracker {
             }
         }
         corridorCells = corridor
+        totalCells = corridor.size
         _scannedCells.value = emptySet()
         _coveragePercent.value = 0.0
     }
@@ -102,7 +106,7 @@ class CoverageTracker {
      * Marks all cells within [scanRadiusMeters] as scanned and recomputes coverage %.
      */
     fun updatePosition(lat: Double, lng: Double) {
-        if (corridorCells.isEmpty()) return
+        if (totalCells == 0) return
 
         // Convert scan radius to grid cell units
         val radiusRows = (scanRadiusMeters * latPerMeter / (cellSizeMeters * latPerMeter)).toInt() + 1
@@ -117,6 +121,7 @@ class CoverageTracker {
                 val r = currentRow + dr
                 val c = currentCol + dc
                 if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
+                if (newScanned.contains(Pair(r, c))) continue  // already scanned — skip distance check
 
                 val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
                 val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
@@ -131,8 +136,7 @@ class CoverageTracker {
         _scannedCells.value = newScanned
 
         val scannedCorridor = newScanned.count { it in corridorCells }
-        _coveragePercent.value = if (corridorCells.isEmpty()) 0.0
-        else (scannedCorridor.toDouble() / corridorCells.size * 100.0).coerceIn(0.0, 100.0)
+        _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
     }
 
     // ── Frustum (AR-tier) coverage ───────────────────────────────────
@@ -157,7 +161,7 @@ class CoverageTracker {
         fovDegrees: Float = 63f,
         rangeMeters: Double = 15.0,
     ) {
-        if (corridorCells.isEmpty()) return
+        if (totalCells == 0) return
 
         val halfFov = fovDegrees / 2.0
         val radiusRows = (rangeMeters * latPerMeter / (cellSizeMeters * latPerMeter)).toInt() + 1
@@ -172,6 +176,7 @@ class CoverageTracker {
                 val r = currentRow + dr
                 val c = currentCol + dc
                 if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
+                if (newScanned.contains(Pair(r, c))) continue  // already scanned — skip
 
                 val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
                 val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
@@ -193,8 +198,7 @@ class CoverageTracker {
         _scannedCells.value = newScanned
 
         val scannedCorridor = newScanned.count { it in corridorCells }
-        _coveragePercent.value = if (corridorCells.isEmpty()) 0.0
-        else (scannedCorridor.toDouble() / corridorCells.size * 100.0).coerceIn(0.0, 100.0)
+        _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
     }
 
     // ── Unscanned cell centers ────────────────────────────────────────

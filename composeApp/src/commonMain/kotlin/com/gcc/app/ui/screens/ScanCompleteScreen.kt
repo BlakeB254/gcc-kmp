@@ -326,12 +326,7 @@ private fun buildShareSummary(
     elapsedSeconds: Long,
     pointsAwarded: Int,
 ): String {
-    val timeStr = run {
-        val h = (elapsedSeconds / 3600).toInt()
-        val m = ((elapsedSeconds % 3600) / 60).toInt()
-        val s = (elapsedSeconds % 60).toInt()
-        if (h > 0) "${h}h ${m}m ${s}s" else "${m}m ${s}s"
-    }
+    val timeStr = formatElapsed(elapsedSeconds)
     return buildString {
         appendLine("\uD83E\uDDF9 Just completed a Scout & Clean route!")
         appendLine("\u2705 $cleaned hotspot${if (cleaned != 1) "s" else ""} cleaned")

@@ -1,5 +1,6 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.geo.GeofenceVerification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,10 +40,10 @@ class AiDirectionEngine {
 
         // Find nearest unscanned cluster
         val nearest = unscannedCenters.minByOrNull { (lat, lng) ->
-            distanceMeters(userLat, userLng, lat, lng)
+            GeofenceVerification.distanceMeters(userLat, userLng, lat, lng)
         } ?: return
 
-        val dist = distanceMeters(userLat, userLng, nearest.first, nearest.second)
+        val dist = GeofenceVerification.distanceMeters(userLat, userLng, nearest.first, nearest.second)
         val bearing = bearingTo(userLat, userLng, nearest.first, nearest.second)
 
         val prompt = if (userHeading != null) {
@@ -107,14 +108,6 @@ class AiDirectionEngine {
             if (d > 180.0) d -= 360.0
             if (d < -180.0) d += 360.0
             return d
-        }
-
-        fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-            val R = 6371000.0
-            val dLat = (lat2 - lat1) * PI / 180.0
-            val dLng = (lng2 - lng1) * PI / 180.0
-            val a = sin(dLat / 2).pow(2) + cos(lat1 * PI / 180.0) * cos(lat2 * PI / 180.0) * sin(dLng / 2).pow(2)
-            return R * 2 * atan2(sqrt(a), sqrt(1 - a))
         }
 
         fun currentTimeMs(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
