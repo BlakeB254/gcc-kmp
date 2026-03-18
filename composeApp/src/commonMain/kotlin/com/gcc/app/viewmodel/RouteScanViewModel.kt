@@ -34,6 +34,7 @@ data class RouteScanUiState(
     val currentLng: Double = 0.0,
     val elapsedSeconds: Long = 0,
     val nearbyHotspot: ScanHotspot? = null,
+    val nearbyDistMeters: Double? = null,
     val isLoopClosed: Boolean = false,
     val isSubmitting: Boolean = false,
     val isComplete: Boolean = false,
@@ -422,17 +423,20 @@ class RouteScanViewModel(
                     ScanPhase.CLEANING -> {
                         cleanPath.add(Pair(lat, lng))
 
-                        // Check proximity to uncleaned hotspots (20m threshold)
-                        val nearby = _uiState.value.hotspots
+                        // Check proximity to uncleaned hotspots (20m threshold).
+                        // Compute distance once per hotspot to avoid double calculation.
+                        val proximityAlertMeters = 20.0
+                        val hotspotsWithDist = _uiState.value.hotspots
                             .filter { it.status == HotspotStatus.DETECTED }
-                            .minByOrNull { hotspot ->
-                                GeofenceVerification.distanceMeters(lat, lng, hotspot.lat, hotspot.lng)
-                            }
-                            ?.takeIf { hotspot ->
-                                GeofenceVerification.distanceMeters(lat, lng, hotspot.lat, hotspot.lng) <= 20.0
-                            }
+                            .map { it to GeofenceVerification.distanceMeters(lat, lng, it.lat, it.lng) }
+                        val (nearestHotspot, nearestDist) = hotspotsWithDist
+                            .minByOrNull { (_, dist) -> dist }
+                            ?: (null to null)
 
-                        _uiState.value = _uiState.value.copy(nearbyHotspot = nearby)
+                        _uiState.value = _uiState.value.copy(
+                            nearbyHotspot = if (nearestDist != null && nearestDist <= proximityAlertMeters) nearestHotspot else null,
+                            nearbyDistMeters = nearestDist,
+                        )
                     }
 
                     else -> { /* no location action needed */ }

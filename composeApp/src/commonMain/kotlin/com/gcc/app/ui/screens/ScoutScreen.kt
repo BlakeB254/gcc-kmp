@@ -40,10 +40,6 @@ fun ScoutScreen(
     onCaptureHotspot: () -> Unit,
     onBack: () -> Unit,
 ) {
-    // showCaptureDialog is now managed by RouteScanScreen via onCaptureHotspot callback
-    @Suppress("UNUSED_VARIABLE")
-    val showCaptureDialog = false
-
     // Build Coordinates from flat lat/lng in uiState
     val currentLocation = if (uiState.currentLat != 0.0 || uiState.currentLng != 0.0) {
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)

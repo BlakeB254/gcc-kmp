@@ -158,6 +158,9 @@ class ScanService {
             .groupBy { it.scanId }
     }
 
+    /**
+     * Points = 50 base + 10 per cleaned hotspot + 1 per liter of trash removed.
+     */
     private fun calculatePoints(hotspots: List<ScanHotspot>, cleanedCount: Int): Int {
         val base = 50
         val perHotspot = cleanedCount * 10

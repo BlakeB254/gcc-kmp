@@ -24,6 +24,8 @@ import com.gcc.app.ui.components.GccCard
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
+import com.gcc.app.ui.utils.displayLabel
+import com.gcc.app.ui.utils.emoji
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ScanHotspot
@@ -311,8 +313,8 @@ private fun HotspotMiniCard(
     hotspot: ScanHotspot,
 ) {
     val primaryTag = hotspot.trashTypes.firstOrNull()
-    val tagLabel = primaryTag?.toDisplayLabel() ?: "Trash"
-    val tagIcon = primaryTag?.toEmoji() ?: "\uD83D\uDDD1\uFE0F"
+    val tagLabel = primaryTag?.displayLabel() ?: "Trash"
+    val tagIcon = primaryTag?.emoji() ?: "\uD83D\uDDD1\uFE0F"
     val severityStars = "\u2605".repeat(hotspot.severity.coerceIn(1, 5))
 
     Box(
@@ -385,36 +387,4 @@ private fun formatElapsedShort(totalSeconds: Long): String {
     val m = (totalSeconds / 60).toInt()
     val s = (totalSeconds % 60).toInt()
     return "${m}:${s.toString().padStart(2, '0')}"
-}
-
-/** Human-readable label for a SpotTag. */
-private fun SpotTag.toDisplayLabel(): String = when (this) {
-    SpotTag.TRASH -> "Trash"
-    SpotTag.LEAVES -> "Leaves"
-    SpotTag.GLASS -> "Glass"
-    SpotTag.METAL -> "Metal"
-    SpotTag.TIRES -> "Tires"
-    SpotTag.FURNITURE -> "Furniture"
-    SpotTag.CONSTRUCTION -> "Construction"
-    SpotTag.ORGANIC -> "Organic"
-    SpotTag.HAZARDOUS -> "Hazardous"
-    SpotTag.ELECTRONICS -> "Electronics"
-    SpotTag.CLOTHING -> "Clothing"
-    SpotTag.OTHER -> "Other"
-}
-
-/** Emoji icon for a SpotTag for visual identification. */
-private fun SpotTag.toEmoji(): String = when (this) {
-    SpotTag.TRASH -> "\uD83D\uDDD1\uFE0F"
-    SpotTag.LEAVES -> "\uD83C\uDF42"
-    SpotTag.GLASS -> "\uD83E\uDDA0"
-    SpotTag.METAL -> "\u26D3\uFE0F"
-    SpotTag.TIRES -> "\uD83D\uDEDE"
-    SpotTag.FURNITURE -> "\uD83E\uDE91"
-    SpotTag.CONSTRUCTION -> "\uD83D\uDEA7"
-    SpotTag.ORGANIC -> "\uD83C\uDF3F"
-    SpotTag.HAZARDOUS -> "\u2622\uFE0F"
-    SpotTag.ELECTRONICS -> "\uD83D\uDD0C"
-    SpotTag.CLOTHING -> "\uD83D\uDC55"
-    SpotTag.OTHER -> "\uD83D\uDCE6"
 }

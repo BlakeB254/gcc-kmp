@@ -22,7 +22,6 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
@@ -56,9 +55,7 @@ fun CleanScreen(
     val total = uiState.hotspots.size
     val allDone = total == 0 || uiState.hotspots.none { it.status == HotspotStatus.DETECTED }
 
-    val nearbyDist = uiState.nearbyHotspot?.let { h ->
-        GeofenceVerification.distanceMeters(uiState.currentLat, uiState.currentLng, h.lat, h.lng)
-    }
+    val nearbyDist = uiState.nearbyDistMeters
 
     // Current location for map center
     val currentLocation = if (uiState.currentLat != 0.0 || uiState.currentLng != 0.0) {

@@ -189,7 +189,7 @@ fun ScoutCaptureDialog(
                         .background(Color.Black.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (capturedBytes!!.isEmpty()) {
+                    if (capturedBytes?.isEmpty() != false) {
                         // Desktop placeholder
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,

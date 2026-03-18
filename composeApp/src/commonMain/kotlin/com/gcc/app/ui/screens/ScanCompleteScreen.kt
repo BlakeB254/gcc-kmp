@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
+import com.gcc.app.ui.utils.displayLabel
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
@@ -303,21 +304,6 @@ private fun HotspotSummaryRow(hotspot: ScanHotspot, index: Int) {
             )
         }
     }
-}
-
-private fun SpotTag.displayLabel(): String = when (this) {
-    SpotTag.TRASH -> "Trash"
-    SpotTag.LEAVES -> "Leaves"
-    SpotTag.GLASS -> "Glass"
-    SpotTag.METAL -> "Metal"
-    SpotTag.TIRES -> "Tires"
-    SpotTag.FURNITURE -> "Furniture"
-    SpotTag.CONSTRUCTION -> "Construction"
-    SpotTag.ORGANIC -> "Organic"
-    SpotTag.HAZARDOUS -> "Hazardous"
-    SpotTag.ELECTRONICS -> "Electronics"
-    SpotTag.CLOTHING -> "Clothing"
-    SpotTag.OTHER -> "Other"
 }
 
 private fun buildShareSummary(
