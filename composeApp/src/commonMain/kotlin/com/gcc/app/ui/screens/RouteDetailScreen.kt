@@ -30,6 +30,7 @@ import com.gcc.app.util.fmt
 import com.gcc.shared.model.Coordinates
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import org.koin.compose.koinInject
 
 @Composable
@@ -113,7 +114,7 @@ fun RouteDetailScreen(
     var panelHeightPx by remember { mutableStateOf(0) }
     var totalHeightPx by remember { mutableStateOf(0) }
 
-    // Shift map center upward so the route is centered in the visible area above the panel
+    // Shift map center upward so the route sits above the bottom panel
     val mapCenter = remember(allRoutePoints, panelHeightPx, totalHeightPx) {
         if (allRoutePoints.isEmpty()) {
             return@remember Coordinates(lng = MapStyles.CHICAGO_CENTER_LNG, lat = MapStyles.CHICAGO_CENTER_LAT)
@@ -124,14 +125,11 @@ fun RouteDetailScreen(
         if (totalHeightPx <= 0 || panelHeightPx <= 0) {
             Coordinates(lng = avgLng, lat = avgLat)
         } else {
-            // Shift center down (in latitude space, higher latitude = higher on screen)
-            // so the route appears centered in the visible map area above the panel
+            // Fixed shift: move center down by half the panel's share of latitude
+            // At zoom ~15-16, 1 degree lat ≈ 111km, screen shows ~0.01-0.02 degrees
             val panelFraction = panelHeightPx.toDouble() / totalHeightPx
-            val latSpan = if (allRoutePoints.size >= 2) {
-                allRoutePoints.maxOf { it.lat } - allRoutePoints.minOf { it.lat }
-            } else 0.005
-            // Shift by half the panel fraction * a proportional lat offset
-            val latShift = latSpan * panelFraction * 0.6
+            // Shift = panelFraction * half the visible lat span (approximated from zoom)
+            val latShift = panelFraction * 0.003
             Coordinates(lng = avgLng, lat = avgLat - latShift)
         }
     }
@@ -268,12 +266,12 @@ fun RouteDetailScreen(
             }
         }
 
-        // Bottom detail panel — compact, max 40% of screen
+        // Bottom detail panel — content-sized, pinned to bottom
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.40f)
+                .heightIn(max = with(LocalDensity.current) { (totalHeightPx * 0.45f).toDp() })
                 .onSizeChanged { panelHeightPx = it.height }
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(MaterialTheme.colorScheme.surface),
