@@ -501,16 +501,14 @@ actual fun GccMap(
             )
 
             // ── Image location star markers: bright amber circles ──
-            // Always include at least the data; use hardcoded fallback if list is empty for debug
+            // Always include a hardcoded test star at North Lawndale center + actual data
             val imageStarJson = remember(imageStars) {
-                val coords = imageStars.ifEmpty { emptyList() }
-                if (coords.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = coords.joinToString(",") { coord ->
-                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
+                val testFeature = """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[-87.7155,41.8600]}}"""
+                val dataFeatures = imageStars.joinToString(",") { coord ->
+                    """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
                 }
+                val allFeatures = if (dataFeatures.isEmpty()) testFeature else "$testFeature,$dataFeatures"
+                """{"type":"FeatureCollection","features":[$allFeatures]}"""
             }
             val imageStarSrc = rememberGeoJsonSource(
                 data = GeoJsonData.JsonString(imageStarJson),
