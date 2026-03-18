@@ -3,9 +3,11 @@ package com.gcc.app.ui.screens
 import androidx.compose.runtime.*
 import com.gcc.app.ui.components.ScoutCaptureDialog
 import com.gcc.app.viewmodel.RouteScanViewModel
+import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.ScanPhase
 import com.gcc.shared.model.SpotTag
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /**
@@ -25,7 +27,9 @@ fun RouteScanScreen(
     onComplete: () -> Unit = {},
 ) {
     val viewModel = koinInject<RouteScanViewModel>()
+    val apiClient = koinInject<GccApiClient>()
     val uiState by viewModel.uiState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
 
     // Scout-phase: whether the ScoutCaptureDialog is open
     var showScoutCapture by remember { mutableStateOf(false) }
@@ -79,26 +83,39 @@ fun RouteScanScreen(
         )
     }
 
-    // ── ScoutCaptureDialog (F4) ─────────────────────────────────────────
+    // ── ScoutCaptureDialog (F4/F8) ──────────────────────────────────────
     if (showScoutCapture) {
         ScoutCaptureDialog(
             onCaptured = { photoBytes, analysisResult ->
                 showScoutCapture = false
                 val state = uiState
-                viewModel.addDetectedHotspot(
-                    lat = state.currentLat.takeIf { it != 0.0 }
-                        ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lat
-                        ?: 0.0,
-                    lng = state.currentLng.takeIf { it != 0.0 }
-                        ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lng
-                        ?: 0.0,
-                    trashTypes = analysisResult?.suggestedTags?.map { it } ?: emptyList(),
-                    severity = analysisResult?.severity ?: 1,
-                    beforePhotoUrl = "scout_${System.currentTimeMillis()}.jpg",
-                    confidence = analysisResult?.confidence ?: 0f,
-                    estimatedVolumeLiters = null,
-                    estimatedWeightLbs = analysisResult?.estimatedWeightLbs,
-                )
+                val lat = state.currentLat.takeIf { it != 0.0 }
+                    ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lat
+                    ?: 0.0
+                val lng = state.currentLng.takeIf { it != 0.0 }
+                    ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lng
+                    ?: 0.0
+
+                coroutineScope.launch {
+                    // Upload photo bytes and get a real URL; fall back gracefully on failure
+                    val beforePhotoUrl = try {
+                        val urls = apiClient.uploadSpotPhotos(listOf(photoBytes))
+                        urls.firstOrNull() ?: "upload_failed"
+                    } catch (_: Exception) {
+                        "upload_failed"
+                    }
+
+                    viewModel.addDetectedHotspot(
+                        lat = lat,
+                        lng = lng,
+                        trashTypes = analysisResult?.suggestedTags?.map { it } ?: emptyList(),
+                        severity = analysisResult?.severity ?: 1,
+                        beforePhotoUrl = beforePhotoUrl,
+                        confidence = analysisResult?.confidence ?: 0f,
+                        estimatedVolumeLiters = null,
+                        estimatedWeightLbs = analysisResult?.estimatedWeightLbs,
+                    )
+                }
             },
             onDismiss = { showScoutCapture = false },
         )
