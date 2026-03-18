@@ -519,9 +519,10 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    12 to const(4.dp),
-                    14 to const(7.dp),
-                    17 to const(14.dp),
+                    11 to const(5.dp),
+                    13 to const(8.dp),
+                    15 to const(12.dp),
+                    17 to const(16.dp),
                 ),
             )
 
@@ -532,18 +533,13 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    12 to const(3.dp),
-                    14 to const(5.dp),
-                    17 to const(12.dp),
+                    11 to const(4.dp),
+                    13 to const(6.dp),
+                    15 to const(10.dp),
+                    17 to const(14.dp),
                 ),
                 strokeColor = const(Color(0xFFF57F17)),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    12 to const(0.5.dp),
-                    14 to const(1.dp),
-                    17 to const(1.5.dp),
-                ),
+                strokeWidth = const(1.5.dp),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──

@@ -351,12 +351,25 @@ fun AdminRouteDetailScreen(
 
                     val starCoord = interpolateAlongPath(sliderFraction)
 
-                    // Map center from route
+                    // Map center + zoom to fit entire route
                     val mapCenter = remember(routePoints) {
                         Coordinates(
                             lng = routePoints.sumOf { it.lng } / routePoints.size,
                             lat = routePoints.sumOf { it.lat } / routePoints.size,
                         )
+                    }
+                    val fitZoom = remember(routePoints) {
+                        val latSpan = routePoints.maxOf { it.lat } - routePoints.minOf { it.lat }
+                        val lngSpan = routePoints.maxOf { it.lng } - routePoints.minOf { it.lng }
+                        val span = maxOf(latSpan, lngSpan * 1.2)
+                        when {
+                            span < 0.002 -> 16.0
+                            span < 0.004 -> 15.5
+                            span < 0.007 -> 15.0
+                            span < 0.01  -> 14.5
+                            span < 0.02  -> 14.0
+                            else         -> 13.5
+                        }
                     }
 
                     Text(
@@ -366,7 +379,7 @@ fun AdminRouteDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Mini map with star preview
+                    // Mini map with star preview — overlay a real star icon on top
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -377,7 +390,7 @@ fun AdminRouteDetailScreen(
                             modifier = Modifier.fillMaxSize(),
                             centerLat = mapCenter.lat,
                             centerLng = mapCenter.lng,
-                            zoom = 16.5,
+                            zoom = fitZoom,
                             enableGestures = true,
                             routeCoordinates = listOf(routePoints),
                             imageStars = listOf(starCoord),
