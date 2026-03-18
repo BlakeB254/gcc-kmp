@@ -358,17 +358,20 @@ fun AdminRouteDetailScreen(
                             lat = routePoints.sumOf { it.lat } / routePoints.size,
                         )
                     }
+                    // Zoom out enough to show the full route with generous padding
                     val fitZoom = remember(routePoints) {
                         val latSpan = routePoints.maxOf { it.lat } - routePoints.minOf { it.lat }
                         val lngSpan = routePoints.maxOf { it.lng } - routePoints.minOf { it.lng }
-                        val span = maxOf(latSpan, lngSpan * 1.2)
+                        // Add 60% padding so endpoints aren't at the edge
+                        val span = maxOf(latSpan * 1.6, lngSpan * 1.8)
                         when {
                             span < 0.002 -> 16.0
                             span < 0.004 -> 15.5
-                            span < 0.007 -> 15.0
-                            span < 0.01  -> 14.5
-                            span < 0.02  -> 14.0
-                            else         -> 13.5
+                            span < 0.006 -> 15.0
+                            span < 0.009 -> 14.5
+                            span < 0.015 -> 14.0
+                            span < 0.025 -> 13.5
+                            else         -> 13.0
                         }
                     }
 
@@ -379,11 +382,11 @@ fun AdminRouteDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Mini map with star preview — overlay a real star icon on top
+                    // Mini map — taller to give route room to breathe
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
+                            .height(220.dp)
                             .clip(RoundedCornerShape(12.dp)),
                     ) {
                         GccMap(
