@@ -502,8 +502,8 @@ actual fun GccMap(
             )
 
             // ── Image location markers: gold diamond shapes via FillLayer ──
-            val dLat = 0.00009  // ~10m vertical arm
-            val dLng = 0.00012  // ~10m horizontal arm
+            val dLat = 0.00006  // ~7m vertical arm
+            val dLng = 0.00008  // ~7m horizontal arm
             val diamondJson = remember(imageStars) {
                 if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
