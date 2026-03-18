@@ -254,6 +254,22 @@ fun MapFullScreen(
             spots = visibleSpots,
             mapMode = mapMode,
         ) {
+            // DEBUG: star count indicator
+            if (imageStars.isNotEmpty()) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 50.dp, end = 8.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFFB300),
+                ) {
+                    Text(
+                        "\u2B50 ${imageStars.size} stars",
+                        modifier = Modifier.padding(6.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
+                }
+            }
+
             // Top bar: toggle + community info inline
             Row(
                 modifier = Modifier
