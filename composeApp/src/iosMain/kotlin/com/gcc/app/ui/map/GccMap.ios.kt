@@ -541,15 +541,13 @@ actual fun GccMap(
             FillLayer(
                 id = "image-star-fill",
                 source = diamondSrc,
-                fillColor = const(Color(0xFFFFB300)),
-                fillOpacity = const(1f),
+                color = const(Color(0xFFFFB300)),
             )
             // White inner diamond (creates a framed look)
             FillLayer(
                 id = "image-star-inner",
                 source = innerDiamondSrc,
-                fillColor = const(Color.White),
-                fillOpacity = const(0.9f),
+                color = const(Color.White),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──
