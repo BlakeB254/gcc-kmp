@@ -500,33 +500,39 @@ actual fun GccMap(
                 ),
             )
 
-            // ── Image location star markers: gold star emoji symbols ──
+            // ── Image location star markers: bright amber circles ──
+            // Always include at least the data; use hardcoded fallback if list is empty for debug
             val imageStarJson = remember(imageStars) {
-                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                val coords = imageStars.ifEmpty { emptyList() }
+                if (coords.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
-                    val features = imageStars.joinToString(",") { coord ->
-                        """{"type":"Feature","properties":{"label":"\u2B50"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                    val features = coords.joinToString(",") { coord ->
+                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
                     }
                     """{"type":"FeatureCollection","features":[$features]}"""
                 }
             }
-            val imageStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(imageStarJson))
+            val imageStarSrc = rememberGeoJsonSource(
+                data = GeoJsonData.JsonString(imageStarJson),
+            )
 
-            val starLabelExpr = feature["label"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
-            SymbolLayer(
-                id = "image-star-symbol",
+            // Large white halo — always visible
+            CircleLayer(
+                id = "image-star-halo",
                 source = imageStarSrc,
-                textField = format(span(starLabelExpr)),
-                textSize = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    11 to const(10f),
-                    13 to const(16f),
-                    15 to const(22f),
-                    17 to const(28f),
-                ),
-                textAllowOverlap = const(true),
-                iconAllowOverlap = const(true),
+                color = const(Color.White),
+                radius = const(10.dp),
+                opacity = const(0.9f),
+            )
+
+            // Amber fill
+            CircleLayer(
+                id = "image-star-fill",
+                source = imageStarSrc,
+                color = const(Color(0xFFFFB300)),
+                radius = const(7.dp),
+                strokeColor = const(Color(0xFFF57F17)),
+                strokeWidth = const(2.dp),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──
