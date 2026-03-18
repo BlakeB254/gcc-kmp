@@ -38,6 +38,7 @@ fun RouteScanScreen(
             uiState = uiState,
             onStartScout = { viewModel.startScout() },
             onCompleteScout = { viewModel.completeScout() },
+            onCaptureHotspot = { /* F4: camera integration placeholder */ },
             onBack = onBack,
         )
 
