@@ -8,6 +8,7 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
 class WorkerService {
 
@@ -66,6 +67,11 @@ class WorkerService {
             it[notificationsPushSubscription] = null
             it[updatedAt] = Clock.System.now()
         }
+    }
+
+    /** Delete a worker account (hard delete). */
+    suspend fun deleteAccount(workerId: Int): Boolean = dbQuery {
+        Workers.deleteWhere { Workers.id eq workerId } > 0
     }
 
     /** Top workers by jobs completed (from denormalized flat stats columns). */
