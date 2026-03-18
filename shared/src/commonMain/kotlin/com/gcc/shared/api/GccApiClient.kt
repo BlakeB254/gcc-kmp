@@ -434,6 +434,29 @@ class GccApiClient(
     suspend fun getMyPoints(): PointsSummary =
         get("/api/workers/me/points")
 
+    // ── Scout & Clean Route Scan API ──────────────────────────────
+
+    suspend fun createScan(req: CreateScanRequest): RouteScan =
+        postJson("/api/scans", req)
+
+    suspend fun getScan(id: Int): RouteScan =
+        get("/api/scans/$id")
+
+    suspend fun advanceScanPhase(scanId: Int, req: AdvancePhaseRequest): RouteScan =
+        patchJson("/api/scans/$scanId/phase", req)
+
+    suspend fun addScanHotspot(scanId: Int, req: CreateHotspotRequest): ScanHotspot =
+        postJson("/api/scans/$scanId/hotspots", req)
+
+    suspend fun updateScanHotspot(scanId: Int, hotspotId: Int, req: UpdateHotspotRequest): ScanHotspot =
+        patchJson("/api/scans/$scanId/hotspots/$hotspotId", req)
+
+    suspend fun updateScanCoverage(scanId: Int, req: AdvancePhaseRequest): RouteScan =
+        patchJson("/api/scans/$scanId/coverage", req)
+
+    suspend fun completeScan(scanId: Int, req: CompleteScanRequest): CompleteScanResponse =
+        postJson("/api/scans/$scanId/complete", req)
+
     // ── Cleanliness Analytics ─────────────────────────────────────
 
     suspend fun getCityCleanlinessOverview(): CityCleanlinessOverview =
