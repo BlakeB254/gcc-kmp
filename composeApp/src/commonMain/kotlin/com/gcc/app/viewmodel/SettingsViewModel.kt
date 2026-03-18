@@ -21,6 +21,8 @@ data class SettingsUiState(
     val biometricEnabled: Boolean = true,
     val isLoading: Boolean = true,
     val signedOut: Boolean = false,
+    val isDeletingAccount: Boolean = false,
+    val accountDeleted: Boolean = false,
     val error: String? = null,
 )
 
@@ -78,6 +80,27 @@ class SettingsViewModel(
             pushNotificationManager.unregister()
             tokenManager.logout()
             _uiState.value = _uiState.value.copy(signedOut = true)
+        }
+    }
+
+    fun deleteAccount() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isDeletingAccount = true, error = null)
+            try {
+                apiClient.deleteAccount()
+                pushNotificationManager.unregister()
+                tokenManager.logout()
+                _uiState.value = _uiState.value.copy(
+                    isDeletingAccount = false,
+                    accountDeleted = true,
+                    signedOut = true,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isDeletingAccount = false,
+                    error = e.message ?: "Failed to delete account",
+                )
+            }
         }
     }
 }

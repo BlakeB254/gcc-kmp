@@ -30,6 +30,7 @@ fun SettingsScreen(
     val biometricAvailable = remember { biometricAuth.isBiometricAvailable() }
     val uiState by viewModel.uiState.collectAsState()
     val profileState by profileVm.uiState.collectAsState()
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.loadSettings() }
     LaunchedEffect(Unit) { profileVm.loadProfile() }
@@ -55,6 +56,35 @@ fun SettingsScreen(
             )
         },
     ) { padding ->
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = { Text("Delete Account") },
+                text = {
+                    Text(
+                        "Are you sure you want to permanently delete your account? " +
+                            "This will remove all your data including cleaning history, " +
+                            "earnings records, and profile information. This action cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmation = false
+                            viewModel.deleteAccount()
+                        },
+                    ) {
+                        Text("Delete", color = GccError)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -211,6 +241,18 @@ fun SettingsScreen(
                 onClick = { viewModel.signOut() },
                 variant = GccButtonVariant.OUTLINED,
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = { showDeleteConfirmation = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (uiState.isDeletingAccount) "Deleting Account..." else "Delete Account",
+                    color = GccError,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
         }

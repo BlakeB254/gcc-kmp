@@ -74,6 +74,7 @@ actual class LocationProvider actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.delegate = flowDelegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            locationManager.distanceFilter = 10.0 // Only update when moved 10+ meters
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
         }
@@ -124,6 +125,7 @@ actual class LocationProvider actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.delegate = delegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            locationManager.distanceFilter = 10.0 // Only update when moved 10+ meters
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
         }

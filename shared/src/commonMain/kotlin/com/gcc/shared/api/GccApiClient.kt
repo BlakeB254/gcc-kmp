@@ -192,6 +192,9 @@ class GccApiClient(
     suspend fun removeDeviceToken() =
         deleteUnit("/api/workers/me/device-token")
 
+    suspend fun deleteAccount() =
+        deleteUnit("/api/workers/me")
+
     // ── Admin API Methods ─────────────────────────────────────────────
 
     suspend fun getAdminStats(): AdminStatsResponse =

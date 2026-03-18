@@ -19,7 +19,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
-    <string>40</string>
+    <string>44</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchStoryboardName</key>
@@ -43,8 +43,6 @@
     <dict/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>GCC tracks your location in the background during active cleaning jobs to record your route path for verification</string>
     <key>NSCameraUsageDescription</key>
     <string>GCC needs camera access to photograph before and after cleaning evidence at each checkpoint</string>
     <key>NSPhotoLibraryUsageDescription</key>
@@ -53,7 +51,6 @@
     <string>Save your GCC profile card to Photos</string>
     <key>UIBackgroundModes</key>
     <array>
-        <string>location</string>
         <string>remote-notification</string>
     </array>
     <key>NSFaceIDUsageDescription</key>

@@ -60,6 +60,11 @@ class WorkerService {
         }
     }
 
+    /** Permanently delete a worker account and all associated data. */
+    suspend fun deleteAccount(workerId: Int): Boolean = dbQuery {
+        Workers.deleteWhere { Workers.id eq workerId } > 0
+    }
+
     /** Remove the push token for the worker (e.g. on sign out). */
     suspend fun removePushToken(workerId: Int): Unit = dbQuery {
         Workers.update({ Workers.id eq workerId }) {
