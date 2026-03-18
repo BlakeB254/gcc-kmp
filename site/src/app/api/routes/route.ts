@@ -47,6 +47,8 @@ export async function GET(request: Request) {
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
         imageUrl: routes.imageUrl,
+        imageLocationLat: routes.imageLocationLat,
+        imageLocationLng: routes.imageLocationLng,
         description: routes.description,
       })
       .from(routes)
@@ -95,6 +97,8 @@ export async function GET(request: Request) {
         type: cp.type ?? 'photo_point',
       })),
       imageUrl: route.imageUrl || null,
+      imageLocationLat: route.imageLocationLat ?? null,
+      imageLocationLng: route.imageLocationLng ?? null,
       description: route.description || null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),

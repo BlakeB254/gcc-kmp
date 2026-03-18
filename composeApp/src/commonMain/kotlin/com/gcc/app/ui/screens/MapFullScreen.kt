@@ -262,7 +262,7 @@ fun MapFullScreen(
             ) {
                 val r0 = uiState.routes.firstOrNull()
                 Text(
-                    "R:${uiState.routes.size} lat:${r0?.imageLocationLat ?: "null"}",
+                    "R:${uiState.routes.size} lat:${r0?.imageLocationLat ?: "null"} img:${if (r0?.imageUrl != null) "yes" else "no"} desc:${r0?.description ?: "null"}",
                     modifier = Modifier.padding(6.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White,

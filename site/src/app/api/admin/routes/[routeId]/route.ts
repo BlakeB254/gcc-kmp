@@ -38,6 +38,8 @@ function toRouteResponse(route: any, checkpoints: any[] = []) {
       type: cp.type ?? 'photo_point',
     })),
     imageUrl: route.imageUrl || null,
+    imageLocationLat: route.imageLocationLat ?? null,
+    imageLocationLng: route.imageLocationLng ?? null,
     description: route.description || null,
     createdAt: new Date(route.createdAt).toISOString(),
     updatedAt: new Date(route.updatedAt).toISOString(),
@@ -64,6 +66,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl
     if (body.displayName !== undefined) updateData.displayName = body.displayName
     if (body.description !== undefined) updateData.description = body.description
+    if (body.imageLocationLat !== undefined) updateData.imageLocationLat = body.imageLocationLat
+    if (body.imageLocationLng !== undefined) updateData.imageLocationLng = body.imageLocationLng
     if (body.payoutAmount !== undefined) {
       updateData.payoutAmount = String(body.payoutAmount * 100) // Convert dollars to cents
     }

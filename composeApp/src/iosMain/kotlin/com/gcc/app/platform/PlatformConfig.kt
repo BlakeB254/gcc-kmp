@@ -5,7 +5,7 @@ import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSString
 import platform.Security.SecAddSharedWebCredential
 
-actual fun getApiBaseUrl(): String = "http://100.67.196.13:7310"
+actual fun getApiBaseUrl(): String = "https://api.globalcommunitycleaners.org"
 
 actual fun getPlatformName(): String = "ios"
 
