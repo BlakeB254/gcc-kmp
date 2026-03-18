@@ -501,38 +501,61 @@ actual fun GccMap(
                 ),
             )
 
-            // ── Image location markers: amber ring with white center (distinct from spot dots) ──
-            val imageStarJson = remember(imageStars) {
+            // ── Image location markers: "X marks the spot" via crossing lines ──
+            // Two diagonal lines crossing at each image location
+            val xSize = 0.00015 // ~17m arms at this latitude
+            val xSlashJson = remember(imageStars) {
                 if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
-                    val features = imageStars.joinToString(",") { coord ->
-                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                    val features = imageStars.joinToString(",") { c ->
+                        // Forward slash: bottom-left to top-right
+                        """{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[${c.lng - xSize},${c.lat - xSize}],[${c.lng + xSize},${c.lat + xSize}]]}}"""
                     }
                     """{"type":"FeatureCollection","features":[$features]}"""
                 }
             }
-            val imageStarSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(imageStarJson))
+            val xBackslashJson = remember(imageStars) {
+                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                else {
+                    val features = imageStars.joinToString(",") { c ->
+                        // Backslash: top-left to bottom-right
+                        """{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[${c.lng - xSize},${c.lat + xSize}],[${c.lng + xSize},${c.lat - xSize}]]}}"""
+                    }
+                    """{"type":"FeatureCollection","features":[$features]}"""
+                }
+            }
+            val xSlashSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(xSlashJson))
+            val xBackslashSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(xBackslashJson))
 
-            // Outer dark amber border
-            CircleLayer(
-                id = "image-star-border",
-                source = imageStarSrc,
-                color = const(Color(0xFFF57F17)),
-                radius = const(7.dp),
+            // White border on both lines
+            LineLayer(
+                id = "image-x-slash-border",
+                source = xSlashSrc,
+                lineColor = const(Color.White),
+                lineWidth = const(5.dp),
+                lineCap = const(LineCap.Round),
             )
-            // Amber ring
-            CircleLayer(
-                id = "image-star-ring",
-                source = imageStarSrc,
-                color = const(Color(0xFFFFB300)),
-                radius = const(6.dp),
+            LineLayer(
+                id = "image-x-backslash-border",
+                source = xBackslashSrc,
+                lineColor = const(Color.White),
+                lineWidth = const(5.dp),
+                lineCap = const(LineCap.Round),
             )
-            // White center dot (creates the ring/donut effect)
-            CircleLayer(
-                id = "image-star-center",
-                source = imageStarSrc,
-                color = const(Color.White),
-                radius = const(3.dp),
+            // Gold X lines
+            LineLayer(
+                id = "image-x-slash",
+                source = xSlashSrc,
+                lineColor = const(Color(0xFFFFB300)),
+                lineWidth = const(3.dp),
+                lineCap = const(LineCap.Round),
+            )
+            LineLayer(
+                id = "image-x-backslash",
+                source = xBackslashSrc,
+                lineColor = const(Color(0xFFFFB300)),
+                lineWidth = const(3.dp),
+                lineCap = const(LineCap.Round),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──
