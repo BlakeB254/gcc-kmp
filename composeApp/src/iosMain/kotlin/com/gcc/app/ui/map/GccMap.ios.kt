@@ -500,46 +500,33 @@ actual fun GccMap(
                 ),
             )
 
-            // ── Image location star markers: amber dots for display image locations ──
+            // ── Image location star markers: gold star emoji symbols ──
             val imageStarJson = remember(imageStars) {
                 if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
                     val features = imageStars.joinToString(",") { coord ->
-                        """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                        """{"type":"Feature","properties":{"label":"\u2B50"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
                     }
                     """{"type":"FeatureCollection","features":[$features]}"""
                 }
             }
             val imageStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(imageStarJson))
 
-            CircleLayer(
-                id = "image-star-outer",
+            val starLabelExpr = feature["label"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+            SymbolLayer(
+                id = "image-star-symbol",
                 source = imageStarSrc,
-                color = const(Color.White),
-                radius = interpolate(
+                textField = format(span(starLabelExpr)),
+                textSize = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    11 to const(5.dp),
-                    13 to const(8.dp),
-                    15 to const(12.dp),
-                    17 to const(16.dp),
+                    11 to const(10f),
+                    13 to const(16f),
+                    15 to const(22f),
+                    17 to const(28f),
                 ),
-            )
-
-            CircleLayer(
-                id = "image-star-inner",
-                source = imageStarSrc,
-                color = const(Color(0xFFFFB300)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    11 to const(4.dp),
-                    13 to const(6.dp),
-                    15 to const(10.dp),
-                    17 to const(14.dp),
-                ),
-                strokeColor = const(Color(0xFFF57F17)),
-                strokeWidth = const(1.5.dp),
+                textAllowOverlap = const(true),
+                iconAllowOverlap = const(true),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──
