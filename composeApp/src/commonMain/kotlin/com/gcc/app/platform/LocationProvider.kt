@@ -32,6 +32,12 @@ expect class LocationProvider() {
     val isTracking: Boolean
 
     /**
+     * Compass heading in degrees. 0=north, 90=east, 180=south, 270=west.
+     * Null if heading is unavailable (desktop) or not yet acquired.
+     */
+    val headingDegrees: StateFlow<Float?>
+
+    /**
      * Enable background location tracking for active job sessions.
      * iOS: Requests "always" authorization and enables allowsBackgroundLocationUpdates.
      * Android: Starts a foreground service with a persistent notification.

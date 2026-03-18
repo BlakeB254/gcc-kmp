@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import platform.CoreLocation.CLHeading
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
@@ -27,6 +28,9 @@ actual class LocationProvider actual constructor() {
 
     private val _currentLocation = MutableStateFlow<Coordinates?>(null)
     actual val currentLocation: StateFlow<Coordinates?> = _currentLocation.asStateFlow()
+
+    private val _headingDegrees = MutableStateFlow<Float?>(null)
+    actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
 
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
@@ -111,6 +115,15 @@ actual class LocationProvider actual constructor() {
 
             override fun locationManager(
                 manager: CLLocationManager,
+                didUpdateHeading: CLHeading,
+            ) {
+                val trueHeading = didUpdateHeading.trueHeading
+                val heading = if (trueHeading >= 0) trueHeading else didUpdateHeading.magneticHeading
+                _headingDegrees.value = heading.toFloat()
+            }
+
+            override fun locationManager(
+                manager: CLLocationManager,
                 didFailWithError: platform.Foundation.NSError,
             ) {
                 // Non-fatal; CLLocationManager retries automatically
@@ -126,8 +139,10 @@ actual class LocationProvider actual constructor() {
             locationManager.delegate = delegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
             locationManager.distanceFilter = 10.0 // Only update when moved 10+ meters
+            locationManager.headingFilter = 5.0   // Update every 5 degrees of change
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
+            locationManager.startUpdatingHeading()
         }
     }
 
@@ -143,6 +158,7 @@ actual class LocationProvider actual constructor() {
 
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.stopUpdatingLocation()
+            locationManager.stopUpdatingHeading()
             locationManager.allowsBackgroundLocationUpdates = false
             locationManager.delegate = null
         }

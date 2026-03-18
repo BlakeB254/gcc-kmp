@@ -18,6 +18,9 @@ actual class LocationProvider actual constructor() {
 
     actual val locationFlow: Flow<Coordinates> = flowOf(chicagoCoords)
 
+    /** Heading not available on desktop — always null. */
+    actual val headingDegrees: StateFlow<Float?> = MutableStateFlow<Float?>(null).asStateFlow()
+
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 

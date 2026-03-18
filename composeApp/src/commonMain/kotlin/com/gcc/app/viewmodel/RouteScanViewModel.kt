@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.AiDirectionEngine
+import com.gcc.app.platform.ArScanner
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.detectDeviceType
@@ -54,6 +55,7 @@ class RouteScanViewModel(
 
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
+    private val arScanner = ArScanner()
 
     // GPS breadcrumb paths for GeoJSON
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
@@ -371,13 +373,25 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         scoutPath.add(Pair(lat, lng))
-                        coverageTracker.updatePosition(lat, lng)
+
+                        // AR tier: use camera frustum for coverage; GPS tier: use radius
+                        val heading = locationProvider.headingDegrees.value
+                        if (state.deviceType == DeviceType.AR && heading != null) {
+                            coverageTracker.updateWithFrustum(
+                                lat = lat,
+                                lng = lng,
+                                headingDegrees = heading,
+                                fovDegrees = arScanner.getCameraFovDegrees(),
+                            )
+                        } else {
+                            coverageTracker.updatePosition(lat, lng)
+                        }
 
                         // Update AI direction engine with unscanned cluster centers
                         aiDirectionEngine.update(
                             userLat = lat,
                             userLng = lng,
-                            userHeading = null, // heading not available from LocationProvider
+                            userHeading = heading,
                             unscannedCenters = coverageTracker.getUnscannedCenters(),
                         )
 

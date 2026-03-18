@@ -2,6 +2,10 @@ package com.gcc.app.platform
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -16,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.roundToInt
 
 private const val TAG = "LocationProvider"
 
@@ -48,6 +53,9 @@ actual class LocationProvider actual constructor() {
     )
     actual val locationFlow: Flow<Coordinates> = _locationFlow.asSharedFlow()
 
+    private val _headingDegrees = MutableStateFlow<Float?>(null)
+    actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
+
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 
@@ -55,6 +63,24 @@ actual class LocationProvider actual constructor() {
     private var refCount = 0
 
     private var locationManager: LocationManager? = null
+    private var sensorManager: SensorManager? = null
+
+    private val rotationVectorListener = object : SensorEventListener {
+        private val rotationMatrix = FloatArray(9)
+        private val orientationAngles = FloatArray(3)
+
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+            // azimuth in radians → degrees, normalised to [0, 360)
+            val azimuthDeg = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
+            val normalized = (azimuthDeg + 360f) % 360f
+            _headingDegrees.value = normalized
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) { /* no-op */ }
+    }
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -112,6 +138,19 @@ actual class LocationProvider actual constructor() {
 
         locationManager = manager
         _isTracking = true
+
+        // Register rotation vector sensor for compass heading
+        val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        if (sm != null) {
+            sensorManager = sm
+            val rotVecSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            if (rotVecSensor != null) {
+                sm.registerListener(rotationVectorListener, rotVecSensor, SensorManager.SENSOR_DELAY_UI)
+                Log.d(TAG, "Rotation vector sensor registered for heading")
+            } else {
+                Log.w(TAG, "TYPE_ROTATION_VECTOR sensor not available")
+            }
+        }
 
         try {
             // Try GPS provider first (high accuracy, outdoor)
@@ -177,6 +216,14 @@ actual class LocationProvider actual constructor() {
         }
 
         locationManager = null
+
+        try {
+            sensorManager?.unregisterListener(rotationVectorListener)
+            Log.d(TAG, "Rotation vector sensor unregistered")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unregistering sensor listener", e)
+        }
+        sensorManager = null
     }
 
     /**
