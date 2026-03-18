@@ -129,10 +129,10 @@ object MapStyles {
     // Heatmap color: light pink (few spots) → deep red (dense clusters)
     val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
 
-    // Zoom thresholds — heatmap only shows when zoomed into the data area
-    const val SPOT_HEATMAP_MIN_ZOOM = 12.0   // heatmap starts at service-area zoom (not city-wide)
-    const val SPOT_HEATMAP_MAX_ZOOM = 14.5   // heatmap fades above this zoom
-    const val SPOT_DOTS_MIN_ZOOM = 13.0      // individual dots appear from this zoom
+    // Zoom thresholds — heatmap and dots are mutually exclusive views
+    const val SPOT_HEATMAP_MIN_ZOOM = 12.0   // heatmap starts at service-area zoom
+    const val SPOT_HEATMAP_MAX_ZOOM = 13.5   // heatmap fully gone before dots appear
+    const val SPOT_DOTS_MIN_ZOOM = 13.5      // individual dots take over where heatmap ends
 }
 
 

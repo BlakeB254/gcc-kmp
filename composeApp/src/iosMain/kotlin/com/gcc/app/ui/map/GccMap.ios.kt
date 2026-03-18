@@ -692,33 +692,32 @@ actual fun GccMap(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 12f,
-                maxZoom = 15f,
+                maxZoom = 13.5f,
                 // Intensity ramps up as you zoom into the area
                 intensity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    12 to const(0.4f),
-                    14 to const(1f),
+                    12 to const(0.5f),
+                    13 to const(1f),
                 ),
                 // Tight radius so heatmap stays within the actual data footprint
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
                     12 to const(6.dp),
-                    13 to const(10.dp),
-                    14 to const(18.dp),
+                    13 to const(12.dp),
                 ),
-                // Fade out as individual dots take over
+                // Fully gone before dots appear at 13.5
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
                     12 to const(0.5f),
-                    14 to const(0.2f),
-                    15 to const(0f),
+                    13 to const(0.3f),
+                    13.5 to const(0f),
                 ),
             )
 
-            // Individual spot dots — small solid orange, appear at zoom 13+
+            // Individual spot dots — small solid orange, appear after heatmap fades
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -726,7 +725,7 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
+                    13.5 to const(0.dp),
                     14 to const(3.dp),
                     15 to const(5.dp),
                     17 to const(7.dp),
@@ -734,8 +733,8 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0f),
-                    14 to const(1f),
+                    13.5 to const(0f),
+                    14.5 to const(1f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
