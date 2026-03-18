@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { cookies } from 'next/headers'
 
 export const runtime = 'nodejs'
 
@@ -123,5 +124,53 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Get worker profile error:', error)
     return NextResponse.json({ error: 'Failed to get profile' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const workerId = await getAuthenticatedWorkerId(request)
+
+    if (!workerId) {
+      const isMobileReq = request.headers.get('authorization')?.startsWith('Bearer ')
+      if (isMobileReq) {
+        return NextResponse.json({ data: null, success: false, message: 'Not authenticated' }, { status: 401 })
+      }
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
+    // Verify the worker exists before deleting
+    const [worker] = await db
+      .select({ id: workers.id })
+      .from(workers)
+      .where(eq(workers.id, workerId))
+      .limit(1)
+
+    if (!worker) {
+      const isMobileReq = request.headers.get('authorization')?.startsWith('Bearer ')
+      if (isMobileReq) {
+        return NextResponse.json({ data: null, success: false, message: 'Worker not found' }, { status: 404 })
+      }
+      return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
+    }
+
+    // Delete the worker record
+    await db.delete(workers).where(eq(workers.id, workerId))
+
+    // Clear the auth cookie for web users
+    const isMobile = request.headers.get('authorization')?.startsWith('Bearer ')
+    if (!isMobile) {
+      const cookieStore = await cookies()
+      cookieStore.delete('worker-token')
+    }
+
+    if (isMobile) {
+      return NextResponse.json({ data: { deleted: true }, success: true })
+    }
+
+    return NextResponse.json({ success: true, deleted: true })
+  } catch (error) {
+    console.error('Delete worker account error:', error)
+    return NextResponse.json({ error: 'Failed to delete account' }, { status: 500 })
   }
 }

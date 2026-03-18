@@ -260,6 +260,8 @@ export default function WorkerProfilePage() {
   const [profile, setProfile] = useState<WorkerProfile | null>(null)
   const [addressStatus, setAddressStatus] = useState<AddressStatus | null>(null)
   const [showAddressModal, setShowAddressModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const profileCardRef = useRef<HTMLDivElement>(null)
 
@@ -304,6 +306,24 @@ export default function WorkerProfilePage() {
       .then((res) => res.json())
       .then((data) => setAddressStatus(data))
       .catch(console.error)
+  }
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true)
+    try {
+      const response = await fetch('/api/workers/me', { method: 'DELETE' })
+      if (response.ok) {
+        router.push('/worker/login')
+      } else {
+        const data = await response.json()
+        alert(data.error || 'Failed to delete account')
+      }
+    } catch {
+      alert('Failed to delete account. Please try again.')
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+    }
   }
 
   const formatCurrency = (cents: number) => {
@@ -765,7 +785,56 @@ export default function WorkerProfilePage() {
             </Link>
           </div>
         </section>
+        {/* Delete Account */}
+        <section className="mt-12 pt-8 border-t border-neutral-800">
+          <h3 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-3">
+            Danger Zone
+          </h3>
+          <div className="p-4 rounded-xl bg-red-500/5 border border-red-500/20">
+            <p className="text-sm text-neutral-400 mb-3">
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 rounded-xl font-medium text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
+            >
+              Delete Account
+            </button>
+          </div>
+        </section>
       </main>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-neutral-800 rounded-2xl border border-neutral-700 overflow-hidden">
+            <div className="p-4 border-b border-neutral-700">
+              <h2 className="text-lg font-semibold text-white">Delete Account</h2>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                This will permanently delete your account, including your profile, job history, earnings records, and all other data. This cannot be undone.
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium bg-neutral-700 hover:bg-neutral-600 text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete Forever'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Address Change Modal */}
       <AddressChangeModal
