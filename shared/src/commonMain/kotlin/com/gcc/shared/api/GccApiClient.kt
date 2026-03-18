@@ -236,6 +236,9 @@ class GccApiClient(
     suspend fun bulkWorkerAction(request: BulkActionRequest): List<Worker> =
         postJson("/api/admin/workers/bulk-verify", request)
 
+    suspend fun deleteWorker(workerId: Int): Unit =
+        deleteUnit("/api/admin/workers/$workerId")
+
     // Sponsors
     suspend fun getAdminSponsors(search: String? = null, page: Int = 1, limit: Int = 20): List<Sponsor> =
         get("/api/admin/sponsors") {

@@ -141,6 +141,10 @@ class RootComponent(
         navigation.push(Screen.AdminPanel)
     }
 
+    fun navigateToAdminWorkerDetail(workerId: Int) {
+        navigation.push(Screen.AdminWorkerDetail(workerId))
+    }
+
     fun navigateToAdminSpotCreate(lat: Double, lng: Double) {
         navigation.push(Screen.AdminSpotCreate(lat, lng))
     }

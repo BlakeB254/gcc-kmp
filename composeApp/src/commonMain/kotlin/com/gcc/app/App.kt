@@ -19,6 +19,7 @@ import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
 import com.gcc.app.ui.theme.GccGreen
+import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
 
 @Composable
@@ -146,9 +147,15 @@ fun App(component: RootComponent) {
                 )
                 is Screen.AdminPanel -> AdminPanelScreen(
                     onBack = component::navigateBack,
+                    onLogout = component::signOut,
                     onNavigateToSpotCreate = component::navigateToAdminSpotCreate,
                     onNavigateToSpotDetail = component::navigateToAdminSpotDetail,
                     onNavigateToRouteDetail = component::navigateToAdminRouteDetail,
+                    onNavigateToWorkerDetail = component::navigateToAdminWorkerDetail,
+                )
+                is Screen.AdminWorkerDetail -> AdminWorkerDetailScreen(
+                    workerId = screen.workerId,
+                    onBack = component::navigateBack,
                 )
                 is Screen.AdminSpotCreate -> AdminSpotCreateScreen(
                     initialLat = screen.lat,

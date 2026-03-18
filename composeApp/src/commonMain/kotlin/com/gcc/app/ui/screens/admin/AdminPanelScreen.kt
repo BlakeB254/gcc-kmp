@@ -21,6 +21,7 @@ fun AdminPanelScreen(
     onNavigateToSpotCreate: (lat: Double, lng: Double) -> Unit = { _, _ -> },
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
     onNavigateToRouteDetail: (routeId: Int) -> Unit = {},
+    onNavigateToWorkerDetail: (workerId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -87,7 +88,10 @@ fun AdminPanelScreen(
                 }
                 else -> when (uiState.selectedTab) {
                     AdminTab.OVERVIEW -> AdminOverviewTab(uiState.stats)
-                    AdminTab.WORKERS -> AdminWorkersTab(uiState.workers)
+                    AdminTab.WORKERS -> AdminWorkersTab(
+                        workers = uiState.workers,
+                        onWorkerClick = onNavigateToWorkerDetail,
+                    )
                     AdminTab.ROUTES -> AdminRoutesTab(
                         routes = uiState.routes,
                         onRouteClick = onNavigateToRouteDetail,

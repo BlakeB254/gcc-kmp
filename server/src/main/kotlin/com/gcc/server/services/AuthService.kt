@@ -89,6 +89,9 @@ class AuthService(
         return AuthResponse(token = token, worker = worker, exp = expiresAt / 1000)
     }
 
+    // Apple review demo account — bypasses 2FA so reviewers can log in
+    private val demoEmail = System.getenv("DEMO_ACCOUNT_EMAIL")?.lowercase() ?: "applereview@gcc.com"
+
     suspend fun login(request: LoginRequest): AuthResponse {
         val credentials = workerService.getAuthCredentials(request.email)
             ?: throw IllegalArgumentException("Invalid email or password")
@@ -102,6 +105,14 @@ class AuthService(
 
         val worker = workerService.getByEmail(request.email)
             ?: throw IllegalStateException("Worker not found after password verification")
+
+        // Skip 2FA for the Apple review demo account so reviewers can log in
+        if (request.email.lowercase() == demoEmail) {
+            val role = if (request.email.lowercase() in adminEmails) "admin" else "worker"
+            val expiresAt = System.currentTimeMillis() + tokenLifetimeMs
+            val token = generateToken(worker.id, role, expiresAt)
+            return AuthResponse(token = token, worker = worker, exp = expiresAt / 1000)
+        }
 
         // Generate 2FA code and return challenge
         val code = "%06d".format(SecureRandom().nextInt(1_000_000))

@@ -74,6 +74,9 @@ sealed class Screen {
     data class AdminSpotDetail(val spotId: Int) : Screen()
 
     @Serializable
+    data class AdminWorkerDetail(val workerId: Int) : Screen()
+
+    @Serializable
     data class AdminRouteDetail(val routeId: Int) : Screen()
 
     @Serializable

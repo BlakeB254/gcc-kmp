@@ -12,10 +12,12 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import com.gcc.server.services.WorkerService
 import com.gcc.server.plugins.koinGet
 
 fun Route.adminWorkerRoutes() {
     val adminService = application.koinGet<AdminService>()
+    val workerService = application.koinGet<WorkerService>()
 
     route("/api/admin/workers") {
         get {
@@ -25,6 +27,18 @@ fun Route.adminWorkerRoutes() {
             val search = call.parameters["search"]
             val workers = adminService.getAllWorkers(limit, offset, search)
             call.respond(HttpStatusCode.OK, ApiResponse(data = workers))
+        }
+
+        get("/{id}") {
+            call.requireAdmin()
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Worker ID required")
+            val worker = workerService.getById(id)
+            if (worker != null) {
+                call.respond(HttpStatusCode.OK, ApiResponse(data = worker))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
+            }
         }
 
         get("/pending-verification") {

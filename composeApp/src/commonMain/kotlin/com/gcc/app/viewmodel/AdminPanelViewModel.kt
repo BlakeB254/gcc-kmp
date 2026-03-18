@@ -240,6 +240,72 @@ class AdminPanelViewModel(
         }
     }
 
+    // ─── Worker Verification ────────────────────────────────────────
+
+    private val _selectedWorker = MutableStateFlow<Worker?>(null)
+    val selectedWorker: StateFlow<Worker?> = _selectedWorker.asStateFlow()
+
+    private val _workerActionLoading = MutableStateFlow(false)
+    val workerActionLoading: StateFlow<Boolean> = _workerActionLoading.asStateFlow()
+
+    fun loadWorkerDetail(workerId: Int) {
+        scope.launch {
+            _workerActionLoading.value = true
+            try {
+                val worker = apiClient.getAdminWorker(workerId)
+                _selectedWorker.value = worker
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to load worker: ${e.message}")
+            }
+            _workerActionLoading.value = false
+        }
+    }
+
+    fun verifyWorker(
+        workerId: Int,
+        status: VerificationStatus,
+        governmentIdStatus: DocumentStatus? = null,
+        proofOfAddressStatus: DocumentStatus? = null,
+        reviewNotes: String? = null,
+    ) {
+        scope.launch {
+            _workerActionLoading.value = true
+            try {
+                val request = VerifyWorkerRequest(
+                    status = status,
+                    governmentIdStatus = governmentIdStatus,
+                    proofOfAddressStatus = proofOfAddressStatus,
+                    reviewNotes = reviewNotes,
+                )
+                val updated = apiClient.verifyWorker(workerId, request)
+                _selectedWorker.value = updated
+                // Also update the worker in the list
+                _uiState.value = _uiState.value.copy(
+                    workers = _uiState.value.workers.map { if (it.id == workerId) updated else it },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to verify worker: ${e.message}")
+            }
+            _workerActionLoading.value = false
+        }
+    }
+
+    fun deleteWorker(workerId: Int, onDeleted: () -> Unit) {
+        scope.launch {
+            _workerActionLoading.value = true
+            try {
+                apiClient.deleteWorker(workerId)
+                _uiState.value = _uiState.value.copy(
+                    workers = _uiState.value.workers.filter { it.id != workerId },
+                )
+                onDeleted()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to delete worker: ${e.message}")
+            }
+            _workerActionLoading.value = false
+        }
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
