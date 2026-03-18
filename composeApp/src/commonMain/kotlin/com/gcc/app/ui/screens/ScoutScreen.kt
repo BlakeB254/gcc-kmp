@@ -40,7 +40,9 @@ fun ScoutScreen(
     onCaptureHotspot: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var showCaptureDialog by remember { mutableStateOf(false) }
+    // showCaptureDialog is now managed by RouteScanScreen via onCaptureHotspot callback
+    @Suppress("UNUSED_VARIABLE")
+    val showCaptureDialog = false
 
     // Build Coordinates from flat lat/lng in uiState
     val currentLocation = if (uiState.currentLat != 0.0 || uiState.currentLng != 0.0) {
@@ -259,7 +261,6 @@ fun ScoutScreen(
         if (uiState.scanId != null) {
             FloatingActionButton(
                 onClick = {
-                    showCaptureDialog = true
                     onCaptureHotspot()
                 },
                 modifier = Modifier
@@ -297,28 +298,5 @@ fun ScoutScreen(
         }
     }
 
-    // ── Capture hotspot placeholder dialog (F4 stub) ──────────────────
-    if (showCaptureDialog) {
-        AlertDialog(
-            onDismissRequest = { showCaptureDialog = false },
-            title = {
-                Text(
-                    "Capture Hotspot Photo",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                )
-            },
-            text = {
-                Text(
-                    "Camera capture and AI analysis will be available in F4. Tap OK to dismiss.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showCaptureDialog = false }) {
-                    Text("OK", color = GccGreen)
-                }
-            },
-        )
-    }
+    // ScoutCaptureDialog is now managed by RouteScanScreen — no stub needed here.
 }
