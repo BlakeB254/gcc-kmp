@@ -501,61 +501,55 @@ actual fun GccMap(
                 ),
             )
 
-            // ── Image location markers: "X marks the spot" via crossing lines ──
-            // Two diagonal lines crossing at each image location
-            val xSize = 0.00015 // ~17m arms at this latitude
-            val xSlashJson = remember(imageStars) {
+            // ── Image location markers: gold diamond shapes via FillLayer ──
+            val dLat = 0.00015  // ~17m vertical arm
+            val dLng = 0.00020  // ~17m horizontal arm
+            val diamondJson = remember(imageStars) {
                 if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
                     val features = imageStars.joinToString(",") { c ->
-                        // Forward slash: bottom-left to top-right
-                        """{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[${c.lng - xSize},${c.lat - xSize}],[${c.lng + xSize},${c.lat + xSize}]]}}"""
+                        val top = "[${c.lng},${c.lat + dLat}]"
+                        val right = "[${c.lng + dLng},${c.lat}]"
+                        val bottom = "[${c.lng},${c.lat - dLat}]"
+                        val left = "[${c.lng - dLng},${c.lat}]"
+                        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
                     }
                     """{"type":"FeatureCollection","features":[$features]}"""
                 }
             }
-            val xBackslashJson = remember(imageStars) {
+            // Smaller inner diamond for contrast
+            val innerScale = 0.5
+            val innerDiamondJson = remember(imageStars) {
                 if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
                 else {
                     val features = imageStars.joinToString(",") { c ->
-                        // Backslash: top-left to bottom-right
-                        """{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[${c.lng - xSize},${c.lat + xSize}],[${c.lng + xSize},${c.lat - xSize}]]}}"""
+                        val d2Lat = dLat * innerScale
+                        val d2Lng = dLng * innerScale
+                        val top = "[${c.lng},${c.lat + d2Lat}]"
+                        val right = "[${c.lng + d2Lng},${c.lat}]"
+                        val bottom = "[${c.lng},${c.lat - d2Lat}]"
+                        val left = "[${c.lng - d2Lng},${c.lat}]"
+                        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
                     }
                     """{"type":"FeatureCollection","features":[$features]}"""
                 }
             }
-            val xSlashSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(xSlashJson))
-            val xBackslashSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(xBackslashJson))
+            val diamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(diamondJson))
+            val innerDiamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(innerDiamondJson))
 
-            // White border on both lines
-            LineLayer(
-                id = "image-x-slash-border",
-                source = xSlashSrc,
-                lineColor = const(Color.White),
-                lineWidth = const(5.dp),
-                lineCap = const(LineCap.Round),
+            // Outer gold diamond
+            FillLayer(
+                id = "image-star-fill",
+                source = diamondSrc,
+                fillColor = const(Color(0xFFFFB300)),
+                fillOpacity = const(1f),
             )
-            LineLayer(
-                id = "image-x-backslash-border",
-                source = xBackslashSrc,
-                lineColor = const(Color.White),
-                lineWidth = const(5.dp),
-                lineCap = const(LineCap.Round),
-            )
-            // Gold X lines
-            LineLayer(
-                id = "image-x-slash",
-                source = xSlashSrc,
-                lineColor = const(Color(0xFFFFB300)),
-                lineWidth = const(3.dp),
-                lineCap = const(LineCap.Round),
-            )
-            LineLayer(
-                id = "image-x-backslash",
-                source = xBackslashSrc,
-                lineColor = const(Color(0xFFFFB300)),
-                lineWidth = const(3.dp),
-                lineCap = const(LineCap.Round),
+            // White inner diamond (creates a framed look)
+            FillLayer(
+                id = "image-star-inner",
+                source = innerDiamondSrc,
+                fillColor = const(Color.White),
+                fillOpacity = const(0.9f),
             )
 
             // ── Bounty markers: red dots with radius and amount labels ──
