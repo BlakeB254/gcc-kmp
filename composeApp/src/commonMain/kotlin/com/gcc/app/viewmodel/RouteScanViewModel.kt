@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.detectDeviceType
@@ -52,6 +53,7 @@ class RouteScanViewModel(
     val uiState: StateFlow<RouteScanUiState> = _uiState.asStateFlow()
 
     private val coverageTracker = CoverageTracker()
+    private val aiDirectionEngine = AiDirectionEngine()
 
     // GPS breadcrumb paths for GeoJSON
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
@@ -61,6 +63,7 @@ class RouteScanViewModel(
     private var locationJob: Job? = null
     private var timerJob: Job? = null
     private var coverageJob: Job? = null
+    private var aiDirectionJob: Job? = null
 
     // ── Initialisation ───────────────────────────────────────────────
 
@@ -68,6 +71,7 @@ class RouteScanViewModel(
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
+        aiDirectionJob?.cancel()
         scoutPath.clear()
         cleanPath.clear()
 
@@ -90,6 +94,13 @@ class RouteScanViewModel(
         coverageJob = scope.launch {
             coverageTracker.coveragePercent.collect { pct ->
                 _uiState.value = _uiState.value.copy(coveragePercent = pct)
+            }
+        }
+
+        // Collect AI direction text into UI state
+        aiDirectionJob = scope.launch {
+            aiDirectionEngine.directionText.collect { text ->
+                _uiState.value = _uiState.value.copy(aiDirectionText = text)
             }
         }
     }
@@ -362,6 +373,14 @@ class RouteScanViewModel(
                         scoutPath.add(Pair(lat, lng))
                         coverageTracker.updatePosition(lat, lng)
 
+                        // Update AI direction engine with unscanned cluster centers
+                        aiDirectionEngine.update(
+                            userLat = lat,
+                            userLng = lng,
+                            userHeading = null, // heading not available from LocationProvider
+                            unscannedCenters = coverageTracker.getUnscannedCenters(),
+                        )
+
                         // Check loop closure: within 20m of start and already moved at least 50m
                         val distFromStart = GeofenceVerification.distanceMeters(
                             lat, lng, state.startLat, state.startLng
@@ -432,6 +451,8 @@ class RouteScanViewModel(
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
+        aiDirectionJob?.cancel()
+        aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
     }
 }
