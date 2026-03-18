@@ -134,6 +134,30 @@ class CoverageTracker {
         else (scannedCorridor.toDouble() / corridorCells.size * 100.0).coerceIn(0.0, 100.0)
     }
 
+    // ── Unscanned cell centers ────────────────────────────────────────
+
+    /**
+     * Returns lat/lng centers of corridor cells that have not yet been scanned.
+     * Samples every 5th cell to avoid returning thousands of points.
+     */
+    fun getUnscannedCenters(): List<Pair<Double, Double>> {
+        val scanned = _scannedCells.value
+        val unscanned = mutableListOf<Pair<Double, Double>>()
+        var i = 0
+        for (cell in corridorCells) {
+            if (cell !in scanned) {
+                if (i % 5 == 0) {
+                    val (row, col) = cell
+                    val lat = originLat + (row + 0.5) * cellSizeMeters * latPerMeter
+                    val lng = originLng + (col + 0.5) * cellSizeMeters * lngPerMeter
+                    unscanned.add(Pair(lat, lng))
+                }
+                i++
+            }
+        }
+        return unscanned
+    }
+
     // ── Reset ────────────────────────────────────────────────────────
 
     fun reset() {
