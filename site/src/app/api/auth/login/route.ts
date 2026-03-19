@@ -28,16 +28,18 @@ export async function POST(request: NextRequest) {
       .limit(1)
 
     if (!worker || !worker.salt || !worker.hash) {
+      console.log(`Login failed: no worker found for email="${email}"`)
       return Response.json(
-        { data: null, success: false, message: 'Invalid email or password' },
+        { data: null, success: false, message: `Account not found for ${email}` },
         { status: 401 }
       )
     }
 
     // Verify password
     if (!verifyPassword(password, worker.hash, worker.salt)) {
+      console.log(`Login failed: password mismatch for email="${email}", worker_id=${worker.id}`)
       return Response.json(
-        { data: null, success: false, message: 'Invalid email or password' },
+        { data: null, success: false, message: 'Incorrect password' },
         { status: 401 }
       )
     }
