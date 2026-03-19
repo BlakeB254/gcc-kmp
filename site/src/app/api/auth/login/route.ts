@@ -47,7 +47,17 @@ export async function POST(request: NextRequest) {
     // Map to mobile format
     const mobileWorker = mapWorkerToMobile(worker)
 
-    return Response.json({ data: { token, worker: mobileWorker, exp } })
+    return Response.json({
+      data: {
+        token,
+        worker: mobileWorker,
+        exp,
+        requiresTwoFactor: false,
+        twoFactorToken: null,
+      },
+      success: true,
+      message: null,
+    })
   } catch (error) {
     console.error('Login error:', error)
     return Response.json(

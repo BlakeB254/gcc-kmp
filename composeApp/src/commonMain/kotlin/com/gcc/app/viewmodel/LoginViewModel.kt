@@ -55,30 +55,39 @@ class LoginViewModel(
                             twoFactorToken = authData.twoFactorToken,
                         )
                     } else {
-                    tokenManager.saveToken(authData.token!!)
-                    // Save credentials in Keychain for Face ID re-login
-                    tokenManager.saveCredentials(email, password)
-                    // Offer to save in iOS Passwords app for AutoFill
-                    saveToSystemCredentials(email, password)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isLoggedIn = true,
-                        worker = authData.worker,
-                        isAdmin = tokenManager.isAdmin(),
-                    )
-                    // Register for push notifications after successful login
-                    registerPushToken()
+                        tokenManager.saveToken(authData.token!!)
+                        // Save credentials in Keychain for Face ID re-login
+                        tokenManager.saveCredentials(email, password)
+                        // Offer to save in iOS Passwords app for AutoFill
+                        saveToSystemCredentials(email, password)
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            isLoggedIn = true,
+                            worker = authData.worker,
+                            isAdmin = tokenManager.isAdmin(),
+                        )
+                        // Register for push notifications after successful login
+                        registerPushToken()
                     }
                 } else {
+                    // Extract server error message for better diagnostics
+                    val errorMsg = try {
+                        val errorBody = response.body<ApiResponse<AuthResponse?>>()
+                        errorBody.message ?: "Invalid email or password"
+                    } catch (_: Exception) {
+                        "Login failed (HTTP ${response.status.value})"
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = "Invalid email or password",
+                        error = errorMsg,
                     )
                 }
             } catch (e: Exception) {
+                val detail = e.message ?: "Unknown error"
+                println("GCC Login error: $detail")
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Login failed",
+                    error = "Login failed: $detail",
                 )
             }
         }

@@ -132,7 +132,9 @@ export async function GET(request: NextRequest) {
   }))
 
   return Response.json({
-    blocks: formattedBlocks,
+    data: formattedBlocks,
+    success: true,
+    message: null,
     total,
     page,
     totalPages,

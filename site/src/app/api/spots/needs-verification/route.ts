@@ -15,11 +15,11 @@ export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
     const auth = await verifyMobileToken(authHeader.substring(7))
     if (!auth) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -70,9 +70,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ data })
+    return NextResponse.json({ data, success: true, message: null })
   } catch (error) {
     console.error('Needs verification error:', error)
-    return NextResponse.json({ error: 'Failed to fetch spots needing verification' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to fetch spots needing verification' }, { status: 500 })
   }
 }

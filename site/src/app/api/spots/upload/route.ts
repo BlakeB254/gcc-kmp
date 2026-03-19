@@ -17,12 +17,12 @@ export async function POST(request: NextRequest) {
     // Authenticate via mobile Bearer token
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
     const token = authHeader.substring(7)
     const auth = await verifyMobileToken(token)
     if (!auth) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     const formData = await request.formData()
@@ -48,9 +48,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       data: { urls },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Photo upload error:', error)
-    return NextResponse.json({ error: 'Failed to upload photos' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to upload photos' }, { status: 500 })
   }
 }

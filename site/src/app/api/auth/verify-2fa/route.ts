@@ -82,7 +82,9 @@ export async function POST(request: NextRequest) {
     const mobileWorker = mapWorkerToMobile(worker)
 
     return Response.json({
-      data: { token, worker: mobileWorker, exp },
+      data: { token, worker: mobileWorker, exp, requiresTwoFactor: false, twoFactorToken: null },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Verify 2FA error:', error)

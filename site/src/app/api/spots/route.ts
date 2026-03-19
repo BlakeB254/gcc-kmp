@@ -95,10 +95,10 @@ export async function GET(request: NextRequest) {
     // Full CommunityReport objects for iOS admin panel (via ApiResponse<T>.data)
     const fullReports = reports.map((r) => toCommunityReport(r, tagsCache.get(r.id)))
 
-    return NextResponse.json({ spots, data: fullReports, success: true })
+    return NextResponse.json({ spots, data: fullReports, success: true, message: null })
   } catch (error) {
     console.error('Error fetching spots:', error)
-    return NextResponse.json({ spots: [], data: [], success: true })
+    return NextResponse.json({ spots: [], data: [], success: true, message: null })
   }
 }
 
@@ -107,12 +107,12 @@ export async function POST(request: NextRequest) {
     // Authenticate via mobile Bearer token
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
     const token = authHeader.substring(7)
     const auth = await verifyMobileToken(token)
     if (!auth) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     // Look up worker name
@@ -144,12 +144,12 @@ export async function POST(request: NextRequest) {
 
     // Validate coordinates
     if (lat == null || lng == null) {
-      return NextResponse.json({ error: 'lat and lng are required' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'lat and lng are required' }, { status: 400 })
     }
 
     // Server-side image limit: max 3 photos
     if (mediaUrls && mediaUrls.length > 3) {
-      return NextResponse.json({ error: 'Maximum 3 photos allowed per spot report' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'Maximum 3 photos allowed per spot report' }, { status: 400 })
     }
 
     // Duplicate spot check: reject if another spot exists within 50m
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
 
       if (duplicateCheck.length > 0) {
         return NextResponse.json(
-          { error: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
+          { data: null, success: false, message: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
           { status: 409 }
         )
       }
@@ -263,9 +263,11 @@ export async function POST(request: NextRequest) {
         matchingBounties: [],
         pointsAwarded: observerPoints,
       },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Create spot report error:', error)
-    return NextResponse.json({ error: 'Failed to create report' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to create report' }, { status: 500 })
   }
 }
