@@ -1,0 +1,124 @@
+<h2>Scout Lap: AR Scanning UX</h2>
+<p class="subtitle">What the user sees during the fog-of-war scanning phase on AR devices</p>
+
+<div class="section">
+  <h3>AR Camera View During Scout</h3>
+  <p class="subtitle">The main screen while walking the route with AR active</p>
+</div>
+
+<div class="cards">
+  <!-- Option A: Full AR Overlay -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#111; padding:0; height:320px; position:relative; overflow:hidden;">
+      <!-- Phone frame mockup -->
+      <div style="position:absolute;inset:8px;border-radius:16px;border:2px solid #333;overflow:hidden;background:#1a1a2e;">
+        <!-- Camera view background -->
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,#2d3436 0%,#636e72 50%,#4a6741 80%,#2d5016 100%);opacity:0.6;"></div>
+
+        <!-- Fog of war overlay - partially cleared -->
+        <div style="position:absolute;inset:0;">
+          <!-- Scanned area (clear) -->
+          <div style="position:absolute;left:10%;top:20%;width:60%;height:50%;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;"></div>
+          <!-- Unscanned fog -->
+          <div style="position:absolute;right:0;top:0;width:40%;height:100%;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);"></div>
+          <div style="position:absolute;left:0;top:0;width:100%;height:22%;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);"></div>
+        </div>
+
+        <!-- Detected trash marker -->
+        <div style="position:absolute;left:30%;top:45%;width:44px;height:44px;border-radius:50%;background:rgba(239,68,68,0.2);border:2px solid rgba(239,68,68,0.8);display:flex;align-items:center;justify-content:center;">
+          <div style="font-size:18px;">🗑</div>
+        </div>
+        <div style="position:absolute;left:28%;top:63%;background:rgba(0,0,0,0.7);padding:2px 8px;border-radius:4px;font-size:10px;color:#fbbf24;">Plastic bag + bottles</div>
+
+        <!-- Another detection -->
+        <div style="position:absolute;left:55%;top:35%;width:32px;height:32px;border-radius:50%;background:rgba(251,191,36,0.2);border:2px solid rgba(251,191,36,0.7);display:flex;align-items:center;justify-content:center;">
+          <div style="font-size:14px;">🍂</div>
+        </div>
+
+        <!-- AI instruction banner -->
+        <div style="position:absolute;top:8px;left:8px;right:8px;background:rgba(59,130,246,0.9);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;">
+          <div style="font-size:16px;">👈</div>
+          <div style="font-size:11px;color:white;font-weight:500;">Turn left — alley entrance not yet scanned</div>
+        </div>
+
+        <!-- Coverage bar -->
+        <div style="position:absolute;bottom:8px;left:8px;right:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#aaa;margin-bottom:3px;">
+            <span>SCOUT PROGRESS</span>
+            <span>67%</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+            <div style="width:67%;height:100%;background:linear-gradient(90deg,#22c55e,#3b82f6);border-radius:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A: Full AR Camera View</h3>
+      <p>Camera is the main view. Fog clears in real-time as camera pans. Trash markers appear as AR overlays anchored to real-world positions. AI instructions as top banner. Minimap in corner.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Map Primary with Camera PiP -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#111; padding:0; height:320px; position:relative; overflow:hidden;">
+      <div style="position:absolute;inset:8px;border-radius:16px;border:2px solid #333;overflow:hidden;background:#1a2332;">
+        <!-- Map view (primary) -->
+        <div style="position:absolute;inset:0;background:linear-gradient(135deg,#1a2332,#0f1923);">
+          <!-- Route line -->
+          <svg style="position:absolute;inset:0;" viewBox="0 0 300 400">
+            <!-- Route path -->
+            <path d="M 60,350 L 60,200 L 150,120 L 240,120 L 240,50" stroke="#22c55e" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.3"/>
+            <!-- Scanned portion (bright) -->
+            <path d="M 60,350 L 60,200 L 150,120" stroke="#22c55e" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <!-- Coverage glow on scanned -->
+            <path d="M 60,350 L 60,200 L 150,120" stroke="#22c55e" stroke-width="20" fill="none" stroke-linecap="round" opacity="0.1"/>
+
+            <!-- Hotspot markers -->
+            <circle cx="60" cy="260" r="10" fill="rgba(239,68,68,0.3)" stroke="#ef4444" stroke-width="2"/>
+            <text x="60" y="264" text-anchor="middle" fill="#ef4444" font-size="12">🗑</text>
+
+            <circle cx="100" cy="160" r="8" fill="rgba(251,191,36,0.3)" stroke="#fbbf24" stroke-width="2"/>
+            <text x="100" y="164" text-anchor="middle" fill="#fbbf24" font-size="10">🍂</text>
+
+            <!-- User position -->
+            <circle cx="150" cy="120" r="8" fill="#3b82f6"/>
+            <circle cx="150" cy="120" r="14" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.4"/>
+            <!-- Direction cone -->
+            <path d="M 150,120 L 170,100 L 175,115 Z" fill="rgba(59,130,246,0.3)"/>
+          </svg>
+
+          <!-- Fog overlay on unscanned -->
+          <div style="position:absolute;top:0;right:0;width:55%;height:45%;background:rgba(0,0,0,0.5);border-bottom-left-radius:80px;"></div>
+        </div>
+
+        <!-- Camera PiP (bottom-right) -->
+        <div style="position:absolute;bottom:50px;right:12px;width:90px;height:120px;border-radius:10px;border:2px solid #3b82f6;overflow:hidden;background:#2d3436;">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,#636e72 0%,#4a6741 60%,#2d5016 100%);opacity:0.8;"></div>
+          <div style="position:absolute;bottom:4px;left:4px;right:4px;text-align:center;font-size:8px;color:white;background:rgba(0,0,0,0.5);border-radius:3px;padding:2px;">LIVE</div>
+        </div>
+
+        <!-- AI instruction -->
+        <div style="position:absolute;top:8px;left:8px;right:8px;background:rgba(59,130,246,0.9);border-radius:8px;padding:8px 12px;font-size:11px;color:white;">👈 Turn left — alley not scanned</div>
+
+        <!-- Coverage bar -->
+        <div style="position:absolute;bottom:8px;left:8px;right:100px;">
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#aaa;margin-bottom:3px;">
+            <span>COVERAGE</span><span>67%</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+            <div style="width:67%;height:100%;background:linear-gradient(90deg,#22c55e,#3b82f6);border-radius:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B: Map Primary + Camera PiP</h3>
+      <p>Map is the main view showing route, fog coverage, and detected hotspots from above. Live camera feed in a small picture-in-picture window. Better spatial awareness, less immersive.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <p class="subtitle">Option A is more immersive (Pokemon Go feel). Option B gives better navigation awareness. Both use the same underlying scanning engine — this is purely about the primary view during scouting.</p>
+</div>

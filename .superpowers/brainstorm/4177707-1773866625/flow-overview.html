@@ -1,0 +1,100 @@
+<h2>Scout & Clean: Two-Lap Flow</h2>
+<p class="subtitle">The complete user journey — AR devices get spatial scanning, GPS devices get manual tagging</p>
+
+<div class="section">
+  <h3>Phase Overview</h3>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+
+    <!-- Scout Lap -->
+    <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); border-radius: 12px; padding: 20px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgb(59,130,246);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">1</div>
+        <h3 style="margin:0;color:rgb(59,130,246);">Scout Lap</h3>
+      </div>
+      <div style="font-size:13px; line-height:1.7;">
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Start at route beginning</strong><br>
+          <span style="opacity:0.7;">GPS confirms position at first checkpoint</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Walk route with camera active</strong><br>
+          <span style="opacity:0.7;">AR: Fog-of-war clears as camera scans area</span><br>
+          <span style="opacity:0.7;">GPS: Manual photo capture at dirty spots</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>AI detects & tags trash</strong><br>
+          <span style="opacity:0.7;">AR: Real-time object detection, spatial anchors placed</span><br>
+          <span style="opacity:0.7;">GPS: On-device analysis of captured photos</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>AI guides coverage</strong><br>
+          <span style="opacity:0.7;">"Look left toward the alley" / "Turn around, missed area behind you"</span>
+        </div>
+        <div style="padding:8px 0;">
+          <strong>Return to start</strong><br>
+          <span style="opacity:0.7;">Coverage % shown. Must hit threshold to proceed.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clean Lap -->
+    <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 12px; padding: 20px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgb(34,197,94);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">2</div>
+        <h3 style="margin:0;color:rgb(34,197,94);">Clean Lap</h3>
+      </div>
+      <div style="font-size:13px; line-height:1.7;">
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Minimap shows trash hotspots</strong><br>
+          <span style="opacity:0.7;">Interest areas from scout lap displayed as markers</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Navigate to each hotspot</strong><br>
+          <span style="opacity:0.7;">Route optimized for efficient cleanup order</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Clean the area</strong><br>
+          <span style="opacity:0.7;">Timer running, user picks up trash at each spot</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <strong>Confirm cleanup with camera</strong><br>
+          <span style="opacity:0.7;">AR: Re-scan area, AI compares before/after</span><br>
+          <span style="opacity:0.7;">GPS: Take "after" photo, AI similarity check</span>
+        </div>
+        <div style="padding:8px 0;">
+          <strong>Complete & submit</strong><br>
+          <span style="opacity:0.7;">All hotspots confirmed clean. Points + evidence submitted.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 32px;">
+  <h3>Key Question: How should the Clean Lap handle hotspot navigation?</h3>
+  <p class="subtitle">When the user finishes scouting and starts cleaning, how do they move between identified trash areas?</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Free Roam + Proximity Alerts</h3>
+      <p>User walks freely. When near a hotspot, phone buzzes and shows the before-photo + "Clean this area" prompt. Hotspots glow on minimap. No forced order.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Optimized Route with Waypoints</h3>
+      <p>AI calculates most efficient path through all hotspots. User follows guided route (like Google Maps directions) from hotspot to hotspot. Structured but less flexible.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Suggested Order + Free Skip</h3>
+      <p>AI suggests optimal order and highlights "next" hotspot, but user can tap any hotspot on the minimap to navigate there instead. Best of both worlds.</p>
+    </div>
+  </div>
+</div>

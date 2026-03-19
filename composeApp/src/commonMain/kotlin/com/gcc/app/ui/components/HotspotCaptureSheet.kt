@@ -231,7 +231,7 @@ fun HotspotCaptureSheet(
                                                 // Run AI comparison if available
                                                 isAnalyzing = true
                                                 val score = if (analyzer.isAvailable()) {
-                                                    val beforeBytes = hotspot.beforePhotoUrl.toByteArray()
+                                                    val beforeBytes = hotspot.beforePhotoUrl.encodeToByteArray()
                                                     analyzer.compareImages(beforeBytes, bytes)
                                                 } else null
                                                 verificationScore = score ?: 1.0f

@@ -39,6 +39,13 @@ internal fun ScanSummaryRow(
     }
 }
 
+/** Format a Double to one decimal place (KMP-safe, no String.format). */
+internal fun formatOneDecimal(value: Double): String {
+    val intPart = value.toLong()
+    val fracPart = ((value - intPart) * 10 + 0.5).toInt() % 10
+    return "$intPart.$fracPart"
+}
+
 internal fun formatElapsed(totalSeconds: Long): String {
     val h = (totalSeconds / 3600).toInt()
     val m = ((totalSeconds % 3600) / 60).toInt()

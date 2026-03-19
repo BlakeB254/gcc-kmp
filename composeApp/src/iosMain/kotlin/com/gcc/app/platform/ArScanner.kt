@@ -27,7 +27,7 @@ actual class ArScanner actual constructor() {
      * Place a lightweight anchor using GPS coordinates.
      * Full ARWorldAnchor integration is a TODO for v2.
      */
-    actual fun placeAnchor(lat: Double, lng: Double): ArAnchor {
+    actual fun placeAnchor(lat: Double, lng: Double): ArAnchor? {
         return ArAnchor(
             id = "ar_${lat}_${lng}",
             lat = lat,

@@ -206,14 +206,14 @@ fun ScanCompleteScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 if (totalVolume > 0.0) {
                                     Text(
-                                        text = "Volume: ${"%.1f".format(totalVolume)} L",
+                                        text = "Volume: ${formatOneDecimal(totalVolume)} L",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextMuted,
                                     )
                                 }
                                 if (totalWeight > 0.0) {
                                     Text(
-                                        text = "Weight: ${"%.1f".format(totalWeight)} lbs",
+                                        text = "Weight: ${formatOneDecimal(totalWeight)} lbs",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextMuted,
                                     )
@@ -296,7 +296,7 @@ private fun HotspotSummaryRow(hotspot: ScanHotspot, index: Int) {
             // Severity stars + optional volume
             val stars = "\u2605".repeat(hotspot.severity.coerceIn(1, 5))
             val suffix = hotspot.estimatedVolumeLiters
-                ?.let { " · ${"%.1f".format(it)} L" } ?: ""
+                ?.let { " · ${formatOneDecimal(it)} L" } ?: ""
             Text(
                 text = "$stars$suffix",
                 style = MaterialTheme.typography.labelSmall,
