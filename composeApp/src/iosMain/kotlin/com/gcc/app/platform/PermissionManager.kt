@@ -7,7 +7,6 @@ import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
 import platform.AVFoundation.AVAuthorizationStatusRestricted
 import platform.AVFoundation.AVCaptureDevice
-import platform.AVFoundation.AVMediaTypeVideo
 import platform.CoreLocation.CLAuthorizationStatus
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
@@ -53,7 +52,7 @@ actual class PermissionManager actual constructor() {
     actual fun checkPermission(permission: Permission): PermissionStatus {
         return when (permission) {
             Permission.CAMERA -> mapAvStatus(
-                AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                AVCaptureDevice.authorizationStatus
             )
             Permission.LOCATION -> mapClStatus(
                 CLLocationManager.authorizationStatus()
@@ -91,7 +90,7 @@ actual class PermissionManager actual constructor() {
     actual fun isPermanentlyDenied(permission: Permission): Boolean {
         return when (permission) {
             Permission.CAMERA -> {
-                val status = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                val status = AVCaptureDevice.authorizationStatus
                 status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted
             }
             Permission.LOCATION, Permission.LOCATION_BACKGROUND -> {
@@ -113,12 +112,12 @@ actual class PermissionManager actual constructor() {
     @OptIn(ExperimentalForeignApi::class)
     private suspend fun requestCameraPermission(): PermissionStatus =
         suspendCancellableCoroutine { cont ->
-            val current = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+            val current = AVCaptureDevice.authorizationStatus
             if (current != AVAuthorizationStatusNotDetermined) {
                 cont.resume(mapAvStatus(current))
                 return@suspendCancellableCoroutine
             }
-            AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { granted ->
+            AVCaptureDevice.requestAccessWithCompletionHandler { granted ->
                 cont.resume(
                     if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED_PERMANENTLY
                 )
