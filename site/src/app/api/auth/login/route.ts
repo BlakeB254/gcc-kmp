@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
     const { email: rawEmail, password } = body
     const email = rawEmail?.replace(/\s/g, '').toLowerCase()
 
-    if (!email || !password) {
+    // Validate email format — reject if password got appended by AutoFill
+    if (!email || !password || !email.includes('@') || email.length > 100) {
       return Response.json(
         { data: null, success: false, message: 'Invalid email or password' },
         { status: 401 }

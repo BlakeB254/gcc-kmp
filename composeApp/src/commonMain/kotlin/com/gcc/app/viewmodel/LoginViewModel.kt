@@ -38,7 +38,16 @@ class LoginViewModel(
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun login(email: String, password: String) {
-        val normalizedEmail = email.trim().lowercase()
+        // Strip all whitespace and lowercase — guards against iOS AutoFill corruption
+        val normalizedEmail = email.replace(Regex("\\s"), "").lowercase()
+        // Validate email format before sending
+        if (!normalizedEmail.contains("@") || normalizedEmail.length > 100) {
+            _uiState.value = _uiState.value.copy(
+                error = "Please enter a valid email address",
+                isLoading = false,
+            )
+            return
+        }
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {

@@ -30,7 +30,16 @@ fun LoginScreen(
     biometricAuth: BiometricAuth = koinInject(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val rememberedEmail = remember { tokenManager.getRememberedEmail() }
+    val rememberedEmail = remember {
+        val stored = tokenManager.getRememberedEmail()
+        // Guard against corrupted stored emails (e.g., password appended by AutoFill)
+        if (stored != null && stored.contains("@") && !stored.contains(" ") && stored.length < 100) {
+            stored
+        } else {
+            if (stored != null) tokenManager.clearRememberMe() // Clear corrupted value
+            null
+        }
+    }
     var email by remember { mutableStateOf(rememberedEmail ?: "") }
     var password by remember { mutableStateOf("") }
     var twoFactorCode by remember { mutableStateOf("") }
