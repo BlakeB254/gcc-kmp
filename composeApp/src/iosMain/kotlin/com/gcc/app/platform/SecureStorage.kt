@@ -16,6 +16,8 @@ import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSArray
+import platform.Foundation.NSDictionary
 import platform.Foundation.NSData
 import platform.Foundation.NSLog
 import platform.Foundation.NSString
@@ -36,7 +38,9 @@ import platform.Security.kSecAttrService
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
 import platform.Security.kSecMatchLimit
+import platform.Security.kSecMatchLimitAll
 import platform.Security.kSecMatchLimitOne
+import platform.Security.kSecReturnAttributes
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
@@ -51,8 +55,37 @@ private const val SERVICE_NAME = "com.globalcommunitycleaners.worker"
 @OptIn(ExperimentalForeignApi::class)
 actual class SecureStorage actual constructor() : Settings {
 
-    override val keys: Set<String> get() = emptySet()
-    override val size: Int get() = 0
+    /**
+     * Enumerate all Keychain entries for this service and return their account names as keys.
+     *
+     * Uses SecItemCopyMatching with kSecMatchLimitAll + kSecReturnAttributes to fetch
+     * every generic-password item stored under SERVICE_NAME. Each result dictionary
+     * contains kSecAttrAccount (the key name) as an NSString.
+     */
+    override val keys: Set<String>
+        get() = memScoped {
+            val query = cfDict(
+                kSecClass to kSecClassGenericPassword,
+                kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
+                kSecReturnAttributes to kCFBooleanTrue,
+                kSecMatchLimit to kSecMatchLimitAll,
+            )
+            val result = alloc<CFTypeRefVar>()
+            val status = SecItemCopyMatching(query, result.ptr)
+            if (status != errSecSuccess) return@memScoped emptySet()
+
+            val items = CFBridgingRelease(result.value) as? NSArray ?: return@memScoped emptySet()
+            val keySet = mutableSetOf<String>()
+            for (i in 0 until items.count.toInt()) {
+                val dict = items.objectAtIndex(i.toULong()) as? NSDictionary ?: continue
+                val account = dict.objectForKey(CFBridgingRelease(kSecAttrAccount)) as? String
+                    ?: dict.objectForKey("acct") as? String
+                if (account != null) keySet.add(account)
+            }
+            keySet
+        }
+
+    override val size: Int get() = keys.size
 
     override fun clear() {
         val query = cfDict(

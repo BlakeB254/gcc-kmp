@@ -230,7 +230,37 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
-actual suspend fun pickFromLibrary(): CapturedPhoto? = null // TODO: Android photo picker
+/**
+ * Pick a photo from the device photo library.
+ *
+ * Implementation notes (Android):
+ * CameraX handles capturePhoto() inline via the PreviewView composable, but
+ * pickFromLibrary() requires Activity result callbacks which CameraManager
+ * cannot access from a plain class.
+ *
+ * To wire full photo-library support in a future iteration:
+ *  1. In MainActivity, register an ActivityResultLauncher:
+ *       val pickMedia = registerForActivityResult(PickVisualMedia()) { uri ->
+ *           uri?.let { resolveUriToPhoto(it) }
+ *               ?.let { CameraManager.pendingPickResult?.invoke(it) }
+ *           CameraManager.pendingPickResult = null
+ *       }
+ *  2. Store that launcher in CameraManager via:
+ *       CameraManager.launchPicker = { pickMedia.launch(PickVisualMediaRequest(ImageOnly)) }
+ *  3. Replace the body below with:
+ *       return suspendCancellableCoroutine { cont ->
+ *           CameraManager.pendingPickResult = { cont.resume(it) }
+ *           CameraManager.launchPicker?.invoke()
+ *               ?: cont.resume(null).also { CameraManager.pendingPickResult = null }
+ *           cont.invokeOnCancellation { CameraManager.pendingPickResult = null }
+ *       }
+ *
+ * For v1, camera capture is the primary photo flow on Android.
+ */
+actual suspend fun pickFromLibrary(): CapturedPhoto? {
+    // TODO(v2): Wire ActivityResultLauncher in MainActivity — see doc comment above.
+    return null
+}
 
 actual fun embedGpsExif(jpegBytes: ByteArray, lat: Double, lng: Double): ByteArray = jpegBytes
 
