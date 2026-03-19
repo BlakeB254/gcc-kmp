@@ -7,6 +7,7 @@ import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.viewmodel.ActiveJobViewModel
+import com.gcc.app.viewmodel.BiometricAuthViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.app.viewmodel.FeedViewModel
@@ -34,6 +35,7 @@ val offlineAppModule = module {
     single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
     single { createOfflineApiClient() }
+    singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)
     singleOf(::DashboardViewModel)

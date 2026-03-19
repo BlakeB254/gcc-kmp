@@ -9,6 +9,7 @@ import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
+import com.gcc.app.viewmodel.BiometricAuthViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.app.viewmodel.LoginViewModel
 import com.gcc.app.viewmodel.ProfileViewModel
@@ -44,6 +45,7 @@ val appModule = module {
             tokenProvider = { tokenManager.getToken() },
         )
     }
+    singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)
     singleOf(::DashboardViewModel)

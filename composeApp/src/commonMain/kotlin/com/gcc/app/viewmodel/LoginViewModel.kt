@@ -31,6 +31,7 @@ class LoginViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
     private val pushNotificationManager: PushNotificationManager,
+    private val biometricAuthViewModel: BiometricAuthViewModel,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -140,63 +141,19 @@ class LoginViewModel(
 
     /**
      * Suspending biometric re-login for BiometricGateScreen.
-     * Returns true if login succeeded, false otherwise.
-     * No race conditions — caller can simply await the result.
+     * Delegates to [BiometricAuthViewModel] and mirrors result into [uiState].
+     * Push-token registration fires on success.
      */
     suspend fun loginWithBiometricSuspend(): Boolean {
-        // Fast path: active token still valid
-        if (tokenManager.isLoggedIn() && !tokenManager.isTokenExpired()) {
+        val success = biometricAuthViewModel.loginWithBiometricSuspend()
+        if (success) {
             _uiState.value = _uiState.value.copy(
                 isLoggedIn = true,
                 isAdmin = tokenManager.isAdmin(),
             )
-            return true
+            registerPushTokenSuspend()
         }
-        // Fast path: biometric token still valid
-        if (tokenManager.restoreBiometricToken()) {
-            _uiState.value = _uiState.value.copy(
-                isLoggedIn = true,
-                isAdmin = tokenManager.isAdmin(),
-            )
-            return true
-        }
-
-        // Slow path: re-login with saved credentials
-        val credentials = tokenManager.loadCredentials() ?: return false
-
-        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        return try {
-            val (email, password) = credentials
-            val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
-                contentType(ContentType.Application.Json)
-                setBody(LoginRequest(email = email, password = password))
-            }
-            if (response.status == HttpStatusCode.OK) {
-                val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                val authData = apiResponse.data
-                if (authData.requiresTwoFactor) {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    false
-                } else {
-                    tokenManager.saveToken(authData.token!!)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isLoggedIn = true,
-                        worker = authData.worker,
-                        isAdmin = tokenManager.isAdmin(),
-                    )
-                    registerPushToken()
-                    true
-                }
-            } else {
-                tokenManager.clearCredentials()
-                _uiState.value = _uiState.value.copy(isLoading = false)
-                false
-            }
-        } catch (_: Exception) {
-            _uiState.value = _uiState.value.copy(isLoading = false)
-            false
-        }
+        return success
     }
 
     /**
@@ -211,18 +168,20 @@ class LoginViewModel(
     }
 
     private fun registerPushToken() {
-        scope.launch {
-            try {
-                val token = pushNotificationManager.registerForPushNotifications()
-                if (token != null) {
-                    apiClient.registerDeviceToken(
-                        platform = getPlatformName(),
-                        token = token,
-                    )
-                }
-            } catch (_: Exception) {
-                // Push registration is best-effort; don't block login flow
+        scope.launch { registerPushTokenSuspend() }
+    }
+
+    private suspend fun registerPushTokenSuspend() {
+        try {
+            val token = pushNotificationManager.registerForPushNotifications()
+            if (token != null) {
+                apiClient.registerDeviceToken(
+                    platform = getPlatformName(),
+                    token = token,
+                )
             }
+        } catch (_: Exception) {
+            // Push registration is best-effort; don't block login flow
         }
     }
 }
