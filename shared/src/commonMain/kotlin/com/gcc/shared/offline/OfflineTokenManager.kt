@@ -1,7 +1,7 @@
 package com.gcc.shared.offline
 
 import com.gcc.shared.auth.TokenManager
-import com.russhwolf.settings.MapSettings
+
 
 /**
  * An in-memory [TokenManager] pre-loaded with the offline JWT.
@@ -9,7 +9,7 @@ import com.russhwolf.settings.MapSettings
  * Uses [MapSettings] (a plain `Map`-backed implementation) so nothing
  * is persisted to disk, SharedPreferences, or NSUserDefaults.
  */
-class OfflineTokenManager : TokenManager(settings = MapSettings()) {
+class OfflineTokenManager : TokenManager(settings = MemorySettings()) {
     init {
         saveToken(SeedData.offlineToken)
         setOnboardingComplete()

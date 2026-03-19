@@ -15,13 +15,14 @@ data class CaptureAttestation(
 )
 
 @Serializable
-data class OnDeviceAiResult(
+data class OnDeviceAnalysisResult(
     val trashTypes: List<String> = emptyList(),
     val estimatedWeightLbs: Double? = null,
     val severity: Int? = null,
     val confidence: Float? = null,
     val suggestedTags: List<SpotTag> = emptyList(),
     val generatedDescription: String? = null,
+    val imageEmbedding: List<Float>? = null,
 )
 
 @Serializable
@@ -37,7 +38,7 @@ data class CreateSpotRequest(
     val reporterName: String? = null,
     val depthAnalysis: DepthAnalysis? = null,
     val captureAttestation: CaptureAttestation? = null,
-    val onDeviceAiResult: OnDeviceAiResult? = null,
+    val onDeviceAiResult: OnDeviceAnalysisResult? = null,
     val duplicateOverrideReason: String? = null,
 )
 

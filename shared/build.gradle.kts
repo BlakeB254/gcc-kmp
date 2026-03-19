@@ -36,8 +36,8 @@ kotlin {
             implementation(libs.ktor.client.auth)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.multiplatform.settings)
+            // ktor-client-mock is used by OfflineHttpEngine for production offline simulation
             implementation(libs.ktor.client.mock)
-            implementation(libs.multiplatform.settings.test)
             // Compose UI for shared DrawScope drawing functions (CheckpointDrawing)
             implementation(compose.ui)
         }
@@ -54,6 +54,7 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.multiplatform.settings.test)
         }
     }
 }

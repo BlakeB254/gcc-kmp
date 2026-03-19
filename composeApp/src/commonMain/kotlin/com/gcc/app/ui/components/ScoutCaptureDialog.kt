@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.OnDeviceAnalyzer
-import com.gcc.app.platform.OnDeviceAnalysisResult
+import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.ui.theme.*
 import kotlinx.coroutines.launch
 

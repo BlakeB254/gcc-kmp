@@ -2,38 +2,8 @@ package com.gcc.app.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import kotlinx.serialization.Serializable
-
-/**
- * Depth data captured from LiDAR-capable devices.
- * Null on devices without LiDAR/TrueDepth.
- */
-@Serializable
-data class DepthAnalysis(
-    val hasDepth: Boolean = false,
-    val estimatedVolumeCubicFt: Double? = null,
-    val estimatedAreaSqFt: Double? = null,
-    val maxDepthMeters: Double? = null,
-    val depthConfidence: Float? = null,
-    val depthMapThumbnailBase64: String? = null,
-)
-
-/**
- * Cryptographic attestation proving a photo was captured live in-app.
- * Used for anti-fraud verification — timestamps, GPS, and device info
- * recorded at the exact moment of capture.
- */
-@Serializable
-data class CaptureAttestation(
-    val capturedAt: Long,
-    val capturedLat: Double? = null,
-    val capturedLng: Double? = null,
-    val deviceModel: String,
-    val osVersion: String,
-    val sessionId: String,
-    val captureIndex: Int,
-    val isLiveCapture: Boolean = true,
-)
+import com.gcc.shared.model.CaptureAttestation
+import com.gcc.shared.model.DepthAnalysis
 
 /**
  * Captured photo result.

@@ -31,7 +31,7 @@ import com.gcc.app.viewmodel.AreaMode
 import com.gcc.app.viewmodel.DuplicateMatch
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
-import com.gcc.app.platform.OnDeviceAnalysisResult
+import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.SpotTag

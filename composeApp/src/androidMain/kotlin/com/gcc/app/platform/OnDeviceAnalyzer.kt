@@ -1,5 +1,8 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.model.DepthAnalysis
+import com.gcc.shared.model.OnDeviceAnalysisResult
+
 import com.gcc.shared.model.SpotTag
 
 /**

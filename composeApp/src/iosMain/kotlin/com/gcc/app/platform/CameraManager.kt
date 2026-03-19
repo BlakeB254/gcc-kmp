@@ -1,5 +1,8 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.model.CaptureAttestation
+import com.gcc.shared.model.DepthAnalysis
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize

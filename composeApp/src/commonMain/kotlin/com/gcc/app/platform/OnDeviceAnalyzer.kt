@@ -1,22 +1,7 @@
 package com.gcc.app.platform
 
-import com.gcc.shared.model.SpotTag
-import kotlinx.serialization.Serializable
-
-/**
- * Result of on-device AI photo analysis.
- * Populated by platform-specific implementations (Vision/CoreML on iOS, ML Kit on Android).
- */
-@Serializable
-data class OnDeviceAnalysisResult(
-    val trashTypes: List<String> = emptyList(),
-    val estimatedWeightLbs: Double? = null,
-    val severity: Int? = null,
-    val confidence: Float? = null,
-    val suggestedTags: List<SpotTag> = emptyList(),
-    val generatedDescription: String? = null,
-    val imageEmbedding: List<Float>? = null,
-)
+import com.gcc.shared.model.DepthAnalysis
+import com.gcc.shared.model.OnDeviceAnalysisResult
 
 /**
  * Platform-specific on-device AI analyzer.

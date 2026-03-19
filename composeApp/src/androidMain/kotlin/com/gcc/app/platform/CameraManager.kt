@@ -1,5 +1,8 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.model.CaptureAttestation
+import com.gcc.shared.model.DepthAnalysis
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
