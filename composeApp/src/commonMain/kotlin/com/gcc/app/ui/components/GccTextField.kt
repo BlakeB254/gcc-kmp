@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -43,10 +44,12 @@ fun GccTextField(
             isPassword -> KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 autoCorrect = false,
+                capitalization = KeyboardCapitalization.None,
             )
             isEmail -> KeyboardOptions(
                 keyboardType = KeyboardType.Email,
                 autoCorrect = false,
+                capitalization = KeyboardCapitalization.None,
             )
             else -> KeyboardOptions.Default
         },
