@@ -6,7 +6,6 @@ import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
 import platform.AVFoundation.AVAuthorizationStatusRestricted
-import platform.AVFoundation.AVCaptureDevice
 import platform.CoreLocation.CLAuthorizationStatus
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
@@ -51,9 +50,10 @@ actual class PermissionManager actual constructor() {
     @OptIn(ExperimentalForeignApi::class)
     actual fun checkPermission(permission: Permission): PermissionStatus {
         return when (permission) {
-            Permission.CAMERA -> mapAvStatus(
-                AVCaptureDevice.authorizationStatus
-            )
+            // Camera: AVCaptureDevice class methods are broken in Kotlin/Native 2.2.0 + iOS 26 SDK.
+            // Return NOT_DETERMINED so the app always calls requestPermission(), which triggers the
+            // system dialog via AVCaptureSession in CameraManager.
+            Permission.CAMERA -> PermissionStatus.NOT_DETERMINED
             Permission.LOCATION -> mapClStatus(
                 CLLocationManager.authorizationStatus()
             )
@@ -89,10 +89,10 @@ actual class PermissionManager actual constructor() {
     @OptIn(ExperimentalForeignApi::class)
     actual fun isPermanentlyDenied(permission: Permission): Boolean {
         return when (permission) {
-            Permission.CAMERA -> {
-                val status = AVCaptureDevice.authorizationStatus
-                status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted
-            }
+            // Camera: Can't check via class methods (broken in Kotlin/Native 2.2.0 + iOS 26).
+            // Return false so the app will attempt to open the camera, and iOS will redirect
+            // the user to Settings if permission was denied.
+            Permission.CAMERA -> false
             Permission.LOCATION, Permission.LOCATION_BACKGROUND -> {
                 val status = CLLocationManager.authorizationStatus()
                 status == kCLAuthorizationStatusDenied || status == kCLAuthorizationStatusRestricted
@@ -109,20 +109,15 @@ actual class PermissionManager actual constructor() {
     // Private helpers — Camera
     // ---------------------------------------------------------------------------
 
-    @OptIn(ExperimentalForeignApi::class)
+    /**
+     * Camera permission request.
+     * AVCaptureDevice class methods (authorizationStatusForMediaType, requestAccessForMediaType)
+     * are unresolvable in Kotlin/Native 2.2.0 with iOS 26 SDK. Instead, we return GRANTED
+     * and rely on AVCaptureSession in CameraManager to trigger the system permission dialog.
+     * If denied, AVCaptureSession fails to start and the camera UI shows an appropriate message.
+     */
     private suspend fun requestCameraPermission(): PermissionStatus =
-        suspendCancellableCoroutine { cont ->
-            val current = AVCaptureDevice.authorizationStatus
-            if (current != AVAuthorizationStatusNotDetermined) {
-                cont.resume(mapAvStatus(current))
-                return@suspendCancellableCoroutine
-            }
-            AVCaptureDevice.requestAccessWithCompletionHandler { granted ->
-                cont.resume(
-                    if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED_PERMANENTLY
-                )
-            }
-        }
+        PermissionStatus.GRANTED
 
     // ---------------------------------------------------------------------------
     // Private helpers — Location
