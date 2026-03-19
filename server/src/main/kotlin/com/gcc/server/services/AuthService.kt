@@ -126,7 +126,7 @@ class AuthService(
             expiresAt = System.currentTimeMillis() + ttlMs,
         )
 
-        println("2FA code for ${worker.email}: $code")
+        // 2FA code delivery: in production, send via SMS/email. For dev, check server logs.
 
         return AuthResponse(
             requiresTwoFactor = true,

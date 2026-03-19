@@ -76,12 +76,12 @@ class WorkerService {
 
     /** Top workers by jobs completed (from denormalized flat stats columns). */
     suspend fun getLeaderboard(limit: Int = 10): List<Worker> = dbQuery {
+        // stats_jobs_completed is stored as varchar; fetch the requested limit ordered
+        // by the numeric cast so the DB does the work instead of an in-memory sort.
         Workers.selectAll()
-            .orderBy(Workers.createdAt, SortOrder.ASC)
-            .limit(200) // fetch a batch, sort in-memory by stats
+            .orderBy(Workers.statsJobsCompleted.castTo<Int>(IntegerColumnType()), SortOrder.DESC)
+            .limit(limit)
             .map { it.toWorker() }
-            .sortedByDescending { it.stats.jobsCompleted }
-            .take(limit)
     }
 }
 

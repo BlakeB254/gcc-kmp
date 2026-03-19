@@ -94,17 +94,6 @@ fun Route.authenticatedWorkerRoutes() {
             call.respond(HttpStatusCode.OK, ApiResponse(data = mapOf("success" to true)))
         }
 
-        // DELETE /api/workers/me — permanently delete account
-        delete("/me") {
-            val id = call.workerId()
-            val deleted = workerService.deleteAccount(id)
-            if (deleted) {
-                call.respond(HttpStatusCode.OK, ApiResponse(data = mapOf("deleted" to true)))
-            } else {
-                call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
-            }
-        }
-
         get("/me/service-area") {
             val id = call.workerId()
             val worker = workerService.getById(id)

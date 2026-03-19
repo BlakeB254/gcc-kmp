@@ -41,7 +41,6 @@ dependencies {
     implementation(libs.hikari)
 
     // Security
-    implementation(libs.bcrypt)
     implementation(libs.jwt)
 
     // DI
