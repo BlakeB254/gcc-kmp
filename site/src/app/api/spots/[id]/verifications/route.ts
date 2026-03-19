@@ -16,17 +16,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
     const auth = await verifyMobileToken(authHeader.substring(7))
     if (!auth) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     const { id } = await context.params
     const spotId = parseInt(id, 10)
     if (isNaN(spotId)) {
-      return NextResponse.json({ error: 'Invalid spot ID' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid spot ID' }, { status: 400 })
     }
 
     const verifications = await db
@@ -36,9 +36,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .orderBy(desc(spotVerifications.createdAt))
       .limit(50)
 
-    return NextResponse.json({ data: verifications })
+    return NextResponse.json({ data: verifications, success: true, message: null })
   } catch (error) {
     console.error('Get verifications error:', error)
-    return NextResponse.json({ error: 'Failed to fetch verifications' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to fetch verifications' }, { status: 500 })
   }
 }

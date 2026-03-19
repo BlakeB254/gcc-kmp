@@ -24,13 +24,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const auth = await requireAuth(request)
     if (!auth) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
 
     const { id } = await context.params
     const spotId = parseInt(id, 10)
     if (isNaN(spotId)) {
-      return NextResponse.json({ error: 'Invalid spot ID' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid spot ID' }, { status: 400 })
     }
 
     // Look up the report
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       .limit(1)
 
     if (!report) {
-      return NextResponse.json({ error: 'Spot report not found' }, { status: 404 })
+      return NextResponse.json({ data: null, success: false, message: 'Spot report not found' }, { status: 404 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -102,6 +102,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
+        success: true,
+        message: null,
       })
     }
 
@@ -168,6 +170,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           createdAt: report.createdAt,
           updatedAt: new Date().toISOString(),
         },
+        success: true,
+        message: null,
       })
     }
 
@@ -211,6 +215,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })
   } catch (error) {
     console.error('Volunteer cleanup error:', error)
-    return NextResponse.json({ error: 'Failed to process volunteer cleanup' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to process volunteer cleanup' }, { status: 500 })
   }
 }

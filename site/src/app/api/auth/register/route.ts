@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const { name, email, phone, password } = body
 
     if (!name || !email || !password) {
-      return Response.json({ error: 'Name, email, and password are required', status: 400 }, { status: 400 })
+      return Response.json({ data: null, success: false, message: 'Name, email, and password are required' }, { status: 400 })
     }
 
     // Check existing
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     // If user exists with a password already, reject
     if (existing && existing.hash) {
-      return Response.json({ error: 'Email already registered', status: 409 }, { status: 409 })
+      return Response.json({ data: null, success: false, message: 'Email already registered' }, { status: 409 })
     }
 
     // If user exists without a password (magic-link user), set their password
@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
 
       const { token, exp } = await createMobileToken(existing.id, email)
       const worker = mapWorkerToMobile({ ...existing, hash: newHash, salt: newSalt })
-      return Response.json({ data: { token, worker, exp } })
+      return Response.json({
+        data: { token, worker, exp, requiresTwoFactor: false, twoFactorToken: null },
+        success: true,
+        message: null,
+      })
     }
 
     // Hash password
@@ -83,11 +87,15 @@ export async function POST(request: NextRequest) {
     // Map to mobile format
     const worker = mapWorkerToMobile(inserted)
 
-    return Response.json({ data: { token, worker, exp } }, { status: 201 })
+    return Response.json({
+      data: { token, worker, exp, requiresTwoFactor: false, twoFactorToken: null },
+      success: true,
+      message: null,
+    }, { status: 201 })
   } catch (error) {
     console.error('Register error:', error)
     return Response.json(
-      { error: 'Registration failed', status: 500 },
+      { data: null, success: false, message: 'Registration failed' },
       { status: 500 }
     )
   }

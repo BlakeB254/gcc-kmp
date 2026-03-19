@@ -11,4 +11,5 @@ val GccJson = Json {
     ignoreUnknownKeys = true
     isLenient = true
     encodeDefaults = true
+    coerceInputValues = true
 }

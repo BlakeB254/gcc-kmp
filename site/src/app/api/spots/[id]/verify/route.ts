@@ -22,17 +22,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization required' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
     }
     const auth = await verifyMobileToken(authHeader.substring(7))
     if (!auth) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     const { id } = await context.params
     const spotId = parseInt(id, 10)
     if (isNaN(spotId)) {
-      return NextResponse.json({ error: 'Invalid spot ID' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'Invalid spot ID' }, { status: 400 })
     }
 
     const body = await request.json()
@@ -45,11 +45,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (!result || !['still_dirty', 'already_clean'].includes(result)) {
-      return NextResponse.json({ error: 'result must be "still_dirty" or "already_clean"' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'result must be "still_dirty" or "already_clean"' }, { status: 400 })
     }
 
     if (!photoUrl) {
-      return NextResponse.json({ error: 'Photo evidence required' }, { status: 400 })
+      return NextResponse.json({ data: null, success: false, message: 'Photo evidence required' }, { status: 400 })
     }
 
     // Fetch the report
@@ -60,17 +60,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       .limit(1)
 
     if (!report) {
-      return NextResponse.json({ error: 'Spot report not found' }, { status: 404 })
+      return NextResponse.json({ data: null, success: false, message: 'Spot report not found' }, { status: 404 })
     }
 
     // Anti-gaming: verifier must not be the original reporter
     if (report.reporterId === auth.workerId) {
-      return NextResponse.json({ error: 'Cannot verify your own report' }, { status: 403 })
+      return NextResponse.json({ data: null, success: false, message: 'Cannot verify your own report' }, { status: 403 })
     }
 
     // Anti-gaming: optimistic concurrency check
     if (expectedVerificationCount !== undefined && report.verificationCount !== expectedVerificationCount) {
-      return NextResponse.json({ error: 'Spot was already verified by someone else' }, { status: 409 })
+      return NextResponse.json({ data: null, success: false, message: 'Spot was already verified by someone else' }, { status: 409 })
     }
 
     // Parse spot coordinates once
@@ -157,10 +157,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         pointsAwarded,
         spotResolved: result === 'already_clean',
       },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Spot verification error:', error)
-    return NextResponse.json({ error: 'Failed to process verification' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to process verification' }, { status: 500 })
   }
 }
 

@@ -104,9 +104,11 @@ export async function GET(
         totalVolunteerCleanups: cleanups?.count || 0,
         streets,
       },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Area cleanliness error:', error)
-    return NextResponse.json({ error: 'Failed to fetch area analytics' }, { status: 500 })
+    return NextResponse.json({ data: null, success: false, message: 'Failed to fetch area analytics' }, { status: 500 })
   }
 }
