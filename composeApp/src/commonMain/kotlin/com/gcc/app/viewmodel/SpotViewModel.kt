@@ -1,11 +1,13 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.CapturedPhoto
-import com.gcc.app.platform.OnDeviceAnalysisResult
+import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.embedGpsExif
+import com.gcc.app.ui.map.MapStyles
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -27,8 +29,8 @@ enum class AreaMode { CIRCLE, RECTANGLE }
 
 data class SpotUiState(
     val capturedPhotos: List<CapturedPhoto> = emptyList(),
-    val currentLat: Double = 41.8604,
-    val currentLng: Double = -87.7225,
+    val currentLat: Double = MapStyles.CHICAGO_CENTER_LAT,
+    val currentLng: Double = MapStyles.CHICAGO_CENTER_LNG,
     /** Spot pin position — null means use GPS position (currentLat/currentLng). */
     val spotLat: Double? = null,
     val spotLng: Double? = null,
@@ -141,9 +143,10 @@ class SpotViewModel(
 
     fun applyAiDescription() {
         val ai = _uiState.value.aiAnalysis ?: return
-        if (ai.generatedDescription != null && _uiState.value.description.isBlank()) {
+        val desc = ai.generatedDescription ?: return
+        if (_uiState.value.description.isBlank()) {
             _uiState.value = _uiState.value.copy(
-                description = ai.generatedDescription,
+                description = desc,
                 aiDescriptionApplied = true,
             )
         }
@@ -200,7 +203,7 @@ class SpotViewModel(
                 var bestMatch: DuplicateMatch? = null
 
                 for (spot in nearbySpots) {
-                    val distance = haversineDistance(lat, lng, spot.coordinates.lat, spot.coordinates.lng)
+                    val distance = GeofenceVerification.distanceMeters(lat, lng, spot.coordinates.lat, spot.coordinates.lng)
                     // GPS proximity alone is a strong signal at <50m
                     var similarity = if (distance < 20.0) 0.8f else 0.6f
 
@@ -223,17 +226,6 @@ class SpotViewModel(
                 // Don't block the flow if duplicate check fails
             }
         }
-    }
-
-    private fun haversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-        val r = 6371000.0 // Earth radius in meters
-        val dLat = kotlin.math.PI / 180.0 * (lat2 - lat1)
-        val dLng = kotlin.math.PI / 180.0 * (lng2 - lng1)
-        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
-                kotlin.math.cos(kotlin.math.PI / 180.0 * lat1) * kotlin.math.cos(kotlin.math.PI / 180.0 * lat2) *
-                kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
-        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
-        return r * c
     }
 
     fun submitReport() {
@@ -270,18 +262,7 @@ class SpotViewModel(
                 }
 
                 // Collect depth analysis from the first photo that has it
-                val depthAnalysis = state.capturedPhotos
-                    .firstNotNullOfOrNull { it.depthAnalysis }
-                    ?.let { depth ->
-                        com.gcc.shared.model.DepthAnalysis(
-                            hasDepth = depth.hasDepth,
-                            estimatedVolumeCubicFt = depth.estimatedVolumeCubicFt,
-                            estimatedAreaSqFt = depth.estimatedAreaSqFt,
-                            maxDepthMeters = depth.maxDepthMeters,
-                            depthConfidence = depth.depthConfidence,
-                            depthMapThumbnailBase64 = depth.depthMapThumbnailBase64,
-                        )
-                    }
+                val depthAnalysis = state.capturedPhotos.firstNotNullOfOrNull { it.depthAnalysis }
 
                 // Build affected area from mode
                 val affectedArea: AffectedArea? = when (state.areaMode) {
@@ -294,32 +275,10 @@ class SpotViewModel(
                 }
 
                 // Collect capture attestation from the first photo
-                val captureAttestation = state.capturedPhotos
-                    .firstNotNullOfOrNull { it.attestation }
-                    ?.let { att ->
-                        com.gcc.shared.model.CaptureAttestation(
-                            capturedAt = att.capturedAt,
-                            capturedLat = att.capturedLat,
-                            capturedLng = att.capturedLng,
-                            deviceModel = att.deviceModel,
-                            osVersion = att.osVersion,
-                            sessionId = att.sessionId,
-                            captureIndex = att.captureIndex,
-                            isLiveCapture = att.isLiveCapture,
-                        )
-                    }
+                val captureAttestation = state.capturedPhotos.firstNotNullOfOrNull { it.attestation }
 
                 // Include on-device AI analysis
-                val onDeviceAiResult = state.aiAnalysis?.let { ai ->
-                    OnDeviceAiResult(
-                        trashTypes = ai.trashTypes,
-                        estimatedWeightLbs = ai.estimatedWeightLbs,
-                        severity = ai.severity,
-                        confidence = ai.confidence,
-                        suggestedTags = ai.suggestedTags,
-                        generatedDescription = ai.generatedDescription,
-                    )
-                }
+                val onDeviceAiResult = state.aiAnalysis
 
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,

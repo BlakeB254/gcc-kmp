@@ -189,7 +189,7 @@ class VolunteerCleanupViewModel(
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = scope.launch {
-            while (!_uiState.value.isCompleted) {
+            while (_uiState.value.phase == VolunteerPhase.IN_PROGRESS && !_uiState.value.isCompleted) {
                 delay(1000L)
                 _uiState.value = _uiState.value.copy(
                     elapsedSeconds = _uiState.value.elapsedSeconds + 1,

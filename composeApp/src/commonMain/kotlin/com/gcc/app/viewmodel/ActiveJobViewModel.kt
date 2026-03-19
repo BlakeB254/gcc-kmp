@@ -74,8 +74,8 @@ class ActiveJobViewModel(
                     route = route.data,
                     checkpoints = checkpointItems,
                     isLoading = false,
-                    jobStarted = job.data.status.name == "IN_PROGRESS",
-                    jobCompleted = job.data.status.name == "COMPLETED",
+                    jobStarted = job.data.status == JobStatus.IN_PROGRESS,
+                    jobCompleted = job.data.status == JobStatus.COMPLETED,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

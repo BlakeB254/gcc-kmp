@@ -1,5 +1,6 @@
 package com.gcc.app.di
 
+import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -30,6 +31,7 @@ val offlineAppModule = module {
     single { LocationTrackingController() }
     single { ShareManager() }
     single { PushNotificationManager() }
+    single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
     single { createOfflineApiClient() }
     singleOf(::LoginViewModel)
