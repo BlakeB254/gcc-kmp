@@ -174,8 +174,7 @@ fun DashboardScreen(
                     modifier = Modifier
                         .height(233.dp)
                         .padding(horizontal = 13.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .clickable(onClick = onMapClick),
+                        .clip(RoundedCornerShape(13.dp)),
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
@@ -186,6 +185,13 @@ fun DashboardScreen(
                         routeCoordinates = routeCoordinates,
                         spots = uiState.spots,
                         showControls = false,
+                    )
+
+                    // Transparent overlay to catch taps (map consumes touch for pan/zoom)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(onClick = onMapClick),
                     )
 
                     // Expand affordance — small icon in bottom-right corner
