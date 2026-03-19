@@ -8,6 +8,7 @@ import com.gcc.shared.model.ApiResponse
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CreateSpotRequest
 import com.gcc.shared.model.SpotResponse
+import com.gcc.shared.model.CompleteVolunteerRequest
 import com.gcc.shared.model.StartVolunteerRequest
 import io.ktor.http.*
 import io.ktor.server.request.*
@@ -93,6 +94,40 @@ fun Route.authenticatedSpotRoutes() {
                 beforeMediaUrls = request.beforeMediaUrls,
             )
             call.respond(HttpStatusCode.Created, ApiResponse(data = cleanup))
+        }
+
+        // Path-based action routes (canonical REST style)
+        post("/{id}/volunteer/complete") {
+            val reportId = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Report ID must be an integer")
+            val request = call.receive<CompleteVolunteerRequest>()
+            val cleanup = volunteerService.completeCleanup(
+                cleanupId = reportId,
+                workerId = call.workerId(),
+                afterMediaUrls = request.afterMediaUrls,
+                trashHeapMediaUrl = request.trashHeapMediaUrl,
+            )
+            call.respond(HttpStatusCode.OK, ApiResponse(data = cleanup))
+        }
+
+        post("/{id}/volunteer/already-clean") {
+            val reportId = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Report ID must be an integer")
+            val body = call.receive<Map<String, List<String>>>()
+            val beforeMediaUrls = body["beforeMediaUrls"] ?: emptyList()
+            // Mark spot as already clean: start + immediately complete with no after-media needed
+            val cleanup = volunteerService.startCleanup(
+                reportId = reportId,
+                workerId = call.workerId(),
+                beforeMediaUrls = beforeMediaUrls,
+            )
+            val completed = volunteerService.completeCleanup(
+                cleanupId = cleanup.id,
+                workerId = call.workerId(),
+                afterMediaUrls = emptyList(),
+                trashHeapMediaUrl = null,
+            )
+            call.respond(HttpStatusCode.OK, ApiResponse(data = completed))
         }
     }
 }

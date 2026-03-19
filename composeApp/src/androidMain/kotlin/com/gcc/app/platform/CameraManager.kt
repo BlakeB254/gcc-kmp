@@ -199,18 +199,6 @@ actual fun CameraPreview(modifier: Modifier) {
         }
     }
 
-    // Clean up CameraX when leaving composition
-    DisposableEffect(lifecycleOwner) {
-        onDispose {
-            try {
-                val cameraProvider = ProcessCameraProvider.getInstance(context).get()
-                cameraProvider.unbindAll()
-            } catch (_: Exception) {
-                // Best-effort cleanup
-            }
-        }
-    }
-
     if (cameraProviderReady) {
         AndroidView(
             factory = { ctx ->

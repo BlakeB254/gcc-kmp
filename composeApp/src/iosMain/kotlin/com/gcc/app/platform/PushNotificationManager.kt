@@ -37,6 +37,9 @@ actual class PushNotificationManager actual constructor() {
             pendingTokenCallback = { token ->
                 cont.resume(token)
             }
+            cont.invokeOnCancellation {
+                pendingTokenCallback = null
+            }
         }
     }
 

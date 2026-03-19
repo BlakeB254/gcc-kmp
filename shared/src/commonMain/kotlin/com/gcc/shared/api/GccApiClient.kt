@@ -392,10 +392,10 @@ class GccApiClient(
         postJson("/api/spots/$reportId/volunteer", request)
 
     suspend fun completeVolunteerCleanup(reportId: Int, request: CompleteVolunteerRequest): VolunteerCleanup =
-        postJson("/api/spots/$reportId/volunteer?complete", request)
+        postJson("/api/spots/$reportId/volunteer/complete", request)
 
     suspend fun reportSpotAlreadyClean(reportId: Int, beforeMediaUrls: List<String>): VolunteerCleanup =
-        postJson("/api/spots/$reportId/volunteer?already-clean", mapOf("beforeMediaUrls" to beforeMediaUrls))
+        postJson("/api/spots/$reportId/volunteer/already-clean", mapOf("beforeMediaUrls" to beforeMediaUrls))
 
     // Admin: Create spot report
     suspend fun createAdminSpot(request: CreateSpotRequest): SpotResponse =
