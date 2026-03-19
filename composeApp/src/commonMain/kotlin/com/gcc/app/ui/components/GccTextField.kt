@@ -2,9 +2,11 @@ package com.gcc.app.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -18,6 +20,7 @@ fun GccTextField(
     label: String,
     modifier: Modifier = Modifier,
     isPassword: Boolean = false,
+    isEmail: Boolean = false,
     error: String? = null,
     leadingIcon: String? = null,
     enabled: Boolean = true,
@@ -36,6 +39,17 @@ fun GccTextField(
         } else null,
         visualTransformation = if (isPassword) PasswordVisualTransformation()
         else VisualTransformation.None,
+        keyboardOptions = when {
+            isPassword -> KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                autoCorrect = false,
+            )
+            isEmail -> KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                autoCorrect = false,
+            )
+            else -> KeyboardOptions.Default
+        },
         leadingIcon = if (leadingIcon != null) {
             { Text(leadingIcon) }
         } else null,

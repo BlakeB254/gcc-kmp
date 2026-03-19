@@ -196,6 +196,7 @@ fun LoginScreen(
                             value = email,
                             onValueChange = { email = it; viewModel.clearError() },
                             label = "Email",
+                            isEmail = true,
                             leadingIcon = "\u2709",
                             enabled = !uiState.isLoading,
                         )
