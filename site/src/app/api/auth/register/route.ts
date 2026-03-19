@@ -10,7 +10,8 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, phone, password } = body
+    const { name, email: rawEmail, phone, password } = body
+    const email = rawEmail?.trim().toLowerCase()
 
     if (!name || !email || !password) {
       return Response.json({ data: null, success: false, message: 'Name, email, and password are required' }, { status: 400 })

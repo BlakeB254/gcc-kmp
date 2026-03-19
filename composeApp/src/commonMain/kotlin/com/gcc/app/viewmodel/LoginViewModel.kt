@@ -38,12 +38,13 @@ class LoginViewModel(
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun login(email: String, password: String) {
+        val normalizedEmail = email.trim().lowercase()
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
                     contentType(ContentType.Application.Json)
-                    setBody(LoginRequest(email = email, password = password))
+                    setBody(LoginRequest(email = normalizedEmail, password = password))
                 }
                 if (response.status == HttpStatusCode.OK) {
                     val apiResponse = response.body<ApiResponse<AuthResponse>>()
@@ -57,9 +58,9 @@ class LoginViewModel(
                     } else {
                         tokenManager.saveToken(authData.token!!)
                         // Save credentials in Keychain for Face ID re-login
-                        tokenManager.saveCredentials(email, password)
+                        tokenManager.saveCredentials(normalizedEmail, password)
                         // Offer to save in iOS Passwords app for AutoFill
-                        saveToSystemCredentials(email, password)
+                        saveToSystemCredentials(normalizedEmail, password)
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             isLoggedIn = true,

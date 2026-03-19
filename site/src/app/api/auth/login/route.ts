@@ -10,7 +10,8 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { email, password } = body
+    const { email: rawEmail, password } = body
+    const email = rawEmail?.trim().toLowerCase()
 
     if (!email || !password) {
       return Response.json(
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find worker with credentials
+    // Find worker with credentials (case-insensitive + trimmed)
     const [worker] = await db
       .select()
       .from(workers)
