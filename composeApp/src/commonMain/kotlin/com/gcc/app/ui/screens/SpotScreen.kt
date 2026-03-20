@@ -321,7 +321,7 @@ private fun LocationPhase(
                             val (dLat, dLng) = pixelDeltaToLatLng(
                                 dragAmount.x, dragAmount.y, spotLat, mapZoom,
                             )
-                            val maxOffsetDeg = 500.0 / 111320.0
+                            val maxOffsetDeg = 100.0 / 111320.0
                             val newLat = (spotLat + dLat).coerceIn(
                                 gpsLat - maxOffsetDeg, gpsLat + maxOffsetDeg,
                             )

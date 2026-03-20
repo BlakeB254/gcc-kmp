@@ -16,6 +16,9 @@ import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
+import com.gcc.shared.model.CommunityReportType
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 @Composable
 internal fun AdminSpotsTab(
@@ -76,6 +79,11 @@ internal fun AdminSpotsTab(
                     CommunityReportStatus.ACKNOWLEDGED -> GccBlue
                     CommunityReportStatus.REJECTED -> GccError
                 }
+                val localDt = report.createdAt.toLocalDateTime(TimeZone.currentSystemDefault())
+                val dateStr = "${localDt.monthNumber}/${localDt.dayOfMonth}/${localDt.year}"
+                val hour = localDt.hour % 12
+                val amPm = if (localDt.hour < 12) "AM" else "PM"
+                val timeStr = "${if (hour == 0) 12 else hour}:${localDt.minute.toString().padStart(2, '0')} $amPm"
 
                 Surface(
                     modifier = Modifier.fillMaxWidth().clickable { onSpotClick(report.id) },
@@ -89,8 +97,9 @@ internal fun AdminSpotsTab(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                val typeIcon = if (report.type == CommunityReportType.SIGHTING) "\uD83D\uDC41" else "\uD83E\uDDF9"
                                 Text(
-                                    reporterDisplay,
+                                    "$typeIcon $reporterDisplay",
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = if (report.reporterName == "GCC") GccGreen else MaterialTheme.colorScheme.onSurface,
@@ -104,10 +113,30 @@ internal fun AdminSpotsTab(
                                 }
                             }
                             Text(
-                                "${formatCoord(report.coordinates.lat)}, ${formatCoord(report.coordinates.lng)}",
+                                "$dateStr at $timeStr",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (report.tags.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                ) {
+                                    report.tags.take(4).forEach { tag ->
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = GccGold.copy(alpha = 0.1f),
+                                        ) {
+                                            Text(
+                                                tag.name.lowercase(),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = GccGold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             Text(
                                 descSnippet,
                                 style = MaterialTheme.typography.bodySmall,
