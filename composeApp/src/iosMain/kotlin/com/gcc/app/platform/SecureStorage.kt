@@ -52,9 +52,9 @@ private const val SERVICE_NAME = "com.globalcommunitycleaners.worker"
  * Uses CFDictionary APIs directly for Keychain queries since Kotlin/Native
  * does not implicitly bridge Kotlin Maps to CFDictionaryRef.
  */
-@OptIn(ExperimentalForeignApi::class)
 actual fun createSecureStorage(): Settings = KeychainStorage()
 
+@OptIn(ExperimentalForeignApi::class)
 private class KeychainStorage : Settings {
 
     /**
