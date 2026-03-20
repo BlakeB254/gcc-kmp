@@ -4,6 +4,21 @@ import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
+// ─── Admin Response Models ──────────────────────────────────────────
+
+@Serializable
+data class DocumentMedia(
+    val url: String? = null,
+    val filename: String? = null,
+    val mimeType: String? = null,
+)
+
+@Serializable
+data class WorkerDocuments(
+    val governmentId: DocumentMedia? = null,
+    val proofOfAddress: DocumentMedia? = null,
+)
+
 // ─── Admin Request Models ───────────────────────────────────────────
 
 @Serializable

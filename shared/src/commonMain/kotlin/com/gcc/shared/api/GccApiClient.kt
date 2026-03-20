@@ -227,6 +227,9 @@ class GccApiClient(
     suspend fun getAdminWorker(workerId: Int): Worker =
         get("/api/admin/workers/$workerId")
 
+    suspend fun getWorkerDocuments(workerId: Int): WorkerDocuments =
+        get("/api/admin/workers/$workerId/documents")
+
     suspend fun verifyWorker(workerId: Int, request: VerifyWorkerRequest): Worker =
         postJson("/api/admin/workers/$workerId/verify", request)
 

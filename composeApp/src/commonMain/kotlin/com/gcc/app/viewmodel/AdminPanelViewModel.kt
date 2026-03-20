@@ -245,6 +245,9 @@ class AdminPanelViewModel(
     private val _selectedWorker = MutableStateFlow<Worker?>(null)
     val selectedWorker: StateFlow<Worker?> = _selectedWorker.asStateFlow()
 
+    private val _workerDocuments = MutableStateFlow<WorkerDocuments?>(null)
+    val workerDocuments: StateFlow<WorkerDocuments?> = _workerDocuments.asStateFlow()
+
     private val _workerActionLoading = MutableStateFlow(false)
     val workerActionLoading: StateFlow<Boolean> = _workerActionLoading.asStateFlow()
 
@@ -258,6 +261,13 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(error = "Failed to load worker: ${e.message}")
             }
             _workerActionLoading.value = false
+            // Load documents in parallel (non-blocking)
+            try {
+                _workerDocuments.value = apiClient.getWorkerDocuments(workerId)
+            } catch (_: Exception) {
+                // Documents are optional — don't block the UI
+                _workerDocuments.value = null
+            }
         }
     }
 

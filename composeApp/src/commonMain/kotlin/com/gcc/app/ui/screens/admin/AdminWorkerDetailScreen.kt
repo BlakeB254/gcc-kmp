@@ -1,5 +1,7 @@
 package com.gcc.app.ui.screens.admin
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -7,11 +9,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.shared.model.DocumentMedia
 import com.gcc.shared.model.DocumentStatus
 import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.Worker
@@ -25,11 +31,13 @@ fun AdminWorkerDetailScreen(
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val worker by viewModel.selectedWorker.collectAsState()
+    val documents by viewModel.workerDocuments.collectAsState()
     val isLoading by viewModel.workerActionLoading.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
     var reviewNotes by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(workerId) {
         viewModel.loadWorkerDetail(workerId)
@@ -88,6 +96,8 @@ fun AdminWorkerDetailScreen(
                         DocumentCard(
                             title = "Government ID",
                             status = w.verification.governmentIdStatus,
+                            documentMedia = documents?.governmentId,
+                            onImageClick = { url -> fullScreenImageUrl = url },
                             onApprove = {
                                 viewModel.verifyWorker(
                                     workerId = w.id,
@@ -121,6 +131,8 @@ fun AdminWorkerDetailScreen(
                         DocumentCard(
                             title = "Proof of Address",
                             status = w.verification.proofOfAddressStatus,
+                            documentMedia = documents?.proofOfAddress,
+                            onImageClick = { url -> fullScreenImageUrl = url },
                             onApprove = {
                                 viewModel.verifyWorker(
                                     workerId = w.id,
@@ -292,6 +304,35 @@ fun AdminWorkerDetailScreen(
             }
         }
     }
+
+    // Full-screen image viewer overlay
+    fullScreenImageUrl?.let { url ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                .clickable { fullScreenImageUrl = null },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                NetworkImage(
+                    url = url,
+                    contentDescription = "Document full view",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Fit,
+                )
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = { fullScreenImageUrl = null }) {
+                    Text("Tap anywhere to close", color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        }
+    }
 }
 
 // ─── Helper composables ────────────────────────────────────────────
@@ -401,6 +442,8 @@ private fun OverallVerificationCard(worker: Worker) {
 private fun DocumentCard(
     title: String,
     status: DocumentStatus,
+    documentMedia: DocumentMedia? = null,
+    onImageClick: (String) -> Unit = {},
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onRequestResubmit: () -> Unit,
@@ -445,6 +488,54 @@ private fun DocumentCard(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
+                }
+            }
+
+            // Document image preview
+            if (documentMedia?.url != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { onImageClick(documentMedia.url!!) },
+                ) {
+                    NetworkImage(
+                        url = documentMedia.url!!,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    // "Tap to view" label
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = 0.6f),
+                    ) {
+                        Text(
+                            "\uD83D\uDD0D Tap to view",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            "No document uploaded",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
                 }
             }
 
