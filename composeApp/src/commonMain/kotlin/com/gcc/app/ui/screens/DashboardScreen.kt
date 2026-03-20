@@ -52,6 +52,9 @@ fun DashboardScreen(
     onAchievementsClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onAdminClick: () -> Unit = {},
+    onPointsClick: () -> Unit = {},
+    onImpactClick: () -> Unit = {},
+    onSponsorWallClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val tokenManager = koinInject<TokenManager>()
@@ -134,6 +137,29 @@ fun DashboardScreen(
             onRefresh = { viewModel.refresh() },
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+        // Pre-compute nearby spot counts per route (avoids O(routes*spots) inside items)
+        val spotCountByRoute = remember(uiState.routes, uiState.spots) {
+            if (uiState.spots.isEmpty()) emptyMap()
+            else uiState.routes.associate { route ->
+                route.id to if (route.checkpoints.isEmpty()) 0
+                else {
+                    var minLat = Double.MAX_VALUE; var maxLat = -Double.MAX_VALUE
+                    var minLng = Double.MAX_VALUE; var maxLng = -Double.MAX_VALUE
+                    for (cp in route.checkpoints) {
+                        if (cp.coordinates.lat < minLat) minLat = cp.coordinates.lat
+                        if (cp.coordinates.lat > maxLat) maxLat = cp.coordinates.lat
+                        if (cp.coordinates.lng < minLng) minLng = cp.coordinates.lng
+                        if (cp.coordinates.lng > maxLng) maxLng = cp.coordinates.lng
+                    }
+                    val latRange = (minLat - 0.002)..(maxLat + 0.002)
+                    val lngRange = (minLng - 0.002)..(maxLng + 0.002)
+                    uiState.spots.count { spot ->
+                        spot.coordinates.lat in latRange && spot.coordinates.lng in lngRange
+                    }
+                }
+            }
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(13.dp),
@@ -301,6 +327,24 @@ fun DashboardScreen(
                         onClick = onAchievementsClick,
                     )
                     QuickActionButton(
+                        emoji = "\uD83D\uDC8E",
+                        label = "Points",
+                        bgColor = CardAccentGold,
+                        onClick = onPointsClick,
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83D\uDCCA",
+                        label = "Impact",
+                        bgColor = CardAccentGreen,
+                        onClick = onImpactClick,
+                    )
+                    QuickActionButton(
+                        emoji = "\uD83E\uDD1D",
+                        label = "Sponsors",
+                        bgColor = CardAccentBlue,
+                        onClick = onSponsorWallClick,
+                    )
+                    QuickActionButton(
                         emoji = "\uD83D\uDDFA\uFE0F",
                         label = "Map",
                         bgColor = GccGreenDark,
@@ -342,6 +386,7 @@ fun DashboardScreen(
                     RouteListItem(
                         route = route,
                         onClick = { onRouteClick(route.id) },
+                        nearbySpotCount = spotCountByRoute[route.id] ?: 0,
                         modifier = Modifier.padding(horizontal = 13.dp),
                     )
                 }
@@ -425,6 +470,7 @@ private fun QuickActionButton(
 private fun RouteListItem(
     route: Route,
     onClick: () -> Unit,
+    nearbySpotCount: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     GccCard(
@@ -462,6 +508,9 @@ private fun RouteListItem(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )
+                    if (nearbySpotCount > 0) {
+                        SpotDensityBadge(spotCount = nearbySpotCount)
+                    }
                 }
                 route.estimatedDurationMinutes?.let { mins ->
                     Spacer(modifier = Modifier.height(2.dp))

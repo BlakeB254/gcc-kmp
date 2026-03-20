@@ -365,6 +365,13 @@ fun RouteDetailScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HeatBadge(
+                        label = "Area Score",
+                        score = 75, // TODO: Wire to real cleanliness API
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         color = DividerColor,

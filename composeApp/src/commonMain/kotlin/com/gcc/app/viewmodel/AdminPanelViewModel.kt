@@ -24,6 +24,8 @@ data class AdminPanelUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val stats: AdminStatsResponse? = null,
+    val recentActivity: List<AdminActivityItem> = emptyList(),
+    val dailyStats: List<AdminDailyStats> = emptyList(),
     val workers: List<Worker> = emptyList(),
     val routes: List<Route> = emptyList(),
     val bounties: List<Bounty> = emptyList(),
@@ -53,7 +55,9 @@ class AdminPanelViewModel(
                 when (_uiState.value.selectedTab) {
                     AdminTab.OVERVIEW -> {
                         val stats = apiClient.getAdminStats()
-                        _uiState.value = _uiState.value.copy(stats = stats)
+                        val activity = try { apiClient.getAdminActivity(limit = 10) } catch (_: Exception) { emptyList() }
+                        val daily = try { apiClient.getAdminDailyStats(days = 7) } catch (_: Exception) { emptyList() }
+                        _uiState.value = _uiState.value.copy(stats = stats, recentActivity = activity, dailyStats = daily)
                     }
                     AdminTab.WORKERS -> {
                         val workers = apiClient.getAdminWorkers()
@@ -229,6 +233,20 @@ class AdminPanelViewModel(
         }
     }
 
+    fun createRoute(request: AdminRouteRequest) {
+        scope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(error = null)
+                val created = apiClient.createRoute(request)
+                _uiState.value = _uiState.value.copy(
+                    routes = _uiState.value.routes + created,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to create route: ${e.message}")
+            }
+        }
+    }
+
     fun addCheckpoint(routeId: Int, request: AdminCheckpointRequest, onAdded: (RouteCheckpoint) -> Unit) {
         scope.launch {
             try {
@@ -313,6 +331,22 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(error = "Failed to delete worker: ${e.message}")
             }
             _workerActionLoading.value = false
+        }
+    }
+
+    fun bulkWorkerAction(workerIds: List<Int>, action: BulkAction) {
+        scope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(error = null)
+                val updated = apiClient.bulkWorkerAction(BulkActionRequest(workerIds, action))
+                _uiState.value = _uiState.value.copy(
+                    workers = _uiState.value.workers.map { existing ->
+                        updated.find { it.id == existing.id } ?: existing
+                    },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Bulk action failed: ${e.message}")
+            }
         }
     }
 

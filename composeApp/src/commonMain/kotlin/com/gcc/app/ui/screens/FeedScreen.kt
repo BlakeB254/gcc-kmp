@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.components.AvatarStack
 import com.gcc.app.ui.components.GccCard
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.ui.components.SkeletonList
@@ -107,6 +108,33 @@ fun FeedScreen(
                     verticalArrangement = Arrangement.spacedBy(13.dp),
                     contentPadding = PaddingValues(vertical = 8.dp),
                 ) {
+                    // Active contributors summary
+                    if (uiState.items.size >= 3) {
+                        item {
+                            val recentNames = remember(uiState.items) {
+                                uiState.items.map { it.actorName }.distinct().take(5)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 13.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    "Active Contributors",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextMuted,
+                                )
+                                AvatarStack(
+                                    names = recentNames,
+                                    maxVisible = 5,
+                                    size = 28,
+                                )
+                            }
+                        }
+                    }
+
                     // Filter chips row
                     item {
                         FilterChipsRow(

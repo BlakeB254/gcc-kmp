@@ -87,15 +87,21 @@ fun AdminPanelScreen(
                     }
                 }
                 else -> when (uiState.selectedTab) {
-                    AdminTab.OVERVIEW -> AdminOverviewTab(uiState.stats)
+                    AdminTab.OVERVIEW -> AdminOverviewTab(
+                        stats = uiState.stats,
+                        recentActivity = uiState.recentActivity,
+                        dailyStats = uiState.dailyStats,
+                    )
                     AdminTab.WORKERS -> AdminWorkersTab(
                         workers = uiState.workers,
                         onWorkerClick = onNavigateToWorkerDetail,
+                        onBulkAction = viewModel::bulkWorkerAction,
                     )
                     AdminTab.ROUTES -> AdminRoutesTab(
                         routes = uiState.routes,
                         onRouteClick = onNavigateToRouteDetail,
                         onStatusToggle = { routeId, newStatus -> viewModel.updateRouteStatus(routeId, newStatus) },
+                        onCreateRoute = viewModel::createRoute,
                     )
                     AdminTab.BOUNTIES -> AdminBountiesTab(uiState.bounties)
                     AdminTab.SPOTS -> AdminSpotsTab(

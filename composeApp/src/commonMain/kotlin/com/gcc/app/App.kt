@@ -60,6 +60,9 @@ fun App(component: RootComponent) {
                     onAchievementsClick = component::navigateToAchievements,
                     onSettingsClick = component::navigateToSettings,
                     onAdminClick = component::navigateToAdminPanel,
+                    onPointsClick = component::navigateToPoints,
+                    onImpactClick = component::navigateToImpact,
+                    onSponsorWallClick = component::navigateToSponsorWall,
                 )
                 is Screen.RouteDetail -> {
                     val dashVm = org.koin.compose.koinInject<com.gcc.app.viewmodel.DashboardViewModel>()
@@ -90,6 +93,8 @@ fun App(component: RootComponent) {
                     onSettingsClick = component::navigateToSettings,
                     onAdminClick = component::navigateToAdminPanel,
                     onUserCardClick = component::navigateToUserCard,
+                    onPointsClick = component::navigateToPoints,
+                    onImpactClick = component::navigateToImpact,
                 )
                 is Screen.Achievements -> AchievementsScreen(
                     onBack = component::navigateBack,
@@ -193,6 +198,15 @@ fun App(component: RootComponent) {
                         }
                     }
                 }
+                is Screen.PointsDashboard -> PointsDashboardScreen(
+                    onBack = component::navigateBack,
+                )
+                is Screen.Impact -> ImpactScreen(
+                    onBack = component::navigateBack,
+                )
+                is Screen.SponsorWall -> SponsorWallScreen(
+                    onBack = component::navigateBack,
+                )
             }
         }
     }

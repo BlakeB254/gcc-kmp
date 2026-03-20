@@ -84,4 +84,13 @@ sealed class Screen {
 
     @Serializable
     data class RouteScan(val routeId: Int) : Screen()
+
+    @Serializable
+    data object PointsDashboard : Screen()
+
+    @Serializable
+    data object Impact : Screen()
+
+    @Serializable
+    data object SponsorWall : Screen()
 }

@@ -25,6 +25,9 @@ import com.gcc.app.viewmodel.FeedViewModel
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.WalletViewModel
+import com.gcc.app.viewmodel.PointsDashboardViewModel
+import com.gcc.app.viewmodel.ImpactViewModel
+import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.module.dsl.singleOf
@@ -61,5 +64,8 @@ val appModule = module {
     singleOf(::FeedViewModel)
     singleOf(::AdminPanelViewModel)
     singleOf(::SpotVerificationViewModel)
+    singleOf(::PointsDashboardViewModel)
+    singleOf(::ImpactViewModel)
+    singleOf(::SponsorWallViewModel)
     factory { RouteScanViewModel(get(), get()) }
 }

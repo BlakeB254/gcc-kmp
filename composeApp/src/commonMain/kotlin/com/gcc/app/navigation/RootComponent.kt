@@ -165,6 +165,18 @@ class RootComponent(
         navigation.push(Screen.RouteScan(routeId))
     }
 
+    fun navigateToPoints() {
+        navigation.push(Screen.PointsDashboard)
+    }
+
+    fun navigateToImpact() {
+        navigation.push(Screen.Impact)
+    }
+
+    fun navigateToSponsorWall() {
+        navigation.push(Screen.SponsorWall)
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }

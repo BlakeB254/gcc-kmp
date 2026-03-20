@@ -48,52 +48,75 @@ fun SpotVerificationScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (uiState.phase) {
-                VerificationPhase.CAMERA -> CameraPhase(
-                    onCapture = { viewModel.setPhoto("verify_${reportId}_${Clock.System.now().epochSeconds}.jpg") },
-                    onBack = onBack,
-                )
-                VerificationPhase.DECISION -> DecisionPhase(
-                    error = uiState.error,
-                    onStillDirty = { viewModel.submitVerification(SpotVerificationResult.STILL_DIRTY) },
-                    onAlreadyClean = { viewModel.submitVerification(SpotVerificationResult.ALREADY_CLEAN) },
-                    onBack = onBack,
-                )
-                VerificationPhase.SUBMITTING -> SubmittingPhase()
-                VerificationPhase.COMPLETE -> CompletePhase(
-                    result = uiState.result,
-                    pointsAwarded = uiState.pointsAwarded,
-                    spotResolved = uiState.spotResolved,
-                    onBack = onBack,
+            // Progress timeline (hide on completion)
+            if (uiState.phase != VerificationPhase.COMPLETE) {
+                val steps = remember { listOf("Camera", "Decision", "Submit", "Complete") }
+                val currentIndex = remember(uiState.phase) {
+                    when (uiState.phase) {
+                        VerificationPhase.CAMERA -> 0
+                        VerificationPhase.DECISION -> 1
+                        VerificationPhase.SUBMITTING -> 2
+                        else -> 0 // COMPLETE excluded by outer guard
+                    }
+                }
+                StatusTimeline(
+                    steps = steps,
+                    currentStepIndex = currentIndex,
+                    modifier = Modifier
+                        .padding(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 8.dp),
                 )
             }
 
-            // Floating back button (hide on completion)
-            if (uiState.phase != VerificationPhase.COMPLETE) {
-                TextButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(8.dp)
-                        .align(Alignment.TopStart),
-                ) {
-                    Box(
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) {
+                when (uiState.phase) {
+                    VerificationPhase.CAMERA -> CameraPhase(
+                        onCapture = { viewModel.setPhoto("verify_${reportId}_${Clock.System.now().epochSeconds}.jpg") },
+                        onBack = onBack,
+                    )
+                    VerificationPhase.DECISION -> DecisionPhase(
+                        error = uiState.error,
+                        onStillDirty = { viewModel.submitVerification(SpotVerificationResult.STILL_DIRTY) },
+                        onAlreadyClean = { viewModel.submitVerification(SpotVerificationResult.ALREADY_CLEAN) },
+                        onBack = onBack,
+                    )
+                    VerificationPhase.SUBMITTING -> SubmittingPhase()
+                    VerificationPhase.COMPLETE -> CompletePhase(
+                        result = uiState.result,
+                        pointsAwarded = uiState.pointsAwarded,
+                        spotResolved = uiState.spotResolved,
+                        onBack = onBack,
+                    )
+                }
+
+                // Floating back button (hide on completion)
+                if (uiState.phase != VerificationPhase.COMPLETE) {
+                    TextButton(
+                        onClick = onBack,
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.9f)),
-                        contentAlignment = Alignment.Center,
+                            .statusBarsPadding()
+                            .padding(8.dp)
+                            .align(Alignment.TopStart),
                     ) {
-                        Text(
-                            "\u2190",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GccGreenDark,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "\u2190",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = GccGreenDark,
+                            )
+                        }
                     }
                 }
             }

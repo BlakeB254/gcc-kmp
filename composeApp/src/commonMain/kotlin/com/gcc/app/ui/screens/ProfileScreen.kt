@@ -34,6 +34,8 @@ fun ProfileScreen(
     onSettingsClick: () -> Unit = {},
     onAdminClick: () -> Unit = {},
     onUserCardClick: () -> Unit = {},
+    onPointsClick: () -> Unit = {},
+    onImpactClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<ProfileViewModel>()
     val tokenManager = koinInject<TokenManager>()
@@ -232,6 +234,25 @@ fun ProfileScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            // Points & Impact links
+            GccButton(
+                text = "View Points",
+                onClick = onPointsClick,
+                variant = GccButtonVariant.OUTLINED,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            GccButton(
+                text = "Community Impact",
+                onClick = onImpactClick,
+                variant = GccButtonVariant.OUTLINED,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+
+            Spacer(modifier = Modifier.height(13.dp))
 
             // Settings button
             GccButton(

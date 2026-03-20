@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.ui.components.AvatarStack
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.ui.components.SkeletonList
 import com.gcc.app.ui.theme.*
@@ -113,6 +114,28 @@ fun LeaderboardScreen(
                         ),
                         shape = RoundedCornerShape(spacing.sm),
                         modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            // Top cleaners avatar stack
+            if (uiState.entries.size >= 3) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacing.md, vertical = spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    Text(
+                        "Top Cleaners",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextMuted,
+                    )
+                    AvatarStack(
+                        names = uiState.entries.take(3).map { it.name },
+                        maxVisible = 3,
+                        size = 32,
                     )
                 }
             }

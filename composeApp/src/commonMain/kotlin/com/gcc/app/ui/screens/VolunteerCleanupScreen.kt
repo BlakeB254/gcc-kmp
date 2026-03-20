@@ -44,95 +44,122 @@ fun VolunteerCleanupScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (uiState.phase) {
-                VolunteerPhase.BEFORE_PHOTOS -> BeforePhotosPhase(
-                    beforePhotoCount = uiState.beforePhotoUrls.size,
-                    isSubmitting = uiState.isSubmitting,
-                    error = uiState.error,
-                    onCapture = { viewModel.addBeforePhoto("before_${uiState.beforePhotoUrls.size + 1}.jpg") },
-                    onConfirmMessStillHere = { viewModel.startCleanup() },
-                    onAlreadyClean = { viewModel.reportAlreadyClean() },
-                    onBack = onBack,
-                )
-
-                VolunteerPhase.IN_PROGRESS -> InProgressPhase(
-                    elapsedSeconds = uiState.elapsedSeconds,
-                    cleanup = uiState.cleanup,
-                    error = uiState.error,
-                    onTakeAfterPhotos = { viewModel.advancePhase() },
-                    onBack = onBack,
-                )
-
-                VolunteerPhase.AFTER_PHOTOS -> AfterPhotosPhase(
-                    afterPhotoCount = uiState.afterPhotoUrls.size,
-                    onCapture = { viewModel.addAfterPhoto("after_${uiState.afterPhotoUrls.size + 1}.jpg") },
-                    onNext = { viewModel.advancePhase() },
-                )
-
-                VolunteerPhase.TRASH_HEAP_PHOTO -> TrashHeapPhase(
-                    hasTrashHeap = uiState.trashHeapUrl != null,
-                    onCapture = { viewModel.setTrashHeapUrl("trash_heap.jpg") },
-                    onSubmit = { viewModel.advancePhase() },
-                )
-
-                VolunteerPhase.SUBMITTING -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = GccGreen)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                "Verifying cleanup...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextMuted,
-                            )
-                        }
-                    }
-                }
-
-                VolunteerPhase.COMPLETE -> CompletionPhase(
-                    cleanup = uiState.cleanup,
-                    elapsedSeconds = uiState.elapsedSeconds,
-                    pointsAwarded = uiState.pointsAwarded,
-                    onBack = onBack,
-                )
-
-                VolunteerPhase.ALREADY_CLEAN_COMPLETE -> AlreadyCleanCompletionPhase(
-                    pointsAwarded = uiState.pointsAwarded,
-                    onBack = onBack,
-                )
-            }
-
-            // Floating back button
+            // Progress timeline (hide on completion phases)
             if (uiState.phase != VolunteerPhase.COMPLETE &&
                 uiState.phase != VolunteerPhase.ALREADY_CLEAN_COMPLETE
             ) {
-                TextButton(
-                    onClick = onBack,
+                val steps = remember { listOf("Verify Spot", "Cleanup", "After Photos", "Trash Heap", "Submit") }
+                val currentIndex = remember(uiState.phase) {
+                    when (uiState.phase) {
+                        VolunteerPhase.BEFORE_PHOTOS -> 0
+                        VolunteerPhase.IN_PROGRESS -> 1
+                        VolunteerPhase.AFTER_PHOTOS -> 2
+                        VolunteerPhase.TRASH_HEAP_PHOTO -> 3
+                        VolunteerPhase.SUBMITTING -> 4
+                        else -> 0
+                    }
+                }
+                StatusTimeline(
+                    steps = steps,
+                    currentStepIndex = currentIndex,
                     modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(8.dp)
-                        .align(Alignment.TopStart),
+                        .padding(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 8.dp),
+                )
+            }
+
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) {
+                when (uiState.phase) {
+                    VolunteerPhase.BEFORE_PHOTOS -> BeforePhotosPhase(
+                        beforePhotoCount = uiState.beforePhotoUrls.size,
+                        isSubmitting = uiState.isSubmitting,
+                        error = uiState.error,
+                        onCapture = { viewModel.addBeforePhoto("before_${uiState.beforePhotoUrls.size + 1}.jpg") },
+                        onConfirmMessStillHere = { viewModel.startCleanup() },
+                        onAlreadyClean = { viewModel.reportAlreadyClean() },
+                        onBack = onBack,
+                    )
+
+                    VolunteerPhase.IN_PROGRESS -> InProgressPhase(
+                        elapsedSeconds = uiState.elapsedSeconds,
+                        cleanup = uiState.cleanup,
+                        error = uiState.error,
+                        onTakeAfterPhotos = { viewModel.advancePhase() },
+                        onBack = onBack,
+                    )
+
+                    VolunteerPhase.AFTER_PHOTOS -> AfterPhotosPhase(
+                        afterPhotoCount = uiState.afterPhotoUrls.size,
+                        onCapture = { viewModel.addAfterPhoto("after_${uiState.afterPhotoUrls.size + 1}.jpg") },
+                        onNext = { viewModel.advancePhase() },
+                    )
+
+                    VolunteerPhase.TRASH_HEAP_PHOTO -> TrashHeapPhase(
+                        hasTrashHeap = uiState.trashHeapUrl != null,
+                        onCapture = { viewModel.setTrashHeapUrl("trash_heap.jpg") },
+                        onSubmit = { viewModel.advancePhase() },
+                    )
+
+                    VolunteerPhase.SUBMITTING -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = GccGreen)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    "Verifying cleanup...",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = TextMuted,
+                                )
+                            }
+                        }
+                    }
+
+                    VolunteerPhase.COMPLETE -> CompletionPhase(
+                        cleanup = uiState.cleanup,
+                        elapsedSeconds = uiState.elapsedSeconds,
+                        pointsAwarded = uiState.pointsAwarded,
+                        onBack = onBack,
+                    )
+
+                    VolunteerPhase.ALREADY_CLEAN_COMPLETE -> AlreadyCleanCompletionPhase(
+                        pointsAwarded = uiState.pointsAwarded,
+                        onBack = onBack,
+                    )
+                }
+
+                // Floating back button
+                if (uiState.phase != VolunteerPhase.COMPLETE &&
+                    uiState.phase != VolunteerPhase.ALREADY_CLEAN_COMPLETE
                 ) {
-                    Box(
+                    TextButton(
+                        onClick = onBack,
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.9f)),
-                        contentAlignment = Alignment.Center,
+                            .statusBarsPadding()
+                            .padding(8.dp)
+                            .align(Alignment.TopStart),
                     ) {
-                        Text(
-                            "\u2190",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = GccGreenDark,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "\u2190",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = GccGreenDark,
+                            )
+                        }
                     }
                 }
             }
