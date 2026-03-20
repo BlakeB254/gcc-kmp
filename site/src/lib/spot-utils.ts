@@ -68,6 +68,12 @@ export function toCommunityReport(r: any, precomputedTags?: string[]) {
     geoCity: r.geoCity || null,
     geoState: r.geoState || null,
     geoCommunityArea: r.geoCommunityArea || null,
+    geoCommunityAreaNumber: r.geoCommunityAreaNumber || null,
+    geoWard: r.geoWard || null,
+    geoZipCode: r.geoZipCode || null,
+    geoCensusTract: r.geoCensusTract || null,
+    geoPoliceDistrict: r.geoPoliceDistrict || null,
+    geoStreetAddress: r.geoStreetAddress || null,
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }

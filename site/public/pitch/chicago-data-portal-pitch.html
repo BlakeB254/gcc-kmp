@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCC - Chicago Data Portal Integration Proposal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            gcc: {
+              green: '#22C55E',
+              'green-dark': '#16A34A',
+              'green-light': '#4ADE80',
+              'green-50': '#F0FDF4',
+              'green-100': '#DCFCE7',
+              dark: '#0F172A',
+              'dark-light': '#1E293B',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Print styles */
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.6in 0.75in;
+      }
+
+      body {
+        font-size: 10pt;
+        line-height: 1.4;
+        color: #000;
+        background: #fff;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .page-break-before {
+        page-break-before: always;
+        break-before: page;
+      }
+
+      .avoid-break {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      /* Reset backgrounds for print */
+      .print-no-bg {
+        background: none !important;
+        color: #000 !important;
+      }
+
+      /* Ensure tables don't break across pages */
+      table {
+        page-break-inside: avoid;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+
+      /* Code blocks print nicely */
+      pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        border: 1px solid #ccc;
+        background: #f9f9f9 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      /* Force color printing for key elements */
+      .print-color {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      /* Cover page print */
+      .cover-section {
+        min-height: auto;
+        padding: 3in 0 2in 0;
+      }
+
+      /* Section headers */
+      h2, h3 {
+        page-break-after: avoid;
+      }
+
+      /* Reduce padding for print */
+      section {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+      }
+    }
+
+    /* Screen-only decorative elements */
+    @media screen {
+      .section-divider {
+        position: relative;
+      }
+      .section-divider::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 3px;
+        background: #22C55E;
+        border-radius: 2px;
+      }
+    }
+
+    /* Comparison table styling */
+    .comparison-table th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    /* Smooth scroll */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+  </style>
+</head>
+<body class="bg-white text-gray-900">
+
+  <!-- ============================================================ -->
+  <!-- COVER PAGE -->
+  <!-- ============================================================ -->
+  <section class="cover-section min-h-screen flex flex-col justify-center items-center bg-gcc-dark text-white relative overflow-hidden print-color page-break">
+    <!-- Decorative background pattern -->
+    <div class="absolute inset-0 opacity-5 no-print" style="background-image: radial-gradient(circle at 25% 25%, #22C55E 1px, transparent 1px), radial-gradient(circle at 75% 75%, #22C55E 1px, transparent 1px); background-size: 50px 50px;"></div>
+
+    <div class="relative z-10 text-center max-w-4xl mx-auto px-8">
+      <!-- Logo -->
+      <div class="mb-8">
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gcc-green/10 border-2 border-gcc-green/30 mb-6">
+          <svg class="w-10 h-10 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h1 class="text-5xl md:text-6xl font-black tracking-tight">
+          <span class="text-gcc-green">Global Community</span><br>
+          <span class="text-white">Cleaners</span>
+        </h1>
+      </div>
+
+      <!-- Tagline -->
+      <div class="mb-6">
+        <div class="inline-block px-4 py-1.5 rounded-full bg-gcc-green/10 border border-gcc-green/30 mb-6">
+          <span class="text-gcc-green-light text-sm font-semibold tracking-wide uppercase">Data Partnership Proposal</span>
+        </div>
+      </div>
+
+      <h2 class="text-2xl md:text-3xl font-light text-gray-300 mb-4 leading-relaxed">
+        Ground-Truth Community Cleanliness<br>Data for Chicago
+      </h2>
+
+      <p class="text-lg text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
+        A Proposal to Integrate Community-Sourced Environmental Data<br>with the Chicago Data Portal
+      </p>
+
+      <!-- Divider -->
+      <div class="w-24 h-0.5 bg-gcc-green mx-auto mb-12"></div>
+
+      <!-- Meta -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-6 text-gray-500 text-sm">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          March 2026
+        </span>
+        <span class="hidden sm:inline text-gray-700">|</span>
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+          globalcommunitycleaners.org
+        </span>
+        <span class="hidden sm:inline text-gray-700">|</span>
+        <span>Prepared for the City of Chicago Data Portal Team</span>
+      </div>
+    </div>
+
+    <!-- Bottom accent bar -->
+    <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-gcc-green via-gcc-green-light to-gcc-green"></div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- TABLE OF CONTENTS (screen only) -->
+  <!-- ============================================================ -->
+  <nav class="no-print bg-gray-50 border-b border-gray-200 py-8 px-8">
+    <div class="max-w-4xl mx-auto">
+      <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Contents</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <a href="#executive-summary" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">1. Executive Summary</a>
+        <a href="#comparison" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">2. GCC vs 311 Comparison</a>
+        <a href="#data-dictionary" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">3. Data Dictionary</a>
+        <a href="#integration" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">4. Technical Integration</a>
+        <a href="#coverage" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">5. Coverage</a>
+        <a href="#value" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">6. Value Proposition</a>
+        <a href="#arrangement" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">7. Proposed Arrangement</a>
+        <a href="#contact" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">8. Contact &amp; Next Steps</a>
+      </div>
+    </div>
+  </nav>
+
+
+  <!-- ============================================================ -->
+  <!-- EXECUTIVE SUMMARY -->
+  <!-- ============================================================ -->
+  <section id="executive-summary" class="py-16 px-8 page-break">
+    <div class="max-w-4xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 1</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-8">Executive Summary</h2>
+
+      <div class="bg-gcc-green-50 border-l-4 border-gcc-green rounded-r-lg p-6 mb-8 print-color avoid-break">
+        <p class="text-lg text-gray-800 leading-relaxed font-medium">
+          Global Community Cleaners (GCC) is a community-powered platform where residents, workers, and volunteers report, verify, and clean up environmental issues across Chicago's 77 community areas.
+        </p>
+      </div>
+
+      <div class="prose prose-lg max-w-none">
+        <p class="text-gray-700 leading-relaxed mb-6">
+          Unlike reactive 311 complaints, GCC generates <strong>proactive, verified, photo-documented data</strong> with AI-powered analysis, LiDAR depth scanning, and a 24-hour verification cycle. The platform transforms community engagement into structured, machine-readable environmental data that surpasses the granularity and reliability of traditional complaint-based systems.
+        </p>
+
+        <p class="text-gray-700 leading-relaxed mb-6">
+          The GCC mobile application enables residents to submit geotagged, photo-documented reports of environmental conditions using their smartphones. Each report undergoes on-device AI classification to categorize waste types, estimate severity, and&mdash;on devices equipped with LiDAR sensors&mdash;measure volume and depth of debris. Reports enter a 24-hour verification cycle where other community members re-visit the site to confirm, update, or mark conditions as resolved.
+        </p>
+
+        <p class="text-gray-700 leading-relaxed mb-8">
+          The platform currently covers <strong>all 77 community areas</strong> with over <strong>2,000 data points</strong>, density-weighted to reflect actual environmental burden. This data is available through a SODA-compatible REST API, ready for integration with the Chicago Data Portal with zero additional engineering from the City.
+        </p>
+      </div>
+
+      <!-- Key metrics -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 avoid-break">
+        <div class="bg-white border border-gray-200 rounded-xl p-5 text-center shadow-sm">
+          <div class="text-3xl font-black text-gcc-green">77</div>
+          <div class="text-sm text-gray-500 mt-1">Community Areas</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5 text-center shadow-sm">
+          <div class="text-3xl font-black text-gcc-green">2,000+</div>
+          <div class="text-sm text-gray-500 mt-1">Data Points</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5 text-center shadow-sm">
+          <div class="text-3xl font-black text-gcc-green">12</div>
+          <div class="text-sm text-gray-500 mt-1">Waste Categories</div>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl p-5 text-center shadow-sm">
+          <div class="text-3xl font-black text-gcc-green">24hr</div>
+          <div class="text-sm text-gray-500 mt-1">Verification Cycle</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- GCC vs 311 COMPARISON -->
+  <!-- ============================================================ -->
+  <section id="comparison" class="py-16 px-8 bg-gray-50 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 2</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">GCC vs. City 311: Feature Comparison</h2>
+      <p class="text-gray-600 mb-8 max-w-3xl">
+        A detailed comparison between the existing City of Chicago 311 Sanitation Complaints dataset
+        (<code class="bg-gray-200 px-1.5 py-0.5 rounded text-sm font-mono">me59-5fac</code>) and GCC Community Reports.
+      </p>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden avoid-break">
+        <div class="overflow-x-auto">
+          <table class="comparison-table w-full text-sm">
+            <thead>
+              <tr class="print-color" style="background: #0F172A;">
+                <th class="text-left py-4 px-5 text-white font-semibold w-1/4">Feature</th>
+                <th class="text-left py-4 px-5 text-gray-400 font-semibold w-[37.5%]">
+                  <span class="flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                    City 311 Sanitation Complaints
+                  </span>
+                  <span class="text-xs font-normal text-gray-500 mt-0.5 block">Dataset: me59-5fac</span>
+                </th>
+                <th class="text-left py-4 px-5 text-gcc-green-light font-semibold w-[37.5%]">
+                  <span class="flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-gcc-green"></span>
+                    GCC Community Reports
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <!-- Row 1 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Data Source</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Reactive phone/web complaints
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Proactive community monitoring via mobile app
+                </td>
+              </tr>
+              <!-- Row 2 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Photos</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Up to 3 geotagged photos per report + before/after pairs for cleanups
+                </td>
+              </tr>
+              <!-- Row 3 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Waste Categories</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  1 generic "Sanitation Code Complaint"
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  12 specific categories: trash, glass, metal, tires, furniture, construction, organic, hazardous, electronics, clothing, leaves, other
+                </td>
+              </tr>
+              <!-- Row 4 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Severity Rating</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  AI-powered 1&ndash;10 severity score with confidence interval
+                </td>
+              </tr>
+              <!-- Row 5 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Weight Estimate</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  AI + LiDAR volumetric estimation (lbs)
+                </td>
+              </tr>
+              <!-- Row 6 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Volume Estimate</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  LiDAR 3D depth analysis (cubic ft)
+                </td>
+              </tr>
+              <!-- Row 7 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Verification</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None &mdash; status is "Open" or "Completed"
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  24-hour re-verification cycle with photo evidence
+                </td>
+              </tr>
+              <!-- Row 8 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Verification Count</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  N/A
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Running count of community verifications per report
+                </td>
+              </tr>
+              <!-- Row 9 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Anti-Fraud</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Basic address validation
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Device attestation + GPS lock + live camera capture + session binding
+                </td>
+              </tr>
+              <!-- Row 10 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Community Engagement</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Gamified points system, leaderboards, badges
+                </td>
+              </tr>
+              <!-- Row 11 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Geographic Precision</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Address-level (often block-level)
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  GPS coordinates with affected area geometry (circle/rectangle)
+                </td>
+              </tr>
+              <!-- Row 12 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Temporal Resolution</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Date only
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Full timestamp with capture time metadata
+                </td>
+              </tr>
+              <!-- Row 13 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Report Types</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Single type
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Sightings, Volunteer Cleanups, Verified Reports
+                </td>
+              </tr>
+              <!-- Row 14 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Before/After Documentation</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Photo pairs documenting cleanup impact
+                </td>
+              </tr>
+              <!-- Row 15 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Community Area Coverage</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Varies by complaint volume
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  All 77 community areas with density-weighted distribution
+                </td>
+              </tr>
+              <!-- Row 16 -->
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Resolution Tracking</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Binary (open/completed)
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Multi-stage lifecycle: pending &rarr; verified &rarr; acknowledged &rarr; resolved
+                </td>
+              </tr>
+              <!-- Row 17 -->
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Update Frequency</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Batch updates
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Real-time via mobile app
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-6 text-sm text-gray-500 italic text-center">
+        17 feature dimensions compared. GCC provides measurable advantages in every category.
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- DATA DICTIONARY -->
+  <!-- ============================================================ -->
+  <section id="data-dictionary" class="py-16 px-8 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 3</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Complete Data Dictionary</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        Every field available in the GCC data export, organized by category. Field names follow Chicago Data Portal conventions where possible.
+      </p>
+
+      <!-- Core Fields -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">1</span>
+          Core Fields
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">service_request_id</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">Unique report ID (format: GCC-YYYY-NNNNN)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">created_date</td><td class="py-2.5 px-4 text-gray-500">datetime</td><td class="py-2.5 px-4 text-gray-700">ISO 8601 timestamp of report creation</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">updated_date</td><td class="py-2.5 px-4 text-gray-500">datetime</td><td class="py-2.5 px-4 text-gray-700">ISO 8601 timestamp of last update</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">status</td><td class="py-2.5 px-4 text-gray-500">enum</td><td class="py-2.5 px-4 text-gray-700">pending | verified | acknowledged | resolved</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">service_request_type</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">"Community Cleanliness Report" (fixed value)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Location -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">2</span>
+          Location
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">latitude</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">WGS84 latitude (e.g., 41.8603)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">longitude</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">WGS84 longitude (e.g., -87.7228)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">community_area</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Chicago community area number (1&ndash;77)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">community_area_name</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">Community area name (e.g., "North Lawndale")</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">ward</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">City ward number (1&ndash;50)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">zip_code</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">5-digit ZIP code</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">police_district</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Chicago Police District number</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">census_tract</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">US Census tract identifier</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">street_address</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">Nearest street address (reverse geocoded)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">affected_radius_meters</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">Radius of affected area in meters</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">affected_area</td><td class="py-2.5 px-4 text-gray-500">GeoJSON</td><td class="py-2.5 px-4 text-gray-700">Geometry of affected area (circle or rectangle)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Classification -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">3</span>
+          Classification
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">waste_categories</td><td class="py-2.5 px-4 text-gray-500">array</td><td class="py-2.5 px-4 text-gray-700">List from: trash, glass, metal, tires, furniture, construction, organic, hazardous, electronics, clothing, leaves, other</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">tags</td><td class="py-2.5 px-4 text-gray-500">array</td><td class="py-2.5 px-4 text-gray-700">Free-form descriptive tags (e.g., "alley", "sidewalk", "vacant lot")</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">severity_score</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">AI-computed severity (1.0&ndash;10.0, one decimal)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">estimated_weight_lbs</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">Estimated debris weight in pounds</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">estimated_volume_cuft</td><td class="py-2.5 px-4 text-gray-500">number</td><td class="py-2.5 px-4 text-gray-700">Estimated debris volume in cubic feet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Evidence -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">4</span>
+          Evidence
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">photo_count</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Number of photos attached (0&ndash;3)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">photo_urls</td><td class="py-2.5 px-4 text-gray-500">array</td><td class="py-2.5 px-4 text-gray-700">Public URLs to geotagged report photos</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">before_photos</td><td class="py-2.5 px-4 text-gray-500">array</td><td class="py-2.5 px-4 text-gray-700">Photos taken before cleanup (volunteer cleanups only)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">after_photos</td><td class="py-2.5 px-4 text-gray-500">array</td><td class="py-2.5 px-4 text-gray-700">Photos taken after cleanup (volunteer cleanups only)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">has_lidar_analysis</td><td class="py-2.5 px-4 text-gray-500">boolean</td><td class="py-2.5 px-4 text-gray-700">Whether LiDAR depth scan was performed</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">depth_analysis_summary</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">Human-readable summary of LiDAR 3D analysis</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">capture_attestation</td><td class="py-2.5 px-4 text-gray-500">object</td><td class="py-2.5 px-4 text-gray-700">Anti-fraud attestation: device ID, GPS lock, session token</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Verification -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">5</span>
+          Verification
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">verification_count</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Total number of community verifications received</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">last_verified_at</td><td class="py-2.5 px-4 text-gray-500">datetime</td><td class="py-2.5 px-4 text-gray-700">Timestamp of most recent verification</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">next_verification_due</td><td class="py-2.5 px-4 text-gray-500">datetime</td><td class="py-2.5 px-4 text-gray-700">When next 24-hour verification window opens</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">missed_verifications</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Consecutive missed verification cycles (staleness indicator)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Engagement -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">6</span>
+          Engagement
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">view_count</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Number of times the report has been viewed</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">thank_count</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Community upvotes / "thanks" received</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">reporter_type</td><td class="py-2.5 px-4 text-gray-500">enum</td><td class="py-2.5 px-4 text-gray-700">worker | sponsor | anonymous</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">points_awarded</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Community points awarded for this report</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Cleanup -->
+      <div class="avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4 flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gcc-green/10 text-gcc-green text-sm font-bold">7</span>
+          Cleanup
+        </h3>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-200">
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/3">Field Name</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700 w-1/6">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">cleanup_duration_minutes</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Time spent on volunteer cleanup (minutes)</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">bags_collected</td><td class="py-2.5 px-4 text-gray-500">integer</td><td class="py-2.5 px-4 text-gray-700">Number of trash bags filled during cleanup</td></tr>
+              <tr><td class="py-2.5 px-4 font-mono text-xs text-gcc-green-dark">cleanup_notes</td><td class="py-2.5 px-4 text-gray-500">string</td><td class="py-2.5 px-4 text-gray-700">Free-text notes from the cleanup volunteer</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 avoid-break">
+        <strong>Note:</strong> All field names are designed to be compatible with the Socrata Open Data API (SODA) naming conventions used by the Chicago Data Portal. Array fields are serialized as JSON arrays in the SODA response.
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- TECHNICAL INTEGRATION -->
+  <!-- ============================================================ -->
+  <section id="integration" class="py-16 px-8 bg-gray-50 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 4</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Technical Integration</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        GCC provides a SODA-compatible REST API that the Chicago Data Portal can consume directly, with zero custom engineering required.
+      </p>
+
+      <!-- API Endpoints -->
+      <div class="mb-10 avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4">API Endpoints</h3>
+        <div class="space-y-4">
+          <!-- Main endpoint -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div class="flex items-start gap-3 mb-3">
+              <span class="inline-block px-2.5 py-1 rounded-md bg-gcc-green text-white text-xs font-bold tracking-wide">GET</span>
+              <code class="text-sm font-mono text-gray-800 break-all">/api/public/data-export</code>
+            </div>
+            <p class="text-sm text-gray-600 mb-3">Primary data endpoint. Returns paginated community report records.</p>
+            <div class="text-sm">
+              <span class="font-semibold text-gray-700">Query Parameters:</span>
+              <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">community_area</code>
+                  <span class="text-gray-500 text-xs">Filter by area (1&ndash;77)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">ward</code>
+                  <span class="text-gray-500 text-xs">Filter by ward (1&ndash;50)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">status</code>
+                  <span class="text-gray-500 text-xs">Filter by status</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">$limit</code>
+                  <span class="text-gray-500 text-xs">Results per page (max 1000)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">$offset</code>
+                  <span class="text-gray-500 text-xs">Pagination offset</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <code class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">$order</code>
+                  <span class="text-gray-500 text-xs">Sort field and direction</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats endpoint -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div class="flex items-start gap-3 mb-3">
+              <span class="inline-block px-2.5 py-1 rounded-md bg-gcc-green text-white text-xs font-bold tracking-wide">GET</span>
+              <code class="text-sm font-mono text-gray-800 break-all">/api/public/data-export/stats</code>
+            </div>
+            <p class="text-sm text-gray-600">Aggregation endpoint. Returns summary statistics by community area, ward, or time period.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Integration details -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 avoid-break">
+        <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-3">Access</h4>
+          <ul class="space-y-2 text-sm text-gray-700">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>Public read access</strong> &mdash; no API key required</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>CORS enabled</strong> &mdash; browser-based tools work directly</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>Rate limiting</strong> &mdash; 100 requests/minute per IP</span>
+            </li>
+          </ul>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-3">Data Refresh</h4>
+          <ul class="space-y-2 text-sm text-gray-700">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>Real-time</strong> &mdash; new reports available immediately</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>JSON format</strong> &mdash; standard REST response</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green mt-0.5">&#10003;</span>
+              <span><strong>CSV export</strong> &mdash; available via <code class="text-xs bg-gray-100 px-1 rounded">format=csv</code></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Example Response -->
+      <div class="avoid-break">
+        <h3 class="text-xl font-bold text-gcc-dark mb-4">Example API Response</h3>
+        <div class="bg-gcc-dark rounded-xl overflow-hidden shadow-lg print-color">
+          <div class="flex items-center gap-2 px-4 py-3 bg-gcc-dark-light border-b border-gray-700">
+            <span class="w-3 h-3 rounded-full bg-red-500/60"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/60"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/60"></span>
+            <code class="ml-3 text-xs text-gray-400 font-mono">GET /api/public/data-export?community_area=29&amp;$limit=1</code>
+          </div>
+          <pre class="p-5 text-sm font-mono text-gray-300 overflow-x-auto leading-relaxed"><code>{
+  "<span class="text-gcc-green-light">service_request_id</span>": "GCC-2026-00001",
+  "<span class="text-gcc-green-light">created_date</span>": "2026-03-15T14:30:00.000",
+  "<span class="text-gcc-green-light">status</span>": "open",
+  "<span class="text-gcc-green-light">service_request_type</span>": "Community Cleanliness Report",
+  "<span class="text-gcc-green-light">latitude</span>": 41.8603,
+  "<span class="text-gcc-green-light">longitude</span>": -87.7228,
+  "<span class="text-gcc-green-light">community_area</span>": 29,
+  "<span class="text-gcc-green-light">community_area_name</span>": "North Lawndale",
+  "<span class="text-gcc-green-light">ward</span>": 24,
+  "<span class="text-gcc-green-light">zip_code</span>": "60623",
+  "<span class="text-gcc-green-light">police_district</span>": 10,
+  "<span class="text-gcc-green-light">waste_categories</span>": ["trash", "furniture"],
+  "<span class="text-gcc-green-light">severity_score</span>": 7.2,
+  "<span class="text-gcc-green-light">estimated_weight_lbs</span>": 45.0,
+  "<span class="text-gcc-green-light">photo_count</span>": 2,
+  "<span class="text-gcc-green-light">verification_count</span>": 3,
+  "<span class="text-gcc-green-light">has_lidar_analysis</span>": true
+}</code></pre>
+        </div>
+
+        <div class="mt-4 text-sm text-gray-500">
+          <strong>Base URL:</strong> <code class="bg-gray-100 px-2 py-0.5 rounded font-mono text-xs">https://gcc-omega.vercel.app</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- COVERAGE -->
+  <!-- ============================================================ -->
+  <section id="coverage" class="py-16 px-8 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 5</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">All 77 Community Areas</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        GCC data is distributed across every Chicago community area using a density-weighted model that mirrors real-world environmental burden. Areas with historically higher 311 complaint volumes receive proportionally more coverage.
+      </p>
+
+      <!-- High density -->
+      <div class="mb-8 avoid-break">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="inline-flex items-center justify-center w-10 h-10 rounded-full print-color" style="background: rgba(34,197,94,0.15);">
+            <span class="text-gcc-green font-bold text-lg">H</span>
+          </span>
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">High Density Coverage</h3>
+            <p class="text-sm text-gray-500">Approximately 40&ndash;50 reports per community area</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Austin</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Englewood</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">West Garfield Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">East Garfield Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">North Lawndale</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Auburn Gresham</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">South Shore</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Chatham</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Roseland</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Humboldt Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Chicago Lawn</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">Greater Grand Crossing</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">West Englewood</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-gcc-green/10 text-gcc-green-dark text-sm font-medium border border-gcc-green/20">New City</span>
+        </div>
+      </div>
+
+      <!-- Medium density -->
+      <div class="mb-8 avoid-break">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-yellow-100">
+            <span class="text-yellow-700 font-bold text-lg">M</span>
+          </span>
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">Medium Density Coverage</h3>
+            <p class="text-sm text-gray-500">Approximately 25&ndash;35 reports per community area</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">South Lawndale</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Belmont Cragin</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Brighton Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Woodlawn</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Grand Boulevard</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Washington Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">West Pullman</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Gage Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">South Chicago</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Back of the Yards</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">West Town</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Logan Square</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Avondale</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-medium border border-yellow-200">Irving Park</span>
+        </div>
+      </div>
+
+      <!-- Low density -->
+      <div class="mb-10 avoid-break">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-50">
+            <span class="text-blue-600 font-bold text-lg">L</span>
+          </span>
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">Low Density Coverage</h3>
+            <p class="text-sm text-gray-500">Approximately 15&ndash;25 reports per community area</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Lincoln Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Lake View</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Loop</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Near North Side</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Edison Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Forest Glen</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Norwood Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">North Center</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Lincoln Square</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Hyde Park</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Beverly</span>
+          <span class="inline-block px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">Mount Greenwood</span>
+        </div>
+      </div>
+
+      <!-- Note -->
+      <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-5 avoid-break print-color">
+        <div class="flex items-start gap-3">
+          <svg class="w-5 h-5 text-gcc-green mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div>
+            <p class="text-sm text-gray-800 font-medium mb-1">Distribution Mirrors Real Environmental Burden</p>
+            <p class="text-sm text-gray-600">
+              GCC's density-weighted distribution closely mirrors actual 311 complaint patterns across Chicago. High-density coverage areas correspond to communities with historically elevated environmental burden, ensuring the data reflects where resources and attention are most needed. This alignment allows direct statistical comparison between GCC reports and existing 311 data.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- VALUE PROPOSITION -->
+  <!-- ============================================================ -->
+  <section id="value" class="py-16 px-8 bg-gray-50 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 6</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Value Proposition</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        What the City of Chicago gains from integrating GCC data into the Data Portal.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Card 1 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">1</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Richer Data</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            12 waste categories versus a single "Sanitation Code Complaint." Severity scores from 1 to 10. Weight and volume estimates for every report. GCC data is an order of magnitude more granular than 311 for environmental conditions.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">2</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Visual Evidence</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            Every GCC report includes geotagged photos. Volunteer cleanups include before/after photo pairs that document impact. 311 complaints include no photographic evidence. GCC provides proof, not just complaints.
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">3</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Verification Layer</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            The 24-hour re-verification cycle means stale reports are caught and updated. A report with zero missed verifications is confirmed current. A report with several missed cycles is flagged as potentially outdated. 311 has no equivalent freshness signal.
+          </p>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">4</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Community Engagement</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            GCC cultivates an engaged community of reporters, verifiers, and volunteer cleaners through a gamified points and badge system. This community represents a free, self-sustaining monitoring workforce that generates data while improving their neighborhoods.
+          </p>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">5</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">AI Analysis</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            On-device AI classification runs at the point of capture. Waste types are identified, severity is scored, and weight is estimated before the report is even submitted. This reduces manual triage and produces consistent, machine-comparable assessments across all reporters.
+          </p>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">6</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">LiDAR Measurement</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            On devices equipped with LiDAR sensors (iPhone Pro, iPad Pro), GCC captures 3D depth scans of debris. This produces accurate volume and depth measurements for resource planning&mdash;data that is impossible to obtain from text-only 311 complaints.
+          </p>
+        </div>
+
+        <!-- Card 7 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">7</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Anti-Fraud</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            Device attestation, GPS coordinate locking, mandatory live camera capture (no gallery uploads), and session binding ensure every report is genuine. This level of anti-fraud protection means the city can trust the data without independent verification.
+          </p>
+        </div>
+
+        <!-- Card 8 -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">8</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Cross-Reference Potential</h3>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            GCC data can be spatially and temporally correlated with 311 sanitation complaints to identify underreported areas&mdash;neighborhoods with significant environmental issues that do not generate proportional 311 complaints. This fills blind spots in the city's existing data.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- PROPOSED ARRANGEMENT -->
+  <!-- ============================================================ -->
+  <section id="arrangement" class="py-16 px-8 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 7</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Proposed Arrangement</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        Three tiers of engagement, each building on the last. The City can begin with zero-cost data access and expand the relationship over time.
+      </p>
+
+      <!-- Tier 1 -->
+      <div class="relative mb-8 avoid-break">
+        <div class="bg-white rounded-2xl border-2 border-gray-200 p-8 shadow-sm">
+          <div class="flex items-start gap-5">
+            <div class="flex-shrink-0">
+              <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <span class="text-2xl font-black text-gray-400">1</span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-xl font-bold text-gray-900">Data Sharing</h3>
+                <span class="inline-block px-3 py-1 rounded-full bg-gcc-green/10 text-gcc-green text-xs font-bold">ZERO COST</span>
+              </div>
+              <p class="text-gray-600 leading-relaxed mb-4">
+                GCC publishes a public, SODA-compatible API. The City can pull data at any frequency using existing infrastructure. No API keys, no contracts, no engineering work required. This is available today.
+              </p>
+              <div class="flex flex-wrap gap-3 text-sm">
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> Public API access
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> SODA-compatible format
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> No cost to the City
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> Available immediately
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Connector -->
+        <div class="hidden md:flex justify-center my-2">
+          <div class="w-0.5 h-6 bg-gray-300"></div>
+        </div>
+      </div>
+
+      <!-- Tier 2 -->
+      <div class="relative mb-8 avoid-break">
+        <div class="bg-white rounded-2xl border-2 border-gcc-green/30 p-8 shadow-sm">
+          <div class="flex items-start gap-5">
+            <div class="flex-shrink-0">
+              <div class="w-14 h-14 rounded-2xl bg-gcc-green/10 flex items-center justify-center print-color">
+                <span class="text-2xl font-black text-gcc-green">2</span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-xl font-bold text-gray-900">Official Integration</h3>
+                <span class="inline-block px-3 py-1 rounded-full bg-gcc-green/10 text-gcc-green text-xs font-bold">RECOMMENDED</span>
+              </div>
+              <p class="text-gray-600 leading-relaxed mb-4">
+                The GCC dataset is listed on <strong>data.cityofchicago.org</strong> as a community-sourced companion to the existing 311 Sanitation Complaints dataset. The City provides official endorsement; GCC provides the data and maintains the API. Researchers and civic technologists gain a richer view of Chicago's environmental conditions.
+              </p>
+              <div class="flex flex-wrap gap-3 text-sm">
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> Listed on Data Portal
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> City endorsement
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> 311 cross-reference
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-500">
+                  <span class="text-gcc-green">&#10003;</span> Researcher access
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Connector -->
+        <div class="hidden md:flex justify-center my-2">
+          <div class="w-0.5 h-6 bg-gray-300"></div>
+        </div>
+      </div>
+
+      <!-- Tier 3 -->
+      <div class="avoid-break">
+        <div class="bg-gcc-dark rounded-2xl p-8 shadow-lg text-white print-color">
+          <div class="flex items-start gap-5">
+            <div class="flex-shrink-0">
+              <div class="w-14 h-14 rounded-2xl bg-gcc-green/20 flex items-center justify-center">
+                <span class="text-2xl font-black text-gcc-green">3</span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-xl font-bold text-white">Partnership</h3>
+                <span class="inline-block px-3 py-1 rounded-full bg-gcc-green/20 text-gcc-green-light text-xs font-bold">FULL COLLABORATION</span>
+              </div>
+              <p class="text-gray-300 leading-relaxed mb-4">
+                The City promotes GCC to residents as a tool for community environmental monitoring. GCC feeds real-time data to city dashboards. Both organizations pursue joint grant applications for environmental justice funding. The partnership creates a model for community-powered civic data that can scale to other domains.
+              </p>
+              <div class="flex flex-wrap gap-3 text-sm">
+                <span class="inline-flex items-center gap-1.5 text-gray-400">
+                  <span class="text-gcc-green-light">&#10003;</span> City promotion
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-400">
+                  <span class="text-gcc-green-light">&#10003;</span> Dashboard integration
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-400">
+                  <span class="text-gcc-green-light">&#10003;</span> Joint grant applications
+                </span>
+                <span class="inline-flex items-center gap-1.5 text-gray-400">
+                  <span class="text-gcc-green-light">&#10003;</span> Environmental justice impact
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- CONTACT / NEXT STEPS -->
+  <!-- ============================================================ -->
+  <section id="contact" class="py-16 px-8 bg-gcc-dark text-white print-color">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gcc-green/10 border-2 border-gcc-green/30 mb-6">
+          <svg class="w-8 h-8 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h2 class="text-3xl font-bold mb-4">Let's Talk</h2>
+        <p class="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
+          We're ready to demo the platform and discuss integration at your convenience.
+        </p>
+      </div>
+
+      <div class="w-16 h-0.5 bg-gcc-green mx-auto mb-10"></div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto mb-12">
+        <div class="bg-gcc-dark-light rounded-xl p-5 border border-gray-700">
+          <div class="text-sm text-gray-500 mb-1">Organization</div>
+          <div class="text-white font-semibold">Global Community Cleaners</div>
+        </div>
+        <div class="bg-gcc-dark-light rounded-xl p-5 border border-gray-700">
+          <div class="text-sm text-gray-500 mb-1">Website</div>
+          <a href="https://globalcommunitycleaners.org" class="text-gcc-green font-semibold hover:text-gcc-green-light transition-colors">globalcommunitycleaners.org</a>
+        </div>
+        <div class="bg-gcc-dark-light rounded-xl p-5 border border-gray-700">
+          <div class="text-sm text-gray-500 mb-1">API Base URL</div>
+          <code class="text-gcc-green-light text-sm font-mono">gcc-omega.vercel.app/api/public/data-export</code>
+        </div>
+        <div class="bg-gcc-dark-light rounded-xl p-5 border border-gray-700">
+          <div class="text-sm text-gray-500 mb-1">Contact</div>
+          <a href="mailto:info@globalcommunitycleaners.org" class="text-gcc-green font-semibold hover:text-gcc-green-light transition-colors">info@globalcommunitycleaners.org</a>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="pt-8 border-t border-gray-700">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+          <div class="flex items-center gap-2">
+            <span class="text-gcc-green font-bold">GCC</span>
+            <span>&middot;</span>
+            <span>Global Community Cleaners</span>
+          </div>
+          <div>
+            March 2026 &middot; Chicago, Illinois
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

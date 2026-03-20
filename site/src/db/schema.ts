@@ -845,6 +845,12 @@ export const communityReports = pgTable('community_reports', {
   geoCity: varchar('geo_city'),
   geoState: varchar('geo_state'),
   geoCommunityArea: varchar('geo_community_area'), // Chicago-specific (77 community areas)
+  geoCommunityAreaNumber: integer('geo_community_area_number'), // Official 1-77 number
+  geoWard: integer('geo_ward'), // Chicago ward 1-50
+  geoZipCode: varchar('geo_zip_code', { length: 10 }),
+  geoCensusTract: varchar('geo_census_tract'), // Census tract ID
+  geoPoliceDistrict: integer('geo_police_district'), // CPD district number
+  geoStreetAddress: varchar('geo_street_address'), // Full street address
 
   // Affected radius in meters (for map display)
   affectedRadiusMeters: numeric('affected_radius_meters').default('15'),

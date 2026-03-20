@@ -246,6 +246,12 @@ export async function POST(request: NextRequest) {
             geoCity: geo.city,
             geoState: geo.state,
             geoCommunityArea: geo.communityArea,
+            geoCommunityAreaNumber: geo.communityAreaNumber,
+            geoWard: geo.ward,
+            geoZipCode: geo.zipCode,
+            geoCensusTract: geo.censusTract,
+            geoPoliceDistrict: geo.policeDistrict,
+            geoStreetAddress: geo.streetAddress,
           })
           .where(eq(communityReports.id, newReport.id))
       }
