@@ -118,17 +118,17 @@ export async function GET(request: NextRequest) {
       current: Number(block.fundingCurrent) || 0,
     },
     fundedById: block.fundedById,
-    fundedAt: block.fundedAt,
+    fundedAt: block.fundedAt ? new Date(block.fundedAt).toISOString() : null,
     // Cleaning schedule (set by sponsor)
     schedule: {
-      preferredDate: block.preferredCleaningDate,
+      preferredDate: block.preferredCleaningDate ? new Date(block.preferredCleaningDate).toISOString() : null,
       preferredTimeStart: block.preferredCleaningTimeStart,
       preferredTimeEnd: block.preferredCleaningTimeEnd,
     },
     completedById: block.completedById,
-    completedAt: block.completedAt,
-    createdAt: block.createdAt,
-    updatedAt: block.updatedAt,
+    completedAt: block.completedAt ? new Date(block.completedAt).toISOString() : null,
+    createdAt: new Date(block.createdAt).toISOString(),
+    updatedAt: new Date(block.updatedAt).toISOString(),
   }))
 
   return Response.json({

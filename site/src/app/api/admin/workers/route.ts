@@ -43,7 +43,7 @@ export async function GET(request: Request) {
         jobsCompleted: parseInt(w.statsJobsCompleted || '0'),
         totalEarnings: parseInt(w.statsTotalEarnings || '0'),
         averageRating: w.statsAverageRating ? parseFloat(w.statsAverageRating) : null,
-        lastJobAt: w.statsLastJobAt,
+        lastJobAt: w.statsLastJobAt ? new Date(w.statsLastJobAt).toISOString() : null,
       },
       earlyAdopterTier: w.earlyAdopterTier || 'standard',
       role: 'worker',
