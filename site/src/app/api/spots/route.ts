@@ -9,6 +9,7 @@ import { communityReports, pointsLedger, workers } from '@/db/schema'
 import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { autoTagFromDescription, resolveSpotTags, toCommunityReport } from '@/lib/spot-utils'
+import { reverseGeocode } from '@/lib/geo-lookup'
 
 export const dynamic = 'force-dynamic'
 
@@ -235,6 +236,20 @@ export async function POST(request: NextRequest) {
         duplicateOverrideReason: duplicateOverrideReason || null,
       })
       .returning()
+
+    // Reverse geocode to populate geographic categorization (best-effort, non-blocking)
+    reverseGeocode(lat, lng).then(async (geo) => {
+      if (geo.city || geo.state || geo.communityArea) {
+        await db
+          .update(communityReports)
+          .set({
+            geoCity: geo.city,
+            geoState: geo.state,
+            geoCommunityArea: geo.communityArea,
+          })
+          .where(eq(communityReports.id, newReport.id))
+      }
+    }).catch(() => {}) // Silently ignore geocoding failures
 
     // Award 10 observer points for creating a spot report
     const observerPoints = 10

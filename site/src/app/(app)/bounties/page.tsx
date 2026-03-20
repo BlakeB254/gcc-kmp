@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import Link from 'next/link'
 import { MapPin, DollarSign, Trash2, ArrowRight, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
@@ -321,10 +322,13 @@ export default function BountiesPage() {
                       {/* Photo area — large hero image or photo strip */}
                       {allPhotos.length > 0 && (
                         <div className="relative">
-                          <img
+                          <Image
                             src={allPhotos[0]}
-                            alt="Spot report"
+                            alt={`Spot report: ${spot.label?.replace(/_/g, ' ') || 'community sighting'}`}
+                            width={400}
+                            height={192}
                             className="w-full h-48 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                            loading="lazy"
                             onClick={() => setLightbox({ urls: allPhotos, index: 0 })}
                           />
                           {allPhotos.length > 1 && (
@@ -415,10 +419,13 @@ export default function BountiesPage() {
                     className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
                   >
                     {block.displayImage && (
-                      <img
+                      <Image
                         src={block.displayImage}
-                        alt={block.name}
+                        alt={`${block.name} — ${block.streetName || block.code}`}
+                        width={400}
+                        height={176}
                         className="w-full h-44 object-cover"
+                        loading="lazy"
                       />
                     )}
                     <div className="p-4">
@@ -515,12 +522,16 @@ export default function BountiesPage() {
               </button>
             </>
           )}
-          <img
-            src={lightbox.urls[lightbox.index]}
-            alt={`Photo ${lightbox.index + 1} of ${lightbox.urls.length}`}
-            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="relative max-h-[85vh] max-w-[90vw] w-full h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <Image
+              src={lightbox.urls[lightbox.index]}
+              alt={`Photo ${lightbox.index + 1} of ${lightbox.urls.length}`}
+              fill
+              className="object-contain rounded-lg"
+              sizes="90vw"
+              priority
+            />
+          </div>
           {lightbox.urls.length > 1 && (
             <div className="absolute bottom-6 text-white/80 text-sm">
               {lightbox.index + 1} / {lightbox.urls.length}

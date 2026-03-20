@@ -841,6 +841,11 @@ export const communityReports = pgTable('community_reports', {
   cleanupBagsCollected: integer('cleanup_bags_collected'),
   cleanupNotes: text('cleanup_notes'),
 
+  // Geographic categorization (populated at creation via reverse geocoding)
+  geoCity: varchar('geo_city'),
+  geoState: varchar('geo_state'),
+  geoCommunityArea: varchar('geo_community_area'), // Chicago-specific (77 community areas)
+
   // Affected radius in meters (for map display)
   affectedRadiusMeters: numeric('affected_radius_meters').default('15'),
 

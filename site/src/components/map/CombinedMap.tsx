@@ -472,7 +472,7 @@ export function CombinedMap({
         initialViewState={initialViewState}
         interactiveLayerIds={[
           ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
-          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-radius-fill', 'combined-spot-verification-ring'] : []),
+          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-verification-ring'] : []),
         ]}
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         cursor="pointer"
@@ -645,30 +645,6 @@ export function CombinedMap({
                   SPOT_ZOOM.HEATMAP_MIN, 0.6,
                   SPOT_ZOOM.DOTS_MIN, 0.3,
                   SPOT_ZOOM.HEATMAP_MAX, 0,
-                ],
-              }}
-            />
-
-            {/* Radius fill — visible at close zoom */}
-            <Layer
-              id="combined-spot-radius-fill"
-              type="circle"
-              minzoom={SPOT_ZOOM.DOTS_MIN}
-              paint={{
-                'circle-radius': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, ['*', ['get', 'radiusMeters'], 0.06],
-                  15, ['*', ['get', 'radiusMeters'], 0.12],
-                  17, ['*', ['get', 'radiusMeters'], 0.25],
-                  20, ['*', ['get', 'radiusMeters'], 0.4],
-                ],
-                'circle-color': SPOT_COLORS.RADIUS_FILL,
-                'circle-stroke-color': SPOT_COLORS.RADIUS_STROKE,
-                'circle-stroke-width': 1.5,
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 0,
-                  14, 0.6,
                 ],
               }}
             />

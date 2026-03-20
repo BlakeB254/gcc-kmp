@@ -202,25 +202,6 @@ export function BountyMap({
 
         {spots.length > 0 && (
           <Source id="spots" type="geojson" data={spotGeoJson}>
-            {/* Radius fill circle */}
-            <Layer
-              id="spot-radius-fill"
-              type="circle"
-              paint={{
-                'circle-radius': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  12, 4,
-                  16, ['get', 'radiusMeters'],
-                  20, ['*', ['get', 'radiusMeters'], 4],
-                ],
-                'circle-color': SPOT_COLORS.RADIUS_FILL,
-                'circle-stroke-color': SPOT_COLORS.RADIUS_STROKE,
-                'circle-stroke-width': 1.5,
-                'circle-opacity': 0.6,
-              }}
-            />
             {/* Spot center marker */}
             <Layer
               id="spot-center"
