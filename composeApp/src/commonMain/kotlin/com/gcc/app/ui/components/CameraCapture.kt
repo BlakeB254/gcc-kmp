@@ -16,11 +16,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.decodeImageBitmap
 import com.gcc.app.platform.pickFromLibrary
 import com.gcc.app.platform.hasLiDAR
 import com.gcc.app.ui.map.GccMap
@@ -28,7 +28,6 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
-import org.jetbrains.skia.Image as SkiaImage
 
 /**
  * Reusable full-screen camera composable for capturing photos.
@@ -163,13 +162,7 @@ fun CameraCapture(
             ) {
                 items(capturedPhotos.size) { index ->
                     val photo = capturedPhotos[index]
-                    val bitmap = remember(photo) {
-                        try {
-                            SkiaImage.makeFromEncoded(photo.bytes).toComposeImageBitmap()
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
+                    val bitmap = remember(photo) { decodeImageBitmap(photo.bytes) }
                     Box(
                         modifier = Modifier
                             .size(64.dp)

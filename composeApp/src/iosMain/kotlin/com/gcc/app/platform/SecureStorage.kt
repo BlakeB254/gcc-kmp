@@ -53,7 +53,9 @@ private const val SERVICE_NAME = "com.globalcommunitycleaners.worker"
  * does not implicitly bridge Kotlin Maps to CFDictionaryRef.
  */
 @OptIn(ExperimentalForeignApi::class)
-actual class SecureStorage actual constructor() : Settings {
+actual fun createSecureStorage(): Settings = KeychainStorage()
+
+private class KeychainStorage : Settings {
 
     /**
      * Enumerate all Keychain entries for this service and return their account names as keys.

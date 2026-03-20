@@ -13,7 +13,7 @@ import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
-import com.gcc.app.platform.SecureStorage
+import com.gcc.app.platform.initSecureStorageContext
 import com.gcc.app.platform.ShareManager
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.GlobalContext
@@ -27,7 +27,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
 
         // Initialize platform providers that need Android context
-        SecureStorage.initContext(this)
+        initSecureStorageContext(this)
         LocationProvider.initContext(this)
         LocationTrackingController.initContext(this)
         ShareManager.initContext(this)

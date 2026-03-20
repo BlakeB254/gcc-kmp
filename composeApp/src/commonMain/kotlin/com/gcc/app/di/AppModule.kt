@@ -4,7 +4,7 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
-import com.gcc.app.platform.SecureStorage
+import com.gcc.app.platform.createSecureStorage
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.getApiBaseUrl
@@ -34,7 +34,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 val appModule = module {
-    single { TokenManager(settings = SecureStorage()) }
+    single { TokenManager(settings = createSecureStorage()) }
     single { LocationProvider() }
     single { LocationTrackingController() }
     single { ShareManager() }
