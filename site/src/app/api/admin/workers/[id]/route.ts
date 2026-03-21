@@ -38,6 +38,52 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  const { id } = await params
+  const workerId = parseInt(id, 10)
+  if (isNaN(workerId)) {
+    return NextResponse.json({ error: 'Invalid worker ID' }, { status: 400 })
+  }
+
+  try {
+    const body = await request.json()
+
+    const updateData: Record<string, unknown> = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.addressStreet !== undefined) updateData.addressStreet = body.addressStreet
+    if (body.addressCity !== undefined) updateData.addressCity = body.addressCity
+    if (body.addressState !== undefined) updateData.addressState = body.addressState
+    if (body.addressZip !== undefined) updateData.addressZip = body.addressZip
+    if (body.earlyAdopterTier !== undefined) updateData.earlyAdopterTier = body.earlyAdopterTier
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
+    const [updated] = await db
+      .update(workers)
+      .set(updateData)
+      .where(eq(workers.id, workerId))
+      .returning()
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ data: mapWorkerToMobile(updated as Record<string, unknown>) })
+  } catch (error) {
+    console.error('Error updating worker:', error)
+    return NextResponse.json({ error: 'Failed to update worker' }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

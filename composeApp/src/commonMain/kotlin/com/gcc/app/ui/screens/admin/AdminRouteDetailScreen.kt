@@ -594,6 +594,18 @@ fun AdminRouteDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        cp.id?.let { cpId ->
+                            TextButton(
+                                onClick = {
+                                    viewModel.deleteCheckpoint(routeId, cpId) {
+                                        checkpointList = checkpointList.filter { it.id != cpId }
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                            ) {
+                                Text("\u2715", color = GccError, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }

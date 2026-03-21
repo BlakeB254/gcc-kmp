@@ -36,3 +36,9 @@ data class AuthResponse(
     val requiresTwoFactor: Boolean = false,
     val twoFactorToken: String? = null,
 )
+
+@Serializable
+data class AuthRefreshResponse(
+    val token: String,
+    val exp: Long,
+)

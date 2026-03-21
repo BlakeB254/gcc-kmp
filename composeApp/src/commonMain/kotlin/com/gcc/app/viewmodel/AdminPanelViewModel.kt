@@ -291,6 +291,31 @@ class AdminPanelViewModel(
         }
     }
 
+    fun deleteCheckpoint(routeId: Int, checkpointId: Int, onDeleted: () -> Unit) {
+        scope.launch {
+            try {
+                apiClient.deleteCheckpoint(routeId, checkpointId)
+                onDeleted()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to delete checkpoint: ${e.message}")
+            }
+        }
+    }
+
+    fun updateWorkerInfo(workerId: Int, updates: Map<String, String>) {
+        scope.launch {
+            try {
+                val updated = apiClient.updateAdminWorker(workerId, updates)
+                _selectedWorker.value = updated
+                _uiState.value = _uiState.value.copy(
+                    workers = _uiState.value.workers.map { if (it.id == workerId) updated else it },
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to update worker: ${e.message}")
+            }
+        }
+    }
+
     // ─── Worker Verification ────────────────────────────────────────
 
     private val _selectedWorker = MutableStateFlow<Worker?>(null)

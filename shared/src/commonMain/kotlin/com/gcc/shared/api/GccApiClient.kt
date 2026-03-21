@@ -434,6 +434,20 @@ class GccApiClient(
     suspend fun addCheckpoint(routeId: Int, request: AdminCheckpointRequest): RouteCheckpoint =
         postJson("/api/admin/routes/$routeId/checkpoints", request)
 
+    // Admin: Delete a checkpoint from a route
+    suspend fun deleteCheckpoint(routeId: Int, checkpointId: Int) =
+        deleteUnit("/api/admin/routes/$routeId/checkpoints") {
+            url { parameters.append("id", checkpointId.toString()) }
+        }
+
+    // Admin: Update worker info (name, phone, address, tier)
+    suspend fun updateAdminWorker(workerId: Int, updates: Map<String, String>): Worker =
+        putJson("/api/admin/workers/$workerId", updates)
+
+    // Auth: Refresh JWT token — returns new token + expiry
+    suspend fun refreshToken(): AuthRefreshResponse =
+        postJson("/api/auth/refresh")
+
     // Admin: Add photos to an existing spot report
     suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =
         patchJson<Map<String, Any>, CommunityReport>(
