@@ -238,7 +238,7 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill — hidden during heatmap so pink reads on clean background
+            // Service area fill — hidden while heatmap active so pink reads clean
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
@@ -246,10 +246,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0f),
-                    14 to const(0f),
-                    14.5 to const(0.5f),
-                    15 to const(1f),
+                    11 to const(0f),
+                    16 to const(0f),
+                    17 to const(1f),
                 ),
             )
 
@@ -701,49 +700,47 @@ actual fun GccMap(
             // Heatmap: pink density cloud matching website aesthetic
             // Key: small radius creates distinct hotspots with falloff between them,
             // high intensity pushes cluster centers to the deep color stops
-            // Heatmap visible from zoom 10 to 14.5
-            // Service area zoom is 13.2 — heatmap must be fully visible there!
-            // Previous maxZoom of 13.5 meant heatmap was nearly invisible at 13.2
+            // Exact website heatmap values with +3 zoom offset
+            // Website: zoom 8-14, app: zoom 11-17 (so zoom 13.2 ≈ website zoom 10)
+            // Website radius in CSS px = app radius in dp (1:1 on retina)
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 10f,
-                maxZoom = 14.5f,
+                minZoom = 11f,
+                maxZoom = 17f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.2 to const(Color(0xFFFEE2E2)),  // light pink
-                    0.4 to const(Color(0xFFFCA5A5)),  // medium pink
-                    0.7 to const(Color(0xFFEF4444)),  // red
-                    1.0 to const(Color(0xFF991B1B)),  // deep red
+                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
+                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
+                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
+                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
-                // Low intensity: single spot = light pink, 3+ overlap = red
+                // Website: 0.3 @ z8 → 1.0 @ z14 → shifted: 0.3 @ z11 → 1.0 @ z17
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.15f),
-                    13 to const(0.4f),
-                    14.5 to const(0.6f),
+                    11 to const(0.3f),
+                    17 to const(1f),
                 ),
-                // Radius grows with zoom — at zoom 13.2 (service area), ~25dp
-                // gives enough overlap for nearby spots without merging all
+                // Website: 8px @ z8, 15px @ z11, 20px @ z13
+                // Shifted: 8dp @ z11, 15dp @ z14, 20dp @ z16
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(10.dp),
-                    12 to const(18.dp),
-                    13 to const(25.dp),
-                    14 to const(30.dp),
+                    11 to const(8.dp),
+                    14 to const(15.dp),
+                    16 to const(20.dp),
                 ),
-                // Fully visible at service area zoom (13.2), fades after 14
+                // Website: 0.6 @ z8, 0.3 @ z13, 0 @ z14
+                // Shifted: 0.6 @ z11, 0.3 @ z16, 0 @ z17
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.6f),
-                    13 to const(0.5f),
-                    14 to const(0.3f),
-                    14.5 to const(0f),
+                    11 to const(0.6f),
+                    16 to const(0.3f),
+                    17 to const(0f),
                 ),
             )
 
@@ -773,27 +770,27 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Individual spot dots — appear only AFTER heatmap fully fades at 14.5
+            // Individual spot dots — appear after heatmap fades (zoom 16+)
+            // Website: dots at zoom 13 (DOTS_MIN), shifted +3 = zoom 16
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
-                minZoom = 14f,
+                minZoom = 16f,
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(0.dp),
-                    14.5 to const(4.dp),
-                    15 to const(5.dp),
-                    16 to const(6.dp),
-                    17 to const(8.dp),
+                    16 to const(3.dp),
+                    17 to const(5.dp),
+                    18 to const(6.dp),
+                    20 to const(8.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(0f),
-                    14.5 to const(0.8f),
-                    15 to const(1f),
+                    16 to const(0f),
+                    16.5 to const(0.7f),
+                    17 to const(1f),
                 ),
             )
 
