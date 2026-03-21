@@ -9,10 +9,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
@@ -52,11 +56,45 @@ internal fun AdminSpotsTab(
         }
     }
 
+    // Map center from service area
+    val serviceArea = remember { chicagoCommunityAreas.find { it.isServiceArea } }
+    val centerLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LAT
+    val centerLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LNG
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // ── Map showing spots ─────────────────────────────────────
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)),
+                ) {
+                    GccMap(
+                        modifier = Modifier.fillMaxSize(),
+                        centerLat = centerLat,
+                        centerLng = centerLng,
+                        zoom = MapStyles.ZOOM_SERVICE_AREA,
+                        spots = activeReports,
+                    )
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.6f),
+                    ) {
+                        Text(
+                            "${activeReports.size} active spots",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
             item {
                 AdminSearchBar(
                     query = searchQuery,
