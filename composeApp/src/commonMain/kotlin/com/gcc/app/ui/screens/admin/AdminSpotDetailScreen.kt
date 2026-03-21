@@ -213,25 +213,36 @@ fun AdminSpotDetailScreen(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("Actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
+                    var actionInProgress by remember { mutableStateOf(false) }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (report.status == CommunityReportStatus.PENDING) {
                             OutlinedButton(
                                 onClick = {
+                                    actionInProgress = true
                                     viewModel.updateSpotStatus(spotId, "verified")
-                                    onBack()
                                 },
                                 modifier = Modifier.weight(1f),
+                                enabled = !actionInProgress,
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                            ) { Text("Verify") }
+                            ) { Text(if (actionInProgress) "Updating..." else "Verify") }
                         }
                         Button(
                             onClick = {
+                                actionInProgress = true
                                 viewModel.updateSpotStatus(spotId, "resolved")
-                                onBack()
                             },
                             modifier = Modifier.weight(1f),
+                            enabled = !actionInProgress,
                             colors = ButtonDefaults.buttonColors(containerColor = GccGold),
-                        ) { Text("Resolve") }
+                        ) { Text(if (actionInProgress) "Updating..." else "Resolve") }
+                    }
+                    // Navigate back after spot list refreshes
+                    val currentSpots = viewModel.uiState.collectAsState().value.spotReports
+                    val spotStillPending = currentSpots.find { it.id == spotId }?.let {
+                        it.status != CommunityReportStatus.RESOLVED && it.status != CommunityReportStatus.VERIFIED
+                    } ?: false
+                    LaunchedEffect(actionInProgress, spotStillPending) {
+                        if (actionInProgress && !spotStillPending) onBack()
                     }
                 }
             }
@@ -241,7 +252,7 @@ fun AdminSpotDetailScreen(
                 if (showDeleteConfirm) {
                     Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = GccError.copy(alpha = 0.1f)) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Delete this spot report permanently?", style = MaterialTheme.typography.bodySmall, color = GccError, fontWeight = FontWeight.Medium)
+                            Text("Archive this spot report? It will be hidden from the map but kept for records.", style = MaterialTheme.typography.bodySmall, color = GccError, fontWeight = FontWeight.Medium)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { showDeleteConfirm = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
                                 Button(
@@ -251,13 +262,13 @@ fun AdminSpotDetailScreen(
                                     },
                                     modifier = Modifier.weight(1f),
                                     colors = ButtonDefaults.buttonColors(containerColor = GccError),
-                                ) { Text("Delete") }
+                                ) { Text("Archive") }
                             }
                         }
                     }
                 } else {
                     TextButton(onClick = { showDeleteConfirm = true }) {
-                        Text("Delete Report", color = GccError, style = MaterialTheme.typography.bodySmall)
+                        Text("Archive Report", color = GccError, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

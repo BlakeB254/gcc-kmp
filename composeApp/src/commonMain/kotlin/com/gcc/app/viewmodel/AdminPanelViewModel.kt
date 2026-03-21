@@ -222,12 +222,12 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 apiClient.deleteSpot(spotId)
-                _uiState.value = _uiState.value.copy(
-                    spotReports = _uiState.value.spotReports.filter { it.id != spotId },
-                )
+                // Re-fetch to get updated statuses (server archives, doesn't hard-delete)
+                val updated = apiClient.getAdminSpotReports()
+                _uiState.value = _uiState.value.copy(spotReports = updated)
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to delete spot: ${e.message}")
+                _uiState.value = _uiState.value.copy(error = "Failed to archive spot: ${e.message}")
             }
         }
     }

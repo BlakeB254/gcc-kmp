@@ -29,11 +29,22 @@ internal fun AdminSpotsTab(
     onDismissError: () -> Unit,
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val filteredReports = remember(spotReports, searchQuery) {
-        if (searchQuery.isBlank()) spotReports
+    var showArchived by remember { mutableStateOf(false) }
+
+    // Split into active vs archived
+    val activeReports = remember(spotReports) {
+        spotReports.filter { it.status != CommunityReportStatus.REJECTED }
+    }
+    val archivedReports = remember(spotReports) {
+        spotReports.filter { it.status == CommunityReportStatus.REJECTED }
+    }
+    val baseReports = if (showArchived) archivedReports else activeReports
+
+    val filteredReports = remember(baseReports, searchQuery) {
+        if (searchQuery.isBlank()) baseReports
         else {
             val q = searchQuery.lowercase()
-            spotReports.filter {
+            baseReports.filter {
                 (it.reporterName?.lowercase()?.contains(q) == true) ||
                 (it.description?.lowercase()?.contains(q) == true) ||
                 it.tags.any { tag -> tag.name.lowercase().contains(q) }
@@ -52,6 +63,32 @@ internal fun AdminSpotsTab(
                     onQueryChange = { searchQuery = it },
                     placeholder = "Search spots...",
                 )
+            }
+            // Active / Archived toggle
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = !showArchived,
+                        onClick = { showArchived = false },
+                        label = { Text("Active (${activeReports.size})") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                            selectedLabelColor = GccGreen,
+                        ),
+                    )
+                    FilterChip(
+                        selected = showArchived,
+                        onClick = { showArchived = true },
+                        label = { Text("Archived (${archivedReports.size})") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = GccGold.copy(alpha = 0.15f),
+                            selectedLabelColor = GccGold,
+                        ),
+                    )
+                }
             }
             // Error banner
             if (error != null) {
@@ -80,8 +117,8 @@ internal fun AdminSpotsTab(
             }
             item {
                 Text(
-                    if (searchQuery.isBlank()) "${spotReports.size} spot reports"
-                    else "${filteredReports.size} of ${spotReports.size} spot reports",
+                    if (searchQuery.isBlank()) "${baseReports.size} ${if (showArchived) "archived" else "active"} spots"
+                    else "${filteredReports.size} of ${baseReports.size} spots",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),

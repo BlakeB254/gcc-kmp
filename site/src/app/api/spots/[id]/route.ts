@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Spot report not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ data: { id: updated.id, status: updated.status }, success: true })
+    return NextResponse.json({ data: { id: updated.id, status: updated.status } })
   } catch (error) {
     console.error('PATCH /api/spots/[id] error:', error)
     return NextResponse.json({ error: 'Failed to update spot' }, { status: 500 })
@@ -115,16 +115,18 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invalid spot ID' }, { status: 400 })
     }
 
-    const [deleted] = await db
-      .delete(communityReports)
+    // Soft-delete: archive the spot (set status to 'rejected') for historical record
+    const [archived] = await db
+      .update(communityReports)
+      .set({ status: 'rejected' })
       .where(eq(communityReports.id, spotId))
-      .returning({ id: communityReports.id })
+      .returning({ id: communityReports.id, status: communityReports.status })
 
-    if (!deleted) {
+    if (!archived) {
       return NextResponse.json({ error: 'Spot report not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ data: { id: deleted.id, deleted: true }, success: true })
+    return NextResponse.json({ data: { id: archived.id, archived: true } })
   } catch (error) {
     console.error('DELETE /api/spots/[id] error:', error)
     return NextResponse.json({ error: 'Failed to delete spot' }, { status: 500 })
