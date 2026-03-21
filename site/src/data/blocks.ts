@@ -1,16 +1,12 @@
 /**
  * North Lawndale Block Data — Roosevelt Road Corridor
  *
- * Fallback GeoJSON data matching the 10 production blocks in the database.
- * The website fetches from /api/blocks first; this data is only used when
- * the API is unreachable.
+ * Fallback data matching the 10 production blocks in the database.
+ * These are GPS-traced polygon boundaries covering blocks between
+ * 15th St and 16th St (Roosevelt Rd) in North Lawndale.
  *
- * Block naming:
- *   NL-N01…N05 = North side of Roosevelt Road
- *   NL-S01…S05 = South side of Roosevelt Road
- *
- * North blocks (west → east): Pulaski → Harding → Springfield → Avers → Hamlin … Ridgeway → Lawndale
- * South blocks (west → east): Hamlin → Ridgeway … Lawndale → Millard → Central Park → Drake → St Louis
+ * The website fetches from /api/blocks first; this data is only used
+ * when the API is unreachable.
  */
 
 export interface BlockCheckpoint {
@@ -41,113 +37,9 @@ export interface BlockDefinition {
   checkpoints: BlockCheckpoint[]
 }
 
-// Roosevelt Road latitude (average of production block centers)
-const ROOSEVELT_LAT = 41.85984
-
-// Block depth from curb to alley (~300 feet = ~91 meters ≈ 0.00082°)
-const BLOCK_DEPTH = 0.00082
-
 /**
- * Street boundaries derived from production database block center midpoints.
- * Each pair [west, east] defines the cross-street edges of one block.
- */
-const BLOCK_EDGES = {
-  // North side blocks (west → east)
-  'NL-N01': { west: -87.72514, east: -87.72422, from: 'S Pulaski Rd',     to: 'S Harding Ave' },
-  'NL-N02': { west: -87.72422, east: -87.72315, from: 'S Harding Ave',    to: 'S Springfield Ave' },
-  'NL-N05': { west: -87.72315, east: -87.72192, from: 'S Springfield Ave', to: 'S Avers Ave' },
-  'NL-N04': { west: -87.72192, east: -87.72068, from: 'S Avers Ave',      to: 'S Hamlin Ave' },
-  'NL-N03': { west: -87.71953, east: -87.71829, from: 'S Ridgeway Ave',   to: 'S Lawndale Ave' },
-  // South side blocks (west → east)
-  'NL-S05': { west: -87.72072, east: -87.71948, from: 'S Hamlin Ave',      to: 'S Ridgeway Ave' },
-  'NL-S04': { west: -87.71830, east: -87.71708, from: 'S Lawndale Ave',    to: 'S Millard Ave' },
-  'NL-S03': { west: -87.71708, east: -87.71585, from: 'S Millard Ave',     to: 'S Central Park Ave' },
-  'NL-S02': { west: -87.71585, east: -87.71462, from: 'S Central Park Ave', to: 'S Drake Ave' },
-  'NL-S01': { west: -87.71462, east: -87.71340, from: 'S Drake Ave',       to: 'S St Louis Ave' },
-} as const
-
-/** Build a properly-oriented east-west polygon for one side of Roosevelt Road */
-function createBlockPolygon(
-  westLng: number,
-  eastLng: number,
-  side: 'north' | 'south'
-): [number, number][][] {
-  const roadLat = ROOSEVELT_LAT
-  const alleyLat = side === 'north'
-    ? roadLat + BLOCK_DEPTH
-    : roadLat - BLOCK_DEPTH
-
-  if (side === 'north') {
-    return [[
-      [eastLng, roadLat],   // SE corner
-      [eastLng, alleyLat],  // NE corner
-      [westLng, alleyLat],  // NW corner
-      [westLng, roadLat],   // SW corner
-      [eastLng, roadLat],   // close
-    ]]
-  } else {
-    return [[
-      [eastLng, roadLat],   // NE corner
-      [westLng, roadLat],   // NW corner
-      [westLng, alleyLat],  // SW corner
-      [eastLng, alleyLat],  // SE corner
-      [eastLng, roadLat],   // close
-    ]]
-  }
-}
-
-/** Build checkpoints (4 waypoints) for a block */
-function createCheckpoints(
-  westLng: number,
-  eastLng: number,
-  westStreet: string,
-  eastStreet: string,
-  side: 'north' | 'south'
-): BlockCheckpoint[] {
-  const roadLat = ROOSEVELT_LAT
-  const alleyLat = side === 'north'
-    ? roadLat + BLOCK_DEPTH
-    : roadLat - BLOCK_DEPTH
-  const midLng = (westLng + eastLng) / 2
-  const midLat = (roadLat + alleyLat) / 2
-
-  return [
-    {
-      name: `${westStreet} Corner`,
-      type: 'corner_start',
-      description: `Start at the ${side} side of Roosevelt & ${westStreet}`,
-      coordinates: [westLng, roadLat],
-      radius: 15,
-    },
-    {
-      name: 'Sidewalk Midpoint',
-      type: 'midpoint',
-      description: 'Middle of the block along Roosevelt Road',
-      coordinates: [midLng, roadLat],
-      radius: 20,
-    },
-    {
-      name: 'Alley',
-      type: 'alley',
-      description: `Alley behind the ${side} side buildings`,
-      coordinates: [midLng, alleyLat],
-      radius: 20,
-    },
-    {
-      name: `${eastStreet} Corner`,
-      type: 'corner_end',
-      description: `End at the ${side} side of Roosevelt & ${eastStreet}`,
-      coordinates: [eastLng, roadLat],
-      radius: 15,
-    },
-  ]
-}
-
-/**
- * The 10 launch blocks matching the production database.
- *
- * 5 blocks on the NORTH side of Roosevelt Road
- * 5 blocks on the SOUTH side of Roosevelt Road
+ * The 10 launch blocks — GPS-traced boundaries from production database.
+ * Blocks run between 15th St and 16th St (Roosevelt Rd corridor).
  */
 export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
   // ===== NORTH SIDE =====
@@ -159,10 +51,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'north',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N01'].west + BLOCK_EDGES['NL-N01'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N01'].west, BLOCK_EDGES['NL-N01'].east, 'north') },
+      center: { type: 'Point', coordinates: [-87.72468409297217, 41.859784844988184] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.72436621243862,41.85887713030937],[-87.72440387844341,41.860699244917356],[-87.72501338445508,41.8606911657443],[-87.72495289655153,41.85887183898171],[-87.72436621243862,41.85887713030937]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N01'].west, BLOCK_EDGES['NL-N01'].east, 'Pulaski', 'Harding', 'north'),
+    checkpoints: [],
   },
   {
     code: 'NL-N02',
@@ -172,10 +64,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'north',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N02'].west + BLOCK_EDGES['NL-N02'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N02'].west, BLOCK_EDGES['NL-N02'].east, 'north') },
+      center: { type: 'Point', coordinates: [-87.7237635445187, 41.85980304089159] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.72310944121632,41.858901094921634],[-87.72314511046446,41.860716759951],[-87.72443494720221,41.86071341799601],[-87.72436467919184,41.85888089069772],[-87.72310944121632,41.858901094921634]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N02'].west, BLOCK_EDGES['NL-N02'].east, 'Harding', 'Springfield', 'north'),
+    checkpoints: [],
   },
   {
     code: 'NL-N03',
@@ -185,10 +77,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'north',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N03'].west + BLOCK_EDGES['NL-N03'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N03'].west, BLOCK_EDGES['NL-N03'].east, 'north') },
+      center: { type: 'Point', coordinates: [-87.71891057876738, 41.85984871949483] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.71827424468796,41.858961246012996],[-87.71834096492195,41.860751496466605],[-87.71953970620343,41.86075132923571],[-87.71948739925617,41.858930806264],[-87.71827424468796,41.858961246012996]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N03'].west, BLOCK_EDGES['NL-N03'].east, 'Ridgeway', 'Lawndale', 'north'),
+    checkpoints: [],
   },
   {
     code: 'NL-N04',
@@ -198,10 +90,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'north',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N04'].west + BLOCK_EDGES['NL-N04'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N04'].west, BLOCK_EDGES['NL-N04'].east, 'north') },
+      center: { type: 'Point', coordinates: [-87.7213029695082, 41.85981860777793] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.72061470463386,41.85892300649701],[-87.72075164656154,41.86073321229429],[-87.72196385861172,41.86071285531176],[-87.72188166822572,41.858905357008666],[-87.72061470463386,41.85892300649701]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N04'].west, BLOCK_EDGES['NL-N04'].east, 'Avers', 'Hamlin', 'north'),
+    checkpoints: [],
   },
   {
     code: 'NL-N05',
@@ -211,10 +103,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'north',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N05'].west + BLOCK_EDGES['NL-N05'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N05'].west, BLOCK_EDGES['NL-N05'].east, 'north') },
+      center: { type: 'Point', coordinates: [-87.72252501962954, 41.859809016798266] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.72188166822572,41.858905357008666],[-87.72196385861172,41.86071285531176],[-87.72314511046446,41.860716759951],[-87.72310944121632,41.858901094921634],[-87.72188166822572,41.858905357008666]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N05'].west, BLOCK_EDGES['NL-N05'].east, 'Springfield', 'Avers', 'north'),
+    checkpoints: [],
   },
 
   // ===== SOUTH SIDE =====
@@ -226,10 +118,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'south',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S01'].west + BLOCK_EDGES['NL-S01'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S01'].west, BLOCK_EDGES['NL-S01'].east, 'south') },
+      center: { type: 'Point', coordinates: [-87.7140143183777, 41.859915968319314] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.71343772696717,41.86083650194416],[-87.71465168391362,41.86081931346976],[-87.7146000344683,41.858993625301764],[-87.71336782816174,41.859014432561565],[-87.71343772696717,41.86083650194416]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S01'].west, BLOCK_EDGES['NL-S01'].east, 'Drake', 'St Louis', 'south'),
+    checkpoints: [],
   },
   {
     code: 'NL-S02',
@@ -239,10 +131,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'south',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S02'].west + BLOCK_EDGES['NL-S02'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S02'].west, BLOCK_EDGES['NL-S02'].east, 'south') },
+      center: { type: 'Point', coordinates: [-87.71523298766681, 41.85989385109283] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.7146580099565,41.8608114574389],[-87.71586975683759,41.86079192181697],[-87.7158041494049,41.85897839981368],[-87.7146000344683,41.858993625301764],[-87.7146580099565,41.8608114574389]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S02'].west, BLOCK_EDGES['NL-S02'].east, 'Central Park', 'Drake', 'south'),
+    checkpoints: [],
   },
   {
     code: 'NL-S03',
@@ -252,10 +144,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'south',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S03'].west + BLOCK_EDGES['NL-S03'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S03'].west, BLOCK_EDGES['NL-S03'].east, 'south') },
+      center: { type: 'Point', coordinates: [-87.71645933534221, 41.859877341847756] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.71586975683759,41.86079192181697],[-87.71711589055013,41.86077708975296],[-87.71703596353454,41.858966447327674],[-87.71581573044654,41.858973908493425],[-87.71586975683759,41.86079192181697]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S03'].west, BLOCK_EDGES['NL-S03'].east, 'Millard', 'Central Park', 'south'),
+    checkpoints: [],
   },
   {
     code: 'NL-S04',
@@ -265,10 +157,10 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'south',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S04'].west + BLOCK_EDGES['NL-S04'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S04'].west, BLOCK_EDGES['NL-S04'].east, 'south') },
+      center: { type: 'Point', coordinates: [-87.71768495492599, 41.859860690860984] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.71711589055013,41.86077708975296],[-87.71834096492195,41.860751496466605],[-87.71824700069735,41.858947729896684],[-87.71703596353454,41.858966447327674],[-87.71711589055013,41.86077708975296]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S04'].west, BLOCK_EDGES['NL-S04'].east, 'Lawndale', 'Millard', 'south'),
+    checkpoints: [],
   },
   {
     code: 'NL-S05',
@@ -278,25 +170,24 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
     side: 'south',
     includesAlley: true,
     geo: {
-      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S05'].west + BLOCK_EDGES['NL-S05'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
-      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S05'].west, BLOCK_EDGES['NL-S05'].east, 'south') },
+      center: { type: 'Point', coordinates: [-87.72009836416376, 41.85983458857275] },
+      polygon: { type: 'Polygon', coordinates: [[[-87.71953970620343,41.86075132923571],[-87.72075164656154,41.86073321229429],[-87.72061470463386,41.85892300649701],[-87.71948739925617,41.858930806264],[-87.71953970620343,41.86075132923571]]] },
     },
-    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S05'].west, BLOCK_EDGES['NL-S05'].east, 'Hamlin', 'Ridgeway', 'south'),
+    checkpoints: [],
   },
 ]
 
 /**
- * Map center for the Roosevelt Road corridor
- * Centered across all 10 blocks (Pulaski to St Louis)
+ * Map center — midpoint of all 10 blocks
  */
 export const MAP_CENTER = {
-  longitude: -87.71927,  // Midpoint of all blocks
-  latitude: 41.85984,    // Roosevelt Road
+  longitude: -87.71927,
+  latitude: 41.85984,
   zoom: 15.5,
 }
 
 /**
- * Map bounds encompassing all 10 blocks with padding
+ * Map bounds encompassing all 10 blocks (15th–16th St corridor)
  */
 export const MAP_BOUNDS = {
   north: 41.8620,
