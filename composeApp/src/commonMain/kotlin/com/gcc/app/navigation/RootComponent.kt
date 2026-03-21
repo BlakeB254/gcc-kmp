@@ -139,6 +139,7 @@ class RootComponent(
     }
 
     fun navigateToAdminPanel() {
+        if (tokenManager?.isAdmin() != true) return
         navigation.push(Screen.AdminPanel)
     }
 

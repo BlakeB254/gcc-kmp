@@ -58,6 +58,21 @@ internal fun AdminRoutesTab(
                 Text("+ Create Route", fontWeight = FontWeight.SemiBold)
             }
         }
+        if (routes.isEmpty()) {
+            item {
+                Box(
+                    Modifier.fillMaxWidth().height(200.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "\uD83D\uDDFA\nNo routes yet\nTap \"Create Route\" to add one",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
+        }
         item {
             Text(
                 "${routes.size} routes",

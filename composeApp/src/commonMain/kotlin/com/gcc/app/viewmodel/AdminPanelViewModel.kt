@@ -210,6 +210,7 @@ class AdminPanelViewModel(
                 apiClient.updateSpotStatus(spotId, newStatus)
                 val updated = apiClient.getAdminSpotReports()
                 _uiState.value = _uiState.value.copy(spotReports = updated)
+                invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = "Failed to update spot: ${e.message}")
             }
@@ -338,10 +339,10 @@ class AdminPanelViewModel(
                 )
                 val updated = apiClient.verifyWorker(workerId, request)
                 _selectedWorker.value = updated
-                // Also update the worker in the list
                 _uiState.value = _uiState.value.copy(
                     workers = _uiState.value.workers.map { if (it.id == workerId) updated else it },
                 )
+                invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = "Failed to verify worker: ${e.message}")
             }

@@ -11,15 +11,29 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.BountyStatus
 
 @Composable
-internal fun AdminBountiesTab(bounties: List<Bounty>) {
+internal fun AdminBountiesTab(
+    bounties: List<Bounty>,
+    onBountyClick: (Int) -> Unit = {},
+) {
+    if (bounties.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "\uD83C\uDFAF\nNo bounties yet",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -41,7 +55,7 @@ internal fun AdminBountiesTab(bounties: List<Bounty>) {
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { onBountyClick(bounty.id) },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 1.dp,

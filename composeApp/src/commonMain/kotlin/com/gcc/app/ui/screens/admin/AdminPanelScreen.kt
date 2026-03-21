@@ -123,7 +123,10 @@ fun AdminPanelScreen(
                             onStatusToggle = { routeId, newStatus -> viewModel.updateRouteStatus(routeId, newStatus) },
                             onCreateRoute = viewModel::createRoute,
                         )
-                        AdminTab.BOUNTIES -> AdminBountiesTab(uiState.bounties)
+                        AdminTab.BOUNTIES -> AdminBountiesTab(
+                            bounties = uiState.bounties,
+                            onBountyClick = { /* TODO: navigate to bounty detail */ },
+                        )
                         AdminTab.SPOTS -> AdminSpotsTab(
                             spotReports = uiState.spotReports,
                             error = uiState.error,

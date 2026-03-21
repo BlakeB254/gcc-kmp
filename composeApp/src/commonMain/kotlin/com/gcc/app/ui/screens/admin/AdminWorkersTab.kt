@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.BulkAction
@@ -37,6 +38,18 @@ internal fun AdminWorkersTab(
             // Keep selection mode but clear stale IDs
             selectedIds = selectedIds.filter { id -> workers.any { it.id == id } }.toSet()
         }
+    }
+
+    if (workers.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "\uD83D\uDC77\nNo workers yet",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
     }
 
     var searchQuery by remember { mutableStateOf("") }
