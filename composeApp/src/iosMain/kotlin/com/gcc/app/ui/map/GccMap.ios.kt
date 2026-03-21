@@ -697,39 +697,40 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 13.5f,
-                // Color ramp matching website: transparent → pink → red → deep red
+                // Color ramp: transparent edges → light pink → rose at density peaks
+                // Keep colors LIGHT — the website look is airy pink, not heavy red
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color.Transparent),
-                    0.2 to const(Color(0xFFFEE2E2)), // light pink
-                    0.4 to const(Color(0xFFFCA5A5)), // medium pink
-                    0.7 to const(Color(0xFFEF4444)), // red
-                    1.0 to const(Color(0xFF991B1B)), // deep red
+                    0.0 to const(Color(0x00000000)),  // fully transparent
+                    0.1 to const(Color(0x15EF4444)),  // barely visible red tint
+                    0.3 to const(Color(0x40FCA5A5)),  // soft pink
+                    0.5 to const(Color(0x70F87171)),  // medium rose
+                    0.7 to const(Color(0x99EF4444)),  // red
+                    1.0 to const(Color(0xBBDC2626)),  // deep red (still semi-transparent)
                 ),
-                // Low intensity — let density math create natural gradient variation
-                // Only true cluster centers should reach the red/deep-red stops
+                // Moderate intensity — enough to differentiate clusters
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.2f),
-                    12 to const(0.4f),
-                    13.5 to const(0.6f),
+                    10 to const(0.3f),
+                    13.5 to const(1f),
                 ),
-                // Large radius for spread — creates the soft cloud effect
+                // Moderate radius — big enough for overlap but not one solid mass
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(20.dp),
-                    11 to const(30.dp),
-                    12 to const(40.dp),
-                    13 to const(50.dp),
+                    10 to const(8.dp),
+                    11 to const(15.dp),
+                    12 to const(20.dp),
+                    13 to const(25.dp),
                 ),
+                // Light opacity — the colors themselves carry transparency
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.6f),
-                    13 to const(0.4f),
+                    10 to const(0.8f),
+                    13 to const(0.5f),
                     13.5 to const(0f),
                 ),
             )
