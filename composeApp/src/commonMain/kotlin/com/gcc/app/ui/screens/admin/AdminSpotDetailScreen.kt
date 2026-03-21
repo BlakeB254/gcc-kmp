@@ -207,42 +207,77 @@ fun AdminSpotDetailScreen(
                 }
             }
 
-            // Admin actions
+            // Admin actions — verify, acknowledge, resolve
             if (report.status != CommunityReportStatus.RESOLVED) {
                 item {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("Actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
-                    var actionInProgress by remember { mutableStateOf(false) }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    // Status info
+                    Text(
+                        "Current status: ${report.status.name.lowercase().replace('_', ' ')}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Row 1: Verify + Acknowledge (only for pending spots)
                         if (report.status == CommunityReportStatus.PENDING) {
-                            OutlinedButton(
-                                onClick = {
-                                    actionInProgress = true
-                                    viewModel.updateSpotStatus(spotId, "verified")
-                                },
-                                modifier = Modifier.weight(1f),
-                                enabled = !actionInProgress,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                            ) { Text(if (actionInProgress) "Updating..." else "Verify") }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.updateSpotStatus(spotId, "verified")
+                                        onBack()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                                ) {
+                                    Text("\u2705 Verify")
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.updateSpotStatus(spotId, "acknowledged")
+                                        onBack()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccBlue),
+                                ) {
+                                    Text("\uD83D\uDC41 Acknowledge")
+                                }
+                            }
                         }
+
+                        // Row 2: Resolve (mark as cleaned/done)
                         Button(
                             onClick = {
-                                actionInProgress = true
                                 viewModel.updateSpotStatus(spotId, "resolved")
+                                onBack()
                             },
-                            modifier = Modifier.weight(1f),
-                            enabled = !actionInProgress,
+                            modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = GccGold),
-                        ) { Text(if (actionInProgress) "Updating..." else "Resolve") }
+                        ) {
+                            Text("\u2705 Mark Resolved (Cleaned)")
+                        }
                     }
-                    // Navigate back after spot list refreshes
-                    val currentSpots = viewModel.uiState.collectAsState().value.spotReports
-                    val spotStillPending = currentSpots.find { it.id == spotId }?.let {
-                        it.status != CommunityReportStatus.RESOLVED && it.status != CommunityReportStatus.VERIFIED
-                    } ?: false
-                    LaunchedEffect(actionInProgress, spotStillPending) {
-                        if (actionInProgress && !spotStillPending) onBack()
+                }
+            } else {
+                // Already resolved — show status
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = GccGreen.copy(alpha = 0.1f),
+                    ) {
+                        Text(
+                            "\u2705 This spot has been resolved",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GccGreen,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(12.dp),
+                        )
                     }
                 }
             }

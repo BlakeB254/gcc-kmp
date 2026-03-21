@@ -80,6 +80,8 @@ internal fun AdminSpotsTab(
                         centerLng = centerLng,
                         zoom = MapStyles.ZOOM_SERVICE_AREA,
                         spots = activeReports,
+                        enableGestures = true,
+                        onSpotTap = { spotId -> onSpotClick(spotId) },
                     )
                     Surface(
                         modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),

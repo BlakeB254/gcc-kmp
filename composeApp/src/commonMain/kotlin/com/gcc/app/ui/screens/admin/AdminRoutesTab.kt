@@ -76,6 +76,10 @@ internal fun AdminRoutesTab(
                     centerLng = centerLng,
                     zoom = MapStyles.ZOOM_SERVICE_AREA,
                     routeCoordinates = routeCoordinates,
+                    enableGestures = true,
+                    onRouteTap = { routeIndex ->
+                        routes.getOrNull(routeIndex)?.let { onRouteClick(it.id) }
+                    },
                 )
                 // Route count overlay
                 Surface(
