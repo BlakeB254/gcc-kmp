@@ -202,9 +202,10 @@ export function NeighborhoodMapSection() {
         const res = await fetch('/api/blocks?limit=50')
         if (res.ok) {
           const data = await res.json()
-          if (data.blocks && data.blocks.length > 0) {
+          const apiBlocks = data.data || data.blocks || []
+          if (apiBlocks.length > 0) {
             // Use database blocks
-            const dbBlocks = data.blocks
+            const dbBlocks = apiBlocks
               .map(apiBlockToDisplayBlock)
               .filter((b: BlockWithStatus | null): b is BlockWithStatus => b !== null)
 
@@ -314,6 +315,7 @@ export function NeighborhoodMapSection() {
                   id: s.id,
                   label: s.label || s.type || 'report',
                   radiusMeters: s.radiusMeters || s.affectedRadiusMeters || 15,
+                  needsVerification: s.needsVerification ? 1 : 0,
                 },
                 geometry: { type: 'Point' as const, coordinates: [lng, lat] },
               }
@@ -527,7 +529,7 @@ export function NeighborhoodMapSection() {
               }}
               style={{ width: '100%', height: '100%' }}
               mapStyle={MAP_STYLE}
-              interactiveLayerIds={['blocks-fill', 'homepage-spot-dots']}
+              interactiveLayerIds={['blocks-fill', 'homepage-spot-dots', 'homepage-spot-labels']}
               onClick={onClick}
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
@@ -713,26 +715,50 @@ export function NeighborhoodMapSection() {
                     ],
                   }}
                 />
-                {/* Individual dots — appear as heatmap fades */}
+                {/* Individual dots — orange for needs verification, green for verified */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
                   minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
-                    'circle-color': SPOT_COLORS.MARKER,
+                    'circle-color': [
+                      'case',
+                      ['==', ['get', 'needsVerification'], 1],
+                      '#F59E0B',  // amber — needs verification
+                      '#22C55E',  // green — verified/ok
+                    ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 3,
-                      15, 5,
-                      17, 7,
+                      SPOT_ZOOM.DOTS_MIN, 4,
+                      15, 6,
+                      17, 8,
                     ],
                     'circle-stroke-color': '#ffffff',
                     'circle-stroke-width': 1.5,
                     'circle-opacity': [
                       'interpolate', ['linear'], ['zoom'],
                       SPOT_ZOOM.DOTS_MIN, 0,
-                      14, 0.85,
+                      14, 0.9,
                     ],
+                  }}
+                />
+                {/* "Needs Verification" labels — visible at close zoom */}
+                <Layer
+                  id="homepage-spot-labels"
+                  type="symbol"
+                  minzoom={15}
+                  filter={['==', ['get', 'needsVerification'], 1]}
+                  layout={{
+                    'text-field': 'Needs Verification',
+                    'text-size': 10,
+                    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                    'text-offset': [0, -1.5],
+                    'text-allow-overlap': false,
+                  }}
+                  paint={{
+                    'text-color': '#B45309',
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 1.5,
                   }}
                 />
               </Source>
@@ -888,11 +914,29 @@ export function NeighborhoodMapSection() {
                     <span>{new Date(selectedSpot.createdAt).toLocaleDateString()}</span>
                   )}
                 </div>
-                {/* 24h verification due indicator */}
-                {selectedSpot.needsVerification && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5">
-                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                    Verification overdue — needs re-confirmation
+                {/* Verification status — prominent display */}
+                {selectedSpot.needsVerification ? (
+                  <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                    Needs Verification
+                    {selectedSpot.nextVerificationDue && (
+                      <span className="text-xs font-normal text-amber-600 ml-auto">
+                        since {new Date(selectedSpot.nextVerificationDue).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                ) : selectedSpot.lastVerifiedAt ? (
+                  <div className="mt-2 flex items-center gap-2 text-xs font-medium text-green-700 bg-green-50 rounded-lg px-2.5 py-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                    Verified {new Date(selectedSpot.lastVerifiedAt).toLocaleDateString()}
+                    {selectedSpot.verificationCount > 0 && (
+                      <span className="text-green-600">({selectedSpot.verificationCount}×)</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                    Pending first verification
                   </div>
                 )}
               </div>

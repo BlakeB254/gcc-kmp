@@ -1,18 +1,16 @@
 /**
- * North Lawndale Block Data - Roosevelt Road Corridor
+ * North Lawndale Block Data — Roosevelt Road Corridor
  *
- * Real GeoJSON polygon data for the 10 launch blocks along Roosevelt Road
- * from Kedzie Avenue to Lawndale Avenue in North Lawndale, Chicago.
+ * Fallback GeoJSON data matching the 10 production blocks in the database.
+ * The website fetches from /api/blocks first; this data is only used when
+ * the API is unreachable.
  *
- * Blocks are defined on both the NORTH and SOUTH sides of Roosevelt Road,
- * covering the storefronts and sidewalks on each side.
+ * Block naming:
+ *   NL-N01…N05 = North side of Roosevelt Road
+ *   NL-S01…S05 = South side of Roosevelt Road
  *
- * Coordinate Reference (verified via Google Maps):
- * - Roosevelt Road runs east-west at approximately latitude 41.8603
- * - Kedzie Ave (3200 W) is at longitude -87.7055
- * - Lawndale Ave (3700 W) is at longitude -87.7180
- *
- * Block depth (north-south) is approximately 300 feet from curb to alley.
+ * North blocks (west → east): Pulaski → Harding → Springfield → Avers → Hamlin … Ridgeway → Lawndale
+ * South blocks (west → east): Hamlin → Ridgeway … Lawndale → Millard → Central Park → Drake → St Louis
  */
 
 export interface BlockCheckpoint {
@@ -33,39 +31,42 @@ export interface BlockDefinition {
   geo: {
     center: {
       type: 'Point'
-      coordinates: [number, number] // [longitude, latitude]
+      coordinates: [number, number]
     }
     polygon: {
       type: 'Polygon'
-      coordinates: [number, number][][] // GeoJSON polygon format
+      coordinates: [number, number][][]
     }
   }
   checkpoints: BlockCheckpoint[]
 }
 
-// Roosevelt Road latitude at Kedzie (verified via Google Maps)
-// Note: Roosevelt Road is at 1200 South in Chicago's grid system
-const ROOSEVELT_LAT = 41.8603
+// Roosevelt Road latitude (average of production block centers)
+const ROOSEVELT_LAT = 41.85984
 
-// Block depth from curb to alley (in degrees, ~300 feet = ~91 meters)
-// 1 degree latitude = ~111,000 meters, so 91m = ~0.00082 degrees
+// Block depth from curb to alley (~300 feet = ~91 meters ≈ 0.00082°)
 const BLOCK_DEPTH = 0.00082
 
-// Street longitudes (west to east, based on Chicago grid: 8 blocks = 1 mile)
-// Each 100 address numbers = ~0.0025° longitude
-// Kedzie (3200 W) verified at -87.7055
-const STREETS = {
-  kedzie: -87.7055,      // 3200 W - verified
-  spaulding: -87.7080,   // 3300 W
-  homan: -87.7105,       // 3400 W
-  stLouis: -87.7130,     // 3500 W
-  centralPark: -87.7155, // 3600 W
-  lawndale: -87.7180,    // 3700 W
+/**
+ * Street boundaries derived from production database block center midpoints.
+ * Each pair [west, east] defines the cross-street edges of one block.
+ */
+const BLOCK_EDGES = {
+  // North side blocks (west → east)
+  'NL-N01': { west: -87.72514, east: -87.72422, from: 'S Pulaski Rd',     to: 'S Harding Ave' },
+  'NL-N02': { west: -87.72422, east: -87.72315, from: 'S Harding Ave',    to: 'S Springfield Ave' },
+  'NL-N05': { west: -87.72315, east: -87.72192, from: 'S Springfield Ave', to: 'S Avers Ave' },
+  'NL-N04': { west: -87.72192, east: -87.72068, from: 'S Avers Ave',      to: 'S Hamlin Ave' },
+  'NL-N03': { west: -87.71953, east: -87.71829, from: 'S Ridgeway Ave',   to: 'S Lawndale Ave' },
+  // South side blocks (west → east)
+  'NL-S05': { west: -87.72072, east: -87.71948, from: 'S Hamlin Ave',      to: 'S Ridgeway Ave' },
+  'NL-S04': { west: -87.71830, east: -87.71708, from: 'S Lawndale Ave',    to: 'S Millard Ave' },
+  'NL-S03': { west: -87.71708, east: -87.71585, from: 'S Millard Ave',     to: 'S Central Park Ave' },
+  'NL-S02': { west: -87.71585, east: -87.71462, from: 'S Central Park Ave', to: 'S Drake Ave' },
+  'NL-S01': { west: -87.71462, east: -87.71340, from: 'S Drake Ave',       to: 'S St Louis Ave' },
 } as const
 
-/**
- * Generate a block polygon for the north or south side of Roosevelt Road
- */
+/** Build a properly-oriented east-west polygon for one side of Roosevelt Road */
 function createBlockPolygon(
   westLng: number,
   eastLng: number,
@@ -76,30 +77,26 @@ function createBlockPolygon(
     ? roadLat + BLOCK_DEPTH
     : roadLat - BLOCK_DEPTH
 
-  // GeoJSON polygon: array of linear rings, first ring is exterior
-  // Coordinates are [longitude, latitude] and must be closed (first = last)
   if (side === 'north') {
     return [[
-      [eastLng, roadLat],      // SE corner (road & east street)
-      [eastLng, alleyLat],     // NE corner (alley & east street)
-      [westLng, alleyLat],     // NW corner (alley & west street)
-      [westLng, roadLat],      // SW corner (road & west street)
-      [eastLng, roadLat],      // Close the polygon
+      [eastLng, roadLat],   // SE corner
+      [eastLng, alleyLat],  // NE corner
+      [westLng, alleyLat],  // NW corner
+      [westLng, roadLat],   // SW corner
+      [eastLng, roadLat],   // close
     ]]
   } else {
     return [[
-      [eastLng, roadLat],      // NE corner (road & east street)
-      [westLng, roadLat],      // NW corner (road & west street)
-      [westLng, alleyLat],     // SW corner (alley & west street)
-      [eastLng, alleyLat],     // SE corner (alley & east street)
-      [eastLng, roadLat],      // Close the polygon
+      [eastLng, roadLat],   // NE corner
+      [westLng, roadLat],   // NW corner
+      [westLng, alleyLat],  // SW corner
+      [eastLng, alleyLat],  // SE corner
+      [eastLng, roadLat],   // close
     ]]
   }
 }
 
-/**
- * Generate checkpoints for a block
- */
+/** Build checkpoints (4 waypoints) for a block */
 function createCheckpoints(
   westLng: number,
   eastLng: number,
@@ -125,7 +122,7 @@ function createCheckpoints(
     {
       name: 'Sidewalk Midpoint',
       type: 'midpoint',
-      description: `Middle of the block along Roosevelt Road`,
+      description: 'Middle of the block along Roosevelt Road',
       coordinates: [midLng, roadLat],
       radius: 20,
     },
@@ -147,257 +144,165 @@ function createCheckpoints(
 }
 
 /**
- * The 10 launch blocks for GCC
+ * The 10 launch blocks matching the production database.
  *
- * 5 blocks on the NORTH side of Roosevelt Road (storefronts facing south)
- * 5 blocks on the SOUTH side of Roosevelt Road (storefronts facing north)
+ * 5 blocks on the NORTH side of Roosevelt Road
+ * 5 blocks on the SOUTH side of Roosevelt Road
  */
 export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
-  // ===== NORTH SIDE OF ROOSEVELT ROAD =====
+  // ===== NORTH SIDE =====
   {
     code: 'NL-N01',
-    streetName: '1500 W Roosevelt Rd (North Side)',
-    fromCorner: 'S Kedzie Ave',
-    toCorner: 'S Spaulding Ave',
+    streetName: 'W Roosevelt Rd (North Side)',
+    fromCorner: 'S Pulaski Rd',
+    toCorner: 'S Harding Ave',
     side: 'north',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.kedzie + STREETS.spaulding) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.spaulding, STREETS.kedzie, 'north'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N01'].west + BLOCK_EDGES['NL-N01'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N01'].west, BLOCK_EDGES['NL-N01'].east, 'north') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.spaulding, STREETS.kedzie,
-      'Spaulding', 'Kedzie', 'north'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N01'].west, BLOCK_EDGES['NL-N01'].east, 'Pulaski', 'Harding', 'north'),
   },
   {
     code: 'NL-N02',
-    streetName: '1500 W Roosevelt Rd (North Side)',
-    fromCorner: 'S Spaulding Ave',
-    toCorner: 'S Homan Ave',
+    streetName: 'W Roosevelt Rd (North Side)',
+    fromCorner: 'S Harding Ave',
+    toCorner: 'S Springfield Ave',
     side: 'north',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.spaulding + STREETS.homan) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.homan, STREETS.spaulding, 'north'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N02'].west + BLOCK_EDGES['NL-N02'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N02'].west, BLOCK_EDGES['NL-N02'].east, 'north') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.homan, STREETS.spaulding,
-      'Homan', 'Spaulding', 'north'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N02'].west, BLOCK_EDGES['NL-N02'].east, 'Harding', 'Springfield', 'north'),
   },
   {
     code: 'NL-N03',
-    streetName: '1500 W Roosevelt Rd (North Side)',
-    fromCorner: 'S Homan Ave',
-    toCorner: 'S St Louis Ave',
+    streetName: 'W Roosevelt Rd (North Side)',
+    fromCorner: 'S Ridgeway Ave',
+    toCorner: 'S Lawndale Ave',
     side: 'north',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.homan + STREETS.stLouis) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.stLouis, STREETS.homan, 'north'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N03'].west + BLOCK_EDGES['NL-N03'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N03'].west, BLOCK_EDGES['NL-N03'].east, 'north') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.stLouis, STREETS.homan,
-      'St Louis', 'Homan', 'north'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N03'].west, BLOCK_EDGES['NL-N03'].east, 'Ridgeway', 'Lawndale', 'north'),
   },
   {
     code: 'NL-N04',
-    streetName: '1500 W Roosevelt Rd (North Side)',
-    fromCorner: 'S St Louis Ave',
-    toCorner: 'S Central Park Ave',
+    streetName: 'W Roosevelt Rd (North Side)',
+    fromCorner: 'S Avers Ave',
+    toCorner: 'S Hamlin Ave',
     side: 'north',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.stLouis + STREETS.centralPark) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.centralPark, STREETS.stLouis, 'north'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N04'].west + BLOCK_EDGES['NL-N04'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N04'].west, BLOCK_EDGES['NL-N04'].east, 'north') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.centralPark, STREETS.stLouis,
-      'Central Park', 'St Louis', 'north'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N04'].west, BLOCK_EDGES['NL-N04'].east, 'Avers', 'Hamlin', 'north'),
   },
   {
     code: 'NL-N05',
-    streetName: '1500 W Roosevelt Rd (North Side)',
-    fromCorner: 'S Central Park Ave',
-    toCorner: 'S Lawndale Ave',
+    streetName: 'W Roosevelt Rd (North Side)',
+    fromCorner: 'S Springfield Ave',
+    toCorner: 'S Avers Ave',
     side: 'north',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.centralPark + STREETS.lawndale) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.lawndale, STREETS.centralPark, 'north'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-N05'].west + BLOCK_EDGES['NL-N05'].east) / 2, ROOSEVELT_LAT + BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-N05'].west, BLOCK_EDGES['NL-N05'].east, 'north') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.lawndale, STREETS.centralPark,
-      'Lawndale', 'Central Park', 'north'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-N05'].west, BLOCK_EDGES['NL-N05'].east, 'Springfield', 'Avers', 'north'),
   },
 
-  // ===== SOUTH SIDE OF ROOSEVELT ROAD =====
+  // ===== SOUTH SIDE =====
   {
     code: 'NL-S01',
-    streetName: '1500 W Roosevelt Rd (South Side)',
-    fromCorner: 'S Kedzie Ave',
-    toCorner: 'S Spaulding Ave',
-    side: 'south',
-    includesAlley: true,
-    geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.kedzie + STREETS.spaulding) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.spaulding, STREETS.kedzie, 'south'),
-      },
-    },
-    checkpoints: createCheckpoints(
-      STREETS.spaulding, STREETS.kedzie,
-      'Spaulding', 'Kedzie', 'south'
-    ),
-  },
-  {
-    code: 'NL-S02',
-    streetName: '1500 W Roosevelt Rd (South Side)',
-    fromCorner: 'S Spaulding Ave',
-    toCorner: 'S Homan Ave',
-    side: 'south',
-    includesAlley: true,
-    geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.spaulding + STREETS.homan) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.homan, STREETS.spaulding, 'south'),
-      },
-    },
-    checkpoints: createCheckpoints(
-      STREETS.homan, STREETS.spaulding,
-      'Homan', 'Spaulding', 'south'
-    ),
-  },
-  {
-    code: 'NL-S03',
-    streetName: '1500 W Roosevelt Rd (South Side)',
-    fromCorner: 'S Homan Ave',
+    streetName: 'W Roosevelt Rd (South Side)',
+    fromCorner: 'S Drake Ave',
     toCorner: 'S St Louis Ave',
     side: 'south',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.homan + STREETS.stLouis) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.stLouis, STREETS.homan, 'south'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S01'].west + BLOCK_EDGES['NL-S01'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S01'].west, BLOCK_EDGES['NL-S01'].east, 'south') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.stLouis, STREETS.homan,
-      'St Louis', 'Homan', 'south'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S01'].west, BLOCK_EDGES['NL-S01'].east, 'Drake', 'St Louis', 'south'),
   },
   {
-    code: 'NL-S04',
-    streetName: '1500 W Roosevelt Rd (South Side)',
-    fromCorner: 'S St Louis Ave',
+    code: 'NL-S02',
+    streetName: 'W Roosevelt Rd (South Side)',
+    fromCorner: 'S Central Park Ave',
+    toCorner: 'S Drake Ave',
+    side: 'south',
+    includesAlley: true,
+    geo: {
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S02'].west + BLOCK_EDGES['NL-S02'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S02'].west, BLOCK_EDGES['NL-S02'].east, 'south') },
+    },
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S02'].west, BLOCK_EDGES['NL-S02'].east, 'Central Park', 'Drake', 'south'),
+  },
+  {
+    code: 'NL-S03',
+    streetName: 'W Roosevelt Rd (South Side)',
+    fromCorner: 'S Millard Ave',
     toCorner: 'S Central Park Ave',
     side: 'south',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.stLouis + STREETS.centralPark) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.centralPark, STREETS.stLouis, 'south'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S03'].west + BLOCK_EDGES['NL-S03'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S03'].west, BLOCK_EDGES['NL-S03'].east, 'south') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.centralPark, STREETS.stLouis,
-      'Central Park', 'St Louis', 'south'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S03'].west, BLOCK_EDGES['NL-S03'].east, 'Millard', 'Central Park', 'south'),
   },
   {
-    code: 'NL-S05',
-    streetName: '1500 W Roosevelt Rd (South Side)',
-    fromCorner: 'S Central Park Ave',
-    toCorner: 'S Lawndale Ave',
+    code: 'NL-S04',
+    streetName: 'W Roosevelt Rd (South Side)',
+    fromCorner: 'S Lawndale Ave',
+    toCorner: 'S Millard Ave',
     side: 'south',
     includesAlley: true,
     geo: {
-      center: {
-        type: 'Point',
-        coordinates: [(STREETS.centralPark + STREETS.lawndale) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2],
-      },
-      polygon: {
-        type: 'Polygon',
-        coordinates: createBlockPolygon(STREETS.lawndale, STREETS.centralPark, 'south'),
-      },
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S04'].west + BLOCK_EDGES['NL-S04'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S04'].west, BLOCK_EDGES['NL-S04'].east, 'south') },
     },
-    checkpoints: createCheckpoints(
-      STREETS.lawndale, STREETS.centralPark,
-      'Lawndale', 'Central Park', 'south'
-    ),
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S04'].west, BLOCK_EDGES['NL-S04'].east, 'Lawndale', 'Millard', 'south'),
+  },
+  {
+    code: 'NL-S05',
+    streetName: 'W Roosevelt Rd (South Side)',
+    fromCorner: 'S Hamlin Ave',
+    toCorner: 'S Ridgeway Ave',
+    side: 'south',
+    includesAlley: true,
+    geo: {
+      center: { type: 'Point', coordinates: [(BLOCK_EDGES['NL-S05'].west + BLOCK_EDGES['NL-S05'].east) / 2, ROOSEVELT_LAT - BLOCK_DEPTH / 2] },
+      polygon: { type: 'Polygon', coordinates: createBlockPolygon(BLOCK_EDGES['NL-S05'].west, BLOCK_EDGES['NL-S05'].east, 'south') },
+    },
+    checkpoints: createCheckpoints(BLOCK_EDGES['NL-S05'].west, BLOCK_EDGES['NL-S05'].east, 'Hamlin', 'Ridgeway', 'south'),
   },
 ]
 
 /**
  * Map center for the Roosevelt Road corridor
- * Centered between Kedzie and Lawndale on Roosevelt Road
+ * Centered across all 10 blocks (Pulaski to St Louis)
  */
 export const MAP_CENTER = {
-  longitude: -87.7118,  // Midpoint between Kedzie (-87.7055) and Lawndale (-87.7180)
-  latitude: 41.8603,    // Roosevelt Road
-  zoom: 15.5,           // Slightly closer for better block visibility
+  longitude: -87.71927,  // Midpoint of all blocks
+  latitude: 41.85984,    // Roosevelt Road
+  zoom: 15.5,
 }
 
 /**
- * Map bounds for the launch area
- * Extended west to include 15th/16th streets from Pulaski to Lawndale
- * Updated: 2025-01-27
+ * Map bounds encompassing all 10 blocks with padding
  */
 export const MAP_BOUNDS = {
-  north: 41.8640,   // Extended north
-  south: 41.8560,   // Extended south
-  east: -87.7040,   // East of Kedzie
-  west: -87.7270,   // Extended west past Pulaski
+  north: 41.8620,
+  south: 41.8575,
+  east: -87.7120,
+  west: -87.7265,
 }
 
 /**
