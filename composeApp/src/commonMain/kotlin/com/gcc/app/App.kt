@@ -61,8 +61,8 @@ fun App(component: RootComponent) {
                 )
                 is Screen.Dashboard -> DashboardScreen(
                     onRouteClick = component::navigateToRouteDetail,
-                    onProfileClick = component::navigateToProfile,
-                    onMapClick = component::navigateToMap,
+                    onProfileClick = { component.switchToTab(Screen.Profile) },
+                    onMapClick = { component.switchToTab(Screen.MapFullScreen) },
                     onSpotClick = component::navigateToSpot,
                     onBountyListClick = component::navigateToBountyList,
                     onWalletClick = component::navigateToWallet,
@@ -70,7 +70,7 @@ fun App(component: RootComponent) {
                     onFeedClick = component::navigateToFeed,
                     onAchievementsClick = component::navigateToAchievements,
                     onSettingsClick = component::navigateToSettings,
-                    onAdminClick = component::navigateToAdminPanel,
+                    onAdminClick = { component.switchToTab(Screen.AdminPanel) },
                     onPointsClick = component::navigateToPoints,
                     onImpactClick = component::navigateToImpact,
                     onSponsorWallClick = component::navigateToSponsorWall,
@@ -100,9 +100,9 @@ fun App(component: RootComponent) {
                 is Screen.Profile -> ProfileScreen(
                     onBack = { component.switchToTab(Screen.Dashboard) },
                     onAchievementsClick = component::navigateToAchievements,
-                    onMapClick = component::navigateToMap,
+                    onMapClick = { component.switchToTab(Screen.MapFullScreen) },
                     onSettingsClick = component::navigateToSettings,
-                    onAdminClick = component::navigateToAdminPanel,
+                    onAdminClick = { component.switchToTab(Screen.AdminPanel) },
                     onUserCardClick = component::navigateToUserCard,
                     onPointsClick = component::navigateToPoints,
                     onImpactClick = component::navigateToImpact,
@@ -119,8 +119,8 @@ fun App(component: RootComponent) {
                     onRouteClick = component::navigateToRouteDetail,
                     onVolunteerCleanup = component::navigateToVolunteerCleanup,
                     onSpotVerification = component::navigateToSpotVerification,
-                    onAdminClick = component::navigateToAdminPanel,
-                    onProfileClick = component::navigateToProfile,
+                    onAdminClick = { component.switchToTab(Screen.AdminPanel) },
+                    onProfileClick = { component.switchToTab(Screen.Profile) },
                 )
                 is Screen.Settings -> SettingsScreen(
                     onBack = component::navigateBack,
@@ -171,7 +171,7 @@ fun App(component: RootComponent) {
                     onNavigateToWorkerDetail = component::navigateToAdminWorkerDetail,
                     onNavigateToDashboard = { component.switchToTab(Screen.Dashboard) },
                     onNavigateToMap = { component.switchToTab(Screen.MapFullScreen) },
-                    onNavigateToProfile = component::navigateToProfile,
+                    onNavigateToProfile = { component.switchToTab(Screen.Profile) },
                 )
                 is Screen.AdminWorkerDetail -> AdminWorkerDetailScreen(
                     workerId = screen.workerId,
