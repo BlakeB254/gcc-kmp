@@ -3,212 +3,434 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GCC Overview - An Overview for the University of Chicago</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Global Community Cleaners — Partnership Brief</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-          },
-          colors: {
-            gcc: {
-              green: '#22C55E',
-              'green-dark': '#16A34A',
-              'green-light': '#4ADE80',
-              'green-50': '#F0FDF4',
-              'green-100': '#DCFCE7',
-              dark: '#0F172A',
-              'dark-light': '#1E293B',
-            }
-          }
-        }
-      }
-    }
-  </script>
   <style>
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --gcc-green: #22C55E;
+      --gcc-green-dark: #16A34A;
+      --gcc-green-light: #4ADE80;
+      --gcc-dark: #0F172A;
+      --gcc-dark-light: #1E293B;
+      --gcc-gold: #D4A843;
+      --gcc-green-10: rgba(34, 197, 94, 0.1);
+      --gcc-green-20: rgba(34, 197, 94, 0.2);
+      --gcc-green-30: rgba(34, 197, 94, 0.3);
     }
 
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.7;
+    }
+
+    /* ── Print Styles ── */
     @media print {
       @page {
         size: letter;
-        margin: 0.6in 0.75in;
+        margin: 0.55in 0.7in;
       }
-
       body {
-        font-size: 10pt;
-        line-height: 1.5;
+        font-size: 9.5pt;
+        line-height: 1.55;
         color: #000;
         background: #fff;
       }
-
-      .no-print {
-        display: none !important;
-      }
-
+      .no-print { display: none !important; }
       .page-break {
         page-break-after: always;
         break-after: page;
       }
-
       .avoid-break {
         page-break-inside: avoid;
         break-inside: avoid;
       }
-
       .print-color {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-
-      .cover-section {
+      .cover-page {
         min-height: auto;
-        padding: 2.5in 0 1.5in 0;
+        padding: 2in 0 1in 0;
       }
-
-      h2, h3 {
-        page-break-after: avoid;
-      }
-
-      section {
-        padding-top: 0.3rem;
-        padding-bottom: 0.3rem;
-      }
+      h2, h3 { page-break-after: avoid; }
+      .page-footer { position: fixed; bottom: 0; left: 0; right: 0; }
     }
 
-    @media screen {
-      .section-divider {
-        position: relative;
-      }
-      .section-divider::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 60px;
-        height: 3px;
-        background: #22C55E;
-        border-radius: 2px;
-      }
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
     ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    html { scroll-behavior: smooth; }
 
-    .narrative p {
+    /* ── Cover Page ── */
+    .cover-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: var(--gcc-dark);
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover-page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 800px 600px at 20% 30%, rgba(34, 197, 94, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 600px 500px at 80% 70%, rgba(34, 197, 94, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cover-page::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0.03;
+      background-image:
+        radial-gradient(circle at 25% 25%, var(--gcc-green) 1px, transparent 1px),
+        radial-gradient(circle at 75% 75%, var(--gcc-green) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    .cover-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 640px;
+      padding: 0 2rem;
+    }
+
+    .cover-logo-ring {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      border: 2px solid var(--gcc-green-30);
+      background: var(--gcc-green-10);
+      margin-bottom: 2rem;
+    }
+
+    .cover-title {
+      font-size: 3.5rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
       margin-bottom: 1rem;
     }
-    .narrative p:last-child {
-      margin-bottom: 0;
+    .cover-title .green { color: var(--gcc-green); }
+    .cover-title .white { color: #ffffff; }
+
+    .cover-badge {
+      display: inline-block;
+      padding: 0.4rem 1.2rem;
+      border-radius: 999px;
+      border: 1px solid var(--gcc-green-30);
+      background: var(--gcc-green-10);
+      color: var(--gcc-green-light);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 2.5rem;
+    }
+
+    .cover-divider {
+      width: 80px;
+      height: 2px;
+      background: var(--gcc-green);
+      border-radius: 1px;
+      margin: 0 auto 2rem auto;
+    }
+
+    .cover-subtitle {
+      font-size: 1.3rem;
+      font-weight: 300;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+    }
+
+    .cover-date {
+      font-size: 0.85rem;
+      color: var(--gcc-green-light);
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    .cover-url {
+      font-size: 0.8rem;
+      color: #64748b;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Content Pages ── */
+    .content-page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 2rem 2rem 2rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      padding-top: 0.5rem;
+    }
+    .section-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--gcc-green-10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .section-icon svg {
+      width: 18px;
+      height: 18px;
+      color: var(--gcc-green);
+    }
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: var(--gcc-dark);
+      letter-spacing: -0.02em;
+    }
+
+    .narrative p {
+      font-size: 0.935rem;
+      color: #475569;
+      margin-bottom: 1rem;
+      line-height: 1.75;
+    }
+    .narrative p:last-child { margin-bottom: 0; }
+    .narrative strong { color: var(--gcc-dark); }
+    .narrative em { color: #64748b; }
+
+    /* ── Partnership Tiers ── */
+    .tier-block {
+      border-left: 3px solid var(--gcc-gold);
+      padding: 0.8rem 0 0.8rem 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .tier-block:last-child { margin-bottom: 0; }
+    .tier-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--gcc-gold);
+      margin-bottom: 0.3rem;
+    }
+    .tier-block p {
+      font-size: 0.935rem;
+      color: #475569;
+      line-height: 1.7;
+      margin: 0;
+    }
+    .tier-block strong { color: var(--gcc-dark); }
+
+    /* ── Research Grid ── */
+    .research-item {
+      margin-bottom: 0.85rem;
+    }
+    .research-item:last-child { margin-bottom: 0; }
+    .research-field {
+      font-weight: 700;
+      color: var(--gcc-dark);
+      font-size: 0.935rem;
+    }
+    .research-desc {
+      font-size: 0.935rem;
+      color: #475569;
+      line-height: 1.7;
+    }
+
+    /* ── Closing Quote ── */
+    .closing-quote {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 2px solid var(--gcc-green-20);
+    }
+    .closing-quote p {
+      font-size: 1rem;
+      color: var(--gcc-dark);
+      line-height: 1.65;
+      font-style: italic;
+      font-weight: 500;
+    }
+
+    /* ── Page Footer ── */
+    .branded-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e2e8f0;
+    }
+    .footer-logo {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: var(--gcc-green-10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .footer-logo svg { width: 12px; height: 12px; }
+    .footer-text {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .footer-text .org-name {
+      font-weight: 600;
+      color: var(--gcc-dark);
+    }
+    .footer-text .dot {
+      margin: 0 0.3rem;
+      color: #cbd5e1;
+    }
+    .footer-text .url {
+      color: var(--gcc-green);
+      font-weight: 500;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .cover-title { font-size: 2.5rem; }
+      .cover-subtitle { font-size: 1.1rem; }
+      .content-page { padding: 2rem 1.25rem 1.5rem 1.25rem; }
     }
   </style>
 </head>
-<body class="bg-white text-gray-900">
+<body>
 
-  <!-- ============================================================ -->
-  <!-- PAGE 1: COVER -->
-  <!-- ============================================================ -->
-  <section class="cover-section min-h-screen flex flex-col justify-center items-center bg-gcc-dark text-white relative overflow-hidden print-color page-break">
-    <div class="absolute inset-0 opacity-5 no-print" style="background-image: radial-gradient(circle at 25% 25%, #22C55E 1px, transparent 1px), radial-gradient(circle at 75% 75%, #22C55E 1px, transparent 1px); background-size: 50px 50px;"></div>
+  <!-- ================================================================ -->
+  <!-- PAGE 1: COVER                                                     -->
+  <!-- ================================================================ -->
+  <section class="cover-page print-color page-break">
+    <div class="cover-content">
 
-    <div class="relative z-10 text-center max-w-4xl mx-auto px-8">
-      <!-- Logo -->
-      <div class="mb-8">
-        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gcc-green/10 border-2 border-gcc-green/30 mb-6">
-          <svg class="w-10 h-10 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <h1 class="text-5xl md:text-6xl font-black tracking-tight mb-4">
-          <span class="text-gcc-green">Global Community</span><br>
-          <span class="text-white">Cleaners</span>
-        </h1>
-        <div class="inline-block px-4 py-1.5 rounded-full bg-gcc-green/10 border border-gcc-green/30 mb-8">
-          <span class="text-gcc-green-light text-sm font-semibold tracking-wide uppercase">501(c)(3) Nonprofit Organization</span>
-        </div>
+      <!-- GCC Globe Logo -->
+      <div class="cover-logo-ring">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 003 12c0-1.605.42-3.113 1.157-4.418"/>
+        </svg>
       </div>
+
+      <!-- Title -->
+      <h1 class="cover-title">
+        <span class="green">Global Community</span><br>
+        <span class="white">Cleaners</span>
+      </h1>
+
+      <div class="cover-badge">501(c)(3) Nonprofit Organization</div>
+
+      <!-- Divider -->
+      <div class="cover-divider"></div>
 
       <!-- Subtitle -->
-      <h2 class="text-2xl md:text-3xl font-light text-gray-300 mb-4 leading-relaxed max-w-3xl mx-auto">
-        An Overview for the University of Chicago
-      </h2>
-      <p class="text-lg text-gray-400 italic max-w-2xl mx-auto mb-12">
-        How Community Technology Is Transforming Neighborhood Cleanliness in Chicago
+      <p class="cover-subtitle">
+        Transforming Community Cleanliness Through<br>
+        Technology, Gamification, and Verified Data
       </p>
 
-      <!-- Footer -->
-      <div class="text-gray-500 text-sm">
-        <p class="font-medium text-gcc-green-light mb-1">March 2026</p>
-        <p>globalcommunitycleaners.org</p>
+      <!-- Date and URL -->
+      <div style="margin-top: 3rem;">
+        <p class="cover-date">Chicago, Illinois &bull; March 2026</p>
+        <p class="cover-url">gcc-omega.vercel.app</p>
       </div>
+
     </div>
   </section>
 
-  <!-- ============================================================ -->
-  <!-- PAGE 2: WHAT GCC DOES -->
-  <!-- ============================================================ -->
-  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
-    <div class="section-divider pt-6 mb-6">
-      <div class="flex items-center gap-3 mb-1">
-        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        </div>
-        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">What GCC Does</h2>
+  <!-- ================================================================ -->
+  <!-- PAGE 2: THE PROBLEM & OUR SOLUTION                                -->
+  <!-- ================================================================ -->
+  <div class="content-page page-break">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 003 12c0-1.605.42-3.113 1.157-4.418"/>
+        </svg>
       </div>
+      <h2 class="section-title">The Problem &amp; Our Solution</h2>
     </div>
 
-    <div class="narrative text-[15px] text-gray-700 leading-relaxed">
+    <div class="narrative">
       <p>
-        Imagine a resident in North Lawndale walking to work on a Monday morning. She passes a vacant lot on Roosevelt Road where someone has dumped a mattress, a dozen trash bags, and a pile of construction debris. She has seen this corner deteriorate for months. Calling 311 feels futile&mdash;she has done it before, and nothing changed. But today she opens the GCC app on her phone, takes a photo, and in under ten seconds, the system does something remarkable: it identifies twelve distinct categories of waste in the image, estimates the volume of the pile, scores its severity on a five-point scale, and pins it to a precise GPS coordinate. Her report is live.
+        Chicago has seventy-seven community areas. Many on the South and West sides struggle with illegal dumping, accumulated trash, and aging infrastructure. The city's 311 system captures complaints but not resolutions&mdash;you can report a dirty alley, but there is no verification that anyone cleaned it, no before-and-after documentation, and no data on what was actually there. The gap between reporting and resolution is where accountability disappears.
       </p>
 
       <p>
-        Within twenty-four hours, another community member walking the same stretch of Roosevelt Road receives a notification: there is an unverified spot nearby. He walks over, confirms the mess is still there, and taps "verify." The system checks that he is within two hundred meters of the original report, that he is not the same person who submitted it, and that his device is capturing a live photo&mdash;not one pulled from a camera roll. The spot is now verified. It is no longer one person's complaint. It is a corroborated, GPS-locked, AI-classified data point.
+        GCC changes this. When a community member spots trash on their block, they open our app, photograph the scene, and in under ten seconds, the system does something remarkable: it identifies twelve distinct categories of waste in the image, estimates the volume of the pile, scores its severity on a five-point scale, and pins it to a precise GPS coordinate. Their report is live.
       </p>
 
       <p>
-        A community worker&mdash;someone who has signed up through GCC, passed a background check, and received basic training&mdash;claims the block. She walks it with GPS tracking active, stopping at every documented spot. She cleans each one, takes an after photo at the same coordinates, and the system automatically creates a before-and-after pair that proves the work was done. The entire lifecycle, from a neighbor's frustration to a clean corner with photographic evidence, is captured in structured data.
+        Within twenty-four hours, another community member walking the same stretch of road receives a notification: there is an unverified spot nearby. They walk over, confirm the mess is still there, and tap "verify." The system checks that the verifier is within two hundred meters of the original report, that they are not the same person who submitted it, and that their device is capturing a live photo&mdash;not one pulled from a camera roll. The spot is now verified. It is no longer one person's complaint. It is a corroborated, GPS-locked, AI-classified data point.
       </p>
 
       <p>
-        Every person in that chain earned something. The woman who reported the spot earned ten points. The man who verified it earned five. The worker who cleaned it earned fifty, plus pay from the sponsor who funded that block. Because behind every block in GCC, there is a sponsor&mdash;a local business, a church, a concerned resident across town&mdash;who has put up a hundred dollars to say, <em>this stretch of sidewalk matters to me</em>. It is a marketplace where care meets capital, and every transaction is documented.
+        A community worker&mdash;someone who has signed up through GCC and received basic training&mdash;claims the block. They walk it with GPS tracking active, stopping at every documented spot. They clean each one, take an after photo at the same coordinates, and the system automatically creates a before-and-after pair that proves the work was done. The entire lifecycle, from a neighbor's frustration to a clean corner with photographic evidence, is captured in structured data.
       </p>
 
       <p>
-        This is what GCC does. We are not a cleanup crew with an app. We are a system that turns the invisible labor of neighborhood maintenance into visible, verified, rewarded civic participation. We started in North Lawndale because it is one of Chicago's most underserved communities, and because the people who live there deserve the same quality of environmental data that wealthier neighborhoods take for granted. But the model is designed for all seventy-seven of Chicago's community areas, and eventually, for any city willing to let its residents lead.
+        Every person in that chain earns something. The resident who reported the spot earns ten points. The neighbor who verified it earns five. The worker who cleaned it earns fifty, plus pay from the sponsor who funded that block. Because behind every block in GCC, there is a sponsor&mdash;a local business, a church, a foundation, a concerned neighbor across town&mdash;who has put up money to say, <em>this stretch of sidewalk matters to me</em>. It is a marketplace where community care meets capital, and every transaction is documented.
+      </p>
+
+      <p>
+        This is what GCC does. We are not a cleanup crew with an app. We are a system that turns the invisible labor of neighborhood maintenance into visible, verified, rewarded civic participation. We started in North Lawndale because it is one of Chicago's most underserved communities, and because the people who live there deserve the same quality of environmental data that wealthier neighborhoods take for granted. But the model is designed for all seventy-seven of Chicago's community areas&mdash;and eventually, for any city willing to let its residents lead.
       </p>
     </div>
-  </section>
 
-  <!-- ============================================================ -->
-  <!-- PAGE 3: THE DATA STORY -->
-  <!-- ============================================================ -->
-  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
-    <div class="section-divider pt-6 mb-6">
-      <div class="flex items-center gap-3 mb-1">
-        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
-        </div>
-        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">The Data Story</h2>
+    <!-- Page Footer -->
+    <div class="branded-footer">
+      <div class="footer-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3"/>
+        </svg>
       </div>
+      <span class="footer-text">
+        <span class="org-name">Global Community Cleaners</span>
+        <span class="dot">&middot;</span>
+        501(c)(3) Nonprofit
+        <span class="dot">&middot;</span>
+        <span class="url">globalcommunitycleaners.org</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- PAGE 3: THE DATA                                                  -->
+  <!-- ================================================================ -->
+  <div class="content-page page-break">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+        </svg>
+      </div>
+      <h2 class="section-title">The Data</h2>
     </div>
 
-    <div class="narrative text-[15px] text-gray-700 leading-relaxed">
+    <div class="narrative">
       <p>
         The real innovation of GCC is not the cleanup. It is the data that the cleanup produces.
       </p>
@@ -218,7 +440,7 @@
       </p>
 
       <p>
-        This data is formatted to be SODA-compatible&mdash;the same standard used by the Chicago Data Portal. That is deliberate. We are actively pursuing a data partnership with the City of Chicago to contribute verified community cleanliness data directly to the Data Portal. Right now, the city's 311 system captures complaints, but it does not capture resolutions. A resident can call in an illegal dump, but there is no structured record of whether it was cleaned, when, by whom, or what the site looked like before and after. GCC provides that complete lifecycle: report, verify, clean, document. It is the missing half of the city's environmental data.
+        This data is formatted to be SODA-compatible&mdash;the same standard used by the Chicago Data Portal. That is deliberate. GCC is pursuing integration with the City of Chicago's Data Portal to contribute verified community cleanliness data directly to the city's open data infrastructure. Right now, the 311 system captures complaints, but it does not capture resolutions. A resident can call in an illegal dump, but there is no structured record of whether it was cleaned, when, by whom, or what the site looked like before and after. GCC provides that complete lifecycle: report, verify, clean, document. It is the missing half of the city's environmental data.
       </p>
 
       <p>
@@ -226,149 +448,224 @@
       </p>
 
       <p>
-        The anti-fraud architecture matters here, because without it the data is not trustworthy. Every submission requires a live-capture photo&mdash;no uploads from camera rolls. GPS coordinates are locked at capture time and cross-referenced with device sensors. Verifiers must be within two hundred meters and cannot verify their own reports. A fifty-meter deduplication radius prevents the same spot from being reported twice. Device attestation records the phone model, operating system, and capture method for every single data point. This is not self-reported survey data. It is instrument-grade civic measurement.
+        The anti-fraud architecture matters, because without it the data is not trustworthy. Every submission requires a live-capture photo&mdash;no uploads from camera rolls. GPS coordinates are locked at capture time and cross-referenced with device sensors. Verifiers must be within two hundred meters and cannot verify their own reports. A fifty-meter deduplication radius prevents the same spot from being reported twice. Device attestation records the phone model, operating system, and capture method for every single data point. This is not self-reported survey data. It is instrument-grade civic measurement.
       </p>
 
       <p>
-        For researchers, the implication is straightforward: this is the kind of structured, verified environmental data that does not exist anywhere else. It is granular enough for block-level analysis, standardized enough for citywide comparison, and longitudinal enough to measure change over time. And it is generated not by municipal employees or academic field teams, but by the communities themselves.
+        This is the kind of structured, verified environmental data that does not exist anywhere else in civic technology. It is granular enough for block-level analysis, standardized enough for citywide comparison, and longitudinal enough to measure change over time. And it is generated not by municipal employees or academic field teams, but by the communities themselves.
       </p>
     </div>
-  </section>
 
-  <!-- ============================================================ -->
-  <!-- PAGE 4: THE GAMIFICATION MODEL -->
-  <!-- ============================================================ -->
-  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
-    <div class="section-divider pt-6 mb-6">
-      <div class="flex items-center gap-3 mb-1">
-        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
-        </div>
-        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">The Gamification Model</h2>
+    <!-- Page Footer -->
+    <div class="branded-footer">
+      <div class="footer-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3"/>
+        </svg>
       </div>
+      <span class="footer-text">
+        <span class="org-name">Global Community Cleaners</span>
+        <span class="dot">&middot;</span>
+        501(c)(3) Nonprofit
+        <span class="dot">&middot;</span>
+        <span class="url">globalcommunitycleaners.org</span>
+      </span>
     </div>
+  </div>
 
-    <div class="narrative text-[15px] text-gray-700 leading-relaxed">
-      <p>
-        The hardest problem in civic technology is not building the tool. It is getting people to use it consistently, week after week, when the novelty wears off and the work is still there. GCC's answer to this is a gamification system designed not as a gimmick, but as a behavioral engine rooted in the same incentive principles that behavioral economists at institutions like UChicago have studied for decades.
-      </p>
-
-      <p>
-        The system recognizes five distinct actions, each worth a different number of points. Submitting a spot report earns ten points. Verifying a report&mdash;confirming that a mess is still there&mdash;earns five points, while verifying that a spot has already been cleaned earns ten (because it closes the loop and generates valuable resolution data). Volunteering to clean a spot earns fifty points. Reporting that a location is already clean earns five. These values were not chosen arbitrarily. They reflect the relative effort, data value, and community impact of each action, and they create a feedback loop where every form of participation is recognized.
-      </p>
-
-      <p>
-        On top of the point system, we have built a badge framework with fifty-four badges spread across nine categories: Jobs, Observation, Volunteer, First Response, Streaks, Community, Earnings, Early Adopter, and Sponsorship. Each badge category has up to five progression tiers&mdash;Bronze, Silver, Gold, Platinum, and Diamond&mdash;so that a resident who starts by casually reporting a dirty alley has a visible path toward becoming one of her neighborhood's most recognized community stewards. The progression is not abstract. Every badge earned is displayed on the user's public profile, and community leaderboards make sustained participation visible to neighbors and sponsors alike.
-      </p>
-
-      <p>
-        Points translate into tangible rewards through a prize pool that we are building with local partners. The vision is straightforward: Chicago's sports teams, museums, and attractions have unsold inventory&mdash;tickets to a Tuesday night Bulls game, weekday passes to the Shedd Aquarium, family four-packs at Six Flags. Donating that inventory to GCC's prize pool is a tax-deductible contribution for them and a powerful motivator for community members who might not otherwise see a reason to pick up a broom for their block. We are also developing a bounty system where sponsors can fund the cleanup of specific spots, creating a direct connection between someone who wants to see a particular corner cleaned and the person willing to do the work.
-      </p>
-
-      <p>
-        For researchers in behavioral economics and public policy, this system is a living laboratory. Every point earned, every badge unlocked, every bounty claimed generates data about how incentive structures affect sustained civic participation. Does the badge progression matter more than the point total? Do bounties crowd out volunteer cleanups or complement them? Does the presence of a leaderboard increase participation in competitive individuals while discouraging others? These are testable hypotheses, and GCC generates the data to test them at scale, in real communities, with real stakes.
-      </p>
-    </div>
-  </section>
-
-  <!-- ============================================================ -->
-  <!-- PAGE 5: PARTNERSHIPS WE'RE BUILDING -->
-  <!-- ============================================================ -->
-  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
-    <div class="section-divider pt-6 mb-6">
-      <div class="flex items-center gap-3 mb-1">
-        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-        </div>
-        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Partnerships We're Building</h2>
+  <!-- ================================================================ -->
+  <!-- PAGE 4: COMMUNITY INCENTIVES                                      -->
+  <!-- ================================================================ -->
+  <div class="content-page page-break">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+        </svg>
       </div>
+      <h2 class="section-title">Community Incentives</h2>
     </div>
 
-    <div class="narrative text-[15px] text-gray-700 leading-relaxed">
+    <div class="narrative">
       <p>
-        GCC is pursuing partnerships at three levels, and we want to be transparent about where we are and what we need&mdash;because some of these conversations are ones where the University of Chicago's network could make a meaningful difference.
+        The hardest problem in civic technology is not building the tool. It is getting people to use it consistently, week after week, when the novelty wears off and the work is still there. GCC's answer is a gamification system designed not as a gimmick, but as a behavioral engine rooted in the same incentive principles that behavioral economists have studied for decades.
       </p>
 
       <p>
-        <strong class="text-gcc-dark">At the city level</strong>, our primary target is a formal data partnership with the Chicago Data Portal. GCC's SODA-compatible export format was built specifically for this integration. The goal is for GCC to become an official data provider for the city's environmental monitoring infrastructure&mdash;filling the gap between 311 complaint intake and on-the-ground resolution tracking. We have begun outreach to the Department of Innovation and Technology, but a warm introduction from a trusted institutional partner would accelerate the conversation considerably.
+        The system recognizes five distinct actions, each worth a different number of points. Submitting a spot report earns ten points. Verifying a report&mdash;confirming that a mess is still there&mdash;earns five points, while verifying that a spot has already been cleaned earns ten, because it closes the loop and generates valuable resolution data. Volunteering to clean a spot earns fifty points. Reporting that a location is already clean earns five. These values were not chosen arbitrarily. They reflect the relative effort, data value, and community impact of each action, and they create a feedback loop where every form of participation is recognized.
       </p>
 
       <p>
-        <strong class="text-gcc-dark">At the local level</strong>, we are approaching Chicago's professional sports franchises&mdash;the Bulls, Bears, Cubs, White Sox, Blackhawks, Fire, and Sky&mdash;along with major cultural institutions like the Field Museum, Shedd Aquarium, and Museum of Science and Industry, and attractions like Six Flags and Navy Pier. The ask is simple: donate unsold tickets and passes to GCC's community reward prize pool. For them, it is a tax-deductible contribution of inventory that would otherwise go unused. For our community members, it is the difference between an abstract point total and a real experience&mdash;a family outing to a Cubs game because their mom spent Saturday mornings keeping their block clean. Every donated ticket tells a community that these institutions care about where they live.
+        On top of the point system, we have built a badge framework with fifty-four badges spread across nine categories: Jobs, Observation, Volunteer, First Response, Streaks, Community, Earnings, Early Adopter, and Sponsorship. Each category has up to five progression tiers&mdash;Bronze, Silver, Gold, Platinum, and Diamond&mdash;so that a resident who starts by casually reporting a dirty alley has a visible path toward becoming one of their neighborhood's most recognized community stewards. Every badge earned is displayed on the user's public profile, and community leaderboards make sustained participation visible to neighbors and sponsors alike.
       </p>
 
       <p>
-        <strong class="text-gcc-dark">At the national level</strong>, GCC's technology stack creates natural alignment with major technology companies. NVIDIA's edge computing and AI inference platforms are directly relevant to our on-device waste classification models. Meta's smart glasses represent a hands-free documentation tool that could transform how workers capture data in the field. Apple's LiDAR scanning technology is already integrated into our iPhone Pro workflow for volumetric waste measurement. Google's mapping infrastructure and nonprofit cloud credits program could underwrite the geospatial backbone of our entire system. These are not speculative partnerships&mdash;they are engineering fits, and each company has existing nonprofit and civic technology programs through which GCC would be a compelling candidate.
+        Points translate into tangible rewards through a prize pool that we are building with local partners. The vision is straightforward: Chicago's sports teams, museums, and cultural attractions have unsold inventory&mdash;tickets to a Tuesday night Bulls game, weekday passes to the Shedd Aquarium, family four-packs at Six Flags. Donating that inventory to GCC's prize pool is a tax-deductible contribution for the donor and a powerful motivator for community members who might not otherwise see a reason to pick up a broom for their block. A family outing to a Cubs game because their mom spent Saturday mornings keeping the block clean&mdash;that is the connection between community service and real experience that we are building.
       </p>
 
       <p>
-        <strong class="text-gcc-dark">The ask to UChicago is specific</strong>: if you have existing relationships with any of these organizations&mdash;through alumni networks, corporate partnerships, research collaborations, or board connections&mdash;an introduction or a forwarded pitch would be enormously valuable. We are not asking the University to fundraise on our behalf. We are asking you to open doors where your network overlaps with our needs. A single email from a trusted UChicago contact to the right person at the Bulls Foundation or NVIDIA's AI for Good program could be the difference between a cold outreach and a real conversation.
+        We are also developing a bounty system where sponsors can fund the cleanup of specific spots, creating a direct marketplace where someone who wants to see a particular corner cleaned is connected to the person willing to do the work. It is behavioral economics in action: variable rewards, visible progress, social recognition, and tangible outcomes, all layered on top of genuine civic participation. Every point earned, every badge unlocked, every bounty claimed generates data about how incentive structures affect sustained community engagement&mdash;data that is testable, publishable, and applicable far beyond Chicago.
       </p>
     </div>
-  </section>
 
-  <!-- ============================================================ -->
-  <!-- PAGE 6: RESEARCH COLLABORATION -->
-  <!-- ============================================================ -->
-  <section class="max-w-4xl mx-auto px-8 py-10">
-    <div class="section-divider pt-6 mb-6">
-      <div class="flex items-center gap-3 mb-1">
-        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-        </div>
-        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Research Collaboration</h2>
+    <!-- Page Footer -->
+    <div class="branded-footer">
+      <div class="footer-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3"/>
+        </svg>
       </div>
+      <span class="footer-text">
+        <span class="org-name">Global Community Cleaners</span>
+        <span class="dot">&middot;</span>
+        501(c)(3) Nonprofit
+        <span class="dot">&middot;</span>
+        <span class="url">globalcommunitycleaners.org</span>
+      </span>
     </div>
+  </div>
 
-    <div class="narrative text-[15px] text-gray-700 leading-relaxed">
-      <p>
-        We see concrete research opportunities across at least six departments at the University of Chicago, and we want to lay them out plainly so you can see where GCC fits into work you may already be doing.
-      </p>
-
-      <p>
-        In <strong class="text-gcc-dark">Urban Studies</strong>, GCC's block-level cleanliness data offers a new proxy for neighborhood investment and equity. Cleanliness is not just an aesthetic issue&mdash;it correlates with property values, health outcomes, public safety perceptions, and commercial activity. Our data makes it possible to measure these correlations at a granularity that has not been available before: not by zip code or community area, but by individual city block, tracked over time, with photographic evidence.
-      </p>
-
-      <p>
-        In <strong class="text-gcc-dark">Computer Science</strong>, the on-device AI models that classify waste into twelve categories and estimate severity are still early. We would welcome collaboration on improving model accuracy, expanding the training dataset with labeled Chicago-specific imagery, and refining our LiDAR-based volume estimation pipeline. There is also interesting work to be done on optimal cleanup routing&mdash;given a set of verified spots, what is the most efficient path for a worker to walk?
-      </p>
-
-      <p>
-        In <strong class="text-gcc-dark">Public Policy</strong>, the central question is whether gamified civic participation can be sustained over time, and whether it produces measurable improvements in neighborhood conditions. GCC is generating the longitudinal data to answer that question, but we need policy researchers to design the studies, control for confounders, and publish findings that can inform other cities considering similar models.
-      </p>
-
-      <p>
-        In <strong class="text-gcc-dark">Behavioral Economics</strong>, our points-and-badges system is a real-world incentive experiment running continuously in underserved communities. How do different reward structures affect participation rates? Do monetary bounties crowd out intrinsic motivation or complement it? Does public recognition through leaderboards change behavior differently in tight-knit neighborhoods versus more transient ones? The data exists. It needs rigorous analysis.
-      </p>
-
-      <p>
-        In <strong class="text-gcc-dark">Data Science</strong>, there are open questions about predictive modeling: can we forecast waste accumulation based on historical patterns, weather, events, and land use? Can we build early-warning models for illegal dumping hotspots? And in <strong class="text-gcc-dark">Environmental Science</strong>, GCC's twelve-category waste classification system creates the foundation for composition analysis across all seventy-seven community areas&mdash;a dataset that could reveal patterns in how waste varies by neighborhood demographics, commercial activity, and proximity to transit.
-      </p>
-
-      <p>
-        What we need from UChicago is not complicated. We need student researchers who want to work with a novel civic dataset. We need the credibility signal that comes from an academic partnership with one of the world's great research universities. And we need access to the urban planning and policy networks where this kind of work gets noticed and funded. In return, UChicago gets something that is genuinely hard to find: a real-world civic technology deployment generating structured, verified data in Chicago's own neighborhoods&mdash;a research platform, a case study, and a publication pipeline, all in one.
-      </p>
-    </div>
-
-    <!-- Closing statement -->
-    <div class="mt-8 pt-6 border-t-2 border-gcc-green/20 avoid-break">
-      <p class="text-base text-gcc-dark leading-relaxed italic font-medium">
-        "We believe GCC represents a new model for community-driven environmental data collection&mdash;one that merges technology, incentives, and verifiable impact. We would welcome the opportunity to explore how the University of Chicago can help shape what this becomes."
-      </p>
-      <div class="mt-4 flex items-center gap-2">
-        <div class="w-6 h-6 rounded bg-gcc-green/10 flex items-center justify-center">
-          <svg class="w-3.5 h-3.5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <span class="text-sm font-semibold text-gcc-dark">Global Community Cleaners</span>
-        <span class="text-sm text-gray-400 mx-1">&middot;</span>
-        <span class="text-sm text-gray-500">501(c)(3) Nonprofit</span>
-        <span class="text-sm text-gray-400 mx-1">&middot;</span>
-        <span class="text-sm text-gcc-green font-medium">globalcommunitycleaners.org</span>
+  <!-- ================================================================ -->
+  <!-- PAGE 5: PARTNERSHIP ECOSYSTEM                                     -->
+  <!-- ================================================================ -->
+  <div class="content-page page-break">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
       </div>
+      <h2 class="section-title">Partnership Ecosystem</h2>
     </div>
-  </section>
+
+    <div class="narrative" style="margin-bottom: 1.5rem;">
+      <p>
+        GCC is pursuing partnerships at three levels, and we want to be transparent about where we are and what we need&mdash;because some of these conversations are ones where a well-connected partner can make a meaningful difference.
+      </p>
+    </div>
+
+    <div class="tier-block avoid-break">
+      <div class="tier-label">City &amp; Government</div>
+      <p>
+        Our primary target is a formal data partnership with the Chicago Data Portal. GCC's SODA-compatible export format was built specifically for this integration. The goal is for GCC to become an official data provider for the city's environmental monitoring infrastructure&mdash;filling the gap between 311 complaint intake and on-the-ground resolution tracking. Beyond data integration, there are opportunities in environmental consulting, analytics contracts, and helping the city measure the effectiveness of its own cleanup operations with verified, structured evidence.
+      </p>
+    </div>
+
+    <div class="tier-block avoid-break">
+      <div class="tier-label">Local Partners &mdash; Prize Donors</div>
+      <p>
+        Chicago's professional sports franchises&mdash;the <strong>Bulls, Bears, Cubs, White Sox, Blackhawks, Fire FC,</strong> and <strong>Sky</strong>&mdash;along with major cultural institutions like the <strong>Field Museum, Shedd Aquarium, Museum of Science and Industry,</strong> and the <strong>Art Institute of Chicago</strong>, plus attractions like <strong>Six Flags</strong> and <strong>Navy Pier</strong>, and transit systems like <strong>CTA</strong> and <strong>Divvy</strong>. The ask is simple: donate unsold tickets and passes to GCC's community reward prize pool. For them, it is a tax-deductible contribution of inventory that would otherwise go unused. For our community members, it is the difference between an abstract point total and a real experience&mdash;a family outing earned through service. Every donated ticket tells a community that these institutions care about where they live.
+      </p>
+    </div>
+
+    <div class="tier-block avoid-break">
+      <div class="tier-label">National Technology Partners</div>
+      <p>
+        GCC's technology stack creates natural alignment with major technology companies. <strong>NVIDIA</strong>'s edge computing and AI inference platforms are directly relevant to our on-device waste classification models. <strong>Meta</strong>'s smart glasses represent a hands-free documentation tool that could transform how workers capture data in the field. <strong>Apple</strong>'s LiDAR scanning technology is already integrated into our iPhone Pro workflow for volumetric waste measurement. <strong>Google</strong>'s mapping infrastructure and nonprofit cloud credits program could underwrite the geospatial backbone of our entire system. These are not speculative partnerships&mdash;they are engineering fits, and each company has existing nonprofit and civic technology programs through which GCC would be a compelling candidate.
+      </p>
+    </div>
+
+    <div class="narrative" style="margin-top: 1.5rem;">
+      <p>
+        If your organization has connections to any of these partners, an introduction would be enormously valuable. We are building something new&mdash;and we need allies at every level.
+      </p>
+    </div>
+
+    <!-- Page Footer -->
+    <div class="branded-footer">
+      <div class="footer-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3"/>
+        </svg>
+      </div>
+      <span class="footer-text">
+        <span class="org-name">Global Community Cleaners</span>
+        <span class="dot">&middot;</span>
+        501(c)(3) Nonprofit
+        <span class="dot">&middot;</span>
+        <span class="url">globalcommunitycleaners.org</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- PAGE 6: RESEARCH & COLLABORATION                                  -->
+  <!-- ================================================================ -->
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-icon">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+        </svg>
+      </div>
+      <h2 class="section-title">Research &amp; Collaboration</h2>
+    </div>
+
+    <div class="narrative" style="margin-bottom: 1.25rem;">
+      <p>
+        GCC's dataset and deployment model create concrete research opportunities across multiple disciplines. We want to lay them out plainly so potential partners can see where GCC fits into work they may already be doing.
+      </p>
+    </div>
+
+    <div class="research-item avoid-break">
+      <p class="research-desc">
+        <span class="research-field">Urban Studies</span> &mdash; Block-level cleanliness data offers a new proxy for neighborhood investment and equity. Cleanliness correlates with property values, health outcomes, public safety perceptions, and commercial activity. Our data makes it possible to measure these correlations at a granularity that has not been available before: not by zip code, but by individual city block, tracked over time, with photographic evidence.
+      </p>
+    </div>
+
+    <div class="research-item avoid-break">
+      <p class="research-desc">
+        <span class="research-field">Computer Science</span> &mdash; Our on-device AI models classify waste into twelve categories and estimate severity, but they are still early. There are open problems in model accuracy, training data expansion with labeled Chicago-specific imagery, LiDAR-based volume estimation, and optimal cleanup routing&mdash;given a set of verified spots, what is the most efficient path for a worker to walk?
+      </p>
+    </div>
+
+    <div class="research-item avoid-break">
+      <p class="research-desc">
+        <span class="research-field">Public Policy</span> &mdash; Can gamified civic participation be sustained over time, and does it produce measurable improvements in neighborhood conditions? GCC is generating the longitudinal data to answer that question, but it needs rigorous study design, confounding controls, and published findings that other cities can act on.
+      </p>
+    </div>
+
+    <div class="research-item avoid-break">
+      <p class="research-desc">
+        <span class="research-field">Behavioral Economics</span> &mdash; Our points-and-badges system is a real-world incentive experiment running continuously in underserved communities. Do monetary bounties crowd out intrinsic motivation or complement it? Does the badge progression matter more than the point total? Does a public leaderboard increase participation in competitive individuals while discouraging others? The data exists. It needs rigorous analysis.
+      </p>
+    </div>
+
+    <div class="research-item avoid-break">
+      <p class="research-desc">
+        <span class="research-field">Data Science &amp; Environmental Science</span> &mdash; Predictive modeling for waste accumulation, early-warning systems for illegal dumping hotspots, and composition analysis across all seventy-seven community areas&mdash;revealing patterns in how waste varies by neighborhood demographics, commercial activity, and proximity to transit.
+      </p>
+    </div>
+
+    <div class="narrative" style="margin-top: 1.25rem;">
+      <p>
+        What we need from partners is not complicated. We need researchers who want to work with a novel civic dataset. We need the credibility signal that comes from institutional partnership. And we need access to the policy, philanthropic, and civic networks where this kind of work gets noticed and funded. In return, partners get something that is genuinely hard to find: a real-world civic technology deployment generating structured, verified data in Chicago's own neighborhoods&mdash;a research platform, a case study, and a publication pipeline, all in one.
+      </p>
+    </div>
+
+    <!-- Closing Quote -->
+    <div class="closing-quote avoid-break">
+      <p>
+        "GCC represents a new model for community-driven environmental data collection&mdash;one that merges technology, incentives, and verifiable impact. We would welcome the opportunity to explore how your organization can help shape what this becomes."
+      </p>
+    </div>
+
+    <!-- Page Footer -->
+    <div class="branded-footer">
+      <div class="footer-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3"/>
+        </svg>
+      </div>
+      <span class="footer-text">
+        <span class="org-name">Global Community Cleaners</span>
+        <span class="dot">&middot;</span>
+        501(c)(3) Nonprofit
+        <span class="dot">&middot;</span>
+        <span class="url">globalcommunitycleaners.org</span>
+      </span>
+    </div>
+  </div>
 
 </body>
 </html>
