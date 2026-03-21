@@ -9,6 +9,7 @@ data class LeaderboardEntry(
     val name: String,
     val jobsCompleted: Int,
     val totalEarnings: Int,
+    val totalPoints: Int = 0,
     val averageRating: Double?,
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
     val badgeCount: Int = 0,

@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
         neighborhood: workers.addressNeighborhood,
         jobsCompleted: workers.statsJobsCompleted,
         totalEarnings: workers.statsTotalEarnings,
+        communityPoints: workers.statsCommunityPoints,
         averageRating: workers.statsAverageRating,
         lastJobAt: workers.statsLastJobAt,
         earlyAdopterTier: workers.earlyAdopterTier,
@@ -63,8 +64,8 @@ export async function GET(request: NextRequest) {
       .from(workers)
       .where(and(...scopeConditions))
       .orderBy(
-        desc(sql`COALESCE(${workers.statsJobsCompleted}::numeric, 0)`),
-        desc(sql`COALESCE(${workers.statsTotalEarnings}::numeric, 0)`)
+        desc(sql`COALESCE(${workers.statsCommunityPoints}, 0)`),
+        desc(sql`COALESCE(${workers.statsJobsCompleted}::numeric, 0)`)
       )
       .limit(limit)
 
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
       name: worker.name,
       jobsCompleted: Number(worker.jobsCompleted || 0),
       totalEarnings: Number(worker.totalEarnings || 0),
+      totalPoints: Number((worker as any).communityPoints || 0),
       averageRating: worker.averageRating ? Number(worker.averageRating) : null,
       earlyAdopterTier: worker.earlyAdopterTier || 'standard',
       badgeCount: 0,
@@ -123,6 +125,7 @@ export async function GET(request: NextRequest) {
             name: userData.name,
             jobsCompleted: Number(userData.jobsCompleted || 0),
             totalEarnings: Number(userData.totalEarnings || 0),
+            totalPoints: Number((userData as any).communityPoints || 0),
             averageRating: userData.averageRating ? Number(userData.averageRating) : null,
             earlyAdopterTier: userData.earlyAdopterTier || 'standard',
             badgeCount: 0,

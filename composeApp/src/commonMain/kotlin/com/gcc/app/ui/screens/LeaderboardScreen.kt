@@ -600,16 +600,19 @@ private fun RankRow(
                 }
             }
 
-            // Earnings
+            // Points (all-time score)
             Column(horizontalAlignment = Alignment.End) {
-                val dollars = entry.totalEarnings / 100
-                val cents = entry.totalEarnings % 100
                 Text(
-                    "$$dollars.${cents.padTwo()}",
+                    "${entry.totalPoints} pts",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                     ),
                     color = GccGreen,
+                )
+                Text(
+                    "${entry.jobsCompleted} jobs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSubtle,
                 )
                 entry.averageRating?.let { rating ->
                     Text(
@@ -699,12 +702,10 @@ private fun YourPositionCard(
                 )
             }
 
-            // Tap hint
+            // Points total
             Column(horizontalAlignment = Alignment.End) {
-                val dollars = entry.totalEarnings / 100
-                val cents = entry.totalEarnings % 100
                 Text(
-                    "$$dollars.${cents.padTwo()}",
+                    "${entry.totalPoints} pts",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                     ),
