@@ -697,6 +697,16 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 13.5f,
+                // Color ramp: transparent → pink → red → deep red (matches website)
+                color = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
+                    0.0 to const(Color.Transparent),
+                    0.2 to const(Color(0xFFFEE2E2)), // light pink
+                    0.4 to const(Color(0xFFFCA5A5)), // medium pink
+                    0.7 to const(Color(0xFFEF4444)), // red
+                    1.0 to const(Color(0xFF991B1B)), // deep red
+                ),
                 intensity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
