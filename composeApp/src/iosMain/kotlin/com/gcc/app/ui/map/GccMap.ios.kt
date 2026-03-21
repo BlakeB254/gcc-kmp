@@ -712,31 +712,28 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
                     1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
-                // Website: intensity 0.3 @ zoom 8 → 1 @ zoom 14
-                // Scaled: same values, compressed to our zoom range
+                // Keep intensity low so density doesn't saturate
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.3f),
-                    13.5 to const(1f),
+                    13.5 to const(0.8f),
                 ),
-                // Website: radius 8 @ zoom 8, 15 @ zoom 11, 20 @ zoom 13
-                // These are CSS pixels. On mobile retina, dp ≈ px/2.
-                // We need LARGER dp values to get equivalent visual coverage.
+                // SMALL radius — only nearby spots should overlap and create
+                // density variation. Large radius = everything merges = uniform color.
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(15.dp),
-                    11 to const(25.dp),
-                    13 to const(35.dp),
+                    10 to const(4.dp),
+                    11 to const(8.dp),
+                    12 to const(12.dp),
+                    13 to const(15.dp),
                 ),
-                // Website: opacity 0.6 @ zoom 8, 0.3 @ zoom 13, 0 @ zoom 14
-                // THIS is what makes it light/airy — semi-transparent overlay
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.6f),
-                    13 to const(0.3f),
+                    10 to const(0.7f),
+                    13 to const(0.4f),
                     13.5 to const(0f),
                 ),
             )
