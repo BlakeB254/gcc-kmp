@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Community Cleaners — Partnership Landscape Overview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --gcc-green: #22C55E;
+      --gcc-green-dark: #16A34A;
+      --gcc-green-light: #4ADE80;
+      --gcc-dark: #0F172A;
+      --gcc-dark-light: #1E293B;
+      --gcc-gold: #D4A843;
+      --gcc-green-10: rgba(34, 197, 94, 0.1);
+      --gcc-green-20: rgba(34, 197, 94, 0.2);
+      --gcc-green-30: rgba(34, 197, 94, 0.3);
+      --gcc-gold-10: rgba(212, 168, 67, 0.1);
+      --gcc-gold-20: rgba(212, 168, 67, 0.2);
+      --text-primary: #1e293b;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --border-light: #e2e8f0;
+      --bg-subtle: #f8fafc;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      color: var(--text-primary);
+      background: #ffffff;
+      line-height: 1.7;
+    }
+
+    /* ── Print Styles ── */
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.55in 0.7in;
+      }
+      body {
+        font-size: 9.5pt;
+        line-height: 1.5;
+        color: #000;
+        background: #fff;
+      }
+      .no-print { display: none !important; }
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+      .avoid-break {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .print-color {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .cover-page {
+        min-height: auto;
+        padding: 2in 0 1in 0;
+      }
+      h2, h3 { page-break-after: avoid; }
+      .page-footer { position: fixed; bottom: 0; left: 0; right: 0; }
+      .section { padding: 24px 0; }
+      table { font-size: 8.5pt; }
+      .partner-table td, .partner-table th { padding: 6px 8px; }
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    html { scroll-behavior: smooth; }
+
+    /* ── Cover Page ── */
+    .cover-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: var(--gcc-dark);
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover-page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 800px 600px at 20% 30%, rgba(34, 197, 94, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 600px 500px at 80% 70%, rgba(34, 197, 94, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cover-page::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0.03;
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.03) 50px, rgba(255,255,255,0.03) 51px),
+        repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(255,255,255,0.03) 50px, rgba(255,255,255,0.03) 51px);
+      pointer-events: none;
+    }
+    .cover-content {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      max-width: 600px;
+      padding: 0 24px;
+    }
+    .cover-logo {
+      width: 110px;
+      height: 110px;
+      border-radius: 22px;
+      border: 2px solid rgba(34, 197, 94, 0.3);
+      object-fit: cover;
+      margin-bottom: 32px;
+      box-shadow: 0 8px 32px rgba(34, 197, 94, 0.15);
+    }
+    .cover-org {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--gcc-green);
+      margin-bottom: 8px;
+    }
+    .cover-nonprofit {
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.45);
+      margin-bottom: 40px;
+    }
+    .cover-divider {
+      width: 80px;
+      height: 3px;
+      background: linear-gradient(90deg, var(--gcc-green), var(--gcc-gold));
+      border-radius: 2px;
+      margin: 0 auto 40px;
+    }
+    .cover-title {
+      font-size: 28px;
+      font-weight: 300;
+      line-height: 1.4;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .cover-title strong {
+      font-weight: 700;
+      color: var(--gcc-green-light);
+    }
+    .cover-subtitle {
+      font-size: 16px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.55);
+      line-height: 1.6;
+      margin-bottom: 48px;
+    }
+    .cover-meta {
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.35);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .cover-meta span {
+      margin: 0 8px;
+      color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* ── Section Layout ── */
+    .section {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 56px 32px;
+    }
+    .section-wide {
+      max-width: 900px;
+    }
+    .section-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border-light);
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    /* ── Typography ── */
+    h2 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--gcc-dark);
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
+    }
+    h2 .accent {
+      color: var(--gcc-green);
+    }
+    .section-lead {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+    h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--gcc-dark);
+      margin-bottom: 6px;
+    }
+    h3 .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 4px;
+      margin-left: 10px;
+      vertical-align: middle;
+      position: relative;
+      top: -1px;
+    }
+    .badge-green {
+      background: var(--gcc-green-10);
+      color: var(--gcc-green-dark);
+    }
+    .badge-gold {
+      background: var(--gcc-gold-10);
+      color: #92700C;
+    }
+    .badge-dark {
+      background: rgba(15, 23, 42, 0.08);
+      color: var(--gcc-dark-light);
+    }
+    p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+    p:last-child { margin-bottom: 0; }
+
+    .intro-text {
+      font-size: 16px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+    }
+
+    /* ── Partner Category Block ── */
+    .partner-category {
+      margin-bottom: 40px;
+    }
+    .partner-category:last-child {
+      margin-bottom: 0;
+    }
+    .partner-category-header {
+      margin-bottom: 12px;
+    }
+    .partner-category-desc {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      max-width: 720px;
+    }
+
+    /* ── Tables ── */
+    .partner-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .partner-table thead th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 10px 12px;
+      border-bottom: 2px solid var(--border-light);
+      background: var(--bg-subtle);
+    }
+    .partner-table tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-light);
+      color: var(--text-secondary);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .partner-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .partner-table tbody tr:hover {
+      background: rgba(34, 197, 94, 0.03);
+    }
+    .partner-table .org-name {
+      font-weight: 600;
+      color: var(--gcc-dark);
+      white-space: nowrap;
+    }
+    .partner-table .benefit {
+      color: var(--text-muted);
+      font-size: 12.5px;
+    }
+
+    /* ── Highlight Box ── */
+    .highlight-box {
+      background: linear-gradient(135deg, var(--gcc-green-10), rgba(34, 197, 94, 0.04));
+      border: 1px solid var(--gcc-green-20);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin: 24px 0;
+    }
+    .highlight-box p {
+      color: var(--text-primary);
+    }
+    .highlight-box-gold {
+      background: linear-gradient(135deg, var(--gcc-gold-10), rgba(212, 168, 67, 0.04));
+      border-color: var(--gcc-gold-20);
+    }
+    .highlight-box-dark {
+      background: var(--gcc-dark);
+      border-color: transparent;
+      color: #fff;
+    }
+    .highlight-box-dark p {
+      color: rgba(255, 255, 255, 0.8);
+    }
+    .highlight-box-dark strong {
+      color: var(--gcc-green-light);
+    }
+
+    /* ── CTA Section ── */
+    .cta-list {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0;
+    }
+    .cta-list li {
+      position: relative;
+      padding: 8px 0 8px 28px;
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .cta-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--gcc-green-20);
+      border: 2px solid var(--gcc-green);
+    }
+
+    /* ── Script Box (what to say) ── */
+    .script-box {
+      background: var(--bg-subtle);
+      border-left: 4px solid var(--gcc-green);
+      border-radius: 0 10px 10px 0;
+      padding: 24px 28px;
+      margin: 24px 0;
+      font-style: italic;
+    }
+    .script-box p {
+      color: var(--text-primary);
+      font-size: 14.5px;
+      line-height: 1.75;
+      margin-bottom: 0;
+    }
+    .script-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--gcc-green-dark);
+      font-style: normal;
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    /* ── What We Provide Grid ── */
+    .provide-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .provide-item {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .provide-item-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--gcc-green-10);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      font-size: 16px;
+    }
+    .provide-item h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--gcc-dark);
+      margin-bottom: 4px;
+    }
+    .provide-item p {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-muted);
+      margin-bottom: 0;
+    }
+
+    /* ── Reference Card ── */
+    .ref-card {
+      background: var(--gcc-dark);
+      color: #fff;
+      border-radius: 16px;
+      padding: 40px;
+      margin-top: 32px;
+    }
+    .ref-card h3 {
+      color: #fff;
+      font-size: 20px;
+      margin-bottom: 24px;
+    }
+    .ref-grid {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 0;
+      font-size: 14px;
+    }
+    .ref-label {
+      font-weight: 700;
+      color: var(--gcc-green-light);
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .ref-value {
+      color: rgba(255, 255, 255, 0.75);
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      line-height: 1.5;
+    }
+    .ref-grid .ref-label:last-of-type,
+    .ref-grid .ref-value:last-of-type {
+      border-bottom: none;
+    }
+
+    /* ── Closing Statement ── */
+    .closing-statement {
+      text-align: center;
+      padding: 40px 0 20px;
+    }
+    .closing-statement p {
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--gcc-dark);
+      line-height: 1.7;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .closing-statement .green {
+      color: var(--gcc-green-dark);
+    }
+
+    /* ── Data Portal Mini Section ── */
+    .data-points {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .data-point {
+      text-align: center;
+      padding: 20px 12px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+    }
+    .data-point .number {
+      display: block;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--gcc-green);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .data-point .label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* ── Footer ── */
+    .doc-footer {
+      text-align: center;
+      padding: 32px;
+      border-top: 1px solid var(--border-light);
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .section { padding: 40px 20px; }
+      h2 { font-size: 20px; }
+      .cover-title { font-size: 22px; }
+      .provide-grid { grid-template-columns: 1fr; }
+      .data-points { grid-template-columns: 1fr; }
+      .ref-grid { grid-template-columns: 100px 1fr; font-size: 13px; }
+      .ref-card { padding: 28px 20px; }
+      .partner-table { font-size: 12px; }
+      .partner-table thead th,
+      .partner-table tbody td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE 1: COVER
+     ════════════════════════════════════════════════════════════════ -->
+<div class="cover-page print-color">
+  <div class="cover-content">
+    <img src="/assets/gcc-logo.jpg" alt="GCC" class="cover-logo">
+    <div class="cover-org">Global Community Cleaners</div>
+    <div class="cover-nonprofit">501(c)(3) Nonprofit Organization</div>
+    <div class="cover-divider"></div>
+    <h1 class="cover-title"><strong>Partnership Landscape</strong><br>How You Can Help Us Build Something New</h1>
+    <p class="cover-subtitle">An overview of the partnerships we're building and how your connections can accelerate community impact across Chicago.</p>
+    <div class="cover-meta">Chicago, Illinois <span>&bull;</span> March 2026 <span>&bull;</span> globalcommunitycleaners.org</div>
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE 2: WHAT WE'RE BUILDING
+     ════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-lead">Background</div>
+  <h2>What We're <span class="accent">Building</span></h2>
+  <div style="height: 20px;"></div>
+
+  <p class="intro-text">Global Community Cleaners is a technology platform that turns neighborhood cleanup into verified, GPS-tracked, AI-classified civic data. Community members report dirty spots through our mobile app, verify each other's reports, clean blocks, and earn points and rewards for their work. Every action is documented with before-and-after photos, GPS coordinates, and AI-powered waste classification.</p>
+
+  <p class="intro-text">Launched in North Lawndale on Chicago's West Side, GCC is designed to scale across all 77 of Chicago's community areas. Our data is structured for the Chicago Data Portal (SODA-compatible, 25+ fields per report), creating a new layer of verified environmental intelligence that doesn't exist anywhere else.</p>
+
+  <p class="intro-text">But technology alone doesn't clean neighborhoods. We need a network of partners who provide the resources, rewards, and infrastructure that keep community workers engaged and coming back to their blocks. That's where you come in.</p>
+
+  <div class="data-points">
+    <div class="data-point avoid-break">
+      <span class="number">25+</span>
+      <span class="label">Fields per report</span>
+    </div>
+    <div class="data-point avoid-break">
+      <span class="number">77</span>
+      <span class="label">Target community areas</span>
+    </div>
+    <div class="data-point avoid-break">
+      <span class="number">100%</span>
+      <span class="label">GPS-verified data</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="page-break"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE 3: THE PARTNERSHIPS WE NEED
+     ════════════════════════════════════════════════════════════════ -->
+<div class="section section-wide">
+  <div class="section-lead">Partnership Categories</div>
+  <h2>The Partnerships <span class="accent">We Need</span></h2>
+  <div style="height: 8px;"></div>
+  <p>We're building three kinds of partnerships. Each offers a different way for organizations to contribute&mdash;and a different value proposition for the partner.</p>
+  <div style="height: 28px;"></div>
+
+  <!-- ── A. Community Reward Partners ── -->
+  <div class="partner-category avoid-break">
+    <div class="partner-category-header">
+      <h3>Community Reward Partners <span class="badge badge-green">Local</span></h3>
+    </div>
+    <p class="partner-category-desc">We need donations of tickets, passes, and memberships to use as rewards for community workers who clean their blocks. Workers earn points for verified cleanups, then redeem them for real rewards. Every donation is a 501(c)(3) tax write-off, and every ticket given creates a documented, photographed cleanup.</p>
+
+    <table class="partner-table">
+      <thead>
+        <tr>
+          <th style="width: 22%;">Organization Type</th>
+          <th style="width: 38%;">What We'd Ask For</th>
+          <th style="width: 40%;">Why It Works for Them</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="org-name">Chicago Bulls</td>
+          <td>Regular-season ticket blocks</td>
+          <td class="benefit">Tax deduction on unsold inventory, community engagement PR</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Bears</td>
+          <td>Merchandise and memorabilia for prizes</td>
+          <td class="benefit">Bears Care / Community All-Pros program alignment</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Cubs</td>
+          <td>Collectibles and team merchandise</td>
+          <td class="benefit">Cubs Charities community mission</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago White Sox</td>
+          <td>Complimentary game tickets</td>
+          <td class="benefit">South Side community focus matches GCC territory</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Blackhawks</td>
+          <td>Game experience packages</td>
+          <td class="benefit">Youth incentive, underserved community access</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Fire FC</td>
+          <td>Match tickets and memorabilia</td>
+          <td class="benefit">Accessible sport for diverse communities</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Sky</td>
+          <td>Tickets for families and youth</td>
+          <td class="benefit">Sky Cares mission, women in community leadership</td>
+        </tr>
+        <tr>
+          <td class="org-name">Six Flags Great America</td>
+          <td>Day passes and season passes</td>
+          <td class="benefit">Allocates ~$50K/year in tickets to nonprofits</td>
+        </tr>
+        <tr>
+          <td class="org-name">Navy Pier</td>
+          <td>Centennial Wheel + attraction passes</td>
+          <td class="benefit">Already distributes 15,000 free tickets annually</td>
+        </tr>
+        <tr>
+          <td class="org-name">Field Museum</td>
+          <td>Admission passes</td>
+          <td class="benefit">Environmental science education alignment</td>
+        </tr>
+        <tr>
+          <td class="org-name">Shedd Aquarium</td>
+          <td>Admission vouchers</td>
+          <td class="benefit">Environmental stewardship mission</td>
+        </tr>
+        <tr>
+          <td class="org-name">Museum of Science &amp; Industry</td>
+          <td>Admission passes</td>
+          <td class="benefit">STEM + AI technology tie-in</td>
+        </tr>
+        <tr>
+          <td class="org-name">CTA</td>
+          <td>Ventra transit cards (bulk purchase)</td>
+          <td class="benefit">Practical reward, enables workers to reach sites</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Park District</td>
+          <td>Facility access and program passes</td>
+          <td class="benefit">ARCS program for park-adjacent cleanups</td>
+        </tr>
+        <tr>
+          <td class="org-name">After School Matters</td>
+          <td>Youth program partnerships</td>
+          <td class="benefit">Paid teen internship pipeline (serves 19K teens)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="height: 20px;"></div>
+  <div class="page-break"></div>
+
+  <!-- ── B. Technology & Infrastructure Partners ── -->
+  <div class="partner-category avoid-break">
+    <div class="partner-category-header">
+      <h3>Technology &amp; Infrastructure Partners <span class="badge badge-dark">National</span></h3>
+    </div>
+    <p class="partner-category-desc">We need hardware, software, and cloud resources to power our field operations. GCC already runs AI waste classification, GPS verification, and LiDAR depth analysis on both iOS and Android. We need partners to help us scale these capabilities across 77 community areas.</p>
+
+    <table class="partner-table">
+      <thead>
+        <tr>
+          <th style="width: 22%;">Organization</th>
+          <th style="width: 38%;">What We'd Ask For</th>
+          <th style="width: 40%;">Why It Works for Them</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="org-name">NVIDIA</td>
+          <td>Edge AI hardware (Jetson), training compute</td>
+          <td class="benefit">AI for social good showcase, environmental justice data</td>
+        </tr>
+        <tr>
+          <td class="org-name">Meta</td>
+          <td>Ray-Ban smart glasses for hands-free documentation</td>
+          <td class="benefit">Real-world AR use case, community impact PR</td>
+        </tr>
+        <tr>
+          <td class="org-name">Apple</td>
+          <td>iPhone hardware for LiDAR-equipped workers</td>
+          <td class="benefit">LiDAR depth scanning showcase, accessibility story</td>
+        </tr>
+        <tr>
+          <td class="org-name">Google</td>
+          <td>Cloud credits, Maps Platform, Nonprofit program</td>
+          <td class="benefit">Google for Nonprofits program, map data alignment</td>
+        </tr>
+        <tr>
+          <td class="org-name">Microsoft</td>
+          <td>Azure credits and Nonprofit program</td>
+          <td class="benefit">Tech for social impact portfolio</td>
+        </tr>
+        <tr>
+          <td class="org-name">Anthropic / OpenAI</td>
+          <td>API credits for AI waste classification</td>
+          <td class="benefit">AI for environmental justice showcase</td>
+        </tr>
+        <tr>
+          <td class="org-name">Mapbox</td>
+          <td>Premium map tiles and geocoding</td>
+          <td class="benefit">Community mapping showcase</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="height: 20px;"></div>
+
+  <!-- ── C. Funding & Grant Partners ── -->
+  <div class="partner-category avoid-break">
+    <div class="partner-category-header">
+      <h3>Funding &amp; Grant Partners <span class="badge badge-gold">Grants &amp; Foundations</span></h3>
+    </div>
+    <p class="partner-category-desc">We're pursuing direct funding from foundations and government programs to expand coverage and deepen impact. Several major grant cycles are open right now.</p>
+
+    <table class="partner-table">
+      <thead>
+        <tr>
+          <th style="width: 25%;">Organization</th>
+          <th style="width: 40%;">Opportunity</th>
+          <th style="width: 35%;">Potential</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="org-name">Google.org</td>
+          <td>AI for Government Innovation 2026</td>
+          <td class="benefit">Up to $3M (deadline April 3, 2026)</td>
+        </tr>
+        <tr>
+          <td class="org-name">EPA</td>
+          <td>EJ Thriving Communities subgrants</td>
+          <td class="benefit">Up to $350K (rolling through Nov 2026)</td>
+        </tr>
+        <tr>
+          <td class="org-name">United Way of Metro Chicago</td>
+          <td>BridgeBuilders Fund</td>
+          <td class="benefit">Up to $50K unrestricted</td>
+        </tr>
+        <tr>
+          <td class="org-name">LISC Chicago</td>
+          <td>Creative Placemaking grants</td>
+          <td class="benefit">$50K&ndash;$250K</td>
+        </tr>
+        <tr>
+          <td class="org-name">Chicago Community Trust</td>
+          <td>Pre-Development Fund</td>
+          <td class="benefit">Up to $100K</td>
+        </tr>
+        <tr>
+          <td class="org-name">MacArthur Foundation</td>
+          <td>Vital Communities (via Elevated Chicago)</td>
+          <td class="benefit">~$350K pool</td>
+        </tr>
+        <tr>
+          <td class="org-name">City of Chicago</td>
+          <td>Data Portal partnership / consulting</td>
+          <td class="benefit">Data licensing + analytics contracts</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="page-break"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE 4: CITY DATA PARTNERSHIP
+     ════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-lead">Data Partnership</div>
+  <h2>The Chicago Data Portal <span class="accent">Opportunity</span></h2>
+  <div style="height: 20px;"></div>
+
+  <p>Chicago's 311 system captures complaints. But there's no structured way to verify that reported problems were actually resolved, who resolved them, or what the area looked like before and after. GCC fills that gap.</p>
+
+  <p>Our data is already structured for the Chicago Data Portal&mdash;SODA-compatible, with 25+ fields per community report, including GPS coordinates, before/after photo URLs, AI waste classification, and resolution timestamps. We've built the export API. We're ready to integrate.</p>
+
+  <div class="highlight-box">
+    <p><strong style="color: var(--gcc-dark);">Our proposal to the City:</strong> A 90-day free pilot providing verified cleanup data for North Lawndale. If the data proves valuable, GCC becomes a consulting and data licensing partner for the City's environmental intelligence layer.</p>
+  </div>
+
+  <p>This is a partnership that turns volunteer cleanups into structured civic data&mdash;the kind of data the City needs for budgeting, aldermanic accountability, and federal reporting. If you know anyone at the Department of Technology or the Department of Environment, that introduction could be transformative.</p>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- University Research Partnerships -->
+<div class="section">
+  <div class="section-lead">Academic Partners</div>
+  <h2>University <span class="accent">Research Partnerships</span></h2>
+  <div style="height: 12px;"></div>
+
+  <p>GCC generates a novel dataset that doesn't exist anywhere else in civic technology&mdash;verified, GPS-tagged, AI-classified environmental data collected by community members at street level. This opens research opportunities across multiple disciplines.</p>
+
+  <div style="height: 16px;"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 28%;">Research Area</th>
+        <th style="width: 40%;">Opportunity</th>
+        <th style="width: 32%;">What GCC Provides</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="org-name">Urban Studies</td>
+        <td>Neighborhood cleanliness as a proxy for investment, equity, and gentrification patterns across 77 community areas</td>
+        <td>Longitudinal cleanliness scores, per-area trend data</td>
+      </tr>
+      <tr>
+        <td class="org-name">Computer Science / AI</td>
+        <td>On-device waste classification accuracy, LiDAR volumetric estimation, anti-fraud detection models</td>
+        <td>Training data, model performance benchmarks, edge AI deployment case study</td>
+      </tr>
+      <tr>
+        <td class="org-name">Public Policy</td>
+        <td>Impact of gamification on civic participation; comparing community-driven vs. government-driven cleanup</td>
+        <td>Points/badge engagement data, 311 comparison dataset</td>
+      </tr>
+      <tr>
+        <td class="org-name">Behavioral Economics</td>
+        <td>How incentive structures (points, badges, prize tiers) affect sustained community engagement over time</td>
+        <td>Gamification interaction data, retention metrics, reward redemption patterns</td>
+      </tr>
+      <tr>
+        <td class="org-name">Data Science</td>
+        <td>Predictive models for waste accumulation, optimal cleanup routing, resource allocation</td>
+        <td>25+ field SODA-compatible API, historical spot data, geographic clustering</td>
+      </tr>
+      <tr>
+        <td class="org-name">Environmental Science</td>
+        <td>Waste composition analysis across community areas, seasonal patterns, illegal dumping hotspots</td>
+        <td>12-category AI classification data, before/after photo pairs, affected area geometry</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="height: 16px;"></div>
+
+  <div class="highlight-box">
+    <p><strong style="color: var(--gcc-dark);">What we need from academic partners:</strong> Student researchers for data analysis and model improvement, a credibility signal that strengthens grant applications, and connections to urban planning faculty and civic tech networks.</p>
+    <p style="margin-top: 8px;"><strong style="color: var(--gcc-dark);">What universities get:</strong> A novel dataset for publications, a real-world AI/ML deployment case study, and a community engagement research platform operating in one of America's most-studied cities.</p>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="page-break"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE: HOW YOU CAN HELP
+     ════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-lead">Take Action</div>
+  <h2>How You Can <span class="accent">Help</span></h2>
+  <div style="height: 20px;"></div>
+
+  <div class="highlight-box-dark highlight-box" style="background: var(--gcc-dark); border-color: transparent;">
+    <p style="color: rgba(255,255,255,0.85); font-size: 16px; line-height: 1.75;">You don't need to fund us or sponsor a block (though we welcome that too). <strong style="color: var(--gcc-green-light);">What we need most right now is introductions.</strong></p>
+  </div>
+
+  <div style="height: 12px;"></div>
+  <p style="font-weight: 600; color: var(--gcc-dark); font-size: 15px; margin-bottom: 8px;">If you know someone at:</p>
+  <ul class="cta-list">
+    <li>Any Chicago sports team's community relations department</li>
+    <li>A museum or attraction's nonprofit partnerships team</li>
+    <li>A tech company's social impact or nonprofit program</li>
+    <li>A foundation that funds environmental justice or civic technology</li>
+    <li>The City of Chicago's Department of Technology or Department of Environment</li>
+    <li>A university with urban studies, public policy, or data science programs</li>
+  </ul>
+
+  <div style="height: 24px;"></div>
+
+  <div class="script-box">
+    <span class="script-label">What to say</span>
+    <p>"I've been talking with Global Community Cleaners&mdash;they're a Chicago 501(c)(3) that uses AI and GPS to verify neighborhood cleanups. They're looking for <em>[tickets as rewards / technology partnerships / grant funding]</em>. Would you be open to a 15-minute call with their founder?"</p>
+  </div>
+
+  <div style="height: 24px;"></div>
+
+  <p style="font-weight: 600; color: var(--gcc-dark); font-size: 15px; margin-bottom: 4px;">What we'll provide for every introduction:</p>
+
+  <div class="provide-grid">
+    <div class="provide-item avoid-break">
+      <div class="provide-item-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <h4>Tailored Pitch</h4>
+      <p>A custom pitch deck specific to the organization and what they care about.</p>
+    </div>
+    <div class="provide-item avoid-break">
+      <div class="provide-item-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+      </div>
+      <h4>Photo Documentation</h4>
+      <p>Before-and-after photo evidence showing real, verified community impact.</p>
+    </div>
+    <div class="provide-item avoid-break">
+      <div class="provide-item-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+      <h4>GPS-Verified Data</h4>
+      <p>Location data showing exactly where and how every donation was used.</p>
+    </div>
+    <div class="provide-item avoid-break">
+      <div class="provide-item-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>
+      </div>
+      <h4>Tax Receipts</h4>
+      <p>Full 501(c)(3) tax receipts for all donations, large or small.</p>
+    </div>
+  </div>
+
+  <div style="height: 32px;"></div>
+
+  <div class="closing-statement">
+    <p>Every introduction matters. The organizations that help GCC now will be remembered as the ones who <span class="green">invested in Chicago's neighborhoods when it counted.</span></p>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="page-break"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE 6: AT A GLANCE
+     ════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-lead">Quick Reference</div>
+  <h2>At a <span class="accent">Glance</span></h2>
+  <div style="height: 12px;"></div>
+  <p>Everything a potential partner needs to know in 30 seconds.</p>
+
+  <div class="ref-card print-color">
+    <h3 style="margin-bottom: 28px;">Global Community Cleaners</h3>
+    <div class="ref-grid">
+      <div class="ref-label">What</div>
+      <div class="ref-value">AI-powered community cleanup verification platform. Workers report dirty spots, clean blocks, and earn rewards&mdash;every action GPS-verified and AI-classified.</div>
+
+      <div class="ref-label">Where</div>
+      <div class="ref-value">Launched in North Lawndale, targeting all 77 Chicago community areas.</div>
+
+      <div class="ref-label">Data</div>
+      <div class="ref-value">25+ fields per report, SODA-compatible for the Chicago Data Portal. Before/after photos, GPS coordinates, AI waste classification, timestamps.</div>
+
+      <div class="ref-label">Technology</div>
+      <div class="ref-value">Kotlin Multiplatform (iOS and Android), CoreML + TFLite on-device AI, LiDAR depth scanning, real-time GPS verification.</div>
+
+      <div class="ref-label">Status</div>
+      <div class="ref-value">501(c)(3) nonprofit, production app deployed, 17 verified community reports, 10 active blocks in North Lawndale.</div>
+
+      <div class="ref-label">Website</div>
+      <div class="ref-value" style="color: var(--gcc-green-light);">globalcommunitycleaners.org</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<div class="doc-footer">
+  Global Community Cleaners &bull; 501(c)(3) Nonprofit &bull; globalcommunitycleaners.org
+</div>
+
+</body>
+</html>
