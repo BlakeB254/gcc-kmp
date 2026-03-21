@@ -238,7 +238,7 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill — hidden at heatmap zoom so pink reads on clean background
+            // Service area fill — hidden during heatmap so pink reads on clean background
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
@@ -246,9 +246,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0f),    // invisible during heatmap
-                    13.5 to const(0f),  // still invisible as heatmap fades
-                    14 to const(0.8f),  // fades back in after dots take over
+                    10 to const(0f),
+                    14 to const(0f),
+                    14.5 to const(0.5f),
                     15 to const(1f),
                 ),
             )
@@ -701,44 +701,49 @@ actual fun GccMap(
             // Heatmap: pink density cloud matching website aesthetic
             // Key: small radius creates distinct hotspots with falloff between them,
             // high intensity pushes cluster centers to the deep color stops
+            // Heatmap visible from zoom 10 to 14.5
+            // Service area zoom is 13.2 — heatmap must be fully visible there!
+            // Previous maxZoom of 13.5 meant heatmap was nearly invisible at 13.2
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 10f,
-                maxZoom = 13.5f,
+                maxZoom = 14.5f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
-                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
-                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
-                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
+                    0.2 to const(Color(0xFFFEE2E2)),  // light pink
+                    0.4 to const(Color(0xFFFCA5A5)),  // medium pink
+                    0.7 to const(Color(0xFFEF4444)),  // red
+                    1.0 to const(Color(0xFF991B1B)),  // deep red
                 ),
-                // LOW intensity — a single spot barely registers (light pink).
-                // Only where 2-3+ spots overlap does density build to red.
+                // Low intensity: single spot = light pink, 3+ overlap = red
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.1f),
-                    13.5 to const(0.3f),
+                    10 to const(0.15f),
+                    13 to const(0.4f),
+                    14.5 to const(0.6f),
                 ),
-                // Medium radius — enough spread so nearby spots' kernels overlap
-                // and create density buildup, but not so big everything merges
+                // Radius grows with zoom — at zoom 13.2 (service area), ~25dp
+                // gives enough overlap for nearby spots without merging all
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(10.dp),
-                    11 to const(15.dp),
-                    12 to const(22.dp),
-                    13 to const(30.dp),
+                    12 to const(18.dp),
+                    13 to const(25.dp),
+                    14 to const(30.dp),
                 ),
+                // Fully visible at service area zoom (13.2), fades after 14
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.6f),
-                    13 to const(0.3f),
-                    13.5 to const(0f),
+                    13 to const(0.5f),
+                    14 to const(0.3f),
+                    14.5 to const(0f),
                 ),
             )
 
