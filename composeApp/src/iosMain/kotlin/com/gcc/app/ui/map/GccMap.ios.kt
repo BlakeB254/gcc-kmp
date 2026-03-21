@@ -707,27 +707,28 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)), // red
                     1.0 to const(Color(0xFF991B1B)), // deep red
                 ),
-                // Matches website: intensity 0.3 → 1 linear with zoom
+                // Higher intensity so density peaks actually reach the deep red stops
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.3f),
-                    13.5 to const(1f),
+                    10 to const(0.6f),
+                    12 to const(1.2f),
+                    13.5 to const(1.5f),
                 ),
-                // Larger radius = more overlap = denser clusters (matches website 8→15→20)
+                // Large radius so spot kernels overlap heavily — creates real density gradients
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(8.dp),
-                    11 to const(15.dp),
-                    13 to const(20.dp),
+                    10 to const(15.dp),
+                    11 to const(25.dp),
+                    12 to const(35.dp),
+                    13 to const(40.dp),
                 ),
-                // Matches website: 0.6 → 0.3 → 0
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.6f),
-                    13 to const(0.3f),
+                    10 to const(0.7f),
+                    13 to const(0.4f),
                     13.5 to const(0f),
                 ),
             )
