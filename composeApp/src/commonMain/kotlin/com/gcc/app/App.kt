@@ -95,6 +95,7 @@ fun App(component: RootComponent) {
                     onUserCardClick = component::navigateToUserCard,
                     onPointsClick = component::navigateToPoints,
                     onImpactClick = component::navigateToImpact,
+                    onVerifyDocuments = component::navigateToDocumentUpload,
                 )
                 is Screen.Achievements -> AchievementsScreen(
                     onBack = component::navigateBack,

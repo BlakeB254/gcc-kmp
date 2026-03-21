@@ -23,6 +23,7 @@ import com.gcc.app.ui.gamification.BadgeCard
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.padTwo
 import com.gcc.app.viewmodel.ProfileViewModel
+import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.auth.TokenManager
 import org.koin.compose.koinInject
 
@@ -36,6 +37,7 @@ fun ProfileScreen(
     onUserCardClick: () -> Unit = {},
     onPointsClick: () -> Unit = {},
     onImpactClick: () -> Unit = {},
+    onVerifyDocuments: () -> Unit = {},
 ) {
     val viewModel = koinInject<ProfileViewModel>()
     val tokenManager = koinInject<TokenManager>()
@@ -207,6 +209,15 @@ fun ProfileScreen(
                 )
             }
 
+            // Verification banner — shown when not approved
+            if (worker.verification.status != VerificationStatus.APPROVED) {
+                VerificationBanner(
+                    status = worker.verification.status,
+                    onAction = onVerifyDocuments,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // Badge preview
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 SectionHeader(
@@ -273,5 +284,75 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun VerificationBanner(
+    status: VerificationStatus,
+    onAction: () -> Unit,
+) {
+    if (status == VerificationStatus.APPROVED) return
+
+    val icon: String
+    val title: String
+    val subtitle: String
+    val buttonText: String
+    val accentColor: Color
+
+    when (status) {
+        VerificationStatus.PENDING -> {
+            icon = "\uD83D\uDD12"
+            title = "Verify Your Identity"
+            subtitle = "Upload your documents to start earning"
+            buttonText = "Upload Documents"
+            accentColor = GccGreen
+        }
+        VerificationStatus.REJECTED -> {
+            icon = "\u26A0\uFE0F"
+            title = "Documents Need Attention"
+            subtitle = "Your documents were not accepted — please resubmit"
+            buttonText = "Resubmit Documents"
+            accentColor = GccError
+        }
+        VerificationStatus.NEEDS_INFO -> {
+            icon = "\u2139\uFE0F"
+            title = "More Info Needed"
+            subtitle = "We need additional information to verify your account"
+            buttonText = "Provide Info"
+            accentColor = GccGold
+        }
+        VerificationStatus.APPROVED -> return
+    }
+
+    GccCard(
+        accentColor = accentColor,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(icon, style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        GccButton(
+            text = buttonText,
+            onClick = onAction,
+            variant = GccButtonVariant.PRIMARY,
+        )
     }
 }
