@@ -928,7 +928,7 @@ export function NeighborhoodMapSection() {
                 )}
                 <div className="flex items-center flex-wrap gap-3 text-xs text-neutral-500">
                   {selectedSpot.affectedRadiusMeters && (
-                    <span>Radius: {Math.round(selectedSpot.affectedRadiusMeters)}m</span>
+                    <span>~{Math.round(selectedSpot.affectedRadiusMeters)}m radius</span>
                   )}
                   {selectedSpot.reporterName && (
                     <span>By: {selectedSpot.reporterName}</span>

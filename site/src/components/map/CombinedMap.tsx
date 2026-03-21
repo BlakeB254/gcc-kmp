@@ -361,7 +361,7 @@ export function CombinedMap({
                 <p className="text-sm text-neutral-500 mb-2 line-clamp-3">{s.description}</p>
               )}
               <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-                <span>Radius: {s.radiusMeters}m</span>
+                <span>~{Math.round(s.radiusMeters)}m radius</span>
                 {s.reporterName && <span>By: {s.reporterName}</span>}
                 {allPhotos.length > 1 && <span className="ml-auto">{allPhotos.length} photos</span>}
               </div>
