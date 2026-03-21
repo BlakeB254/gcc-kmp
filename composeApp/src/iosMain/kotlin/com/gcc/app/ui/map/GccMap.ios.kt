@@ -791,17 +791,17 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(10.dp),
-                    15 to const(12.dp),
-                    17 to const(16.dp),
+                    14 to const(7.dp),
+                    15 to const(8.dp),
+                    17 to const(10.dp),
                 ),
                 strokeColor = const(Color(0xFFFF8C00)),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(2.dp),
-                    15 to const(2.5.dp),
-                    17 to const(3.dp),
+                    14 to const(1.5.dp),
+                    15 to const(2.dp),
+                    17 to const(2.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
