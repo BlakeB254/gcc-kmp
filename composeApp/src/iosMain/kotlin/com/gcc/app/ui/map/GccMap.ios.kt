@@ -790,18 +790,19 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(11.dp),
-                    15 to const(14.dp),
+                    13 to const(0.dp),
+                    14 to const(11.dp),
+                    16 to const(16.dp),
                 ),
                 strokeColor = const(Color(0xFFFF8C00)),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(2.dp),
-                    15 to const(3.dp),
+                    13 to const(0.dp),
+                    14 to const(2.dp),
+                    16 to const(3.dp),
                 ),
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
             )
         }
 
