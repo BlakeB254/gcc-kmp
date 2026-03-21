@@ -695,26 +695,26 @@ actual fun GccMap(
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 12f,
+                minZoom = 10f,
                 maxZoom = 13.5f,
-                // Intensity ramps up as you zoom into the area
                 intensity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    12 to const(0.5f),
+                    10 to const(0.3f),
+                    12 to const(0.6f),
                     13 to const(1f),
                 ),
-                // Tight radius so heatmap stays within the actual data footprint
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
+                    10 to const(3.dp),
                     12 to const(6.dp),
                     13 to const(12.dp),
                 ),
-                // Fully gone before dots appear at 13.5
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
+                    10 to const(0.4f),
                     12 to const(0.5f),
                     13 to const(0.3f),
                     13.5 to const(0f),
@@ -757,10 +757,10 @@ actual fun GccMap(
                     type = exponential(1.5f),
                     input = zoom(),
                     13 to const(0.dp),
-                    13.5 to const(5.dp),
-                    14 to const(7.dp),
-                    15 to const(9.dp),
-                    17 to const(12.dp),
+                    13.5 to const(3.dp),
+                    14 to const(5.dp),
+                    15 to const(6.dp),
+                    17 to const(8.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
