@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         showOnMap: true,
         capturedAt: new Date().toISOString(),
+        source: 'admin', // Admin spots — no gamification points awarded
       })
       .returning()
 

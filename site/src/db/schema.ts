@@ -813,6 +813,7 @@ export const communityReports = pgTable('community_reports', {
   reporterType: userTypeEnum('reporter_type'), // null = anonymous
   reporterId: integer('reporter_id'),          // null = anonymous
   reporterName: varchar('reporter_name'),      // Display name (optional for anonymous)
+  source: varchar('source', { length: 20 }),   // 'admin' | 'user' | 'seed' — admin spots don't award points
 
   // Report type and details
   type: communityReportTypeEnum('type').notNull(),

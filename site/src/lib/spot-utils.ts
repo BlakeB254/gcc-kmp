@@ -74,6 +74,7 @@ export function toCommunityReport(r: any, precomputedTags?: string[]) {
     geoCensusTract: r.geoCensusTract || null,
     geoPoliceDistrict: r.geoPoliceDistrict || null,
     geoStreetAddress: r.geoStreetAddress || null,
+    source: r.source || null, // 'admin' | 'user' | null
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }

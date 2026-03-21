@@ -234,6 +234,7 @@ export async function POST(request: NextRequest) {
         captureAttestation: captureAttestation || null,
         onDeviceAiResult: onDeviceAiResult || null,
         duplicateOverrideReason: duplicateOverrideReason || null,
+        source: 'user', // User-submitted spots (vs 'admin' for GCC base data)
       })
       .returning()
 
