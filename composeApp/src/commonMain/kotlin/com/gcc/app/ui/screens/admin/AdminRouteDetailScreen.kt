@@ -34,6 +34,7 @@ import org.koin.compose.koinInject
 fun AdminRouteDetailScreen(
     routeId: Int,
     onBack: () -> Unit,
+    onTestRoute: (Int) -> Unit = {},
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -242,6 +243,20 @@ fun AdminRouteDetailScreen(
                     ) {
                         Text("\uD83D\uDDBC Library")
                     }
+                }
+            }
+
+            // Test Route button
+            item {
+                OutlinedButton(
+                    onClick = { onTestRoute(routeId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFF59E0B),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                ) {
+                    Text("\uD83E\uDDEA Test Route")
                 }
             }
 

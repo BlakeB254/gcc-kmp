@@ -194,6 +194,10 @@ class RootComponent(
         navigation.push(Screen.VerificationGate(actionLabel))
     }
 
+    fun navigateToRouteTest(routeId: Int) {
+        navigation.push(Screen.RouteTest(routeId))
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }

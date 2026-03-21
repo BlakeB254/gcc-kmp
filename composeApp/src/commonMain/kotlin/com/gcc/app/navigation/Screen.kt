@@ -99,4 +99,7 @@ sealed class Screen {
 
     @Serializable
     data class VerificationGate(val actionLabel: String = "claim blocks") : Screen()
+
+    @Serializable
+    data class RouteTest(val routeId: Int) : Screen()
 }
