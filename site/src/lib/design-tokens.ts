@@ -53,9 +53,10 @@ export const BOUNTY_COLORS = {
 } as const
 
 export const SPOT_STATUS_COLORS: Record<string, string> = {
-  verified: '#22C55E',
-  acknowledged: '#3B82F6',
   pending: '#F59E0B',
+  verified: '#EF4444',
+  acknowledged: '#3B82F6',
+  resolved: '#22C55E',
 } as const
 
 export const SPOT_COLORS = {

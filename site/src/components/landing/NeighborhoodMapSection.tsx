@@ -309,6 +309,9 @@ export function NeighborhoodMapSection() {
               const coords = s.coordinates
               const lat = Array.isArray(coords) ? coords[1] : coords?.lat ?? 0
               const lng = Array.isArray(coords) ? coords[0] : coords?.lng ?? 0
+              // Find matching full report for status
+              const fullReport = fullReports.find((r: any) => String(r.id) === String(s.id))
+              const status = fullReport?.status || 'pending'
               return {
                 type: 'Feature' as const,
                 properties: {
@@ -316,6 +319,7 @@ export function NeighborhoodMapSection() {
                   label: s.label || s.type || 'report',
                   radiusMeters: s.radiusMeters || s.affectedRadiusMeters || 15,
                   needsVerification: s.needsVerification ? 1 : 0,
+                  status,
                 },
                 geometry: { type: 'Point' as const, coordinates: [lng, lat] },
               }
@@ -494,8 +498,9 @@ export function NeighborhoodMapSection() {
           </p>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap justify-center gap-3 mb-8">
+        {/* Legend — Blocks */}
+        <div className="flex flex-wrap justify-center gap-3 mb-4">
+          <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider self-center mr-1">Blocks:</span>
           {Object.entries(LEGEND_STATUSES).map(([status, { label, icon, color }]) => (
             <div
               key={status}
@@ -513,6 +518,22 @@ export function NeighborhoodMapSection() {
               <span className={`${status === 'available' ? 'font-semibold text-green-700' : 'text-neutral-600'}`}>
                 {label}
               </span>
+            </div>
+          ))}
+        </div>
+        {/* Legend — Spots */}
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
+          <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider self-center mr-1">Spots:</span>
+          {[
+            { color: '#F59E0B', label: 'Pending', icon: '⏳' },
+            { color: '#EF4444', label: 'Confirmed Dirty', icon: '🔴' },
+            { color: '#3B82F6', label: 'Being Cleaned', icon: '🧹' },
+            { color: '#22C55E', label: 'Resolved', icon: '✅' },
+          ].map(({ color, label, icon }) => (
+            <div key={label} className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white shadow-sm">
+              <span>{icon}</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+              <span className="text-neutral-600">{label}</span>
             </div>
           ))}
         </div>
@@ -715,17 +736,19 @@ export function NeighborhoodMapSection() {
                     ],
                   }}
                 />
-                {/* Individual dots — orange for needs verification, green for verified */}
+                {/* Individual dots — color by spot status */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
                   minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': [
-                      'case',
-                      ['==', ['get', 'needsVerification'], 1],
-                      '#F59E0B',  // amber — needs verification
-                      '#22C55E',  // green — verified/ok
+                      'match', ['get', 'status'],
+                      'pending',      '#F59E0B',  // amber — awaiting verification
+                      'verified',     '#EF4444',  // red — confirmed dirty
+                      'acknowledged', '#3B82F6',  // blue — worker claimed
+                      'resolved',     '#22C55E',  // green — cleaned
+                      '#F97316',                   // orange fallback
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
