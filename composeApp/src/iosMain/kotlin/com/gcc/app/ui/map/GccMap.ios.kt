@@ -786,23 +786,29 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
+                minZoom = 14f,
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    14 to const(11.dp),
-                    16 to const(16.dp),
+                    14 to const(10.dp),
+                    15 to const(12.dp),
+                    17 to const(16.dp),
                 ),
                 strokeColor = const(Color(0xFFFF8C00)),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
                     14 to const(2.dp),
-                    16 to const(3.dp),
+                    15 to const(2.5.dp),
+                    17 to const(3.dp),
                 ),
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13.5 to const(0f),
+                    14 to const(1f),
+                ),
             )
         }
 
