@@ -707,27 +707,28 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)), // red
                     1.0 to const(Color(0xFF991B1B)), // deep red
                 ),
-                // Higher intensity so density peaks actually reach the deep red stops
+                // Low intensity — let density math create natural gradient variation
+                // Only true cluster centers should reach the red/deep-red stops
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.6f),
-                    12 to const(1.2f),
-                    13.5 to const(1.5f),
+                    10 to const(0.2f),
+                    12 to const(0.4f),
+                    13.5 to const(0.6f),
                 ),
-                // Large radius so spot kernels overlap heavily — creates real density gradients
+                // Large radius for spread — creates the soft cloud effect
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(15.dp),
-                    11 to const(25.dp),
-                    12 to const(35.dp),
-                    13 to const(40.dp),
+                    10 to const(20.dp),
+                    11 to const(30.dp),
+                    12 to const(40.dp),
+                    13 to const(50.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.7f),
+                    10 to const(0.6f),
                     13 to const(0.4f),
                     13.5 to const(0f),
                 ),
