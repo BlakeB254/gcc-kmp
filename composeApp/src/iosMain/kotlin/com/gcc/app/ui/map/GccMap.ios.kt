@@ -698,50 +698,46 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Native MapLibre heatmap layer — smooth kernel density cloud
-            // Matches the website's heatmap implementation exactly
-            // Exact replica of website heatmap (CombinedMap.tsx lines 561-597)
-            // Website zoom range: HEATMAP_MIN=8, DOTS_MIN=13, HEATMAP_MAX=14
-            // App zoom range: shifted to 10-13.5 since app starts zoomed into service area
-            // Colors are OPAQUE (same hex as website), opacity layer controls transparency
+            // Heatmap: pink density cloud matching website aesthetic
+            // Key: small radius creates distinct hotspots with falloff between them,
+            // high intensity pushes cluster centers to the deep color stops
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 13.5f,
-                // Website: heatmap-weight: 1 (default)
-                // Vivid pink ramp that reads clearly over the green service area tint
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.1 to const(Color(0xFFFFF1F2)), // near-white pink
-                    0.25 to const(Color(0xFFFFE4E6)), // blush
-                    0.4 to const(Color(0xFFFDA4AF)), // rose
-                    0.6 to const(Color(0xFFFB7185)), // hot pink
-                    0.8 to const(Color(0xFFE11D48)), // crimson
-                    1.0 to const(Color(0xFF9F1239)), // deep crimson (peak only)
+                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
+                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
+                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
+                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
+                // High intensity so individual points reach mid-range colors,
+                // and clusters of 2-3 nearby spots reach the deep red stops
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.3f),
-                    13.5 to const(1f),
+                    10 to const(1f),
+                    13.5 to const(3f),
                 ),
-                // Website-matched radius: 8 @ zoom 8, 15 @ zoom 11, 20 @ zoom 13
+                // TINY radius — each spot is a small hotspot, NOT a big cloud
+                // Only where spots physically overlap do colors deepen
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(8.dp),
-                    11 to const(15.dp),
-                    13 to const(20.dp),
+                    10 to const(3.dp),
+                    11 to const(5.dp),
+                    12 to const(8.dp),
+                    13 to const(10.dp),
                 ),
-                // Light and wispy — roads and labels fully visible through it
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.4f),
-                    13 to const(0.25f),
+                    10 to const(0.6f),
+                    13 to const(0.3f),
                     13.5 to const(0f),
                 ),
             )
