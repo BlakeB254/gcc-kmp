@@ -697,7 +697,7 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 13.5f,
-                // Color ramp: transparent → pink → red → deep red (matches website)
+                // Color ramp matching website: transparent → pink → red → deep red
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
@@ -707,25 +707,26 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)), // red
                     1.0 to const(Color(0xFF991B1B)), // deep red
                 ),
+                // Matches website: intensity 0.3 → 1 linear with zoom
                 intensity = interpolate(
-                    type = exponential(1.5f),
+                    type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.3f),
-                    12 to const(0.6f),
-                    13 to const(1f),
+                    13.5 to const(1f),
                 ),
+                // Larger radius = more overlap = denser clusters (matches website 8→15→20)
                 radius = interpolate(
-                    type = exponential(1.5f),
+                    type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(3.dp),
-                    12 to const(6.dp),
-                    13 to const(12.dp),
+                    10 to const(8.dp),
+                    11 to const(15.dp),
+                    13 to const(20.dp),
                 ),
+                // Matches website: 0.6 → 0.3 → 0
                 opacity = interpolate(
-                    type = exponential(1.5f),
+                    type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.4f),
-                    12 to const(0.5f),
+                    10 to const(0.6f),
                     13 to const(0.3f),
                     13.5 to const(0f),
                 ),
