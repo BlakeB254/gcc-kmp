@@ -3,13 +3,10 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Source, Layer, Marker, Popup } from 'react-map-gl/maplibre'
 import type { MapRef } from 'react-map-gl/maplibre'
-import { Camera } from 'lucide-react'
 import {
   ZOOM,
   ROUTE_WIDTHS,
   ROUTE_STATUS_COLORS,
-  CHECKPOINT_COLORS,
-  CHECKPOINT_BORDER_COLORS,
   BOUNTY_COLORS,
   SPOT_COLORS,
   SPOT_STATUS_COLORS,
@@ -183,19 +180,6 @@ export function CombinedMap({
       })),
     }),
     [spots]
-  )
-
-  // ----- all checkpoints -----
-  const allCheckpoints = useMemo(
-    () =>
-      routes.flatMap((route) =>
-        route.checkpoints.map((cp) => ({
-          ...cp,
-          routeId: route.id,
-          routeStatus: route.status,
-        }))
-      ),
-    [routes]
   )
 
   // ----- handle map feature click (routes + spots) -----
@@ -565,43 +549,7 @@ export function CombinedMap({
           </Source>
         )}
 
-        {/* ============================================================ */}
-        {/* CHECKPOINT MARKERS                                          */}
-        {/* ============================================================ */}
-
-        {allCheckpoints.map((cp, idx) => (
-          <Marker
-            key={`cp-${cp.routeId}-${idx}`}
-            longitude={cp.coordinates[0]}
-            latitude={cp.coordinates[1]}
-            anchor="center"
-          >
-            <div
-              className="flex items-center justify-center rounded-full border-2 shadow-sm"
-              style={
-                cp.type === 'route_start'
-                  ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.START, borderColor: CHECKPOINT_BORDER_COLORS.start }
-                  : cp.type === 'route_end'
-                    ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.END, borderColor: CHECKPOINT_BORDER_COLORS.end }
-                    : { width: 24, height: 24, backgroundColor: CHECKPOINT_COLORS.DEFAULT, borderColor: CHECKPOINT_BORDER_COLORS.default }
-              }
-            >
-              {cp.photoRequired ? (
-                <Camera
-                  className={`w-3 h-3 ${
-                    cp.type === 'route_start' || cp.type === 'route_end'
-                      ? 'text-white'
-                      : 'text-slate-600'
-                  }`}
-                />
-              ) : (
-                <span className="text-xs font-bold text-slate-600">
-                  {cp.sequenceOrder + 1}
-                </span>
-              )}
-            </div>
-          </Marker>
-        ))}
+        {/* Checkpoint markers removed — admin-level detail not shown on public map */}
 
         {/* ============================================================ */}
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
