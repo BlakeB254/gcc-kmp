@@ -31,64 +31,35 @@ fun GccBottomNavBar(
             containerColor = Color.White,
             contentColor = GccGreen,
         ) {
-            NavigationBarItem(
-                selected = selectedTab == 0,
-                onClick = { onTabSelected(0) },
-                icon = { Text("\uD83C\uDFE0") },
-                label = { Text("Dashboard") },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = GccGreen,
-                    selectedTextColor = GccGreen,
-                    indicatorColor = GccGreen.copy(alpha = 0.12f),
-                ),
-            )
-            NavigationBarItem(
-                selected = selectedTab == 1,
-                onClick = { onTabSelected(1) },
-                icon = { Text("\uD83C\uDF0D") },
-                label = { Text("Map") },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = GccGreen,
-                    selectedTextColor = GccGreen,
-                    indicatorColor = GccGreen.copy(alpha = 0.12f),
-                ),
-            )
+            NavTab(selected = selectedTab == 0, onClick = { onTabSelected(0) }, icon = "\uD83C\uDFE0", label = "Dashboard")
+            NavTab(selected = selectedTab == 1, onClick = { onTabSelected(1) }, icon = "\uD83C\uDF0D", label = "Map")
             if (isAdmin) {
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { onTabSelected(2) },
-                    icon = { Text("\uD83D\uDEE1\uFE0F") },
-                    label = { Text("Admin") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = GccGold,
-                        selectedTextColor = GccGold,
-                        indicatorColor = GccGold.copy(alpha = 0.12f),
-                    ),
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { onTabSelected(3) },
-                    icon = { Text("\uD83D\uDC64") },
-                    label = { Text("Profile") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = GccGreen,
-                        selectedTextColor = GccGreen,
-                        indicatorColor = GccGreen.copy(alpha = 0.12f),
-                    ),
-                )
+                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = "\uD83D\uDEE1\uFE0F", label = "Admin", color = GccGold)
+                NavTab(selected = selectedTab == 3, onClick = { onTabSelected(3) }, icon = "\uD83D\uDC64", label = "Profile")
             } else {
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { onTabSelected(2) },
-                    icon = { Text("\uD83D\uDC64") },
-                    label = { Text("Profile") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = GccGreen,
-                        selectedTextColor = GccGreen,
-                        indicatorColor = GccGreen.copy(alpha = 0.12f),
-                    ),
-                )
+                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = "\uD83D\uDC64", label = "Profile")
             }
         }
     }
+}
+
+@Composable
+private fun RowScope.NavTab(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: String,
+    label: String,
+    color: Color = GccGreen,
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = { Text(icon) },
+        label = { Text(label) },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = color,
+            selectedTextColor = color,
+            indicatorColor = color.copy(alpha = 0.12f),
+        ),
+    )
 }

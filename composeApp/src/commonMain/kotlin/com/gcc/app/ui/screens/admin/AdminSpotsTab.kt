@@ -42,22 +42,22 @@ internal fun AdminSpotsTab(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            AdminSearchBar(
-                query = searchQuery,
-                onQueryChange = { searchQuery = it },
-                placeholder = "Search spots...",
-            )
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f),
-            ) {
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            item {
+                AdminSearchBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    placeholder = "Search spots...",
+                )
+            }
             // Error banner
             if (error != null) {
                 item {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         shape = RoundedCornerShape(8.dp),
                         color = GccError.copy(alpha = 0.1f),
                     ) {
@@ -84,7 +84,7 @@ internal fun AdminSpotsTab(
                     else "${filteredReports.size} of ${spotReports.size} spot reports",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
             }
             items(filteredReports, key = { it.id }) { report ->
@@ -107,7 +107,7 @@ internal fun AdminSpotsTab(
                 val timeStr = "${if (hour == 0) 12 else hour}:${localDt.minute.toString().padStart(2, '0')} $amPm"
 
                 Surface(
-                    modifier = Modifier.fillMaxWidth().clickable { onSpotClick(report.id) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable { onSpotClick(report.id) },
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 1.dp,
@@ -181,7 +181,6 @@ internal fun AdminSpotsTab(
                 }
             }
         }
-        } // Column
 
         // FAB
         FloatingActionButton(

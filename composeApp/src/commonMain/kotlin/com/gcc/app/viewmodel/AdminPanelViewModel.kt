@@ -5,6 +5,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,7 @@ class AdminPanelViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(AdminPanelUiState())
     val uiState: StateFlow<AdminPanelUiState> = _uiState.asStateFlow()
+    private var currentLoadingJob: Job? = null
 
     init {
         refreshCurrentTab()
@@ -47,7 +49,6 @@ class AdminPanelViewModel(
 
     fun selectTab(tab: AdminTab) {
         _uiState.value = _uiState.value.copy(selectedTab = tab)
-        // Only fetch if tab hasn't been loaded yet
         if (tab !in _uiState.value.loadedTabs) {
             refreshCurrentTab()
         }
@@ -61,15 +62,22 @@ class AdminPanelViewModel(
         loadTabData(isRefresh = true)
     }
 
+    private fun invalidateTab(tab: AdminTab) {
+        _uiState.value = _uiState.value.copy(
+            loadedTabs = _uiState.value.loadedTabs - tab,
+        )
+    }
+
     private fun loadTabData(isRefresh: Boolean) {
-        scope.launch {
+        currentLoadingJob?.cancel()
+        currentLoadingJob = scope.launch {
+            val tab = _uiState.value.selectedTab
             _uiState.value = if (isRefresh) {
                 _uiState.value.copy(isRefreshing = true, error = null)
             } else {
                 _uiState.value.copy(isLoading = true, error = null)
             }
             try {
-                val tab = _uiState.value.selectedTab
                 when (tab) {
                     AdminTab.OVERVIEW -> {
                         val stats = apiClient.getAdminStats()
@@ -215,6 +223,7 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(
                     spotReports = _uiState.value.spotReports.filter { it.id != spotId },
                 )
+                invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = "Failed to delete spot: ${e.message}")
             }
@@ -230,9 +239,9 @@ class AdminPanelViewModel(
                     mediaUrls = uploadedUrls.ifEmpty { null },
                 )
                 apiClient.createAdminSpot(requestWithPhotos)
-                // Refresh spots list
                 val updated = apiClient.getAdminSpotReports()
                 _uiState.value = _uiState.value.copy(spotReports = updated)
+                invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = e.message ?: "Failed to create spot report",
@@ -262,6 +271,7 @@ class AdminPanelViewModel(
                 _uiState.value = _uiState.value.copy(
                     routes = _uiState.value.routes + created,
                 )
+                invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = "Failed to create route: ${e.message}")
             }

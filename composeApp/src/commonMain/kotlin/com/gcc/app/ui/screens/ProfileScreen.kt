@@ -99,6 +99,7 @@ fun ProfileScreen(
                         0 -> onBack()
                         1 -> onMapClick()
                         2 -> if (isAdmin) onAdminClick()
+                        // Tab 3 (admin Profile) = already here, no-op
                     }
                 },
             )

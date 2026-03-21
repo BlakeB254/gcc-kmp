@@ -252,9 +252,9 @@ fun AdminRouteDetailScreen(
                     onClick = { onTestRoute(routeId) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFFF59E0B),
+                        contentColor = GccGold,
                     ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GccGold),
                 ) {
                     Text("\uD83E\uDDEA Test Route")
                 }
