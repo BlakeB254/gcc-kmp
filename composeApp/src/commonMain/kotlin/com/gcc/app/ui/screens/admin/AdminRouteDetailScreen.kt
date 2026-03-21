@@ -1,5 +1,6 @@
 package com.gcc.app.ui.screens.admin
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -254,7 +255,7 @@ fun AdminRouteDetailScreen(
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = GccGold,
                     ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GccGold),
+                    border = BorderStroke(1.dp, GccGold),
                 ) {
                     Text("\uD83E\uDDEA Test Route")
                 }

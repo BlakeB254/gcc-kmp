@@ -87,6 +87,20 @@ internal fun AdminSpotsTab(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
             }
+            if (filteredReports.isEmpty() && searchQuery.isNotBlank()) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "No spots matching \"$searchQuery\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             items(filteredReports, key = { it.id }) { report ->
                 val reporterDisplay = if (report.reporterName == "GCC") "GCC" else (report.reporterName ?: "Anonymous")
                 val descSnippet = report.description?.take(60)?.let {

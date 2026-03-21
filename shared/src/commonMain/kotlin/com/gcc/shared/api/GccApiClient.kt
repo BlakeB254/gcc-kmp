@@ -16,6 +16,7 @@ import com.gcc.shared.serialization.GccJson
 class GccApiClient(
     val baseUrl: String,
     private val tokenProvider: suspend () -> String? = { null },
+    private val onUnauthorized: (() -> Unit)? = null,
     httpClientOverride: HttpClient? = null,
 ) {
     val json = GccJson
@@ -37,6 +38,12 @@ class GccApiClient(
 
     // ── HTTP Helpers ───────────────────────────────────────────────────
 
+    private fun checkUnauthorized(statusCode: Int) {
+        if (statusCode == 401 || statusCode == 403) {
+            onUnauthorized?.invoke()
+        }
+    }
+
     /** GET [path] and unwrap ApiResponse<T>.data */
     private suspend inline fun <reified T> get(
         path: String,
@@ -44,6 +51,7 @@ class GccApiClient(
     ): T {
         val response = httpClient.get("$baseUrl$path", block)
         if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
             throw Exception("HTTP ${response.status.value}: $errorBody")
         }
@@ -74,6 +82,7 @@ class GccApiClient(
             block()
         }
         if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
             throw Exception("HTTP ${response.status.value}: $errorBody")
         }
@@ -92,6 +101,7 @@ class GccApiClient(
             block()
         }
         if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
             throw Exception("HTTP ${response.status.value}: $errorBody")
         }
@@ -134,6 +144,7 @@ class GccApiClient(
             block()
         }
         if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
             throw Exception("HTTP ${response.status.value}: $errorBody")
         }
@@ -147,6 +158,7 @@ class GccApiClient(
     ) {
         val response = httpClient.delete("$baseUrl$path", block)
         if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
             throw Exception("HTTP ${response.status.value}: $errorBody")
         }

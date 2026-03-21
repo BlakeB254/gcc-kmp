@@ -32,8 +32,19 @@ import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
+
+/** Emits true when the server returns 401/403, signalling forced logout. */
+object SessionExpiredSignal {
+    private val _expired = MutableStateFlow(false)
+    val expired: StateFlow<Boolean> = _expired.asStateFlow()
+    fun fire() { _expired.value = true }
+    fun reset() { _expired.value = false }
+}
 
 val appModule = module {
     single { TokenManager(settings = createSecureStorage()) }
@@ -48,6 +59,10 @@ val appModule = module {
         GccApiClient(
             baseUrl = getApiBaseUrl(),
             tokenProvider = { tokenManager.getToken() },
+            onUnauthorized = {
+                tokenManager.clearToken()
+                SessionExpiredSignal.fire()
+            },
         )
     }
     singleOf(::BiometricAuthViewModel)

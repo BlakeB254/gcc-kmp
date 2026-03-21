@@ -34,9 +34,9 @@ internal fun AdminWorkersTab(
 
     // Exit selection mode when workers list changes (after bulk action completes)
     LaunchedEffect(workers) {
-        if (selectionMode && selectedIds.isNotEmpty()) {
-            // Keep selection mode but clear stale IDs
-            selectedIds = selectedIds.filter { id -> workers.any { it.id == id } }.toSet()
+        if (selectionMode) {
+            selectionMode = false
+            selectedIds = emptySet()
         }
     }
 
@@ -94,8 +94,7 @@ internal fun AdminWorkersTab(
                     Button(
                         onClick = {
                             onBulkAction(selectedIds.toList(), BulkAction.VERIFY)
-                            selectionMode = false
-                            selectedIds = emptySet()
+                            // Selection clears via LaunchedEffect when workers list updates
                         },
                         enabled = selectedIds.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
@@ -107,8 +106,7 @@ internal fun AdminWorkersTab(
                     Button(
                         onClick = {
                             onBulkAction(selectedIds.toList(), BulkAction.SUSPEND)
-                            selectionMode = false
-                            selectedIds = emptySet()
+                            // Selection clears via LaunchedEffect when workers list updates
                         },
                         enabled = selectedIds.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = GccError),
@@ -140,6 +138,20 @@ internal fun AdminWorkersTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
+            }
+            if (filteredWorkers.isEmpty() && searchQuery.isNotBlank()) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().height(120.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "No workers matching \"$searchQuery\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             items(filteredWorkers, key = { it.id }) { worker ->
                 val verified = worker.verification.status == VerificationStatus.APPROVED

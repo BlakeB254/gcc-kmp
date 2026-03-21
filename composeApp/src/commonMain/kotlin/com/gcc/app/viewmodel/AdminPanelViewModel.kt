@@ -94,7 +94,8 @@ class AdminPanelViewModel(
                         _uiState.value = _uiState.value.copy(routes = routes)
                     }
                     AdminTab.BOUNTIES -> {
-                        val bounties = apiClient.getAdminBounties()
+                        // Bounties table may not exist in production — gracefully degrade
+                        val bounties = try { apiClient.getAdminBounties() } catch (_: Exception) { emptyList() }
                         _uiState.value = _uiState.value.copy(bounties = bounties)
                     }
                     AdminTab.SPOTS -> {

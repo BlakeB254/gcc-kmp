@@ -11,6 +11,7 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.fade
 import com.arkivanov.decompose.extensions.compose.stack.animation.plus
 import com.arkivanov.decompose.extensions.compose.stack.animation.scale
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
+import com.gcc.app.di.SessionExpiredSignal
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.navigation.Screen
 import com.gcc.app.ui.screens.*
@@ -26,6 +27,15 @@ import com.gcc.app.ui.theme.GccTheme
 @Composable
 fun App(component: RootComponent) {
     var showSplash by remember { mutableStateOf(true) }
+
+    // Observe forced-logout signal from API 401/403
+    val sessionExpired by SessionExpiredSignal.expired.collectAsState()
+    LaunchedEffect(sessionExpired) {
+        if (sessionExpired) {
+            SessionExpiredSignal.reset()
+            component.signOut()
+        }
+    }
 
     GccTheme {
         if (showSplash) {
