@@ -238,7 +238,7 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill — hidden while heatmap active so pink reads clean
+            // Service area fill — hidden while heatmap active
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
@@ -246,8 +246,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0f),
-                    16 to const(0f),
+                    10 to const(0f),
+                    15 to const(0f),
+                    16 to const(0.5f),
                     17 to const(1f),
                 ),
             )
@@ -700,14 +701,16 @@ actual fun GccMap(
             // Heatmap: pink density cloud matching website aesthetic
             // Key: small radius creates distinct hotspots with falloff between them,
             // high intensity pushes cluster centers to the deep color stops
-            // Exact website heatmap values with +3 zoom offset
-            // Website: zoom 8-14, app: zoom 11-17 (so zoom 13.2 ≈ website zoom 10)
-            // Website radius in CSS px = app radius in dp (1:1 on retina)
+            // Heatmap: large radius fills the service area, very low intensity
+            // so density only builds where 2+ spot kernels overlap.
+            // Single spot center ≈ density 0.15 → barely pink
+            // 2 spots overlapping ≈ density 0.35 → medium pink
+            // 3+ spots tight cluster ≈ density 0.6+ → red/deep red
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 11f,
-                maxZoom = 17f,
+                minZoom = 10f,
+                maxZoom = 16f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
@@ -717,61 +720,35 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
                     1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
-                // Website: 0.3 @ z8 → 1.0 @ z14 → shifted: 0.3 @ z11 → 1.0 @ z17
+                // Very low: each spot contributes little, density builds from overlap
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.3f),
-                    17 to const(1f),
+                    10 to const(0.08f),
+                    13 to const(0.15f),
+                    16 to const(0.3f),
                 ),
-                // Website: 8px @ z8, 15px @ z11, 20px @ z13
-                // Shifted: 8dp @ z11, 15dp @ z14, 20dp @ z16
+                // Large radius: spreads each spot's heat across a wide area
+                // so the overall neighborhood is covered, not just point blobs
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(8.dp),
-                    14 to const(15.dp),
-                    16 to const(20.dp),
+                    10 to const(15.dp),
+                    12 to const(25.dp),
+                    13 to const(35.dp),
+                    15 to const(45.dp),
                 ),
-                // Website: 0.6 @ z8, 0.3 @ z13, 0 @ z14
-                // Shifted: 0.6 @ z11, 0.3 @ z16, 0 @ z17
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.6f),
-                    16 to const(0.3f),
-                    17 to const(0f),
+                    10 to const(0.7f),
+                    14 to const(0.5f),
+                    15 to const(0.3f),
+                    16 to const(0f),
                 ),
             )
 
-            // Invisible click-target layer — covers ALL zoom levels for tap handling
-            // This catches taps even when the heatmap is visible (zoom 12-13.5)
-            CircleLayer(
-                id = "spot-click-target",
-                source = spotSrc,
-                color = const(androidx.compose.ui.graphics.Color.Transparent),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    12 to const(12.dp),
-                    14 to const(16.dp),
-                    16 to const(20.dp),
-                ),
-                opacity = const(0.01f), // Nearly invisible but still receives taps
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
-
-            // Individual spot dots — appear after heatmap fades (zoom 16+)
-            // Website: dots at zoom 13 (DOTS_MIN), shifted +3 = zoom 16
+            // Individual spot dots + click target — only at zoom 16+ after heatmap
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -792,6 +769,16 @@ actual fun GccMap(
                     16.5 to const(0.7f),
                     17 to const(1f),
                 ),
+                onClick = if (onSpotTap != null) { features ->
+                    val raw = features.firstOrNull()?.properties?.get("id")
+                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
+                    if (id != null) {
+                        onSpotTap(id)
+                        ClickResult.Consume
+                    } else {
+                        ClickResult.Pass
+                    }
+                } else null,
             )
 
             // ── Verification indicator — orange ring on spots needing verification ──
@@ -809,7 +796,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
-                minZoom = 15f,
+                minZoom = 16.5f,
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
