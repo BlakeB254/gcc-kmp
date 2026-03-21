@@ -68,10 +68,10 @@ export async function POST(request: NextRequest) {
           const arrayBuffer = await response.arrayBuffer()
           const corrected = await processImage(arrayBuffer)
 
-          // Re-upload with same path structure
-          const urlObj = new URL(url)
-          const path = urlObj.pathname.replace(/^\//, '')
-          const blob = await put(path, corrected, {
+          // Re-upload with new path (can't overwrite existing blobs)
+          const timestamp = Date.now()
+          const newPath = `spots/reprocessed/${report.id}/${timestamp}-${newUrls.length}.jpg`
+          const blob = await put(newPath, corrected, {
             access: 'public',
             contentType: 'image/jpeg',
           })
