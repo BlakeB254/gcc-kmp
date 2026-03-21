@@ -197,6 +197,7 @@ fun MapFullScreen(
                         0 -> onBack()
                         1 -> { /* already on map */ }
                         2 -> if (isAdmin) onAdminClick() else onProfileClick()
+                        3 -> if (isAdmin) onProfileClick()
                     }
                 },
             )

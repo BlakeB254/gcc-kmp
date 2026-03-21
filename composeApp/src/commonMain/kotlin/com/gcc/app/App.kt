@@ -18,6 +18,7 @@ import com.gcc.app.ui.screens.admin.AdminPanelScreen
 import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
+import com.gcc.app.ui.screens.admin.RouteTestScreen
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
@@ -158,6 +159,9 @@ fun App(component: RootComponent) {
                     onNavigateToSpotDetail = component::navigateToAdminSpotDetail,
                     onNavigateToRouteDetail = component::navigateToAdminRouteDetail,
                     onNavigateToWorkerDetail = component::navigateToAdminWorkerDetail,
+                    onNavigateToDashboard = { component.switchToTab(Screen.Dashboard) },
+                    onNavigateToMap = { component.switchToTab(Screen.MapFullScreen) },
+                    onNavigateToProfile = component::navigateToProfile,
                 )
                 is Screen.AdminWorkerDetail -> AdminWorkerDetailScreen(
                     workerId = screen.workerId,
@@ -173,6 +177,11 @@ fun App(component: RootComponent) {
                     onBack = component::navigateBack,
                 )
                 is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
+                    routeId = screen.routeId,
+                    onBack = component::navigateBack,
+                    onTestRoute = component::navigateToRouteTest,
+                )
+                is Screen.RouteTest -> RouteTestScreen(
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
                 )

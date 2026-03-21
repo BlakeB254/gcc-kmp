@@ -22,6 +22,7 @@ enum class AdminTab(val label: String, val icon: String) {
 data class AdminPanelUiState(
     val selectedTab: AdminTab = AdminTab.OVERVIEW,
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val stats: AdminStatsResponse? = null,
     val recentActivity: List<AdminActivityItem> = emptyList(),
@@ -30,6 +31,7 @@ data class AdminPanelUiState(
     val routes: List<Route> = emptyList(),
     val bounties: List<Bounty> = emptyList(),
     val spotReports: List<CommunityReport> = emptyList(),
+    val loadedTabs: Set<AdminTab> = emptySet(),
 )
 
 class AdminPanelViewModel(
@@ -45,14 +47,30 @@ class AdminPanelViewModel(
 
     fun selectTab(tab: AdminTab) {
         _uiState.value = _uiState.value.copy(selectedTab = tab)
-        refreshCurrentTab()
+        // Only fetch if tab hasn't been loaded yet
+        if (tab !in _uiState.value.loadedTabs) {
+            refreshCurrentTab()
+        }
     }
 
     fun refreshCurrentTab() {
+        loadTabData(isRefresh = false)
+    }
+
+    fun forceRefreshCurrentTab() {
+        loadTabData(isRefresh = true)
+    }
+
+    private fun loadTabData(isRefresh: Boolean) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = if (isRefresh) {
+                _uiState.value.copy(isRefreshing = true, error = null)
+            } else {
+                _uiState.value.copy(isLoading = true, error = null)
+            }
             try {
-                when (_uiState.value.selectedTab) {
+                val tab = _uiState.value.selectedTab
+                when (tab) {
                     AdminTab.OVERVIEW -> {
                         val stats = apiClient.getAdminStats()
                         val activity = try { apiClient.getAdminActivity(limit = 10) } catch (_: Exception) { emptyList() }
@@ -76,6 +94,9 @@ class AdminPanelViewModel(
                         _uiState.value = _uiState.value.copy(spotReports = spots)
                     }
                 }
+                _uiState.value = _uiState.value.copy(
+                    loadedTabs = _uiState.value.loadedTabs + tab,
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = when {
@@ -89,7 +110,7 @@ class AdminPanelViewModel(
                     },
                 )
             }
-            _uiState.value = _uiState.value.copy(isLoading = false)
+            _uiState.value = _uiState.value.copy(isLoading = false, isRefreshing = false)
         }
     }
 

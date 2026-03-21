@@ -18,7 +18,8 @@ fun GccBottomNavBar(
     isAdmin: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    // Always 3 tabs: Dashboard (0), Map (1), Admin OR Profile (2)
+    // Admin: 4 tabs — Dashboard (0), Map (1), Admin (2, gold), Profile (3)
+    // Non-admin: 3 tabs — Dashboard (0), Map (1), Profile (2)
     Column(modifier = modifier) {
         Box(
             modifier = Modifier
@@ -62,6 +63,17 @@ fun GccBottomNavBar(
                         selectedIconColor = GccGold,
                         selectedTextColor = GccGold,
                         indicatorColor = GccGold.copy(alpha = 0.12f),
+                    ),
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { onTabSelected(3) },
+                    icon = { Text("\uD83D\uDC64") },
+                    label = { Text("Profile") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = GccGreen,
+                        selectedTextColor = GccGreen,
+                        indicatorColor = GccGreen.copy(alpha = 0.12f),
                     ),
                 )
             } else {

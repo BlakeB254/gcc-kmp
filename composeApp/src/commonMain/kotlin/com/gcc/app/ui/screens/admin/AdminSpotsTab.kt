@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,11 +28,31 @@ internal fun AdminSpotsTab(
     onCreateClick: () -> Unit,
     onDismissError: () -> Unit,
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredReports = remember(spotReports, searchQuery) {
+        if (searchQuery.isBlank()) spotReports
+        else {
+            val q = searchQuery.lowercase()
+            spotReports.filter {
+                (it.reporterName?.lowercase()?.contains(q) == true) ||
+                (it.description?.lowercase()?.contains(q) == true) ||
+                it.tags.any { tag -> tag.name.lowercase().contains(q) }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            AdminSearchBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                placeholder = "Search spots...",
+            )
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f),
+            ) {
             // Error banner
             if (error != null) {
                 item {
@@ -60,13 +80,14 @@ internal fun AdminSpotsTab(
             }
             item {
                 Text(
-                    "${spotReports.size} spot reports",
+                    if (searchQuery.isBlank()) "${spotReports.size} spot reports"
+                    else "${filteredReports.size} of ${spotReports.size} spot reports",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
-            items(spotReports, key = { it.id }) { report ->
+            items(filteredReports, key = { it.id }) { report ->
                 val reporterDisplay = if (report.reporterName == "GCC") "GCC" else (report.reporterName ?: "Anonymous")
                 val descSnippet = report.description?.take(60)?.let {
                     if ((report.description?.length ?: 0) > 60) "$it..." else it
@@ -160,6 +181,7 @@ internal fun AdminSpotsTab(
                 }
             }
         }
+        } // Column
 
         // FAB
         FloatingActionButton(

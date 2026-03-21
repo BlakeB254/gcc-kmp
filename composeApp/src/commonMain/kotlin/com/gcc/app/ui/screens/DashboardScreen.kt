@@ -127,6 +127,7 @@ fun DashboardScreen(
                     when (tab) {
                         1 -> onMapClick()
                         2 -> if (isAdmin) onAdminClick() else onProfileClick()
+                        3 -> if (isAdmin) onProfileClick()
                     }
                 },
             )

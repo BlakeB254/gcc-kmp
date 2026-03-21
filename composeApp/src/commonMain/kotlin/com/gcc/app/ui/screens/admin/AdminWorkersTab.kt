@@ -39,7 +39,23 @@ internal fun AdminWorkersTab(
         }
     }
 
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredWorkers = remember(workers, searchQuery) {
+        if (searchQuery.isBlank()) workers
+        else {
+            val q = searchQuery.lowercase()
+            workers.filter { it.name.lowercase().contains(q) || it.email.lowercase().contains(q) }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
+        // ── Search bar ───────────────────────────────────────────────
+        AdminSearchBar(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            placeholder = "Search workers...",
+        )
+
         // ── Bulk action bar ──────────────────────────────────────────
         AnimatedVisibility(
             visible = selectionMode,
@@ -105,13 +121,14 @@ internal fun AdminWorkersTab(
         ) {
             item {
                 Text(
-                    "${workers.size} workers",
+                    if (searchQuery.isBlank()) "${workers.size} workers"
+                    else "${filteredWorkers.size} of ${workers.size} workers",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
-            items(workers, key = { it.id }) { worker ->
+            items(filteredWorkers, key = { it.id }) { worker ->
                 val verified = worker.verification.status == VerificationStatus.APPROVED
                 val statusColor = when (worker.verification.status) {
                     VerificationStatus.APPROVED -> GccGreen

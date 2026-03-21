@@ -92,12 +92,13 @@ fun ProfileScreen(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             GccBottomNavBar(
-                selectedTab = 2,
+                selectedTab = if (isAdmin) 3 else 2,
                 isAdmin = isAdmin,
                 onTabSelected = { tab ->
                     when (tab) {
                         0 -> onBack()
                         1 -> onMapClick()
+                        2 -> if (isAdmin) onAdminClick()
                     }
                 },
             )

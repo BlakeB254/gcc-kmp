@@ -1,5 +1,6 @@
 package com.gcc.app.ui.screens.admin
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,7 @@ import com.gcc.app.ui.components.HeatBadge
 import com.gcc.app.ui.components.SpotDensityBadge
 import com.gcc.app.ui.components.SectionHeader
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.AdminTab
 import com.gcc.shared.model.AdminActivityItem
 import com.gcc.shared.model.AdminActivityType
 import com.gcc.shared.model.AdminDailyStats
@@ -28,6 +30,7 @@ internal fun AdminOverviewTab(
     stats: AdminStatsResponse?,
     recentActivity: List<AdminActivityItem> = emptyList(),
     dailyStats: List<AdminDailyStats> = emptyList(),
+    onNavigateToTab: (AdminTab) -> Unit = {},
 ) {
     if (stats == null) return
     LazyColumn(
@@ -35,19 +38,19 @@ internal fun AdminOverviewTab(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { SectionHeader("Platform") }
-        item { AdminStatCard("Total Workers", stats.totalWorkers.toString(), "\uD83D\uDC77") }
-        item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen) }
-        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccGold) }
+        item { AdminStatCard("Total Workers", stats.totalWorkers.toString(), "\uD83D\uDC77", onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccGold, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { SectionHeader("Operations") }
         item { AdminStatCard("Active Jobs", stats.activeJobs.toString(), "\u26A1", GccGreen) }
         item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
-        item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA") }
+        item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA", onClick = { onNavigateToTab(AdminTab.ROUTES) }) }
         item { SectionHeader("Spots") }
-        item { AdminStatCard("Active Spots", stats.activeSpots.toString(), "\uD83D\uDCCD", GccGreen) }
-        item { AdminStatCard("Total Spots", stats.totalSpots.toString(), "\uD83D\uDDFA") }
+        item { AdminStatCard("Active Spots", stats.activeSpots.toString(), "\uD83D\uDCCD", GccGreen, onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
+        item { AdminStatCard("Total Spots", stats.totalSpots.toString(), "\uD83D\uDDFA", onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
         item { SectionHeader("Bounties") }
-        item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen) }
-        item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0") }
+        item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen, onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
+        item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0", onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
         item { SectionHeader("Issues") }
         item { AdminStatCard("Open Disputes", stats.openDisputes.toString(), "\u26A0\uFE0F", if (stats.openDisputes > 0) GccError else GccGold) }
 
@@ -95,9 +98,17 @@ internal fun AdminOverviewTab(
 }
 
 @Composable
-private fun AdminStatCard(label: String, value: String, icon: String, color: Color = GccGold) {
+private fun AdminStatCard(
+    label: String,
+    value: String,
+    icon: String,
+    color: Color = GccGold,
+    onClick: (() -> Unit)? = null,
+) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {
@@ -110,6 +121,13 @@ private fun AdminStatCard(label: String, value: String, icon: String, color: Col
             Column(modifier = Modifier.weight(1f)) {
                 Text(value, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = color)
                 Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (onClick != null) {
+                Text(
+                    "\u203A",
+                    fontSize = 24.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                )
             }
         }
     }
