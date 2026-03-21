@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.theme.*
@@ -170,10 +168,8 @@ private fun CreateRouteDialog(
     onDismiss: () -> Unit,
     onCreate: (AdminRouteRequest) -> Unit,
 ) {
-    var code by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var payoutDollars by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -182,19 +178,16 @@ private fun CreateRouteDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = { Text("Code") },
-                    placeholder = { Text("NL-RN11") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                Text(
+                    "Code auto-generated \u2022 Payout $100",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { displayName = it },
                     label = { Text("Display Name") },
-                    placeholder = { Text("New Route") },
+                    placeholder = { Text("e.g. Pulaski North Block") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -202,36 +195,32 @@ private fun CreateRouteDialog(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Description (optional)") },
+                    placeholder = { Text("Cleanup route along...") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 3,
                 )
-                OutlinedTextField(
-                    value = payoutDollars,
-                    onValueChange = { payoutDollars = it },
-                    label = { Text("Payout Amount ($)") },
-                    placeholder = { Text("25.00") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth(),
+                Text(
+                    "After creating, open the route to add checkpoints and set the map boundary.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val payoutCents = ((payoutDollars.toDoubleOrNull() ?: 0.0) * 100).toInt()
                     onCreate(
                         AdminRouteRequest(
-                            code = code.trim(),
+                            code = "", // Server auto-generates
                             displayName = displayName.trim(),
                             serviceAreaId = 1,
-                            payoutAmount = if (payoutCents > 0) payoutCents else null,
+                            payoutAmount = 10000, // $100 standard
                             status = "draft",
                         )
                     )
                 },
-                enabled = code.isNotBlank() && displayName.isNotBlank(),
+                enabled = displayName.isNotBlank(),
                 colors = ButtonDefaults.textButtonColors(contentColor = GccGreen),
             ) {
                 Text("Create", fontWeight = FontWeight.SemiBold)

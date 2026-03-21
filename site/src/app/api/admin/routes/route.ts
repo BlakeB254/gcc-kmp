@@ -79,10 +79,21 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { displayName, serviceAreaId, geometry, code, payoutAmount, side, streetName, fromCorner, toCorner, description } = body
+    const { displayName, serviceAreaId = 1, geometry, code, payoutAmount, side, streetName, fromCorner, toCorner, description } = body
 
-    if (!displayName || !serviceAreaId || !geometry?.coordinates?.length) {
-      return NextResponse.json({ error: 'displayName, serviceAreaId, and geometry are required' }, { status: 400 })
+    if (!displayName) {
+      return NextResponse.json({ error: 'displayName is required' }, { status: 400 })
+    }
+
+    // If no geometry provided, default to service area center (North Lawndale)
+    let routeGeometry = geometry
+    if (!routeGeometry?.coordinates?.length) {
+      const [area] = await db.select({ mapCenter: serviceAreas.mapCenter }).from(serviceAreas).where(eq(serviceAreas.id, serviceAreaId))
+      const center = (area?.mapCenter as number[] | null) ?? [-87.7155, 41.8600]
+      const lng = center[0], lat = center[1]
+      // Create a tiny 50m line so the route has valid geometry
+      const offset = 0.0003
+      routeGeometry = { type: 'LineString', coordinates: [[lng - offset, lat], [lng + offset, lat]] }
     }
 
     // Auto-generate code if not provided
@@ -107,7 +118,7 @@ export async function POST(request: Request) {
       blockCode = routeCode.replace('-R', '-')
     }
 
-    const coords = geometry.coordinates as [number, number][]
+    const coords = routeGeometry.coordinates as [number, number][]
     const distanceMeters = haversineDistance(coords)
     const estimatedMinutes = estimateWalkingMinutes(distanceMeters)
 
@@ -116,7 +127,7 @@ export async function POST(request: Request) {
       code: routeCode,
       displayName,
       serviceAreaId,
-      geometry,
+      geometry: routeGeometry,
       lengthMeters: distanceMeters.toFixed(1),
       estimatedMinutes: estimatedMinutes.toString(),
       status: 'draft',
@@ -165,7 +176,35 @@ export async function POST(request: Request) {
       },
     ])
 
-    return NextResponse.json({ route: newRoute, block: newBlock }, { status: 201 })
+    // Fetch created checkpoints for the response
+    const cps = await db.select().from(routeCheckpoints)
+      .where(eq(routeCheckpoints.routeId, newRoute.id))
+
+    return NextResponse.json({
+      data: {
+        id: newRoute.id,
+        code: newRoute.code,
+        displayName: newRoute.displayName,
+        serviceAreaId: newRoute.serviceAreaId,
+        geometry: newRoute.geometry,
+        status: newRoute.status,
+        distanceMeters: newRoute.lengthMeters ? parseFloat(newRoute.lengthMeters) : null,
+        estimatedDurationMinutes: newRoute.estimatedMinutes ? Math.round(parseFloat(newRoute.estimatedMinutes)) : null,
+        payoutAmount: Math.round(parseFloat(newRoute.payoutAmount || '10000')),
+        checkpoints: cps.map((cp) => ({
+          id: cp.id,
+          name: cp.name,
+          sequenceOrder: cp.sequenceOrder,
+          coordinates: { lat: (cp.coordinates as [number, number])?.[1] ?? 0, lng: (cp.coordinates as [number, number])?.[0] ?? 0 },
+          photoRequired: cp.photoRequired ?? true,
+          geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
+          type: cp.type ?? 'photo_point',
+        })),
+        imageUrl: newRoute.imageUrl || null,
+        createdAt: new Date(newRoute.createdAt).toISOString(),
+        updatedAt: new Date(newRoute.updatedAt).toISOString(),
+      },
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating route:', error)
     return NextResponse.json({ error: 'Failed to create route' }, { status: 500 })
