@@ -241,7 +241,11 @@
         <a href="#coverage" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">5. Coverage</a>
         <a href="#value" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">6. Value Proposition</a>
         <a href="#arrangement" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">7. Proposed Arrangement</a>
-        <a href="#contact" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">8. Contact &amp; Next Steps</a>
+        <a href="#revenue" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">8. Revenue &amp; Funding Models</a>
+        <a href="#before-after" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">9. Before/After Documentation</a>
+        <a href="#pricing" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">10. Partnership Tiers</a>
+        <a href="#landscape" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">11. Competitive Landscape</a>
+        <a href="#contact" class="text-sm text-gray-700 hover:text-gcc-green transition-colors">12. Contact &amp; Next Steps</a>
       </div>
     </div>
   </nav>
@@ -272,8 +276,12 @@
           The GCC mobile application enables residents to submit geotagged, photo-documented reports of environmental conditions using their smartphones. Each report undergoes on-device AI classification to categorize waste types, estimate severity, and&mdash;on devices equipped with LiDAR sensors&mdash;measure volume and depth of debris. Reports enter a 24-hour verification cycle where other community members re-visit the site to confirm, update, or mark conditions as resolved.
         </p>
 
-        <p class="text-gray-700 leading-relaxed mb-8">
+        <p class="text-gray-700 leading-relaxed mb-6">
           The platform currently covers <strong>all 77 community areas</strong> with over <strong>2,000 data points</strong>, density-weighted to reflect actual environmental burden. This data is available through a SODA-compatible REST API, ready for integration with the Chicago Data Portal with zero additional engineering from the City.
+        </p>
+
+        <p class="text-gray-700 leading-relaxed mb-8">
+          GCC is building a sustainable revenue model through data licensing, consulting, and platform licensing &mdash; not seeking perpetual grants. Our community-driven approach generates data at zero cost to the city while creating a scalable business that can serve municipalities nationwide.
         </p>
       </div>
 
@@ -1132,6 +1140,20 @@
             GCC data can be spatially and temporally correlated with 311 sanitation complaints to identify underreported areas&mdash;neighborhoods with significant environmental issues that do not generate proportional 311 complaints. This fills blind spots in the city's existing data.
           </p>
         </div>
+
+        <!-- Card 9 -->
+        <div class="bg-white rounded-xl border-2 border-gcc-green/30 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break md:col-span-2">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <span class="text-gcc-green font-bold text-lg">9</span>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Cost Efficiency</h3>
+            <span class="inline-block px-3 py-1 rounded-full bg-gcc-green/10 text-gcc-green text-xs font-bold">KEY DIFFERENTIATOR</span>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            The city currently spends approximately <strong>$35&ndash;$50 per 311 complaint</strong> when accounting for call center operators, dispatch, and administrative overhead. GCC's community-driven model generates <strong>richer, more detailed data at zero cost to the city</strong>. Each GCC report contains 25+ structured fields, geotagged photos, and AI analysis &mdash; compared to the 5&ndash;8 fields in a typical 311 complaint. At scale, this represents millions of dollars in annual savings on environmental monitoring while producing superior data quality.
+          </p>
+        </div>
       </div>
     </div>
   </section>
@@ -1262,6 +1284,518 @@
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 90-Day Pilot Offer -->
+      <div class="mt-10 bg-gcc-green-50 border-2 border-gcc-green/30 rounded-2xl p-8 avoid-break print-color">
+        <div class="flex items-start gap-4">
+          <div class="flex-shrink-0">
+            <div class="w-12 h-12 rounded-xl bg-gcc-green/20 flex items-center justify-center">
+              <svg class="w-6 h-6 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+          </div>
+          <div>
+            <h4 class="text-lg font-bold text-gcc-dark mb-2">90-Day Free Pilot Offer</h4>
+            <p class="text-gray-700 leading-relaxed">
+              We propose starting with a <strong>90-day free pilot at the Professional tier</strong> (normally $5,000/month). During this period, the city evaluates data quality, coverage, API reliability, and integration feasibility with zero financial commitment. After the pilot, we negotiate a partnership tier based on demonstrated value. No contracts, no obligations &mdash; just proof through performance.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- REVENUE & FUNDING MODELS -->
+  <!-- ============================================================ -->
+  <section id="revenue" class="section-divider py-16 px-8 bg-gray-50 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 8</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Revenue &amp; Funding Models</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        GCC is building sustainable revenue streams, not just a free data donation. Five complementary models ensure long-term viability.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Model 1: Data Licensing -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Data Licensing</h3>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600">
+            <li class="flex items-start gap-2">
+              <span class="text-gray-400 font-medium text-xs mt-0.5 flex-shrink-0">FREE</span>
+              <span>Public API, 100 requests/day, aggregated stats</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$5K/mo</span>
+              <span>Real-time streaming, unlimited queries, custom filters</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$15K/mo</span>
+              <span>Raw data access, custom integrations, dedicated support, SLA</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green-dark font-bold text-xs mt-0.5 flex-shrink-0">CUSTOM</span>
+              <span>City Partnership: full integration, historical data, predictive analytics</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Model 2: Consulting & Analytics -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Consulting &amp; Analytics</h3>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$2.5K&ndash;$10K</span>
+              <span>Ad hoc analysis reports per engagement</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$3K&ndash;$8K/mo</span>
+              <span>Monthly analytics subscription</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$25K&ndash;$75K</span>
+              <span>Custom dashboard deployment + $2K/month maintenance</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Model 3: Grant Funding Pipeline -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Grant Funding Pipeline</h3>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600">
+            <li class="flex items-start gap-2">
+              <span class="text-blue-600 font-bold text-xs mt-0.5 flex-shrink-0">FEDERAL</span>
+              <span>EPA Environmental Justice ($100K&ndash;$400K)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-600 font-bold text-xs mt-0.5 flex-shrink-0">STATE</span>
+              <span>Illinois Clean Energy Community Foundation</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-600 font-bold text-xs mt-0.5 flex-shrink-0">LOCAL</span>
+              <span>United Way Equity Fund ($50K), LISC Creative Placemaking ($50K&ndash;$250K)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-600 font-bold text-xs mt-0.5 flex-shrink-0">PRIVATE</span>
+              <span>MacArthur Foundation, Chicago Community Trust, Bloomberg Philanthropies</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Model 4: Sponsored Cleanups -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">Sponsored Cleanups</h3>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$100&ndash;$1K</span>
+              <span>Block sponsorship (individual blocks)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$5K&ndash;$25K</span>
+              <span>Area sponsorship (community area)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$100K+</span>
+              <span>City-wide branded cleanup campaign</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$2.5K&ndash;$10K</span>
+              <span>Corporate team cleanups (tax-deductible)</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Model 5: SaaS Platform Licensing -->
+        <div class="bg-white rounded-xl border-2 border-gcc-green/30 p-6 shadow-sm hover:shadow-md transition-shadow avoid-break md:col-span-2">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gcc-green/10 print-color">
+              <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            <h3 class="text-lg font-bold text-gray-900">SaaS Platform Licensing</h3>
+            <span class="inline-block px-3 py-1 rounded-full bg-gcc-green/10 text-gcc-green text-xs font-bold">SCALABLE</span>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed mb-3">
+            Other cities adopt the GCC platform as a turnkey community monitoring solution.
+          </p>
+          <ul class="space-y-3 text-sm text-gray-600">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold text-xs mt-0.5 flex-shrink-0">$50K&ndash;$200K/yr</span>
+              <span>Per municipality platform license</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+              <span>White-label solution for civic tech deployments</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+              <span>Multi-city data aggregation and benchmarking</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- BEFORE/AFTER DOCUMENTATION IMPACT -->
+  <!-- ============================================================ -->
+  <section id="before-after" class="section-divider py-16 px-8 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 9</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Visual Proof of Impact &mdash; Before &amp; After Documentation</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        Every GCC cleanup generates GPS-verified before/after photo pairs. This is what makes GCC fundamentally different from 311 complaint systems.
+      </p>
+
+      <!-- Comparison Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-10 avoid-break">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="print-color" style="background: #0F172A;">
+                <th class="text-left py-4 px-5 text-white font-semibold w-1/4">Dimension</th>
+                <th class="text-left py-4 px-5 text-gray-400 font-semibold w-[37.5%]">
+                  <span class="flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                    311 Complaint
+                  </span>
+                </th>
+                <th class="text-left py-4 px-5 text-gcc-green-light font-semibold w-[37.5%]">
+                  <span class="flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-gcc-green"></span>
+                    GCC Report
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Evidence</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  Text description only
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  Photos + AI analysis + LiDAR
+                </td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Verification</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  24h community verification
+                </td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Resolution Proof</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  None (marked "closed")
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  After-photos with GPS timestamps
+                </td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Data Richness</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  5&ndash;8 fields
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  25+ fields
+                </td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Cost to City per Report</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  ~$35&ndash;$50 (operator + dispatch)
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  $0 (community-driven)
+                </td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Response Time</td>
+                <td class="py-3.5 px-5 text-gray-600">
+                  <span class="text-red-500 font-bold mr-1.5">&#10007;</span>
+                  3&ndash;7 business days
+                </td>
+                <td class="py-3.5 px-5 text-gray-800">
+                  <span class="text-gcc-green font-bold mr-1.5">&#10003;</span>
+                  24-hour verification cycle
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Key Insight -->
+      <div class="bg-gcc-green-50 border-l-4 border-gcc-green rounded-r-lg p-6 avoid-break print-color">
+        <p class="text-lg text-gray-800 leading-relaxed font-medium">
+          The city currently spends approximately <strong>$35&ndash;$50 per 311 complaint</strong> processing. GCC's community-driven model generates richer data at <strong>zero cost to the city</strong>. The before/after documentation provides visual proof that traditional systems cannot match.
+        </p>
+        <p class="text-gray-600 mt-3 text-sm">
+          At Chicago's current volume of ~350,000 sanitation complaints per year, even a 10% shift to community-monitored data represents <strong>$1.2M&ndash;$1.75M in annual savings</strong> while producing superior, verified, photo-documented reports.
+        </p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- PROPOSED PRICING TIERS -->
+  <!-- ============================================================ -->
+  <section id="pricing" class="section-divider py-16 px-8 bg-gray-50 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 10</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">Proposed Partnership Tiers</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        Flexible pricing designed to let the city start small and scale based on demonstrated value.
+      </p>
+
+      <!-- Pricing Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <!-- Open Data -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm avoid-break">
+          <div class="text-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900 mb-1">Open Data</h3>
+            <div class="text-3xl font-black text-gray-400">Free</div>
+            <div class="text-sm text-gray-500 mt-1">forever</div>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600 mb-6">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Public API</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>100 requests/day</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>30-day data delay</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Aggregated stats only</span>
+            </li>
+          </ul>
+          <div class="text-xs text-gray-400 text-center">Best effort SLA</div>
+        </div>
+
+        <!-- Professional -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm avoid-break">
+          <div class="text-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900 mb-1">Professional</h3>
+            <div class="text-3xl font-black text-gcc-green">$5,000</div>
+            <div class="text-sm text-gray-500 mt-1">per month</div>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600 mb-6">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Real-time feed</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>10,000 requests/day</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Individual record access</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Email support</span>
+            </li>
+          </ul>
+          <div class="text-xs text-gray-400 text-center">99.5% uptime SLA</div>
+        </div>
+
+        <!-- Enterprise -->
+        <div class="bg-white rounded-xl border-2 border-gcc-green/40 p-6 shadow-md avoid-break relative">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2">
+            <span class="inline-block px-3 py-1 rounded-full bg-gcc-green text-white text-xs font-bold">RECOMMENDED</span>
+          </div>
+          <div class="text-center mb-5">
+            <h3 class="text-lg font-bold text-gray-900 mb-1">Enterprise</h3>
+            <div class="text-3xl font-black text-gcc-green">$15,000</div>
+            <div class="text-sm text-gray-500 mt-1">per month</div>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-600 mb-6">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Unlimited access</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Raw data + custom integrations</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>Phone support</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green font-bold mr-0.5">&#10003;</span>
+              <span>4hr response time</span>
+            </li>
+          </ul>
+          <div class="text-xs text-gray-400 text-center">99.9% uptime SLA</div>
+        </div>
+
+        <!-- City Partner -->
+        <div class="bg-gcc-dark rounded-xl p-6 shadow-lg text-white avoid-break print-color">
+          <div class="text-center mb-5">
+            <h3 class="text-lg font-bold text-white mb-1">City Partner</h3>
+            <div class="text-3xl font-black text-gcc-green">Custom</div>
+            <div class="text-sm text-gray-400 mt-1">negotiated</div>
+          </div>
+          <ul class="space-y-3 text-sm text-gray-300 mb-6">
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green-light font-bold mr-0.5">&#10003;</span>
+              <span>Full bidirectional integration</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green-light font-bold mr-0.5">&#10003;</span>
+              <span>Custom dashboards</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green-light font-bold mr-0.5">&#10003;</span>
+              <span>Embedded analytics</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-gcc-green-light font-bold mr-0.5">&#10003;</span>
+              <span>Dedicated account team</span>
+            </li>
+          </ul>
+          <div class="text-xs text-gray-500 text-center">Custom SLA</div>
+        </div>
+      </div>
+
+      <!-- Pilot Callout -->
+      <div class="bg-gcc-green-50 border-l-4 border-gcc-green rounded-r-lg p-6 avoid-break print-color">
+        <p class="text-lg text-gray-800 leading-relaxed font-medium">
+          We propose starting with a <strong>90-day free pilot at the Professional tier</strong>. During this period, the city evaluates data quality, coverage, and integration feasibility. After the pilot, we negotiate a partnership tier based on demonstrated value.
+        </p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- COMPETITIVE LANDSCAPE -->
+  <!-- ============================================================ -->
+  <section id="landscape" class="section-divider py-16 px-8 page-break">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-gcc-green font-bold text-sm tracking-widest uppercase">Section 11</span>
+      </div>
+      <h2 class="text-3xl font-bold text-gcc-dark mb-3">How Other Cities Monetize Civic Tech Data</h2>
+      <p class="text-gray-600 mb-10 max-w-3xl">
+        A comparison of how major US cities handle environmental reporting, and where GCC fits in the landscape.
+      </p>
+
+      <!-- Landscape Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-10 avoid-break">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="print-color" style="background: #0F172A;">
+                <th class="text-left py-4 px-5 text-white font-semibold">City</th>
+                <th class="text-left py-4 px-5 text-white font-semibold">Platform</th>
+                <th class="text-left py-4 px-5 text-white font-semibold">Annual Spend</th>
+                <th class="text-left py-4 px-5 text-white font-semibold">Data Model</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">New York</td>
+                <td class="py-3.5 px-5 text-gray-600">311 + Zencity analytics</td>
+                <td class="py-3.5 px-5 text-gray-600">~$75M (311 ops) + $200K (analytics)</td>
+                <td class="py-3.5 px-5 text-gray-600">Reactive complaints, no verification</td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Los Angeles</td>
+                <td class="py-3.5 px-5 text-gray-600">Clean Streets LA (LASAN)</td>
+                <td class="py-3.5 px-5 text-gray-600">~$3.5M</td>
+                <td class="py-3.5 px-5 text-gray-600">Mobile reporting, no AI, no before/after</td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="py-3.5 px-5 font-medium text-gray-900">San Francisco</td>
+                <td class="py-3.5 px-5 text-gray-600">SF 311 + DataSF</td>
+                <td class="py-3.5 px-5 text-gray-600">~$15M (311 ops)</td>
+                <td class="py-3.5 px-5 text-gray-600">Open data portal, no community verification</td>
+              </tr>
+              <tr class="hover:bg-gray-50 transition-colors bg-gray-50/50">
+                <td class="py-3.5 px-5 font-medium text-gray-900">Chicago</td>
+                <td class="py-3.5 px-5 text-gray-600">311 + Chi Hack Night</td>
+                <td class="py-3.5 px-5 text-gray-600">~$20M (311 ops)</td>
+                <td class="py-3.5 px-5 text-gray-600">Reactive only, no structured cleanup data</td>
+              </tr>
+              <tr class="print-color" style="background: rgba(34,197,94,0.08);">
+                <td class="py-3.5 px-5 font-bold text-gcc-green-dark">Chicago + GCC</td>
+                <td class="py-3.5 px-5 text-gcc-green-dark font-medium">311 + GCC Community Reports</td>
+                <td class="py-3.5 px-5 text-gcc-green-dark font-medium">$0 (pilot) &rarr; $60K&ndash;$180K/yr</td>
+                <td class="py-3.5 px-5 text-gcc-green-dark font-medium">Proactive, verified, AI-analyzed, before/after</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Key Insight -->
+      <div class="bg-gcc-dark rounded-2xl p-8 text-white print-color avoid-break">
+        <div class="flex items-start gap-4">
+          <div class="flex-shrink-0">
+            <div class="w-12 h-12 rounded-xl bg-gcc-green/20 flex items-center justify-center">
+              <svg class="w-6 h-6 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+          </div>
+          <div>
+            <h4 class="text-lg font-bold text-white mb-2">Paradigm Shift</h4>
+            <p class="text-gray-300 leading-relaxed">
+              GCC represents a paradigm shift: from reactive complaint processing to proactive, verified, AI-analyzed community monitoring. <strong class="text-white">No other city has a system that combines GPS verification, computer vision classification, gamified community engagement, and before/after documentation.</strong> Chicago has the opportunity to lead this transformation.
+            </p>
           </div>
         </div>
       </div>

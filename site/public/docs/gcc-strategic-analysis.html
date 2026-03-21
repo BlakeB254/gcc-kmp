@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCC Strategic Analysis - Internal Memo - CONFIDENTIAL</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            gcc: {
+              green: '#22C55E',
+              'green-dark': '#16A34A',
+              'green-light': '#4ADE80',
+              'green-50': '#F0FDF4',
+              'green-100': '#DCFCE7',
+              dark: '#0F172A',
+              'dark-light': '#1E293B',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.6in 0.75in;
+      }
+
+      body {
+        font-size: 9.5pt;
+        line-height: 1.4;
+        color: #000;
+        background: #fff;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .page-break-before {
+        page-break-before: always;
+        break-before: page;
+      }
+
+      .avoid-break {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .print-no-bg {
+        background: none !important;
+        color: #000 !important;
+      }
+
+      table {
+        page-break-inside: avoid;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+
+      .print-color {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .cover-section {
+        min-height: auto;
+        padding: 2in 0 1.5in 0;
+      }
+
+      h2, h3 {
+        page-break-after: avoid;
+      }
+
+      section {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+      }
+
+      .confidential-bar {
+        background: #000 !important;
+        color: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    .revenue-row:hover {
+      background-color: #f0fdf4;
+    }
+
+    .priority-immediate { border-left: 4px solid #EF4444; }
+    .priority-month { border-left: 4px solid #F59E0B; }
+    .priority-30day { border-left: 4px solid #3B82F6; }
+    .priority-60day { border-left: 4px solid #8B5CF6; }
+    .priority-long { border-left: 4px solid #6B7280; }
+  </style>
+</head>
+<body class="bg-white text-gray-900">
+
+  <!-- ============================================================ -->
+  <!-- CONFIDENTIAL BANNER -->
+  <!-- ============================================================ -->
+  <div class="confidential-bar bg-red-700 text-white text-center py-2 px-4 sticky top-0 z-50 print-color">
+    <span class="text-xs font-bold tracking-[0.2em] uppercase">CONFIDENTIAL &mdash; INTERNAL USE ONLY &mdash; NOT FOR DISTRIBUTION</span>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- COVER / MEMO HEADER -->
+  <!-- ============================================================ -->
+  <section class="cover-section min-h-screen flex flex-col justify-center bg-gcc-dark text-white relative overflow-hidden print-color page-break">
+    <div class="absolute inset-0 opacity-5 no-print" style="background-image: radial-gradient(circle at 25% 25%, #22C55E 1px, transparent 1px), radial-gradient(circle at 75% 75%, #22C55E 1px, transparent 1px); background-size: 50px 50px;"></div>
+
+    <div class="relative z-10 max-w-4xl mx-auto px-8 w-full">
+      <!-- Confidential stamp -->
+      <div class="mb-12 text-center">
+        <div class="inline-block border-2 border-red-500 px-6 py-2 rounded">
+          <span class="text-red-400 text-sm font-bold tracking-[0.3em] uppercase">CONFIDENTIAL</span>
+        </div>
+      </div>
+
+      <div class="text-center mb-16">
+        <h1 class="text-4xl md:text-5xl font-black tracking-tight mb-4">
+          <span class="text-gcc-green">Strategic Analysis</span>
+        </h1>
+        <p class="text-2xl font-light text-gray-400 tracking-wide uppercase">Internal Memo</p>
+      </div>
+
+      <!-- Memo routing block -->
+      <div class="bg-white/5 border border-white/10 rounded-xl p-8 max-w-2xl mx-auto">
+        <table class="w-full text-left">
+          <tbody>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-6 text-gray-500 font-semibold text-sm uppercase tracking-wide w-24">Date</td>
+              <td class="py-3 text-white font-medium">March 2026</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-6 text-gray-500 font-semibold text-sm uppercase tracking-wide">To</td>
+              <td class="py-3 text-white font-medium">Founder</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-6 text-gray-500 font-semibold text-sm uppercase tracking-wide">From</td>
+              <td class="py-3 text-white font-medium">Strategy Team</td>
+            </tr>
+            <tr>
+              <td class="py-3 pr-6 text-gray-500 font-semibold text-sm uppercase tracking-wide">Re</td>
+              <td class="py-3 text-white font-medium">Partnership, Revenue, and Growth Strategy</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-12 text-center">
+        <p class="text-gray-500 text-sm italic">Read this before every external meeting.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- TABLE OF CONTENTS -->
+  <!-- ============================================================ -->
+  <nav class="max-w-4xl mx-auto px-8 py-12 no-print">
+    <h2 class="text-lg font-bold text-gray-400 uppercase tracking-wide mb-6">Contents</h2>
+    <ol class="space-y-2 text-sm">
+      <li><a href="#revenue" class="text-gcc-green hover:underline font-medium">1. Revenue Expectations &mdash; Chicago Data Portal Deal</a></li>
+      <li><a href="#comparables" class="text-gcc-green hover:underline font-medium">2. Comparable Civic Tech Monetization</a></li>
+      <li><a href="#tax" class="text-gcc-green hover:underline font-medium">3. Tax Write-Off Mechanics for 501(c)(3) Donations</a></li>
+      <li><a href="#meta-nvidia" class="text-gcc-green hover:underline font-medium">4. Meta / NVIDIA Pitch Strategy</a></li>
+      <li><a href="#outreach" class="text-gcc-green hover:underline font-medium">5. Complete Outreach Priority List</a></li>
+      <li><a href="#grants" class="text-gcc-green hover:underline font-medium">6. Grant Landscape</a></li>
+      <li><a href="#bounty" class="text-gcc-green hover:underline font-medium">7. Sponsor Bounty Economics</a></li>
+      <li><a href="#uchicago" class="text-gcc-green hover:underline font-medium">8. What to Tell UChicago</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 1: REVENUE EXPECTATIONS -->
+  <!-- ============================================================ -->
+  <section id="revenue" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 1</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Revenue Expectations</h2>
+    <p class="text-lg text-gray-500 mb-8">Chicago Data Portal Deal &mdash; Realistic Ranges</p>
+
+    <p class="text-gray-700 mb-8 leading-relaxed">
+      These are honest estimates. Year 1 is about proving value and building relationships. Real revenue starts in Year 2. Do not walk into any meeting promising Year 3 numbers as if they are guaranteed.
+    </p>
+
+    <!-- Data Licensing -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-1">Data Licensing</h3>
+      <p class="text-sm text-gray-500 mb-3">City pays for premium access to GCC data feeds.</p>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Year</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Range</th>
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Reality Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 1</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$0 &ndash; $25K</td>
+            <td class="py-2.5 px-4 text-gray-600">Pilot phase. Likely free data sharing to build the relationship. Do not expect payment.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 2</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$25K &ndash; $75K</td>
+            <td class="py-2.5 px-4 text-gray-600">If data proves valuable, city wants real-time feed. This is when licensing kicks in.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 3+</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gcc-green-dark font-semibold">$100K &ndash; $200K</td>
+            <td class="py-2.5 px-4 text-gray-600">Contracted data provider, potentially replacing some 311 spend.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Consulting Revenue -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-1">Consulting Revenue</h3>
+      <p class="text-sm text-gray-500 mb-3">Helping the city interpret data, generate reports, and make decisions.</p>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Year</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Range</th>
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Reality Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 1</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$10K &ndash; $40K</td>
+            <td class="py-2.5 px-4 text-gray-600">Ad hoc analysis, report generation. Bill hourly. Low commitment from city.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 2</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$50K &ndash; $100K</td>
+            <td class="py-2.5 px-4 text-gray-600">Regular consulting contract. Quarterly reports, policy recommendations.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 3+</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gcc-green-dark font-semibold">$100K &ndash; $200K</td>
+            <td class="py-2.5 px-4 text-gray-600">Embedded analytics partner. Full department integration.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SaaS Subscription -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-1">SaaS Subscription</h3>
+      <p class="text-sm text-gray-500 mb-3">Dashboard and platform access for city departments.</p>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Year</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Range</th>
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Reality Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 1</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$0</td>
+            <td class="py-2.5 px-4 text-gray-600">Building the product. No revenue here yet. Do not promise a dashboard you have not built.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 2</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$20K &ndash; $50K</td>
+            <td class="py-2.5 px-4 text-gray-600">Pilot with one department. Monthly subscription model.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 3+</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gcc-green-dark font-semibold">$100K &ndash; $500K</td>
+            <td class="py-2.5 px-4 text-gray-600">Multi-department, other cities. This is the real upside but it requires execution.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- City Contract -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-1">City Contract</h3>
+      <p class="text-sm text-gray-500 mb-3">Formal vendor relationship with the City of Chicago.</p>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Year</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Range</th>
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Reality Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 1</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$0</td>
+            <td class="py-2.5 px-4 text-gray-600">Too early. City procurement is slow. You need a track record first.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 2&ndash;3</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gray-700">$50K &ndash; $150K</td>
+            <td class="py-2.5 px-4 text-gray-600">Pilot contract. Will require navigating city procurement rules.</td>
+          </tr>
+          <tr class="border-t border-gray-100 revenue-row">
+            <td class="py-2.5 px-4 font-medium">Year 4+</td>
+            <td class="py-2.5 px-4 text-right font-mono text-gcc-green-dark font-semibold">$200K &ndash; $500K</td>
+            <td class="py-2.5 px-4 text-gray-600">Scaled contract. Multi-year deal. This requires political relationships and proven ROI.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Total Trajectory -->
+    <div class="bg-gcc-dark text-white rounded-xl p-8 avoid-break print-color">
+      <h3 class="text-lg font-bold mb-1">Total Realistic Revenue Trajectory</h3>
+      <p class="text-gray-400 text-sm mb-6">All streams combined. Ranges reflect best-case within realistic bounds.</p>
+      <div class="grid grid-cols-3 gap-6 text-center">
+        <div>
+          <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Year 1</div>
+          <div class="text-2xl font-black text-white">$50K &ndash; $160K</div>
+          <div class="text-xs text-gray-500 mt-1">Mostly consulting + data pilot</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Year 2</div>
+          <div class="text-2xl font-black text-gcc-green">$215K &ndash; $570K</div>
+          <div class="text-xs text-gray-500 mt-1">Licensing + SaaS + consulting</div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Year 3+</div>
+          <div class="text-2xl font-black text-gcc-green">$500K &ndash; $1.25M</div>
+          <div class="text-xs text-gray-500 mt-1">Full platform + city contract</div>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t border-white/10">
+        <p class="text-sm text-gray-400">
+          <strong class="text-white">Context:</strong> Chicago Dept. of Environment budget is <strong class="text-white">$48M in FY2026</strong>. GCC asking for 0.5% of that ($240K) is very reasonable if data proves valuable. Do not be afraid to name this number in meetings.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 2: COMPARABLE CIVIC TECH -->
+  <!-- ============================================================ -->
+  <section id="comparables" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 2</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Comparable Civic Tech Monetization</h2>
+    <p class="text-lg text-gray-500 mb-8">What others charge. What GCC can learn from them.</p>
+
+    <div class="space-y-6">
+      <!-- NYC 311 -->
+      <div class="border border-gray-200 rounded-xl p-6 avoid-break">
+        <div class="flex items-start justify-between mb-3">
+          <h3 class="text-lg font-bold text-gcc-dark">NYC 311 Analytics</h3>
+          <span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-medium">Reference</span>
+        </div>
+        <p class="text-gray-700 text-sm leading-relaxed mb-3">
+          NYC spends approximately <strong>$75M/year</strong> on 311 operations. Third-party analytics companies like Zencity charge <strong>$50K&ndash;$300K/year</strong> for civic analytics dashboards layered on top of 311 data.
+        </p>
+        <p class="text-gray-500 text-xs italic">
+          Takeaway: There is a proven market for cities paying for analytics on community-reported data. GCC's data is higher quality than 311 reports.
+        </p>
+      </div>
+
+      <!-- SeeClickFix -->
+      <div class="border border-gray-200 rounded-xl p-6 avoid-break">
+        <div class="flex items-start justify-between mb-3">
+          <h3 class="text-lg font-bold text-gcc-dark">SeeClickFix</h3>
+          <span class="text-xs bg-gcc-green-50 text-gcc-green-dark px-3 py-1 rounded-full font-medium">Closest Comparable</span>
+        </div>
+        <p class="text-gray-700 text-sm leading-relaxed mb-3">
+          Raised <strong>$2.3M</strong>, acquired by CivicPlus. Revenue model: SaaS platform for cities at <strong>$50K&ndash;$200K/year per municipality</strong>. Over <strong>400 cities</strong> as clients.
+        </p>
+        <p class="text-gray-500 text-xs italic">
+          Takeaway: SeeClickFix is essentially a fancier 311 without verification, AI, or gamification. GCC has all three. If SeeClickFix got 400 cities at $50K+, GCC has room.
+        </p>
+      </div>
+
+      <!-- Clean Streets LA -->
+      <div class="border border-gray-200 rounded-xl p-6 avoid-break">
+        <div class="flex items-start justify-between mb-3">
+          <h3 class="text-lg font-bold text-gcc-dark">Clean Streets LA</h3>
+          <span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-medium">Reference</span>
+        </div>
+        <p class="text-gray-700 text-sm leading-relaxed mb-3">
+          <strong>$3.5M annual budget</strong> for LASAN (LA Sanitation). Uses a mobile app for reporting but lacks the verification layer GCC has. No before/after documentation. No AI classification.
+        </p>
+        <p class="text-gray-500 text-xs italic">
+          Takeaway: LA spends $3.5M on something GCC does better. This is the competitive benchmark to reference when talking about value.
+        </p>
+      </div>
+    </div>
+
+    <!-- Key Insight Box -->
+    <div class="mt-8 bg-gcc-green-50 border-l-4 border-gcc-green rounded-r-xl p-6 avoid-break">
+      <h4 class="font-bold text-gcc-dark mb-2">The Honest Competitive Assessment</h4>
+      <p class="text-gray-700 text-sm leading-relaxed">
+        No one does what GCC does: <strong>verified before/after data with AI classification</strong>. This is genuinely unique. SeeClickFix is the closest comparison, and they are essentially a fancier 311 without verification, AI, or gamification. GCC's moat is real, but only if it is communicated clearly. Do not undersell the verification layer &mdash; it is the entire differentiator.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 3: TAX WRITE-OFF MECHANICS -->
+  <!-- ============================================================ -->
+  <section id="tax" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 3</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Tax Write-Off Mechanics</h2>
+    <p class="text-lg text-gray-500 mb-8">IRS Publication 526 rules for 501(c)(3) donations. Know this cold.</p>
+
+    <div class="space-y-6">
+      <!-- IRS Rules -->
+      <div class="avoid-break">
+        <h3 class="text-lg font-bold text-gcc-dark mb-4">IRS Publication 526 Rules</h3>
+        <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+          <thead>
+            <tr class="bg-gray-50">
+              <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Donation Type</th>
+              <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Deduction Rule</th>
+              <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Limit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-gray-100">
+              <td class="py-2.5 px-4 font-medium">Cash donations</td>
+              <td class="py-2.5 px-4 text-gray-700">100% deductible</td>
+              <td class="py-2.5 px-4 text-gray-600">Up to 60% of donor's AGI</td>
+            </tr>
+            <tr class="border-t border-gray-100">
+              <td class="py-2.5 px-4 font-medium">In-kind (tickets, passes)</td>
+              <td class="py-2.5 px-4 text-gray-700">Deductible at Fair Market Value (FMV)</td>
+              <td class="py-2.5 px-4 text-gray-600">FMV = face value printed on ticket</td>
+            </tr>
+            <tr class="border-t border-gray-100">
+              <td class="py-2.5 px-4 font-medium">Unsold sports tickets</td>
+              <td class="py-2.5 px-4 text-gray-700">FMV is the face value</td>
+              <td class="py-2.5 px-4 text-gray-600">Even if they would have gone unsold</td>
+            </tr>
+            <tr class="border-t border-gray-100">
+              <td class="py-2.5 px-4 font-medium">Technology equipment</td>
+              <td class="py-2.5 px-4 text-gray-700">FMV based on comparable market price</td>
+              <td class="py-2.5 px-4 text-gray-600">Must document comparable pricing</td>
+            </tr>
+            <tr class="border-t border-gray-100">
+              <td class="py-2.5 px-4 font-medium">Corporate donations</td>
+              <td class="py-2.5 px-4 text-gray-700">100% deductible</td>
+              <td class="py-2.5 px-4 text-gray-600">Up to 25% of taxable income</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- What This Means -->
+      <div class="bg-gcc-dark text-white rounded-xl p-6 avoid-break print-color">
+        <h3 class="text-lg font-bold mb-4">What This Actually Means for Donors</h3>
+        <div class="space-y-4 text-sm">
+          <div class="flex items-start gap-3">
+            <span class="text-gcc-green font-bold text-lg leading-none mt-0.5">1</span>
+            <p class="text-gray-300 leading-relaxed">
+              A team donating <strong class="text-white">100 tickets at $50 face value = $5,000 deduction</strong>.
+            </p>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-gcc-green font-bold text-lg leading-none mt-0.5">2</span>
+            <p class="text-gray-300 leading-relaxed">
+              It costs them <strong class="text-white">nothing</strong> (tickets were going unsold) but saves them <strong class="text-white">$1,000&ndash;$1,750 in taxes</strong> (at 20&ndash;35% corporate rate).
+            </p>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-gcc-green font-bold text-lg leading-none mt-0.5">3</span>
+            <p class="text-gray-300 leading-relaxed">
+              This is the core pitch: <strong class="text-gcc-green">"Your unsold inventory becomes a tax advantage AND community PR."</strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Receipting Requirements -->
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 avoid-break">
+        <h4 class="font-bold text-amber-800 mb-2">Receipting Requirement &mdash; Do Not Forget This</h4>
+        <p class="text-amber-900 text-sm leading-relaxed">
+          GCC <strong>must</strong> provide a written acknowledgment for any single donation over $250. The acknowledgment must include a statement that <strong>no goods or services were provided in return</strong>. Without this receipt, the donor cannot claim the deduction. Have a template ready before your first donation conversation.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 4: META / NVIDIA PITCH -->
+  <!-- ============================================================ -->
+  <section id="meta-nvidia" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 4</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Meta / NVIDIA Pitch Strategy</h2>
+    <p class="text-lg text-gray-500 mb-8">What to say, what to ask for, and what to do if they say no.</p>
+
+    <!-- Meta -->
+    <div class="border border-gray-200 rounded-xl overflow-hidden mb-8 avoid-break">
+      <div class="bg-blue-600 text-white px-6 py-4 print-color">
+        <h3 class="text-xl font-bold">Meta &mdash; Ray-Ban Smart Glasses</h3>
+      </div>
+      <div class="p-6 space-y-5">
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">Why They Would Say Yes</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            Meta is desperately trying to make smart glasses mainstream. Environmental/community use case is better PR than "record your friends at brunch." GCC provides a real, documented, photographable use case. Meta needs to be seen as helpful, not creepy.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">The Pitch (Use This Language)</h4>
+          <p class="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-lg border-l-4 border-blue-500 italic">
+            "Your glasses help workers clean neighborhoods with both hands free. We provide before/after GPS-verified documentation of every cleanup. This is the use case that makes smart glasses look heroic."
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">What to Ask For</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            10&ndash;20 pairs of Ray-Ban Meta glasses for field workers. That is it. Small ask, big PR for them.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">If They Say No</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            Approach Snapchat (Spectacles), or position any competitor glasses as "the smart glasses that actually care about community." This creates FOMO for Meta. Use the rejection as leverage.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">Contact Path</h4>
+          <p class="text-gray-700 text-sm">
+            Meta for Good program &rarr; <strong>meta.com/social-impact</strong>, or reach out via the Chicago Meta office directly.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- NVIDIA -->
+    <div class="border border-gray-200 rounded-xl overflow-hidden avoid-break">
+      <div class="bg-gcc-green text-white px-6 py-4 print-color">
+        <h3 class="text-xl font-bold">NVIDIA &mdash; AI Hardware</h3>
+      </div>
+      <div class="p-6 space-y-5">
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">Why They Would Say Yes</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            NVIDIA's "AI for Good" program needs real-world showcases. Environmental monitoring with on-device AI is exactly their narrative. GCC is a ready-made case study.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">The Pitch (Use This Language)</h4>
+          <p class="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-lg border-l-4 border-gcc-green italic">
+            "GCC runs 12-category waste classification on TFLite/CoreML today. With NVIDIA edge hardware (Jetson), we could do real-time classification during the documentation walk &mdash; no cloud roundtrip."
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">What to Ask For</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            2&ndash;3 Jetson Orin Nano units for edge AI processing. DGX access for model training. These are small costs to NVIDIA.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">If They Say No</h4>
+          <p class="text-gray-700 text-sm leading-relaxed">
+            Honest assessment: <strong>the current on-device AI works fine without NVIDIA</strong>. This is a nice-to-have, not a blocker. Do not let a rejection slow you down.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1">Contact Path</h4>
+          <p class="text-gray-700 text-sm">
+            NVIDIA Foundation &rarr; <strong>nvidia.com/en-us/foundation/</strong>, or the NVIDIA AI for Good program.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 5: OUTREACH PRIORITY LIST -->
+  <!-- ============================================================ -->
+  <section id="outreach" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 5</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Complete Outreach Priority List</h2>
+    <p class="text-lg text-gray-500 mb-8">25 targets, ordered by likelihood and urgency. Work the list top to bottom.</p>
+
+    <!-- IMMEDIATE -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="inline-block w-3 h-3 rounded-full bg-red-500"></span>
+        <h3 class="text-lg font-bold text-gcc-dark">IMMEDIATE &mdash; This Week</h3>
+      </div>
+      <div class="space-y-3">
+        <div class="priority-immediate bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">01</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Navy Pier Community Rides</h4>
+            <p class="text-sm text-gray-600">Already gives 10K tickets/year. This is the easiest yes on the entire list. Just call them.</p>
+          </div>
+        </div>
+        <div class="priority-immediate bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">02</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Google for Nonprofits</h4>
+            <p class="text-sm text-gray-600">Cloud credits. Apply at <strong>google.com/nonprofits</strong>. Free. Takes 15 minutes to submit.</p>
+          </div>
+        </div>
+        <div class="priority-immediate bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">03</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Microsoft for Nonprofits</h4>
+            <p class="text-sm text-gray-600">Azure credits. Apply at <strong>microsoft.com/nonprofits</strong>. Similar process to Google.</p>
+          </div>
+        </div>
+        <div class="priority-immediate bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">04</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Freshworks</h4>
+            <p class="text-sm text-gray-600">Free CRM for 501(c)(3) organizations. You need CRM for donor/sponsor management anyway.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THIS MONTH -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span>
+        <h3 class="text-lg font-bold text-gcc-dark">THIS MONTH</h3>
+      </div>
+      <div class="space-y-3">
+        <div class="priority-month bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">05</span>
+          <div>
+            <h4 class="font-bold text-gray-800">White Sox Community Ticket Program</h4>
+            <p class="text-sm text-gray-600">Most accessible sports donation program. They have a community affairs office that handles this regularly.</p>
+          </div>
+        </div>
+        <div class="priority-month bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">06</span>
+          <div>
+            <h4 class="font-bold text-gray-800">United Way Equity Fund</h4>
+            <p class="text-sm text-gray-600">Up to <strong>$50K unrestricted</strong>, 2-year funding. Specifically targets small South/West Side nonprofits. GCC qualifies.</p>
+          </div>
+        </div>
+        <div class="priority-month bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">07</span>
+          <div>
+            <h4 class="font-bold text-gray-800">After School Matters</h4>
+            <p class="text-sm text-gray-600">Paid teen internship partnership. They fund the interns, you provide the work experience. Mutual benefit.</p>
+          </div>
+        </div>
+        <div class="priority-month bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">08</span>
+          <div>
+            <h4 class="font-bold text-gray-800">CTA Transit Passes</h4>
+            <p class="text-sm text-gray-600">Precedent exists for nonprofit transit pass programs. Workers need transportation to cleanup sites.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEXT 30 DAYS -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span>
+        <h3 class="text-lg font-bold text-gcc-dark">NEXT 30 DAYS</h3>
+      </div>
+      <div class="space-y-3">
+        <div class="priority-30day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">09</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Bears Community All-Pros</h4>
+            <p class="text-sm text-gray-600"><strong>$106K grant</strong> for social justice nonprofits. Competitive but GCC's story is strong.</p>
+          </div>
+        </div>
+        <div class="priority-30day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">10</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Blackhawks</h4>
+            <p class="text-sm text-gray-600">Direct contact: <strong>Jose De La Torre</strong>. Personal outreach is better than a form submission here.</p>
+          </div>
+        </div>
+        <div class="priority-30day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">11</span>
+          <div>
+            <h4 class="font-bold text-gray-800">LISC Creative Placemaking</h4>
+            <p class="text-sm text-gray-600"><strong>$50K&ndash;$250K</strong> grants. Strong fit for GCC's community-driven approach.</p>
+          </div>
+        </div>
+        <div class="priority-30day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">12</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Six Flags</h4>
+            <p class="text-sm text-gray-600">Simple online form. Approximately <strong>$50K/year in tickets</strong> for incentive rewards.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 60-90 DAYS -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span>
+        <h3 class="text-lg font-bold text-gcc-dark">60&ndash;90 DAYS</h3>
+      </div>
+      <div class="space-y-3">
+        <div class="priority-60day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">13&ndash;15</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Remaining Sports Teams (Cubs, Fire, Sky, Bulls)</h4>
+            <p class="text-sm text-gray-600">Each has community ticket programs. Approach after securing White Sox and Bears as proof points.</p>
+          </div>
+        </div>
+        <div class="priority-60day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">16&ndash;18</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Museums (Field, Shedd, MSI)</h4>
+            <p class="text-sm text-gray-600">Family pass donations for worker rewards. Environmental angle fits Field Museum especially.</p>
+          </div>
+        </div>
+        <div class="priority-60day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">19</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Chicago Community Trust (GrantCentral)</h4>
+            <p class="text-sm text-gray-600">Rolling applications via GrantCentral portal. Mid-size grants for community organizations.</p>
+          </div>
+        </div>
+        <div class="priority-60day bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">20</span>
+          <div>
+            <h4 class="font-bold text-gray-800">MacArthur Foundation</h4>
+            <p class="text-sm text-gray-600">Chicago-based. Major funder. Longer application cycle but significant potential.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LONG GAME -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
+        <h3 class="text-lg font-bold text-gcc-dark">LONG GAME &mdash; 3&ndash;6 Months</h3>
+      </div>
+      <div class="space-y-3">
+        <div class="priority-long bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">21</span>
+          <div>
+            <h4 class="font-bold text-gray-800">NVIDIA AI for Good</h4>
+            <p class="text-sm text-gray-600">Hardware and compute partnership. See Section 4 for full pitch strategy.</p>
+          </div>
+        </div>
+        <div class="priority-long bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">22</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Meta for Good</h4>
+            <p class="text-sm text-gray-600">Ray-Ban smart glasses for hands-free documentation. See Section 4 for full pitch strategy.</p>
+          </div>
+        </div>
+        <div class="priority-long bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">23</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Apple (LiDAR Showcase)</h4>
+            <p class="text-sm text-gray-600">GCC uses iPhone LiDAR for waste volume estimation. Apple loves to feature accessibility and community use cases.</p>
+          </div>
+        </div>
+        <div class="priority-long bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">24</span>
+          <div>
+            <h4 class="font-bold text-gray-800">Bloomberg Philanthropies</h4>
+            <p class="text-sm text-gray-600">Urban innovation focus. Data-driven civic improvement is their sweet spot.</p>
+          </div>
+        </div>
+        <div class="priority-long bg-white border border-gray-200 rounded-r-lg p-4 flex items-start gap-4 avoid-break">
+          <span class="text-2xl font-black text-gray-300 leading-none mt-0.5">25</span>
+          <div>
+            <h4 class="font-bold text-gray-800">EPA Environmental Justice Grants</h4>
+            <p class="text-sm text-gray-600">Federal, competitive. $100K&ndash;$400K. Longer timeline but significant funding if awarded.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 6: GRANT LANDSCAPE -->
+  <!-- ============================================================ -->
+  <section id="grants" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 6</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Grant Landscape</h2>
+    <p class="text-lg text-gray-500 mb-8">What is open now and what is coming.</p>
+
+    <!-- Currently Open -->
+    <div class="mb-10">
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Currently Open (March 2026)</h3>
+      <div class="space-y-3">
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">United Way Equity Fund</h4>
+            <span class="text-xs bg-gcc-green-50 text-gcc-green-dark px-3 py-1 rounded-full font-bold">Up to $50K</span>
+          </div>
+          <p class="text-sm text-gray-600">Unrestricted, 2-year funding. Targets small South/West Side nonprofits. GCC is a strong fit. <strong>This should be submitted this month.</strong></p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">LISC Chicago Creative Placemaking</h4>
+            <span class="text-xs bg-gcc-green-50 text-gcc-green-dark px-3 py-1 rounded-full font-bold">$50K &ndash; $250K</span>
+          </div>
+          <p class="text-sm text-gray-600">Community-driven improvement grants. GCC's block-by-block model aligns well with their "place-based" criteria.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">Chicago Community Trust</h4>
+            <span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-bold">Rolling</span>
+          </div>
+          <p class="text-sm text-gray-600">Rolling applications via GrantCentral. No deadline pressure but do not let that become an excuse to procrastinate.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">EPA EJ Collaborative Problem-Solving</h4>
+            <span class="text-xs bg-gcc-green-50 text-gcc-green-dark px-3 py-1 rounded-full font-bold">$100K &ndash; $400K</span>
+          </div>
+          <p class="text-sm text-gray-600">Federal, competitive. Environmental Justice focus. Strong fit but requires significant application effort. Worth it at this dollar amount.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">Illinois Clean Energy Community Foundation</h4>
+            <span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-bold">Varies</span>
+          </div>
+          <p class="text-sm text-gray-600">Environmental grants with state-level focus. Smaller but less competitive than federal programs.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Cycles -->
+    <div>
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Upcoming Cycles</h3>
+      <div class="space-y-3">
+        <div class="border border-gray-200 rounded-xl p-5 bg-gray-50 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">MacArthur Foundation</h4>
+            <span class="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold">Spring / Fall</span>
+          </div>
+          <p class="text-sm text-gray-600">Typically spring and fall cycles. Chicago-based foundation, so local projects get attention. Start the application early.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 bg-gray-50 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">Bloomberg Mayor's Challenge</h4>
+            <span class="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold">Watch for Announcement</span>
+          </div>
+          <p class="text-sm text-gray-600">Irregular cycle. Watch for the next round announcement. High-profile if awarded.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 bg-gray-50 avoid-break">
+          <div class="flex items-start justify-between mb-2">
+            <h4 class="font-bold text-gray-800">USDA Community Food Projects</h4>
+            <span class="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded-full font-bold">If GCC Adds Food Desert Mapping</span>
+          </div>
+          <p class="text-sm text-gray-600">Opens up if GCC adds food desert mapping to the data platform. Consider this as a feature expansion that unlocks new grant categories.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 7: SPONSOR BOUNTY ECONOMICS -->
+  <!-- ============================================================ -->
+  <section id="bounty" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 7</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">Sponsor Bounty Economics</h2>
+    <p class="text-lg text-gray-500 mb-8">The unit economics of block sponsorship. Know these numbers.</p>
+
+    <!-- Cost Per Block -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Cost Per Sponsored Block</h3>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Line Item</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">Default funding goal per block</td>
+            <td class="py-2.5 px-4 text-right font-mono font-medium">$100</td>
+          </tr>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">Worker payout per route completion</td>
+            <td class="py-2.5 px-4 text-right font-mono font-medium">$100</td>
+          </tr>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">GCC operational overhead (app, verification)</td>
+            <td class="py-2.5 px-4 text-right font-mono font-medium">~$20 &ndash; $30</td>
+          </tr>
+          <tr class="border-t border-gray-200 bg-gray-50">
+            <td class="py-2.5 px-4 font-bold">Sponsor sees</td>
+            <td class="py-2.5 px-4 text-right text-gray-700">1 block cleaned, before/after docs, community recognition</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Advertising Value -->
+    <div class="mb-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Advertising Value Equivalent</h3>
+      <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left py-2.5 px-4 font-semibold text-gray-600">Benefit</th>
+            <th class="text-right py-2.5 px-4 font-semibold text-gray-600">Comparable Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">Brand on block leaderboard page</td>
+            <td class="py-2.5 px-4 text-right font-mono">~$500 &ndash; $1,000/month</td>
+          </tr>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">Social media mentions</td>
+            <td class="py-2.5 px-4 text-right font-mono">~$100 &ndash; $500/post</td>
+          </tr>
+          <tr class="border-t border-gray-100">
+            <td class="py-2.5 px-4">Named block recognition</td>
+            <td class="py-2.5 px-4 text-right italic text-gray-500">Community goodwill (unquantifiable)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ROI Summary -->
+    <div class="bg-gcc-dark text-white rounded-xl p-8 avoid-break print-color">
+      <h3 class="text-lg font-bold mb-6">ROI for Sponsors &mdash; The Pitch Numbers</h3>
+      <div class="space-y-6">
+        <div class="border-b border-white/10 pb-4">
+          <div class="text-sm text-gray-400 mb-1">Single Block Sponsor</div>
+          <p class="text-gray-300 text-sm">
+            <strong class="text-white">$100 contribution</strong> &rarr; $100 tax deduction + community PR + named block on leaderboard
+          </p>
+        </div>
+        <div class="border-b border-white/10 pb-4">
+          <div class="text-sm text-gray-400 mb-1">Scaled Sponsor</div>
+          <p class="text-gray-300 text-sm">
+            <strong class="text-white">$10K sponsors 100 blocks</strong> &rarr; $10K deduction + significant community visibility + data for CSR reports
+          </p>
+        </div>
+        <div>
+          <div class="text-sm text-gray-400 mb-1">Corporate CSR Context</div>
+          <p class="text-gray-300 text-sm">
+            Corporate CSR departments typically budget <strong class="text-white">$50K&ndash;$500K/year</strong> for community programs. GCC offers tangible, documented, verifiable ROI. Most CSR programs cannot show before/after proof of impact. GCC can.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 8: WHAT TO TELL UCHICAGO -->
+  <!-- ============================================================ -->
+  <section id="uchicago" class="max-w-4xl mx-auto px-8 py-12 page-break-before">
+    <div class="mb-2">
+      <span class="text-xs font-bold text-gcc-green tracking-[0.15em] uppercase">Section 8</span>
+    </div>
+    <h2 class="text-3xl font-black text-gcc-dark mb-2">What to Tell UChicago</h2>
+    <p class="text-lg text-gray-500 mb-8">Framing, opportunities, and talking points for the meeting.</p>
+
+    <!-- Framing -->
+    <div class="bg-gcc-green-50 border-l-4 border-gcc-green rounded-r-xl p-6 mb-8 avoid-break">
+      <h3 class="font-bold text-gcc-dark mb-3">The Framing (Memorize This)</h3>
+      <p class="text-gray-800 text-sm leading-relaxed">
+        GCC is a <strong>research-grade civic technology platform</strong> generating structured environmental data at the community level. We are not just a cleanup app. We are building <strong>Chicago's first comprehensive ground-truth dataset on neighborhood cleanliness</strong>. 2,000+ verified data points, 25-field schema, AI-classified, GPS-verified, with before/after documentation.
+      </p>
+    </div>
+
+    <!-- Research Collaboration -->
+    <div class="mb-8">
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Research Collaboration Opportunities</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Urban Studies</h4>
+          <p class="text-sm text-gray-600">Cleanliness as a proxy for neighborhood investment. Gentrification pattern detection. Disinvestment mapping.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Computer Science</h4>
+          <p class="text-sm text-gray-600">On-device waste classification models. LiDAR volume estimation accuracy. Edge AI deployment.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Public Policy</h4>
+          <p class="text-sm text-gray-600">Impact of gamification on civic participation. Bounty economics and community engagement incentives.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Data Science</h4>
+          <p class="text-sm text-gray-600">Predictive models for waste accumulation. Optimal cleanup routing algorithms. Spatial clustering.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Environmental Science</h4>
+          <p class="text-sm text-gray-600">Waste composition analysis across community areas. Seasonal patterns. Illegal dumping detection.</p>
+        </div>
+        <div class="border border-gray-200 rounded-xl p-5 avoid-break">
+          <h4 class="font-bold text-gray-800 mb-1">Behavioral Economics</h4>
+          <p class="text-sm text-gray-600">How point systems and badges affect sustained community engagement. Intrinsic vs. extrinsic motivation.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- What GCC Needs / What UChicago Gets -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div class="border border-gray-200 rounded-xl p-6 avoid-break">
+        <h3 class="font-bold text-gcc-dark mb-4">What We Need from UChicago</h3>
+        <ul class="space-y-3 text-sm text-gray-700">
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Student researchers (data analysis, model improvement)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Credibility signal (UChicago partnership logo on materials)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Access to urban planning faculty connections</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Potential IRB for human subjects research (gamification effectiveness study)</span>
+          </li>
+        </ul>
+      </div>
+      <div class="border border-gray-200 rounded-xl p-6 avoid-break">
+        <h3 class="font-bold text-gcc-dark mb-4">What UChicago Gets</h3>
+        <ul class="space-y-3 text-sm text-gray-700">
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Novel dataset for publications (no one else has this data)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Real-world AI/ML deployment case study</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Community engagement research platform</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-gcc-green font-bold mt-0.5">&#8227;</span>
+            <span>Chicago-focused civic tech partnership for their own grant proposals</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Talking Points -->
+    <div class="bg-gcc-dark text-white rounded-xl p-8 avoid-break print-color">
+      <h3 class="text-lg font-bold mb-6">Talking Points for the Meeting</h3>
+      <p class="text-gray-400 text-sm mb-4">In order of importance. Hit all five.</p>
+      <div class="space-y-5">
+        <div class="flex items-start gap-4">
+          <span class="flex-shrink-0 w-8 h-8 rounded-full bg-gcc-green/20 flex items-center justify-center text-gcc-green font-bold text-sm">1</span>
+          <div>
+            <p class="text-white font-medium mb-1">Lead with data quality and quantity</p>
+            <p class="text-gray-400 text-sm">2,000+ verified points, 25-field schema, AI-classified, GPS-verified. This is not a hobby project &mdash; it is a real dataset.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4">
+          <span class="flex-shrink-0 w-8 h-8 rounded-full bg-gcc-green/20 flex items-center justify-center text-gcc-green font-bold text-sm">2</span>
+          <div>
+            <p class="text-white font-medium mb-1">Emphasize the verification layer</p>
+            <p class="text-gray-400 text-sm">No other platform has community-verified ground truth with before/after documentation. This is what makes the data publishable.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4">
+          <span class="flex-shrink-0 w-8 h-8 rounded-full bg-gcc-green/20 flex items-center justify-center text-gcc-green font-bold text-sm">3</span>
+          <div>
+            <p class="text-white font-medium mb-1">Position as research infrastructure, not an app</p>
+            <p class="text-gray-400 text-sm">Do not demo the app. Talk about the data pipeline, the schema, the API. Academics care about methodology, not UI.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4">
+          <span class="flex-shrink-0 w-8 h-8 rounded-full bg-gcc-green/20 flex items-center justify-center text-gcc-green font-bold text-sm">4</span>
+          <div>
+            <p class="text-white font-medium mb-1">Ask about their existing research</p>
+            <p class="text-gray-400 text-sm">Frame GCC as complementary to what they already do. "How could our data enhance your current urban planning research?"</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4">
+          <span class="flex-shrink-0 w-8 h-8 rounded-full bg-gcc-green/20 flex items-center justify-center text-gcc-green font-bold text-sm">5</span>
+          <div>
+            <p class="text-white font-medium mb-1">Make a specific, low-commitment ask</p>
+            <p class="text-gray-400 text-sm">"Give us 5 graduate students for one semester. We provide the data and API access. They publish what they find." This is easy for them to say yes to.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER -->
+  <!-- ============================================================ -->
+  <footer class="max-w-4xl mx-auto px-8 py-12 border-t border-gray-200">
+    <div class="text-center">
+      <div class="inline-block border-2 border-red-200 px-6 py-2 rounded mb-4">
+        <span class="text-red-500 text-xs font-bold tracking-[0.2em] uppercase">CONFIDENTIAL &mdash; NOT FOR DISTRIBUTION</span>
+      </div>
+      <p class="text-gray-400 text-sm mb-1">Global Community Cleaners &mdash; Strategic Analysis &mdash; March 2026</p>
+      <p class="text-gray-400 text-xs">This document contains internal strategy and financial projections. Do not share externally.</p>
+    </div>
+  </footer>
+
+  <!-- Print Button -->
+  <div class="fixed bottom-8 right-8 no-print">
+    <button onclick="window.print()" class="bg-gcc-dark text-white px-5 py-3 rounded-xl shadow-xl hover:bg-gcc-dark-light transition-colors text-sm font-medium flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+      Print / Save PDF
+    </button>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCC Partnership Outreach Strategy — Internal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            gcc: {
+              green: '#22C55E',
+              'green-dark': '#16A34A',
+              'green-light': '#4ADE80',
+              'green-50': '#F0FDF4',
+              'green-100': '#DCFCE7',
+              dark: '#0F172A',
+              'dark-light': '#1E293B',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Print styles */
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.5in 0.6in;
+      }
+
+      body {
+        font-size: 9pt;
+        line-height: 1.35;
+        color: #000;
+        background: #fff;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .page-break-before {
+        page-break-before: always;
+        break-before: page;
+      }
+
+      .avoid-break {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .print-no-bg {
+        background: none !important;
+        color: #000 !important;
+      }
+
+      table {
+        page-break-inside: avoid;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+
+      .print-color {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .cover-section {
+        min-height: auto;
+        padding: 2.5in 0 1.5in 0;
+      }
+
+      h2, h3 {
+        page-break-after: avoid;
+      }
+
+      section {
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+      }
+
+      .confidential-watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-35deg);
+        font-size: 72pt;
+        color: rgba(0,0,0,0.04);
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        pointer-events: none;
+        z-index: 1000;
+      }
+    }
+
+    /* Screen-only decorative elements */
+    @media screen {
+      .section-divider {
+        position: relative;
+      }
+      .section-divider::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 3px;
+        background: #22C55E;
+        border-radius: 2px;
+      }
+    }
+
+    /* Smooth scroll */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    /* Priority badges */
+    .priority-high {
+      background: #FEE2E2;
+      color: #991B1B;
+      font-weight: 600;
+    }
+    .priority-medium {
+      background: #FEF3C7;
+      color: #92400E;
+      font-weight: 600;
+    }
+    .priority-low {
+      background: #E0E7FF;
+      color: #3730A3;
+      font-weight: 600;
+    }
+
+    /* Table hover */
+    .outreach-table tbody tr:hover {
+      background-color: #F0FDF4;
+    }
+
+    /* TOC active state */
+    .toc-link:hover {
+      color: #22C55E;
+    }
+
+    /* Confidential watermark on screen */
+    @media screen {
+      .confidential-watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-35deg);
+        font-size: 8rem;
+        color: rgba(0,0,0,0.02);
+        font-weight: 900;
+        letter-spacing: 0.15em;
+        pointer-events: none;
+        z-index: 0;
+        white-space: nowrap;
+      }
+    }
+
+    /* Email template styling */
+    .email-template {
+      border-left: 3px solid #22C55E;
+      background: #F8FAFC;
+    }
+  </style>
+</head>
+<body class="bg-white text-gray-900">
+
+  <!-- Confidential Watermark -->
+  <div class="confidential-watermark no-print" aria-hidden="true">CONFIDENTIAL</div>
+
+  <!-- ============================================================ -->
+  <!-- COVER PAGE -->
+  <!-- ============================================================ -->
+  <section class="cover-section min-h-screen flex flex-col justify-center items-center bg-gcc-dark text-white relative overflow-hidden print-color page-break">
+    <!-- Decorative background pattern -->
+    <div class="absolute inset-0 opacity-5 no-print" style="background-image: radial-gradient(circle at 25% 25%, #22C55E 1px, transparent 1px), radial-gradient(circle at 75% 75%, #22C55E 1px, transparent 1px); background-size: 50px 50px;"></div>
+
+    <div class="relative z-10 text-center max-w-4xl mx-auto px-8">
+      <!-- Logo -->
+      <div class="mb-8">
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gcc-green/10 border-2 border-gcc-green/30 mb-6">
+          <svg class="w-10 h-10 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h1 class="text-5xl md:text-6xl font-black tracking-tight">
+          <span class="text-gcc-green">GCC Partnership</span><br>
+          <span class="text-white">Outreach Strategy</span>
+        </h1>
+      </div>
+
+      <!-- Subtitle -->
+      <div class="mb-6">
+        <div class="inline-block px-4 py-1.5 rounded-full bg-red-500/10 border border-red-500/30 mb-6">
+          <span class="text-red-400 text-sm font-semibold tracking-wide uppercase">Internal Planning Document &mdash; Not for Distribution</span>
+        </div>
+      </div>
+
+      <h2 class="text-2xl md:text-3xl font-light text-gray-300 mb-4 leading-relaxed">
+        Gamification Prizes, Technology Partnerships,<br>and Foundation Grants
+      </h2>
+
+      <p class="text-lg text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
+        35+ target organizations with contact info, pitch angles,<br>email templates, and priority tiers for systematic outreach.
+      </p>
+
+      <!-- Divider -->
+      <div class="w-24 h-0.5 bg-gcc-green mx-auto mb-12"></div>
+
+      <!-- Meta -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-6 text-gray-500 text-sm">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          March 2026
+        </span>
+        <span class="hidden sm:inline text-gray-700">|</span>
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          CONFIDENTIAL
+        </span>
+        <span class="hidden sm:inline text-gray-700">|</span>
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+          globalcommunitycleaners.org
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- HOW TO USE THIS DOCUMENT -->
+  <!-- ============================================================ -->
+  <section class="max-w-6xl mx-auto px-6 py-12 page-break">
+    <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-8 avoid-break">
+      <div class="flex items-start gap-4">
+        <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-gcc-green/10 flex items-center justify-center mt-0.5">
+          <svg class="w-5 h-5 text-gcc-green-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-gcc-dark mb-3">How to Use This Document</h2>
+          <div class="text-gray-700 space-y-3 text-sm leading-relaxed">
+            <p><strong>This is your outreach playbook.</strong> Work through the organizations in the order listed in Section D (Recommended Contact Order). Each tier is designed to build momentum:</p>
+            <ul class="list-disc list-inside space-y-1.5 ml-2">
+              <li><strong>Tier 1 (This Month)</strong> &mdash; Quick wins that require minimal effort and build your portfolio of partnerships. Start here.</li>
+              <li><strong>Tier 2 (30-Day Pipeline)</strong> &mdash; Slightly more complex asks that benefit from having Tier 1 wins to reference.</li>
+              <li><strong>Tier 3 (60-Day Pipeline)</strong> &mdash; Larger asks (tech companies, foundations) where you want established credibility first.</li>
+            </ul>
+            <p><strong>Priority labels</strong> in each table indicate both likelihood of success and strategic value:</p>
+            <ul class="list-none space-y-1 ml-2">
+              <li><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span> &mdash; Strong program alignment, accessible application, high value</li>
+              <li><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span> &mdash; Good fit but requires more effort or longer timeline</li>
+              <li><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span> &mdash; Worth pursuing but lower urgency or uncertain outcome</li>
+            </ul>
+            <p><strong>Email templates</strong> in Section E are ready to customize. Replace bracketed placeholders with specifics for each organization.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table of Contents -->
+    <div class="mt-10 bg-gray-50 rounded-xl p-8 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-4">Contents</h3>
+      <nav class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        <a href="#section-a" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">A</span>
+          Chicago Gamification Prize Donors (19)
+        </a>
+        <a href="#section-b" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">B</span>
+          Technology &amp; Infrastructure Donors (9)
+        </a>
+        <a href="#section-c" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">C</span>
+          Community &amp; Civic Organizations (8)
+        </a>
+        <a href="#section-d" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">D</span>
+          Recommended Contact Order
+        </a>
+        <a href="#section-e" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">E</span>
+          Email Templates (3 Variants)
+        </a>
+        <a href="#section-f" class="toc-link flex items-center gap-2 text-gray-600 hover:text-gcc-green transition-colors py-1">
+          <span class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center flex-shrink-0">F</span>
+          Revenue Projections
+        </a>
+      </nav>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION A: CHICAGO GAMIFICATION PRIZE DONORS -->
+  <!-- ============================================================ -->
+  <section id="section-a" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">A</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Chicago Gamification Prize Donors</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">19 organizations that can donate tickets, passes, and experiences as community cleanup rewards</p>
+    </div>
+
+    <!-- Sports Teams -->
+    <div class="mb-8">
+      <h3 class="text-lg font-semibold text-gcc-dark-light mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Professional Sports Teams
+      </h3>
+      <div class="overflow-x-auto rounded-xl border border-gray-200">
+        <table class="outreach-table w-full text-sm">
+          <thead>
+            <tr class="bg-gcc-dark text-white">
+              <th class="text-left px-4 py-3 font-semibold">#</th>
+              <th class="text-left px-4 py-3 font-semibold">Organization</th>
+              <th class="text-left px-4 py-3 font-semibold">What They Donate</th>
+              <th class="text-left px-4 py-3 font-semibold">Contact URL</th>
+              <th class="text-left px-4 py-3 font-semibold">Pitch Angle</th>
+              <th class="text-left px-4 py-3 font-semibold">Priority</th>
+              <th class="text-left px-4 py-3 font-semibold">Est. Value</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">1</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Bulls</td>
+              <td class="px-4 py-3 text-gray-700">Ticket blocks (unsold regular season)</td>
+              <td class="px-4 py-3"><a href="https://www.nba.com/bulls/community/donation-requests" class="text-gcc-green hover:underline text-xs break-all" target="_blank">nba.com/bulls/community/donation-requests</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Tax write-off for unsold inventory; community impact PR</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$5K&ndash;$15K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">2</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Bears</td>
+              <td class="px-4 py-3 text-gray-700">Game tickets, experiences</td>
+              <td class="px-4 py-3"><a href="https://www.chicagobears.com/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">chicagobears.com/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Environmental justice + youth engagement; Community All-Pros $106K grant program</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$10K&ndash;$106K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">3</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Cubs</td>
+              <td class="px-4 py-3 text-gray-700">Wrigley tickets, experiences</td>
+              <td class="px-4 py-3"><a href="https://www.cubs.com/community/donation-requests" class="text-gcc-green hover:underline text-xs break-all" target="_blank">cubs.com/community/donation-requests</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Family-friendly community reward; Wrigley experience as top-tier prize</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$3K&ndash;$8K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">4</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago White Sox</td>
+              <td class="px-4 py-3 text-gray-700">Ticket donations, in-kind</td>
+              <td class="px-4 py-3"><a href="https://www.mlb.com/whitesox/community/ticket-donation-program" class="text-gcc-green hover:underline text-xs break-all" target="_blank">mlb.com/whitesox/community/ticket-donation-program</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">South Side community focus aligns with GCC territory; most accessible program</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$5K&ndash;$12K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">5</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Blackhawks</td>
+              <td class="px-4 py-3 text-gray-700">Hockey tickets</td>
+              <td class="px-4 py-3"><a href="https://www.nhl.com/blackhawks/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">nhl.com/blackhawks/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Youth incentive; direct contact: <strong>Jose De La Torre</strong></td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$4K&ndash;$10K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">6</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Fire FC</td>
+              <td class="px-4 py-3 text-gray-700">Soccer tickets</td>
+              <td class="px-4 py-3"><a href="https://www.chicagofirefc.com/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">chicagofirefc.com/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Accessible sport for diverse communities; youth soccer connection</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">7</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Sky (WNBA)</td>
+              <td class="px-4 py-3 text-gray-700">Basketball tickets</td>
+              <td class="px-4 py-3"><a href="https://sky.wnba.com/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">sky.wnba.com/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Women in community leadership angle; growing brand visibility</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Attractions & Venues -->
+    <div class="mb-8 page-break-before">
+      <h3 class="text-lg font-semibold text-gcc-dark-light mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Attractions &amp; Venues
+      </h3>
+      <div class="overflow-x-auto rounded-xl border border-gray-200">
+        <table class="outreach-table w-full text-sm">
+          <thead>
+            <tr class="bg-gcc-dark text-white">
+              <th class="text-left px-4 py-3 font-semibold">#</th>
+              <th class="text-left px-4 py-3 font-semibold">Organization</th>
+              <th class="text-left px-4 py-3 font-semibold">What They Donate</th>
+              <th class="text-left px-4 py-3 font-semibold">Contact URL</th>
+              <th class="text-left px-4 py-3 font-semibold">Pitch Angle</th>
+              <th class="text-left px-4 py-3 font-semibold">Priority</th>
+              <th class="text-left px-4 py-3 font-semibold">Est. Value</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">8</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Six Flags Great America</td>
+              <td class="px-4 py-3 text-gray-700">Day passes, season passes</td>
+              <td class="px-4 py-3"><a href="https://www.sixflags.com/donate" class="text-gcc-green hover:underline text-xs break-all" target="_blank">sixflags.com/donate</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">~$50K/yr donated to nonprofits; simple online form; high-value prizes for leaderboard</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$5K&ndash;$15K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">9</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Field Museum</td>
+              <td class="px-4 py-3 text-gray-700">Admission passes, memberships</td>
+              <td class="px-4 py-3"><a href="https://www.fieldmuseum.org/about/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">fieldmuseum.org/about/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Educational enrichment + environmental science tie-in</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">10</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Shedd Aquarium</td>
+              <td class="px-4 py-3 text-gray-700">Admission passes</td>
+              <td class="px-4 py-3"><a href="https://www.sheddaquarium.org/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">sheddaquarium.org/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Environmental stewardship alignment; strong community programs</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">11</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Museum of Science &amp; Industry</td>
+              <td class="px-4 py-3 text-gray-700">Admission passes</td>
+              <td class="px-4 py-3"><a href="https://www.msichicago.org/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">msichicago.org/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">STEM education tie-in with AI/LiDAR tech in GCC platform</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">12</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Art Institute of Chicago</td>
+              <td class="px-4 py-3 text-gray-700">Admission passes</td>
+              <td class="px-4 py-3"><a href="https://www.artic.edu/visit/free-admission" class="text-gcc-green hover:underline text-xs break-all" target="_blank">artic.edu/visit/free-admission</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Cultural enrichment; free days already exist &mdash; partner for exclusive events</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$1K&ndash;$3K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">13</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Botanic Garden</td>
+              <td class="px-4 py-3 text-gray-700">Passes, memberships</td>
+              <td class="px-4 py-3"><a href="https://www.chicagobotanicgarden.org/support" class="text-gcc-green hover:underline text-xs break-all" target="_blank">chicagobotanicgarden.org/support</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Environmental mission alignment; green space focus</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$1K&ndash;$3K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">14</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Brookfield Zoo</td>
+              <td class="px-4 py-3 text-gray-700">Ticket donations</td>
+              <td class="px-4 py-3"><a href="https://www.brookfieldzoo.org/ticketrequest" class="text-gcc-green hover:underline text-xs break-all" target="_blank">brookfieldzoo.org/ticketrequest</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">IL nonprofit requirement &mdash; GCC qualifies; family reward</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">15</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Navy Pier</td>
+              <td class="px-4 py-3 text-gray-700">Attraction passes</td>
+              <td class="px-4 py-3"><a href="https://www.navypier.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">navypier.org</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Already distributes 10K+ free tickets via Community Rides; <strong>easiest entry point</strong></td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$5K&ndash;$15K</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Transit & Civic -->
+    <div class="mb-8">
+      <h3 class="text-lg font-semibold text-gcc-dark-light mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        Transit, Parks &amp; Youth
+      </h3>
+      <div class="overflow-x-auto rounded-xl border border-gray-200">
+        <table class="outreach-table w-full text-sm">
+          <thead>
+            <tr class="bg-gcc-dark text-white">
+              <th class="text-left px-4 py-3 font-semibold">#</th>
+              <th class="text-left px-4 py-3 font-semibold">Organization</th>
+              <th class="text-left px-4 py-3 font-semibold">What They Donate</th>
+              <th class="text-left px-4 py-3 font-semibold">Contact URL / Info</th>
+              <th class="text-left px-4 py-3 font-semibold">Pitch Angle</th>
+              <th class="text-left px-4 py-3 font-semibold">Priority</th>
+              <th class="text-left px-4 py-3 font-semibold">Est. Value</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">16</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">CTA</td>
+              <td class="px-4 py-3 text-gray-700">Transit passes (Ventra cards)</td>
+              <td class="px-4 py-3"><a href="https://www.transitchicago.com/community" class="text-gcc-green hover:underline text-xs break-all" target="_blank">transitchicago.com/community</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Practical reward; precedent: 25K passes donated to The Network org</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$5K&ndash;$10K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">17</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Divvy Bike Share</td>
+              <td class="px-4 py-3 text-gray-700">Ride credits, memberships</td>
+              <td class="px-4 py-3"><a href="https://www.divvybikes.com" class="text-gcc-green hover:underline text-xs break-all" target="_blank">divvybikes.com</a></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">$5/yr membership; expanding partnerships in 2026</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$500&ndash;$2K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">18</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Park District</td>
+              <td class="px-4 py-3 text-gray-700">Facility access, program passes</td>
+              <td class="px-4 py-3"><span class="text-xs text-gray-600">partnerships.app@chicagoparkdistrict.com</span></td>
+              <td class="px-4 py-3 text-gray-600 text-xs">ARCS program partnership for park cleanups; co-branded events</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$2K&ndash;$5K</td>
+            </tr>
+            <tr class="avoid-break">
+              <td class="px-4 py-3 text-gray-400 font-mono text-xs">19</td>
+              <td class="px-4 py-3 font-semibold text-gcc-dark">After School Matters</td>
+              <td class="px-4 py-3 text-gray-700">Youth program partnerships</td>
+              <td class="px-4 py-3">
+                <span class="text-xs text-gray-600">312-768-5200</span><br>
+                <a href="https://www.afterschoolmatters.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">afterschoolmatters.org</a>
+              </td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Teen engagement; 19K teens in paid internships; GCC could be internship site</td>
+              <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+              <td class="px-4 py-3 text-gray-700 font-mono text-xs">$10K&ndash;$25K</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section A Summary -->
+    <div class="bg-gray-50 rounded-xl p-6 avoid-break">
+      <h4 class="font-semibold text-gcc-dark mb-2">Section A Summary</h4>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">19</div>
+          <div class="text-xs text-gray-500">Organizations</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">$50K&ndash;$150K</div>
+          <div class="text-xs text-gray-500">Est. Annual Prize Value</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">8 HIGH</div>
+          <div class="text-xs text-gray-500">Priority Targets</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION B: TECHNOLOGY & INFRASTRUCTURE DONORS -->
+  <!-- ============================================================ -->
+  <section id="section-b" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">B</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Technology &amp; Infrastructure Donors</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">9 companies that can provide hardware, cloud credits, and AI resources to power GCC's platform</p>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-gray-200">
+      <table class="outreach-table w-full text-sm">
+        <thead>
+          <tr class="bg-gcc-dark text-white">
+            <th class="text-left px-4 py-3 font-semibold">#</th>
+            <th class="text-left px-4 py-3 font-semibold">Organization</th>
+            <th class="text-left px-4 py-3 font-semibold">What We Need</th>
+            <th class="text-left px-4 py-3 font-semibold">Pitch Angle</th>
+            <th class="text-left px-4 py-3 font-semibold">Priority</th>
+            <th class="text-left px-4 py-3 font-semibold">Approach Strategy</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">1</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Meta</td>
+            <td class="px-4 py-3 text-gray-700">Ray-Ban Meta smart glasses for hands-free cleanup recording; workers keep both hands free while documenting with AI-powered glasses</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">AR/environmental data capture; community impact PR. If Meta declines, position competitor glasses as "the smart glasses that care about community"</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Meta for Good program; pitch as AR-for-social-impact use case; reach via developer relations</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">2</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">NVIDIA</td>
+            <td class="px-4 py-3 text-gray-700">AI GPUs for on-device model training, edge computing for real-time waste classification; DGX/Jetson hardware</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">AI for social good; environmental justice data; CUDA showcase in civic tech</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">NVIDIA Foundation / Inception program for startups; emphasize existing DGX Spark usage; Jetson for edge deployment</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">3</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Apple</td>
+            <td class="px-4 py-3 text-gray-700">iPhone hardware for LiDAR scanning workers; iPad deployment for field coordinators</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">LiDAR depth scanning showcase; accessibility story; CoreML on-device inference</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Apple Community Education Initiative; highlight Swift/CoreML integration; WWDC scholarship angle</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">4</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Google</td>
+            <td class="px-4 py-3 text-gray-700">Cloud credits (Google for Nonprofits); Pixel phones; Google Maps Platform credits</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Nonprofit program already exists &mdash; just apply; map data alignment with GCC mapping</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs"><strong>Easiest path:</strong> Google for Nonprofits application ($10K free ads, Workspace, Maps credits); then pitch hardware via Google.org</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">5</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Microsoft</td>
+            <td class="px-4 py-3 text-gray-700">Azure credits (Microsoft for Nonprofits); Surface devices for admin</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Tech for social impact portfolio; Azure AI Services for waste classification</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Microsoft Nonprofits program (free/discounted Azure); then AI for Good grants</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">6</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Qualcomm</td>
+            <td class="px-4 py-3 text-gray-700">Edge AI chipsets for real-time waste classification</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">On-device AI showcase in environmental monitoring; Snapdragon for mobile inference</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Qualcomm Wireless Reach initiative; long-shot but high value if it lands</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">7</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Amazon</td>
+            <td class="px-4 py-3 text-gray-700">AWS credits; Ring/Blink cameras for fixed monitoring</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Last-mile logistics for cleanup supplies; AWS Imagine Grant ($150K potential)</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-low">LOW</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">AWS Imagine Grant Program for nonprofits; Amazon Smile integration</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">8</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Anthropic / OpenAI</td>
+            <td class="px-4 py-3 text-gray-700">API credits for AI waste classification and report analysis</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">AI for environmental justice showcase; real-world multi-modal AI deployment</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Anthropic: societal benefit research partnerships; OpenAI: API credit grants for nonprofits</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">9</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Mapbox</td>
+            <td class="px-4 py-3 text-gray-700">Premium map tiles and geocoding for mobile app</td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Community mapping showcase; environmental data visualization</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Mapbox Community program; pitch as showcase for Mapbox in civic/environmental tech</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section B Summary -->
+    <div class="bg-gray-50 rounded-xl p-6 mt-8 avoid-break">
+      <h4 class="font-semibold text-gcc-dark mb-2">Section B Summary</h4>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">9</div>
+          <div class="text-xs text-gray-500">Companies</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">$100K&ndash;$300K</div>
+          <div class="text-xs text-gray-500">Est. Annual Equipment/Credits Value</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">3 HIGH</div>
+          <div class="text-xs text-gray-500">Priority Targets</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION C: COMMUNITY & CIVIC ORGANIZATIONS -->
+  <!-- ============================================================ -->
+  <section id="section-c" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">C</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Community &amp; Civic Organizations</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">8 foundations, civic orgs, and capacity builders for direct funding and program partnerships</p>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-gray-200">
+      <table class="outreach-table w-full text-sm">
+        <thead>
+          <tr class="bg-gcc-dark text-white">
+            <th class="text-left px-4 py-3 font-semibold">#</th>
+            <th class="text-left px-4 py-3 font-semibold">Organization</th>
+            <th class="text-left px-4 py-3 font-semibold">Engagement Type</th>
+            <th class="text-left px-4 py-3 font-semibold">Contact</th>
+            <th class="text-left px-4 py-3 font-semibold">Key Grant / Program</th>
+            <th class="text-left px-4 py-3 font-semibold">Priority</th>
+            <th class="text-left px-4 py-3 font-semibold">Deadline</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">1</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Chicago Community Trust</td>
+            <td class="px-4 py-3 text-gray-700">Grants, capacity building</td>
+            <td class="px-4 py-3"><a href="https://www.cct.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">cct.org</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">GrantCentral platform &mdash; multiple grant cycles for Chicago-area nonprofits</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Rolling</td>
+          </tr>
+          <tr class="avoid-break bg-gcc-green-50">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">2</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">United Way of Metro Chicago</td>
+            <td class="px-4 py-3 text-gray-700">Community investment, volunteer activation</td>
+            <td class="px-4 py-3"><a href="https://www.unitedwaymetro.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">unitedwaymetro.org</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs"><strong>Equity Fund: up to $50K unrestricted for 2 years</strong> &mdash; small South/West Side nonprofits. GCC qualifies.</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Check cycle</td>
+          </tr>
+          <tr class="avoid-break bg-gcc-green-50">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">3</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">LISC Chicago</td>
+            <td class="px-4 py-3 text-gray-700">Community development grants</td>
+            <td class="px-4 py-3"><a href="https://www.lisc.org/chicago" class="text-gcc-green hover:underline text-xs break-all" target="_blank">lisc.org/chicago</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs"><strong>Creative Placemaking grants $50K&ndash;$250K</strong> &mdash; community-driven neighborhood transformation</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-high">HIGH</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Competitive</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">4</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">MacArthur Foundation</td>
+            <td class="px-4 py-3 text-gray-700">Environmental justice grants</td>
+            <td class="px-4 py-3"><a href="https://www.macfound.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">macfound.org</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Chicago-based foundation; strong environmental justice and civic tech alignment</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Invite only</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">5</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Bloomberg Philanthropies</td>
+            <td class="px-4 py-3 text-gray-700">Civic tech innovation</td>
+            <td class="px-4 py-3"><a href="https://www.bloomberg.org" class="text-gcc-green hover:underline text-xs break-all" target="_blank">bloomberg.org</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Mayor's Challenge; data-driven city innovation; What Works Cities program</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Varies</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">6</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">EPA Environmental Justice</td>
+            <td class="px-4 py-3 text-gray-700">Federal grants for community-based monitoring</td>
+            <td class="px-4 py-3"><a href="https://www.epa.gov/environmentaljustice" class="text-gcc-green hover:underline text-xs break-all" target="_blank">epa.gov/environmentaljustice</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Federal environmental justice grants; community-based participatory research funding</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Competitive</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">7</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Freshworks</td>
+            <td class="px-4 py-3 text-gray-700">Free nonprofit CRM</td>
+            <td class="px-4 py-3"><a href="https://www.freshworks.com/nonprofits" class="text-gcc-green hover:underline text-xs break-all" target="_blank">freshworks.com/nonprofits</a></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Free tier for 501(c)(3)s &mdash; CRM for donor/volunteer management. <strong>Easy win.</strong></td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Always open</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-4 py-3 text-gray-400 font-mono text-xs">8</td>
+            <td class="px-4 py-3 font-semibold text-gcc-dark">Big Brothers Big Sisters Chicago</td>
+            <td class="px-4 py-3 text-gray-700">Youth mentorship partnership</td>
+            <td class="px-4 py-3"><span class="text-xs text-gray-600">partners@bbbschgo.org</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Volunteer coordination; youth mentorship through community cleanup work</td>
+            <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 rounded text-xs priority-medium">MEDIUM</span></td>
+            <td class="px-4 py-3 text-gray-600 text-xs">Ongoing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section C Summary -->
+    <div class="bg-gray-50 rounded-xl p-6 mt-8 avoid-break">
+      <h4 class="font-semibold text-gcc-dark mb-2">Section C Summary</h4>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">8</div>
+          <div class="text-xs text-gray-500">Organizations</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">$50K&ndash;$350K</div>
+          <div class="text-xs text-gray-500">Est. Annual Grant Value</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gcc-green">2 HIGH</div>
+          <div class="text-xs text-gray-500">Priority Targets</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION D: RECOMMENDED CONTACT ORDER -->
+  <!-- ============================================================ -->
+  <section id="section-d" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">D</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Recommended Contact Order</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">Work through these tiers in order. Each tier builds credibility for the next.</p>
+    </div>
+
+    <!-- Tier 1 -->
+    <div class="mb-8 avoid-break">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-red-100 text-red-700 font-bold text-sm flex items-center justify-center flex-shrink-0">T1</div>
+        <div>
+          <h3 class="text-lg font-bold text-gcc-dark">Tier 1 &mdash; Quick Wins <span class="text-red-600 font-normal text-sm">(This Month)</span></h3>
+          <p class="text-xs text-gray-500">Established programs, simple applications, high likelihood of success</p>
+        </div>
+      </div>
+      <div class="space-y-3 ml-13">
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:border-gcc-green/30 transition-colors">
+          <div class="w-7 h-7 rounded-full bg-gcc-green text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Navy Pier</h4>
+              <span class="text-xs text-gray-400">Section A #15</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Community Rides program already donates 10K+ tickets annually. Apply to join their nonprofit distribution list. Lowest friction entry point.</p>
+            <p class="text-xs text-gcc-green-dark mt-1 font-medium">Action: Submit nonprofit partnership application at navypier.org</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:border-gcc-green/30 transition-colors">
+          <div class="w-7 h-7 rounded-full bg-gcc-green text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Chicago White Sox</h4>
+              <span class="text-xs text-gray-400">Section A #4</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Most accessible sports donation program. South Side focus aligns with GCC service areas. Online ticket donation request form.</p>
+            <p class="text-xs text-gcc-green-dark mt-1 font-medium">Action: Submit request via ticket-donation-program page</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:border-gcc-green/30 transition-colors">
+          <div class="w-7 h-7 rounded-full bg-gcc-green text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Google for Nonprofits</h4>
+              <span class="text-xs text-gray-400">Section B #4</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Free cloud credits, $10K/mo Google Ads, Google Workspace, Maps Platform credits. Just apply with 501(c)(3) status.</p>
+            <p class="text-xs text-gcc-green-dark mt-1 font-medium">Action: Apply at google.com/nonprofits with EIN documentation</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:border-gcc-green/30 transition-colors">
+          <div class="w-7 h-7 rounded-full bg-gcc-green text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">United Way Equity Fund</h4>
+              <span class="text-xs text-gray-400">Section C #2</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Up to $50K unrestricted for 2 years. Specifically targets small South/West Side nonprofits. GCC is exactly the profile they fund.</p>
+            <p class="text-xs text-gcc-green-dark mt-1 font-medium">Action: Check current cycle dates and submit application via unitedwaymetro.org</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:border-gcc-green/30 transition-colors">
+          <div class="w-7 h-7 rounded-full bg-gcc-green text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">5</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">After School Matters</h4>
+              <span class="text-xs text-gray-400">Section A #19</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">19K teens in paid internships. GCC could become an internship site for summer cleanup programs. Mutual benefit: they need sites, we need workers.</p>
+            <p class="text-xs text-gcc-green-dark mt-1 font-medium">Action: Call 312-768-5200 to discuss becoming an internship host site</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tier 2 -->
+    <div class="mb-8 avoid-break page-break-before">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-yellow-100 text-yellow-700 font-bold text-sm flex items-center justify-center flex-shrink-0">T2</div>
+        <div>
+          <h3 class="text-lg font-bold text-gcc-dark">Tier 2 &mdash; 30-Day Pipeline <span class="text-yellow-600 font-normal text-sm">(Next 30 Days)</span></h3>
+          <p class="text-xs text-gray-500">Reference Tier 1 wins in these pitches to establish credibility</p>
+        </div>
+      </div>
+      <div class="space-y-3 ml-13">
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4">
+          <div class="w-7 h-7 rounded-full bg-yellow-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">6</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">CTA Transit Passes</h4>
+              <span class="text-xs text-gray-400">Section A #16</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Ventra card donations. Practical, everyday reward that workers actually need. Precedent: 25K passes to The Network org.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4">
+          <div class="w-7 h-7 rounded-full bg-yellow-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">7</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Six Flags Great America</h4>
+              <span class="text-xs text-gray-400">Section A #8</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Simple online donation form. ~$50K/yr donated to nonprofits. High perceived value as leaderboard prizes.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4">
+          <div class="w-7 h-7 rounded-full bg-yellow-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">8</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Chicago Bears Community All-Pros</h4>
+              <span class="text-xs text-gray-400">Section A #2</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">$106K grant program. Environmental justice + youth engagement angle. Larger ask but significant payoff.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4">
+          <div class="w-7 h-7 rounded-full bg-yellow-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">9</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">Chicago Blackhawks</h4>
+              <span class="text-xs text-gray-400">Section A #5</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">Direct contact: <strong>Jose De La Torre</strong>. Youth incentive angle. Named contact reduces friction.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-white border border-gray-200 rounded-lg p-4">
+          <div class="w-7 h-7 rounded-full bg-yellow-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">10</div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <h4 class="font-semibold text-gcc-dark">LISC Creative Placemaking</h4>
+              <span class="text-xs text-gray-400">Section C #3</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-1">$50K&ndash;$250K grants for community-driven neighborhood transformation. GCC's data-driven approach is a strong differentiator.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tier 3 -->
+    <div class="mb-8 avoid-break">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center flex-shrink-0">T3</div>
+        <div>
+          <h3 class="text-lg font-bold text-gcc-dark">Tier 3 &mdash; 60-Day Pipeline <span class="text-blue-600 font-normal text-sm">(60 Days Out)</span></h3>
+          <p class="text-xs text-gray-500">Larger asks requiring established track record and partnership references</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 ml-13">
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-mono text-gray-400">11&ndash;15</span>
+            <h4 class="font-semibold text-gcc-dark text-sm">Remaining Sports &amp; Museums</h4>
+          </div>
+          <p class="text-xs text-gray-600">Bulls, Cubs, Fire FC, Sky, Field Museum, Shedd, MSI, Brookfield Zoo, Botanic Garden, Park District, Art Institute</p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-mono text-gray-400">16&ndash;19</span>
+            <h4 class="font-semibold text-gcc-dark text-sm">Tech Companies</h4>
+          </div>
+          <p class="text-xs text-gray-600">NVIDIA (AI for social good), Meta (smart glasses), Apple (LiDAR), Microsoft (Azure), Anthropic/OpenAI (API credits), Mapbox</p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-mono text-gray-400">20+</span>
+            <h4 class="font-semibold text-gcc-dark text-sm">Major Foundations</h4>
+          </div>
+          <p class="text-xs text-gray-600">MacArthur Foundation, Bloomberg Philanthropies, EPA Environmental Justice grants</p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-mono text-gray-400">Ongoing</span>
+            <h4 class="font-semibold text-gcc-dark text-sm">Operational Tools</h4>
+          </div>
+          <p class="text-xs text-gray-600">Freshworks CRM (free nonprofit tier), Divvy partnerships, Big Brothers Big Sisters collaboration</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION E: EMAIL TEMPLATES -->
+  <!-- ============================================================ -->
+  <section id="section-e" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">E</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Email Templates</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">3 ready-to-customize templates. Replace <code class="bg-gray-100 px-1 rounded text-xs">[bracketed text]</code> with specifics for each organization.</p>
+    </div>
+
+    <!-- Template 1: Sports/Entertainment -->
+    <div class="mb-10 avoid-break">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center">1</div>
+        <h3 class="text-lg font-semibold text-gcc-dark">Sports &amp; Entertainment Donations</h3>
+        <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Use for Section A organizations</span>
+      </div>
+      <div class="email-template rounded-lg p-6 space-y-4">
+        <div>
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subject Line</span>
+          <p class="text-sm font-medium text-gcc-dark mt-1">Community Cleanup Rewards Partnership &mdash; [Org Name] + GCC</p>
+        </div>
+        <hr class="border-gray-200">
+        <div class="text-sm text-gray-700 leading-relaxed space-y-3">
+          <p>Dear [Contact],</p>
+
+          <p>Your [unsold regular season tickets / attraction passes] can become life-changing rewards for Chicago residents who clean their own blocks.</p>
+
+          <p>Global Community Cleaners (GCC) is a 501(c)(3) nonprofit deploying GPS-verified, AI-validated community cleanup across all 77 Chicago community areas. Every cleanup includes before/after photo documentation with GPS timestamps &mdash; you'll see exactly where your donation makes impact.</p>
+
+          <p><strong>What we're asking:</strong> [Specific ask &mdash; ticket blocks, day passes, etc.]</p>
+
+          <p><strong>What you receive:</strong></p>
+          <ul class="list-disc list-inside space-y-1 ml-2">
+            <li>Full 501(c)(3) tax deduction (EIN: [pending])</li>
+            <li>Community PR: featured on our leaderboard, prize pages, and social media</li>
+            <li>Impact report: GPS-verified before/after documentation of every cleanup your donation incentivized</li>
+            <li>Brand placement in our mobile app used by [X] community workers</li>
+          </ul>
+
+          <p>We remember who helps us &mdash; and so does the community.</p>
+
+          <p>[Founder Name]<br>
+          Global Community Cleaners<br>
+          globalcommunitycleaners.org</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Template 2: Technology Companies -->
+    <div class="mb-10 avoid-break page-break-before">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center">2</div>
+        <h3 class="text-lg font-semibold text-gcc-dark">Technology Companies</h3>
+        <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Use for Section B organizations</span>
+      </div>
+      <div class="email-template rounded-lg p-6 space-y-4">
+        <div>
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subject Line</span>
+          <p class="text-sm font-medium text-gcc-dark mt-1">AI for Environmental Justice &mdash; Partnership Opportunity</p>
+        </div>
+        <hr class="border-gray-200">
+        <div class="text-sm text-gray-700 leading-relaxed space-y-3">
+          <p>Dear [Contact],</p>
+
+          <p>GCC deploys [your technology] in the field for real environmental impact &mdash; AI waste classification, LiDAR depth measurement, GPS-verified community monitoring across 77 Chicago neighborhoods.</p>
+
+          <p><strong>Our tech stack:</strong> Kotlin Multiplatform (iOS/Android), CoreML + TFLite on-device AI, Next.js + PostgreSQL backend, 25-field SODA-compatible data export. We process 12 waste categories with severity scoring, volume estimation, and before/after visual proof.</p>
+
+          <p><strong>What we need:</strong> [Specific ask]</p>
+
+          <p><strong>What you get:</strong> Real-world showcase of [product] powering community transformation, with measurable before/after data proving impact.</p>
+
+          <p>Our data is already structured for the Chicago Data Portal. We're the infrastructure that turns community effort into verifiable environmental data.</p>
+
+          <p>[Founder Name]<br>
+          Global Community Cleaners<br>
+          globalcommunitycleaners.org</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Template 3: Foundations/Civic -->
+    <div class="mb-10 avoid-break">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-6 h-6 rounded bg-gcc-green/10 text-gcc-green text-xs font-bold flex items-center justify-center">3</div>
+        <h3 class="text-lg font-semibold text-gcc-dark">Foundations &amp; Civic Organizations</h3>
+        <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Use for Section C organizations</span>
+      </div>
+      <div class="email-template rounded-lg p-6 space-y-4">
+        <div>
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subject Line</span>
+          <p class="text-sm font-medium text-gcc-dark mt-1">Data-Driven Community Cleanliness &mdash; Funding Request</p>
+        </div>
+        <hr class="border-gray-200">
+        <div class="text-sm text-gray-700 leading-relaxed space-y-3">
+          <p>Dear [Contact],</p>
+
+          <p>GCC's data-driven approach to community cleanliness has generated 2,000+ verified data points across all 77 Chicago community areas. We deploy AI waste classification, GPS verification, and gamified community engagement to create the first comprehensive ground-truth dataset on neighborhood cleanliness.</p>
+
+          <p><strong>We're seeking:</strong> [Grant funding / program partnership / capacity building support] to [specific expansion goal].</p>
+
+          <p><strong>Our credentials:</strong></p>
+          <ul class="list-disc list-inside space-y-1 ml-2">
+            <li>501(c)(3) nonprofit</li>
+            <li>SODA-compatible data export (Chicago Data Portal aligned)</li>
+            <li>25-field verified reports with before/after documentation</li>
+            <li>On-device AI analysis (12 waste categories, severity scoring)</li>
+            <li>24-hour community verification cycle</li>
+            <li>Serving underserved West/South Side communities</li>
+          </ul>
+
+          <p>[Founder Name]<br>
+          Global Community Cleaners<br>
+          globalcommunitycleaners.org</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Template Usage Notes -->
+    <div class="bg-gray-50 rounded-xl p-6 avoid-break">
+      <h4 class="font-semibold text-gcc-dark mb-3">Template Customization Tips</h4>
+      <ul class="text-sm text-gray-600 space-y-2">
+        <li class="flex items-start gap-2">
+          <span class="text-gcc-green font-bold mt-0.5">1.</span>
+          <span><strong>Always personalize the first line.</strong> Reference something specific about the org (recent event, program, news article).</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gcc-green font-bold mt-0.5">2.</span>
+          <span><strong>Include a number.</strong> "2,000+ verified data points" or "77 community areas" lands harder than vague claims.</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gcc-green font-bold mt-0.5">3.</span>
+          <span><strong>Attach one before/after photo pair.</strong> Visual proof is worth more than any paragraph of text.</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gcc-green font-bold mt-0.5">4.</span>
+          <span><strong>Follow up within 7 days.</strong> Most nonprofit requests get lost. A polite follow-up doubles response rates.</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gcc-green font-bold mt-0.5">5.</span>
+          <span><strong>Reference existing partners.</strong> Once you land Tier 1 wins, mention them in Tier 2 outreach to build social proof.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- SECTION F: REVENUE PROJECTIONS -->
+  <!-- ============================================================ -->
+  <section id="section-f" class="max-w-6xl mx-auto px-6 py-10 section-divider pt-16 page-break-before">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="w-8 h-8 rounded-lg bg-gcc-green text-white text-sm font-bold flex items-center justify-center">F</span>
+        <h2 class="text-2xl font-bold text-gcc-dark">Revenue Projections by Partnership Type</h2>
+      </div>
+      <p class="text-gray-500 text-sm ml-11">Conservative estimates based on typical nonprofit donation programs and grant sizes</p>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-gray-200 mb-8">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gcc-dark text-white">
+            <th class="text-left px-5 py-3 font-semibold">Partnership Category</th>
+            <th class="text-left px-5 py-3 font-semibold">Type</th>
+            <th class="text-left px-5 py-3 font-semibold">Conservative</th>
+            <th class="text-left px-5 py-3 font-semibold">Optimistic</th>
+            <th class="text-left px-5 py-3 font-semibold">Notes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr class="avoid-break">
+            <td class="px-5 py-4 font-semibold text-gcc-dark">Sports &amp; Entertainment Tickets</td>
+            <td class="px-5 py-4 text-gray-600">In-kind (prize value)</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$50,000/yr</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$100,000/yr</td>
+            <td class="px-5 py-4 text-gray-500 text-xs">Reduces GCC out-of-pocket for gamification rewards. Tax-deductible for donors.</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-5 py-4 font-semibold text-gcc-dark">Technology Donations</td>
+            <td class="px-5 py-4 text-gray-600">In-kind (equipment + credits)</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$100,000/yr</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$300,000/yr</td>
+            <td class="px-5 py-4 text-gray-500 text-xs">Cloud credits, hardware, API access. Reduces infrastructure costs to near-zero.</td>
+          </tr>
+          <tr class="avoid-break">
+            <td class="px-5 py-4 font-semibold text-gcc-dark">Foundation Grants</td>
+            <td class="px-5 py-4 text-gray-600">Direct funding</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$50,000/yr</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$250,000/yr</td>
+            <td class="px-5 py-4 text-gray-500 text-xs">Unrestricted or program-specific funding. United Way Equity Fund alone is $50K.</td>
+          </tr>
+          <tr class="avoid-break bg-gcc-green-50">
+            <td class="px-5 py-4 font-semibold text-gcc-dark">Data Licensing (Future)</td>
+            <td class="px-5 py-4 text-gray-600">Revenue</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$100,000/yr</td>
+            <td class="px-5 py-4 font-mono text-gcc-green-dark font-semibold">$500,000/yr</td>
+            <td class="px-5 py-4 text-gray-500 text-xs">City contracts, corporate environmental data, insurance analytics. Requires scale.</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bg-gcc-dark text-white font-semibold">
+            <td class="px-5 py-3" colspan="2">Total Annual Value</td>
+            <td class="px-5 py-3 font-mono">$300,000/yr</td>
+            <td class="px-5 py-3 font-mono">$1,150,000/yr</td>
+            <td class="px-5 py-3 text-xs font-normal text-gray-300">Combined in-kind + direct funding + future revenue</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Revenue Breakdown Visual -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white border border-gray-200 rounded-xl p-5 text-center avoid-break">
+        <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg>
+        </div>
+        <div class="text-xl font-bold text-gcc-dark">$50K&ndash;$100K</div>
+        <div class="text-xs text-gray-500 mt-1">Tickets &amp; Prizes</div>
+        <div class="text-xs text-gray-400 mt-0.5">In-kind value</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 text-center avoid-break">
+        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        </div>
+        <div class="text-xl font-bold text-gcc-dark">$100K&ndash;$300K</div>
+        <div class="text-xs text-gray-500 mt-1">Tech &amp; Cloud</div>
+        <div class="text-xs text-gray-400 mt-0.5">In-kind value</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 text-center avoid-break">
+        <div class="w-12 h-12 rounded-full bg-gcc-green-100 flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-gcc-green-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-xl font-bold text-gcc-dark">$50K&ndash;$250K</div>
+        <div class="text-xs text-gray-500 mt-1">Foundation Grants</div>
+        <div class="text-xs text-gray-400 mt-0.5">Direct funding</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 text-center avoid-break">
+        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+        </div>
+        <div class="text-xl font-bold text-gcc-dark">$100K&ndash;$500K</div>
+        <div class="text-xs text-gray-500 mt-1">Data Licensing</div>
+        <div class="text-xs text-gray-400 mt-0.5">Future revenue</div>
+      </div>
+    </div>
+
+    <!-- Key Assumptions -->
+    <div class="bg-gray-50 rounded-xl p-6 avoid-break">
+      <h4 class="font-semibold text-gcc-dark mb-3">Key Assumptions</h4>
+      <ul class="text-sm text-gray-600 space-y-1.5">
+        <li class="flex items-start gap-2">
+          <span class="text-gray-400 mt-0.5">&bull;</span>
+          <span>Conservative estimates assume 30&ndash;40% success rate on outreach, with minimum donation levels</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gray-400 mt-0.5">&bull;</span>
+          <span>Optimistic estimates assume 60&ndash;70% success rate with multi-year partnerships and expanded asks</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gray-400 mt-0.5">&bull;</span>
+          <span>Data licensing revenue requires 12&ndash;18 months of data collection at scale before monetization</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gray-400 mt-0.5">&bull;</span>
+          <span>In-kind donations (tickets, tech) reduce operational costs but don't generate cash flow</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-gray-400 mt-0.5">&bull;</span>
+          <span>Foundation grants typically require annual reapplication &mdash; build relationships early for multi-year funding</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ -->
+  <!-- FOOTER -->
+  <!-- ============================================================ -->
+  <footer class="max-w-6xl mx-auto px-6 py-12 border-t border-gray-200 mt-8">
+    <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <span class="font-semibold text-gcc-dark text-sm">Global Community Cleaners</span>
+          <span class="text-gray-400 text-sm ml-2">Internal Strategy Document</span>
+        </div>
+      </div>
+      <div class="text-xs text-gray-400 flex items-center gap-4">
+        <span>March 2026</span>
+        <span class="text-red-400 font-semibold">CONFIDENTIAL &mdash; NOT FOR DISTRIBUTION</span>
+      </div>
+    </div>
+    <div class="mt-6 text-center">
+      <p class="text-xs text-gray-400">36 target organizations &bull; 3 email templates &bull; $300K&ndash;$1.15M projected annual value</p>
+      <p class="text-xs text-gray-300 mt-1">globalcommunitycleaners.org</p>
+    </div>
+  </footer>
+
+  <!-- Print button (screen only) -->
+  <div class="no-print fixed bottom-6 right-6 z-50">
+    <button onclick="window.print()" class="bg-gcc-dark hover:bg-gcc-dark-light text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+      Print / Save PDF
+    </button>
+  </div>
+
+</body>
+</html>

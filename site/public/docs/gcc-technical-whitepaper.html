@@ -1,0 +1,2141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCC Technical Whitepaper — System Architecture &amp; Data Infrastructure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gcc: {
+              DEFAULT: '#22C55E',
+              dark: '#16A34A',
+              light: '#4ADE80',
+              50: '#F0FDF4',
+              100: '#DCFCE7',
+              200: '#BBF7D0',
+              600: '#16A34A',
+              700: '#15803D',
+              800: '#166534',
+              900: '#14532D',
+            },
+            dark: {
+              DEFAULT: '#0F172A',
+              light: '#1E293B',
+              muted: '#334155',
+              border: '#475569',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.6in 0.75in;
+    }
+
+    @media print {
+      body {
+        font-size: 10pt !important;
+        line-height: 1.4 !important;
+        color: #000 !important;
+        background: #fff !important;
+      }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+      .avoid-break { page-break-inside: avoid; }
+      .print-mt-0 { margin-top: 0 !important; }
+      h1, h2, h3 { page-break-after: avoid; }
+      table, figure, .arch-diagram { page-break-inside: avoid; }
+      a { color: #000 !important; text-decoration: none !important; }
+      .toc-link { color: #000 !important; }
+      nav { page-break-after: always; }
+      .cover-page { page-break-after: always; }
+      pre, code { font-size: 9pt !important; }
+    }
+
+    /* Page counter */
+    body { counter-reset: page-num; }
+    .page-footer { counter-increment: page-num; }
+    .page-footer::after { content: "Page " counter(page-num); }
+
+    /* Table styles */
+    .data-table th {
+      background-color: #0F172A;
+      color: #F0FDF4;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+    }
+    .data-table tr:nth-child(even) {
+      background-color: #F0FDF4;
+    }
+    .data-table td, .data-table th {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #E2E8F0;
+    }
+
+    /* Architecture boxes */
+    .arch-box {
+      border: 2px solid #22C55E;
+      background: #F0FDF4;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .arch-box-dark {
+      border: 2px solid #0F172A;
+      background: #0F172A;
+      color: #F0FDF4;
+    }
+    .arch-arrow {
+      color: #16A34A;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+
+    /* Code blocks */
+    pre.code-block {
+      background: #0F172A;
+      color: #E2E8F0;
+      border-radius: 0.5rem;
+      padding: 1rem 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      border-left: 4px solid #22C55E;
+    }
+    pre.code-block .kw { color: #22C55E; }
+    pre.code-block .str { color: #FBBF24; }
+    pre.code-block .cmt { color: #64748B; }
+    pre.code-block .num { color: #F472B6; }
+    pre.code-block .type { color: #60A5FA; }
+
+    /* Section numbering */
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      background: #22C55E;
+      color: #fff;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-right: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    /* TOC */
+    .toc-entry {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px dotted #CBD5E1;
+    }
+    .toc-entry:last-child { border-bottom: none; }
+    .toc-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: #22C55E;
+      min-width: 2rem;
+    }
+    .toc-title { flex: 1; }
+    .toc-dots { flex: 1; border-bottom: 1px dotted #94A3B8; margin: 0 0.25rem; min-width: 2rem; }
+
+    /* Confidential footer */
+    .doc-footer {
+      border-top: 2px solid #22C55E;
+      padding-top: 0.75rem;
+      margin-top: 3rem;
+      font-size: 0.7rem;
+      color: #64748B;
+    }
+
+    /* Flow diagrams */
+    .flow-step {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .flow-arrow::after {
+      content: '\2192';
+      margin: 0 0.25rem;
+      color: #22C55E;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body class="bg-white text-dark font-sans leading-relaxed">
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       COVER PAGE
+       ═══════════════════════════════════════════════════════════════════ -->
+  <div class="cover-page min-h-screen flex flex-col justify-between px-8 py-12 max-w-4xl mx-auto">
+    <!-- Header bar -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gcc rounded-lg flex items-center justify-center">
+          <span class="text-white font-bold text-lg">G</span>
+        </div>
+        <span class="font-semibold text-dark text-sm tracking-wide">GLOBAL COMMUNITY CLEANERS</span>
+      </div>
+      <span class="text-xs text-dark-muted font-mono">CONFIDENTIAL</span>
+    </div>
+
+    <!-- Title block -->
+    <div class="flex-1 flex flex-col justify-center -mt-16">
+      <div class="mb-6">
+        <div class="inline-block bg-gcc-50 text-gcc-dark text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider mb-4">
+          Technical Whitepaper
+        </div>
+        <h1 class="text-5xl font-extrabold text-dark leading-tight mb-4">
+          System Architecture<br>
+          <span class="text-gcc">&amp; Data Infrastructure</span>
+        </h1>
+        <p class="text-lg text-dark-muted max-w-xl leading-relaxed mt-6">
+          A comprehensive technical reference for the GCC platform covering system architecture,
+          data collection pipelines, AI/CV integration, gamification mechanics, verification protocols,
+          security controls, and interoperability standards.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 mt-8 max-w-lg">
+        <div class="bg-gcc-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-gcc-dark">3</div>
+          <div class="text-xs text-dark-muted">Platform Tiers</div>
+        </div>
+        <div class="bg-gcc-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-gcc-dark">25+</div>
+          <div class="text-xs text-dark-muted">Data Fields / Report</div>
+        </div>
+        <div class="bg-gcc-50 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-gcc-dark">77</div>
+          <div class="text-xs text-dark-muted">Target Areas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-end justify-between text-xs text-dark-muted">
+      <div>
+        <div class="font-semibold text-dark">Version 1.0</div>
+        <div>March 2026</div>
+      </div>
+      <div class="text-right">
+        <div>Prepared for Technical Evaluators,</div>
+        <div>Grant Reviewers &amp; Municipal IT Departments</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TABLE OF CONTENTS
+       ═══════════════════════════════════════════════════════════════════ -->
+  <nav class="page-break max-w-4xl mx-auto px-8 py-12">
+    <div class="flex items-center gap-3 mb-8">
+      <div class="w-1 h-8 bg-gcc rounded-full"></div>
+      <h2 class="text-2xl font-bold text-dark">Table of Contents</h2>
+    </div>
+
+    <div class="space-y-1 text-sm">
+      <a href="#s1" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">01</span>
+        <span class="toc-title font-medium">System Architecture</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s2" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">02</span>
+        <span class="toc-title font-medium">Block Cleaning 2-Lap Model</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s3" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">03</span>
+        <span class="toc-title font-medium">Data Collection Layer</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s4" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">04</span>
+        <span class="toc-title font-medium">AI &amp; Computer Vision</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s5" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">05</span>
+        <span class="toc-title font-medium">Gamification Engine</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s6" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">06</span>
+        <span class="toc-title font-medium">Verification System</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s7" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">07</span>
+        <span class="toc-title font-medium">Spot &amp; Bounty System</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s8" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">08</span>
+        <span class="toc-title font-medium">User Verification &amp; Identity</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s9" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">09</span>
+        <span class="toc-title font-medium">Security &amp; Compliance</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s10" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">10</span>
+        <span class="toc-title font-medium">Data Export &amp; Interoperability</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s11" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">11</span>
+        <span class="toc-title font-medium">Analytics &amp; Metrics</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s12" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">12</span>
+        <span class="toc-title font-medium">Data Extrapolation</span>
+        <span class="toc-dots"></span>
+      </a>
+      <a href="#s13" class="toc-entry toc-link hover:text-gcc-dark transition-colors">
+        <span class="toc-num">13</span>
+        <span class="toc-title font-medium">Scalability &amp; Coverage</span>
+        <span class="toc-dots"></span>
+      </a>
+    </div>
+
+    <div class="mt-12 p-4 bg-gcc-50 border border-gcc-100 rounded-lg text-xs text-dark-muted">
+      <span class="font-semibold text-dark">Document Classification:</span> Confidential &mdash; Intended for technical evaluation by grant reviewers,
+      municipal IT departments, SOC2 auditors, and authorized engineering partners. Do not distribute without written authorization
+      from Global Community Cleaners.
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MAIN CONTENT
+       ═══════════════════════════════════════════════════════════════════ -->
+  <main class="max-w-4xl mx-auto px-8">
+
+    <!-- ─── SECTION 1: System Architecture ──────────────────────────── -->
+    <section id="s1" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">1</span>
+        <h2 class="text-2xl font-bold text-dark">System Architecture</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        The GCC platform employs a three-tier architecture designed for operational resilience, developer velocity, and seamless
+        cross-platform data sharing. Each tier is independently deployable and connected through well-defined API boundaries.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">1.1 Tier Overview</h3>
+
+      <table class="data-table w-full text-xs mb-8 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Tier</th>
+            <th>Technology</th>
+            <th>Runtime</th>
+            <th>Deployment</th>
+            <th class="rounded-tr-lg">Responsibilities</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Frontend / API</td>
+            <td><span class="font-mono text-gcc-dark">Next.js 14</span> (App Router, RSC)</td>
+            <td>Vercel Edge Network</td>
+            <td>Vercel (auto-deploy on push)</td>
+            <td>Public website, API routes, SSR, static assets, SODA export</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Backend Services</td>
+            <td><span class="font-mono text-gcc-dark">Ktor</span> (Kotlin, JVM)</td>
+            <td>JVM 17+ (self-hosted)</td>
+            <td>Systemd service, manual deploy</td>
+            <td>Business logic, gamification, real-time, admin analytics</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Database</td>
+            <td><span class="font-mono text-gcc-dark">Neon PostgreSQL</span></td>
+            <td>Serverless (auto-suspend)</td>
+            <td>Neon Cloud (us-east-1)</td>
+            <td>Primary data store, connection pooling, branching</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Mobile App</td>
+            <td><span class="font-mono text-gcc-dark">Kotlin Multiplatform</span></td>
+            <td>iOS (native) / Android (native) / Desktop (JVM)</td>
+            <td>App Store / Google Play</td>
+            <td>Field data collection, GPS, camera, on-device AI</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Admin App</td>
+            <td><span class="font-mono text-gcc-dark">Compose Desktop</span> (JVM)</td>
+            <td>JVM Desktop</td>
+            <td>Direct distribution</td>
+            <td>Worker management, analytics dashboards, field coordination</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">1.2 Architecture Diagram</h3>
+
+      <div class="arch-diagram bg-dark rounded-xl p-6 mb-8 overflow-x-auto">
+        <div class="flex flex-col gap-4 min-w-[600px]">
+          <!-- Row 1: Clients -->
+          <div class="flex items-center justify-center gap-4 mb-2">
+            <div class="arch-box text-xs">iOS App (KMP)</div>
+            <div class="arch-box text-xs">Android App (KMP)</div>
+            <div class="arch-box text-xs">Website (Next.js)</div>
+            <div class="arch-box text-xs">Admin Desktop (Compose)</div>
+          </div>
+
+          <!-- Arrows down -->
+          <div class="flex justify-center">
+            <div class="text-gcc font-mono text-xl font-bold">&#9660; HTTPS / REST &#9660;</div>
+          </div>
+
+          <!-- Row 2: API Layer -->
+          <div class="flex items-center justify-center gap-6">
+            <div class="flex flex-col items-center gap-2">
+              <div class="arch-box arch-box-dark border-gcc text-xs px-6">
+                Next.js API Routes<br>
+                <span class="text-gcc text-[10px]">Vercel Edge Network</span>
+              </div>
+            </div>
+            <div class="text-gcc-light font-mono text-sm">+</div>
+            <div class="flex flex-col items-center gap-2">
+              <div class="arch-box arch-box-dark border-gcc text-xs px-6">
+                Ktor Server<br>
+                <span class="text-gcc text-[10px]">JVM / Self-hosted</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Arrows down -->
+          <div class="flex justify-center">
+            <div class="text-gcc font-mono text-xl font-bold">&#9660; SQL (Two ORMs) &#9660;</div>
+          </div>
+
+          <!-- Row 3: Database -->
+          <div class="flex items-center justify-center gap-4">
+            <div class="flex flex-col items-center gap-1">
+              <div class="arch-box arch-box-dark border-gcc-light text-xs px-8">
+                Neon PostgreSQL<br>
+                <span class="text-gcc text-[10px]">Serverless &bull; Connection Pooling &bull; Branching</span>
+              </div>
+              <div class="flex gap-6 mt-2 text-[10px] text-gcc-light font-mono">
+                <span>Drizzle ORM (Next.js)</span>
+                <span>|</span>
+                <span>Exposed ORM (Ktor)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">1.3 Two-ORM Strategy</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        A single Neon PostgreSQL database is shared by two application-layer ORMs, each optimized for its runtime environment.
+        The <strong>Drizzle ORM</strong> (TypeScript) drives the Next.js API layer with type-safe query building and is the
+        <em>schema source of truth</em> &mdash; all migrations originate from Drizzle's schema definitions. The <strong>Exposed ORM</strong>
+        (Kotlin) maps those same tables for Ktor's server-side business logic using a JDBC connection configured with
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">stringtype=unspecified</code> to bridge
+        Exposed's varchar handling with PostgreSQL's native enum types.
+      </p>
+
+      <div class="avoid-break grid grid-cols-2 gap-4 mb-8">
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4">
+          <h4 class="font-semibold text-sm text-dark mb-2">Drizzle ORM (TypeScript)</h4>
+          <ul class="text-xs text-dark-muted space-y-1">
+            <li>Schema source of truth</li>
+            <li>Flat columns + native PG enums</li>
+            <li>Runs in Vercel serverless functions</li>
+            <li>Connection via Neon serverless driver</li>
+            <li>Migration files committed to VCS</li>
+          </ul>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4">
+          <h4 class="font-semibold text-sm text-dark mb-2">Exposed ORM (Kotlin)</h4>
+          <ul class="text-xs text-dark-muted space-y-1">
+            <li>Maps to existing Drizzle schema</li>
+            <li>HikariCP connection pool</li>
+            <li>JDBC URL with <code class="font-mono bg-white px-1 rounded">stringtype=unspecified</code></li>
+            <li>Runs on long-lived JVM process</li>
+            <li>No independent migrations</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">1.4 Kotlin Multiplatform Shared Module</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">shared/</code> KMP module defines all domain models,
+        API types, and enumerations in platform-agnostic Kotlin. This module compiles to:
+      </p>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Target</th>
+            <th>Compilation</th>
+            <th class="rounded-tr-lg">Consumer</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-mono">iosArm64 / iosSimulatorArm64</td>
+            <td>Kotlin/Native framework</td>
+            <td>iOS app (SwiftUI interop)</td>
+          </tr>
+          <tr>
+            <td class="font-mono">androidTarget</td>
+            <td>Kotlin/JVM (Android)</td>
+            <td>Android app (Jetpack Compose)</td>
+          </tr>
+          <tr>
+            <td class="font-mono">jvm</td>
+            <td>Kotlin/JVM</td>
+            <td>Ktor server + Admin Desktop app</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        All serialization uses <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">kotlinx.serialization</code> with
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">@SerialName</code> annotations mapping to snake_case JSON keys,
+        ensuring wire-format consistency across all platforms without manual parsing logic.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 2: Block Cleaning 2-Lap Model ──────────────────── -->
+    <section id="s2" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">2</span>
+        <h2 class="text-2xl font-bold text-dark">Block Cleaning 2-Lap Model</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC's operational model is structured around a two-pass approach to street-level environmental cleanup.
+        Physical geography is modeled through two complementary views of the same road segment:
+        <strong>Blocks</strong> (sponsorship/funding view) and <strong>Routes</strong> (worker/cleanup operational view).
+        These maintain a strict 1:1 relationship.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">2.1 Block &harr; Route Duality</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Concept</th>
+            <th>View</th>
+            <th>Code Pattern</th>
+            <th>Key Fields</th>
+            <th class="rounded-tr-lg">Geometry</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Block</td>
+            <td>Sponsor &amp; funding</td>
+            <td class="font-mono">NL-N01, NL-S01</td>
+            <td>fundingGoal, fundingCurrent, sponsorId, boundary (Polygon)</td>
+            <td>GeoJSON Polygon</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Route</td>
+            <td>Worker &amp; cleanup</td>
+            <td class="font-mono">NL-RN01, NL-RS01</td>
+            <td>distanceMeters, estimatedDurationMinutes, payoutAmount, geometry (LineString)</td>
+            <td>GeoJSON LineString</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        Code conventions: <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{ServiceArea}-{Direction}{Number}</code>
+        for blocks (e.g., NL-N01 = North Lawndale, North sector, block 1) and
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{ServiceArea}-R{Direction}{Number}</code>
+        for routes (NL-RN01 = route for NL-N01). Display images are shared between paired blocks and routes.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">2.2 Lap 1 &mdash; Documentation Walk</h3>
+
+      <div class="avoid-break bg-gcc-50 border-l-4 border-gcc rounded-r-lg p-4 mb-4">
+        <div class="flex flex-wrap items-center gap-1 text-xs mb-3">
+          <span class="flow-step bg-gcc text-white rounded-full">Start Checkpoint</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc text-dark">GPS Track Along Route</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc text-dark">Photo @ Dirty Spot</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc text-dark">AI Classification</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc text-dark">GPS Tag + Severity</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-gcc-dark text-white rounded-full">End Checkpoint</span>
+        </div>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The worker follows a predefined route (GeoJSON LineString geometry), passing through ordered checkpoints.
+        Each checkpoint has a <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">CheckpointType</code> that determines
+        the required action:
+      </p>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Checkpoint Type</th>
+            <th>Purpose</th>
+            <th>Photo Required</th>
+            <th class="rounded-tr-lg">Geofence Radius</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-mono">ROUTE_START</td><td>Begin route session, GPS lock</td><td>Optional</td><td>15m default</td></tr>
+          <tr><td class="font-mono">PHOTO_POINT</td><td>Mandatory documentation point</td><td>Yes</td><td>15m default</td></tr>
+          <tr><td class="font-mono">ALLEY_ENTRANCE</td><td>Mark alley access point</td><td>Yes</td><td>15m default</td></tr>
+          <tr><td class="font-mono">RECORD</td><td>Document conditions (Lap 1)</td><td>Yes</td><td>15m default</td></tr>
+          <tr><td class="font-mono">CLEAN</td><td>Perform cleanup (Lap 2)</td><td>Yes (before/after)</td><td>15m default</td></tr>
+          <tr><td class="font-mono">VERIFY</td><td>Verify previous report</td><td>Yes</td><td>15m default</td></tr>
+          <tr><td class="font-mono">RECORD_CLEAN_VERIFY</td><td>Combined multi-action checkpoint</td><td>Yes</td><td>15m default</td></tr>
+          <tr><td class="font-mono">ROUTE_END</td><td>Complete route session</td><td>Optional</td><td>15m default</td></tr>
+        </tbody>
+      </table>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        At each dirty spot encountered during the documentation walk, the worker captures a photo which triggers the on-device
+        AI pipeline. The <strong>LiDAR variant</strong> (iPhone Pro models) adds depth analysis for precise volume estimation
+        of debris piles. All captures include a device attestation record binding the photo to a specific GPS coordinate,
+        timestamp, and device fingerprint.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">2.3 Lap 2 &mdash; Cleanup Pass</h3>
+
+      <div class="avoid-break bg-gcc-50 border-l-4 border-gcc-dark rounded-r-lg p-4 mb-4">
+        <div class="flex flex-wrap items-center gap-1 text-xs mb-3">
+          <span class="flow-step bg-gcc-dark text-white rounded-full">Return to Spot</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc-dark text-dark">Before Photo</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc-dark text-dark">Start Cleanup Timer</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc-dark text-dark">Bag &amp; Categorize</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-white border border-gcc-dark text-dark">After Photo</span>
+          <span class="flow-arrow"></span>
+          <span class="flow-step bg-gcc text-white rounded-full">Submit Report</span>
+        </div>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The cleanup pass returns to each documented spot. The mobile app tracks:
+      </p>
+
+      <ul class="text-sm text-dark-muted space-y-1 mb-6 list-disc list-inside">
+        <li><strong>Before/after photo pairs</strong> &mdash; stored as <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">beforeMediaUrls</code> / <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">afterMediaUrls</code></li>
+        <li><strong>Cleanup timer</strong> &mdash; <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">startedAt</code> to <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">completedAt</code>, cancellable coroutine Job</li>
+        <li><strong>Trash heap documentation</strong> &mdash; separate photo of collected bags (<code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">trashHeapMediaUrl</code>)</li>
+        <li><strong>AI analysis of collected waste</strong> &mdash; <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">aiTrashAnalysis</code> on heap photo</li>
+        <li><strong>GPS verification</strong> &mdash; <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">locationVerified</code> against original spot coordinates</li>
+      </ul>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">2.4 Device Configurations</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Configuration</th>
+            <th>Hardware</th>
+            <th>Capabilities</th>
+            <th class="rounded-tr-lg">Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">AR Variant</td>
+            <td>Smart glasses (Meta Ray-Ban) + iPhone with LiDAR</td>
+            <td>Hands-free recording, depth mapping, volume estimation</td>
+            <td>Primary documentation tool for funded routes</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Photo Variant</td>
+            <td>Any smartphone with GPS + camera</td>
+            <td>Photo capture, GPS tagging, on-device AI classification</td>
+            <td>Community volunteers, standard worker kit</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Admin Tablet</td>
+            <td>iPad</td>
+            <td>Field coordination, real-time map view, worker tracking</td>
+            <td>Field supervisors and route coordinators</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 3: Data Collection Layer ────────────────────────── -->
+    <section id="s3" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">3</span>
+        <h2 class="text-2xl font-bold text-dark">Data Collection Layer</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        Every community report (spot) in the GCC system captures a comprehensive set of environmental, geographic,
+        and metadata fields. The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">community_reports</code>
+        table serves as the primary data collection surface, with 28+ columns covering spatial coordinates,
+        AI analysis results, verification lifecycle, and Chicago-specific geographic context.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">3.1 Community Report Schema</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Field</th>
+            <th>Type</th>
+            <th class="rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-mono font-semibold">id</td><td>Serial</td><td>Auto-incrementing primary key</td></tr>
+          <tr><td class="font-mono font-semibold">reporter_name</td><td>Text</td><td>Submitter display name (e.g., "GCC" for admin spots)</td></tr>
+          <tr><td class="font-mono font-semibold">reporter_id</td><td>Integer (FK)</td><td>Foreign key to workers table</td></tr>
+          <tr><td class="font-mono font-semibold">type</td><td>Enum</td><td><code>sighting</code> | <code>volunteer_cleanup</code> | <code>bounty_triggered</code></td></tr>
+          <tr><td class="font-mono font-semibold">coordinates</td><td>JSONB</td><td><code>[lng, lat]</code> GeoJSON point format</td></tr>
+          <tr><td class="font-mono font-semibold">description</td><td>Text</td><td>Free-text description of observed conditions</td></tr>
+          <tr><td class="font-mono font-semibold">media_ids</td><td>JSONB</td><td>Array of photo URLs (max 3 per report)</td></tr>
+          <tr><td class="font-mono font-semibold">media_captions</td><td>JSONB</td><td>Array of captions, indexed to media_ids</td></tr>
+          <tr><td class="font-mono font-semibold">tags</td><td>JSONB</td><td>Array of SpotTag enum values (12 waste categories)</td></tr>
+          <tr><td class="font-mono font-semibold">status</td><td>Enum</td><td><code>pending</code> | <code>verified</code> | <code>acknowledged</code> | <code>resolved</code> | <code>rejected</code></td></tr>
+          <tr><td class="font-mono font-semibold">affected_area_shape</td><td>Enum</td><td><code>circle</code> | <code>rectangle</code></td></tr>
+          <tr><td class="font-mono font-semibold">affected_area_dimensions</td><td>JSONB</td><td>Shape-specific: <code>{radiusMeters}</code> or <code>{widthMeters, heightMeters, rotationDeg}</code></td></tr>
+          <tr><td class="font-mono font-semibold">affected_radius_meters</td><td>Numeric</td><td>Default 15m radius around report centroid</td></tr>
+          <tr><td class="font-mono font-semibold">on_device_ai_result</td><td>JSONB</td><td>AI classification output (see Section 4)</td></tr>
+          <tr><td class="font-mono font-semibold">depth_analysis</td><td>JSONB</td><td>LiDAR depth analysis data (see Section 4)</td></tr>
+          <tr><td class="font-mono font-semibold">capture_attestation</td><td>JSONB</td><td>Device attestation record (see Section 9)</td></tr>
+          <tr><td class="font-mono font-semibold">geo_street_address</td><td>Text</td><td>Reverse geocoded street address</td></tr>
+          <tr><td class="font-mono font-semibold">geo_community_area</td><td>Text</td><td>Chicago community area name (e.g., "North Lawndale")</td></tr>
+          <tr><td class="font-mono font-semibold">geo_community_area_number</td><td>Integer</td><td>1&ndash;77 Chicago community area number</td></tr>
+          <tr><td class="font-mono font-semibold">geo_ward</td><td>Integer</td><td>Chicago ward (1&ndash;50)</td></tr>
+          <tr><td class="font-mono font-semibold">geo_zip_code</td><td>Text</td><td>ZIP code</td></tr>
+          <tr><td class="font-mono font-semibold">geo_census_tract</td><td>Text</td><td>Census tract identifier</td></tr>
+          <tr><td class="font-mono font-semibold">geo_police_district</td><td>Text</td><td>Chicago police district</td></tr>
+          <tr><td class="font-mono font-semibold">source</td><td>Text</td><td><code>'admin'</code> (seeded/curated) or <code>'user'</code> (community-submitted)</td></tr>
+          <tr><td class="font-mono font-semibold">view_count</td><td>Integer</td><td>Total view count for engagement tracking</td></tr>
+          <tr><td class="font-mono font-semibold">thank_count</td><td>Integer</td><td>Community "thank" reactions</td></tr>
+          <tr><td class="font-mono font-semibold">verification_count</td><td>Integer</td><td>Number of independent verifications</td></tr>
+          <tr><td class="font-mono font-semibold">next_verification_due</td><td>Timestamp</td><td>24-hour verification deadline</td></tr>
+          <tr><td class="font-mono font-semibold">created_at</td><td>Timestamp</td><td>Report creation time (UTC)</td></tr>
+          <tr><td class="font-mono font-semibold">updated_at</td><td>Timestamp</td><td>Last modification time (UTC)</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">3.2 Source Distinction</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">source</code> column distinguishes between
+        admin-curated baseline data and organic community submissions. This separation is critical for data integrity and
+        gamification accuracy:
+      </p>
+
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="bg-dark rounded-lg p-4">
+          <h4 class="font-semibold text-sm text-gcc mb-2">Admin Spots (source = 'admin')</h4>
+          <ul class="text-xs text-gray-300 space-y-1">
+            <li>Created via <code class="font-mono text-gcc-light">/api/admin/spots</code></li>
+            <li>reporter_name = "GCC"</li>
+            <li>No gamification points awarded</li>
+            <li>Used for baseline data seeding</li>
+          </ul>
+        </div>
+        <div class="bg-dark rounded-lg p-4">
+          <h4 class="font-semibold text-sm text-gcc mb-2">User Spots (source = 'user')</h4>
+          <ul class="text-xs text-gray-300 space-y-1">
+            <li>Created via <code class="font-mono text-gcc-light">/api/spots</code> (mobile app)</li>
+            <li>Reporter name from authenticated user</li>
+            <li>Earns gamification points (10 pts)</li>
+            <li>Enters verification lifecycle</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 4: AI & Computer Vision ─────────────────────────── -->
+    <section id="s4" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">4</span>
+        <h2 class="text-2xl font-bold text-dark">AI &amp; Computer Vision</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC employs on-device AI inference for real-time waste classification, severity assessment, and volume estimation.
+        All AI processing occurs locally on the user's device, eliminating latency and ensuring functionality in low-connectivity
+        field conditions. Platform-specific implementations use native ML frameworks.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">4.1 Platform Implementations</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Platform</th>
+            <th>Framework</th>
+            <th>Model Format</th>
+            <th class="rounded-tr-lg">Capabilities</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">iOS</td>
+            <td>CoreML + Vision framework</td>
+            <td>.mlmodel (optimized for Neural Engine)</td>
+            <td>Image classification, object detection, depth analysis (LiDAR)</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Android</td>
+            <td>TensorFlow Lite</td>
+            <td>.tflite (quantized for mobile GPU/NPU)</td>
+            <td>Image classification, object detection</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Desktop</td>
+            <td>Stub (future: ONNX Runtime)</td>
+            <td>N/A</td>
+            <td>Admin review &mdash; server-side fallback</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">4.2 Waste Classification Taxonomy</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">SpotTag</code> enum defines 12 waste categories
+        aligned with municipal waste management classifications:
+      </p>
+
+      <div class="grid grid-cols-4 gap-2 mb-6">
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">TRASH</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">LEAVES</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">GLASS</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">METAL</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">TIRES</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">FURNITURE</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">CONSTRUCTION</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">ORGANIC</div>
+        <div class="bg-amber-50 border border-amber-200 rounded p-2 text-center text-xs font-mono font-semibold text-amber-800">HAZARDOUS</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">ELECTRONICS</div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded p-2 text-center text-xs font-mono font-semibold">CLOTHING</div>
+        <div class="bg-gray-50 border border-gray-200 rounded p-2 text-center text-xs font-mono font-semibold">OTHER</div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">4.3 On-Device Analysis Output</h3>
+
+      <pre class="code-block mb-6"><span class="cmt">// OnDeviceAnalysisResult (Kotlin shared model)</span>
+<span class="kw">data class</span> <span class="type">OnDeviceAnalysisResult</span>(
+    <span class="kw">val</span> trashTypes: <span class="type">List</span>&lt;<span class="type">String</span>&gt;,          <span class="cmt">// Detected waste categories</span>
+    <span class="kw">val</span> estimatedWeightLbs: <span class="type">Double</span>?,       <span class="cmt">// AI-estimated weight in pounds</span>
+    <span class="kw">val</span> severity: <span class="type">Int</span>?,                    <span class="cmt">// 1-5 severity score</span>
+    <span class="kw">val</span> confidence: <span class="type">Float</span>?,                <span class="cmt">// Classification confidence (0.0-1.0)</span>
+    <span class="kw">val</span> suggestedTags: <span class="type">List</span>&lt;<span class="type">SpotTag</span>&gt;,     <span class="cmt">// Auto-suggested SpotTag values</span>
+    <span class="kw">val</span> generatedDescription: <span class="type">String</span>?,    <span class="cmt">// AI-generated text description</span>
+    <span class="kw">val</span> imageEmbedding: <span class="type">List</span>&lt;<span class="type">Float</span>&gt;?,     <span class="cmt">// Vector embedding for similarity search</span>
+)</pre>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">4.4 LiDAR Depth Analysis (iPhone Pro)</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        iPhone Pro models equipped with LiDAR sensors provide an additional depth analysis layer:
+      </p>
+
+      <pre class="code-block mb-6"><span class="cmt">// DepthAnalysis (Kotlin shared model)</span>
+<span class="kw">data class</span> <span class="type">DepthAnalysis</span>(
+    <span class="kw">val</span> hasDepth: <span class="type">Boolean</span>,                  <span class="cmt">// LiDAR data available</span>
+    <span class="kw">val</span> estimatedVolumeCubicFt: <span class="type">Double</span>?,  <span class="cmt">// Precise volume from depth map</span>
+    <span class="kw">val</span> estimatedAreaSqFt: <span class="type">Double</span>?,       <span class="cmt">// Measured surface area</span>
+    <span class="kw">val</span> maxDepthMeters: <span class="type">Double</span>?,          <span class="cmt">// Maximum depth measurement</span>
+    <span class="kw">val</span> depthConfidence: <span class="type">Float</span>?,          <span class="cmt">// Depth measurement confidence</span>
+    <span class="kw">val</span> depthMapThumbnailBase64: <span class="type">String</span>?, <span class="cmt">// Depth map visualization (base64)</span>
+)</pre>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        The LiDAR pipeline produces volumetric measurements independent of AI weight estimation, allowing cross-validation between
+        the two methods. Depth confidence scores enable automatic fallback to camera-only estimation when LiDAR data quality
+        is insufficient (e.g., reflective surfaces, extreme distance).
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 5: Gamification Engine ──────────────────────────── -->
+    <section id="s5" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">5</span>
+        <h2 class="text-2xl font-bold text-dark">Gamification Engine</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        The gamification engine incentivizes community participation through a three-pillar system: <strong>points</strong>,
+        <strong>badges</strong>, and <strong>leaderboards</strong>. All gamification state is persisted in PostgreSQL via a
+        points ledger with full audit history, ensuring transparency and auditability for grant reporting.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">5.1 Points System</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Action</th>
+            <th>Enum Value</th>
+            <th>Points</th>
+            <th class="rounded-tr-lg">Trigger Condition</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Spot Created</td>
+            <td class="font-mono">SPOT_CREATED</td>
+            <td class="text-gcc-dark font-bold">10</td>
+            <td>User submits a new community report (source = 'user' only)</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Verification (Dirty)</td>
+            <td class="font-mono">VERIFICATION_DIRTY</td>
+            <td class="text-gcc-dark font-bold">5</td>
+            <td>Verifier confirms spot is still dirty</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Verification (Clean)</td>
+            <td class="font-mono">VERIFICATION_CLEAN</td>
+            <td class="text-gcc-dark font-bold">10</td>
+            <td>Verifier confirms spot has been cleaned</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Volunteer Cleanup</td>
+            <td class="font-mono">VOLUNTEER_CLEANUP</td>
+            <td class="text-gcc-dark font-bold">50</td>
+            <td>Worker completes a full volunteer cleanup with before/after evidence</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Already Clean Report</td>
+            <td class="font-mono">ALREADY_CLEAN_REPORT</td>
+            <td class="text-gcc-dark font-bold">5</td>
+            <td>Volunteer arrives at a spot that has already been cleaned</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">5.2 Points Ledger</h3>
+
+      <pre class="code-block mb-6"><span class="cmt">// Immutable ledger entry — one row per point-earning action</span>
+<span class="kw">data class</span> <span class="type">PointsLedgerEntry</span>(
+    <span class="kw">val</span> id: <span class="type">Int</span>,                    <span class="cmt">// Ledger entry PK</span>
+    <span class="kw">val</span> workerId: <span class="type">Int</span>,              <span class="cmt">// Worker earning points</span>
+    <span class="kw">val</span> action: <span class="type">PointsAction</span>,       <span class="cmt">// Enum: which action earned points</span>
+    <span class="kw">val</span> points: <span class="type">Int</span>,                <span class="cmt">// Points awarded (always positive)</span>
+    <span class="kw">val</span> referenceType: <span class="type">String</span>?,    <span class="cmt">// "report", "verification", "cleanup"</span>
+    <span class="kw">val</span> referenceId: <span class="type">Int</span>?,          <span class="cmt">// FK to the triggering entity</span>
+    <span class="kw">val</span> createdAt: <span class="type">Instant</span>,          <span class="cmt">// Timestamp of award</span>
+)</pre>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">5.3 Badge System &mdash; 9 Categories &times; 5 Tiers</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        Badges unlock progressively across five tiers: <strong>Bronze</strong> &rarr; <strong>Silver</strong> &rarr;
+        <strong>Gold</strong> &rarr; <strong>Platinum</strong> &rarr; <strong>Diamond</strong>. Each badge category has
+        tier-specific thresholds:
+      </p>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Category</th>
+            <th>Bronze</th>
+            <th>Silver</th>
+            <th>Gold</th>
+            <th>Platinum</th>
+            <th class="rounded-tr-lg">Diamond</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-semibold font-mono">JOBS</td><td>5 jobs</td><td>25</td><td>100</td><td>500</td><td>2,000</td></tr>
+          <tr><td class="font-semibold font-mono">OBSERVE</td><td>5 spots</td><td>25</td><td>100</td><td>500</td><td>2,000</td></tr>
+          <tr><td class="font-semibold font-mono">VOLUNTEER</td><td>3 cleanups</td><td>10</td><td>50</td><td>200</td><td>1,000</td></tr>
+          <tr><td class="font-semibold font-mono">FIRST_RESPONDER</td><td>3 fast claims</td><td>10</td><td>25</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td class="font-semibold font-mono">STREAK</td><td>3 days</td><td>7 days</td><td>30 days</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td class="font-semibold font-mono">COMMUNITY</td><td>5 actions</td><td>25</td><td>100</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td class="font-semibold font-mono">EARNINGS</td><td colspan="5">Milestone-based: currency tiers from $100 through $50,000</td></tr>
+          <tr><td class="font-semibold font-mono">EARLY_ADOPTER</td><td colspan="5">Launch participant recognition (single tier)</td></tr>
+          <tr><td class="font-semibold font-mono">SPONSOR</td><td>5 jobs funded</td><td>25</td><td>100</td><td>&mdash;</td><td>&mdash;</td></tr>
+        </tbody>
+      </table>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">FIRST_RESPONDER</code> category specifically tracks
+        bounty acceptance speed &mdash; workers who claim bounties within 5 minutes of posting earn progression toward these badges.
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">SPONSOR</code> category includes separate tracks for
+        block sponsorship and bounty posting.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 6: Verification System ──────────────────────────── -->
+    <section id="s6" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">6</span>
+        <h2 class="text-2xl font-bold text-dark">Verification System</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        The verification system ensures data integrity by requiring independent community confirmation of reported conditions.
+        It implements a 24-hour re-verification cycle, GPS proximity enforcement, and anti-gaming protections.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">6.1 Verification Protocol</h3>
+
+      <div class="avoid-break bg-gcc-50 border border-gcc-100 rounded-lg p-5 mb-6">
+        <div class="grid grid-cols-2 gap-4 text-xs">
+          <div>
+            <h4 class="font-semibold text-dark mb-2">Constraints</h4>
+            <ul class="space-y-1.5 text-dark-muted">
+              <li><strong>24-Hour Cycle</strong> &mdash; Every spot requires re-verification within 24 hours of creation or last verification</li>
+              <li><strong>GPS Proximity</strong> &mdash; Verifier must be within <strong>200 meters</strong> of the spot (Haversine distance)</li>
+              <li><strong>Self-Verification Block</strong> &mdash; Original reporter cannot verify their own spot</li>
+              <li><strong>Photo Evidence</strong> &mdash; All verifications require a current photo</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-dark mb-2">Concurrency Control</h4>
+            <ul class="space-y-1.5 text-dark-muted">
+              <li><strong>Optimistic Concurrency</strong> &mdash; <code class="font-mono bg-white px-1 rounded">expectedVerificationCount</code> prevents race conditions</li>
+              <li><strong>Atomic Update</strong> &mdash; Verification count + status change in single transaction</li>
+              <li><strong>Conflict Resolution</strong> &mdash; First-write-wins; concurrent submitters receive conflict error</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">6.2 Verification Record</h3>
+
+      <pre class="code-block mb-6"><span class="kw">data class</span> <span class="type">SpotVerification</span>(
+    <span class="kw">val</span> id: <span class="type">Int</span>,
+    <span class="kw">val</span> reportId: <span class="type">Int</span>,                     <span class="cmt">// FK to community_reports</span>
+    <span class="kw">val</span> verifierId: <span class="type">Int</span>,                   <span class="cmt">// FK to workers</span>
+    <span class="kw">val</span> verifierName: <span class="type">String</span>?,
+    <span class="kw">val</span> result: <span class="type">SpotVerificationResult</span>,    <span class="cmt">// STILL_DIRTY | ALREADY_CLEAN</span>
+    <span class="kw">val</span> photoUrl: <span class="type">String</span>?,                 <span class="cmt">// Required verification photo</span>
+    <span class="kw">val</span> verifierLat: <span class="type">Double</span>?,              <span class="cmt">// GPS at verification time</span>
+    <span class="kw">val</span> verifierLng: <span class="type">Double</span>?,
+    <span class="kw">val</span> distanceFromSpotMeters: <span class="type">Double</span>?,  <span class="cmt">// Computed Haversine distance</span>
+    <span class="kw">val</span> pointsAwarded: <span class="type">Int</span>,               <span class="cmt">// 5 (dirty) or 10 (clean)</span>
+    <span class="kw">val</span> createdAt: <span class="type">Instant</span>,
+)</pre>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">6.3 Verification Outcomes</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Result</th>
+            <th>Spot Effect</th>
+            <th>Points</th>
+            <th class="rounded-tr-lg">Side Effects</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-mono font-semibold">STILL_DIRTY</td>
+            <td>Spot remains open; <code>next_verification_due</code> reset to +24h</td>
+            <td class="text-gcc-dark font-bold">5</td>
+            <td>Verification count incremented; escalation if repeated</td>
+          </tr>
+          <tr>
+            <td class="font-mono font-semibold">ALREADY_CLEAN</td>
+            <td>Spot status &rarr; <code>resolved</code>; <code>resolved_at</code> set</td>
+            <td class="text-gcc-dark font-bold">10</td>
+            <td>Cleanup credit; linked bounties fulfilled; spot closed</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">6.4 Escalation Path</h3>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        If a spot's <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">next_verification_due</code> timestamp expires
+        without a new verification, the system flags it for admin notification. Spots verified as
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">STILL_DIRTY</code> three or more times are escalated for
+        priority cleanup scheduling. The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">needsVerification</code>
+        boolean field provides a quick filter for the mobile app's "nearby verifications needed" feature.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 7: Spot & Bounty System ─────────────────────────── -->
+    <section id="s7" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">7</span>
+        <h2 class="text-2xl font-bold text-dark">Spot &amp; Bounty System</h2>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">7.1 Spot Lifecycle</h3>
+
+      <div class="avoid-break bg-dark rounded-xl p-5 mb-6">
+        <div class="flex items-center justify-between gap-2 text-xs font-mono text-white flex-wrap">
+          <div class="bg-amber-600/30 border border-amber-500 rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-amber-300">PENDING</div>
+            <div class="text-gray-400 text-[10px]">Awaiting first<br>verification</div>
+          </div>
+          <div class="text-gcc text-lg font-bold">&rarr;</div>
+          <div class="bg-blue-600/30 border border-blue-500 rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-blue-300">VERIFIED</div>
+            <div class="text-gray-400 text-[10px]">Confirmed dirty<br>by community</div>
+          </div>
+          <div class="text-gcc text-lg font-bold">&rarr;</div>
+          <div class="bg-purple-600/30 border border-purple-500 rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-purple-300">ACKNOWLEDGED</div>
+            <div class="text-gray-400 text-[10px]">Volunteer has<br>claimed for cleanup</div>
+          </div>
+          <div class="text-gcc text-lg font-bold">&rarr;</div>
+          <div class="bg-gcc/30 border border-gcc rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-gcc-light">RESOLVED</div>
+            <div class="text-gray-400 text-[10px]">Cleanup complete<br>with after-photos</div>
+          </div>
+        </div>
+        <div class="mt-3 flex justify-center">
+          <div class="bg-red-600/30 border border-red-500 rounded-lg px-3 py-2 text-center text-xs font-mono">
+            <div class="font-bold text-red-300">REJECTED</div>
+            <div class="text-gray-400 text-[10px]">Disputed or false report</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">7.2 Bounty Model</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        Bounties create economic incentives for targeted cleanup. Sponsors (individuals, businesses, organizations, or foundations)
+        post monetary rewards on specific spots or geographic areas. The bounty system includes:
+      </p>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Feature</th>
+            <th class="rounded-tr-lg">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-semibold">Poster Types</td><td>Sponsors (<code class="font-mono">SPONSOR</code>) or workers (<code class="font-mono">WORKER</code>) can post bounties</td></tr>
+          <tr><td class="font-semibold">Expiration</td><td>24-hour default; configurable <code class="font-mono">expiresAt</code> timestamp</td></tr>
+          <tr><td class="font-semibold">Stackable Pledges</td><td>Multiple sponsors can pledge to same bounty (<code class="font-mono">pledgeCount</code> tracked)</td></tr>
+          <tr><td class="font-semibold">First-Refusal Window</td><td>5-minute window for assigned worker (<code class="font-mono">firstRefusalExpiresAt</code>)</td></tr>
+          <tr><td class="font-semibold">Radius</td><td>Default 200m geographic radius (<code class="font-mono">radiusMeters</code>)</td></tr>
+          <tr><td class="font-semibold">Currency</td><td>Amount stored in cents (e.g., 10000 = $100.00)</td></tr>
+          <tr><td class="font-semibold">Spotter Tip</td><td>Optional reward for the original reporter (<code class="font-mono">spotterTipAmount</code>)</td></tr>
+          <tr><td class="font-semibold">Completion Proof</td><td>After-photos required (<code class="font-mono">completionMediaUrls</code>)</td></tr>
+          <tr><td class="font-semibold">AI Verification</td><td>AI analysis on completion photos (<code class="font-mono">aiAnalysis</code>)</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">7.3 Bounty Status Lifecycle</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        Bounties progress through: <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">OPEN</code> &rarr;
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">CLAIMED</code> &rarr;
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">COMPLETED</code>
+        (or <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">EXPIRED</code> /
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">CANCELLED</code>).
+        Wallet integration ensures funds are escrowed from the sponsor's wallet at posting time and released upon verified completion.
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">triggerReportId</code> field links bounties to
+        originating community reports, creating a full audit trail from observation through remediation.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 8: User Verification & Identity ─────────────────── -->
+    <section id="s8" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">8</span>
+        <h2 class="text-2xl font-bold text-dark">User Verification &amp; Identity</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC implements multi-stage identity verification for workers and sponsors to ensure community trust, prevent
+        fraud, and comply with payment processing requirements.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">8.1 Verification Status Flow</h3>
+
+      <div class="avoid-break bg-dark rounded-xl p-5 mb-6">
+        <div class="flex items-center justify-center gap-3 text-xs font-mono text-white flex-wrap">
+          <div class="border border-gray-500 rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-gray-300">PENDING</div>
+          </div>
+          <div class="text-gcc text-lg font-bold">&rarr;</div>
+          <div class="border border-blue-500 rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-blue-300">NEEDS_INFO</div>
+          </div>
+          <div class="text-gcc text-lg font-bold">&rarr;</div>
+          <div class="border border-gcc rounded-lg px-3 py-2 text-center">
+            <div class="font-bold text-gcc-light">APPROVED</div>
+          </div>
+        </div>
+        <div class="text-center mt-2 text-gray-500 text-xs font-mono">&darr; (or)</div>
+        <div class="flex justify-center mt-2">
+          <div class="border border-red-500 rounded-lg px-3 py-2 text-center text-xs font-mono">
+            <div class="font-bold text-red-300">REJECTED</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">8.2 Document Verification</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Document</th>
+            <th>Status Enum</th>
+            <th>Media Category</th>
+            <th class="rounded-tr-lg">Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Government ID</td>
+            <td class="font-mono">PENDING | APPROVED | REJECTED | RESUBMIT</td>
+            <td class="font-mono">WORKER_ID</td>
+            <td>Identity confirmation</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Proof of Address</td>
+            <td class="font-mono">PENDING | APPROVED | REJECTED | RESUBMIT</td>
+            <td class="font-mono">PROOF_OF_ADDRESS</td>
+            <td>Residency verification</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">8.3 Password Security</h3>
+
+      <div class="avoid-break bg-dark rounded-xl p-5 mb-6">
+        <table class="w-full text-xs">
+          <tbody>
+            <tr class="border-b border-dark-muted">
+              <td class="py-2 pr-4 text-gcc font-mono font-semibold">Algorithm</td>
+              <td class="py-2 text-gray-300">PBKDF2 with HMAC-SHA512</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-2 pr-4 text-gcc font-mono font-semibold">Iterations</td>
+              <td class="py-2 text-gray-300">100,000</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-2 pr-4 text-gcc font-mono font-semibold">Key Length</td>
+              <td class="py-2 text-gray-300">512 bits (64 bytes)</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-2 pr-4 text-gcc font-mono font-semibold">Salt</td>
+              <td class="py-2 text-gray-300">16-byte random, stored as hex string, passed as UTF-8 bytes</td>
+            </tr>
+            <tr>
+              <td class="py-2 pr-4 text-gcc font-mono font-semibold">Cross-Platform</td>
+              <td class="py-2 text-gray-300">Identical implementation in Node.js (<code class="text-gcc-light">crypto.pbkdf2Sync</code>) and Kotlin (<code class="text-gcc-light">PBKDF2WithHmacSHA512</code>)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">8.4 Authentication Flow</h3>
+
+      <ul class="text-sm text-dark-muted space-y-2 mb-6">
+        <li><strong>Registration</strong> &mdash; Name, email, phone, password collected; PBKDF2 hash stored with random salt</li>
+        <li><strong>Login</strong> &mdash; Email + password verified against stored hash; JWT issued with role claim</li>
+        <li><strong>2FA</strong> &mdash; Two-factor authentication via code verification (<code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">Verify2FARequest</code>)</li>
+        <li><strong>Mobile Auth</strong> &mdash; Bearer token in Authorization header; validated by <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">requireMobileAuth()</code> middleware</li>
+        <li><strong>Admin Detection</strong> &mdash; No database role column; admin status determined by <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">ADMIN_EMAILS</code> environment variable at JWT creation time</li>
+      </ul>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">8.5 Early Adopter Tiers</h3>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        Workers who sign up during the launch phase are assigned an early adopter tier:
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">FOUNDER</code> &rarr;
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">PIONEER</code> &rarr;
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">EARLY</code> &rarr;
+        <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">STANDARD</code>.
+        Signup rankings are tracked at global, state, city, and neighborhood levels, providing permanent
+        recognition for early community members.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 9: Security & Compliance ────────────────────────── -->
+    <section id="s9" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">9</span>
+        <h2 class="text-2xl font-bold text-dark">Security &amp; Compliance</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC's security posture is aligned with SOC2 Type II trust service criteria across availability,
+        security, processing integrity, confidentiality, and privacy. The following controls are implemented
+        at the application, transport, and data layers.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">9.1 Device Attestation</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        Every photo submitted through the mobile app includes a cryptographically bound attestation record
+        that ties the capture to a specific device, location, and time:
+      </p>
+
+      <pre class="code-block mb-6"><span class="cmt">// CaptureAttestation — bound to every photo submission</span>
+{
+  <span class="str">"capturedAt"</span>: <span class="num">1710936000000</span>,       <span class="cmt">// Unix epoch milliseconds</span>
+  <span class="str">"capturedLat"</span>: <span class="num">41.8600</span>,              <span class="cmt">// GPS latitude at capture</span>
+  <span class="str">"capturedLng"</span>: <span class="num">-87.7155</span>,             <span class="cmt">// GPS longitude at capture</span>
+  <span class="str">"deviceModel"</span>: <span class="str">"iPhone 14 Pro"</span>,      <span class="cmt">// Hardware identifier</span>
+  <span class="str">"osVersion"</span>: <span class="str">"iOS 17.3"</span>,             <span class="cmt">// OS version string</span>
+  <span class="str">"sessionId"</span>: <span class="str">"a1b2c3d4-..."</span>,          <span class="cmt">// UUID v4 session binding</span>
+  <span class="str">"captureIndex"</span>: <span class="num">0</span>,                   <span class="cmt">// Photo sequence within session</span>
+  <span class="str">"isLiveCapture"</span>: <span class="kw">true</span>                 <span class="cmt">// Gallery uploads blocked</span>
+}</pre>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">9.2 Anti-Fraud Controls</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Control</th>
+            <th>Implementation</th>
+            <th class="rounded-tr-lg">Enforcement</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">GPS Proximity Lock</td>
+            <td>200m enforcement zone (Haversine distance)</td>
+            <td>Server rejects verifications outside radius</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Live Camera Capture</td>
+            <td><code class="font-mono">isLiveCapture: true</code> flag in attestation</td>
+            <td>Gallery uploads blocked for verifications; camera API forced</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Duplicate Detection</td>
+            <td>50m proximity buffer between reports</td>
+            <td>New reports within 50m of existing open spot flagged; override requires reason</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Session Binding</td>
+            <td>UUID v4 per submission session</td>
+            <td>All photos in a submission share same sessionId</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Self-Verification Block</td>
+            <td>Reporter ID checked against verifier ID</td>
+            <td>Server rejects verification if reporter === verifier</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Optimistic Concurrency</td>
+            <td><code class="font-mono">expectedVerificationCount</code> field</td>
+            <td>Prevents double-verification race conditions</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">9.3 SOC2-Aligned Controls Matrix</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Trust Service Criteria</th>
+            <th>Control</th>
+            <th class="rounded-tr-lg">Implementation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold" rowspan="2">Security</td>
+            <td>Encryption in transit</td>
+            <td>TLS 1.3 for all client-server communication; Vercel Edge enforced HTTPS</td>
+          </tr>
+          <tr>
+            <td>Encryption at rest</td>
+            <td>Neon PostgreSQL with AES-256 disk encryption</td>
+          </tr>
+          <tr>
+            <td class="font-semibold" rowspan="3">Access Control</td>
+            <td>Role-based access</td>
+            <td>Three roles: <code class="font-mono">worker</code>, <code class="font-mono">admin</code>, <code class="font-mono">super_admin</code></td>
+          </tr>
+          <tr>
+            <td>Authentication</td>
+            <td>PBKDF2 password hashing + JWT bearer tokens + optional 2FA</td>
+          </tr>
+          <tr>
+            <td>Admin authorization</td>
+            <td>Environment variable allowlist (<code class="font-mono">ADMIN_EMAILS</code>) checked at login</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Processing Integrity</td>
+            <td>Input validation</td>
+            <td>Server-side schema validation via kotlinx.serialization + Drizzle type system</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Availability</td>
+            <td>Edge deployment</td>
+            <td>Vercel Edge Network with global CDN; Neon auto-suspend with instant wake</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Confidentiality</td>
+            <td>Environment isolation</td>
+            <td>Production/staging separation; secrets via Vercel env vars and .env files (gitignored)</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Audit Trail</td>
+            <td>Activity logging</td>
+            <td>All admin actions recorded with type, actor, and timestamp; points ledger is append-only</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">9.4 Payment Security</h3>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        All financial transactions flow through <strong>Stripe</strong>. Worker onboarding follows Stripe Connect's
+        identity verification flow (<code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">StripeOnboardingStatus</code>:
+        <code class="font-mono text-xs">NOT_STARTED</code> &rarr; <code class="font-mono text-xs">IN_PROGRESS</code> &rarr;
+        <code class="font-mono text-xs">COMPLETED</code>). Sponsors use Stripe Customers with subscription management.
+        GCC never stores raw payment credentials &mdash; all card data is tokenized by Stripe.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 10: Data Export & Interoperability ──────────────── -->
+    <section id="s10" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">10</span>
+        <h2 class="text-2xl font-bold text-dark">Data Export &amp; Interoperability</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC provides a SODA-compatible (Socrata Open Data API) REST endpoint for public data access, aligned with
+        the Chicago Data Portal's conventions. This enables direct integration with municipal 311 systems, academic
+        researchers, and civic technology platforms.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">10.1 Public Data Export API</h3>
+
+      <div class="avoid-break bg-dark rounded-xl p-5 mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="bg-gcc text-white text-[10px] font-bold px-2 py-0.5 rounded">GET</span>
+          <code class="text-gray-300 text-sm font-mono">/api/public/data-export</code>
+        </div>
+        <table class="w-full text-xs">
+          <tbody>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">$limit</td>
+              <td class="py-1.5 text-gray-300">Max results (default 100, max 1000)</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">$offset</td>
+              <td class="py-1.5 text-gray-300">Pagination offset</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">$order</td>
+              <td class="py-1.5 text-gray-300">Sort: <code class="text-gcc-light">created_date</code> | <code class="text-gcc-light">severity_score</code> | <code class="text-gcc-light">community_area</code></td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">community_area</td>
+              <td class="py-1.5 text-gray-300">Filter by area number (1&ndash;77)</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">ward</td>
+              <td class="py-1.5 text-gray-300">Filter by ward (1&ndash;50)</td>
+            </tr>
+            <tr class="border-b border-dark-muted">
+              <td class="py-1.5 pr-3 text-gcc font-mono">status</td>
+              <td class="py-1.5 text-gray-300">Filter: <code class="text-gcc-light">open</code> | <code class="text-gcc-light">verified</code> | <code class="text-gcc-light">acknowledged</code> | <code class="text-gcc-light">resolved</code></td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gcc font-mono">type</td>
+              <td class="py-1.5 text-gray-300">Filter: <code class="text-gcc-light">sighting</code> | <code class="text-gcc-light">volunteer_cleanup</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="mt-3 pt-3 border-t border-dark-muted text-[10px] text-gray-500">
+          Response Headers: <code class="text-gcc-light">X-Total-Count</code>, <code class="text-gcc-light">X-Limit</code>, <code class="text-gcc-light">X-Offset</code> &nbsp;|&nbsp; CORS: <code class="text-gcc-light">Access-Control-Allow-Origin: *</code>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">10.2 Export Record Format (25 Fields)</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Field</th>
+            <th>Type</th>
+            <th class="rounded-tr-lg">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-mono">service_request_id</td><td>String</td><td>Format: <code>GCC-{YYYY}-{#####}</code> (e.g., GCC-2026-00017)</td></tr>
+          <tr><td class="font-mono">created_date</td><td>ISO 8601</td><td>Report creation timestamp</td></tr>
+          <tr><td class="font-mono">updated_date</td><td>ISO 8601</td><td>Last update timestamp</td></tr>
+          <tr><td class="font-mono">status</td><td>String</td><td>SODA-mapped: open, verified, acknowledged, resolved</td></tr>
+          <tr><td class="font-mono">service_request_type</td><td>String</td><td>"Community Cleanliness Report" or "Volunteer Cleanup"</td></tr>
+          <tr><td class="font-mono">latitude / longitude</td><td>Float</td><td>WGS84 coordinates</td></tr>
+          <tr><td class="font-mono">community_area</td><td>Integer</td><td>Chicago community area number (1&ndash;77)</td></tr>
+          <tr><td class="font-mono">community_area_name</td><td>String</td><td>Human-readable area name</td></tr>
+          <tr><td class="font-mono">ward</td><td>Integer</td><td>Chicago ward (1&ndash;50)</td></tr>
+          <tr><td class="font-mono">zip_code</td><td>String</td><td>ZIP code</td></tr>
+          <tr><td class="font-mono">police_district</td><td>String</td><td>Chicago police district</td></tr>
+          <tr><td class="font-mono">census_tract</td><td>String</td><td>Census tract identifier</td></tr>
+          <tr><td class="font-mono">street_address</td><td>String</td><td>Reverse geocoded address</td></tr>
+          <tr><td class="font-mono">waste_categories</td><td>Array</td><td>SpotTag enum values detected</td></tr>
+          <tr><td class="font-mono">severity_score</td><td>Integer</td><td>1&ndash;5 AI-assigned severity</td></tr>
+          <tr><td class="font-mono">estimated_weight_lbs</td><td>Float</td><td>AI-estimated weight</td></tr>
+          <tr><td class="font-mono">estimated_volume_cuft</td><td>Float</td><td>Volume (LiDAR or AI estimate)</td></tr>
+          <tr><td class="font-mono">photo_count</td><td>Integer</td><td>Number of attached photos</td></tr>
+          <tr><td class="font-mono">verification_count</td><td>Integer</td><td>Independent verifications</td></tr>
+          <tr><td class="font-mono">has_lidar_analysis</td><td>Boolean</td><td>LiDAR depth data available</td></tr>
+          <tr><td class="font-mono">affected_radius_meters</td><td>Float</td><td>Affected area radius</td></tr>
+          <tr><td class="font-mono">cleanup_duration_minutes</td><td>Integer</td><td>Time spent on cleanup (if applicable)</td></tr>
+          <tr><td class="font-mono">cleanup_bags_collected</td><td>Integer</td><td>Bags of waste collected</td></tr>
+          <tr><td class="font-mono">view_count</td><td>Integer</td><td>Community engagement views</td></tr>
+          <tr><td class="font-mono">thank_count</td><td>Integer</td><td>Community thank reactions</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">10.3 Aggregated Statistics Endpoint</h3>
+
+      <div class="avoid-break bg-dark rounded-xl p-5 mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="bg-gcc text-white text-[10px] font-bold px-2 py-0.5 rounded">GET</span>
+          <code class="text-gray-300 text-sm font-mono">/api/public/data-export/stats</code>
+        </div>
+        <p class="text-xs text-gray-400 mb-3">Returns city-wide totals and per-community-area breakdowns:</p>
+        <div class="grid grid-cols-2 gap-4 text-xs">
+          <div>
+            <h4 class="text-gcc font-semibold mb-1">City-Wide</h4>
+            <ul class="text-gray-300 space-y-0.5">
+              <li>total_reports, community_areas_covered, wards_covered</li>
+              <li>with_ai_analysis, with_lidar_analysis</li>
+              <li>avg_severity, total_bags_collected, total_verifications</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="text-gcc font-semibold mb-1">Per Community Area</h4>
+            <ul class="text-gray-300 space-y-0.5">
+              <li>total_reports, sightings, volunteer_cleanups</li>
+              <li>open / verified / resolved counts</li>
+              <li>avg_severity, avg_weight_lbs, total_bags_collected</li>
+              <li>earliest_report, latest_report</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">10.4 Chicago Data Portal Alignment</h3>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        Export fields map directly to existing Chicago 311 service request categories with enhanced metadata.
+        The <code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">service_request_id</code> format (GCC-YYYY-#####)
+        is designed for seamless integration with the city's existing tracking systems. Geographic fields
+        (community area, ward, police district, census tract) use Chicago's official numbering schemes,
+        enabling direct joins with city datasets on the Chicago Data Portal.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 11: Analytics & Metrics ─────────────────────────── -->
+    <section id="s11" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">11</span>
+        <h2 class="text-2xl font-bold text-dark">Analytics &amp; Metrics</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC provides multi-tier analytics ranging from public-facing statistics to internal admin dashboards.
+        The centerpiece metric is the <strong>Cleanliness Score</strong> &mdash; a composite 0&ndash;100 index
+        that quantifies the environmental condition of streets and community areas.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">11.1 Public Statistics API</h3>
+
+      <div class="avoid-break bg-gcc-50 border border-gcc-100 rounded-lg p-4 mb-6">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="bg-gcc text-white text-[10px] font-bold px-2 py-0.5 rounded">GET</span>
+          <code class="text-dark text-sm font-mono">/api/stats</code>
+        </div>
+        <p class="text-xs text-dark-muted">Returns aggregate counts: total workers, sponsors, blocks, routes, spots, and service areas. Used for the public-facing website dashboard.</p>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">11.2 Admin Analytics Suite</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Endpoint</th>
+            <th>Metrics</th>
+            <th class="rounded-tr-lg">Access</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-mono">/api/admin/analytics/stats</td>
+            <td>Platform-wide KPIs: total revenue, active workers, funded blocks</td>
+            <td>Admin JWT required</td>
+          </tr>
+          <tr>
+            <td class="font-mono">/api/admin/analytics/activity</td>
+            <td>Real-time activity feed (registrations, completions, disputes)</td>
+            <td>Admin JWT required</td>
+          </tr>
+          <tr>
+            <td class="font-mono">/api/admin/analytics/daily</td>
+            <td>Daily aggregations for trend analysis</td>
+            <td>Admin JWT required</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">11.3 Cleanliness Score Algorithm</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The cleanliness score is a composite metric computed identically in both TypeScript (website) and Kotlin (server)
+        to ensure consistency. It uses three individually-capped penalties to prevent any single factor from dominating:
+      </p>
+
+      <pre class="code-block mb-4"><span class="cmt">// Canonical implementation (TypeScript + Kotlin, kept in sync)</span>
+<span class="kw">function</span> computeCleanlinessScore(
+    activeSpots: <span class="type">number</span>,       <span class="cmt">// Currently open spot reports in area</span>
+    avgDurationHours: <span class="type">number</span>,  <span class="cmt">// Average time spots stay open</span>
+    recurrenceRate: <span class="type">number</span>,    <span class="cmt">// Rate of spots reappearing (0.0-1.0)</span>
+): <span class="type">number</span> {
+    <span class="kw">const</span> activePenalty    = Math.min(<span class="num">40</span>, activeSpots * <span class="num">3</span>)
+    <span class="kw">const</span> durationPenalty  = Math.min(<span class="num">30</span>, avgDurationHours / <span class="num">4</span>)
+    <span class="kw">const</span> recurrencePenalty = Math.min(<span class="num">30</span>, recurrenceRate * <span class="num">100</span>)
+    <span class="kw">return</span> Math.max(<span class="num">0</span>, Math.min(<span class="num">100</span>,
+        Math.round(<span class="num">100</span> - activePenalty - durationPenalty - recurrencePenalty)
+    ))
+}</pre>
+
+      <div class="avoid-break grid grid-cols-3 gap-3 mb-6">
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-3 text-center">
+          <div class="text-lg font-bold text-dark">activePenalty</div>
+          <div class="text-xs text-dark-muted mt-1">Cap: <strong>40 pts</strong></div>
+          <div class="text-xs text-dark-muted">3 points per active spot</div>
+          <div class="text-xs text-dark-muted italic mt-1">14 spots = max penalty</div>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-3 text-center">
+          <div class="text-lg font-bold text-dark">durationPenalty</div>
+          <div class="text-xs text-dark-muted mt-1">Cap: <strong>30 pts</strong></div>
+          <div class="text-xs text-dark-muted">avgHours / 4</div>
+          <div class="text-xs text-dark-muted italic mt-1">120h avg = max penalty</div>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-3 text-center">
+          <div class="text-lg font-bold text-dark">recurrencePenalty</div>
+          <div class="text-xs text-dark-muted mt-1">Cap: <strong>30 pts</strong></div>
+          <div class="text-xs text-dark-muted">rate &times; 100</div>
+          <div class="text-xs text-dark-muted italic mt-1">30% recurrence = max</div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">11.4 Area-Level Cleanliness Model</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        Cleanliness statistics are computed per-area and per-street, with city-wide rollup:
+      </p>
+
+      <pre class="code-block mb-6"><span class="cmt">// CleanlinessStats — per community area</span>
+{
+  <span class="str">"area"</span>: <span class="str">"North Lawndale"</span>,
+  <span class="str">"activeSpots"</span>: <span class="num">12</span>,
+  <span class="str">"resolvedSpots"</span>: <span class="num">45</span>,
+  <span class="str">"avgMessDurationHours"</span>: <span class="num">36.5</span>,
+  <span class="str">"avgVerificationVelocityHours"</span>: <span class="num">8.2</span>,
+  <span class="str">"verificationRate"</span>: <span class="num">0.85</span>,
+  <span class="str">"recurrenceRate"</span>: <span class="num">0.12</span>,
+  <span class="str">"cleanlinessScore"</span>: <span class="num">55</span>,
+  <span class="str">"totalVerifications"</span>: <span class="num">89</span>,
+  <span class="str">"totalVolunteerCleanups"</span>: <span class="num">23</span>,
+  <span class="str">"streets"</span>: [<span class="cmt">/* per-street breakdown */</span>]
+}</pre>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 12: Data Extrapolation ──────────────────────────── -->
+    <section id="s12" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">12</span>
+        <h2 class="text-2xl font-bold text-dark">Data Extrapolation</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        Beyond raw collection and reporting, GCC's data infrastructure supports three categories of extrapolation
+        and derived analytics that enable predictive maintenance, resource optimization, and impact measurement.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">12.1 Community-Based Extrapolation</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Analysis</th>
+            <th>Inputs</th>
+            <th>Output</th>
+            <th class="rounded-tr-lg">Application</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Severity Trends</td>
+            <td>Cleanliness scores over time, per area</td>
+            <td>Trajectory classification (improving / stable / declining)</td>
+            <td>Early warning system for neglected areas</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Cleanup Impact</td>
+            <td>Before/after severity delta per intervention</td>
+            <td>Impact coefficient per cleanup type</td>
+            <td>Optimize resource allocation to highest-impact areas</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Recurrence Patterns</td>
+            <td>Resolved spots that reopen within same radius</td>
+            <td>Recurrence rate (0.0&ndash;1.0) per location</td>
+            <td>Identify systemic dumping sites vs. transient litter</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Seasonal Patterns</td>
+            <td>Waste volume and category distribution by month</td>
+            <td>Seasonal forecasting model</td>
+            <td>Pre-position cleanup resources ahead of peak periods</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">12.2 User &amp; Session-Based Extrapolation</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Analysis</th>
+            <th>Inputs</th>
+            <th>Output</th>
+            <th class="rounded-tr-lg">Application</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Worker Efficiency</td>
+            <td>Spots reported/cleaned per session, duration per cleanup</td>
+            <td>Productivity index (spots/hour, bags/cleanup)</td>
+            <td>Route assignment optimization; training identification</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Verification Reliability</td>
+            <td>Consistency of verifier judgments vs. consensus</td>
+            <td>Reliability score per verifier</td>
+            <td>Weight verification confidence; flag unreliable actors</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Engagement Metrics</td>
+            <td>New participants, returning users, session frequency</td>
+            <td>Cohort retention curves, growth rate</td>
+            <td>Grant reporting; community health assessment</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">12.3 Sponsor Bounty Analytics</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Metric</th>
+            <th>Calculation</th>
+            <th class="rounded-tr-lg">Insight</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">ROI per Block</td>
+            <td>Total cleanup hours generated &divide; sponsor funding</td>
+            <td>Which blocks generate the most community activity per dollar</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Cleanup Velocity Impact</td>
+            <td>Time-to-resolution for bounty blocks vs. non-bounty blocks</td>
+            <td>Quantify whether financial incentives accelerate cleanup</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Community Response Time</td>
+            <td>Median time from bounty posting to first claim</td>
+            <td>Market responsiveness; optimal bounty amount calibration</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Pledge Stacking Effectiveness</td>
+            <td>Completion rate for single-pledge vs. multi-pledge bounties</td>
+            <td>Validate community crowdfunding model</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">12.4 Predictive Capabilities</h3>
+
+      <p class="text-sm text-dark-muted leading-relaxed">
+        As the dataset grows, the combination of spatial data, temporal patterns, AI classifications, and community
+        engagement metrics enables predictive models for: <strong>(1)</strong> forecasting which blocks will need
+        attention before reports are filed, <strong>(2)</strong> optimal bounty pricing based on historical response
+        curves, <strong>(3)</strong> workforce scheduling based on seasonal and day-of-week patterns, and
+        <strong>(4)</strong> identifying environmental justice disparities across community areas by comparing
+        cleanup velocity and resource allocation against demographic data from census tracts.
+      </p>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ─── SECTION 13: Scalability & Coverage ──────────────────────── -->
+    <section id="s13" class="page-break py-12">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="section-num">13</span>
+        <h2 class="text-2xl font-bold text-dark">Scalability &amp; Coverage</h2>
+      </div>
+
+      <p class="text-sm text-dark-muted mb-6 leading-relaxed">
+        GCC's architecture is designed for progressive geographic expansion from a single pilot neighborhood to
+        city-wide coverage and beyond. The service area model provides the fundamental unit of geographic scaling.
+      </p>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">13.1 Current Deployment</h3>
+
+      <div class="avoid-break grid grid-cols-4 gap-3 mb-6">
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4 text-center">
+          <div class="text-3xl font-bold text-gcc-dark">1</div>
+          <div class="text-xs text-dark-muted font-medium">Service Area</div>
+          <div class="text-[10px] text-dark-muted">North Lawndale</div>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4 text-center">
+          <div class="text-3xl font-bold text-gcc-dark">10</div>
+          <div class="text-xs text-dark-muted font-medium">Blocks</div>
+          <div class="text-[10px] text-dark-muted">NL-N/S 01-05</div>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4 text-center">
+          <div class="text-3xl font-bold text-gcc-dark">10</div>
+          <div class="text-xs text-dark-muted font-medium">Routes</div>
+          <div class="text-[10px] text-dark-muted">NL-RN/RS 01-05</div>
+        </div>
+        <div class="bg-gcc-50 border border-gcc-100 rounded-lg p-4 text-center">
+          <div class="text-3xl font-bold text-gcc-dark">77</div>
+          <div class="text-xs text-dark-muted font-medium">Target Areas</div>
+          <div class="text-[10px] text-dark-muted">All Chicago</div>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">13.2 Service Area Model</h3>
+
+      <pre class="code-block mb-6"><span class="cmt">// ServiceArea — unit of geographic scaling</span>
+<span class="kw">data class</span> <span class="type">ServiceArea</span>(
+    <span class="kw">val</span> id: <span class="type">Int</span>,
+    <span class="kw">val</span> name: <span class="type">String</span>,                     <span class="cmt">// "North Lawndale"</span>
+    <span class="kw">val</span> city: <span class="type">String</span>,                     <span class="cmt">// "Chicago" (default)</span>
+    <span class="kw">val</span> state: <span class="type">String</span>,                    <span class="cmt">// "IL" (default)</span>
+    <span class="kw">val</span> boundary: <span class="type">GeoJSONPolygon</span>?,        <span class="cmt">// Geographic boundary</span>
+    <span class="kw">val</span> mapCenter: <span class="type">Coordinates</span>?,          <span class="cmt">// [lng, lat] center point</span>
+    <span class="kw">val</span> mapZoom: <span class="type">Double</span>,                  <span class="cmt">// Default map zoom level</span>
+    <span class="kw">val</span> status: <span class="type">ServiceAreaStatus</span>,        <span class="cmt">// PLANNING | PILOT | ACTIVE | PAUSED</span>
+    <span class="kw">val</span> totalBlocks: <span class="type">Int</span>,                <span class="cmt">// Number of blocks in area</span>
+    <span class="kw">val</span> activeWorkers: <span class="type">Int</span>,              <span class="cmt">// Workers assigned to area</span>
+)</pre>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">13.3 Expansion Phases</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Phase</th>
+            <th>Status</th>
+            <th>Scope</th>
+            <th class="rounded-tr-lg">Requirements</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Phase 1 &mdash; Pilot</td>
+            <td><span class="bg-gcc text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">ACTIVE</span></td>
+            <td>North Lawndale (1 of 77 areas)</td>
+            <td>10 blocks, 10 routes, 5+ workers</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Phase 2 &mdash; West Side</td>
+            <td><span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">PLANNING</span></td>
+            <td>Adjacent community areas (Austin, East/West Garfield Park, Humboldt Park)</td>
+            <td>Additional block/route mapping; worker recruitment; sponsor engagement</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Phase 3 &mdash; City-Wide</td>
+            <td><span class="bg-gray-400 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">PLANNED</span></td>
+            <td>All 77 Chicago community areas</td>
+            <td>Multi-area admin tooling; cross-area worker mobility; ward-level reporting</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Phase 4 &mdash; Multi-City</td>
+            <td><span class="bg-gray-400 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">ROADMAP</span></td>
+            <td>Other U.S. cities with community area / ward / district models</td>
+            <td>City abstraction layer; configurable geographic taxonomy; multi-tenant data isolation</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">13.4 Multi-City Readiness</h3>
+
+      <p class="text-sm text-dark-muted mb-4 leading-relaxed">
+        The architecture supports expansion beyond Chicago through several design decisions:
+      </p>
+
+      <ul class="text-sm text-dark-muted space-y-2 mb-6 list-disc list-inside">
+        <li><strong>Geographic abstraction</strong> &mdash; Service areas, blocks, and routes are not Chicago-specific; any city with geographic subdivisions can be modeled</li>
+        <li><strong>GeoJSON standard</strong> &mdash; All geographic data uses GeoJSON format (<code class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">[lng, lat]</code> coordinate order) for universal compatibility</li>
+        <li><strong>Configurable taxonomy</strong> &mdash; Community area numbers, wards, police districts, and census tracts are stored as generic fields that can map to any city's administrative boundaries</li>
+        <li><strong>Per-area isolation</strong> &mdash; Each service area has its own boundary, blocks, routes, workers, cleanliness tracking, and analytics</li>
+        <li><strong>SODA compatibility</strong> &mdash; The export API follows open data conventions used by hundreds of municipal data portals nationwide</li>
+      </ul>
+
+      <h3 class="text-lg font-semibold text-dark mb-3">13.5 Infrastructure Scaling</h3>
+
+      <table class="data-table w-full text-xs mb-6 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Component</th>
+            <th>Scaling Strategy</th>
+            <th class="rounded-tr-lg">Limits</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Neon PostgreSQL</td>
+            <td>Auto-scaling compute; connection pooling; read replicas</td>
+            <td>Serverless auto-suspend minimizes cost at low traffic</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Vercel Edge</td>
+            <td>Global CDN; serverless functions scale to zero</td>
+            <td>No cold-start penalty for API routes</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Ktor Server</td>
+            <td>Vertical scaling (JVM heap); horizontal via load balancer</td>
+            <td>Single instance sufficient for current scale</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Mobile App</td>
+            <td>On-device processing; offline-capable data collection</td>
+            <td>No server dependency for photo capture and AI analysis</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="doc-footer flex items-center justify-between page-footer">
+        <span>Global Community Cleaners &mdash; Technical Whitepaper v1.0</span>
+        <span class="font-mono text-[10px]">CONFIDENTIAL</span>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         APPENDIX / CLOSING
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="page-break py-12">
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-1 h-8 bg-gcc rounded-full"></div>
+        <h2 class="text-2xl font-bold text-dark">Appendix A &mdash; Technology Stack Summary</h2>
+      </div>
+
+      <table class="data-table w-full text-xs mb-8 border-collapse">
+        <thead>
+          <tr>
+            <th class="rounded-tl-lg">Layer</th>
+            <th>Technology</th>
+            <th>Version</th>
+            <th class="rounded-tr-lg">License</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="font-semibold">Frontend Framework</td><td>Next.js (App Router, Server Components)</td><td>14.x</td><td>MIT</td></tr>
+          <tr><td class="font-semibold">Backend Framework</td><td>Ktor</td><td>3.1.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Language (Backend)</td><td>Kotlin</td><td>2.1.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Language (Frontend)</td><td>TypeScript</td><td>5.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">ORM (TypeScript)</td><td>Drizzle ORM</td><td>0.3x.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">ORM (Kotlin)</td><td>JetBrains Exposed</td><td>0.5x.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Database</td><td>Neon PostgreSQL (serverless)</td><td>16.x</td><td>PostgreSQL License</td></tr>
+          <tr><td class="font-semibold">Mobile (Cross-Platform)</td><td>Kotlin Multiplatform</td><td>2.1.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Mobile UI (Android)</td><td>Jetpack Compose</td><td>1.7.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Desktop UI</td><td>Compose Desktop</td><td>1.7.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Serialization</td><td>kotlinx.serialization</td><td>1.7.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">AI (iOS)</td><td>CoreML + Vision</td><td>iOS 17+</td><td>Apple Proprietary</td></tr>
+          <tr><td class="font-semibold">AI (Android)</td><td>TensorFlow Lite</td><td>2.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Payments</td><td>Stripe (Connect + Customers)</td><td>API v2024</td><td>Commercial</td></tr>
+          <tr><td class="font-semibold">Hosting (Frontend)</td><td>Vercel</td><td>Edge Network</td><td>Commercial</td></tr>
+          <tr><td class="font-semibold">DI (Kotlin)</td><td>Koin</td><td>4.0.x</td><td>Apache 2.0</td></tr>
+          <tr><td class="font-semibold">Connection Pool</td><td>HikariCP</td><td>5.x</td><td>Apache 2.0</td></tr>
+        </tbody>
+      </table>
+
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-1 h-8 bg-gcc rounded-full"></div>
+        <h2 class="text-2xl font-bold text-dark">Appendix B &mdash; Enum Reference</h2>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-8">
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">CommunityReportStatus</h4>
+          <div class="text-xs font-mono text-dark-muted space-y-0.5">
+            <div>PENDING &bull; VERIFIED &bull; ACKNOWLEDGED</div>
+            <div>RESOLVED &bull; REJECTED</div>
+          </div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">CommunityReportType</h4>
+          <div class="text-xs font-mono text-dark-muted space-y-0.5">
+            <div>SIGHTING &bull; VOLUNTEER_CLEANUP</div>
+            <div>BOUNTY_TRIGGERED</div>
+          </div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">BlockStatus</h4>
+          <div class="text-xs font-mono text-dark-muted">AVAILABLE &bull; FUNDED &bull; IN_PROGRESS &bull; COMPLETED</div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">RouteStatus</h4>
+          <div class="text-xs font-mono text-dark-muted">DRAFT &bull; PUBLISHED &bull; ARCHIVED</div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">ServiceAreaStatus</h4>
+          <div class="text-xs font-mono text-dark-muted">PLANNING &bull; PILOT &bull; ACTIVE &bull; PAUSED</div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">VerificationStatus (Worker)</h4>
+          <div class="text-xs font-mono text-dark-muted">PENDING &bull; APPROVED &bull; REJECTED &bull; NEEDS_INFO</div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">SponsorType</h4>
+          <div class="text-xs font-mono text-dark-muted">INDIVIDUAL &bull; BUSINESS &bull; ORGANIZATION &bull; FOUNDATION</div>
+        </div>
+        <div class="avoid-break">
+          <h4 class="font-semibold text-sm text-dark mb-2">BadgeTier</h4>
+          <div class="text-xs font-mono text-dark-muted">BRONZE &bull; SILVER &bull; GOLD &bull; PLATINUM &bull; DIAMOND</div>
+        </div>
+      </div>
+
+      <!-- Final footer -->
+      <div class="mt-16 pt-6 border-t-2 border-gcc">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-gcc rounded-lg flex items-center justify-center">
+              <span class="text-white font-bold text-sm">G</span>
+            </div>
+            <div>
+              <div class="font-semibold text-dark text-sm">Global Community Cleaners</div>
+              <div class="text-xs text-dark-muted">Technical Whitepaper v1.0 &mdash; March 2026</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-dark-muted">Classification: <strong>Confidential</strong></div>
+            <div class="text-xs text-dark-muted">Distribution: Authorized recipients only</div>
+          </div>
+        </div>
+        <p class="text-[10px] text-dark-muted leading-relaxed">
+          This document contains proprietary information belonging to Global Community Cleaners (GCC). The information
+          contained herein is confidential and is intended solely for use by authorized technical evaluators, grant
+          reviewers, municipal IT departments, and SOC2 auditors. Any unauthorized reproduction, distribution, or
+          disclosure of this document or its contents is strictly prohibited. All data models, algorithms, and system
+          designs described herein are the intellectual property of Global Community Cleaners.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+</body>
+</html>

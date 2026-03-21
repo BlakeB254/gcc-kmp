@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCC Summary Brief - Global Community Cleaners</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            gcc: {
+              green: '#22C55E',
+              'green-dark': '#16A34A',
+              'green-light': '#4ADE80',
+              'green-50': '#F0FDF4',
+              'green-100': '#DCFCE7',
+              dark: '#0F172A',
+              'dark-light': '#1E293B',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    @media print {
+      @page {
+        size: letter;
+        margin: 0.6in 0.75in;
+      }
+
+      body {
+        font-size: 10pt;
+        line-height: 1.4;
+        color: #000;
+        background: #fff;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .avoid-break {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .print-color {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .cover-section {
+        min-height: auto;
+        padding: 2.5in 0 1.5in 0;
+      }
+
+      h2, h3 {
+        page-break-after: avoid;
+      }
+
+      table {
+        page-break-inside: avoid;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+
+      section {
+        padding-top: 0.3rem;
+        padding-bottom: 0.3rem;
+      }
+    }
+
+    @media screen {
+      .section-divider {
+        position: relative;
+      }
+      .section-divider::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60px;
+        height: 3px;
+        background: #22C55E;
+        border-radius: 2px;
+      }
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  </style>
+</head>
+<body class="bg-white text-gray-900">
+
+  <!-- ============================================================ -->
+  <!-- PAGE 1: COVER + MISSION -->
+  <!-- ============================================================ -->
+  <section class="cover-section min-h-screen flex flex-col justify-center items-center bg-gcc-dark text-white relative overflow-hidden print-color page-break">
+    <div class="absolute inset-0 opacity-5 no-print" style="background-image: radial-gradient(circle at 25% 25%, #22C55E 1px, transparent 1px), radial-gradient(circle at 75% 75%, #22C55E 1px, transparent 1px); background-size: 50px 50px;"></div>
+
+    <div class="relative z-10 text-center max-w-4xl mx-auto px-8">
+      <!-- Logo -->
+      <div class="mb-6">
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gcc-green/10 border-2 border-gcc-green/30 mb-5">
+          <svg class="w-10 h-10 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h1 class="text-5xl md:text-6xl font-black tracking-tight mb-3">
+          <span class="text-gcc-green">Global Community</span><br>
+          <span class="text-white">Cleaners</span>
+        </h1>
+        <div class="inline-block px-4 py-1.5 rounded-full bg-gcc-green/10 border border-gcc-green/30">
+          <span class="text-gcc-green-light text-sm font-semibold tracking-wide uppercase">501(c)(3) Nonprofit Organization</span>
+        </div>
+      </div>
+
+      <!-- Mission -->
+      <p class="text-xl md:text-2xl font-light text-gray-300 mb-10 leading-relaxed max-w-3xl mx-auto">
+        Transforming community cleanliness through technology, gamification, and verified data
+      </p>
+
+      <!-- Key Stats Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl mx-auto mb-10">
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">77</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">Community Areas</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">2,000+</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">Verified Data Points</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">12</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">AI Waste Categories</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">24hr</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">Verification Cycle</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">25+</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">Field Data Export</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 avoid-break">
+          <div class="text-3xl font-black text-gcc-green">5</div>
+          <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mt-1">Point Actions</div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="text-gray-500 text-sm">
+        <p>Founded in Chicago. Serving Chicago's most underserved neighborhoods.</p>
+        <p class="mt-1 font-medium text-gcc-green-light">globalcommunitycleaners.org</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- PAGE 2: HOW IT WORKS -->
+  <!-- ============================================================ -->
+  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
+    <div class="section-divider pt-6 mb-6">
+      <div class="flex items-center gap-3 mb-1">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+        </div>
+        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">How It Works</h2>
+      </div>
+    </div>
+
+    <!-- Block Cleaning Model -->
+    <div class="mb-6 avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-3">The Block Cleaning 2-Lap Model</h3>
+      <div class="grid md:grid-cols-2 gap-4">
+        <!-- Lap 1 -->
+        <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gcc-green text-white text-sm font-bold">1</span>
+            <h4 class="font-bold text-gcc-dark">Documentation Lap</h4>
+          </div>
+          <p class="text-sm text-gray-700 leading-relaxed">
+            Worker walks the block with GPS tracking, photographing every dirty spot. AI classifies waste into 12 categories, estimates volume and weight, and scores severity 1&ndash;5. LiDAR variant uses depth scanning for precise volumetric measurements.
+          </p>
+        </div>
+        <!-- Lap 2 -->
+        <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gcc-green text-white text-sm font-bold">2</span>
+            <h4 class="font-bold text-gcc-dark">Cleanup Lap</h4>
+          </div>
+          <p class="text-sm text-gray-700 leading-relaxed">
+            Worker returns with supplies, cleans each documented spot, takes after photos. System creates GPS-verified before/after pairs. Two variants: <strong>AR</strong> (LiDAR + smart glasses, hands-free) and <strong>Photo</strong> (camera-only, lower barrier to entry).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spot Report Cycle -->
+    <div class="avoid-break">
+      <h3 class="text-lg font-bold text-gcc-dark mb-3">Spot Report &rarr; Verify &rarr; Clean Cycle</h3>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="bg-white border-2 border-gcc-green/30 rounded-xl p-4 text-center">
+          <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-red-50 flex items-center justify-center">
+            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+          </div>
+          <h4 class="font-bold text-sm text-gcc-dark">REPORT</h4>
+          <p class="text-xs text-gray-600 mt-1">Community member submits spot with GPS + photos + AI analysis</p>
+          <div class="mt-2 text-xs font-bold text-gcc-green">+10 pts</div>
+        </div>
+        <div class="bg-white border-2 border-gcc-green/30 rounded-xl p-4 text-center">
+          <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-blue-50 flex items-center justify-center">
+            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h4 class="font-bold text-sm text-gcc-dark">VERIFY</h4>
+          <p class="text-xs text-gray-600 mt-1">Another person verifies within 24h. Must be within 200m. No self-verify.</p>
+          <div class="mt-2 text-xs font-bold text-gcc-green">+5&ndash;10 pts</div>
+        </div>
+        <div class="bg-white border-2 border-gcc-green/30 rounded-xl p-4 text-center">
+          <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-green-50 flex items-center justify-center">
+            <svg class="w-5 h-5 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <h4 class="font-bold text-sm text-gcc-dark">CLEAN</h4>
+          <p class="text-xs text-gray-600 mt-1">Volunteer claims spot, documents cleanup with before/after photos</p>
+          <div class="mt-2 text-xs font-bold text-gcc-green">+50 pts</div>
+        </div>
+        <div class="bg-white border-2 border-gcc-green/30 rounded-xl p-4 text-center">
+          <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-amber-50 flex items-center justify-center">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h4 class="font-bold text-sm text-gcc-dark">BOUNTY</h4>
+          <p class="text-xs text-gray-600 mt-1">Sponsors place bounties on specific spots or blocks. Workers earn cash + points.</p>
+          <div class="mt-2 text-xs font-bold text-gcc-green">$ + pts</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- PAGE 3: GAMIFICATION & REWARDS -->
+  <!-- ============================================================ -->
+  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
+    <div class="section-divider pt-6 mb-6">
+      <div class="flex items-center gap-3 mb-1">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+        </div>
+        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Gamification & Rewards</h2>
+      </div>
+    </div>
+
+    <!-- Points Table -->
+    <div class="mb-5 avoid-break">
+      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Points System</h3>
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-gcc-dark text-white print-color">
+            <th class="text-left py-2 px-4 rounded-tl-lg font-semibold">Action</th>
+            <th class="text-right py-2 px-4 rounded-tr-lg font-semibold">Points</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-gray-100"><td class="py-2 px-4">Submit Spot Report</td><td class="text-right py-2 px-4 font-bold text-gcc-green">10</td></tr>
+          <tr class="border-b border-gray-100 bg-gray-50"><td class="py-2 px-4">Verify (Still Dirty)</td><td class="text-right py-2 px-4 font-bold text-gcc-green">5</td></tr>
+          <tr class="border-b border-gray-100"><td class="py-2 px-4">Verify (Already Clean)</td><td class="text-right py-2 px-4 font-bold text-gcc-green">10</td></tr>
+          <tr class="border-b border-gray-100 bg-gray-50"><td class="py-2 px-4">Volunteer Cleanup</td><td class="text-right py-2 px-4 font-bold text-gcc-green">50</td></tr>
+          <tr><td class="py-2 px-4">Already Clean Report</td><td class="text-right py-2 px-4 font-bold text-gcc-green">5</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Badges & Progression -->
+    <div class="grid md:grid-cols-2 gap-4 mb-5 avoid-break">
+      <div class="bg-gcc-green-50 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-gcc-dark mb-2">54 Badges Across 9 Categories</h3>
+        <div class="grid grid-cols-3 gap-1.5 text-xs">
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Jobs (5)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Observe (5)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Volunteer (5)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">First Resp. (3)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Streak (3)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Community (3)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Earnings (5)</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Early Adopt.</span>
+          <span class="bg-white rounded px-2 py-1 text-center font-medium">Sponsor</span>
+        </div>
+      </div>
+      <div class="bg-gcc-green-50 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-gcc-dark mb-2">5-Tier Progression</h3>
+        <div class="flex items-center gap-2 mt-3">
+          <div class="flex-1 text-center">
+            <div class="w-8 h-8 mx-auto rounded-full bg-amber-700/20 border-2 border-amber-700 flex items-center justify-center mb-1"><span class="text-xs font-black text-amber-800">B</span></div>
+            <span class="text-[10px] font-medium text-gray-600">Bronze</span>
+          </div>
+          <div class="text-gray-300">&rarr;</div>
+          <div class="flex-1 text-center">
+            <div class="w-8 h-8 mx-auto rounded-full bg-gray-200 border-2 border-gray-400 flex items-center justify-center mb-1"><span class="text-xs font-black text-gray-600">S</span></div>
+            <span class="text-[10px] font-medium text-gray-600">Silver</span>
+          </div>
+          <div class="text-gray-300">&rarr;</div>
+          <div class="flex-1 text-center">
+            <div class="w-8 h-8 mx-auto rounded-full bg-yellow-100 border-2 border-yellow-500 flex items-center justify-center mb-1"><span class="text-xs font-black text-yellow-700">G</span></div>
+            <span class="text-[10px] font-medium text-gray-600">Gold</span>
+          </div>
+          <div class="text-gray-300">&rarr;</div>
+          <div class="flex-1 text-center">
+            <div class="w-8 h-8 mx-auto rounded-full bg-blue-100 border-2 border-blue-400 flex items-center justify-center mb-1"><span class="text-xs font-black text-blue-600">P</span></div>
+            <span class="text-[10px] font-medium text-gray-600">Platinum</span>
+          </div>
+          <div class="text-gray-300">&rarr;</div>
+          <div class="flex-1 text-center">
+            <div class="w-8 h-8 mx-auto rounded-full bg-cyan-100 border-2 border-cyan-400 flex items-center justify-center mb-1"><span class="text-xs font-black text-cyan-600">D</span></div>
+            <span class="text-[10px] font-medium text-gray-600">Diamond</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prize Pool Partners -->
+    <div class="avoid-break">
+      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Prize Pool Partners (Target)</h3>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-sm">
+          <div><span class="font-semibold text-gcc-dark">Sports:</span> <span class="text-gray-600">Bulls, Bears, Cubs, White Sox, Blackhawks, Fire, Sky</span></div>
+          <div><span class="font-semibold text-gcc-dark">Attractions:</span> <span class="text-gray-600">Six Flags, Navy Pier</span></div>
+          <div><span class="font-semibold text-gcc-dark">Museums:</span> <span class="text-gray-600">Field, Shedd, MSI</span></div>
+          <div><span class="font-semibold text-gcc-dark">Transit:</span> <span class="text-gray-600">CTA passes, Divvy credits</span></div>
+          <div class="md:col-span-2"><span class="font-semibold text-gcc-dark">All donations qualify for 501(c)(3) tax deduction at fair market value.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- PAGE 4: DATA & TECHNOLOGY -->
+  <!-- ============================================================ -->
+  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
+    <div class="section-divider pt-6 mb-6">
+      <div class="flex items-center gap-3 mb-1">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+        </div>
+        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Data & Technology</h2>
+      </div>
+    </div>
+
+    <!-- Two Column: AI Pipeline + Security -->
+    <div class="grid md:grid-cols-2 gap-5 mb-5">
+      <!-- AI Pipeline -->
+      <div class="avoid-break">
+        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">AI Analysis Pipeline</h3>
+        <div class="space-y-2">
+          <div class="flex items-start gap-3 bg-gcc-green-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gcc-green/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-green-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">On-Device AI</h4>
+              <p class="text-xs text-gray-600">CoreML (iOS) and TFLite (Android). No cloud dependency for classification.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-gcc-green-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gcc-green/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-green-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">12 Waste Categories</h4>
+              <p class="text-xs text-gray-600">Automatic classification with severity scoring (1&ndash;5 scale).</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-gcc-green-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gcc-green/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-green-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">Volume & Weight Estimation</h4>
+              <p class="text-xs text-gray-600">LiDAR depth analysis on iPhone Pro for precise volumetric measurements.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security & Anti-Fraud -->
+      <div class="avoid-break">
+        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Security & Anti-Fraud</h3>
+        <div class="space-y-2">
+          <div class="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">Device Attestation</h4>
+              <p class="text-xs text-gray-600">Device model, OS, and live-capture flag verified per submission.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">GPS Lock & Dedup</h4>
+              <p class="text-xs text-gray-600">200m proximity enforcement. 50m duplicate radius buffer. Session binding.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
+            <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-3.5 h-3.5 text-gcc-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-bold text-gcc-dark">SOC2-Aligned Controls</h4>
+              <p class="text-xs text-gray-600">Encryption at rest and in transit. RBAC. Full audit logging. Live capture required.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Export -->
+    <div class="avoid-break bg-gcc-dark text-white rounded-xl p-5 print-color">
+      <h3 class="text-sm font-bold text-gcc-green uppercase tracking-wider mb-3">Open Data Export</h3>
+      <div class="grid md:grid-cols-3 gap-4 text-sm">
+        <div>
+          <h4 class="font-bold text-white mb-1">SODA-Compatible API</h4>
+          <p class="text-gray-400 text-xs">Chicago Data Portal format. Standard REST endpoints for bulk and filtered queries.</p>
+        </div>
+        <div>
+          <h4 class="font-bold text-white mb-1">25+ Fields Per Record</h4>
+          <p class="text-gray-400 text-xs">GPS, photos, AI classification, severity, volume, weight, status, timestamps, before/after pairs.</p>
+        </div>
+        <div>
+          <h4 class="font-bold text-white mb-1">Civic Integration</h4>
+          <p class="text-gray-400 text-xs">Community area, ward, police district, and census tract linkage for every data point.</p>
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-white/10">
+        <p class="text-xs text-gray-400">Public API: <span class="text-gcc-green-light font-mono">globalcommunitycleaners.org/api/public/data-export</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- PAGE 5: PARTNERSHIP OPPORTUNITIES -->
+  <!-- ============================================================ -->
+  <section class="max-w-4xl mx-auto px-8 py-10 page-break">
+    <div class="section-divider pt-6 mb-6">
+      <div class="flex items-center gap-3 mb-1">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        </div>
+        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Partnership Opportunities</h2>
+      </div>
+    </div>
+
+    <!-- Tiered Participation -->
+    <div class="mb-5 avoid-break">
+      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Tiered Participation Model</h3>
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-gcc-dark text-white print-color">
+            <th class="text-left py-2 px-3 rounded-tl-lg font-semibold w-1/5">Tier</th>
+            <th class="text-left py-2 px-3 font-semibold w-2/5">Contribution</th>
+            <th class="text-left py-2 px-3 rounded-tr-lg font-semibold w-2/5">What You Get</th>
+          </tr>
+        </thead>
+        <tbody class="text-xs">
+          <tr class="border-b border-gray-100">
+            <td class="py-2.5 px-3 font-bold text-gcc-dark">Community Partner</td>
+            <td class="py-2.5 px-3 text-gray-700">In-kind donations (tickets, passes, credits)</td>
+            <td class="py-2.5 px-3 text-gray-700">Brand on prize page, social media, tax deduction</td>
+          </tr>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <td class="py-2.5 px-3 font-bold text-gcc-dark">Technology Partner</td>
+            <td class="py-2.5 px-3 text-gray-700">Hardware, software, API credits</td>
+            <td class="py-2.5 px-3 text-gray-700">Real-world product showcase, impact data access</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2.5 px-3 font-bold text-gcc-dark">Sponsor</td>
+            <td class="py-2.5 px-3 text-gray-700">Fund specific blocks ($100+)</td>
+            <td class="py-2.5 px-3 text-gray-700">Named blocks, before/after reports, community recognition</td>
+          </tr>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <td class="py-2.5 px-3 font-bold text-gcc-dark">Data Partner</td>
+            <td class="py-2.5 px-3 text-gray-700">Technical integration, API access</td>
+            <td class="py-2.5 px-3 text-gray-700">Verified ground-truth data, research collaboration</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 px-3 font-bold text-gcc-dark">Grant Partner</td>
+            <td class="py-2.5 px-3 text-gray-700">Direct funding ($5K&ndash;$250K)</td>
+            <td class="py-2.5 px-3 text-gray-700">Quarterly impact reports, board presentations</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tax Benefits -->
+    <div class="grid md:grid-cols-2 gap-4 mb-5 avoid-break">
+      <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-gcc-dark mb-2">Tax Benefits</h3>
+        <ul class="text-xs text-gray-700 space-y-1.5">
+          <li class="flex items-start gap-2">
+            <svg class="w-3.5 h-3.5 text-gcc-green flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            <span>All donations qualify for 501(c)(3) deduction</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <svg class="w-3.5 h-3.5 text-gcc-green flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            <span>Ticket donations valued at fair market value</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <svg class="w-3.5 h-3.5 text-gcc-green flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            <span>In-kind technology donations at FMV</span>
+          </li>
+        </ul>
+      </div>
+      <div class="bg-gcc-dark rounded-xl p-4 print-color">
+        <h3 class="text-sm font-bold text-gcc-green mb-2">"We Remember Who Helps Us"</h3>
+        <p class="text-xs text-gray-300 leading-relaxed">
+          GCC builds lasting community loyalty. Early partners get preferential placement, community advocacy, and the goodwill of neighborhoods that know who invested in them. This is not transactional charity &mdash; it is structural partnership with the communities that need it most.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- PAGE 6: PARTNERS & NEXT STEPS -->
+  <!-- ============================================================ -->
+  <section class="max-w-4xl mx-auto px-8 py-10">
+    <div class="section-divider pt-6 mb-6">
+      <div class="flex items-center gap-3 mb-1">
+        <div class="w-8 h-8 rounded-lg bg-gcc-green/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gcc-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <h2 class="text-2xl font-black text-gcc-dark tracking-tight">Partners & Next Steps</h2>
+      </div>
+    </div>
+
+    <!-- Target Organizations -->
+    <div class="mb-5 avoid-break">
+      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">25+ Target Organizations</h3>
+      <table class="w-full text-xs border-collapse">
+        <thead>
+          <tr class="bg-gcc-dark text-white print-color">
+            <th class="text-left py-2 px-3 rounded-tl-lg font-semibold w-1/4">Category</th>
+            <th class="text-left py-2 px-3 rounded-tr-lg font-semibold">Organizations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 px-3 font-bold text-gcc-dark">Sports Teams</td>
+            <td class="py-2 px-3 text-gray-700">Bulls, Bears, Cubs, White Sox, Blackhawks, Fire, Sky</td>
+          </tr>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <td class="py-2 px-3 font-bold text-gcc-dark">Entertainment</td>
+            <td class="py-2 px-3 text-gray-700">Six Flags, Navy Pier, Field Museum, Shedd Aquarium, Museum of Science & Industry, Art Institute</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 px-3 font-bold text-gcc-dark">Technology</td>
+            <td class="py-2 px-3 text-gray-700">NVIDIA, Meta, Apple, Google, Microsoft</td>
+          </tr>
+          <tr class="border-b border-gray-100 bg-gray-50">
+            <td class="py-2 px-3 font-bold text-gcc-dark">Transit</td>
+            <td class="py-2 px-3 text-gray-700">CTA, Divvy</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 px-3 font-bold text-gcc-dark">Civic / Grants</td>
+            <td class="py-2 px-3 text-gray-700">United Way, LISC Chicago, MacArthur Foundation, Chicago Community Trust</td>
+          </tr>
+          <tr>
+            <td class="py-2 px-3 font-bold text-gcc-dark">Youth</td>
+            <td class="py-2 px-3 text-gray-700">After School Matters, Chicago Park District</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Next Steps + Contact -->
+    <div class="grid md:grid-cols-2 gap-4 avoid-break">
+      <!-- Next Steps -->
+      <div class="bg-gcc-green-50 border border-gcc-green/20 rounded-xl p-4">
+        <h3 class="text-sm font-bold text-gcc-dark mb-3">Next Steps</h3>
+        <ol class="space-y-2">
+          <li class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gcc-green text-white text-xs font-bold flex-shrink-0">1</span>
+            <span class="text-sm text-gray-700">Schedule introductory call</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gcc-green text-white text-xs font-bold flex-shrink-0">2</span>
+            <span class="text-sm text-gray-700">Review technical documentation (whitepaper available)</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gcc-green text-white text-xs font-bold flex-shrink-0">3</span>
+            <span class="text-sm text-gray-700">Choose partnership tier</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gcc-green text-white text-xs font-bold flex-shrink-0">4</span>
+            <span class="text-sm text-gray-700">Pilot in one service area</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gcc-green text-white text-xs font-bold flex-shrink-0">5</span>
+            <span class="text-sm text-gray-700">Scale across Chicago</span>
+          </li>
+        </ol>
+      </div>
+
+      <!-- Contact -->
+      <div class="bg-gcc-dark rounded-xl p-4 print-color">
+        <h3 class="text-sm font-bold text-gcc-green mb-3">Contact</h3>
+        <div class="space-y-3 text-sm">
+          <div>
+            <div class="text-gray-400 text-xs uppercase tracking-wider mb-0.5">Website</div>
+            <a href="https://globalcommunitycleaners.org" class="text-white font-medium hover:text-gcc-green-light transition-colors">globalcommunitycleaners.org</a>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs uppercase tracking-wider mb-0.5">Email</div>
+            <a href="mailto:info@globalcommunitycleaners.org" class="text-white font-medium hover:text-gcc-green-light transition-colors">info@globalcommunitycleaners.org</a>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs uppercase tracking-wider mb-0.5">Data Portal</div>
+            <span class="text-gray-300 text-xs font-mono">globalcommunitycleaners.org/api/public/data-export</span>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs uppercase tracking-wider mb-0.5">Full Outreach Strategy</div>
+            <span class="text-gray-300 text-xs font-mono">gcc-omega.vercel.app/docs/gcc-outreach-list.html</span>
+          </div>
+        </div>
+
+        <!-- Closing line -->
+        <div class="mt-4 pt-3 border-t border-white/10">
+          <p class="text-xs text-gray-400 italic">Global Community Cleaners is a 501(c)(3) nonprofit. EIN available upon request.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Print button (screen only) -->
+  <div class="no-print fixed bottom-6 right-6 z-50">
+    <button onclick="window.print()" class="bg-gcc-green hover:bg-gcc-green-dark text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-colors flex items-center gap-2">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+      Print / Save PDF
+    </button>
+  </div>
+
+</body>
+</html>
