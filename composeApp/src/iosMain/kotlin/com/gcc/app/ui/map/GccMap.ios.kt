@@ -721,25 +721,20 @@ actual fun GccMap(
                 ),
             )
 
-            // Individual spot dots — small solid orange, appear after heatmap fades
+            // Invisible click-target layer — covers ALL zoom levels for tap handling
+            // This catches taps even when the heatmap is visible (zoom 12-13.5)
             CircleLayer(
-                id = MapStyles.LAYER_SPOT_MARKERS,
+                id = "spot-click-target",
                 source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
+                color = const(androidx.compose.ui.graphics.Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13.5 to const(0.dp),
-                    14 to const(3.dp),
-                    15 to const(5.dp),
-                    17 to const(7.dp),
+                    12 to const(12.dp),
+                    14 to const(16.dp),
+                    16 to const(20.dp),
                 ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13.5 to const(0f),
-                    14.5 to const(1f),
-                ),
+                opacity = const(0.01f), // Nearly invisible but still receives taps
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
                     val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
@@ -750,6 +745,30 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
+            )
+
+            // Individual spot dots — solid orange, appear after heatmap fades
+            // Larger radius for better visibility and touch targeting
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_MARKERS,
+                source = spotSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.dp),
+                    13.5 to const(5.dp),
+                    14 to const(7.dp),
+                    15 to const(9.dp),
+                    17 to const(12.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    13.5 to const(0.7f),
+                    14 to const(1f),
+                ),
             )
 
             // ── Verification indicator — orange ring on spots needing verification ──

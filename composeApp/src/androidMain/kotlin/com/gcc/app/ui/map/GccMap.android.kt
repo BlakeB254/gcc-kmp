@@ -578,7 +578,7 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Spot tap target — invisible larger circle for easier tapping
+            // Spot tap target — invisible larger circle for easier tapping at ALL zoom levels
             CircleLayer(
                 id = "spot-tap-target",
                 source = spotSrc,
@@ -586,9 +586,9 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(16.dp),
-                    15 to const(18.dp),
+                    12 to const(12.dp),
+                    14 to const(16.dp),
+                    16 to const(20.dp),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val id = (features.firstOrNull()?.properties?.get("id") as? Number)?.toInt()
@@ -601,7 +601,7 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Individual spot dots — appear at zoom 12+
+            // Individual spot dots — appear at zoom 13+, larger for visibility
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -609,9 +609,11 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.dp),
-                    13 to const(7.dp),
-                    15 to const(10.dp),
+                    13 to const(0.dp),
+                    13.5 to const(5.dp),
+                    14 to const(7.dp),
+                    15 to const(9.dp),
+                    17 to const(12.dp),
                 ),
                 strokeColor = const(Color.White),
                 strokeWidth = const(1.5.dp),
