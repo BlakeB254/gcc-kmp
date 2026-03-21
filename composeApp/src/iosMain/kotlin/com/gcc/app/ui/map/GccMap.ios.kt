@@ -715,23 +715,23 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
                     1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
-                // High intensity so individual points reach mid-range colors,
-                // and clusters of 2-3 nearby spots reach the deep red stops
+                // LOW intensity — a single spot barely registers (light pink).
+                // Only where 2-3+ spots overlap does density build to red.
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(1f),
-                    13.5 to const(3f),
+                    10 to const(0.1f),
+                    13.5 to const(0.3f),
                 ),
-                // TINY radius — each spot is a small hotspot, NOT a big cloud
-                // Only where spots physically overlap do colors deepen
+                // Medium radius — enough spread so nearby spots' kernels overlap
+                // and create density buildup, but not so big everything merges
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(3.dp),
-                    11 to const(5.dp),
-                    12 to const(8.dp),
-                    13 to const(10.dp),
+                    10 to const(10.dp),
+                    11 to const(15.dp),
+                    12 to const(22.dp),
+                    13 to const(30.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
