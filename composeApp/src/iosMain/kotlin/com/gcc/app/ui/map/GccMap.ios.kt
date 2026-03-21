@@ -702,38 +702,40 @@ actual fun GccMap(
                 minZoom = 10f,
                 maxZoom = 13.5f,
                 // Website: heatmap-weight: 1 (default)
-                // Website: heatmap-color with OPAQUE colors, NOT alpha-encoded
+                // Lighter pink color ramp — more stops at the pink end,
+                // only peak density reaches red. Matches website's airy pink look.
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),  // rgba(0,0,0,0)
-                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
-                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
-                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
-                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
+                    0.0 to const(Color(0x00000000)),  // transparent
+                    0.15 to const(Color(0xFFFEF2F2)), // very light pink
+                    0.3 to const(Color(0xFFFECACA)), // light rose
+                    0.5 to const(Color(0xFFFCA5A5)), // pink
+                    0.7 to const(Color(0xFFF87171)), // medium red
+                    0.9 to const(Color(0xFFEF4444)), // red (only at high density)
+                    1.0 to const(Color(0xFFDC2626)), // deep red (only at peak)
                 ),
-                // Keep intensity low so density doesn't saturate
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.3f),
                     13.5 to const(0.8f),
                 ),
-                // SMALL radius — only nearby spots should overlap and create
-                // density variation. Large radius = everything merges = uniform color.
+                // Moderate radius — enough spread to see the cloud, not so big it merges
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(4.dp),
-                    11 to const(8.dp),
-                    12 to const(12.dp),
-                    13 to const(15.dp),
+                    10 to const(6.dp),
+                    11 to const(10.dp),
+                    12 to const(14.dp),
+                    13 to const(18.dp),
                 ),
+                // Semi-transparent so map shows through
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.7f),
-                    13 to const(0.4f),
+                    10 to const(0.5f),
+                    13 to const(0.3f),
                     13.5 to const(0f),
                 ),
             )
