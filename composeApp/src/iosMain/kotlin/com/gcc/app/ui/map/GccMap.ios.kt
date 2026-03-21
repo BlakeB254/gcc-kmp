@@ -238,11 +238,18 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill (green tint) — fades at street zoom
+            // Service area fill (green tint) — subtle so heatmap reads clearly
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
                 color = const(MapStyles.GEOFENCE_FILL_COLOR),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    10 to const(0.3f),  // very faint at heatmap zoom
+                    13.5 to const(0.6f), // normal after heatmap fades
+                    15 to const(1f),
+                ),
             )
 
             // Community area outlines — visible at zoom 10-15, fades out above
