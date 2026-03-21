@@ -13,11 +13,21 @@ data class RegisterRequest(
     val name: String,
     val email: String,
     val phone: String,
-    val password: String
+    val password: String,
+    val addressStreet: String? = null,
+    val addressCity: String? = null,
+    val addressState: String? = null,
+    val addressZip: String? = null,
 )
 
 @Serializable
 data class Verify2FARequest(
     val twoFactorToken: String,
     val code: String,
+)
+
+@Serializable
+data class VerificationDocumentSubmission(
+    val governmentIdUrl: String,
+    val proofOfAddressUrl: String,
 )

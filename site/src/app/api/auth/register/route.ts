@@ -10,7 +10,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email: rawEmail, phone, password } = body
+    const { name, email: rawEmail, phone, password, addressStreet, addressCity, addressState, addressZip } = body
     const email = rawEmail?.trim().toLowerCase()
 
     if (!name || !email || !password) {
@@ -60,10 +60,10 @@ export async function POST(request: NextRequest) {
         salt,
         hash,
         emailVerified: false,
-        addressStreet: '',
-        addressCity: 'Chicago',
-        addressState: 'IL',
-        addressZip: '',
+        addressStreet: addressStreet || '',
+        addressCity: addressCity || 'Chicago',
+        addressState: addressState || 'IL',
+        addressZip: addressZip || '',
         verificationStatus: 'pending',
         verificationGovernmentIdStatus: 'pending',
         verificationProofOfAddressStatus: 'pending',

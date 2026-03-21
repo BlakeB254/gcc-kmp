@@ -60,7 +60,8 @@ class RootComponent(
         if (tm != null && !tm.isOnboardingComplete()) {
             navigation.replaceAll(Screen.Onboarding)
         } else {
-            navigation.replaceAll(Screen.Dashboard)
+            // After registration, prompt for document upload (can be skipped)
+            navigation.replaceAll(Screen.DocumentUpload)
         }
     }
 
@@ -175,6 +176,22 @@ class RootComponent(
 
     fun navigateToSponsorWall() {
         navigation.push(Screen.SponsorWall)
+    }
+
+    fun navigateToDocumentUpload() {
+        navigation.push(Screen.DocumentUpload)
+    }
+
+    fun onDocumentUploadComplete() {
+        navigation.replaceAll(Screen.Dashboard)
+    }
+
+    fun onDocumentUploadSkip() {
+        navigation.replaceAll(Screen.Dashboard)
+    }
+
+    fun navigateToVerificationGate(actionLabel: String = "claim blocks") {
+        navigation.push(Screen.VerificationGate(actionLabel))
     }
 
     fun switchToTab(screen: Screen) {

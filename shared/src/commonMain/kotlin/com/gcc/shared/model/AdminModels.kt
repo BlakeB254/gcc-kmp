@@ -52,6 +52,7 @@ data class AdminRouteRequest(
     val code: String,
     val displayName: String,
     val serviceAreaId: Int,
+    val geometry: GeoJSONLineString? = null,
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,
     val payoutAmount: Int? = null,

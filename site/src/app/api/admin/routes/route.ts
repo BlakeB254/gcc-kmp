@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routes, routeCheckpoints, serviceAreas } from '@/db/schema'
+import { routes, routeCheckpoints, serviceAreas, blocks } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
+import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request)
@@ -68,5 +70,104 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error fetching admin routes:', error)
     return NextResponse.json({ error: 'Failed to fetch routes' }, { status: 500 })
+  }
+}
+
+export async function POST(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const body = await request.json()
+    const { displayName, serviceAreaId, geometry, code, payoutAmount, side, streetName, fromCorner, toCorner, description } = body
+
+    if (!displayName || !serviceAreaId || !geometry?.coordinates?.length) {
+      return NextResponse.json({ error: 'displayName, serviceAreaId, and geometry are required' }, { status: 400 })
+    }
+
+    // Auto-generate code if not provided
+    let routeCode = code
+    let blockCode: string | undefined
+    if (!routeCode) {
+      // Parallel DB reads for code generation
+      const [areaRows, routeCodes, blockCodes] = await Promise.all([
+        db.select({ name: serviceAreas.name }).from(serviceAreas).where(eq(serviceAreas.id, serviceAreaId)),
+        db.select({ code: routes.code }).from(routes),
+        db.select({ code: blocks.code }).from(blocks),
+      ])
+      const prefix = deriveAreaPrefix(areaRows[0]?.name || 'XX')
+      const allCodes = [
+        ...routeCodes.map(r => r.code),
+        ...blockCodes.map(b => b.code).filter(Boolean) as string[],
+      ]
+      const generated = generateNextCode(allCodes, prefix, (side || 'north') as 'north' | 'south')
+      routeCode = generated.routeCode
+      blockCode = generated.blockCode
+    } else {
+      blockCode = routeCode.replace('-R', '-')
+    }
+
+    const coords = geometry.coordinates as [number, number][]
+    const distanceMeters = haversineDistance(coords)
+    const estimatedMinutes = estimateWalkingMinutes(distanceMeters)
+
+    // Create route
+    const [newRoute] = await db.insert(routes).values({
+      code: routeCode,
+      displayName,
+      serviceAreaId,
+      geometry,
+      lengthMeters: distanceMeters.toFixed(1),
+      estimatedMinutes: estimatedMinutes.toString(),
+      status: 'draft',
+      payoutAmount: (payoutAmount || 10000).toString(),
+      description: description || null,
+      createdById: auth.workerId,
+    }).returning()
+
+    // Create matching block
+    const blockPolygon = lineStringToBlockPolygon(coords)
+    const center = computeCenter(blockPolygon)
+
+    const [newBlock] = await db.insert(blocks).values({
+      code: blockCode,
+      name: displayName,
+      serviceAreaId,
+      routeId: newRoute.id,
+      locationBoundary: { type: 'Polygon', coordinates: blockPolygon },
+      locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
+      streetName: streetName || null,
+      fromCorner: fromCorner || null,
+      toCorner: toCorner || null,
+      side: side || 'north',
+      status: 'available',
+    }).returning()
+
+    // Create start and end checkpoints
+    const startCoord = coords[0]
+    const endCoord = coords[coords.length - 1]
+    await db.insert(routeCheckpoints).values([
+      {
+        routeId: newRoute.id,
+        name: 'Start',
+        sequenceOrder: 0,
+        coordinates: startCoord,
+        photoRequired: true,
+        type: 'route_start',
+      },
+      {
+        routeId: newRoute.id,
+        name: 'End',
+        sequenceOrder: 1,
+        coordinates: endCoord,
+        photoRequired: true,
+        type: 'route_end',
+      },
+    ])
+
+    return NextResponse.json({ route: newRoute, block: newBlock }, { status: 201 })
+  } catch (error) {
+    console.error('Error creating route:', error)
+    return NextResponse.json({ error: 'Failed to create route' }, { status: 500 })
   }
 }

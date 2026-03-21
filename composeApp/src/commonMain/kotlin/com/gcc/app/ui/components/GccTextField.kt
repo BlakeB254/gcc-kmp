@@ -22,11 +22,37 @@ fun GccTextField(
     modifier: Modifier = Modifier,
     isPassword: Boolean = false,
     isEmail: Boolean = false,
+    isPhone: Boolean = false,
     error: String? = null,
     leadingIcon: String? = null,
     enabled: Boolean = true,
     singleLine: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.Words,
 ) {
+    val resolvedKeyboardOptions = when {
+        isPassword -> KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            autoCorrectEnabled = false,
+            capitalization = KeyboardCapitalization.None,
+        )
+        isEmail -> KeyboardOptions(
+            keyboardType = KeyboardType.Email,
+            autoCorrectEnabled = false,
+            capitalization = KeyboardCapitalization.None,
+        )
+        isPhone -> KeyboardOptions(
+            keyboardType = KeyboardType.Phone,
+            autoCorrectEnabled = false,
+            capitalization = KeyboardCapitalization.None,
+        )
+        keyboardType != KeyboardType.Text -> KeyboardOptions(
+            keyboardType = keyboardType,
+            capitalization = capitalization,
+        )
+        else -> KeyboardOptions(capitalization = capitalization)
+    }
+
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -40,19 +66,7 @@ fun GccTextField(
         } else null,
         visualTransformation = if (isPassword) PasswordVisualTransformation()
         else VisualTransformation.None,
-        keyboardOptions = when {
-            isPassword -> KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                autoCorrect = false,
-                capitalization = KeyboardCapitalization.None,
-            )
-            isEmail -> KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                autoCorrect = false,
-                capitalization = KeyboardCapitalization.None,
-            )
-            else -> KeyboardOptions.Default
-        },
+        keyboardOptions = resolvedKeyboardOptions,
         leadingIcon = if (leadingIcon != null) {
             { Text(leadingIcon) }
         } else null,

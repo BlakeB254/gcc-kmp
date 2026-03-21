@@ -93,4 +93,10 @@ sealed class Screen {
 
     @Serializable
     data object SponsorWall : Screen()
+
+    @Serializable
+    data object DocumentUpload : Screen()
+
+    @Serializable
+    data class VerificationGate(val actionLabel: String = "claim blocks") : Screen()
 }

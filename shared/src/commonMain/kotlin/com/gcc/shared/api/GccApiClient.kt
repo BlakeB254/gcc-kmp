@@ -473,6 +473,23 @@ class GccApiClient(
 
     suspend fun getAreaCleanliness(area: String): CleanlinessStats =
         get("/api/analytics/cleanliness/${area.encodeURLPathPart()}")
+
+    // ── Document Verification ──────────────────────────────────────
+
+    /** Submit verification documents (gov ID + proof of address URLs) */
+    suspend fun submitVerificationDocuments(
+        governmentIdUrl: String,
+        proofOfAddressUrl: String,
+    ) {
+        postUnit("/api/workers/me/verification") {
+            contentType(ContentType.Application.Json)
+            setBody(VerificationDocumentSubmission(governmentIdUrl, proofOfAddressUrl))
+        }
+    }
+
+    /** Get current verification status */
+    suspend fun getVerificationStatus(): WorkerVerification =
+        get("/api/workers/me/verification")
 }
 
 @kotlinx.serialization.Serializable

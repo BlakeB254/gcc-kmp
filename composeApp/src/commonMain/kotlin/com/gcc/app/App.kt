@@ -207,6 +207,22 @@ fun App(component: RootComponent) {
                 is Screen.SponsorWall -> SponsorWallScreen(
                     onBack = component::navigateBack,
                 )
+                is Screen.DocumentUpload -> DocumentUploadScreen(
+                    onComplete = component::onDocumentUploadComplete,
+                    onSkip = component::onDocumentUploadSkip,
+                )
+                is Screen.VerificationGate -> {
+                    val dashVm = org.koin.compose.koinInject<com.gcc.app.viewmodel.DashboardViewModel>()
+                    val dashState by dashVm.uiState.collectAsState()
+                    val verification = dashState.worker?.verification
+                        ?: com.gcc.shared.model.WorkerVerification()
+                    VerificationGateScreen(
+                        verification = verification,
+                        actionLabel = screen.actionLabel,
+                        onUploadDocuments = component::navigateToDocumentUpload,
+                        onBack = component::navigateBack,
+                    )
+                }
             }
         }
     }

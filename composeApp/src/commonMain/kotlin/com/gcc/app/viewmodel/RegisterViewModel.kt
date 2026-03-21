@@ -29,7 +29,16 @@ class RegisterViewModel(
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState: StateFlow<RegisterUiState> = _uiState.asStateFlow()
 
-    fun register(name: String, email: String, phone: String, password: String) {
+    fun register(
+        name: String,
+        email: String,
+        phone: String,
+        password: String,
+        addressStreet: String = "",
+        addressCity: String = "Chicago",
+        addressState: String = "IL",
+        addressZip: String = "",
+    ) {
         // Client-side validation
         val validationError = validate(name, email, password)
         if (validationError != null) {
@@ -47,6 +56,10 @@ class RegisterViewModel(
                         email = email.trim(),
                         phone = phone.trim(),
                         password = password,
+                        addressStreet = addressStreet.trim().ifBlank { null },
+                        addressCity = addressCity.trim().ifBlank { null },
+                        addressState = addressState.trim().ifBlank { null },
+                        addressZip = addressZip.trim().ifBlank { null },
                     ))
                 }
                 if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
