@@ -558,38 +558,38 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Block polygons — semi-transparent fill with visible outline */}
+              {/* Block polygons — status-colored fill with visible outline */}
               <Source id="blocks" type="geojson" data={geojsonData}>
                 <Layer
                   id="blocks-fill"
                   type="fill"
                   paint={{
-                    'fill-color': '#22C55E',
+                    'fill-color': ['get', 'color'],
                     'fill-opacity': [
                       'case',
                       ['==', ['get', 'id'], hoveredBlockId || ''],
-                      0.3,
+                      0.35,
                       ['==', ['get', 'id'], selectedBlock?.id || ''],
-                      0.25,
-                      0.12,
+                      0.3,
+                      0.18,
                     ],
                   }}
                 />
-                {/* Block outlines — visible borders around each block */}
+                {/* Block outlines — status-colored borders */}
                 <Layer
                   id="blocks-outline"
                   type="line"
                   paint={{
-                    'line-color': '#14532D',
+                    'line-color': ['get', 'color'],
                     'line-width': [
                       'case',
                       ['==', ['get', 'id'], hoveredBlockId || ''],
                       4,
                       ['==', ['get', 'id'], selectedBlock?.id || ''],
                       3.5,
-                      2,
+                      2.5,
                     ],
-                    'line-opacity': 0.5,
+                    'line-opacity': 0.7,
                   }}
                 />
               </Source>
