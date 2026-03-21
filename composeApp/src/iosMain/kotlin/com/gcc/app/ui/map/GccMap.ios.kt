@@ -773,27 +773,27 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Individual spot dots — solid orange, appear after heatmap fades
-            // Larger radius for better visibility and touch targeting
+            // Individual spot dots — appear only AFTER heatmap fully fades at 14.5
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
+                minZoom = 14f,
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0.dp),
-                    13.5 to const(3.dp),
-                    14 to const(5.dp),
-                    15 to const(6.dp),
+                    14 to const(0.dp),
+                    14.5 to const(4.dp),
+                    15 to const(5.dp),
+                    16 to const(6.dp),
                     17 to const(8.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    13 to const(0f),
-                    13.5 to const(0.7f),
-                    14 to const(1f),
+                    14 to const(0f),
+                    14.5 to const(0.8f),
+                    15 to const(1f),
                 ),
             )
 
@@ -812,7 +812,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
-                minZoom = 14f,
+                minZoom = 15f,
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
