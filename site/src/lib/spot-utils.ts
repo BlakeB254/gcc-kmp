@@ -63,7 +63,7 @@ export function toCommunityReport(r: any, precomputedTags?: string[]) {
     lastVerifiedAt: r.lastVerifiedAt ? new Date(r.lastVerifiedAt).toISOString() : null,
     verificationCount: r.verificationCount || 0,
     nextVerificationDue: r.nextVerificationDue ? new Date(r.nextVerificationDue).toISOString() : null,
-    needsVerification: r.nextVerificationDue ? new Date(r.nextVerificationDue) <= new Date() : false,
+    needsVerification: r.nextVerificationDue ? new Date(r.nextVerificationDue) <= new Date() : true,
     depthAnalysis: r.depthAnalysis || null,
     geoCity: r.geoCity || null,
     geoState: r.geoState || null,

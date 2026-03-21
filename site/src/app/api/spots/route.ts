@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
         tags: tagsCache.get(report.id) || [],
         affectedArea: (report as any).affectedArea || null,
-        needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : false,
+        needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : true,
       }
     })
 
