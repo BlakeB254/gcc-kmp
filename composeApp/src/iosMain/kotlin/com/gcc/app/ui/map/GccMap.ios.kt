@@ -238,7 +238,7 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill (green tint) — subtle so heatmap reads clearly
+            // Service area fill — hidden at heatmap zoom so pink reads on clean background
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
@@ -246,8 +246,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.3f),  // very faint at heatmap zoom
-                    13.5 to const(0.6f), // normal after heatmap fades
+                    10 to const(0f),    // invisible during heatmap
+                    13.5 to const(0f),  // still invisible as heatmap fades
+                    14 to const(0.8f),  // fades back in after dots take over
                     15 to const(1f),
                 ),
             )
@@ -725,23 +726,22 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.3f),
-                    13.5 to const(0.8f),
+                    13.5 to const(1f),
                 ),
-                // Moderate radius — enough spread to see the cloud, not so big it merges
+                // Website-matched radius: 8 @ zoom 8, 15 @ zoom 11, 20 @ zoom 13
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(6.dp),
-                    11 to const(10.dp),
-                    12 to const(14.dp),
-                    13 to const(18.dp),
+                    10 to const(8.dp),
+                    11 to const(15.dp),
+                    13 to const(20.dp),
                 ),
-                // Semi-transparent so map shows through
+                // Light and wispy — roads and labels fully visible through it
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.5f),
-                    13 to const(0.3f),
+                    10 to const(0.4f),
+                    13 to const(0.25f),
                     13.5 to const(0f),
                 ),
             )
