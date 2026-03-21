@@ -702,18 +702,17 @@ actual fun GccMap(
                 minZoom = 10f,
                 maxZoom = 13.5f,
                 // Website: heatmap-weight: 1 (default)
-                // Lighter pink color ramp — more stops at the pink end,
-                // only peak density reaches red. Matches website's airy pink look.
+                // Vivid pink ramp that reads clearly over the green service area tint
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.15 to const(Color(0xFFFEF2F2)), // very light pink
-                    0.3 to const(Color(0xFFFECACA)), // light rose
-                    0.5 to const(Color(0xFFFCA5A5)), // pink
-                    0.7 to const(Color(0xFFF87171)), // medium red
-                    0.9 to const(Color(0xFFEF4444)), // red (only at high density)
-                    1.0 to const(Color(0xFFDC2626)), // deep red (only at peak)
+                    0.1 to const(Color(0xFFFFF1F2)), // near-white pink
+                    0.25 to const(Color(0xFFFFE4E6)), // blush
+                    0.4 to const(Color(0xFFFDA4AF)), // rose
+                    0.6 to const(Color(0xFFFB7185)), // hot pink
+                    0.8 to const(Color(0xFFE11D48)), // crimson
+                    1.0 to const(Color(0xFF9F1239)), // deep crimson (peak only)
                 ),
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
