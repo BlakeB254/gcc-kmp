@@ -692,45 +692,51 @@ actual fun GccMap(
 
             // Native MapLibre heatmap layer — smooth kernel density cloud
             // Matches the website's heatmap implementation exactly
+            // Exact replica of website heatmap (CombinedMap.tsx lines 561-597)
+            // Website zoom range: HEATMAP_MIN=8, DOTS_MIN=13, HEATMAP_MAX=14
+            // App zoom range: shifted to 10-13.5 since app starts zoomed into service area
+            // Colors are OPAQUE (same hex as website), opacity layer controls transparency
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 13.5f,
-                // Color ramp: transparent edges → light pink → rose at density peaks
-                // Keep colors LIGHT — the website look is airy pink, not heavy red
+                // Website: heatmap-weight: 1 (default)
+                // Website: heatmap-color with OPAQUE colors, NOT alpha-encoded
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),  // fully transparent
-                    0.1 to const(Color(0x15EF4444)),  // barely visible red tint
-                    0.3 to const(Color(0x40FCA5A5)),  // soft pink
-                    0.5 to const(Color(0x70F87171)),  // medium rose
-                    0.7 to const(Color(0x99EF4444)),  // red
-                    1.0 to const(Color(0xBBDC2626)),  // deep red (still semi-transparent)
+                    0.0 to const(Color(0x00000000)),  // rgba(0,0,0,0)
+                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
+                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
+                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
+                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
                 ),
-                // Moderate intensity — enough to differentiate clusters
+                // Website: intensity 0.3 @ zoom 8 → 1 @ zoom 14
+                // Scaled: same values, compressed to our zoom range
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
                     10 to const(0.3f),
                     13.5 to const(1f),
                 ),
-                // Moderate radius — big enough for overlap but not one solid mass
+                // Website: radius 8 @ zoom 8, 15 @ zoom 11, 20 @ zoom 13
+                // These are CSS pixels. On mobile retina, dp ≈ px/2.
+                // We need LARGER dp values to get equivalent visual coverage.
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(8.dp),
-                    11 to const(15.dp),
-                    12 to const(20.dp),
-                    13 to const(25.dp),
+                    10 to const(15.dp),
+                    11 to const(25.dp),
+                    13 to const(35.dp),
                 ),
-                // Light opacity — the colors themselves carry transparency
+                // Website: opacity 0.6 @ zoom 8, 0.3 @ zoom 13, 0 @ zoom 14
+                // THIS is what makes it light/airy — semi-transparent overlay
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.8f),
-                    13 to const(0.5f),
+                    10 to const(0.6f),
+                    13 to const(0.3f),
                     13.5 to const(0f),
                 ),
             )
