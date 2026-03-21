@@ -368,7 +368,7 @@ fun RouteDetailScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HeatBadge(
                         label = "Area Score",
-                        score = 75, // TODO: Wire to real cleanliness API
+                        score = uiState.areaCleanlinessScore,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
 

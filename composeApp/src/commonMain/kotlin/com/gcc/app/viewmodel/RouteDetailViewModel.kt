@@ -20,6 +20,7 @@ data class RouteDetailUiState(
     val claimedJobId: Int? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
+    val areaCleanlinessScore: Int = 0,
 )
 
 class RouteDetailViewModel(
@@ -39,6 +40,13 @@ class RouteDetailViewModel(
                     route = route.data,
                     isLoading = false,
                 )
+                // Fetch area cleanliness score in background
+                try {
+                    val overview = apiClient.getCityCleanlinessOverview()
+                    _uiState.value = _uiState.value.copy(
+                        areaCleanlinessScore = overview.cityScore
+                    )
+                } catch (_: Exception) { /* non-critical */ }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
