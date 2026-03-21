@@ -13,10 +13,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.NetworkImage
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.AdminRouteRequest
+import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.RouteStatus
 
@@ -39,10 +44,58 @@ internal fun AdminRoutesTab(
         )
     }
 
+    // Compute route coordinates for the map overlay
+    val routeCoordinates: List<List<Coordinates>> = remember(routes) {
+        routes.map { route ->
+            route.geometry?.coordinates?.map { point ->
+                Coordinates(lng = point[0], lat = point[1])
+            } ?: route.checkpoints
+                .sortedBy { it.sequenceOrder }
+                .map { it.coordinates }
+        }
+    }
+
+    val serviceArea = remember { chicagoCommunityAreas.find { it.isServiceArea } }
+    val centerLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LAT
+    val centerLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LNG
+
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // ── Map overview ──────────────────────────────────────────────
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)),
+            ) {
+                GccMap(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = centerLat,
+                    centerLng = centerLng,
+                    zoom = MapStyles.ZOOM_SERVICE_AREA,
+                    routeCoordinates = routeCoordinates,
+                )
+                // Route count overlay
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Black.copy(alpha = 0.6f),
+                ) {
+                    Text(
+                        "${routes.size} routes",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+
+        // ── Create button ─────────────────────────────────────────────
         item {
             Button(
                 onClick = { showCreateDialog = true },
@@ -51,34 +104,32 @@ internal fun AdminRoutesTab(
                     contentColor = Color.White,
                 ),
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text("+ Create Route", fontWeight = FontWeight.SemiBold)
             }
         }
+
+        // ── Empty state ───────────────────────────────────────────────
         if (routes.isEmpty()) {
             item {
                 Box(
-                    Modifier.fillMaxWidth().height(200.dp),
+                    Modifier.fillMaxWidth().height(120.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "\uD83D\uDDFA\nNo routes yet\nTap \"Create Route\" to add one",
-                        style = MaterialTheme.typography.bodyLarge,
+                        "\uD83D\uDDFA\nNo routes yet — tap Create to add one",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }
         }
-        item {
-            Text(
-                "${routes.size} routes",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
+
+        // ── Route list ────────────────────────────────────────────────
         items(routes, key = { it.id }) { route ->
             val distMi = route.distanceMeters?.let { m -> val mi = (m / 1609.34 * 10).toInt() / 10.0; "${mi} mi" } ?: "N/A"
             val statusColor = when (route.status) {
@@ -95,6 +146,7 @@ internal fun AdminRoutesTab(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
                     .clickable { onRouteClick(route.id) },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -137,7 +189,7 @@ internal fun AdminRoutesTab(
                     }
                     route.payoutAmount?.let { cents ->
                         Text(
-                            "$${cents / 100}" + if (cents % 100 != 0) ".${cents.rem(100).toString().padStart(2, '0')}" else "",
+                            "$${cents / 100}",
                             style = MaterialTheme.typography.labelLarge,
                             color = GccGreen,
                             fontWeight = FontWeight.Bold,
@@ -160,6 +212,9 @@ internal fun AdminRoutesTab(
                 }
             }
         }
+
+        // Bottom spacing for pull-to-refresh
+        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
@@ -169,7 +224,6 @@ private fun CreateRouteDialog(
     onCreate: (AdminRouteRequest) -> Unit,
 ) {
     var displayName by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -179,29 +233,20 @@ private fun CreateRouteDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Code auto-generated \u2022 Payout $100",
+                    "Code auto-generated \u2022 $100 payout",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { displayName = it },
-                    label = { Text("Display Name") },
+                    label = { Text("Route Name") },
                     placeholder = { Text("e.g. Pulaski North Block") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description (optional)") },
-                    placeholder = { Text("Cleanup route along...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 3,
-                )
                 Text(
-                    "After creating, open the route to add checkpoints and set the map boundary.",
+                    "After creating, open the route to draw boundaries, add checkpoints, and upload an image.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -212,10 +257,10 @@ private fun CreateRouteDialog(
                 onClick = {
                     onCreate(
                         AdminRouteRequest(
-                            code = "", // Server auto-generates
+                            code = "",
                             displayName = displayName.trim(),
                             serviceAreaId = 1,
-                            payoutAmount = 10000, // $100 standard
+                            payoutAmount = 10000,
                             status = "draft",
                         )
                     )
