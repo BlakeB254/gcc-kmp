@@ -727,7 +727,7 @@ export function NeighborhoodMapSection() {
                     ],
                     'heatmap-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      11, 20,
+                      11, 10,
                       13, 15,
                       SPOT_ZOOM.HEATMAP_MAX, 8,
                     ],

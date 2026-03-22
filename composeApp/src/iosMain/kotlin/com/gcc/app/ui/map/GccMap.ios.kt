@@ -718,8 +718,7 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // LARGE radius for smooth cloud + VERY LOW intensity so it never maxes out
-                // Single spot ≈ 0.05 (faint green), cluster of 5 ≈ 0.25 (green→yellow)
+                // Low intensity: preserves gradient, never maxes out
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
@@ -727,11 +726,11 @@ actual fun GccMap(
                     13 to const(0.05f),
                     15 to const(0.03f),
                 ),
-                // Large radius: kernels overlap to form connected cloud
+                // Tight at overview (sharp blobs), wider at mid-zoom (smooth cloud)
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(20.dp),
+                    11 to const(10.dp),
                     13 to const(15.dp),
                     15 to const(8.dp),
                 ),
