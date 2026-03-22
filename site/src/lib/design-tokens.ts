@@ -63,11 +63,11 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap color ramp (low → high): purple edge → orange mid → red core
-  HEATMAP_LOW: '#A855F7',     // vivid purple (outer spread)
-  HEATMAP_MED: '#F97316',     // orange (medium density)
+  // Heatmap color ramp — high contrast against yellow/beige map tiles
+  HEATMAP_LOW: '#7C3AED',     // deep purple (bold outer edge)
+  HEATMAP_MED: '#DB2777',     // hot pink/magenta (won't blend with yellow)
   HEATMAP_HIGH: '#EF4444',    // red (high density)
-  HEATMAP_PEAK: '#DC2626',    // deep red (cluster hot cores)
+  HEATMAP_PEAK: '#B91C1C',    // dark crimson (cluster hot cores)
 } as const
 
 // Zoom thresholds for heatmap vs individual dot transition

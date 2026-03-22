@@ -709,10 +709,10 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.15 to const(Color(0xFFA855F7)), // #A855F7 vivid purple (outer edge)
-                    0.4 to const(Color(0xFFF97316)),  // #F97316 orange (medium density)
+                    0.15 to const(Color(0xFF7C3AED)), // #7C3AED deep purple (bold edge)
+                    0.4 to const(Color(0xFFDB2777)),  // #DB2777 hot pink (contrast with map)
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red (high density)
-                    1.0 to const(Color(0xFFDC2626)),  // #DC2626 deep red (hot cores)
+                    1.0 to const(Color(0xFFB91C1C)),  // #B91C1C dark crimson (hot cores)
                 ),
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
@@ -731,8 +731,8 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.65f),
-                    13 to const(0.45f),
+                    11 to const(0.75f),
+                    13 to const(0.55f),
                     15 to const(0f),
                 ),
             )

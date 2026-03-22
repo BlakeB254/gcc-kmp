@@ -586,8 +586,8 @@ export function CombinedMap({
                 ],
                 'heatmap-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.65,
-                  SPOT_ZOOM.DOTS_MIN, 0.45,
+                  11, 0.75,
+                  SPOT_ZOOM.DOTS_MIN, 0.55,
                   SPOT_ZOOM.HEATMAP_MAX, 0,
                 ],
               }}
