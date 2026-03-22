@@ -706,37 +706,40 @@ actual fun GccMap(
                 minZoom = 10f,
                 maxZoom = 15f,
                 // Green (clean) → yellow (caution) → red (dirty)
+                // Low density threshold so the smooth cloud extends between spots
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.08 to const(Color(0xFF4ADE80)), // medium green (clean fringe)
-                    0.25 to const(Color(0xFF16A34A)), // rich green (few reports)
-                    0.45 to const(Color(0xFFEAB308)), // yellow (moderate)
+                    0.02 to const(Color(0xFF86EFAC)), // faintest green (cloud edge)
+                    0.08 to const(Color(0xFF4ADE80)), // light green
+                    0.2 to const(Color(0xFF16A34A)),  // rich green
+                    0.4 to const(Color(0xFFEAB308)),  // yellow (moderate)
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // Moderate intensity: visible gradient without maxing out
+                // LARGE radius for smooth cloud + VERY LOW intensity so it never maxes out
+                // Single spot ≈ 0.05 (faint green), cluster of 5 ≈ 0.25 (green→yellow)
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.25f),
-                    13 to const(0.12f),
-                    15 to const(0.06f),
+                    11 to const(0.08f),
+                    13 to const(0.05f),
+                    15 to const(0.03f),
                 ),
-                // Shrinking radius to counteract zoom convergence
+                // Large radius: kernels overlap to form connected cloud
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(12.dp),
-                    13 to const(6.dp),
-                    15 to const(3.dp),
+                    11 to const(20.dp),
+                    13 to const(15.dp),
+                    15 to const(8.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.75f),
-                    13 to const(0.65f),
+                    11 to const(0.7f),
+                    13 to const(0.6f),
                     15 to const(0f),
                 ),
             )
