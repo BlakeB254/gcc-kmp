@@ -735,19 +735,20 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // Intensity: very low at far zoom (all 17 spots overlap → need ~0.02 each
-                // to keep total density in green/yellow range, not solid red)
+                // Intensity: extremely low at far zoom where all spots overlap fully
+                // z8: 17 spots × 0.005 = 0.085 (light green, NOT red)
+                // z10: spots separating, can increase
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.02f),   // 17 spots × 0.02 ≈ 0.34 total (green→yellow)
-                    9 to const(0.03f),   // spots starting to separate
-                    10 to const(0.05f),  // some gaps forming
-                    11 to const(0.06f),  // defined blobs with halos
-                    12 to const(0.055f), // blobs connecting into cloud
-                    13 to const(0.05f),  // service area: smooth cloud
-                    14 to const(0.04f),  // thinning out
-                    15 to const(0.025f), // faint before gone
+                    8 to const(0.005f),  // 17 × 0.005 = 0.085 (light green)
+                    9 to const(0.008f),  // starting to separate
+                    10 to const(0.015f), // some gaps forming
+                    11 to const(0.04f),  // defined blobs
+                    12 to const(0.05f),  // connecting
+                    13 to const(0.05f),  // smooth cloud
+                    14 to const(0.04f),  // thinning
+                    15 to const(0.025f), // faint
                 ),
                 // Radius: tiny points at far → cloud at mid → tight at close
                 radius = interpolate(

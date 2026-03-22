@@ -711,8 +711,8 @@ export function NeighborhoodMapSection() {
                     'heatmap-weight': 1,
                     'heatmap-intensity': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 0.02, 9, 0.03, 10, 0.05, 11, 0.06,
-                      12, 0.055, 13, 0.05, 14, 0.04, SPOT_ZOOM.HEATMAP_MAX, 0.025,
+                      8, 0.005, 9, 0.008, 10, 0.015, 11, 0.04,
+                      12, 0.05, 13, 0.05, 14, 0.04, SPOT_ZOOM.HEATMAP_MAX, 0.025,
                     ],
                     'heatmap-color': [
                       'interpolate', ['linear'], ['heatmap-density'],
