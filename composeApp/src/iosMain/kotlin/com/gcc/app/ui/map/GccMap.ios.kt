@@ -705,17 +705,16 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 15f,
-                // Color ramp: purple-dominant — most area stays purple,
-                // only tight clusters reach pink/red
+                // Green (clean) → yellow (light) → red (dirty)
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.05 to const(Color(0xFFA78BFA)), // light purple (shows at low density)
-                    0.25 to const(Color(0xFF7C3AED)), // deep purple (dominant color)
-                    0.5 to const(Color(0xFFDB2777)),  // hot pink (medium clusters)
-                    0.8 to const(Color(0xFFEF4444)),  // red (tight clusters only)
-                    1.0 to const(Color(0xFFB91C1C)),  // dark crimson (hottest cores)
+                    0.05 to const(Color(0xFF86EFAC)), // light green (mostly clean)
+                    0.25 to const(Color(0xFF22C55E)), // green (few reports)
+                    0.5 to const(Color(0xFFEAB308)),  // yellow (moderate density)
+                    0.8 to const(Color(0xFFEF4444)),  // red (high density)
+                    1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot cores)
                 ),
                 // Very low intensity: density never maxes out, preserves gradient variation
                 // 1 spot ≈ 0.1 (light purple), 2 ≈ 0.2 (purple), 4+ ≈ 0.4 (pink)

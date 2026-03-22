@@ -63,12 +63,12 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap color ramp — purple-dominant, red only at tight clusters
-  HEATMAP_EDGE: '#A78BFA',    // light purple (outermost fringe)
-  HEATMAP_LOW: '#7C3AED',     // deep purple (dominant color)
-  HEATMAP_MED: '#DB2777',     // hot pink (medium clusters)
-  HEATMAP_HIGH: '#EF4444',    // red (tight clusters only)
-  HEATMAP_PEAK: '#B91C1C',    // dark crimson (hottest cores)
+  // Heatmap: green (clean) → yellow (light) → red (dirty)
+  HEATMAP_EDGE: '#86EFAC',    // light green (mostly clean fringe)
+  HEATMAP_LOW: '#22C55E',     // green (few reports)
+  HEATMAP_MED: '#EAB308',     // yellow (moderate density)
+  HEATMAP_HIGH: '#EF4444',    // red (high density)
+  HEATMAP_PEAK: '#B91C1C',    // deep red (hotspot cores)
 } as const
 
 // Zoom thresholds for heatmap vs individual dot transition
