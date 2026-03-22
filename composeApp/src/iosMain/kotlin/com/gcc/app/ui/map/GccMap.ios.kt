@@ -698,22 +698,39 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap: purple edge → orange mid → red core
-            // Tight radius so blobs don't extend far past outermost spots
+            // ── Clean zone: faint green across US = "clean" baseline ──
+            val cleanZoneJson = remember {
+                """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-130,20],[-60,20],[-60,55],[-130,55],[-130,20]]]}}]}"""
+            }
+            val cleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(cleanZoneJson))
+            FillLayer(
+                id = "clean-zone-base",
+                source = cleanZoneSrc,
+                color = const(Color(0xFFDCFCE7)),  // green-100 (very light)
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    8 to const(0.4f),
+                    11 to const(0.3f),
+                    13 to const(0.15f),
+                    15 to const(0f),
+                ),
+            )
+
+            // Heatmap on top: dirty areas override the clean green base
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 15f,
-                // Green (clean) → yellow (caution) → red (dirty)
-                // Low density threshold so the smooth cloud extends between spots
+                // Lighter green edge → yellow → red
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.02 to const(Color(0xFF86EFAC)), // faintest green (cloud edge)
-                    0.08 to const(Color(0xFF4ADE80)), // light green
-                    0.2 to const(Color(0xFF16A34A)),  // rich green
+                    0.02 to const(Color(0xFFBBF7D0)), // very light green (fringe)
+                    0.08 to const(Color(0xFF86EFAC)), // light green
+                    0.2 to const(Color(0xFF4ADE80)),  // medium green
                     0.4 to const(Color(0xFFEAB308)),  // yellow (moderate)
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)

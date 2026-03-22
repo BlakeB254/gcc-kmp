@@ -719,7 +719,7 @@ export function NeighborhoodMapSection() {
                       'interpolate', ['linear'], ['heatmap-density'],
                       0,    'rgba(0,0,0,0)',
                       0.02, SPOT_COLORS.HEATMAP_EDGE,
-                      0.08, '#4ADE80',
+                      0.08, '#86EFAC',
                       0.2,  SPOT_COLORS.HEATMAP_LOW,
                       0.4,  SPOT_COLORS.HEATMAP_MED,
                       0.7,  SPOT_COLORS.HEATMAP_HIGH,
