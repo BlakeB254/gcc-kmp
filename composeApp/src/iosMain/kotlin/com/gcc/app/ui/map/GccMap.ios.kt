@@ -764,7 +764,8 @@ actual fun GccMap(
                     14.5 to const(6.dp), // almost dots
                     15 to const(4.dp),   // matching dot size
                 ),
-                // Opacity: gradual build → peak → smooth fade
+                // Opacity: stays strong until z14, then drops sharply
+                // Dots take over at z14 — no gap between them
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
@@ -774,22 +775,22 @@ actual fun GccMap(
                     11 to const(0.6f),   // clear
                     12 to const(0.6f),   // steady
                     13 to const(0.55f),  // cloud
-                    13.5 to const(0.45f),// starting fade
-                    14 to const(0.3f),   // fading
-                    14.5 to const(0.12f),// nearly gone
-                    15 to const(0f),     // gone
+                    13.5 to const(0.5f), // still clearly visible
+                    14 to const(0.35f),  // starting fade (dots appearing here)
+                    14.5 to const(0f),   // gone (dots fully visible)
                 ),
             )
 
-            // Individual spot dots + click target — appear after heatmap fades
+            // Individual spot dots — fade in as heatmap fades out (z14-14.5 crossfade)
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
-                minZoom = 14.5f,
+                minZoom = 14f,
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
+                    14 to const(2.dp),
                     14.5 to const(3.dp),
                     16 to const(5.dp),
                     17 to const(6.dp),
@@ -798,9 +799,9 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14.5 to const(0f),
-                    15 to const(0.7f),
-                    16 to const(1f),
+                    14 to const(0f),
+                    14.5 to const(0.8f),
+                    15 to const(1f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -829,7 +830,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
-                minZoom = 15.5f,
+                minZoom = 15f,
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
