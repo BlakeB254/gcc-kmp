@@ -714,26 +714,26 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // #B91C1C dark crimson (hot cores)
                 ),
+                // Lower intensity: spots visible individually, only tight clusters hit red
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.6f),
-                    15 to const(1.2f),
+                    11 to const(0.4f),
+                    15 to const(0.8f),
                 ),
-                // Tight radius: hugs the actual spot locations
+                // Very tight radius: spots stay as distinct blobs, gaps between them
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(8.dp),
-                    13 to const(14.dp),
-                    15 to const(20.dp),
+                    11 to const(6.dp),
+                    13 to const(10.dp),
+                    15 to const(16.dp),
                 ),
-                // Capped at 0.5 so map detail always shows through
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.5f),
-                    13 to const(0.4f),
+                    11 to const(0.55f),
+                    13 to const(0.45f),
                     15 to const(0f),
                 ),
             )
