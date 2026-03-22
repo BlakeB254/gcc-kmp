@@ -714,15 +714,22 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // #EF4444 red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // #B91C1C dark crimson (hot cores)
                 ),
-                // Lower intensity: spots visible individually, only tight clusters hit red
+                // Intensity DECREASES with zoom — spots converge on screen at higher zoom
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.4f),
-                    15 to const(0.8f),
+                    11 to const(0.5f),
+                    13 to const(0.3f),
+                    15 to const(0.15f),
                 ),
-                // Constant radius: no enlargement during zoom, stays compact
-                radius = const(7.dp),
+                // Radius SHRINKS with zoom — counteracts spots getting closer on screen
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    11 to const(8.dp),
+                    13 to const(5.dp),
+                    15 to const(3.dp),
+                ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
