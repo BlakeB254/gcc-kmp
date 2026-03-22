@@ -722,12 +722,7 @@ export function NeighborhoodMapSection() {
                       0.7,  SPOT_COLORS.HEATMAP_HIGH,
                       1.0,  SPOT_COLORS.HEATMAP_PEAK,
                     ],
-                    'heatmap-radius': [
-                      'interpolate', ['linear'], ['zoom'],
-                      11, 6,
-                      13, 10,
-                      SPOT_ZOOM.HEATMAP_MAX, 16,
-                    ],
+                    'heatmap-radius': 7,
                     'heatmap-opacity': [
                       'interpolate', ['linear'], ['zoom'],
                       11, 0.55,

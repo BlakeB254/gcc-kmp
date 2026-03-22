@@ -721,14 +721,8 @@ actual fun GccMap(
                     11 to const(0.4f),
                     15 to const(0.8f),
                 ),
-                // Very tight radius: spots stay as distinct blobs, gaps between them
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    11 to const(6.dp),
-                    13 to const(10.dp),
-                    15 to const(16.dp),
-                ),
+                // Constant radius: no enlargement during zoom, stays compact
+                radius = const(7.dp),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
