@@ -735,41 +735,47 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // Intensity per zoom: very low at all levels, slightly lower as zoom increases
-                // to counteract spots converging on screen
+                // Intensity: very low at far zoom (all 17 spots overlap → need ~0.02 each
+                // to keep total density in green/yellow range, not solid red)
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.12f),   // far out: spots tight on screen, need some punch
-                    10 to const(0.1f),
-                    11 to const(0.08f),
-                    12 to const(0.06f),  // mid: spots spreading, reduce overlap buildup
-                    13 to const(0.05f),  // service area: the cloud look
-                    14 to const(0.04f),  // close: fading toward dots
-                    15 to const(0.03f),
+                    8 to const(0.02f),   // 17 spots × 0.02 ≈ 0.34 total (green→yellow)
+                    9 to const(0.03f),   // spots starting to separate
+                    10 to const(0.05f),  // some gaps forming
+                    11 to const(0.06f),  // defined blobs with halos
+                    12 to const(0.055f), // blobs connecting into cloud
+                    13 to const(0.05f),  // service area: smooth cloud
+                    14 to const(0.04f),  // thinning out
+                    15 to const(0.025f), // faint before gone
                 ),
-                // Radius per zoom: tight at far zoom, peaks at mid, shrinks at close
+                // Radius: tiny points at far → cloud at mid → tight at close
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(4.dp),    // far out: tiny, defined points
-                    10 to const(8.dp),   // starting to show halos
+                    8 to const(3.dp),    // pinpoint at country zoom
+                    9 to const(5.dp),    // small dots at state zoom
+                    10 to const(8.dp),   // halos forming
                     11 to const(10.dp),  // defined blobs
-                    12 to const(13.dp),  // blobs connecting
-                    13 to const(15.dp),  // smooth cloud (peak)
-                    14 to const(10.dp),  // tightening toward dots
-                    15 to const(6.dp),   // tight before fadeout
+                    12 to const(12.dp),  // connecting
+                    13 to const(14.dp),  // smooth cloud
+                    14 to const(9.dp),   // tightening
+                    14.5 to const(6.dp), // almost dots
+                    15 to const(4.dp),   // matching dot size
                 ),
-                // Opacity: builds up, peaks at mid, fades at close
+                // Opacity: gradual build → peak → smooth fade
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.3f),    // faint at far zoom
-                    10 to const(0.5f),   // building
-                    11 to const(0.65f),  // visible
-                    13 to const(0.6f),   // cloud peek
-                    14 to const(0.35f),  // fading
-                    14.5 to const(0.15f),// mostly gone, dots appearing
+                    8 to const(0.4f),    // visible at far zoom
+                    9 to const(0.5f),
+                    10 to const(0.55f),
+                    11 to const(0.6f),   // clear
+                    12 to const(0.6f),   // steady
+                    13 to const(0.55f),  // cloud
+                    13.5 to const(0.45f),// starting fade
+                    14 to const(0.3f),   // fading
+                    14.5 to const(0.12f),// nearly gone
                     15 to const(0f),     // gone
                 ),
             )
