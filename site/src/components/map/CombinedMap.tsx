@@ -563,15 +563,13 @@ export function CombinedMap({
               type="heatmap"
               maxzoom={SPOT_ZOOM.HEATMAP_MAX}
               paint={{
-                // Weight each point equally (could use radiusMeters for intensity)
                 'heatmap-weight': 1,
-                // Intensity increases with zoom to keep heat visible as radius shrinks
+                // Unified heatmap params — matches bounties page (NeighborhoodMapSection.tsx)
                 'heatmap-intensity': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.HEATMAP_MIN, 0.3,
+                  11, 0.4,
                   SPOT_ZOOM.HEATMAP_MAX, 1,
                 ],
-                // Color ramp: transparent → green → yellow → orange → red
                 'heatmap-color': [
                   'interpolate', ['linear'], ['heatmap-density'],
                   0,    'rgba(0,0,0,0)',
@@ -580,17 +578,15 @@ export function CombinedMap({
                   0.7,  SPOT_COLORS.HEATMAP_HIGH,
                   1.0,  SPOT_COLORS.HEATMAP_PEAK,
                 ],
-                // Radius grows with zoom so density estimation covers appropriate area
                 'heatmap-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.HEATMAP_MIN, 8,
-                  11, 15,
-                  SPOT_ZOOM.DOTS_MIN, 20,
+                  11, 10,
+                  13, 18,
+                  SPOT_ZOOM.HEATMAP_MAX, 25,
                 ],
-                // Fade out as individual dots take over
                 'heatmap-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.HEATMAP_MIN, 0.6,
+                  11, 0.5,
                   SPOT_ZOOM.DOTS_MIN, 0.3,
                   SPOT_ZOOM.HEATMAP_MAX, 0,
                 ],

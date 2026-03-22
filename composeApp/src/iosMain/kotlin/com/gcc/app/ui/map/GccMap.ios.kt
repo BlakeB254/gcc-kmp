@@ -698,76 +698,68 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap: pink density cloud matching website aesthetic
-            // Key: small radius creates distinct hotspots with falloff between them,
-            // high intensity pushes cluster centers to the deep color stops
-            // Heatmap: large radius fills the service area, very low intensity
-            // so density only builds where 2+ spot kernels overlap.
-            // Single spot center ≈ density 0.15 → barely pink
-            // 2 spots overlapping ≈ density 0.35 → medium pink
-            // 3+ spots tight cluster ≈ density 0.6+ → red/deep red
+            // Heatmap: matches website bounties page (NeighborhoodMapSection.tsx)
+            // intensity 0.4→1.0 is the KEY fix — was 0.08→0.3 (5x too low)
+            // radius 10→25dp matches website px values (moderate, not area-filling)
+            // Extended to z15 (website uses z14) for mobile zoom range
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
                 minZoom = 10f,
-                maxZoom = 16f,
+                maxZoom = 15f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.2 to const(Color(0xFFFEE2E2)),  // #FEE2E2 light pink
-                    0.4 to const(Color(0xFFFCA5A5)),  // #FCA5A5 medium pink
-                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red
-                    1.0 to const(Color(0xFF991B1B)),  // #991B1B deep red
+                    0.2 to const(Color(0xFFC084FC)),  // #C084FC soft purple (atmospheric spread)
+                    0.4 to const(Color(0xFFE879A0)),  // #E879A0 pink-magenta (transition)
+                    0.7 to const(Color(0xFFF97316)),  // #F97316 orange (high density)
+                    1.0 to const(Color(0xFFFDE047)),  // #FDE047 bright yellow (hot cores)
                 ),
-                // Very low: each spot contributes little, density builds from overlap
+                // High intensity: single spots reach light pink, clusters reach deep red
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.08f),
-                    13 to const(0.15f),
-                    16 to const(0.3f),
+                    11 to const(0.4f),
+                    15 to const(1.0f),
                 ),
-                // Large radius: spreads each spot's heat across a wide area
-                // so the overall neighborhood is covered, not just point blobs
+                // Moderate radius: tight enough for distinct hotspots with falloff
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(15.dp),
-                    12 to const(25.dp),
-                    13 to const(35.dp),
-                    15 to const(45.dp),
+                    11 to const(10.dp),
+                    13 to const(18.dp),
+                    15 to const(25.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    10 to const(0.7f),
-                    14 to const(0.5f),
-                    15 to const(0.3f),
-                    16 to const(0f),
+                    11 to const(0.5f),
+                    13 to const(0.3f),
+                    15 to const(0f),
                 ),
             )
 
-            // Individual spot dots + click target — only at zoom 16+ after heatmap
+            // Individual spot dots + click target — appear after heatmap fades
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
-                minZoom = 16f,
+                minZoom = 14.5f,
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    16 to const(3.dp),
-                    17 to const(5.dp),
-                    18 to const(6.dp),
+                    14.5 to const(3.dp),
+                    16 to const(5.dp),
+                    17 to const(6.dp),
                     20 to const(8.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    16 to const(0f),
-                    16.5 to const(0.7f),
-                    17 to const(1f),
+                    14.5 to const(0f),
+                    15 to const(0.7f),
+                    16 to const(1f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -796,7 +788,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
-                minZoom = 16.5f,
+                minZoom = 15.5f,
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),

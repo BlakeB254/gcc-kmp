@@ -63,11 +63,11 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap color ramp (low density → high density): light pink → deep red
-  HEATMAP_LOW: '#FEE2E2',     // light pink
-  HEATMAP_MED: '#FCA5A5',     // medium pink
-  HEATMAP_HIGH: '#EF4444',    // red
-  HEATMAP_PEAK: '#991B1B',    // deep red
+  // Heatmap color ramp (low density → high density): purple → orange → yellow
+  HEATMAP_LOW: '#C084FC',     // soft purple (wide atmospheric spread)
+  HEATMAP_MED: '#E879A0',     // pink-magenta (transition zone)
+  HEATMAP_HIGH: '#F97316',    // orange (high density)
+  HEATMAP_PEAK: '#FDE047',    // bright yellow (cluster hot cores)
 } as const
 
 // Zoom thresholds for heatmap vs individual dot transition
