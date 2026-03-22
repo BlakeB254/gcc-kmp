@@ -711,9 +711,9 @@ export function NeighborhoodMapSection() {
                     'heatmap-weight': 1,
                     'heatmap-intensity': [
                       'interpolate', ['linear'], ['zoom'],
-                      11, 0.2,
-                      13, 0.15,
-                      SPOT_ZOOM.HEATMAP_MAX, 0.1,
+                      11, 0.25,
+                      13, 0.2,
+                      SPOT_ZOOM.HEATMAP_MAX, 0.12,
                     ],
                     'heatmap-color': [
                       'interpolate', ['linear'], ['heatmap-density'],
@@ -726,9 +726,9 @@ export function NeighborhoodMapSection() {
                     ],
                     'heatmap-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      11, 12,
-                      13, 7,
-                      SPOT_ZOOM.HEATMAP_MAX, 4,
+                      11, 14,
+                      13, 10,
+                      SPOT_ZOOM.HEATMAP_MAX, 5,
                     ],
                     'heatmap-opacity': [
                       'interpolate', ['linear'], ['zoom'],

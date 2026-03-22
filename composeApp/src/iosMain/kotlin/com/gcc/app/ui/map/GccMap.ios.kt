@@ -717,23 +717,21 @@ actual fun GccMap(
                     0.8 to const(Color(0xFFEF4444)),  // red (tight clusters only)
                     1.0 to const(Color(0xFFB91C1C)),  // dark crimson (hottest cores)
                 ),
-                // Very low intensity: keeps most density in the purple zone
-                // Single spot ≈ 0.15 density (purple), 2 overlapping ≈ 0.3 (deep purple),
-                // 3+ tight cluster ≈ 0.5+ (pink/red)
+                // Low intensity: purple dominant, only tight clusters reach pink/red
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.2f),
-                    13 to const(0.15f),
-                    15 to const(0.1f),
+                    11 to const(0.25f),
+                    13 to const(0.2f),
+                    15 to const(0.12f),
                 ),
-                // Moderate radius at overview, shrinks as spots converge
+                // Radius: wide enough for smooth cloud, shrinks to counteract convergence
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(12.dp),
-                    13 to const(7.dp),
-                    15 to const(4.dp),
+                    11 to const(14.dp),
+                    13 to const(10.dp),
+                    15 to const(5.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
