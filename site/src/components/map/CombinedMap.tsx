@@ -564,30 +564,30 @@ export function CombinedMap({
               maxzoom={SPOT_ZOOM.HEATMAP_MAX}
               paint={{
                 'heatmap-weight': 1,
-                // Unified heatmap params — matches bounties page (NeighborhoodMapSection.tsx)
+                // Unified heatmap — purple edge → orange → red core, tight radius
                 'heatmap-intensity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.4,
-                  SPOT_ZOOM.HEATMAP_MAX, 1,
+                  11, 0.6,
+                  SPOT_ZOOM.HEATMAP_MAX, 1.2,
                 ],
                 'heatmap-color': [
                   'interpolate', ['linear'], ['heatmap-density'],
                   0,    'rgba(0,0,0,0)',
-                  0.2,  SPOT_COLORS.HEATMAP_LOW,
+                  0.15, SPOT_COLORS.HEATMAP_LOW,
                   0.4,  SPOT_COLORS.HEATMAP_MED,
                   0.7,  SPOT_COLORS.HEATMAP_HIGH,
                   1.0,  SPOT_COLORS.HEATMAP_PEAK,
                 ],
                 'heatmap-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 10,
-                  13, 18,
-                  SPOT_ZOOM.HEATMAP_MAX, 25,
+                  11, 8,
+                  13, 14,
+                  SPOT_ZOOM.HEATMAP_MAX, 20,
                 ],
                 'heatmap-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.5,
-                  SPOT_ZOOM.DOTS_MIN, 0.3,
+                  11, 0.65,
+                  SPOT_ZOOM.DOTS_MIN, 0.45,
                   SPOT_ZOOM.HEATMAP_MAX, 0,
                 ],
               }}

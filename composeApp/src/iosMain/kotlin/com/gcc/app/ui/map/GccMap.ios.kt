@@ -698,10 +698,8 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap: matches website bounties page (NeighborhoodMapSection.tsx)
-            // intensity 0.4→1.0 is the KEY fix — was 0.08→0.3 (5x too low)
-            // radius 10→25dp matches website px values (moderate, not area-filling)
-            // Extended to z15 (website uses z14) for mobile zoom range
+            // Heatmap: purple edge → orange mid → red core
+            // Tight radius so blobs don't extend far past outermost spots
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
@@ -711,31 +709,30 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.2 to const(Color(0xFFC084FC)),  // #C084FC soft purple (atmospheric spread)
-                    0.4 to const(Color(0xFFE879A0)),  // #E879A0 pink-magenta (transition)
-                    0.7 to const(Color(0xFFF97316)),  // #F97316 orange (high density)
-                    1.0 to const(Color(0xFFFDE047)),  // #FDE047 bright yellow (hot cores)
+                    0.15 to const(Color(0xFFA855F7)), // #A855F7 vivid purple (outer edge)
+                    0.4 to const(Color(0xFFF97316)),  // #F97316 orange (medium density)
+                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red (high density)
+                    1.0 to const(Color(0xFFDC2626)),  // #DC2626 deep red (hot cores)
                 ),
-                // High intensity: single spots reach light pink, clusters reach deep red
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.4f),
-                    15 to const(1.0f),
+                    11 to const(0.6f),
+                    15 to const(1.2f),
                 ),
-                // Moderate radius: tight enough for distinct hotspots with falloff
+                // Tight radius: hugs the actual spot locations
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(10.dp),
-                    13 to const(18.dp),
-                    15 to const(25.dp),
+                    11 to const(8.dp),
+                    13 to const(14.dp),
+                    15 to const(20.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.5f),
-                    13 to const(0.3f),
+                    11 to const(0.65f),
+                    13 to const(0.45f),
                     15 to const(0f),
                 ),
             )
