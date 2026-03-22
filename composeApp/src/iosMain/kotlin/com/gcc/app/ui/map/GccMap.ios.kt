@@ -718,12 +718,12 @@ actual fun GccMap(
             )
 
             // Heatmap on top: dirty areas override the clean green base
+            // Fine-tuned per zoom level for consistent look at every zoom
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 10f,
+                minZoom = 8f,
                 maxZoom = 15f,
-                // Lighter green edge → yellow → red
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
@@ -735,28 +735,42 @@ actual fun GccMap(
                     0.7 to const(Color(0xFFEF4444)),  // red (high density)
                     1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // Low intensity: preserves gradient, never maxes out
+                // Intensity per zoom: very low at all levels, slightly lower as zoom increases
+                // to counteract spots converging on screen
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
+                    8 to const(0.12f),   // far out: spots tight on screen, need some punch
+                    10 to const(0.1f),
                     11 to const(0.08f),
-                    13 to const(0.05f),
+                    12 to const(0.06f),  // mid: spots spreading, reduce overlap buildup
+                    13 to const(0.05f),  // service area: the cloud look
+                    14 to const(0.04f),  // close: fading toward dots
                     15 to const(0.03f),
                 ),
-                // Tight at overview (sharp blobs), wider at mid-zoom (smooth cloud)
+                // Radius per zoom: tight at far zoom, peaks at mid, shrinks at close
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(10.dp),
-                    13 to const(15.dp),
-                    15 to const(8.dp),
+                    8 to const(4.dp),    // far out: tiny, defined points
+                    10 to const(8.dp),   // starting to show halos
+                    11 to const(10.dp),  // defined blobs
+                    12 to const(13.dp),  // blobs connecting
+                    13 to const(15.dp),  // smooth cloud (peak)
+                    14 to const(10.dp),  // tightening toward dots
+                    15 to const(6.dp),   // tight before fadeout
                 ),
+                // Opacity: builds up, peaks at mid, fades at close
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.7f),
-                    13 to const(0.6f),
-                    15 to const(0f),
+                    8 to const(0.3f),    // faint at far zoom
+                    10 to const(0.5f),   // building
+                    11 to const(0.65f),  // visible
+                    13 to const(0.6f),   // cloud peek
+                    14 to const(0.35f),  // fading
+                    14.5 to const(0.15f),// mostly gone, dots appearing
+                    15 to const(0f),     // gone
                 ),
             )
 
