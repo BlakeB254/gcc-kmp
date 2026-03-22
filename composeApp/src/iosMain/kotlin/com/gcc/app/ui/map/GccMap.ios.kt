@@ -728,11 +728,12 @@ actual fun GccMap(
                     13 to const(14.dp),
                     15 to const(20.dp),
                 ),
+                // Capped at 0.5 so map detail always shows through
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.75f),
-                    13 to const(0.55f),
+                    11 to const(0.5f),
+                    13 to const(0.4f),
                     15 to const(0f),
                 ),
             )

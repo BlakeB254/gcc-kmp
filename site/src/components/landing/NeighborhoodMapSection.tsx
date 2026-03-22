@@ -730,8 +730,8 @@ export function NeighborhoodMapSection() {
                     ],
                     'heatmap-opacity': [
                       'interpolate', ['linear'], ['zoom'],
-                      11, 0.75,
-                      SPOT_ZOOM.DOTS_MIN, 0.55,
+                      11, 0.5,
+                      SPOT_ZOOM.DOTS_MIN, 0.4,
                       SPOT_ZOOM.HEATMAP_MAX, 0,
                     ],
                   }}
