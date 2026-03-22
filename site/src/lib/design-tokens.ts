@@ -63,9 +63,9 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap: green (clean) → yellow (light) → red (dirty)
-  HEATMAP_EDGE: '#86EFAC',    // light green (mostly clean fringe)
-  HEATMAP_LOW: '#22C55E',     // green (few reports)
+  // Heatmap: green (clean) → yellow (caution) → red (dirty)
+  HEATMAP_EDGE: '#4ADE80',    // medium green (clean fringe)
+  HEATMAP_LOW: '#16A34A',     // rich green (few reports)
   HEATMAP_MED: '#EAB308',     // yellow (moderate density)
   HEATMAP_HIGH: '#EF4444',    // red (high density)
   HEATMAP_PEAK: '#B91C1C',    // deep red (hotspot cores)

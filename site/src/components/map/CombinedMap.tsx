@@ -567,9 +567,9 @@ export function CombinedMap({
                 // Unified heatmap — purple edge → orange → red core, tight radius
                 'heatmap-intensity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.15,
-                  13, 0.08,
-                  SPOT_ZOOM.HEATMAP_MAX, 0.04,
+                  11, 0.25,
+                  13, 0.12,
+                  SPOT_ZOOM.HEATMAP_MAX, 0.06,
                 ],
                 'heatmap-color': [
                   'interpolate', ['linear'], ['heatmap-density'],
@@ -588,8 +588,8 @@ export function CombinedMap({
                 ],
                 'heatmap-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.7,
-                  SPOT_ZOOM.DOTS_MIN, 0.6,
+                  11, 0.75,
+                  SPOT_ZOOM.DOTS_MIN, 0.65,
                   SPOT_ZOOM.HEATMAP_MAX, 0,
                 ],
               }}

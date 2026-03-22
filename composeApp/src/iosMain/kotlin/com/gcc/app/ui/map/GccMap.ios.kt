@@ -705,27 +705,26 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 15f,
-                // Green (clean) → yellow (light) → red (dirty)
+                // Green (clean) → yellow (caution) → red (dirty)
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.05 to const(Color(0xFF86EFAC)), // light green (mostly clean)
-                    0.25 to const(Color(0xFF22C55E)), // green (few reports)
-                    0.5 to const(Color(0xFFEAB308)),  // yellow (moderate density)
-                    0.8 to const(Color(0xFFEF4444)),  // red (high density)
-                    1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot cores)
+                    0.08 to const(Color(0xFF4ADE80)), // medium green (clean fringe)
+                    0.25 to const(Color(0xFF16A34A)), // rich green (few reports)
+                    0.45 to const(Color(0xFFEAB308)), // yellow (moderate)
+                    0.7 to const(Color(0xFFEF4444)),  // red (high density)
+                    1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot)
                 ),
-                // Very low intensity: density never maxes out, preserves gradient variation
-                // 1 spot ≈ 0.1 (light purple), 2 ≈ 0.2 (purple), 4+ ≈ 0.4 (pink)
+                // Moderate intensity: visible gradient without maxing out
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.15f),
-                    13 to const(0.08f),
-                    15 to const(0.04f),
+                    11 to const(0.25f),
+                    13 to const(0.12f),
+                    15 to const(0.06f),
                 ),
-                // Small radius, aggressive shrink — matches transitional appearance
+                // Shrinking radius to counteract zoom convergence
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
@@ -736,8 +735,8 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.7f),
-                    13 to const(0.6f),
+                    11 to const(0.75f),
+                    13 to const(0.65f),
                     15 to const(0f),
                 ),
             )
