@@ -705,36 +705,41 @@ actual fun GccMap(
                 source = spotSrc,
                 minZoom = 10f,
                 maxZoom = 15f,
+                // Color ramp: purple-dominant — most area stays purple,
+                // only tight clusters reach pink/red
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.15 to const(Color(0xFF7C3AED)), // #7C3AED deep purple (bold edge)
-                    0.4 to const(Color(0xFFDB2777)),  // #DB2777 hot pink (contrast with map)
-                    0.7 to const(Color(0xFFEF4444)),  // #EF4444 red (high density)
-                    1.0 to const(Color(0xFFB91C1C)),  // #B91C1C dark crimson (hot cores)
+                    0.05 to const(Color(0xFFA78BFA)), // light purple (shows at low density)
+                    0.25 to const(Color(0xFF7C3AED)), // deep purple (dominant color)
+                    0.5 to const(Color(0xFFDB2777)),  // hot pink (medium clusters)
+                    0.8 to const(Color(0xFFEF4444)),  // red (tight clusters only)
+                    1.0 to const(Color(0xFFB91C1C)),  // dark crimson (hottest cores)
                 ),
-                // Intensity DECREASES with zoom — spots converge on screen at higher zoom
+                // Very low intensity: keeps most density in the purple zone
+                // Single spot ≈ 0.15 density (purple), 2 overlapping ≈ 0.3 (deep purple),
+                // 3+ tight cluster ≈ 0.5+ (pink/red)
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.5f),
-                    13 to const(0.3f),
-                    15 to const(0.15f),
+                    11 to const(0.2f),
+                    13 to const(0.15f),
+                    15 to const(0.1f),
                 ),
-                // Radius SHRINKS with zoom — counteracts spots getting closer on screen
+                // Moderate radius at overview, shrinks as spots converge
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(8.dp),
-                    13 to const(5.dp),
-                    15 to const(3.dp),
+                    11 to const(12.dp),
+                    13 to const(7.dp),
+                    15 to const(4.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.55f),
-                    13 to const(0.45f),
+                    11 to const(0.6f),
+                    13 to const(0.5f),
                     15 to const(0f),
                 ),
             )
