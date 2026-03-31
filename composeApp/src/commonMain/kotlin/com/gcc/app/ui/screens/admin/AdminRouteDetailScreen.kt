@@ -261,6 +261,159 @@ fun AdminRouteDetailScreen(
                 }
             }
 
+            // ── Assign Route to Worker ──────────────────────────────────
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    "\uD83D\uDC77 Assign Route",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Worker picker
+                val workers = uiState.workers
+                var selectedWorkerId by remember { mutableStateOf<Int?>(null) }
+                var isTestAssignment by remember { mutableStateOf(false) }
+                var isAssigning by remember { mutableStateOf(false) }
+                var assignSuccess by remember { mutableStateOf<String?>(null) }
+
+                if (workers.isEmpty()) {
+                    Text(
+                        "Loading workers...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSubtle,
+                    )
+                } else {
+                    // Worker dropdown
+                    var expanded by remember { mutableStateOf(false) }
+                    val selectedWorker = workers.find { it.id == selectedWorkerId }
+
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = selectedWorker?.name ?: "Select a worker",
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GccGold,
+                            ),
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                        ) {
+                            workers.forEach { worker ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                worker.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                            Text(
+                                                worker.email,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSubtle,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedWorkerId = worker.id
+                                        expanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Real vs Test toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column {
+                            Text(
+                                if (isTestAssignment) "\uD83E\uDDEA Test Assignment" else "\uD83D\uDCB5 Real Assignment",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isTestAssignment) GccGold else GccGreen,
+                            )
+                            Text(
+                                if (isTestAssignment) "No payment, no DB records — for TestFlight testing"
+                                else "Paid route — payout on completion + verification",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSubtle,
+                            )
+                        }
+                        Switch(
+                            checked = isTestAssignment,
+                            onCheckedChange = { isTestAssignment = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = GccGold,
+                                checkedTrackColor = GccGold.copy(alpha = 0.3f),
+                            ),
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Assign button
+                    Button(
+                        onClick = {
+                            val wid = selectedWorkerId ?: return@Button
+                            isAssigning = true
+                            assignSuccess = null
+                            viewModel.assignRouteToWorker(routeId, wid, isTestAssignment) { success ->
+                                isAssigning = false
+                                assignSuccess = if (success) {
+                                    val workerName = workers.find { it.id == wid }?.name ?: "Worker"
+                                    val mode = if (isTestAssignment) "test" else "real"
+                                    "$workerName assigned ($mode)"
+                                } else "Assignment failed"
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedWorkerId != null && !isAssigning,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isTestAssignment) GccGold else GccGreen,
+                        ),
+                    ) {
+                        if (isAssigning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text(
+                                "Assign to ${selectedWorker?.name?.split(" ")?.firstOrNull() ?: "Worker"}",
+                                color = Color.White,
+                            )
+                        }
+                    }
+
+                    // Success/error feedback
+                    assignSuccess?.let { msg ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (msg.contains("failed")) GccError else GccGreen,
+                        )
+                    }
+                }
+            }
+
             // Remove image button (only shown when an image exists)
             if (route.imageUrl != null) {
                 item {

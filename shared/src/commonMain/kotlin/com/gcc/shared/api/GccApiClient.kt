@@ -316,6 +316,12 @@ class GccApiClient(
 
     // ── Admin API Methods ─────────────────────────────────────────────
 
+    suspend fun adminAssignRoute(routeId: Int, workerId: Int, isTest: Boolean): Job =
+        postJson("/api/admin/routes/$routeId/assign", mapOf(
+            "workerId" to workerId,
+            "isTest" to isTest,
+        ))
+
     suspend fun getAdminStats(): AdminStatsResponse =
         get("/api/admin/analytics/stats")
 

@@ -408,6 +408,18 @@ class AdminPanelViewModel(
         }
     }
 
+    fun assignRouteToWorker(routeId: Int, workerId: Int, isTest: Boolean, onResult: (Boolean) -> Unit) {
+        scope.launch {
+            try {
+                apiClient.adminAssignRoute(routeId, workerId, isTest)
+                onResult(true)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Assignment failed: ${e.message}")
+                onResult(false)
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
