@@ -579,9 +579,9 @@ export function CombinedMap({
                 'fill-color': '#16A34A',
                 'fill-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  8, 0.3, 9, 0.32, 10, 0.35,
-                  11, 0.35, 12, 0.3, 13, 0.22,
-                  13.5, 0.15, 14, 0.08, 14.5, 0,
+                  8, 0.35, 9, 0.38, 10, 0.4,
+                  11, 0.4, 12, 0.35, 13, 0.25,
+                  13.5, 0.18, 14, 0.1, 14.5, 0,
                 ],
               }}
             />
@@ -590,44 +590,20 @@ export function CombinedMap({
 
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
-            {/* Far-zoom dots (z8-11.5): individual red circles so spots
-                stay distinct instead of merging into one heatmap blob */}
-            <Layer
-              id="combined-spot-far-dots"
-              type="circle"
-              maxzoom={11.5}
-              paint={{
-                'circle-radius': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 3, 9, 3.5, 10, 4, 11, 5,
-                ],
-                'circle-color': '#EF4444',
-                'circle-stroke-color': '#ffffff',
-                'circle-stroke-width': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 0.5, 11, 1,
-                ],
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 0.8, 10, 0.85, 11, 0.7, 11.5, 0,
-                ],
-              }}
-            />
-
-            {/* Heatmap layer — green fringe → yellow → red per spot.
-                Starts at z11 where spots have enough pixel spacing.
-                Matches the iOS app's doppler appearance. */}
+            {/* Heatmap layer — visible from widest zoom all the way to z15.
+                No far-zoom dots — heatmap covers everything when zoomed out.
+                Green fringe → yellow → red per spot. */}
             <Layer
               id="combined-spot-heatmap"
               type="heatmap"
-              minzoom={11}
               maxzoom={15}
               paint={{
                 'heatmap-weight': 1,
                 'heatmap-intensity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0.04, 11.5, 0.07, 12, 0.1,
-                  13, 0.12, 13.5, 0.1, 14, 0.07, 15, 0.04,
+                  8, 0.006, 9, 0.012, 10, 0.03,
+                  11, 0.07, 12, 0.1, 13, 0.12,
+                  13.5, 0.1, 14, 0.07, 15, 0.04,
                 ],
                 'heatmap-color': [
                   'interpolate', ['linear'], ['heatmap-density'],
@@ -644,11 +620,13 @@ export function CombinedMap({
                 ],
                 'heatmap-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 7, 12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5, 15, 3,
+                  8, 2, 9, 3, 10, 5, 11, 7,
+                  12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5, 15, 3,
                 ],
                 'heatmap-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  11, 0, 11.5, 0.4, 12, 0.65, 13, 0.6,
+                  8, 0.5, 9, 0.55, 10, 0.6,
+                  11, 0.65, 12, 0.65, 13, 0.6,
                   13.5, 0.5, 14, 0.35, 14.5, 0,
                 ],
               }}
