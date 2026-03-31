@@ -730,46 +730,13 @@ actual fun GccMap(
                 ),
             )
 
-            // Far-zoom spot dots: simple colored circles at z8-11 so spots
-            // stay as distinct points instead of merging into one heatmap blob.
-            CircleLayer(
-                id = "spot-far-dots",
-                source = spotSrc,
-                minZoom = 8f,
-                maxZoom = 11.5f,
-                color = const(Color(0xFFEF4444)),  // red
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    8 to const(2.dp),
-                    9 to const(2.5.dp),
-                    10 to const(3.dp),
-                    11 to const(4.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    8 to const(0.8f),
-                    10 to const(0.85f),
-                    11 to const(0.7f),    // fading for heatmap crossfade
-                    11.5 to const(0f),    // gone — heatmap takes over
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    8 to const(0.5.dp),
-                    11 to const(1.dp),
-                ),
-            )
-
-            // Heatmap: green fringe → yellow → red center per spot.
-            // Only active at z11+ where spots have enough pixel spacing.
-            // The green border around each red/orange spot creates strong contrast.
+            // Heatmap: visible from widest zoom (z8) through z15.
+            // No far-zoom dots — heatmap covers everything when zoomed out.
+            // Green fringe → yellow → orange → red (only dense clusters).
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 11f,
+                minZoom = 8f,
                 maxZoom = 15f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
@@ -786,41 +753,48 @@ actual fun GccMap(
                     0.8 to const(Color(0xFFEF4444)),   // red (very dense)
                     1.0 to const(Color(0xFFDC2626)),   // deep red (extreme hotspot only)
                 ),
-                // Intensity: lower so most spots stay in the yellow/orange zone
+                // Intensity: tuned for fractal-like yellow/red clustering
+                // Higher at mid-zoom so overlapping spots create orange/red pockets
+                // within a sea of yellow — natural clustering visualization
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.03f),
-                    11.5 to const(0.05f),
-                    12 to const(0.07f),  // spots show yellow/orange centers
-                    13 to const(0.08f),  // only overlapping spots reach red
-                    13.5 to const(0.07f),
-                    14 to const(0.05f),
+                    8 to const(0.008f),  // tiny at country zoom
+                    9 to const(0.015f),
+                    10 to const(0.03f),  // halos forming
+                    11 to const(0.05f),  // spots visible
+                    12 to const(0.08f),  // yellow centers, orange where clusters
+                    13 to const(0.1f),   // fractal mix — yellow/orange/red pockets
+                    13.5 to const(0.08f),
+                    14 to const(0.06f),
                     15 to const(0.03f),
                 ),
-                // Radius: tight enough to stay distinct, large enough to show color bands
+                // Radius: grows enough for spots to slightly overlap at cluster edges
+                // creating the fractal blending of yellow into red
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(2.dp),
-                    9 to const(3.dp),
-                    10 to const(5.dp),
-                    11 to const(7.dp),   // defined spots
-                    12 to const(9.dp),   // room for 3-color gradient per spot
-                    13 to const(12.dp),  // green halo → yellow ring → red core
-                    13.5 to const(9.dp),
+                    8 to const(3.dp),    // small at country
+                    9 to const(4.dp),
+                    10 to const(6.dp),   // halos touch at clusters
+                    11 to const(8.dp),   // defined spots
+                    12 to const(10.dp),  // slight overlap at edges → fractal mix
+                    13 to const(13.dp),  // green → yellow → orange → red gradient
+                    13.5 to const(10.dp),
                     14 to const(7.dp),
                     14.5 to const(5.dp),
                     15 to const(3.dp),
                 ),
-                // Opacity: fades in from z11, strong at z12-13, fades for close dots
+                // Opacity: visible from z8 all the way through
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0f),     // dots still visible
-                    11.5 to const(0.4f), // crossfade
+                    8 to const(0.5f),    // visible at far zoom
+                    9 to const(0.55f),
+                    10 to const(0.6f),
+                    11 to const(0.65f),
                     12 to const(0.65f),  // strong
-                    13 to const(0.6f),   // spotty
+                    13 to const(0.6f),   // fractal detail
                     13.5 to const(0.5f),
                     14 to const(0.35f),  // fading for close dots
                     14.5 to const(0f),   // gone
