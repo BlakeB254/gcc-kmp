@@ -243,6 +243,23 @@ class GccApiClient(
             parameter("offset", offset)
         }
 
+    // ── Feed Social ────────────────────────────────────────────────────
+
+    suspend fun getFeedComments(feedItemId: String, limit: Int = 50): List<FeedComment> =
+        get("/api/feed/$feedItemId/comments") { parameter("limit", limit) }
+
+    suspend fun addFeedComment(feedItemId: String, text: String): FeedComment =
+        postJson("/api/feed/$feedItemId/comments", mapOf("text" to text))
+
+    suspend fun addFeedCaption(feedItemId: String, caption: String): FeedItem =
+        patchJson<Map<String, String>, FeedItem>(
+            "/api/feed/$feedItemId/caption",
+            mapOf("caption" to caption),
+        )
+
+    suspend fun optInFeedProfile(feedItemId: String): FeedItem =
+        postJson("/api/feed/$feedItemId/opt-in-profile")
+
     // ── Spot Reports (Public) ─────────────────────────────────────────
 
     suspend fun createSpotReport(request: Any): CommunityReport =

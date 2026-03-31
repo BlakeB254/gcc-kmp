@@ -39,3 +39,13 @@ data class FeedItem(
     val actorId: Int? = null,
     val actorProfileVisible: Boolean = false,
 )
+
+@Serializable
+data class FeedComment(
+    val id: String,
+    val feedItemId: String,
+    val authorName: String,
+    val authorTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
+    val text: String,
+    val timestamp: Instant,
+)

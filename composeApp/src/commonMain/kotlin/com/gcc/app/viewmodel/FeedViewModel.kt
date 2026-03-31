@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.model.FeedComment
 import com.gcc.shared.model.FeedItem
 import com.gcc.shared.model.FeedItemType
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,14 @@ data class FeedUiState(
     val hasMore: Boolean = true,
     val selectedFilter: FeedItemType? = null,
     val error: String? = null,
+    // Comment sheet state
+    val selectedItemId: String? = null,
+    val comments: List<FeedComment> = emptyList(),
+    val isLoadingComments: Boolean = false,
+    val isPostingComment: Boolean = false,
+    // Caption state
+    val captionItemId: String? = null,
+    val isSavingCaption: Boolean = false,
 )
 
 class FeedViewModel(private val apiClient: GccApiClient) {
@@ -92,5 +101,102 @@ class FeedViewModel(private val apiClient: GccApiClient) {
     fun setFilter(type: FeedItemType?) {
         _uiState.value = _uiState.value.copy(selectedFilter = type)
         loadFeed()
+    }
+
+    // ── Comments ──────────────────────────────────────────────────────
+
+    fun openComments(feedItemId: String) {
+        _uiState.value = _uiState.value.copy(
+            selectedItemId = feedItemId,
+            comments = emptyList(),
+            isLoadingComments = true,
+        )
+        scope.launch {
+            try {
+                val comments = apiClient.getFeedComments(feedItemId)
+                _uiState.value = _uiState.value.copy(
+                    comments = comments,
+                    isLoadingComments = false,
+                )
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isLoadingComments = false)
+            }
+        }
+    }
+
+    fun closeComments() {
+        _uiState.value = _uiState.value.copy(
+            selectedItemId = null,
+            comments = emptyList(),
+        )
+    }
+
+    fun postComment(text: String) {
+        val itemId = _uiState.value.selectedItemId ?: return
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isPostingComment = true)
+            try {
+                val newComment = apiClient.addFeedComment(itemId, text)
+                _uiState.value = _uiState.value.copy(
+                    comments = _uiState.value.comments + newComment,
+                    isPostingComment = false,
+                )
+                // Update comment count on the feed item
+                _uiState.value = _uiState.value.copy(
+                    items = _uiState.value.items.map {
+                        if (it.id == itemId) it.copy(commentCount = it.commentCount + 1)
+                        else it
+                    },
+                )
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isPostingComment = false)
+            }
+        }
+    }
+
+    // ── Captions ──────────────────────────────────────────────────────
+
+    fun startAddCaption(feedItemId: String) {
+        _uiState.value = _uiState.value.copy(captionItemId = feedItemId)
+    }
+
+    fun cancelCaption() {
+        _uiState.value = _uiState.value.copy(captionItemId = null)
+    }
+
+    fun saveCaption(text: String) {
+        val itemId = _uiState.value.captionItemId ?: return
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isSavingCaption = true)
+            try {
+                val updated = apiClient.addFeedCaption(itemId, text)
+                _uiState.value = _uiState.value.copy(
+                    items = _uiState.value.items.map {
+                        if (it.id == itemId) it.copy(caption = updated.caption)
+                        else it
+                    },
+                    captionItemId = null,
+                    isSavingCaption = false,
+                )
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isSavingCaption = false)
+            }
+        }
+    }
+
+    // ── Profile Opt-in ────────────────────────────────────────────────
+
+    fun optInProfile(feedItemId: String) {
+        scope.launch {
+            try {
+                val updated = apiClient.optInFeedProfile(feedItemId)
+                _uiState.value = _uiState.value.copy(
+                    items = _uiState.value.items.map {
+                        if (it.id == feedItemId) it.copy(actorProfileVisible = true)
+                        else it
+                    },
+                )
+            } catch (_: Exception) { }
+        }
     }
 }
