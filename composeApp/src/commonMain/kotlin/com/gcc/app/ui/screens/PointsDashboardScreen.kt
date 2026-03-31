@@ -123,6 +123,28 @@ fun PointsDashboardScreen(onBack: () -> Unit = {}) {
                         )
                     }
 
+                    // Next milestone card
+                    item {
+                        NextMilestoneCard(totalPoints = summary.totalPoints, spacing = spacing)
+                    }
+
+                    // How to earn section
+                    item {
+                        SectionHeader(title = "How to Earn Points")
+                    }
+
+                    item {
+                        GccCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                EarnTip(emoji = "\uD83D\uDCF8", action = "Report a dirty spot", points = "+5 pts")
+                                EarnTip(emoji = "\uD83E\uDDF9", action = "Volunteer cleanup", points = "+20 pts")
+                                EarnTip(emoji = "\uD83D\uDD0D", action = "Verify a spot (dirty)", points = "+3 pts")
+                                EarnTip(emoji = "\u2728", action = "Verify a spot (clean)", points = "+5 pts")
+                                EarnTip(emoji = "\u2705", action = "Report already clean", points = "+2 pts")
+                            }
+                        }
+                    }
+
                     // Recent activity
                     if (summary.recentEntries.isNotEmpty()) {
                         item {
@@ -134,6 +156,28 @@ fun PointsDashboardScreen(onBack: () -> Unit = {}) {
                             key = { it.id },
                         ) { entry ->
                             ActivityRow(entry = entry, spacing = spacing)
+                        }
+                    } else {
+                        item {
+                            GccCard {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text("\uD83C\uDF1F", style = MaterialTheme.typography.displaySmall)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Start earning!",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    )
+                                    Text(
+                                        "Report spots, verify cleanups, and volunteer\nto see your activity here.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextMuted,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -294,5 +338,98 @@ private fun ActivityRow(entry: PointsLedgerEntry, spacing: GccSpacing) {
                 color = GccGold,
             )
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Next Milestone Card
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NextMilestoneCard(totalPoints: Int, spacing: GccSpacing) {
+    data class Milestone(val points: Int, val name: String, val emoji: String)
+    val milestones = listOf(
+        Milestone(10, "First Steps", "\uD83D\uDC63"),
+        Milestone(50, "Community Helper", "\uD83E\uDD1D"),
+        Milestone(100, "Block Champion", "\uD83C\uDFC6"),
+        Milestone(250, "Neighborhood Hero", "\uD83E\uDDB8"),
+        Milestone(500, "Clean Streets Legend", "\uD83C\uDF1F"),
+        Milestone(1000, "GCC Ambassador", "\uD83C\uDF0D"),
+    )
+
+    val next = milestones.firstOrNull { it.points > totalPoints }
+    val current = milestones.lastOrNull { it.points <= totalPoints }
+
+    if (next != null) {
+        val progress = totalPoints.toFloat() / next.points
+        GccCard(accentColor = CardAccentGold) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(next.emoji, style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.width(spacing.sm))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Next: ${next.name}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = GccGold,
+                        trackColor = GccGold.copy(alpha = 0.15f),
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "$totalPoints / ${next.points} points",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                    )
+                }
+            }
+        }
+    } else if (current != null) {
+        GccCard(accentColor = CardAccentGold) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(current.emoji, style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.width(spacing.sm))
+                Text(
+                    "Max rank: ${current.name}!",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = GccGold,
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Earn Tip Row
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun EarnTip(emoji: String, action: String, points: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(emoji, style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            action,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            points,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = GccGold,
+        )
     }
 }

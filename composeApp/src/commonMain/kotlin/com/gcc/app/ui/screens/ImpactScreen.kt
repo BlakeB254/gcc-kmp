@@ -99,12 +99,24 @@ fun ImpactScreen(onBack: () -> Unit = {}) {
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "No impact data available yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted,
-                        textAlign = TextAlign.Center,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp),
+                    ) {
+                        Text("\uD83C\uDF0D", style = MaterialTheme.typography.displayLarge)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "Building Community Impact",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Every spot you report, every block you clean, and every verification you make contributes to a cleaner neighborhood.\n\nYour impact data will appear here as the community takes action.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMuted,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
 

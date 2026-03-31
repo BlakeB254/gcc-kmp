@@ -73,6 +73,31 @@ fun FeedScreen(
         }
     }
 
+    // Comment bottom sheet
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (uiState.selectedItemId != null) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.closeComments() },
+            sheetState = sheetState,
+        ) {
+            CommentSheet(
+                comments = uiState.comments,
+                isLoading = uiState.isLoadingComments,
+                isPosting = uiState.isPostingComment,
+                onPost = { viewModel.postComment(it) },
+            )
+        }
+    }
+
+    // Caption input dialog
+    if (uiState.captionItemId != null) {
+        CaptionDialog(
+            isSaving = uiState.isSavingCaption,
+            onSave = { viewModel.saveCaption(it) },
+            onDismiss = { viewModel.cancelCaption() },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
@@ -187,6 +212,9 @@ fun FeedScreen(
                     items(uiState.items, key = { it.id }) { item ->
                         FeedCard(
                             item = item,
+                            onCommentTap = { viewModel.openComments(item.id) },
+                            onCaptionTap = { viewModel.startAddCaption(item.id) },
+                            onOptInProfile = { viewModel.optInProfile(item.id) },
                             modifier = Modifier.padding(horizontal = 13.dp),
                         )
                     }
@@ -270,8 +298,16 @@ private fun FilterChipsRow(
 @Composable
 private fun FeedCard(
     item: FeedItem,
+    onCommentTap: () -> Unit = {},
+    onCaptionTap: () -> Unit = {},
+    onOptInProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    // Article cards get a distinct visual treatment
+    if (item.type == FeedItemType.ARTICLE) {
+        ArticleCard(item = item, onCommentTap = onCommentTap, modifier = modifier)
+        return
+    }
     val accentColor = when (item.type) {
         FeedItemType.SPOT_REPORT -> CardAccentPurple
         FeedItemType.BOUNTY_CREATED, FeedItemType.BOUNTY_COMPLETED -> CardAccentGold
@@ -467,30 +503,59 @@ private fun FeedCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Comment indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            // Comment button
+            Surface(
+                onClick = onCommentTap,
+                shape = RoundedCornerShape(6.dp),
+                color = Color.Transparent,
             ) {
-                Text(
-                    "\uD83D\uDCAC",
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Text(
-                    if (item.commentCount > 0) "${item.commentCount}" else "Comment",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        "\uD83D\uDCAC",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Text(
+                        if (item.commentCount > 0) "${item.commentCount}" else "Comment",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                    )
+                }
             }
 
-            // "Add your story" prompt for events without a caption
-            // (only shown if the actor matches the current user — actorProfileVisible indicates opt-in)
-            if (item.caption == null && item.actorProfileVisible) {
-                Text(
-                    "Add a caption...",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = GccGreen,
-                )
+            // Caption prompt for user's own events
+            if (item.caption == null && item.actorId != null) {
+                Surface(
+                    onClick = onCaptionTap,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Transparent,
+                ) {
+                    Text(
+                        "\u270F\uFE0F Add a caption...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GccGreen,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            // Profile opt-in prompt (1-click)
+            if (!item.actorProfileVisible && item.actorId != null) {
+                Surface(
+                    onClick = onOptInProfile,
+                    shape = RoundedCornerShape(6.dp),
+                    color = GccGreen.copy(alpha = 0.08f),
+                ) {
+                    Text(
+                        "\uD83D\uDC64 Add profile",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GccGreen,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
             }
         }
     }
@@ -871,9 +936,292 @@ private fun timeAgo(timestamp: kotlinx.datetime.Instant): String {
         diffDays < 30 -> "${diffDays / 7}w"
         else -> {
             @Suppress("DEPRECATION")
-            val dt = timestamp.toLocalDateTime(TimeZone.of("America/Chicago"))
+            val dt = timestamp.toLocalDateTime(TimeZone.currentSystemDefault())
             @Suppress("DEPRECATION")
             "${dt.monthNumber}/${dt.dayOfMonth}"
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Comment Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CommentSheet(
+    comments: List<com.gcc.shared.model.FeedComment>,
+    isLoading: Boolean,
+    isPosting: Boolean,
+    onPost: (String) -> Unit,
+) {
+    var commentText by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 24.dp),
+    ) {
+        Text(
+            "Comments",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(100.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = GccGreen, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        } else if (comments.isEmpty()) {
+            Text(
+                "No comments yet — be the first!",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                modifier = Modifier.padding(vertical = 16.dp),
+            )
+        } else {
+            comments.forEach { comment ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(GccGreen.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            comment.authorName.take(2).uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = GccGreen,
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                comment.authorName,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            )
+                            Text(
+                                timeAgo(comment.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSubtle,
+                            )
+                        }
+                        Text(
+                            comment.text,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Post comment input
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = commentText,
+                onValueChange = { commentText = it },
+                placeholder = { Text("Write a comment...") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = GccGreen,
+                    cursorColor = GccGreen,
+                ),
+            )
+            Button(
+                onClick = {
+                    if (commentText.isNotBlank()) {
+                        onPost(commentText.trim())
+                        commentText = ""
+                    }
+                },
+                enabled = commentText.isNotBlank() && !isPosting,
+                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                if (isPosting) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("Post", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Caption Dialog
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CaptionDialog(
+    isSaving: Boolean,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var captionText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Your Caption") },
+        text = {
+            Column {
+                Text(
+                    "Share what this moment meant to you.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = captionText,
+                    onValueChange = { captionText = it },
+                    placeholder = { Text("Your story...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GccGreen,
+                        cursorColor = GccGreen,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (captionText.isNotBlank()) onSave(captionText.trim()) },
+                enabled = captionText.isNotBlank() && !isSaving,
+                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("Save")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextMuted)
+            }
+        },
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Article Card (GCC Admin Posts)
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ArticleCard(
+    item: FeedItem,
+    onCommentTap: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    GccCard(
+        modifier = modifier,
+        accentColor = GccGreenDark,
+    ) {
+        // GCC branding header
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            GccLogo(size = 28.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "GCC",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = GccGreenDark,
+                )
+                Text(
+                    "Community Update",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSubtle,
+                )
+            }
+            Text(
+                timeAgo(item.timestamp),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSubtle,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Headline
+        Text(
+            item.title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        )
+
+        // Body
+        if (item.description.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                item.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Hero image placeholder
+        if (item.mediaUrls.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(GccGreenDark.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "\uD83D\uDCF0",
+                    style = MaterialTheme.typography.displaySmall,
+                )
+            }
+        }
+
+        // Comment button
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            onClick = onCommentTap,
+            shape = RoundedCornerShape(6.dp),
+            color = Color.Transparent,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("\uD83D\uDCAC", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    if (item.commentCount > 0) "${item.commentCount}" else "Comment",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
+            }
         }
     }
 }
