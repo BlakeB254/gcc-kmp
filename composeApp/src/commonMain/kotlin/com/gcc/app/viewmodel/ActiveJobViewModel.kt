@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.LocationTrackingController
+import com.gcc.app.platform.triggerHapticFeedback
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
@@ -179,6 +180,7 @@ class ActiveJobViewModel(
         }
 
         val newIndex = currentIndex + 1
+        triggerHapticFeedback()
         _uiState.value = state.copy(
             currentCheckpointIndex = newIndex,
             checkpoints = updated,

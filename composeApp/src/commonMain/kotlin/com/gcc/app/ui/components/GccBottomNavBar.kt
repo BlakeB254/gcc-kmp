@@ -2,10 +2,16 @@ package com.gcc.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.DividerColor
 import com.gcc.app.ui.theme.GccGold
@@ -18,8 +24,6 @@ fun GccBottomNavBar(
     isAdmin: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    // Admin: 4 tabs — Dashboard (0), Map (1), Admin (2, gold), Profile (3)
-    // Non-admin: 3 tabs — Dashboard (0), Map (1), Profile (2)
     Column(modifier = modifier) {
         Box(
             modifier = Modifier
@@ -31,13 +35,13 @@ fun GccBottomNavBar(
             containerColor = Color.White,
             contentColor = GccGreen,
         ) {
-            NavTab(selected = selectedTab == 0, onClick = { onTabSelected(0) }, icon = "\uD83C\uDFE0", label = "Dashboard")
-            NavTab(selected = selectedTab == 1, onClick = { onTabSelected(1) }, icon = "\uD83C\uDF0D", label = "Map")
+            NavTab(selected = selectedTab == 0, onClick = { onTabSelected(0) }, icon = Icons.Default.Home, label = "Dashboard")
+            NavTab(selected = selectedTab == 1, onClick = { onTabSelected(1) }, icon = Icons.Default.LocationOn, label = "Map")
             if (isAdmin) {
-                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = "\uD83D\uDEE1\uFE0F", label = "Admin", color = GccGold)
-                NavTab(selected = selectedTab == 3, onClick = { onTabSelected(3) }, icon = "\uD83D\uDC64", label = "Profile")
+                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = Icons.Default.Settings, label = "Admin", color = GccGold)
+                NavTab(selected = selectedTab == 3, onClick = { onTabSelected(3) }, icon = Icons.Default.Person, label = "Profile")
             } else {
-                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = "\uD83D\uDC64", label = "Profile")
+                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = Icons.Default.Person, label = "Profile")
             }
         }
     }
@@ -47,14 +51,14 @@ fun GccBottomNavBar(
 private fun RowScope.NavTab(
     selected: Boolean,
     onClick: () -> Unit,
-    icon: String,
+    icon: ImageVector,
     label: String,
     color: Color = GccGreen,
 ) {
     NavigationBarItem(
         selected = selected,
         onClick = onClick,
-        icon = { Text(icon) },
+        icon = { Icon(icon, contentDescription = label) },
         label = { Text(label) },
         colors = NavigationBarItemDefaults.colors(
             selectedIconColor = color,

@@ -139,16 +139,21 @@ actual fun GccMap(
             )
         }
 
+        // Bounds check — snap back if user pans too far outside service area
         LaunchedEffect(camera.position) {
             val pos = camera.position
             val lat = pos.target.latitude
             val lng = pos.target.longitude
-            val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
-            val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
-            if (clampedLat != lat || clampedLng != lng) {
+            // Only snap if significantly outside padded bounds (reduces flicker from micro-adjustments)
+            val outsideLat = lat < paddedBounds.south - 0.005 || lat > paddedBounds.north + 0.005
+            val outsideLng = lng < paddedBounds.west - 0.005 || lng > paddedBounds.east + 0.005
+            if (outsideLat || outsideLng) {
+                val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
+                val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
                 camera.animateTo(
-                    finalPosition = pos.copy(
-                        target = Position(latitude = clampedLat, longitude = clampedLng)
+                    finalPosition = CameraPosition(
+                        target = Position(latitude = clampedLat, longitude = clampedLng),
+                        zoom = pos.zoom,
                     ),
                     duration = 300.milliseconds,
                 )

@@ -584,8 +584,9 @@ private fun FeedMediaRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // "Before" photos
-        mediaUrls.forEachIndexed { index, _ ->
+        mediaUrls.forEachIndexed { index, url ->
             PhotoThumbnail(
+                url = url,
                 label = if (showLabels) "Before" else null,
                 sublabel = if (mediaUrls.size > 1) "${index + 1}" else null,
                 accentColor = accentColor,
@@ -595,8 +596,9 @@ private fun FeedMediaRow(
         }
 
         // "After" / completion photos
-        completionMediaUrls.forEachIndexed { index, _ ->
+        completionMediaUrls.forEachIndexed { index, url ->
             PhotoThumbnail(
+                url = url,
                 label = if (showLabels) "After" else if (hasAfter && !hasBefore) "Verified" else null,
                 sublabel = if (completionMediaUrls.size > 1) "${index + 1}" else null,
                 accentColor = if (hasAfter && !hasBefore) GccGreen else GccCompleted,
@@ -613,22 +615,45 @@ private fun FeedMediaRow(
  */
 @Composable
 private fun PhotoThumbnail(
+    url: String = "",
     label: String?,
     sublabel: String?,
     accentColor: Color,
     feedType: FeedItemType,
     isBefore: Boolean,
 ) {
+    val isRealUrl = url.startsWith("http://") || url.startsWith("https://")
+
     Box(
         modifier = Modifier
             .size(width = 120.dp, height = 89.dp)
             .clip(RoundedCornerShape(8.dp)),
     ) {
+        if (isRealUrl) {
+            // Real photo from server
+            com.gcc.app.ui.components.NetworkImage(
+                url = url,
+                contentDescription = label ?: "Photo",
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Canvas: full scene when no image, subtle overlay when image exists
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
 
-            // Gradient background
+            if (isRealUrl) {
+                // Just a subtle bottom gradient for label readability
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f)),
+                        startY = h * 0.5f,
+                        endY = h,
+                    ),
+                )
+            } else {
+            // Gradient background (placeholder mode)
             val gradientColors = if (isBefore) {
                 listOf(
                     accentColor.copy(alpha = 0.25f),
@@ -660,6 +685,7 @@ private fun PhotoThumbnail(
                 FeedItemType.LEADERBOARD_CHANGE -> drawRouteScene(w, h)
                 FeedItemType.ARTICLE -> { /* articles use real images */ }
             }
+            } // end else (placeholder mode)
 
             // Camera icon indicator (top-right corner)
             drawRoundRect(

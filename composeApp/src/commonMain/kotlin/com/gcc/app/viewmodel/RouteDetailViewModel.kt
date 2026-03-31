@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.triggerHapticFeedback
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +63,7 @@ class RouteDetailViewModel(
 
                 val claimedJob = apiClient.claimJob(job.id)
 
+                triggerHapticFeedback()
                 _uiState.value = _uiState.value.copy(
                     isClaiming = false,
                     claimedJobId = claimedJob.id,
