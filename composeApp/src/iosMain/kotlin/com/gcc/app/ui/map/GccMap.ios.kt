@@ -742,16 +742,16 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),   // transparent
-                    0.01 to const(Color(0xFFBBF7D0)),  // light green (fringe)
+                    0.005 to const(Color(0xFFDCFCE7)), // faintest green
+                    0.02 to const(Color(0xFFBBF7D0)),  // light green
                     0.04 to const(Color(0xFF86EFAC)),  // medium green
-                    0.08 to const(Color(0xFF4ADE80)),  // strong green
-                    0.14 to const(Color(0xFFFDE047)),  // bright yellow
-                    0.22 to const(Color(0xFFFACC15)),  // golden yellow — wide band
-                    0.32 to const(Color(0xFFEAB308)),  // amber
-                    0.45 to const(Color(0xFFF97316)),  // orange — long transition
-                    0.6 to const(Color(0xFFF87171)),   // light red (only dense clusters)
-                    0.8 to const(Color(0xFFEF4444)),   // red (very dense)
-                    1.0 to const(Color(0xFFDC2626)),   // deep red (extreme hotspot only)
+                    0.07 to const(Color(0xFFFDE047)),  // yellow — VERY early
+                    0.12 to const(Color(0xFFFACC15)),  // golden yellow
+                    0.2 to const(Color(0xFFEAB308)),   // amber
+                    0.3 to const(Color(0xFFF97316)),   // orange
+                    0.45 to const(Color(0xFFF87171)),  // light red
+                    0.65 to const(Color(0xFFEF4444)),  // red (dense clusters only)
+                    1.0 to const(Color(0xFFDC2626)),   // deep red (extreme)
                 ),
                 // Intensity: tuned for fractal-like yellow/red clustering
                 // Higher at mid-zoom so overlapping spots create orange/red pockets
