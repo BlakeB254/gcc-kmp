@@ -737,15 +737,15 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),  // transparent
-                    0.02 to const(Color(0xFFBBF7D0)), // light green (fringe)
-                    0.07 to const(Color(0xFF86EFAC)), // medium green
-                    0.12 to const(Color(0xFF4ADE80)), // strong green (outer ring)
-                    0.2 to const(Color(0xFFFDE047)),  // yellow — starts EARLIER
-                    0.3 to const(Color(0xFFEAB308)),  // amber — wide yellow band
-                    0.4 to const(Color(0xFFF97316)),  // orange — transition
-                    0.55 to const(Color(0xFFEF4444)), // red
-                    0.75 to const(Color(0xFFDC2626)), // strong red
-                    1.0 to const(Color(0xFFB91C1C)),  // deep red (hotspot core)
+                    0.01 to const(Color(0xFFBBF7D0)), // light green (fringe)
+                    0.04 to const(Color(0xFF86EFAC)), // medium green
+                    0.08 to const(Color(0xFF4ADE80)), // strong green
+                    0.12 to const(Color(0xFFFDE047)), // yellow — very early threshold
+                    0.18 to const(Color(0xFFEAB308)), // amber — wide band
+                    0.25 to const(Color(0xFFF97316)), // orange
+                    0.35 to const(Color(0xFFEF4444)), // red — reaches red sooner
+                    0.6 to const(Color(0xFFDC2626)),  // strong red
+                    1.0 to const(Color(0xFFB91C1C)),  // deep red core
                 ),
                 // Intensity: strong enough for full-screen map — each spot shows
                 // green ring → yellow band → red core even on large viewports
