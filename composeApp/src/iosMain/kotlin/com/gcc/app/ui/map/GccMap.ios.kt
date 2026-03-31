@@ -774,28 +774,29 @@ actual fun GccMap(
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),  // transparent
-                    0.01 to const(Color(0xFFBBF7D0)), // light green (fringe)
-                    0.04 to const(Color(0xFF86EFAC)), // medium green
-                    0.08 to const(Color(0xFF4ADE80)), // strong green
-                    0.12 to const(Color(0xFFFDE047)), // yellow — very early threshold
-                    0.18 to const(Color(0xFFEAB308)), // amber — wide band
-                    0.25 to const(Color(0xFFF97316)), // orange
-                    0.35 to const(Color(0xFFEF4444)), // red — reaches red sooner
-                    0.6 to const(Color(0xFFDC2626)),  // strong red
-                    1.0 to const(Color(0xFFB91C1C)),  // deep red core
+                    0.0 to const(Color(0x00000000)),   // transparent
+                    0.01 to const(Color(0xFFBBF7D0)),  // light green (fringe)
+                    0.04 to const(Color(0xFF86EFAC)),  // medium green
+                    0.08 to const(Color(0xFF4ADE80)),  // strong green
+                    0.14 to const(Color(0xFFFDE047)),  // bright yellow
+                    0.22 to const(Color(0xFFFACC15)),  // golden yellow — wide band
+                    0.32 to const(Color(0xFFEAB308)),  // amber
+                    0.45 to const(Color(0xFFF97316)),  // orange — long transition
+                    0.6 to const(Color(0xFFF87171)),   // light red (only dense clusters)
+                    0.8 to const(Color(0xFFEF4444)),   // red (very dense)
+                    1.0 to const(Color(0xFFDC2626)),   // deep red (extreme hotspot only)
                 ),
-                // Intensity: starts at z11 where dots hand off to heatmap
+                // Intensity: lower so most spots stay in the yellow/orange zone
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    11 to const(0.04f),  // fading in from dot layer
-                    11.5 to const(0.07f),
-                    12 to const(0.1f),   // full-screen: centers reach red
-                    13 to const(0.12f),  // strong — green → yellow → red visible
-                    13.5 to const(0.1f),
-                    14 to const(0.07f),  // thinning
-                    15 to const(0.04f),  // faint
+                    11 to const(0.03f),
+                    11.5 to const(0.05f),
+                    12 to const(0.07f),  // spots show yellow/orange centers
+                    13 to const(0.08f),  // only overlapping spots reach red
+                    13.5 to const(0.07f),
+                    14 to const(0.05f),
+                    15 to const(0.03f),
                 ),
                 // Radius: tight enough to stay distinct, large enough to show color bands
                 radius = interpolate(
