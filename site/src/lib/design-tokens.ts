@@ -72,11 +72,11 @@ export const SPOT_COLORS = {
   HEATMAP_PEAK: '#B91C1C',    // deep red (hotspot cores)
 } as const
 
-// Zoom thresholds for heatmap vs individual dot transition
+// Zoom thresholds — 3 layers: far dots (z8-11.5), heatmap (z11-15), close dots (z14+)
 export const SPOT_ZOOM = {
-  HEATMAP_MIN: 8,      // heatmap appears
-  HEATMAP_MAX: 14,     // heatmap fades out
-  DOTS_MIN: 13,        // individual dots appear
+  HEATMAP_MIN: 11,     // heatmap starts (far dots hand off)
+  HEATMAP_MAX: 15,     // heatmap fades out
+  DOTS_MIN: 14,        // close-zoom dots appear (crossfade with heatmap)
 } as const
 
 export const COMMUNITY_AREA_COLORS = {

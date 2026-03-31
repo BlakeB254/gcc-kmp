@@ -555,65 +555,121 @@ export function CombinedMap({
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
+        {/* Green doppler base — covers entire map at heatmap zoom levels */}
+        {spots.length > 0 && (
+          <Source
+            id="clean-zone-base"
+            type="geojson"
+            data={{
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                },
+              }],
+            }}
+          >
+            <Layer
+              id="clean-zone-fill"
+              type="fill"
+              paint={{
+                'fill-color': '#16A34A',
+                'fill-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  8, 0.3, 9, 0.32, 10, 0.35,
+                  11, 0.35, 12, 0.3, 13, 0.22,
+                  13.5, 0.15, 14, 0.08, 14.5, 0,
+                ],
+              }}
+            />
+          </Source>
+        )}
+
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
-            {/* Heatmap layer — visible at overview zoom, fades as you zoom in */}
+            {/* Far-zoom dots (z8-11.5): individual red circles so spots
+                stay distinct instead of merging into one heatmap blob */}
             <Layer
-              id="combined-spot-heatmap"
-              type="heatmap"
-              maxzoom={SPOT_ZOOM.HEATMAP_MAX}
+              id="combined-spot-far-dots"
+              type="circle"
+              maxzoom={11.5}
               paint={{
-                'heatmap-weight': 1,
-                // Unified heatmap — purple edge → orange → red core, tight radius
-                'heatmap-intensity': [
+                'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  8, 0.005, 9, 0.008, 10, 0.015, 11, 0.04,
-                  12, 0.05, 13, 0.05, 14, 0.04, SPOT_ZOOM.HEATMAP_MAX, 0.025,
+                  8, 3, 9, 3.5, 10, 4, 11, 5,
                 ],
-                'heatmap-color': [
-                  'interpolate', ['linear'], ['heatmap-density'],
-                  0,    'rgba(0,0,0,0)',
-                  0.02, SPOT_COLORS.HEATMAP_EDGE,
-                  0.08, '#86EFAC',
-                  0.2,  SPOT_COLORS.HEATMAP_LOW,
-                  0.4,  SPOT_COLORS.HEATMAP_MED,
-                  0.7,  SPOT_COLORS.HEATMAP_HIGH,
-                  1.0,  SPOT_COLORS.HEATMAP_PEAK,
-                ],
-                'heatmap-radius': [
+                'circle-color': '#EF4444',
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': [
                   'interpolate', ['linear'], ['zoom'],
-                  8, 3, 9, 5, 10, 8, 11, 10,
-                  12, 12, 13, 14, 14, 9, 14.5, 6,
-                  SPOT_ZOOM.HEATMAP_MAX, 4,
+                  8, 0.5, 11, 1,
                 ],
-                'heatmap-opacity': [
+                'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  8, 0.4, 9, 0.5, 10, 0.55, 11, 0.6,
-                  12, 0.6, 13, 0.55, 13.5, 0.5,
-                  SPOT_ZOOM.HEATMAP_MAX, 0,
+                  8, 0.8, 10, 0.85, 11, 0.7, 11.5, 0,
                 ],
               }}
             />
 
-            {/* Individual spot dots — appear at close zoom */}
+            {/* Heatmap layer — green fringe → yellow → red per spot.
+                Starts at z11 where spots have enough pixel spacing.
+                Matches the iOS app's doppler appearance. */}
+            <Layer
+              id="combined-spot-heatmap"
+              type="heatmap"
+              minzoom={11}
+              maxzoom={15}
+              paint={{
+                'heatmap-weight': 1,
+                'heatmap-intensity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  11, 0.04, 11.5, 0.07, 12, 0.1,
+                  13, 0.12, 13.5, 0.1, 14, 0.07, 15, 0.04,
+                ],
+                'heatmap-color': [
+                  'interpolate', ['linear'], ['heatmap-density'],
+                  0,    'rgba(0,0,0,0)',
+                  0.01, SPOT_COLORS.HEATMAP_EDGE,
+                  0.04, '#86EFAC',
+                  0.08, SPOT_COLORS.HEATMAP_LOW,
+                  0.12, '#FDE047',
+                  0.18, SPOT_COLORS.HEATMAP_MED,
+                  0.25, '#F97316',
+                  0.35, SPOT_COLORS.HEATMAP_HIGH,
+                  0.6,  '#DC2626',
+                  1.0,  SPOT_COLORS.HEATMAP_PEAK,
+                ],
+                'heatmap-radius': [
+                  'interpolate', ['linear'], ['zoom'],
+                  11, 7, 12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5, 15, 3,
+                ],
+                'heatmap-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  11, 0, 11.5, 0.4, 12, 0.65, 13, 0.6,
+                  13.5, 0.5, 14, 0.35, 14.5, 0,
+                ],
+              }}
+            />
+
+            {/* Individual spot dots — fade in as heatmap fades out (z14-14.5 crossfade) */}
             <Layer
               id="combined-spot-center"
               type="circle"
-              minzoom={SPOT_ZOOM.DOTS_MIN}
+              minzoom={14}
               paint={{
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 3,
-                  15, 5,
-                  17, 7,
+                  14, 2, 14.5, 3, 16, 5, 17, 7,
                 ],
                 'circle-color': SPOT_COLORS.MARKER,
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
                 'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 0,
-                  14, 1,
+                  14, 0, 14.5, 0.8, 15, 1,
                 ],
               }}
             />
