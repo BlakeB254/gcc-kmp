@@ -6,9 +6,6 @@ import com.gcc.app.platform.saveToSystemCredentials
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,52 +48,33 @@ class LoginViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
-                    contentType(ContentType.Application.Json)
-                    setBody(LoginRequest(email = normalizedEmail, password = password))
-                }
-                if (response.status == HttpStatusCode.OK) {
-                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    val authData = apiResponse.data
-                    if (authData.requiresTwoFactor) {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            requiresTwoFactor = true,
-                            twoFactorToken = authData.twoFactorToken,
-                        )
-                    } else {
-                        tokenManager.saveToken(authData.token!!)
-                        // Save credentials in Keychain for Face ID re-login
-                        tokenManager.saveCredentials(normalizedEmail, password)
-                        // Offer to save in iOS Passwords app for AutoFill
-                        saveToSystemCredentials(normalizedEmail, password)
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            isLoggedIn = true,
-                            worker = authData.worker,
-                            isAdmin = tokenManager.isAdmin(),
-                        )
-                        // Register for push notifications after successful login
-                        registerPushToken()
-                    }
-                } else {
-                    // Extract server error message for better diagnostics
-                    val errorMsg = try {
-                        val errorBody = response.body<ApiResponse<AuthResponse?>>()
-                        errorBody.message ?: "Invalid email or password"
-                    } catch (_: Exception) {
-                        "Login failed (HTTP ${response.status.value})"
-                    }
+                val authData = apiClient.login(normalizedEmail, password)
+                if (authData.requiresTwoFactor) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = errorMsg,
+                        requiresTwoFactor = true,
+                        twoFactorToken = authData.twoFactorToken,
                     )
+                } else {
+                    tokenManager.saveToken(authData.token!!)
+                    // Save credentials in Keychain for Face ID re-login
+                    tokenManager.saveCredentials(normalizedEmail, password)
+                    // Offer to save in iOS Passwords app for AutoFill
+                    saveToSystemCredentials(normalizedEmail, password)
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        worker = authData.worker,
+                        isAdmin = tokenManager.isAdmin(),
+                    )
+                    registerPushToken()
                 }
             } catch (e: Exception) {
                 val detail = e.message ?: "Unknown error"
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = "Login failed: $detail",
+                    error = if ("401" in detail || "403" in detail) "Invalid email or password"
+                           else "Login failed: $detail",
                 )
             }
         }
@@ -107,29 +85,17 @@ class LoginViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val twoFactorToken = _uiState.value.twoFactorToken ?: return@launch
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/verify-2fa") {
-                    contentType(ContentType.Application.Json)
-                    setBody(Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
-                }
-                if (response.status == HttpStatusCode.OK) {
-                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    val authData = apiResponse.data
-                    tokenManager.saveToken(authData.token!!)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isLoggedIn = true,
-                        worker = authData.worker,
-                        isAdmin = tokenManager.isAdmin(),
-                        requiresTwoFactor = false,
-                        twoFactorToken = null,
-                    )
-                    registerPushToken()
-                } else {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Invalid verification code",
-                    )
-                }
+                val authData = apiClient.verify2FA(twoFactorToken, code)
+                tokenManager.saveToken(authData.token!!)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isLoggedIn = true,
+                    worker = authData.worker,
+                    isAdmin = tokenManager.isAdmin(),
+                    requiresTwoFactor = false,
+                    twoFactorToken = null,
+                )
+                registerPushToken()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

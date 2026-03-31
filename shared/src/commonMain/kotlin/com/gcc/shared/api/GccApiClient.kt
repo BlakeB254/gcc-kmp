@@ -251,15 +251,10 @@ class GccApiClient(
     // ── Auth ──────────────────────────────────────────────────────────
 
     suspend fun login(email: String, password: String): AuthResponse =
-        postJson("/api/auth/login", mapOf("email" to email, "password" to password))
+        postJson("/api/auth/login", LoginRequest(email = email, password = password))
 
-    suspend fun register(name: String, email: String, password: String, phone: String? = null): AuthResponse =
-        postJson("/api/auth/register", buildMap {
-            put("name", name)
-            put("email", email)
-            put("password", password)
-            phone?.let { put("phone", it) }
-        })
+    suspend fun register(request: RegisterRequest): AuthResponse =
+        postJson("/api/auth/register", request)
 
     // ── Public API ────────────────────────────────────────────────────
 

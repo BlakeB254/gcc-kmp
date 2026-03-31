@@ -3,12 +3,6 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
-import com.gcc.shared.model.ApiResponse
-import com.gcc.shared.model.AuthResponse
-import com.gcc.shared.model.LoginRequest
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,14 +21,6 @@ data class BiometricAuthState(
 /**
  * Handles biometric re-authentication (silent token restore + credential re-login).
  * Used by BiometricGateScreen and the Face ID button on LoginScreen.
- *
- * Dependencies:
- *  - [tokenManager] for token/credential storage
- *  - [biometricAuth] for platform biometric prompts
- *  - [apiClient] for credential re-login when no valid token is available
- *
- * Post-login side-effects (e.g. push-token registration) are handled by the caller
- * after [loginWithBiometricSuspend] returns true.
  */
 class BiometricAuthViewModel(
     private val tokenManager: TokenManager,
@@ -49,7 +35,6 @@ class BiometricAuthViewModel(
     /**
      * Suspending biometric re-login for BiometricGateScreen.
      * Returns true if login succeeded, false otherwise.
-     * No race conditions — caller can simply await the result.
      */
     suspend fun loginWithBiometricSuspend(): Boolean {
         // Fast path: active token still valid
@@ -69,37 +54,27 @@ class BiometricAuthViewModel(
             return true
         }
 
-        // Slow path: re-login with saved credentials
+        // Slow path: re-login with saved credentials via typed API
         val credentials = tokenManager.loadCredentials() ?: return false
 
         _state.value = _state.value.copy(isLoading = true, error = null)
         return try {
             val (email, password) = credentials
-            val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/login") {
-                contentType(ContentType.Application.Json)
-                setBody(LoginRequest(email = email, password = password))
-            }
-            if (response.status == HttpStatusCode.OK) {
-                val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                val authData = apiResponse.data
-                if (authData.requiresTwoFactor) {
-                    _state.value = _state.value.copy(isLoading = false)
-                    false
-                } else {
-                    tokenManager.saveToken(authData.token!!)
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        isLoggedIn = true,
-                        isAdmin = tokenManager.isAdmin(),
-                    )
-                    true
-                }
-            } else {
-                tokenManager.clearCredentials()
+            val authData = apiClient.login(email, password)
+            if (authData.requiresTwoFactor) {
                 _state.value = _state.value.copy(isLoading = false)
                 false
+            } else {
+                tokenManager.saveToken(authData.token!!)
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    isLoggedIn = true,
+                    isAdmin = tokenManager.isAdmin(),
+                )
+                true
             }
         } catch (_: Exception) {
+            tokenManager.clearCredentials()
             _state.value = _state.value.copy(isLoading = false)
             false
         }

@@ -3,9 +3,6 @@ package com.gcc.app.viewmodel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,7 +36,6 @@ class RegisterViewModel(
         addressState: String = "IL",
         addressZip: String = "",
     ) {
-        // Client-side validation
         val validationError = validate(name, email, password)
         if (validationError != null) {
             _uiState.value = _uiState.value.copy(error = validationError)
@@ -49,33 +45,22 @@ class RegisterViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/auth/register") {
-                    contentType(ContentType.Application.Json)
-                    setBody(RegisterRequest(
-                        name = name.trim(),
-                        email = email.trim(),
-                        phone = phone.trim(),
-                        password = password,
-                        addressStreet = addressStreet.trim().ifBlank { null },
-                        addressCity = addressCity.trim().ifBlank { null },
-                        addressState = addressState.trim().ifBlank { null },
-                        addressZip = addressZip.trim().ifBlank { null },
-                    ))
-                }
-                if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
-                    val apiResponse = response.body<ApiResponse<AuthResponse>>()
-                    apiResponse.data.token?.let { tokenManager.saveToken(it) }
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isRegistered = true,
-                        worker = apiResponse.data.worker,
-                    )
-                } else {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Registration failed. Please try again.",
-                    )
-                }
+                val authData = apiClient.register(RegisterRequest(
+                    name = name.trim(),
+                    email = email.trim(),
+                    phone = phone.trim(),
+                    password = password,
+                    addressStreet = addressStreet.trim().ifBlank { null },
+                    addressCity = addressCity.trim().ifBlank { null },
+                    addressState = addressState.trim().ifBlank { null },
+                    addressZip = addressZip.trim().ifBlank { null },
+                ))
+                authData.token?.let { tokenManager.saveToken(it) }
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isRegistered = true,
+                    worker = authData.worker,
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
