@@ -54,6 +54,7 @@ fun RouteTestScreen(
         onDispose {
             locationProvider.stopLocationUpdates()
             viewModel.cleanup()
+            viewModel.onCleared()
         }
     }
 

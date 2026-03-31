@@ -163,7 +163,6 @@ class VolunteerCleanupViewModel(
                 error = null,
             )
             try {
-                val durationMinutes = (state.elapsedSeconds / 60).toInt()
                 val request = CompleteVolunteerRequest(
                     afterMediaUrls = state.afterPhotoUrls,
                     trashHeapMediaUrl = state.trashHeapUrl,

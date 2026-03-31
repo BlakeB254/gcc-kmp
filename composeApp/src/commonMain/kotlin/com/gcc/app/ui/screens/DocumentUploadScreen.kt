@@ -32,6 +32,10 @@ fun DocumentUploadScreen(
     val viewModel = koinInject<DocumentUploadViewModel>()
     val uiState by viewModel.uiState.collectAsState()
 
+    DisposableEffect(Unit) {
+        onDispose { viewModel.onCleared() }
+    }
+
     LaunchedEffect(uiState.isComplete) {
         if (uiState.isComplete) onComplete()
     }

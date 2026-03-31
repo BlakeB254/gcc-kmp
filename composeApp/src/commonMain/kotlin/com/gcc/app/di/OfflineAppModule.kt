@@ -20,6 +20,14 @@ import com.gcc.app.viewmodel.SettingsViewModel
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.WalletViewModel
+import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.app.viewmodel.DocumentUploadViewModel
+import com.gcc.app.viewmodel.ImpactViewModel
+import com.gcc.app.viewmodel.PointsDashboardViewModel
+import com.gcc.app.viewmodel.RouteScanViewModel
+import com.gcc.app.viewmodel.RouteTestViewModel
+import com.gcc.app.viewmodel.SpotVerificationViewModel
+import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.offline.OfflineTokenManager
 import com.gcc.shared.offline.createOfflineApiClient
@@ -49,4 +57,12 @@ val offlineAppModule = module {
     singleOf(::WalletViewModel)
     singleOf(::LeaderboardViewModel)
     singleOf(::FeedViewModel)
+    singleOf(::AdminPanelViewModel)
+    singleOf(::SpotVerificationViewModel)
+    singleOf(::PointsDashboardViewModel)
+    singleOf(::ImpactViewModel)
+    singleOf(::SponsorWallViewModel)
+    factory { RouteScanViewModel(get(), get()) }
+    factory { RouteTestViewModel(get(), get()) }
+    factory { DocumentUploadViewModel(get(), get()) }
 }

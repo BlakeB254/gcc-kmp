@@ -6,7 +6,8 @@ package com.gcc.app.navigation
  * Supported URI patterns:
  * - `/routes/{id}` → RouteDetail
  * - `/bounties/{id}` → BountyDetail
- * - `/jobs/{id}` → ActiveJob (routeId defaults to 0 since we don't have it from the URL)
+ * - `/jobs/{jobId}` → ActiveJob
+ * - `/jobs/{jobId}/{routeId}` → ActiveJob with explicit routeId
  * - `/wallet` → Wallet
  * - `/leaderboard` → Leaderboard
  * - `/feed` → Feed
@@ -44,8 +45,10 @@ object DeepLinkParser {
             segments.size == 2 && segments[0] == "bounties" -> {
                 segments[1].toIntOrNull()?.let { Screen.BountyDetail(it) }
             }
-            segments.size == 2 && segments[0] == "jobs" -> {
-                segments[1].toIntOrNull()?.let { Screen.ActiveJob(jobId = it, routeId = 0) }
+            segments.size >= 2 && segments[0] == "jobs" -> {
+                val jobId = segments[1].toIntOrNull() ?: return null
+                val routeId = segments.getOrNull(2)?.toIntOrNull() ?: 0
+                Screen.ActiveJob(jobId = jobId, routeId = routeId)
             }
             segments.size == 1 && segments[0] == "wallet" -> Screen.Wallet
             segments.size == 1 && segments[0] == "leaderboard" -> Screen.Leaderboard
