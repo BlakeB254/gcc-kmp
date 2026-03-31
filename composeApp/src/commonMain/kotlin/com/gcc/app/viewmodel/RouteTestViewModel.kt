@@ -4,12 +4,11 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,14 +41,18 @@ class RouteTestViewModel(
 
     private var timerJob: Job? = null
 
+    fun onCleared() {
+        timerJob?.cancel()
+        scope.cancel()
+    }
+
     fun loadRoute(routeId: Int) {
         scope.launch {
             _uiState.value = RouteTestUiState(isLoading = true)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes/$routeId")
-                val route = response.body<ApiResponse<Route>>()
+                val route = apiClient.getRoute(routeId)
 
-                val checkpointItems = route.data.checkpoints
+                val checkpointItems = route.checkpoints
                     .sortedBy { it.sequenceOrder }
                     .mapIndexed { index, cp ->
                         CheckpointUiItem(
@@ -59,7 +62,7 @@ class RouteTestViewModel(
                     }
 
                 _uiState.value = RouteTestUiState(
-                    route = route.data,
+                    route = route,
                     checkpoints = checkpointItems,
                     isLoading = false,
                 )

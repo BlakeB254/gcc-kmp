@@ -2,9 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,10 +33,9 @@ class WalletViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/wallet")
-                val wallet = response.body<ApiResponse<SponsorWallet>>()
+                val wallet = apiClient.getWallet()
                 _uiState.value = _uiState.value.copy(
-                    wallet = wallet.data,
+                    wallet = wallet,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -55,13 +51,9 @@ class WalletViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isDepositing = true, depositError = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/wallet/deposit") {
-                    contentType(ContentType.Application.Json)
-                    setBody(DepositRequest(amount = amount))
-                }
-                val wallet = response.body<ApiResponse<SponsorWallet>>()
+                val wallet = apiClient.depositToWallet(amount)
                 _uiState.value = _uiState.value.copy(
-                    wallet = wallet.data,
+                    wallet = wallet,
                     isDepositing = false,
                     depositAmount = "",
                 )
@@ -78,13 +70,9 @@ class WalletViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isAllocating = true, allocateError = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/wallet/allocate") {
-                    contentType(ContentType.Application.Json)
-                    setBody(AllocateRequest(generalAmount = general, routeAmount = route, bountyAmount = bounty))
-                }
-                val wallet = response.body<ApiResponse<SponsorWallet>>()
+                val wallet = apiClient.allocateWalletFunds(general, route, bounty)
                 _uiState.value = _uiState.value.copy(
-                    wallet = wallet.data,
+                    wallet = wallet,
                     isAllocating = false,
                 )
             } catch (e: Exception) {
@@ -96,15 +84,11 @@ class WalletViewModel(
         }
     }
 
-    fun loadTransactions(limit: Int = 50, offset: Long = 0) {
+    fun loadTransactions(limit: Int = 50, offset: Int = 0) {
         scope.launch {
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/wallet/transactions") {
-                    parameter("limit", limit)
-                    parameter("offset", offset)
-                }
-                val transactions = response.body<ApiResponse<List<WalletTransaction>>>()
-                _uiState.value = _uiState.value.copy(transactions = transactions.data)
+                val transactions = apiClient.getWalletTransactions(limit, offset)
+                _uiState.value = _uiState.value.copy(transactions = transactions)
             } catch (_: Exception) {
                 // Transaction loading is non-critical; silently fail
             }

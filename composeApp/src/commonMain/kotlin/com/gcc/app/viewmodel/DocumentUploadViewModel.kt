@@ -7,6 +7,7 @@ import com.gcc.shared.api.GccApiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +32,10 @@ class DocumentUploadViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(DocumentUploadUiState())
     val uiState: StateFlow<DocumentUploadUiState> = _uiState.asStateFlow()
+
+    fun onCleared() {
+        scope.cancel()
+    }
 
     fun captureGovernmentId() = acquirePhoto(DocType.GOVERNMENT_ID) { cameraManager.capturePhoto() }
     fun pickGovernmentIdFromLibrary() = acquirePhoto(DocType.GOVERNMENT_ID) { pickFromLibrary() }

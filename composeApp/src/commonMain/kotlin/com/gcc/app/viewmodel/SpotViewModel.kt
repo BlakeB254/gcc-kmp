@@ -240,25 +240,14 @@ class SpotViewModel(
                 val submitLat = state.spotLat ?: state.currentLat
                 val submitLng = state.spotLng ?: state.currentLng
 
-                // Embed GPS EXIF into photos and upload
+                // Embed GPS EXIF into photos and upload via typed API (includes auth header)
                 val uploadedUrls = mutableListOf<String>()
                 if (state.capturedPhotos.isNotEmpty()) {
-                    val uploadResponse = apiClient.httpClient.submitFormWithBinaryData(
-                        url = "${apiClient.baseUrl}/api/spots/upload",
-                        formData = formData {
-                            state.capturedPhotos.forEachIndexed { index, photo ->
-                                val gpsBytes = embedGpsExif(photo.bytes, submitLat, submitLng)
-                                append("photo_$index", gpsBytes, Headers.build {
-                                    append(HttpHeaders.ContentType, "image/jpeg")
-                                    append(HttpHeaders.ContentDisposition, "filename=\"photo_$index.jpg\"")
-                                })
-                            }
-                        },
-                    )
-                    if (uploadResponse.status.isSuccess()) {
-                        val result = uploadResponse.body<ApiResponse<PhotoUploadResponse>>()
-                        uploadedUrls.addAll(result.data.urls)
+                    val photoBytesWithGps = state.capturedPhotos.map { photo ->
+                        embedGpsExif(photo.bytes, submitLat, submitLng)
                     }
+                    val urls = apiClient.uploadSpotPhotos(photoBytesWithGps)
+                    uploadedUrls.addAll(urls)
                 }
 
                 // Collect depth analysis from the first photo that has it
@@ -332,9 +321,7 @@ class SpotViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(error = null)
             try {
-                apiClient.httpClient.post("${apiClient.baseUrl}/api/bounties/$bountyId/accept") {
-                    contentType(ContentType.Application.Json)
-                }
+                apiClient.acceptBounty(bountyId)
                 // Remove accepted bounty from list
                 _uiState.value = _uiState.value.copy(
                     matchingBounties = _uiState.value.matchingBounties.filter { it.id != bountyId },

@@ -725,13 +725,46 @@ actual fun GccMap(
                 ),
             )
 
+            // Far-zoom spot dots: simple colored circles at z8-11 so spots
+            // stay as distinct points instead of merging into one heatmap blob.
+            CircleLayer(
+                id = "spot-far-dots",
+                source = spotSrc,
+                minZoom = 8f,
+                maxZoom = 11.5f,
+                color = const(Color(0xFFEF4444)),  // red
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    8 to const(2.dp),
+                    9 to const(2.5.dp),
+                    10 to const(3.dp),
+                    11 to const(4.dp),
+                ),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    8 to const(0.8f),
+                    10 to const(0.85f),
+                    11 to const(0.7f),    // fading for heatmap crossfade
+                    11.5 to const(0f),    // gone — heatmap takes over
+                ),
+                strokeColor = const(Color.White),
+                strokeWidth = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    8 to const(0.5.dp),
+                    11 to const(1.dp),
+                ),
+            )
+
             // Heatmap: green fringe → yellow → red center per spot.
+            // Only active at z11+ where spots have enough pixel spacing.
             // The green border around each red/orange spot creates strong contrast.
-            // Tight radius at all zooms keeps spots distinct (no red blob).
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 8f,
+                minZoom = 11f,
                 maxZoom = 15f,
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
@@ -747,15 +780,12 @@ actual fun GccMap(
                     0.6 to const(Color(0xFFDC2626)),  // strong red
                     1.0 to const(Color(0xFFB91C1C)),  // deep red core
                 ),
-                // Intensity: strong enough for full-screen map — each spot shows
-                // green ring → yellow band → red core even on large viewports
+                // Intensity: starts at z11 where dots hand off to heatmap
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.006f),
-                    9 to const(0.012f),
-                    10 to const(0.03f),
-                    11 to const(0.07f),  // spots show all 3 colors
+                    11 to const(0.04f),  // fading in from dot layer
+                    11.5 to const(0.07f),
                     12 to const(0.1f),   // full-screen: centers reach red
                     13 to const(0.12f),  // strong — green → yellow → red visible
                     13.5 to const(0.1f),
@@ -777,18 +807,16 @@ actual fun GccMap(
                     14.5 to const(5.dp),
                     15 to const(3.dp),
                 ),
-                // Opacity: strong, drops for dot crossfade
+                // Opacity: fades in from z11, strong at z12-13, fades for close dots
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.45f),
-                    9 to const(0.5f),
-                    10 to const(0.55f),
-                    11 to const(0.6f),
+                    11 to const(0f),     // dots still visible
+                    11.5 to const(0.4f), // crossfade
                     12 to const(0.65f),  // strong
                     13 to const(0.6f),   // spotty
                     13.5 to const(0.5f),
-                    14 to const(0.35f),  // fading for dots
+                    14 to const(0.35f),  // fading for close dots
                     14.5 to const(0f),   // gone
                 ),
             )

@@ -5,9 +5,6 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,14 +50,12 @@ class ActiveJobViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val routeResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes/$routeId")
-                val route = routeResponse.body<ApiResponse<Route>>()
+                val route = apiClient.getRoute(routeId)
 
                 // Also fetch the job to get its current status
-                val jobResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/jobs/$jobId")
-                val job = jobResponse.body<ApiResponse<Job>>()
+                val job = apiClient.getJob(jobId)
 
-                val checkpointItems = route.data.checkpoints
+                val checkpointItems = route.checkpoints
                     .sortedBy { it.sequenceOrder }
                     .mapIndexed { index, cp ->
                         CheckpointUiItem(
@@ -70,12 +65,12 @@ class ActiveJobViewModel(
                     }
 
                 _uiState.value = _uiState.value.copy(
-                    job = job.data,
-                    route = route.data,
+                    job = job,
+                    route = route,
                     checkpoints = checkpointItems,
                     isLoading = false,
-                    jobStarted = job.data.status == JobStatus.IN_PROGRESS,
-                    jobCompleted = job.data.status == JobStatus.COMPLETED,
+                    jobStarted = job.status == JobStatus.IN_PROGRESS,
+                    jobCompleted = job.status == JobStatus.COMPLETED,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -91,11 +86,10 @@ class ActiveJobViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isStarting = true, error = null)
             try {
-                val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/jobs/${job.id}/start")
-                val updatedJob = response.body<ApiResponse<Job>>()
+                val updatedJob = apiClient.startJob(job.id)
                 locationTrackingController.startTracking()
                 _uiState.value = _uiState.value.copy(
-                    job = updatedJob.data,
+                    job = updatedJob,
                     isStarting = false,
                     jobStarted = true,
                 )
@@ -113,11 +107,10 @@ class ActiveJobViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isCompleting = true, error = null)
             try {
-                val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/jobs/${job.id}/complete")
-                val updatedJob = response.body<ApiResponse<Job>>()
+                val updatedJob = apiClient.completeJob(job.id)
                 locationTrackingController.stopTracking()
                 _uiState.value = _uiState.value.copy(
-                    job = updatedJob.data,
+                    job = updatedJob,
                     isCompleting = false,
                     jobCompleted = true,
                 )

@@ -2,9 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,16 +33,9 @@ class BountyViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/bounties") {
-                    parameter("limit", 50)
-                    parameter("status", "open")
-                    lat?.let { parameter("lat", it) }
-                    lng?.let { parameter("lng", it) }
-                    communityArea?.let { parameter("communityArea", it) }
-                }
-                val bounties = response.body<ApiResponse<List<Bounty>>>()
+                val bounties = apiClient.getBounties(status = "open", limit = 50)
                 _uiState.value = _uiState.value.copy(
-                    bounties = bounties.data,
+                    bounties = bounties,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -61,12 +51,8 @@ class BountyViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isRefreshing = true)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/bounties") {
-                    parameter("limit", 50)
-                    parameter("status", "open")
-                }
-                val bounties = response.body<ApiResponse<List<Bounty>>>()
-                _uiState.value = _uiState.value.copy(bounties = bounties.data, isRefreshing = false)
+                val bounties = apiClient.getBounties(status = "open", limit = 50)
+                _uiState.value = _uiState.value.copy(bounties = bounties, isRefreshing = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isRefreshing = false)
             }
@@ -77,10 +63,9 @@ class BountyViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null, selectedBounty = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/bounties/$bountyId")
-                val bounty = response.body<ApiResponse<Bounty>>()
+                val bounty = apiClient.getBounty(bountyId)
                 _uiState.value = _uiState.value.copy(
-                    selectedBounty = bounty.data,
+                    selectedBounty = bounty,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -124,13 +109,9 @@ class BountyViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isCreating = true, createError = null)
             try {
-                val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/bounties") {
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                val bounty = response.body<ApiResponse<Bounty>>()
+                val bounty = apiClient.createBounty(request)
                 _uiState.value = _uiState.value.copy(
-                    selectedBounty = bounty.data,
+                    selectedBounty = bounty,
                     isCreating = false,
                 )
             } catch (e: Exception) {

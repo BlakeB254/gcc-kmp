@@ -198,6 +198,69 @@ class GccApiClient(
     suspend fun getJob(jobId: Int): Job =
         get("/api/jobs/$jobId")
 
+    suspend fun startJob(jobId: Int): Job =
+        patchJson<Unit?, Job>("/api/jobs/$jobId/start", null)
+
+    suspend fun completeJob(jobId: Int): Job =
+        patchJson<Unit?, Job>("/api/jobs/$jobId/complete", null)
+
+    // ── Worker Profile ────────────────────────────────────────────────
+
+    suspend fun updateDisplayHandle(handle: String): Worker =
+        patchJson("/api/workers/me/handle", mapOf("handle" to handle))
+
+    // ── Bounties (Public) ─────────────────────────────────────────────
+
+    suspend fun getBounties(status: String? = null, limit: Int = 50): List<Bounty> =
+        get("/api/bounties") {
+            status?.let { parameter("status", it) }
+            parameter("limit", limit)
+        }
+
+    suspend fun getBounty(bountyId: Int): Bounty =
+        get("/api/bounties/$bountyId")
+
+    suspend fun createBounty(request: Any): Bounty =
+        postJson("/api/bounties", request)
+
+    suspend fun acceptBounty(bountyId: Int): Bounty =
+        postJson("/api/bounties/$bountyId/accept")
+
+    // ── Wallet ────────────────────────────────────────────────────────
+
+    suspend fun getWallet(): SponsorWallet =
+        get("/api/wallet")
+
+    suspend fun depositToWallet(amountCents: Int, fundType: String = "general"): SponsorWallet =
+        postJson("/api/wallet/deposit", mapOf("amount" to amountCents, "fundType" to fundType))
+
+    suspend fun allocateWalletFunds(general: Int, route: Int, bounty: Int): SponsorWallet =
+        postJson("/api/wallet/allocate", mapOf("general" to general, "route" to route, "bounty" to bounty))
+
+    suspend fun getWalletTransactions(limit: Int = 50, offset: Int = 0): List<WalletTransaction> =
+        get("/api/wallet/transactions") {
+            parameter("limit", limit)
+            parameter("offset", offset)
+        }
+
+    // ── Spot Reports (Public) ─────────────────────────────────────────
+
+    suspend fun createSpotReport(request: Any): CommunityReport =
+        postJson("/api/spots", request)
+
+    // ── Auth ──────────────────────────────────────────────────────────
+
+    suspend fun login(email: String, password: String): AuthResponse =
+        postJson("/api/auth/login", mapOf("email" to email, "password" to password))
+
+    suspend fun register(name: String, email: String, password: String, phone: String? = null): AuthResponse =
+        postJson("/api/auth/register", buildMap {
+            put("name", name)
+            put("email", email)
+            put("password", password)
+            phone?.let { put("phone", it) }
+        })
+
     // ── Public API ────────────────────────────────────────────────────
 
     suspend fun verify2FA(twoFactorToken: String, code: String): AuthResponse =

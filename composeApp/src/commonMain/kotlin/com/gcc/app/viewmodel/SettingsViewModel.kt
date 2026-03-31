@@ -5,8 +5,6 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
 import com.russhwolf.settings.Settings
-import io.ktor.client.call.*
-import io.ktor.client.request.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,10 +43,9 @@ class SettingsViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/workers/me")
-                val worker = response.body<ApiResponse<Worker>>()
+                val worker = apiClient.getWorkerProfile()
                 _uiState.value = _uiState.value.copy(
-                    worker = worker.data,
+                    worker = worker,
                     isLoading = false,
                 )
             } catch (e: Exception) {

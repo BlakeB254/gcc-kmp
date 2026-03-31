@@ -2,9 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,19 +32,7 @@ class ProfileViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val workerResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/workers/me")
-
-                if (workerResponse.status.value !in 200..299) {
-                    val errorMsg = when (workerResponse.status.value) {
-                        401 -> "Session expired. Please log in again."
-                        404 -> "Profile not found."
-                        else -> "Failed to load profile (${workerResponse.status.value})"
-                    }
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = errorMsg)
-                    return@launch
-                }
-
-                val worker = workerResponse.body<ApiResponse<Worker>>()
+                val worker = apiClient.getWorkerProfile()
 
                 val badges = try {
                     apiClient.getMyBadges()
@@ -56,7 +41,7 @@ class ProfileViewModel(
                 }
 
                 _uiState.value = _uiState.value.copy(
-                    worker = worker.data,
+                    worker = worker,
                     badges = badges,
                     isLoading = false,
                 )
@@ -73,19 +58,8 @@ class ProfileViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(handleUpdateLoading = true, handleUpdateError = null)
             try {
-                val response = apiClient.httpClient.patch("${apiClient.baseUrl}/api/workers/me/handle") {
-                    contentType(ContentType.Application.Json)
-                    setBody(mapOf("handle" to handle))
-                }
-                if (response.status.value in 200..299) {
-                    loadProfile()
-                } else {
-                    val errorBody = try { response.body<Map<String, String>>() } catch (_: Exception) { emptyMap() }
-                    _uiState.value = _uiState.value.copy(
-                        handleUpdateLoading = false,
-                        handleUpdateError = errorBody["error"] ?: "Failed to update handle"
-                    )
-                }
+                apiClient.updateDisplayHandle(handle)
+                loadProfile()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     handleUpdateLoading = false,

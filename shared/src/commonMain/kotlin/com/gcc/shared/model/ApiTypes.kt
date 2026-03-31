@@ -18,17 +18,6 @@ data class ApiResponse<T>(
 )
 
 @Serializable
-data class PaginatedResponse<T>(
-    val docs: List<T>,
-    val totalDocs: Int,
-    val totalPages: Int,
-    val page: Int,
-    val limit: Int,
-    val hasNextPage: Boolean,
-    val hasPrevPage: Boolean
-)
-
-@Serializable
 data class AuthResponse(
     val token: String? = null,
     val worker: Worker? = null,
