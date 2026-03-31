@@ -114,12 +114,15 @@ class GccApiClient(
         body: Any? = null,
         crossinline block: HttpRequestBuilder.() -> Unit = {},
     ) {
-        httpClient.post("$baseUrl$path") {
+        val response = httpClient.post("$baseUrl$path") {
             if (body != null) {
                 contentType(ContentType.Application.Json)
                 setBody(body)
             }
             block()
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
         }
     }
 
@@ -129,6 +132,11 @@ class GccApiClient(
         crossinline block: HttpRequestBuilder.() -> Unit = {},
     ): R {
         val response = httpClient.put("$baseUrl$path", block)
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
         return response.body<ApiResponse<R>>().data
     }
 
@@ -164,13 +172,51 @@ class GccApiClient(
         }
     }
 
+    // ── Worker API ─────────────────────────────────────────────────────
+
+    suspend fun getRoutes(status: String = "published"): List<Route> =
+        get("/api/routes") { parameter("status", status) }
+
+    suspend fun getRoute(routeId: Int): Route =
+        get("/api/routes/$routeId")
+
+    suspend fun getWorkerProfile(): Worker =
+        get("/api/workers/me")
+
+    // ── Jobs API ──────────────────────────────────────────────────────
+
+    suspend fun getAvailableJobs(routeId: Int, limit: Int = 1): List<Job> =
+        get("/api/jobs") {
+            parameter("route_id", routeId)
+            parameter("status", "available")
+            parameter("limit", limit)
+        }
+
+    suspend fun claimJob(jobId: Int): Job =
+        postJson("/api/jobs/$jobId/claim")
+
+    suspend fun getJob(jobId: Int): Job =
+        get("/api/jobs/$jobId")
+
     // ── Public API ────────────────────────────────────────────────────
 
     suspend fun verify2FA(twoFactorToken: String, code: String): AuthResponse =
         postJson("/api/auth/verify-2fa", Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
 
-    suspend fun getSponsorWall(): List<Sponsor> =
-        get("/api/public/sponsor-wall")
+    suspend fun getSponsorWall(): List<Sponsor> {
+        val response = httpClient.get("$baseUrl/api/public/sponsor-wall")
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("HTTP ${response.status.value}: $errorBody")
+        }
+        // The public sponsor-wall endpoint may return a raw array or ApiResponse wrapper
+        val text = response.bodyAsText()
+        return try {
+            json.decodeFromString<ApiResponse<List<Sponsor>>>(text).data
+        } catch (_: Exception) {
+            json.decodeFromString<List<Sponsor>>(text)
+        }
+    }
 
     suspend fun getLeaderboard(period: String = "all_time", limit: Int = 50): List<LeaderboardEntry> =
         get("/api/leaderboard") {

@@ -161,11 +161,25 @@ fun FeedScreen(
                                 modifier = Modifier.fillMaxWidth().padding(32.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(
-                                    "No activity yet.\nCheck back soon!",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextMuted,
-                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        "\uD83D\uDCF0",
+                                        style = MaterialTheme.typography.displayMedium,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "No activity yet",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = TextMuted,
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Spot reports, cleanups, and community\nupdates will appear here.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextSubtle,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    )
+                                }
                             }
                         }
                     }
@@ -232,7 +246,8 @@ private fun FilterChipsRow(
             FilterOption(FeedItemType.BOUNTY_CREATED, "Bounties"),
             FilterOption(FeedItemType.JOB_COMPLETED, "Jobs"),
             FilterOption(FeedItemType.VOLUNTEER_CLEANUP, "Cleanups"),
-            FilterOption(FeedItemType.BADGE_UNLOCKED, "Badges"),
+            FilterOption(FeedItemType.LEADERBOARD_CHANGE, "Rankings"),
+            FilterOption(FeedItemType.ARTICLE, "Articles"),
         )
 
         filters.forEach { filter ->
@@ -263,6 +278,8 @@ private fun FeedCard(
         FeedItemType.JOB_COMPLETED -> CardAccentGreen
         FeedItemType.VOLUNTEER_CLEANUP -> CardAccentBlue
         FeedItemType.BADGE_UNLOCKED -> CardAccentRed
+        FeedItemType.LEADERBOARD_CHANGE -> CardAccentGold
+        FeedItemType.ARTICLE -> GccGreenDark
     }
 
     GccCard(
@@ -405,6 +422,34 @@ private fun FeedCard(
             }
         }
 
+        // User caption (social feature — user's own commentary on their event)
+        item.caption?.let { caption ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = SurfaceMuted,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        "\u201C",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = accentColor.copy(alpha = 0.5f),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        caption,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
         // Community area
         item.communityArea?.let { area ->
             Spacer(modifier = Modifier.height(5.dp))
@@ -413,6 +458,40 @@ private fun FeedCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSubtle,
             )
+        }
+
+        // Comment count + interaction row
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Comment indicator
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "\uD83D\uDCAC",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    if (item.commentCount > 0) "${item.commentCount}" else "Comment",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
+            }
+
+            // "Add your story" prompt for events without a caption
+            // (only shown if the actor matches the current user — actorProfileVisible indicates opt-in)
+            if (item.caption == null && item.actorProfileVisible) {
+                Text(
+                    "Add a caption...",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = GccGreen,
+                )
+            }
         }
     }
 }
@@ -513,6 +592,8 @@ private fun PhotoThumbnail(
                 FeedItemType.JOB_COMPLETED -> drawRouteScene(w, h)
                 FeedItemType.VOLUNTEER_CLEANUP -> drawCleanupScene(w, h)
                 FeedItemType.BADGE_UNLOCKED -> { /* no photos for badges */ }
+                FeedItemType.LEADERBOARD_CHANGE -> drawRouteScene(w, h)
+                FeedItemType.ARTICLE -> { /* articles use real images */ }
             }
 
             // Camera icon indicator (top-right corner)

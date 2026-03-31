@@ -94,7 +94,6 @@ class LoginViewModel(
                 }
             } catch (e: Exception) {
                 val detail = e.message ?: "Unknown error"
-                println("GCC Login error: $detail")
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = "Login failed: $detail",

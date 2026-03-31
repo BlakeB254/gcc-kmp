@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.RouteThumbnail
 import com.gcc.app.ui.map.chicagoCommunityAreas
@@ -77,7 +78,7 @@ fun DashboardScreen(
 
     val greeting = remember {
         val now = kotlinx.datetime.Clock.System.now()
-        val hour = now.toLocalDateTime(TimeZone.of("America/Chicago")).hour
+        val hour = now.toLocalDateTime(TimeZone.currentSystemDefault()).hour
         when (hour) {
             in 5..11 -> "Good morning"
             in 12..16 -> "Good afternoon"
@@ -165,12 +166,15 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
-            // --- Header with greeting ---
+            // --- Header with greeting (respects safe area) ---
+            item {
+                Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            }
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 13.dp, vertical = 13.dp),
+                        .padding(horizontal = 13.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -212,6 +216,7 @@ fun DashboardScreen(
                         routeCoordinates = routeCoordinates,
                         spots = uiState.spots,
                         showControls = false,
+                        mapMode = MapMode.MY_AREA,
                     )
 
                     // Transparent overlay to catch taps (map consumes touch for pan/zoom)
@@ -242,38 +247,7 @@ fun DashboardScreen(
                 }
             }
 
-            // --- Stats row ---
-            item {
-                val totalEarnings = uiState.worker?.stats?.totalEarnings ?: 0
-                val dollars = totalEarnings / 100
-                val cents = totalEarnings % 100
-                val jobsCompleted = uiState.worker?.stats?.jobsCompleted ?: 0
-                val communityPoints = uiState.worker?.stats?.communityPoints ?: 0
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    StatCard(
-                        value = "$$dollars.${cents.padTwo()}",
-                        label = "Earned",
-                        accentColor = CardAccentGreen,
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatCard(
-                        value = "$jobsCompleted",
-                        label = "Jobs",
-                        accentColor = CardAccentBlue,
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatCard(
-                        value = "$communityPoints",
-                        label = "Points",
-                        accentColor = CardAccentGold,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            // Stats moved to Profile screen — more dashboard space for map + routes
 
             // --- Quick Actions (circle icon grid) ---
             item {
@@ -376,7 +350,7 @@ fun DashboardScreen(
             } else if (uiState.routes.isEmpty()) {
                 item {
                     Text(
-                        "No registered routes yet. Check back soon!",
+                        "No routes available in your area right now.\nCheck back soon for new cleaning routes!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMuted,
                         modifier = Modifier.padding(horizontal = 13.dp),

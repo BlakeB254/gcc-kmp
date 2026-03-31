@@ -82,15 +82,21 @@ fun BountyListScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
+                            "\uD83C\uDFC6",
+                            style = MaterialTheme.typography.displayMedium,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
                             "No bounties available",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextMuted,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Check back soon for new cleanup bounties.",
+                            "Bounties are posted when specific areas need\nextra attention. Check back soon!",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSubtle,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
                 }

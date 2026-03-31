@@ -164,8 +164,9 @@ fun WalletScreen(
                                     viewModel.updateDepositAmount(value)
                                 }
                             },
-                            label = { Text("Amount (cents)") },
-                            placeholder = { Text("e.g. 5000 = $50.00") },
+                            label = { Text("Amount") },
+                            placeholder = { Text("Enter amount in cents") },
+                            prefix = { Text("¢ ") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -180,7 +181,7 @@ fun WalletScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "= ${formatCents(previewAmount)}",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                                 color = GccGreen,
                             )
                         }

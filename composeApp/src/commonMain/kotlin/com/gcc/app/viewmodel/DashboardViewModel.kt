@@ -2,8 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,13 +34,9 @@ class DashboardViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val routesResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes") {
-                    parameter("status", "published")
-                }
-                val routes = routesResponse.body<ApiResponse<List<Route>>>()
-
+                val routes = apiClient.getRoutes()
                 _uiState.value = _uiState.value.copy(
-                    routes = routes.data,
+                    routes = routes,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -58,12 +52,9 @@ class DashboardViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/leaderboard") {
-                    parameter("limit", 10)
-                }
-                val leaderboard = response.body<ApiResponse<List<LeaderboardEntry>>>()
+                val leaderboard = apiClient.getLeaderboard(limit = 10)
                 _uiState.value = _uiState.value.copy(
-                    leaderboard = leaderboard.data,
+                    leaderboard = leaderboard,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -79,12 +70,9 @@ class DashboardViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isRefreshing = true)
             try {
-                val routesResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes") {
-                    parameter("status", "published")
-                }
-                val routes = routesResponse.body<ApiResponse<List<Route>>>()
-                _uiState.value = _uiState.value.copy(routes = routes.data, isRefreshing = false)
-            } catch (e: Exception) {
+                val routes = apiClient.getRoutes()
+                _uiState.value = _uiState.value.copy(routes = routes, isRefreshing = false)
+            } catch (_: Exception) {
                 _uiState.value = _uiState.value.copy(isRefreshing = false)
             }
         }
@@ -102,9 +90,8 @@ class DashboardViewModel(
     fun loadWorkerProfile() {
         scope.launch {
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/workers/me")
-                val worker = response.body<ApiResponse<Worker>>()
-                _uiState.value = _uiState.value.copy(worker = worker.data)
+                val worker = apiClient.getWorkerProfile()
+                _uiState.value = _uiState.value.copy(worker = worker)
             } catch (_: Exception) {
                 // Profile loading is non-critical; silently fail
             }
@@ -114,11 +101,8 @@ class DashboardViewModel(
     fun loadSpots() {
         scope.launch {
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/spots") {
-                    parameter("limit", 100)
-                }
-                val spots = response.body<ApiResponse<List<CommunityReport>>>()
-                _uiState.value = _uiState.value.copy(spots = spots.data)
+                val spots = apiClient.getSpots(limit = 100)
+                _uiState.value = _uiState.value.copy(spots = spots)
             } catch (_: Exception) {
                 // Spot loading is non-critical; silently fail
             }
@@ -131,31 +115,16 @@ class DashboardViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 coroutineScope {
-                    val routesDeferred = async {
-                        apiClient.httpClient.get("${apiClient.baseUrl}/api/routes") {
-                            parameter("status", "published")
-                        }.body<ApiResponse<List<Route>>>()
-                    }
-                    val leaderboardDeferred = async {
-                        apiClient.httpClient.get("${apiClient.baseUrl}/api/leaderboard") {
-                            parameter("limit", 10)
-                        }.body<ApiResponse<List<LeaderboardEntry>>>()
-                    }
+                    val routesDeferred = async { apiClient.getRoutes() }
+                    val leaderboardDeferred = async { apiClient.getLeaderboard(limit = 10) }
                     val workerDeferred = async {
-                        try {
-                            apiClient.httpClient.get("${apiClient.baseUrl}/api/workers/me")
-                                .body<ApiResponse<Worker>>()
-                        } catch (_: Exception) { null }
+                        try { apiClient.getWorkerProfile() } catch (_: Exception) { null }
                     }
                     val serviceAreaDeferred = async {
                         try { apiClient.getMyServiceArea() } catch (_: Exception) { null }
                     }
                     val spotsDeferred = async {
-                        try {
-                            apiClient.httpClient.get("${apiClient.baseUrl}/api/spots") {
-                                parameter("limit", 100)
-                            }.body<ApiResponse<List<CommunityReport>>>()
-                        } catch (_: Exception) { null }
+                        try { apiClient.getSpots(limit = 100) } catch (_: Exception) { null }
                     }
 
                     val routes = routesDeferred.await()
@@ -165,11 +134,11 @@ class DashboardViewModel(
                     val spots = spotsDeferred.await()
 
                     _uiState.value = _uiState.value.copy(
-                        routes = routes.data,
-                        leaderboard = leaderboard.data,
-                        worker = worker?.data,
+                        routes = routes,
+                        leaderboard = leaderboard,
+                        worker = worker,
                         serviceAreaName = serviceArea?.name,
-                        spots = spots?.data ?: emptyList(),
+                        spots = spots ?: emptyList(),
                         isLoading = false,
                     )
                 }

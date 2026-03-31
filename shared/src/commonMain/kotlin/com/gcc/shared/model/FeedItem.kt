@@ -12,6 +12,8 @@ enum class FeedItemType {
     @SerialName("job_completed") JOB_COMPLETED,
     @SerialName("volunteer_cleanup") VOLUNTEER_CLEANUP,
     @SerialName("badge_unlocked") BADGE_UNLOCKED,
+    @SerialName("leaderboard_change") LEADERBOARD_CHANGE,
+    @SerialName("article") ARTICLE,
 }
 
 @Serializable
@@ -19,7 +21,7 @@ data class FeedItem(
     val id: String,
     val type: FeedItemType,
     val actorName: String,
-    val actorTier: EarlyAdopterTier,
+    val actorTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
     val title: String,
     val description: String,
     val mediaUrls: List<String> = emptyList(),
@@ -31,4 +33,9 @@ data class FeedItem(
     val locationLng: Double? = null,
     val timestamp: Instant,
     val metadata: Map<String, String> = emptyMap(),
+    // Social features
+    val caption: String? = null,
+    val commentCount: Int = 0,
+    val actorId: Int? = null,
+    val actorProfileVisible: Boolean = false,
 )

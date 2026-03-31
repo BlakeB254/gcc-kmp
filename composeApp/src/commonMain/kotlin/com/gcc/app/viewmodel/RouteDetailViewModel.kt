@@ -2,9 +2,6 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,10 +31,9 @@ class RouteDetailViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val response = apiClient.httpClient.get("${apiClient.baseUrl}/api/routes/$routeId")
-                val route = response.body<ApiResponse<Route>>()
+                val route = apiClient.getRoute(routeId)
                 _uiState.value = _uiState.value.copy(
-                    route = route.data,
+                    route = route,
                     isLoading = false,
                 )
                 // Fetch area cleanliness score in background
@@ -60,23 +56,15 @@ class RouteDetailViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isClaiming = true, claimError = null)
             try {
-                // First, find an available job for this route
-                val jobsResponse = apiClient.httpClient.get("${apiClient.baseUrl}/api/jobs") {
-                    parameter("route_id", routeId)
-                    parameter("status", "available")
-                    parameter("limit", 1)
-                }
-                val jobs = jobsResponse.body<ApiResponse<List<Job>>>()
-                val job = jobs.data.firstOrNull()
+                val jobs = apiClient.getAvailableJobs(routeId)
+                val job = jobs.firstOrNull()
                     ?: throw IllegalStateException("No available jobs for this route")
 
-                // Claim the job
-                val claimResponse = apiClient.httpClient.post("${apiClient.baseUrl}/api/jobs/${job.id}/claim")
-                val claimedJob = claimResponse.body<ApiResponse<Job>>()
+                val claimedJob = apiClient.claimJob(job.id)
 
                 _uiState.value = _uiState.value.copy(
                     isClaiming = false,
-                    claimedJobId = claimedJob.data.id,
+                    claimedJobId = claimedJob.id,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

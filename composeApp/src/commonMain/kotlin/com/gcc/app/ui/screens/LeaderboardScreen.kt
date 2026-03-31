@@ -175,12 +175,25 @@ fun LeaderboardScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            "No leaderboard data yet.\nComplete jobs to get ranked!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                            textAlign = TextAlign.Center,
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "\uD83C\uDFC5",
+                                style = MaterialTheme.typography.displayMedium,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "No rankings yet",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Complete cleaning jobs to climb\nthe leaderboard!",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSubtle,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 } else {
                     val top3 = uiState.entries.take(3)
