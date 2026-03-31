@@ -5,7 +5,9 @@ import com.gcc.server.db.tables.RouteCheckpoints
 import com.gcc.server.db.tables.Routes
 import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.requireAdmin
+import com.gcc.server.services.JobService
 import com.gcc.server.services.RouteService
+import com.gcc.server.services.toJob
 import com.gcc.server.services.toRoute
 import com.gcc.shared.model.AdminRouteRequest
 import com.gcc.shared.model.ApiResponse
@@ -172,6 +174,43 @@ fun Route.adminRouteRoutes() {
             } else {
                 call.respond(HttpStatusCode.NotFound, ErrorResponse("Route not found", 404))
             }
+        }
+
+        // POST /api/admin/routes/{id}/assign — assign route to a specific worker
+        post("/{id}/assign") {
+            call.requireAdmin()
+            val routeId = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Route ID required")
+            val body = call.receive<Map<String, Any>>()
+            val workerId = (body["workerId"] as? Number)?.toInt()
+                ?: throw IllegalArgumentException("workerId required")
+            val isTest = (body["isTest"] as? Boolean) ?: false
+            val now = Clock.System.now()
+
+            val job = dbQuery {
+                // Find the first block for this route, or use a placeholder blockId
+                val blockId = com.gcc.server.db.tables.Blocks
+                    .selectAll()
+                    .where { com.gcc.server.db.tables.Blocks.routeId eq routeId }
+                    .firstOrNull()?.get(com.gcc.server.db.tables.Blocks.id)
+                    ?: throw IllegalStateException("No blocks found for route $routeId")
+
+                val jobId = com.gcc.server.db.tables.Jobs.insert {
+                    it[com.gcc.server.db.tables.Jobs.blockId] = blockId
+                    it[com.gcc.server.db.tables.Jobs.workerId] = workerId
+                    it[com.gcc.server.db.tables.Jobs.status] = "assigned"
+                    it[com.gcc.server.db.tables.Jobs.payoutAmount] = if (isTest) "0" else null
+                    it[com.gcc.server.db.tables.Jobs.createdAt] = now
+                    it[com.gcc.server.db.tables.Jobs.updatedAt] = now
+                }[com.gcc.server.db.tables.Jobs.id]
+
+                com.gcc.server.db.tables.Jobs
+                    .selectAll()
+                    .where { com.gcc.server.db.tables.Jobs.id eq jobId }
+                    .first()
+                    .toJob()
+            }
+            call.respond(HttpStatusCode.Created, ApiResponse(data = job))
         }
 
         delete("/{id}") {

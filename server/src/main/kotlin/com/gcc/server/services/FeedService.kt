@@ -176,6 +176,134 @@ class FeedService {
 
         // Sort all items by timestamp DESC, apply offset + limit
         items.sortByDescending { it.timestamp }
-        items.drop(offset).take(limit)
+
+        // Enrich items with captions and profile opt-ins
+        val feedItemIds = items.map { it.id }
+        val captions = FeedCaptions
+            .selectAll()
+            .where { FeedCaptions.feedItemId inList feedItemIds }
+            .associate { it[FeedCaptions.feedItemId] to it[FeedCaptions.caption] }
+        val optIns = FeedProfileOptIns
+            .selectAll()
+            .where { FeedProfileOptIns.feedItemId inList feedItemIds }
+            .map { it[FeedProfileOptIns.feedItemId] }
+            .toSet()
+        val commentCounts = FeedComments
+            .select(FeedComments.feedItemId, FeedComments.feedItemId.count())
+            .where { FeedComments.feedItemId inList feedItemIds }
+            .groupBy(FeedComments.feedItemId)
+            .associate { it[FeedComments.feedItemId] to it[FeedComments.feedItemId.count()].toInt() }
+
+        items.drop(offset).take(limit).map { item ->
+            item.copy(
+                caption = captions[item.id],
+                actorProfileVisible = item.id in optIns,
+                commentCount = commentCounts[item.id] ?: 0,
+            )
+        }
+    }
+
+    // ── Comments ──────────────────────────────────────────────────────
+
+    suspend fun getComments(feedItemId: String, limit: Int = 50): List<FeedComment> = dbQuery {
+        FeedComments
+            .selectAll()
+            .where { FeedComments.feedItemId eq feedItemId }
+            .orderBy(FeedComments.createdAt, SortOrder.ASC)
+            .limit(limit)
+            .map { row ->
+                FeedComment(
+                    id = row[FeedComments.id].toString(),
+                    feedItemId = row[FeedComments.feedItemId],
+                    authorName = row[FeedComments.authorName],
+                    text = row[FeedComments.text],
+                    timestamp = row[FeedComments.createdAt],
+                )
+            }
+    }
+
+    suspend fun addComment(feedItemId: String, workerId: Int, text: String): FeedComment = dbQuery {
+        val workerName = Workers.selectAll()
+            .where { Workers.id eq workerId }
+            .firstOrNull()?.get(Workers.name) ?: "Anonymous"
+
+        val now = kotlinx.datetime.Clock.System.now()
+        val id = FeedComments.insert {
+            it[FeedComments.feedItemId] = feedItemId
+            it[authorId] = workerId
+            it[authorName] = workerName
+            it[FeedComments.text] = text
+            it[createdAt] = now
+        }[FeedComments.id]
+
+        FeedComment(
+            id = id.toString(),
+            feedItemId = feedItemId,
+            authorName = workerName,
+            text = text,
+            timestamp = now,
+        )
+    }
+
+    // ── Captions ──────────────────────────────────────────────────────
+
+    suspend fun setCaption(feedItemId: String, workerId: Int, caption: String): FeedItem = dbQuery {
+        val now = kotlinx.datetime.Clock.System.now()
+        val existing = FeedCaptions.selectAll()
+            .where { FeedCaptions.feedItemId eq feedItemId }
+            .firstOrNull()
+
+        if (existing != null) {
+            FeedCaptions.update({ FeedCaptions.feedItemId eq feedItemId }) {
+                it[FeedCaptions.caption] = caption
+                it[updatedAt] = now
+            }
+        } else {
+            FeedCaptions.insert {
+                it[FeedCaptions.feedItemId] = feedItemId
+                it[FeedCaptions.workerId] = workerId
+                it[FeedCaptions.caption] = caption
+                it[createdAt] = now
+                it[updatedAt] = now
+            }
+        }
+
+        // Return a minimal FeedItem with the updated caption
+        FeedItem(
+            id = feedItemId,
+            type = FeedItemType.SPOT_REPORT, // placeholder — client ignores type for caption updates
+            actorName = "",
+            title = "",
+            description = "",
+            caption = caption,
+            timestamp = now,
+        )
+    }
+
+    // ── Profile Opt-in ────────────────────────────────────────────────
+
+    suspend fun optInProfile(feedItemId: String, workerId: Int): FeedItem = dbQuery {
+        val now = kotlinx.datetime.Clock.System.now()
+        val existing = FeedProfileOptIns.selectAll()
+            .where { FeedProfileOptIns.feedItemId eq feedItemId }
+            .firstOrNull()
+
+        if (existing == null) {
+            FeedProfileOptIns.insert {
+                it[FeedProfileOptIns.feedItemId] = feedItemId
+                it[FeedProfileOptIns.workerId] = workerId
+                it[createdAt] = now
+            }
+        }
+
+        FeedItem(
+            id = feedItemId,
+            type = FeedItemType.SPOT_REPORT,
+            actorName = "",
+            title = "",
+            description = "",
+            actorProfileVisible = true,
+            timestamp = now,
+        )
     }
 }

@@ -47,6 +47,7 @@ fun Application.configureRouting() {
                 authenticatedWalletRoutes()
                 authenticatedBountyRoutes()
                 authenticatedGamificationRoutes()
+                authenticatedFeedRoutes()
                 scanRoutes()
 
                 // Admin routes (require admin role)
