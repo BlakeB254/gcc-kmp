@@ -916,7 +916,7 @@ object Bounties : Table("bounties") {
     val locationLat = double("location_lat")
     val locationLng = double("location_lng")
     val radiusMeters = double("radius_meters").default(200.0)
-    val city = varchar("city", 100).default("Chicago")
+    val city = varchar("city", 100).default("")
     val communityArea = varchar("community_area", 255).nullable()
     val neighborhood = varchar("neighborhood", 255).nullable()
     val triggerReportId = integer("trigger_report_id").references(CommunityReports.id).nullable()
