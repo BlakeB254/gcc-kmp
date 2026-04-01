@@ -1,6 +1,5 @@
 package com.gcc.shared.model
 
-import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -8,8 +7,8 @@ import kotlinx.serialization.Serializable
 data class ServiceArea(
     val id: Int,
     val name: String,
-    val city: String = GccConstants.DEFAULT_CITY,
-    val state: String = GccConstants.DEFAULT_STATE,
+    val city: String = "",
+    val state: String = "",
     val boundary: GeoJSONPolygon? = null,
     val mapCenter: Coordinates? = null,
     val mapZoom: Double = 14.0,

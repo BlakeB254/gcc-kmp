@@ -1,6 +1,5 @@
 package com.gcc.shared.model
 
-import com.gcc.shared.constants.GccConstants
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -95,8 +94,8 @@ data class AdminBlockRequest(
 @Serializable
 data class AdminServiceAreaRequest(
     val name: String,
-    val city: String = GccConstants.DEFAULT_CITY,
-    val state: String = GccConstants.DEFAULT_STATE,
+    val city: String = "",
+    val state: String = "",
     val boundary: GeoJSONPolygon? = null,
     val mapCenter: Coordinates? = null,
     val mapZoom: Double = 14.0,
