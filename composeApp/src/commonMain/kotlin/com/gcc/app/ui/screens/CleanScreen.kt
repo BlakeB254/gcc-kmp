@@ -74,10 +74,10 @@ fun CleanScreen(
     // Map centre: user → route start → Chicago default
     val mapCenterLat = currentLocation?.lat
         ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lat
-        ?: MapStyles.CHICAGO_CENTER_LAT
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
         ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lng
-        ?: MapStyles.CHICAGO_CENTER_LNG
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     // Hotspot capture sheet state
     var captureHotspot by remember { mutableStateOf<ScanHotspot?>(null) }

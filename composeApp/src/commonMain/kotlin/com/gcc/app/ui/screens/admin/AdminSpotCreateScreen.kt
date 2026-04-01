@@ -55,8 +55,8 @@ fun AdminSpotCreateScreen(
     var isSighting by remember { mutableStateOf(true) }
     var description by remember { mutableStateOf("") }
     var selectedTags by remember { mutableStateOf<List<SpotTag>>(emptyList()) }
-    val defaultLat = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.CHICAGO_CENTER_LAT else initialLat
-    val defaultLng = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.CHICAGO_CENTER_LNG else initialLng
+    val defaultLat = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.NORTH_LAWNDALE_CENTER_LAT else initialLat
+    val defaultLng = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.NORTH_LAWNDALE_CENTER_LNG else initialLng
     var spotLat by remember { mutableStateOf(defaultLat) }
     var spotLng by remember { mutableStateOf(defaultLng) }
     var hasLockedToGps by remember { mutableStateOf(false) }

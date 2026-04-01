@@ -57,9 +57,9 @@ data class ContextPin(
 @Composable
 expect fun GccMap(
     modifier: Modifier = Modifier,
-    centerLat: Double = MapStyles.CHICAGO_CENTER_LAT,
-    centerLng: Double = MapStyles.CHICAGO_CENTER_LNG,
-    zoom: Double = MapStyles.ZOOM_NEIGHBORHOOD,
+    centerLat: Double = MapStyles.WORLD_CENTER_LAT,
+    centerLng: Double = MapStyles.WORLD_CENTER_LNG,
+    zoom: Double = MapStyles.ZOOM_WORLD,
     currentLocation: Coordinates? = null,
     gpsHeading: Float? = null,
     enableGestures: Boolean = false,

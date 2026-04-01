@@ -119,13 +119,13 @@ fun MapFullScreen(
         chicagoCommunityAreas.find { it.isServiceArea }
     }
     val myAreaCenterLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 }
-        ?: MapStyles.CHICAGO_CENTER_LAT
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val myAreaCenterLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 }
-        ?: MapStyles.CHICAGO_CENTER_LNG
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     // Camera center and zoom depend on mode (overridden when tapping a spot/bounty)
-    val centerLat = overrideCenterLat ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLat else MapStyles.CHICAGO_CENTER_LAT
-    val centerLng = overrideCenterLng ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLng else MapStyles.CHICAGO_CENTER_LNG
+    val centerLat = overrideCenterLat ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLat else MapStyles.NORTH_LAWNDALE_CENTER_LAT
+    val centerLng = overrideCenterLng ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLng else MapStyles.NORTH_LAWNDALE_CENTER_LNG
     val mapZoom = overrideZoom ?: if (mapMode == MapMode.MY_AREA) MapStyles.ZOOM_SERVICE_AREA else MapStyles.ZOOM_CITY
 
     // GPS-gated visibility: admin sees all data globally,

@@ -386,8 +386,8 @@ private fun InProgressPhase(
     Column(modifier = Modifier.fillMaxSize()) {
         // Map section (40% height)
         Box(modifier = Modifier.weight(0.4f).fillMaxWidth()) {
-            val lat = cleanup?.locationLat ?: MapStyles.CHICAGO_CENTER_LAT
-            val lng = cleanup?.locationLng ?: MapStyles.CHICAGO_CENTER_LNG
+            val lat = cleanup?.locationLat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
+            val lng = cleanup?.locationLng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
             GccMap(
                 modifier = Modifier.fillMaxSize(),
                 centerLat = lat,

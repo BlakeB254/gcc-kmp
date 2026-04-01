@@ -29,8 +29,8 @@ enum class AreaMode { CIRCLE, RECTANGLE }
 
 data class SpotUiState(
     val capturedPhotos: List<CapturedPhoto> = emptyList(),
-    val currentLat: Double = MapStyles.CHICAGO_CENTER_LAT,
-    val currentLng: Double = MapStyles.CHICAGO_CENTER_LNG,
+    val currentLat: Double = MapStyles.NORTH_LAWNDALE_CENTER_LAT,
+    val currentLng: Double = MapStyles.NORTH_LAWNDALE_CENTER_LNG,
     /** Spot pin position — null means use GPS position (currentLat/currentLng). */
     val spotLat: Double? = null,
     val spotLng: Double? = null,

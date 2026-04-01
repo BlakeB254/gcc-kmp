@@ -64,13 +64,13 @@ fun ScoutReviewScreen(
         uiState.route?.checkpoints
             ?.map { it.coordinates.lat }
             ?.average()
-            ?: MapStyles.CHICAGO_CENTER_LAT
+            ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     }
     val mapCenterLng = remember(uiState.route) {
         uiState.route?.checkpoints
             ?.map { it.coordinates.lng }
             ?.average()
-            ?: MapStyles.CHICAGO_CENTER_LNG
+            ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
     }
 
     // Derived stats

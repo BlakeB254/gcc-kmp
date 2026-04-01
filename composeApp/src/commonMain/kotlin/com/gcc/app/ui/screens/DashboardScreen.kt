@@ -106,7 +106,7 @@ fun DashboardScreen(
         if (sa != null) Pair(
             (sa.bounds.north + sa.bounds.south) / 2.0,
             (sa.bounds.east + sa.bounds.west) / 2.0,
-        ) else Pair(MapStyles.CHICAGO_CENTER_LAT, MapStyles.CHICAGO_CENTER_LNG)
+        ) else Pair(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
     }
     val mapZoom = MapStyles.ZOOM_SERVICE_AREA
 

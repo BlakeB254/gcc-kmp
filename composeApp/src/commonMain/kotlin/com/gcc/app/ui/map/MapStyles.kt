@@ -11,9 +11,14 @@ object MapStyles {
     // Base map style URL (OpenFreeMap — full OSM vector tiles with street-level detail)
     const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
 
-    // Chicago center coordinates (North Lawndale area)
-    const val CHICAGO_CENTER_LAT = 41.8603
-    const val CHICAGO_CENTER_LNG = -87.7228
+    // North Lawndale service area center (used for seed data and community area features)
+    const val NORTH_LAWNDALE_CENTER_LAT = 41.8603
+    const val NORTH_LAWNDALE_CENTER_LNG = -87.7228
+
+    // Global fallback when no service area or GPS is available
+    const val WORLD_CENTER_LAT = 0.0
+    const val WORLD_CENTER_LNG = 0.0
+    const val ZOOM_WORLD = 2.0
 
     // Default zoom levels
     const val ZOOM_CITY = 11.0

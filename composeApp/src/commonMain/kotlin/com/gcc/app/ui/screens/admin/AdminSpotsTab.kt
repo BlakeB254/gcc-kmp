@@ -58,8 +58,8 @@ internal fun AdminSpotsTab(
 
     // Map center from service area
     val serviceArea = remember { chicagoCommunityAreas.find { it.isServiceArea } }
-    val centerLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LAT
-    val centerLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 } ?: MapStyles.CHICAGO_CENTER_LNG
+    val centerLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 } ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
+    val centerLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 } ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(

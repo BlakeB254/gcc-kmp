@@ -118,7 +118,7 @@ fun RouteDetailScreen(
     // Shift map center upward so the route sits above the bottom panel
     val mapCenter = remember(allRoutePoints, panelHeightPx, totalHeightPx) {
         if (allRoutePoints.isEmpty()) {
-            return@remember Coordinates(lng = MapStyles.CHICAGO_CENTER_LNG, lat = MapStyles.CHICAGO_CENTER_LAT)
+            return@remember Coordinates(lng = MapStyles.NORTH_LAWNDALE_CENTER_LNG, lat = MapStyles.NORTH_LAWNDALE_CENTER_LAT)
         }
         val avgLat = allRoutePoints.sumOf { it.lat } / allRoutePoints.size
         val avgLng = allRoutePoints.sumOf { it.lng } / allRoutePoints.size

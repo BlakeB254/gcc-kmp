@@ -62,10 +62,10 @@ fun ScoutScreen(
     // Map centre: user position if available, otherwise route start, otherwise Chicago default
     val mapCenterLat = currentLocation?.lat
         ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lat
-        ?: MapStyles.CHICAGO_CENTER_LAT
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
         ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lng
-        ?: MapStyles.CHICAGO_CENTER_LNG
+        ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     Box(modifier = Modifier.fillMaxSize()) {
         // ── Full-screen map ──────────────────────────────────────────

@@ -104,8 +104,8 @@ fun RouteTestScreen(
 
                 GccMap(
                     modifier = Modifier.fillMaxSize(),
-                    centerLat = uiState.currentLocation?.lat ?: MapStyles.CHICAGO_CENTER_LAT,
-                    centerLng = uiState.currentLocation?.lng ?: MapStyles.CHICAGO_CENTER_LNG,
+                    centerLat = uiState.currentLocation?.lat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT,
+                    centerLng = uiState.currentLocation?.lng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG,
                     zoom = MapStyles.ZOOM_ACTIVE_JOB,
                     currentLocation = uiState.currentLocation,
                     routeCoordinates = if (routeCoords.isNotEmpty()) listOf(routeCoords) else emptyList(),
