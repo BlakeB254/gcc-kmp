@@ -19,6 +19,7 @@ data class DashboardUiState(
     val spots: List<CommunityReport> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    val serviceArea: ServiceArea? = null,
     val serviceAreaName: String? = null,
     val error: String? = null,
 )
@@ -82,7 +83,10 @@ class DashboardViewModel(
         scope.launch {
             try {
                 val area = apiClient.getMyServiceArea()
-                _uiState.value = _uiState.value.copy(serviceAreaName = area?.name)
+                _uiState.value = _uiState.value.copy(
+                    serviceArea = area,
+                    serviceAreaName = area?.name,
+                )
             } catch (_: Exception) { }
         }
     }
@@ -137,6 +141,7 @@ class DashboardViewModel(
                         routes = routes,
                         leaderboard = leaderboard,
                         worker = worker,
+                        serviceArea = serviceArea,
                         serviceAreaName = serviceArea?.name,
                         spots = spots ?: emptyList(),
                         isLoading = false,
