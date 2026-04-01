@@ -42,7 +42,7 @@ fun CommunityInfoPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Community area badge
-            val areaDisplay = communityAreaName ?: "North Lawndale"
+            val areaDisplay = communityAreaName ?: "Your Area"
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
