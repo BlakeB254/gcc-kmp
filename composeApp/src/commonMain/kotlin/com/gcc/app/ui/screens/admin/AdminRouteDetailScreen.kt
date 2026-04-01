@@ -53,6 +53,7 @@ fun AdminRouteDetailScreen(
     var editDisplayName by remember(route) { mutableStateOf(route?.displayName ?: "") }
     var editDescription by remember(route) { mutableStateOf(route?.description ?: "") }
     var nameDescDirty by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var savingNameDesc by remember { mutableStateOf(false) }
     // Track imageUrl to detect when upload completes
     var previousImageUrl by remember { mutableStateOf(route?.imageUrl) }
@@ -762,6 +763,50 @@ fun AdminRouteDetailScreen(
                     }
                 }
             }
+
+            // ── Delete Route ─────────────────────────────────────────────
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                if (showDeleteConfirm) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = GccError.copy(alpha = 0.1f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "Permanently delete this route and all its checkpoints?",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = GccError,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { showDeleteConfirm = false },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("Cancel") }
+                                Button(
+                                    onClick = {
+                                        viewModel.deleteRoute(routeId) { onBack() }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = GccError),
+                                ) { Text("Delete") }
+                            }
+                        }
+                    }
+                } else {
+                    TextButton(onClick = { showDeleteConfirm = true }) {
+                        Text("Delete Route", color = GccError, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            // Bottom spacing
+            item { Spacer(Modifier.height(16.dp)) }
         }
     }
 }

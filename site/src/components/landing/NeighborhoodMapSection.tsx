@@ -702,7 +702,9 @@ export function NeighborhoodMapSection() {
 
               {/* Spot reports — heatmap (zoomed out) + dots (zoomed in) */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
-                {/* Heatmap — density visualization at overview zoom */}
+                {/* Heatmap — density visualization at overview zoom.
+                    Matches CombinedMap tuning: green→yellow→orange→red palette,
+                    fades out by z14.5 to crossfade with individual dots. */}
                 <Layer
                   id="homepage-spot-heatmap"
                   type="heatmap"
@@ -711,30 +713,34 @@ export function NeighborhoodMapSection() {
                     'heatmap-weight': 1,
                     'heatmap-intensity': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 0.005, 9, 0.008, 10, 0.015, 11, 0.04,
-                      12, 0.05, 13, 0.05, 14, 0.04, SPOT_ZOOM.HEATMAP_MAX, 0.025,
+                      8, 0.006, 9, 0.012, 10, 0.03, 11, 0.07,
+                      12, 0.1, 13, 0.12, 13.5, 0.1,
+                      14, 0.07, SPOT_ZOOM.HEATMAP_MAX, 0.04,
                     ],
                     'heatmap-color': [
                       'interpolate', ['linear'], ['heatmap-density'],
                       0,    'rgba(0,0,0,0)',
-                      0.02, SPOT_COLORS.HEATMAP_EDGE,
-                      0.08, '#86EFAC',
-                      0.2,  SPOT_COLORS.HEATMAP_LOW,
-                      0.4,  SPOT_COLORS.HEATMAP_MED,
-                      0.7,  SPOT_COLORS.HEATMAP_HIGH,
+                      0.01, SPOT_COLORS.HEATMAP_EDGE,
+                      0.04, '#86EFAC',
+                      0.08, SPOT_COLORS.HEATMAP_LOW,
+                      0.12, '#FDE047',
+                      0.18, SPOT_COLORS.HEATMAP_MED,
+                      0.25, '#F97316',
+                      0.35, SPOT_COLORS.HEATMAP_HIGH,
+                      0.6,  '#DC2626',
                       1.0,  SPOT_COLORS.HEATMAP_PEAK,
                     ],
                     'heatmap-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 3, 9, 5, 10, 8, 11, 10,
-                      12, 12, 13, 14, 14, 9, 14.5, 6,
-                      SPOT_ZOOM.HEATMAP_MAX, 4,
+                      8, 2, 9, 3, 10, 5, 11, 7,
+                      12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5,
+                      SPOT_ZOOM.HEATMAP_MAX, 3,
                     ],
                     'heatmap-opacity': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 0.4, 9, 0.5, 10, 0.55, 11, 0.6,
-                      12, 0.6, 13, 0.55, 13.5, 0.5,
-                      SPOT_ZOOM.HEATMAP_MAX, 0,
+                      8, 0.5, 9, 0.55, 10, 0.6,
+                      11, 0.65, 12, 0.65, 13, 0.6,
+                      13.5, 0.5, 14, 0.35, 14.5, 0,
                     ],
                   }}
                 />
@@ -763,7 +769,8 @@ export function NeighborhoodMapSection() {
                     'circle-opacity': [
                       'interpolate', ['linear'], ['zoom'],
                       SPOT_ZOOM.DOTS_MIN, 0,
-                      14, 0.9,
+                      14.5, 0.8,
+                      15, 1,
                     ],
                   }}
                 />

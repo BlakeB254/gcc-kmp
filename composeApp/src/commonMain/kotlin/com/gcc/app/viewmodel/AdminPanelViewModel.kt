@@ -408,6 +408,21 @@ class AdminPanelViewModel(
         }
     }
 
+    fun deleteRoute(routeId: Int, onDeleted: () -> Unit) {
+        scope.launch {
+            try {
+                apiClient.deleteRoute(routeId)
+                _uiState.value = _uiState.value.copy(
+                    routes = _uiState.value.routes.filter { it.id != routeId },
+                )
+                invalidateTab(AdminTab.OVERVIEW)
+                onDeleted()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = "Failed to delete route: ${e.message}")
+            }
+        }
+    }
+
     fun assignRouteToWorker(routeId: Int, workerId: Int, isTest: Boolean, onResult: (Boolean) -> Unit) {
         scope.launch {
             try {
