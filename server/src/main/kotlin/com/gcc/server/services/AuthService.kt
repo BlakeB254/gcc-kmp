@@ -53,8 +53,8 @@ class AuthService(
                 it[emailVerified] = false
                 // Address flat columns
                 it[addressStreet] = ""
-                it[addressCity] = "Chicago"
-                it[addressState] = "IL"
+                it[addressCity] = request.addressCity ?: ""
+                it[addressState] = request.addressState ?: ""
                 it[addressZip] = ""
                 // Verification flat columns (defaults)
                 it[verificationStatus] = "pending"

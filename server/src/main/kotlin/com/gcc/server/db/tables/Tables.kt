@@ -42,8 +42,8 @@ object Workers : Table("workers") {
 
     // Address (flat columns)
     val addressStreet = varchar("address_street", 255)
-    val addressCity = varchar("address_city", 255).default("Chicago")
-    val addressState = varchar("address_state", 50).default("IL")
+    val addressCity = varchar("address_city", 255).default("")
+    val addressState = varchar("address_state", 50).default("")
     val addressZip = varchar("address_zip", 20)
     val addressNeighborhood = varchar("address_neighborhood", 255).nullable()
     val addressIsNorthLawndale = bool("address_is_north_lawndale").nullable()
