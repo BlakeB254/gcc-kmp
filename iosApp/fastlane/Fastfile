@@ -15,11 +15,19 @@ platform :ios do
 
   desc "Build and upload to App Store Connect"
   lane :release do
+    api_key = app_store_connect_api_key(
+      key_id: "XKAYZ4N88V",
+      issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
+      key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_XKAYZ4N88V.p8"),
+      in_house: false,
+    )
+
     # Ensure distribution cert + profile exist
-    get_certificates(development: false, force: false)
+    get_certificates(development: false, force: false, api_key: api_key)
     profile = get_provisioning_profile(
       development: false,
       app_identifier: "com.globalcommunitycleaners.worker",
+      api_key: api_key,
     )
 
     # Build the Kotlin framework first (release config for device)
@@ -42,8 +50,9 @@ platform :ios do
       }
     )
 
-    # Upload to TestFlight
+    # Upload to App Store Connect
     upload_to_testflight(
+      api_key: api_key,
       ipa: "/tmp/gcc-build/GCC.ipa",
       skip_waiting_for_build_processing: true,
     )
