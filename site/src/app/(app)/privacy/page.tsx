@@ -142,7 +142,7 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold text-neutral-900 mb-4">11. Contact Us</h2>
               <p className="text-neutral-700 mb-4">
                 If you have questions about this Privacy Policy, please contact us at{' '}
-                <a href="mailto:privacy@globalcommunitycleaners.org" className="text-brand-gold-600 hover:underline">
+                <a href="mailto:privacy@globalcommunitycleaners.org" className="text-brand-green-600 hover:underline">
                   privacy@globalcommunitycleaners.org
                 </a>
               </p>
@@ -152,7 +152,7 @@ export default function PrivacyPage() {
           <div className="mt-12 pt-8 border-t border-neutral-200">
             <Link
               href="/"
-              className="text-brand-gold-600 hover:text-brand-gold-700 font-medium"
+              className="text-brand-green-600 hover:text-brand-green-700 font-medium"
             >
               &larr; Back to Home
             </Link>

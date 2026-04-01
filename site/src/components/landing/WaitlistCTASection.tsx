@@ -7,11 +7,11 @@ export function WaitlistCTASection() {
   return (
     <section className="relative py-24 overflow-hidden">
       {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-brand-brown-800 via-brand-brown-900 to-neutral-950" />
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-green-800 via-brand-green-900 to-neutral-950" />
 
       {/* Decorative elements */}
       <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-10 left-10 w-64 h-64 bg-brand-gold-500 rounded-full blur-3xl" />
+        <div className="absolute top-10 left-10 w-64 h-64 bg-brand-green-500 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-brand-green-500 rounded-full blur-3xl" />
       </div>
 
@@ -19,12 +19,12 @@ export function WaitlistCTASection() {
         <div className="max-w-4xl mx-auto text-center">
           {/* Logo */}
           <div className="mb-8 flex justify-center">
-            <div className="relative w-24 h-24 rounded-full overflow-hidden shadow-2xl ring-4 ring-brand-gold-500/30">
+            <div className="relative w-24 h-24 overflow-hidden shadow-2xl ring-4 ring-brand-green-500/30 rounded-2xl">
               <Image
-                src="/images/gcc-logo.jpg"
+                src="/images/gcc-logo.png"
                 alt="GCC Logo"
                 fill
-                className="object-cover"
+                className="object-contain"
               />
             </div>
           </div>
@@ -32,7 +32,7 @@ export function WaitlistCTASection() {
           {/* Headline */}
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6">
             Be Part of Something{' '}
-            <span className="text-brand-gold-400">Bigger</span>
+            <span className="text-brand-green-400">Bigger</span>
           </h2>
 
           {/* Description */}
@@ -48,7 +48,7 @@ export function WaitlistCTASection() {
           {/* CTA Button */}
           <Link
             href="/join"
-            className="inline-flex items-center gap-3 bg-brand-gold-500 text-white font-bold text-lg px-8 py-4 rounded-xl hover:bg-brand-gold-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            className="inline-flex items-center gap-3 bg-brand-green-500 text-white font-bold text-lg px-8 py-4 rounded-xl hover:bg-brand-green-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
           >
             <span>Join the Movement</span>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

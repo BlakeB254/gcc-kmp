@@ -87,7 +87,7 @@ fun CommunityInfoPanel(
                 MetricItem(
                     value = "$jobsCompleted",
                     label = "Jobs",
-                    accentColor = GccGold,
+                    accentColor = GccSky,
                 )
             }
 

@@ -103,7 +103,7 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
       icon: '🤝',
       value: sponsorsTotal,
       label: 'Sponsors',
-      color: 'text-brand-gold-400',
+      color: 'text-brand-green-400',
       delay: 100,
     },
     // Show Blocks Cleaned card only once blocks are actually funded/cleaned
@@ -113,7 +113,7 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
             icon: '📍',
             value: blocksCleanedOrFunded,
             label: 'Blocks Cleaned',
-            color: 'text-brand-sky-400',
+            color: 'text-brand-blue-400',
             delay: 200,
           },
         ]
@@ -152,7 +152,7 @@ export function ImpactCounter({ layout = 'grid' }: ImpactCounterProps) {
               />
             )}
           </p>
-          <p className="text-brand-brown-200 text-sm sm:text-base">{counter.label}</p>
+          <p className="text-brand-green-200 text-sm sm:text-base">{counter.label}</p>
         </div>
       ))}
     </div>

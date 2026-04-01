@@ -92,7 +92,7 @@ const testimonials = [
 
 export default function BusinessPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       {/* Hero Section */}
       <section className="section-container py-16 text-center">
         <div className="mx-auto max-w-3xl">
@@ -200,7 +200,7 @@ export default function BusinessPage() {
       <section className="section-container py-16">
         <div className="mx-auto max-w-3xl">
           <div className="mb-8 text-center">
-            <Calculator className="mx-auto mb-4 h-12 w-12 text-brand-gold-500" />
+            <Calculator className="mx-auto mb-4 h-12 w-12 text-brand-green-500" />
             <h2 className="mb-2 text-2xl font-bold">Calculate Your Impact</h2>
             <p className="text-muted-foreground">
               See how your sponsorship translates to real community benefits
@@ -208,7 +208,7 @@ export default function BusinessPage() {
           </div>
 
           <Card className="overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-brand-gold-50 to-brand-green-50">
+            <CardHeader className="bg-gradient-to-r from-brand-green-50 to-brand-green-50">
               <CardTitle>Example: 10 Block Sponsorship</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
@@ -218,13 +218,13 @@ export default function BusinessPage() {
                   <p className="text-sm text-muted-foreground">Total Investment</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-brand-gold-600">10</p>
+                  <p className="text-3xl font-bold text-brand-green-600">10</p>
                   <p className="text-sm text-muted-foreground">
                     Local Workers Employed
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-brand-brown-600">~$250</p>
+                  <p className="text-3xl font-bold text-brand-green-600">~$250</p>
                   <p className="text-sm text-muted-foreground">
                     Tax Savings (25% bracket)
                   </p>

@@ -180,7 +180,7 @@ export function CheckpointNavigator({
 
                     {/* Photo requirement */}
                     {needsPhoto && (
-                      <div className="flex items-center gap-2 rounded-md bg-brand-sky-100 p-2 text-sm text-brand-sky-800">
+                      <div className="flex items-center gap-2 rounded-md bg-brand-blue-100 p-2 text-sm text-brand-blue-800">
                         <Camera className="h-4 w-4" />
                         <span>Photo required at this checkpoint</span>
                       </div>

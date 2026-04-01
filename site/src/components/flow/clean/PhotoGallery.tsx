@@ -148,7 +148,7 @@ export function PhotoGallery({
                       className={cn(
                         'absolute left-1 top-1 rounded-full px-2 py-0.5 text-xs font-medium',
                         slot.type === 'before'
-                          ? 'bg-brand-brown-500 text-white'
+                          ? 'bg-brand-green-500 text-white'
                           : 'bg-brand-green-500 text-white'
                       )}
                     >

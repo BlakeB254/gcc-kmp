@@ -117,11 +117,11 @@ export default function SupportWallPage() {
                 <p className="text-sm text-neutral-600">Total Raised</p>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                <p className="text-2xl font-bold text-brand-gold-600">{stats.blocksFunded}</p>
+                <p className="text-2xl font-bold text-brand-green-600">{stats.blocksFunded}</p>
                 <p className="text-sm text-neutral-600">Blocks Funded</p>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                <p className="text-2xl font-bold text-brand-brown-600">{stats.totalContributors}</p>
+                <p className="text-2xl font-bold text-brand-green-600">{stats.totalContributors}</p>
                 <p className="text-sm text-neutral-600">Total Supporters</p>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-sm text-center">
@@ -187,10 +187,10 @@ export default function SupportWallPage() {
                     <div key={contribution.id} className="p-4 hover:bg-neutral-50 transition-colors">
                       <div className="flex items-start gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          contribution.type === 'sponsorship' ? 'bg-brand-gold-100' : 'bg-brand-green-100'
+                          contribution.type === 'sponsorship' ? 'bg-brand-green-100' : 'bg-brand-green-100'
                         }`}>
                           {contribution.type === 'sponsorship' ? (
-                            <MapPin className="w-5 h-5 text-brand-gold-600" />
+                            <MapPin className="w-5 h-5 text-brand-green-600" />
                           ) : (
                             <Heart className="w-5 h-5 text-brand-green-600" />
                           )}
@@ -201,7 +201,7 @@ export default function SupportWallPage() {
                               {contribution.displayName}
                             </p>
                             <span className={`font-semibold ${
-                              contribution.type === 'sponsorship' ? 'text-brand-gold-600' : 'text-brand-green-600'
+                              contribution.type === 'sponsorship' ? 'text-brand-green-600' : 'text-brand-green-600'
                             }`}>
                               ${contribution.amount}
                             </span>

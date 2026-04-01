@@ -25,8 +25,8 @@ const FREQUENCY_TO_API: Record<SponsorFrequency, string> = {
 export default function SponsorPageWrapper() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600" />
+      <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green-600" />
       </div>
     }>
       <SponsorPage />
@@ -170,7 +170,7 @@ function SponsorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       <div className="section-container py-golden-xl">
         <div className="max-w-golden-wide mx-auto">
 
@@ -319,9 +319,9 @@ function BottomCTAs({ calculatorUrl }: { calculatorUrl: string }) {
       {/* Decorated section header */}
       <div className="text-center mb-8">
         <div className="flex items-center justify-center gap-4 mb-3">
-          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-brand-gold-300" />
-          <Sparkles className="w-5 h-5 text-brand-gold-500" />
-          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-brand-gold-300" />
+          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-r from-transparent to-brand-green-300" />
+          <Sparkles className="w-5 h-5 text-brand-green-500" />
+          <span className="h-px flex-1 max-w-[80px] bg-gradient-to-l from-transparent to-brand-green-300" />
         </div>
         <h3 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-2">
           Want to do more?
@@ -334,7 +334,7 @@ function BottomCTAs({ calculatorUrl }: { calculatorUrl: string }) {
       <div className="space-y-4">
         <Link
           href={calculatorUrl}
-          className="block bg-gradient-to-r from-brand-gold-500 to-amber-500 rounded-2xl p-7 text-white hover:from-brand-gold-600 hover:to-amber-600 transition-all group shadow-lg hover:shadow-xl"
+          className="block bg-gradient-to-r from-brand-green-500 to-amber-500 rounded-2xl p-7 text-white hover:from-brand-green-600 hover:to-amber-600 transition-all group shadow-lg hover:shadow-xl"
         >
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -352,11 +352,11 @@ function BottomCTAs({ calculatorUrl }: { calculatorUrl: string }) {
 
         <Link
           href="/sponsor/enterprise"
-          className="block bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 rounded-2xl p-7 hover:from-brand-brown-700 hover:to-brand-brown-800 transition-all group shadow-lg hover:shadow-xl"
+          className="block bg-gradient-to-r from-brand-green-800 to-brand-green-900 rounded-2xl p-7 hover:from-brand-green-700 hover:to-brand-green-800 transition-all group shadow-lg hover:shadow-xl"
         >
           <div className="flex items-center gap-5">
-            <div className="w-14 h-14 rounded-full bg-brand-gold-500 flex items-center justify-center flex-shrink-0">
-              <Building2 className="w-6 h-6 text-brand-brown-900" />
+            <div className="w-14 h-14 rounded-full bg-brand-green-500 flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-6 h-6 text-brand-green-900" />
             </div>
             <div className="flex-1">
               <h4 className="font-bold text-xl text-white mb-1">Enterprise Partnerships</h4>

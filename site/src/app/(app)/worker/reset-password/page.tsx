@@ -93,9 +93,9 @@ function ResetPasswordContent() {
   // Loading state while verifying token
   if (isVerifying) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-gold-500 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-green-500 mx-auto mb-4" />
           <p className="text-neutral-600">Verifying reset link...</p>
         </div>
       </div>
@@ -105,7 +105,7 @@ function ResetPasswordContent() {
   // Token error state
   if (tokenError) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <Link href="/" className="inline-block">
@@ -142,7 +142,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -233,7 +233,7 @@ function ResetPasswordContent() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-gold-500 text-white hover:bg-brand-gold-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-green-500 text-white hover:bg-brand-green-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isLoading ? (
                     <>
@@ -272,9 +272,9 @@ function ResetPasswordContent() {
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
       <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-brand-gold-500 mx-auto mb-4" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-green-500 mx-auto mb-4" />
         <p className="text-neutral-600">Loading...</p>
       </div>
     </div>

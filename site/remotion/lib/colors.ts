@@ -10,7 +10,7 @@ export const colors = {
     200: '#fef08a',
     300: '#fde047',
     400: '#facc15',
-    500: '#d4a017', // Primary brand gold
+    500: '#16763a', // Primary brand gold
     600: '#ca8a04',
     700: '#a16207',
     800: '#854d0e',
@@ -27,7 +27,7 @@ export const colors = {
     400: '#d2bab0',
     500: '#bfa094',
     600: '#a18072',
-    700: '#8b6e5a', // Primary brand brown
+    700: '#155b92', // Primary brand brown
     800: '#6f5647',
     900: '#5c463b',
     950: '#3d2d27',

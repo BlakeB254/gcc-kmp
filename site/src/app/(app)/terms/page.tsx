@@ -109,7 +109,7 @@ export default function TermsPage() {
               <h2 className="text-xl font-semibold text-neutral-900 mb-4">10. Contact</h2>
               <p className="text-neutral-700 mb-4">
                 For questions about these Terms of Service, please contact us at{' '}
-                <a href="mailto:support@globalcommunitycleaners.org" className="text-brand-gold-600 hover:underline">
+                <a href="mailto:support@globalcommunitycleaners.org" className="text-brand-green-600 hover:underline">
                   support@globalcommunitycleaners.org
                 </a>
               </p>
@@ -119,7 +119,7 @@ export default function TermsPage() {
           <div className="mt-12 pt-8 border-t border-neutral-200">
             <Link
               href="/"
-              className="text-brand-gold-600 hover:text-brand-gold-700 font-medium"
+              className="text-brand-green-600 hover:text-brand-green-700 font-medium"
             >
               &larr; Back to Home
             </Link>

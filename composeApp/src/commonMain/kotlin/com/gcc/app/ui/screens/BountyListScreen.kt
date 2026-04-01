@@ -140,7 +140,7 @@ private fun BountyListItem(
 
     GccCard(
         modifier = modifier,
-        accentColor = CardAccentGold,
+        accentColor = CardAccentSky,
         onClick = onClick,
     ) {
         Column {

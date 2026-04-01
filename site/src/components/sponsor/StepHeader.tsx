@@ -8,7 +8,7 @@ export function StepHeader({ step, title, description }: StepHeaderProps) {
   return (
     <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-5 py-4 mb-6">
       <div className="flex items-center gap-3">
-        <span className="w-9 h-9 rounded-full bg-brand-gold-500 text-white flex items-center justify-center text-sm font-bold shadow-md flex-shrink-0">
+        <span className="w-9 h-9 rounded-full bg-brand-green-500 text-white flex items-center justify-center text-sm font-bold shadow-md flex-shrink-0">
           {step}
         </span>
         <div>

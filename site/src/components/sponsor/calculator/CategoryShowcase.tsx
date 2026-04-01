@@ -16,10 +16,10 @@ interface CategoryShowcaseProps {
 
 const accentStyles = {
   gold: {
-    bg: 'bg-gradient-to-br from-brand-gold-100 to-amber-100',
-    border: 'border-brand-gold-200',
-    text: 'text-brand-gold-800',
-    badge: 'bg-brand-gold-500 text-white',
+    bg: 'bg-gradient-to-br from-brand-green-100 to-amber-100',
+    border: 'border-brand-green-200',
+    text: 'text-brand-green-800',
+    badge: 'bg-brand-green-500 text-white',
   },
   green: {
     bg: 'bg-gradient-to-br from-brand-green-100 to-emerald-100',
@@ -28,16 +28,16 @@ const accentStyles = {
     badge: 'bg-brand-green-500 text-white',
   },
   brown: {
-    bg: 'bg-gradient-to-br from-brand-brown-100 to-amber-100',
-    border: 'border-brand-brown-200',
-    text: 'text-brand-brown-800',
-    badge: 'bg-brand-brown-700 text-white',
+    bg: 'bg-gradient-to-br from-brand-green-100 to-amber-100',
+    border: 'border-brand-green-200',
+    text: 'text-brand-green-800',
+    badge: 'bg-brand-green-700 text-white',
   },
   sky: {
-    bg: 'bg-gradient-to-br from-brand-sky-100 to-blue-100',
-    border: 'border-brand-sky-200',
-    text: 'text-brand-sky-800',
-    badge: 'bg-brand-sky-500 text-white',
+    bg: 'bg-gradient-to-br from-brand-blue-100 to-blue-100',
+    border: 'border-brand-blue-200',
+    text: 'text-brand-blue-800',
+    badge: 'bg-brand-blue-500 text-white',
   },
 }
 

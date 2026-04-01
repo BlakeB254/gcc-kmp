@@ -139,7 +139,7 @@ internal fun AdminRoutesTab(
             val statusColor = when (route.status) {
                 RouteStatus.PUBLISHED -> GccGreen
                 RouteStatus.DRAFT -> Color.Gray
-                RouteStatus.ARCHIVED -> GccGold
+                RouteStatus.ARCHIVED -> GccSky
             }
             val nextStatus = when (route.status) {
                 RouteStatus.PUBLISHED -> "draft"

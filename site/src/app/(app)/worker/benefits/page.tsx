@@ -76,12 +76,12 @@ const requirements = [
 
 export default function WorkerBenefitsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       {/* Hero Section */}
       <section className="section-container py-16 text-center">
         <div className="mx-auto max-w-3xl">
           <h1 className="mb-4 text-4xl font-bold tracking-tight sm:text-5xl">
-            Earn <span className="text-brand-gold-600">$100</span> Per Block
+            Earn <span className="text-brand-green-600">$100</span> Per Block
           </h1>
           <p className="mb-8 text-lg text-muted-foreground">
             Turn your time into money while making North Lawndale cleaner.
@@ -110,8 +110,8 @@ export default function WorkerBenefitsPage() {
             return (
               <Card key={benefit.title} className="border-0 bg-white/80 backdrop-blur">
                 <CardHeader className="pb-2">
-                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-gold-100">
-                    <Icon className="h-6 w-6 text-brand-gold-600" />
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-green-100">
+                    <Icon className="h-6 w-6 text-brand-green-600" />
                   </div>
                   <CardTitle className="text-lg">{benefit.title}</CardTitle>
                 </CardHeader>
@@ -127,7 +127,7 @@ export default function WorkerBenefitsPage() {
       </section>
 
       {/* Earnings Calculator */}
-      <section className="bg-brand-brown-800 py-16 text-white">
+      <section className="bg-brand-green-800 py-16 text-white">
         <div className="section-container">
           <h2 className="mb-8 text-center text-2xl font-bold">
             How Much Can You Earn?
@@ -156,10 +156,10 @@ export default function WorkerBenefitsPage() {
                     <td className="px-6 py-4 text-sm">
                       {example.blocks} {example.blocks === 1 ? 'block' : 'blocks'}
                     </td>
-                    <td className="px-6 py-4 text-right text-lg font-bold text-brand-gold-300">
+                    <td className="px-6 py-4 text-right text-lg font-bold text-brand-green-300">
                       {example.perWeek}
                     </td>
-                    <td className="px-6 py-4 text-right text-lg font-bold text-brand-gold-300">
+                    <td className="px-6 py-4 text-right text-lg font-bold text-brand-green-300">
                       {example.perMonth}
                     </td>
                   </tr>
@@ -193,7 +193,7 @@ export default function WorkerBenefitsPage() {
       </section>
 
       {/* Final CTA */}
-      <section className="bg-brand-gold-50 py-16">
+      <section className="bg-brand-green-50 py-16">
         <div className="section-container text-center">
           <h2 className="mb-4 text-2xl font-bold">
             Ready to Start Earning?

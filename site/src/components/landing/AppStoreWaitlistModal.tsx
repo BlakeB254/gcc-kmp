@@ -93,7 +93,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-gold-400 to-brand-gold-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-green-400 to-brand-green-600 flex items-center justify-center">
                 <Smartphone className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -120,7 +120,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleClose}
-                className="flex-1 py-3 px-4 bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900 font-semibold rounded-lg transition-colors"
+                className="flex-1 py-3 px-4 bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900 font-semibold rounded-lg transition-colors"
               >
                 Done
               </button>
@@ -151,12 +151,12 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                   className={cn(
                     'flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all',
                     platform === 'ios'
-                      ? 'border-brand-gold-500 bg-brand-gold-50'
+                      ? 'border-brand-green-500 bg-brand-green-50'
                       : 'border-neutral-200 hover:border-neutral-300'
                   )}
                 >
-                  <Apple className={cn('w-6 h-6', platform === 'ios' ? 'text-brand-gold-600' : 'text-neutral-600')} />
-                  <span className={cn('text-sm font-medium', platform === 'ios' ? 'text-brand-gold-700' : 'text-neutral-600')}>
+                  <Apple className={cn('w-6 h-6', platform === 'ios' ? 'text-brand-green-600' : 'text-neutral-600')} />
+                  <span className={cn('text-sm font-medium', platform === 'ios' ? 'text-brand-green-700' : 'text-neutral-600')}>
                     iOS
                   </span>
                 </button>
@@ -166,18 +166,18 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                   className={cn(
                     'flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all',
                     platform === 'android'
-                      ? 'border-brand-gold-500 bg-brand-gold-50'
+                      ? 'border-brand-green-500 bg-brand-green-50'
                       : 'border-neutral-200 hover:border-neutral-300'
                   )}
                 >
                   <svg
-                    className={cn('w-6 h-6', platform === 'android' ? 'text-brand-gold-600' : 'text-neutral-600')}
+                    className={cn('w-6 h-6', platform === 'android' ? 'text-brand-green-600' : 'text-neutral-600')}
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
                     <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4483.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3435-4.1021-2.6892-7.5743-6.1185-9.4396" />
                   </svg>
-                  <span className={cn('text-sm font-medium', platform === 'android' ? 'text-brand-gold-700' : 'text-neutral-600')}>
+                  <span className={cn('text-sm font-medium', platform === 'android' ? 'text-brand-green-700' : 'text-neutral-600')}>
                     Android
                   </span>
                 </button>
@@ -187,12 +187,12 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                   className={cn(
                     'flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all',
                     platform === 'both'
-                      ? 'border-brand-gold-500 bg-brand-gold-50'
+                      ? 'border-brand-green-500 bg-brand-green-50'
                       : 'border-neutral-200 hover:border-neutral-300'
                   )}
                 >
-                  <Smartphone className={cn('w-6 h-6', platform === 'both' ? 'text-brand-gold-600' : 'text-neutral-600')} />
-                  <span className={cn('text-sm font-medium', platform === 'both' ? 'text-brand-gold-700' : 'text-neutral-600')}>
+                  <Smartphone className={cn('w-6 h-6', platform === 'both' ? 'text-brand-green-600' : 'text-neutral-600')} />
+                  <span className={cn('text-sm font-medium', platform === 'both' ? 'text-brand-green-700' : 'text-neutral-600')}>
                     Both
                   </span>
                 </button>
@@ -211,7 +211,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 required
-                className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:border-brand-gold-500 focus:ring-2 focus:ring-brand-gold-500/20 outline-none transition-all"
+                className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:border-brand-green-500 focus:ring-2 focus:ring-brand-green-500/20 outline-none transition-all"
               />
             </div>
 
@@ -226,7 +226,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
                 value={phone}
                 onChange={handlePhoneChange}
                 placeholder="(555) 123-4567"
-                className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:border-brand-gold-500 focus:ring-2 focus:ring-brand-gold-500/20 outline-none transition-all"
+                className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:border-brand-green-500 focus:ring-2 focus:ring-brand-green-500/20 outline-none transition-all"
               />
             </div>
 
@@ -241,7 +241,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
             <button
               type="submit"
               disabled={isSubmitting || !email}
-              className="w-full py-4 bg-brand-gold-500 hover:bg-brand-gold-400 disabled:bg-neutral-200 disabled:text-neutral-500 text-neutral-900 font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full py-4 bg-brand-green-500 hover:bg-brand-green-400 disabled:bg-neutral-200 disabled:text-neutral-500 text-neutral-900 font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
                 <>

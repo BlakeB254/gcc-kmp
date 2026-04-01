@@ -55,9 +55,9 @@ export function workerSignupEmail(data: WorkerSignupData): { html: string; text:
               <!-- Stats -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 32px;">
                 <tr>
-                  <td style="text-align: center; padding: 16px; background-color: #fef9c3; border-radius: 8px; width: 33%;">
+                  <td style="text-align: center; padding: 16px; background-color: #e7f1eb; border-radius: 8px; width: 33%;">
                     <p style="margin: 0; color: #1a1a1a; font-size: 24px; font-weight: 700;">$100</p>
-                    <p style="margin: 4px 0 0; color: #6b5344; font-size: 12px;">Per Block</p>
+                    <p style="margin: 4px 0 0; color: #0e3f66; font-size: 12px;">Per Block</p>
                   </td>
                   <td style="text-align: center; padding: 16px; background-color: #dcfce7; border-radius: 8px; width: 33%;">
                     <p style="margin: 0; color: #1a1a1a; font-size: 24px; font-weight: 700;">3-4h</p>

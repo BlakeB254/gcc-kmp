@@ -89,7 +89,7 @@ export default function JobCompletedPage() {
         particleCount: 200,
         spread: 120,
         origin: { y: 0.5 },
-        colors: ['#ffd700', '#daa520', '#b8860b', '#22c55e', '#16a34a'],
+        colors: ['#ffd700', '#daa520', '#126431', '#22c55e', '#16a34a'],
         ticks: 300,
       })
     }, 300)
@@ -116,13 +116,13 @@ export default function JobCompletedPage() {
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-          colors: ['#22c55e', '#16a34a', '#d4a017'],
+          colors: ['#22c55e', '#16a34a', '#16763a'],
         })
         confetti({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-          colors: ['#22c55e', '#16a34a', '#d4a017'],
+          colors: ['#22c55e', '#16a34a', '#16763a'],
         })
       }, 250)
     }, 800)
@@ -168,7 +168,7 @@ export default function JobCompletedPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-900">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-brand-gold-500 border-t-transparent" />
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-brand-green-500 border-t-transparent" />
           <p className="text-neutral-400">Processing your submission...</p>
         </div>
       </div>
@@ -188,7 +188,7 @@ export default function JobCompletedPage() {
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-green-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-brand-gold-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-brand-green-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative min-h-screen flex flex-col">
@@ -201,7 +201,7 @@ export default function JobCompletedPage() {
           </Link>
           <div className="text-center">
             <p className="text-xs text-neutral-400">Job Complete</p>
-            <p className="font-medium text-brand-gold-400">{job.block.code}</p>
+            <p className="font-medium text-brand-green-400">{job.block.code}</p>
           </div>
           <div className="w-10" /> {/* Spacer for alignment */}
         </header>
@@ -227,7 +227,7 @@ export default function JobCompletedPage() {
             `}
           >
             <div className="relative inline-block">
-              <div className="text-6xl sm:text-7xl font-bold text-brand-gold-400 animate-glow">
+              <div className="text-6xl sm:text-7xl font-bold text-brand-green-400 animate-glow">
                 {formatCurrency(job.payoutAmount)}
               </div>
               <div className="absolute -top-2 -right-2 animate-bounce">
@@ -256,7 +256,7 @@ export default function JobCompletedPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-brand-gold-400">{formatCurrency(job.payoutAmount)}</p>
+                  <p className="text-2xl font-bold text-brand-green-400">{formatCurrency(job.payoutAmount)}</p>
                 </div>
               </div>
 
@@ -313,7 +313,7 @@ export default function JobCompletedPage() {
                 font-semibold transition-all
                 ${isSaved
                   ? 'bg-brand-green-500 text-white'
-                  : 'bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900'
+                  : 'bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900'
                 }
               `}
             >

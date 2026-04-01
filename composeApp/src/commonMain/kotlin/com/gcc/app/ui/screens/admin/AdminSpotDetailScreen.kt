@@ -46,9 +46,9 @@ fun AdminSpotDetailScreen(
     }
 
     val statusColor = when (report.status) {
-        CommunityReportStatus.PENDING -> GccGold
+        CommunityReportStatus.PENDING -> GccSky
         CommunityReportStatus.VERIFIED -> GccGreen
-        CommunityReportStatus.RESOLVED -> GccGold
+        CommunityReportStatus.RESOLVED -> GccSky
         CommunityReportStatus.ACKNOWLEDGED -> GccBlue
         CommunityReportStatus.REJECTED -> GccError
     }
@@ -92,7 +92,7 @@ fun AdminSpotDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGoldDark,
+                    containerColor = GccSkyDark,
                     titleContentColor = Color.White,
                 ),
             )
@@ -120,15 +120,15 @@ fun AdminSpotDetailScreen(
                     androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
                         val pixelRadius = metersToPixels(report.affectedRadiusMeters, report.coordinates.lat, mapZoom)
                         val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-                        drawCircle(color = GccGold.copy(alpha = 0.2f), radius = pixelRadius, center = center)
-                        drawCircle(color = GccGold, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                        drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
+                        drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
                     Box(
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
                             .clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.6f))
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     ) {
-                        Text("${report.affectedRadiusMeters.toInt()}m radius", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                        Text("${report.affectedRadiusMeters.toInt()}m radius", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = GccSky)
                     }
                 }
             }
@@ -256,7 +256,7 @@ fun AdminSpotDetailScreen(
                                 onBack()
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = GccGold),
+                            colors = ButtonDefaults.buttonColors(containerColor = GccSky),
                         ) {
                             Text("\u2705 Mark Resolved (Cleaned)")
                         }

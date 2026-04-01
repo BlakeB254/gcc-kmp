@@ -15,9 +15,9 @@ const badgeVariants = cva(
         success:
           'border-transparent bg-brand-green-100 text-brand-green-800',
         warning:
-          'border-transparent bg-brand-gold-100 text-brand-gold-800',
+          'border-transparent bg-brand-green-100 text-brand-green-800',
         info:
-          'border-transparent bg-brand-sky-100 text-brand-sky-800',
+          'border-transparent bg-brand-blue-100 text-brand-blue-800',
         destructive:
           'border-transparent bg-destructive text-destructive-foreground shadow',
         outline: 'text-foreground',
@@ -27,18 +27,18 @@ const badgeVariants = cva(
         approved:
           'border-transparent bg-brand-green-100 text-brand-green-800',
         available:
-          'border-transparent bg-brand-gold-100 text-brand-gold-800',
+          'border-transparent bg-brand-green-100 text-brand-green-800',
         claimed:
-          'border-transparent bg-brand-sky-100 text-brand-sky-800',
+          'border-transparent bg-brand-blue-100 text-brand-blue-800',
         completed:
           'border-transparent bg-brand-green-100 text-brand-green-800',
         // Member badges
         founder:
-          'border-transparent bg-gradient-to-r from-brand-gold-500 to-brand-gold-600 text-white shadow-sm',
+          'border-transparent bg-gradient-to-r from-brand-green-500 to-brand-green-600 text-white shadow-sm',
         earlyMember:
           'border-transparent bg-brand-green-100 text-brand-green-800',
         verified:
-          'border-transparent bg-brand-sky-50 text-brand-sky-700 border border-brand-sky-200',
+          'border-transparent bg-brand-blue-50 text-brand-blue-700 border border-brand-blue-200',
       },
     },
     defaultVariants: {

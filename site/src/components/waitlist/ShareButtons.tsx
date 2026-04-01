@@ -137,7 +137,7 @@ export function ShareButtons({ shareData, className = '' }: ShareButtonsProps) {
               ${
                 copied
                   ? 'bg-green-500 text-white'
-                  : 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                  : 'bg-brand-green-500 text-white hover:bg-brand-green-600'
               }
             `}
           >

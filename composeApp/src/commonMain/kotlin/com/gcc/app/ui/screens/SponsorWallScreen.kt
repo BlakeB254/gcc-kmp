@@ -69,7 +69,7 @@ fun SponsorWallScreen(onBack: () -> Unit = {}) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGold,
+                    containerColor = GccSky,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                 ),
@@ -217,7 +217,7 @@ private fun SponsorCard(
         SponsorDisplayTier.BRONZE -> BadgeBronze
     }
     val accentColor = when (tier) {
-        SponsorDisplayTier.GOLD -> CardAccentGold
+        SponsorDisplayTier.GOLD -> CardAccentSky
         SponsorDisplayTier.SILVER -> BadgeSilver
         SponsorDisplayTier.BRONZE -> BadgeBronze
     }

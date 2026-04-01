@@ -67,7 +67,7 @@ export function NLHowItWorksSection() {
     <section ref={sectionRef} className="py-golden-2xl bg-neutral-50">
       <div className="section-container">
         <div className="text-center mb-16">
-          <p className="text-sm font-semibold text-brand-gold-600 uppercase tracking-[0.2em] mb-3">
+          <p className="text-sm font-semibold text-brand-green-600 uppercase tracking-[0.2em] mb-3">
             How It Works
           </p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-neutral-900 mb-4">
@@ -88,13 +88,13 @@ export function NLHowItWorksSection() {
               style={{ transitionDelay: `${i * 150}ms` }}
             >
               {/* Step number */}
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-gold-100 text-brand-gold-700 mb-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-green-100 text-brand-green-700 mb-4">
                 {step.icon}
               </div>
 
               {/* Step indicator */}
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-brown-100 px-3 py-1 mb-3">
-                <span className="text-xs font-bold text-brand-brown-600">Step {step.number}</span>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-green-100 px-3 py-1 mb-3">
+                <span className="text-xs font-bold text-brand-green-600">Step {step.number}</span>
               </div>
 
               <h3 className="text-lg font-bold text-neutral-900 mb-2">{step.title}</h3>
@@ -107,8 +107,8 @@ export function NLHowItWorksSection() {
         <div className="flex flex-wrap justify-center gap-3 mt-12">
           {[
             { label: 'No phone necessary', bg: 'bg-brand-green-100', border: 'border-brand-green-200', icon: 'text-brand-green-600', text: 'text-brand-green-700' },
-            { label: 'Group activity', bg: 'bg-brand-sky-100', border: 'border-brand-sky-200', icon: 'text-brand-sky-600', text: 'text-brand-sky-700' },
-            { label: 'Same-day pay', bg: 'bg-brand-gold-100', border: 'border-brand-gold-200', icon: 'text-brand-gold-600', text: 'text-brand-gold-700' },
+            { label: 'Group activity', bg: 'bg-brand-blue-100', border: 'border-brand-blue-200', icon: 'text-brand-blue-600', text: 'text-brand-blue-700' },
+            { label: 'Same-day pay', bg: 'bg-brand-green-100', border: 'border-brand-green-200', icon: 'text-brand-green-600', text: 'text-brand-green-700' },
           ].map(({ label, bg, border, icon, text }) => (
             <div key={label} className={`inline-flex items-center gap-2 rounded-full ${bg} border ${border} px-4 py-2`}>
               <svg className={`w-4 h-4 ${icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -133,9 +133,9 @@ export default function TicketDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-500">Loading ticket...</p>
         </div>
       </div>
@@ -144,10 +144,10 @@ export default function TicketDetailPage() {
 
   if (error || !ticket) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-500 mb-4">{error || 'Ticket not found'}</p>
-          <Link href="/support" className="text-brand-gold-600 hover:underline">
+          <Link href="/support" className="text-brand-green-600 hover:underline">
             Return to support
           </Link>
         </div>
@@ -162,7 +162,7 @@ export default function TicketDetailPage() {
   const isClosed = ticket.status === 'closed' || ticket.status === 'resolved'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
       {/* Header */}
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-40">
         <div className="section-container py-4">
@@ -278,14 +278,14 @@ export default function TicketDetailPage() {
                     key={reply.id}
                     className={`rounded-xl p-4 ${
                       reply.isAdminReply
-                        ? 'bg-brand-gold-50 border border-brand-gold-200 ml-0 mr-8'
+                        ? 'bg-brand-green-50 border border-brand-green-200 ml-0 mr-8'
                         : 'bg-white border border-neutral-200 ml-8 mr-0'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
                         reply.isAdminReply
-                          ? 'bg-gradient-to-br from-brand-gold-500 to-brand-gold-600'
+                          ? 'bg-gradient-to-br from-brand-green-500 to-brand-green-600'
                           : 'bg-gradient-to-br from-neutral-400 to-neutral-500'
                       }`}>
                         {reply.isAdminReply ? (
@@ -299,7 +299,7 @@ export default function TicketDetailPage() {
                           {reply.isAdminReply ? 'GCC Support' : reply.replierName}
                         </span>
                         {reply.isAdminReply && (
-                          <span className="ml-2 px-1.5 py-0.5 bg-brand-gold-200 text-brand-gold-800 rounded text-[10px] font-medium">
+                          <span className="ml-2 px-1.5 py-0.5 bg-brand-green-200 text-brand-green-800 rounded text-[10px] font-medium">
                             Staff
                           </span>
                         )}
@@ -326,14 +326,14 @@ export default function TicketDetailPage() {
                   onChange={(e) => setReplyMessage(e.target.value)}
                   placeholder="Write your reply..."
                   rows={3}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all resize-none"
                   required
                 />
                 <div className="flex items-center justify-end mt-3">
                   <button
                     type="submit"
                     disabled={isSubmitting || !replyMessage.trim()}
-                    className="px-5 py-2 bg-brand-gold-500 text-white font-semibold rounded-lg hover:bg-brand-gold-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                    className="px-5 py-2 bg-brand-green-500 text-white font-semibold rounded-lg hover:bg-brand-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                   >
                     {isSubmitting ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -351,7 +351,7 @@ export default function TicketDetailPage() {
               <p className="text-neutral-600">This ticket has been {ticket.status}.</p>
               <Link
                 href="/support"
-                className="mt-3 inline-flex items-center gap-2 text-brand-gold-600 hover:underline"
+                className="mt-3 inline-flex items-center gap-2 text-brand-green-600 hover:underline"
               >
                 Submit a new ticket if you need more help
               </Link>

@@ -48,16 +48,16 @@ export function SponsorCTASection() {
   ]
 
   return (
-    <section id="sponsor" className="py-28 lg:py-32 bg-gradient-to-br from-brand-gold-50 to-white">
+    <section id="sponsor" className="py-28 lg:py-32 bg-gradient-to-br from-brand-green-50 to-white">
       <div className="section-container">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
           {/* Left column - Content */}
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-brand-gold-100 px-4 py-2 mb-6">
-              <svg className="w-4 h-4 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-100 px-4 py-2 mb-6">
+              <svg className="w-4 h-4 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
               </svg>
-              <span className="text-sm font-medium text-brand-gold-800">For Sponsors</span>
+              <span className="text-sm font-medium text-brand-green-800">For Sponsors</span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-6">
@@ -72,7 +72,7 @@ export function SponsorCTASection() {
             <div className="grid sm:grid-cols-2 gap-6 mb-10">
               {benefits.map((benefit, index) => (
                 <div key={index} className="flex gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-brand-gold-100 flex items-center justify-center text-brand-gold-600">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-brand-green-100 flex items-center justify-center text-brand-green-600">
                     {benefit.icon}
                   </div>
                   <div>
@@ -104,7 +104,7 @@ export function SponsorCTASection() {
           <div className="space-y-6">
             {/* Basic Sponsorship Card */}
             <div className="relative">
-              <div className="card p-8 border-2 border-brand-gold-200">
+              <div className="card p-8 border-2 border-brand-green-200">
                 {/* Toggle */}
                 <div className="flex rounded-lg bg-neutral-100 p-1 mb-8">
                   <button
@@ -208,7 +208,7 @@ export function SponsorCTASection() {
               </div>
 
               {/* Decorative elements */}
-              <div className="absolute -z-10 -top-4 -right-4 w-full h-full rounded-2xl bg-brand-gold-200/50" />
+              <div className="absolute -z-10 -top-4 -right-4 w-full h-full rounded-2xl bg-brand-green-200/50" />
             </div>
 
             {/* Custom Package Card */}
@@ -227,26 +227,26 @@ export function SponsorCTASection() {
 
               <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
                 <div className="flex items-center gap-2 text-neutral-300">
-                  <span className="text-brand-gold-400">+</span>
+                  <span className="text-brand-green-400">+</span>
                   Branded vests
                 </div>
                 <div className="flex items-center gap-2 text-neutral-300">
-                  <span className="text-brand-gold-400">+</span>
+                  <span className="text-brand-green-400">+</span>
                   Block signage
                 </div>
                 <div className="flex items-center gap-2 text-neutral-300">
-                  <span className="text-brand-gold-400">+</span>
+                  <span className="text-brand-green-400">+</span>
                   Graffiti removal
                 </div>
                 <div className="flex items-center gap-2 text-neutral-300">
-                  <span className="text-brand-gold-400">+</span>
+                  <span className="text-brand-green-400">+</span>
                   Impact reports
                 </div>
               </div>
 
               <Link
                 href="/sponsor/calculator"
-                className="block w-full py-3 px-4 rounded-lg bg-brand-gold-500 text-center font-semibold hover:bg-brand-gold-600 transition-colors"
+                className="block w-full py-3 px-4 rounded-lg bg-brand-green-500 text-center font-semibold hover:bg-brand-green-600 transition-colors"
               >
                 Build Custom Package →
               </Link>

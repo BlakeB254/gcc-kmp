@@ -20,7 +20,7 @@ export default async function Image() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #8B7355 0%, #6B5344 50%, #4a3a2e 100%)',
+          background: 'linear-gradient(135deg, #155B92 0%, #0e3f66 50%, #0b3b1d 100%)',
           fontFamily: 'system-ui, sans-serif',
           position: 'relative',
           overflow: 'hidden',
@@ -35,7 +35,7 @@ export default async function Image() {
             width: '400px',
             height: '400px',
             borderRadius: '50%',
-            background: 'rgba(212, 175, 55, 0.15)',
+            background: 'rgba(22, 118, 58, 0.15)',
           }}
         />
         <div
@@ -97,7 +97,7 @@ export default async function Image() {
           <p
             style={{
               fontSize: '36px',
-              color: '#D4AF37',
+              color: '#30A0CE',
               fontWeight: 700,
               margin: 0,
               marginBottom: '32px',

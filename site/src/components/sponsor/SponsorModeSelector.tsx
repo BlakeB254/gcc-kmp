@@ -54,13 +54,13 @@ function ModeCard({
       aria-checked={active}
       className={`p-5 rounded-xl border-2 text-left transition-all duration-200 hover-lift ${
         active
-          ? 'border-brand-gold-500 bg-brand-gold-50 shadow-lg ring-2 ring-brand-gold-200'
-          : 'border-neutral-200 bg-white hover:border-brand-gold-300'
+          ? 'border-brand-green-500 bg-brand-green-50 shadow-lg ring-2 ring-brand-green-200'
+          : 'border-neutral-200 bg-white hover:border-brand-green-300'
       }`}
     >
       <div className="flex items-start gap-3">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          active ? 'bg-brand-gold-500 text-white' : 'bg-neutral-100 text-neutral-500'
+          active ? 'bg-brand-green-500 text-white' : 'bg-neutral-100 text-neutral-500'
         }`}>
           {icon}
         </div>
@@ -69,7 +69,7 @@ function ModeCard({
           <p className="text-sm text-neutral-600 mt-1">{description}</p>
         </div>
         {active && (
-          <div className="w-6 h-6 rounded-full bg-brand-gold-500 flex items-center justify-center">
+          <div className="w-6 h-6 rounded-full bg-brand-green-500 flex items-center justify-center">
             <Check className="w-4 h-4 text-white" />
           </div>
         )}

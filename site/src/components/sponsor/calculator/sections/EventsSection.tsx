@@ -49,7 +49,7 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-full bg-brand-gold-100 text-brand-gold-600 flex items-center justify-center text-sm font-bold">
+          <span className="w-8 h-8 rounded-full bg-brand-green-100 text-brand-green-600 flex items-center justify-center text-sm font-bold">
             4
           </span>
           Add Events (Optional)
@@ -64,13 +64,13 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
           {...categoryShowcases.events}
           imageSrc="/images/upsells/events.svg"
           imageAlt="GCC cleaning crew at a block party event with branded equipment"
-          icon={<Calendar className="w-8 h-8 text-brand-gold-600" />}
+          icon={<Calendar className="w-8 h-8 text-brand-green-600" />}
         />
 
         {/* Event Packages */}
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <Users className="w-5 h-5 text-brand-gold-600" />
+            <Users className="w-5 h-5 text-brand-green-600" />
             <h3 className="font-semibold text-neutral-900">Crew Packages</h3>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -85,12 +85,12 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
                     'text-left p-4 rounded-xl border-2 transition-all',
                     isAdded
                       ? 'border-brand-green-500 bg-brand-green-50 opacity-60'
-                      : 'border-neutral-200 hover:border-brand-gold-300 hover:bg-brand-gold-50'
+                      : 'border-neutral-200 hover:border-brand-green-300 hover:bg-brand-green-50'
                   )}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <h4 className="font-semibold text-neutral-900">{pkg.name}</h4>
-                    <span className="font-bold text-brand-gold-600">{formatPrice(pkg.price)}</span>
+                    <span className="font-bold text-brand-green-600">{formatPrice(pkg.price)}</span>
                   </div>
                   <p className="text-sm text-neutral-600 mb-2">{pkg.description}</p>
                   <div className="flex items-center gap-3 text-xs text-neutral-500">
@@ -113,7 +113,7 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-neutral-900">Selected Events</h3>
               <span className="text-sm text-neutral-600">
-                Total: <span className="font-semibold text-brand-gold-600">{formatPrice(totalEventsPrice)}</span>
+                Total: <span className="font-semibold text-brand-green-600">{formatPrice(totalEventsPrice)}</span>
               </span>
             </div>
             <div className="space-y-3">
@@ -165,18 +165,18 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
         )}
 
         {/* Event Types Info */}
-        <div className="bg-brand-gold-50 border border-brand-gold-200 rounded-xl p-4">
+        <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-4">
           <div className="flex items-start gap-3">
-            <Calendar className="w-5 h-5 text-brand-gold-600 flex-shrink-0 mt-0.5" />
+            <Calendar className="w-5 h-5 text-brand-green-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-medium text-brand-gold-800 mb-1">Popular Event Types</h4>
+              <h4 className="font-medium text-brand-green-800 mb-1">Popular Event Types</h4>
               <div className="flex flex-wrap gap-2">
                 {Object.values(eventTypes)
                   .slice(0, 4)
                   .map((type) => (
                     <span
                       key={type.id}
-                      className="text-xs px-2 py-1 bg-white rounded-full text-brand-gold-700"
+                      className="text-xs px-2 py-1 bg-white rounded-full text-brand-green-700"
                     >
                       {type.name}
                     </span>

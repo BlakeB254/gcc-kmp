@@ -53,11 +53,11 @@ const tierConfig: Record<
     labelBg: 'bg-gradient-to-r from-brand-green-400 to-brand-green-500 text-black',
   },
   certified: {
-    bgGradient: 'bg-gradient-to-br from-brand-gold-700 via-brand-gold-600 to-brand-gold-800',
-    borderColor: 'border-brand-gold-300',
+    bgGradient: 'bg-gradient-to-br from-brand-green-700 via-brand-green-600 to-brand-green-800',
+    borderColor: 'border-brand-green-300',
     hologramStyle: 'holographic-gold',
     label: 'CERTIFIED',
-    labelBg: 'bg-gradient-to-r from-brand-gold-300 to-brand-gold-400 text-black',
+    labelBg: 'bg-gradient-to-r from-brand-green-300 to-brand-green-400 text-black',
   },
 }
 
@@ -243,7 +243,7 @@ export function ShareableCard({
             <button
               onClick={handleNativeShare}
               disabled={isDownloading}
-              className="flex items-center gap-2 rounded-lg bg-brand-gold-500 px-4 py-2 font-medium text-black transition-all hover:bg-brand-gold-400"
+              className="flex items-center gap-2 rounded-lg bg-brand-green-500 px-4 py-2 font-medium text-black transition-all hover:bg-brand-green-400"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path

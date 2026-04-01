@@ -539,7 +539,7 @@ export function NeighborhoodMapSection() {
         </div>
 
         {/* Map container */}
-        <div className="relative rounded-2xl overflow-hidden shadow-xl border-4 border-brand-gold-500">
+        <div className="relative rounded-2xl overflow-hidden shadow-xl border-4 border-brand-green-500">
           <div className="h-[500px] sm:h-[600px]">
             <Map
               ref={mapRef}
@@ -572,7 +572,7 @@ export function NeighborhoodMapSection() {
                   id="service-area-outline"
                   type="line"
                   paint={{
-                    'line-color': '#B8860B',
+                    'line-color': '#126431',
                     'line-width': 3,
                     'line-dasharray': [4, 2],
                   }}
@@ -1002,7 +1002,7 @@ export function NeighborhoodMapSection() {
               {' • '}
               © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer" className="underline">CARTO</a>
             </span>
-            <span className="font-medium text-brand-gold-600">
+            <span className="font-medium text-brand-green-600">
               GCC Service Area
             </span>
           </div>

@@ -382,7 +382,7 @@ export function BlockMap({
               {popupInfo.status === 'available' && onBlockSelect && (
                 <button
                   onClick={() => onBlockSelect(popupInfo)}
-                  className="mt-3 w-full bg-brand-gold-600 hover:bg-brand-gold-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors"
+                  className="mt-3 w-full bg-brand-green-600 hover:bg-brand-green-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors"
                 >
                   Claim This Block
                 </button>
@@ -596,7 +596,7 @@ export function BlockMap({
             'fill-color': [
               'case',
               ['==', ['get', 'selected'], true],
-              '#D4A017', // brand gold for selected
+              '#16763A', // brand gold for selected
               [
                 'match',
                 ['get', 'status'],
@@ -635,7 +635,7 @@ export function BlockMap({
             'line-color': [
               'case',
               ['==', ['get', 'selected'], true],
-              '#B8860B', // dark gold border for selected
+              '#126431', // dark gold border for selected
               [
                 'match',
                 ['get', 'status'],
@@ -671,7 +671,7 @@ export function BlockMap({
             'circle-color': [
               'case',
               ['==', ['get', 'selected'], true],
-              '#D4A017',
+              '#16763A',
               [
                 'match',
                 ['get', 'status'],
@@ -686,7 +686,7 @@ export function BlockMap({
             'circle-stroke-color': [
               'case',
               ['==', ['get', 'selected'], true],
-              '#B8860B',
+              '#126431',
               '#ffffff',
             ],
             'circle-stroke-width': [

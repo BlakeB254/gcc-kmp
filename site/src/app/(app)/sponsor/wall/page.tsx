@@ -58,9 +58,9 @@ const tierConfig: Record<
   gold: {
     label: 'Gold',
     icon: Crown,
-    color: 'text-brand-gold-600',
-    bgColor: 'bg-brand-gold-50',
-    borderColor: 'border-brand-gold-200',
+    color: 'text-brand-green-600',
+    bgColor: 'bg-brand-green-50',
+    borderColor: 'border-brand-green-200',
   },
   silver: {
     label: 'Silver',
@@ -149,21 +149,21 @@ function MilestoneMessage({ stats }: { stats: Stats }) {
   if (sponsorCount === 0) {
     return (
       <div className="max-w-2xl mx-auto text-center py-16">
-        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-brand-gold-100 to-brand-green-100">
-          <Rocket className="h-12 w-12 text-brand-gold-600" />
+        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-brand-green-100 to-brand-green-100">
+          <Rocket className="h-12 w-12 text-brand-green-600" />
         </div>
         <h2 className="text-3xl font-bold mb-4 text-neutral-800">Be the First Sponsor</h2>
         <p className="text-lg text-muted-foreground mb-6">
           This wall is waiting for its first name. Your $100 sponsorship will kickstart the movement
           and earn you a permanent place as <strong>Founding Sponsor #1</strong>.
         </p>
-        <div className="bg-brand-gold-50 border border-brand-gold-200 rounded-xl p-6 mb-8">
-          <p className="text-brand-gold-800 font-medium">
+        <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-6 mb-8">
+          <p className="text-brand-green-800 font-medium">
             ✨ First 10 sponsors receive <strong>Founding Sponsor</strong> status —
             permanently displayed at the top of this wall.
           </p>
         </div>
-        <Button size="lg" className="bg-brand-gold-600 hover:bg-brand-gold-700" asChild>
+        <Button size="lg" className="bg-brand-green-600 hover:bg-brand-green-700" asChild>
           <Link href="/sponsor">
             Become Founding Sponsor #1
             <ArrowRight className="ml-2 h-5 w-5" />
@@ -176,10 +176,10 @@ function MilestoneMessage({ stats }: { stats: Stats }) {
   if (sponsorCount < 10) {
     const remaining = 10 - sponsorCount
     return (
-      <div className="bg-gradient-to-r from-brand-gold-50 to-brand-green-50 rounded-2xl p-8 mb-12 text-center">
+      <div className="bg-gradient-to-r from-brand-green-50 to-brand-green-50 rounded-2xl p-8 mb-12 text-center">
         <div className="flex items-center justify-center gap-2 mb-4">
-          <Sparkles className="h-6 w-6 text-brand-gold-600" />
-          <span className="text-lg font-semibold text-brand-gold-800">Founding Sponsors</span>
+          <Sparkles className="h-6 w-6 text-brand-green-600" />
+          <span className="text-lg font-semibold text-brand-green-800">Founding Sponsors</span>
         </div>
         <p className="text-muted-foreground mb-4">
           Only <strong>{remaining}</strong> founding sponsor spot{remaining !== 1 ? 's' : ''} remaining!
@@ -220,7 +220,7 @@ function MilestoneMessage({ stats }: { stats: Stats }) {
 
   if (totalBlocks >= 100 && totalBlocks < 500) {
     return (
-      <div className="bg-gradient-to-r from-violet-50 to-brand-gold-50 rounded-2xl p-8 mb-12 text-center">
+      <div className="bg-gradient-to-r from-violet-50 to-brand-green-50 rounded-2xl p-8 mb-12 text-center">
         <Trophy className="h-12 w-12 text-violet-600 mx-auto mb-4" />
         <h3 className="text-xl font-bold mb-2">🏆 100 Blocks Milestone Reached!</h3>
         <p className="text-muted-foreground">
@@ -334,7 +334,7 @@ export default function SponsorWallPage() {
           {goldSponsors.length > 0 && (
             <section className="section-container pb-8">
               <h2 className="mb-4 flex items-center gap-2 text-xl font-bold">
-                <Crown className="h-5 w-5 text-brand-gold-600" />
+                <Crown className="h-5 w-5 text-brand-green-600" />
                 Gold Sponsors
               </h2>
               <div className="grid gap-4 md:grid-cols-2">

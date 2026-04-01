@@ -35,8 +35,8 @@ export function AddonCard({
       className={cn(
         'w-full text-left p-4 rounded-xl border-2 transition-all',
         isSelected
-          ? 'border-brand-gold-500 bg-brand-gold-50'
-          : 'border-neutral-200 hover:border-brand-gold-300 hover:bg-neutral-50'
+          ? 'border-brand-green-500 bg-brand-green-50'
+          : 'border-neutral-200 hover:border-brand-green-300 hover:bg-neutral-50'
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -44,7 +44,7 @@ export function AddonCard({
           <div className="flex items-center gap-2 mb-1">
             <h4 className="font-semibold text-neutral-900 truncate">{name}</h4>
             {isBundle && (
-              <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-brand-gold-100 text-brand-gold-700 rounded-full font-medium">
+              <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-brand-green-100 text-brand-green-700 rounded-full font-medium">
                 Bundle
               </span>
             )}
@@ -59,7 +59,7 @@ export function AddonCard({
             <span className="text-neutral-400">×</span>
             <span className="text-neutral-500">{blockCount} blocks</span>
             <span className="text-neutral-400">=</span>
-            <span className="font-semibold text-brand-gold-600">{formatPrice(totalPrice)}</span>
+            <span className="font-semibold text-brand-green-600">{formatPrice(totalPrice)}</span>
           </div>
 
           {/* Worker Bonus */}
@@ -76,7 +76,7 @@ export function AddonCard({
           className={cn(
             'flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors',
             isSelected
-              ? 'bg-brand-gold-500 border-brand-gold-500'
+              ? 'bg-brand-green-500 border-brand-green-500'
               : 'border-neutral-300 bg-white'
           )}
         >

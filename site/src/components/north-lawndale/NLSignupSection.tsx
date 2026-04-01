@@ -90,7 +90,7 @@ export function NLSignupSection() {
         <div className="max-w-lg mx-auto">
           {/* Header */}
           <div className="text-center mb-10">
-            <p className="text-sm font-semibold text-brand-gold-600 uppercase tracking-[0.2em] mb-3">
+            <p className="text-sm font-semibold text-brand-green-600 uppercase tracking-[0.2em] mb-3">
               Join Us
             </p>
             <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-4">

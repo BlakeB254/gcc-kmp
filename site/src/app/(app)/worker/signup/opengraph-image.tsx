@@ -20,7 +20,7 @@ export default async function Image() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #1a472a 0%, #2d5a3d 50%, #1a472a 100%)',
+          background: 'linear-gradient(135deg, #0b3b1d 0%, #16763a 50%, #0b3b1d 100%)',
           fontFamily: 'system-ui, sans-serif',
           position: 'relative',
           overflow: 'hidden',
@@ -35,7 +35,7 @@ export default async function Image() {
             width: '400px',
             height: '400px',
             borderRadius: '50%',
-            background: 'rgba(212, 175, 55, 0.1)',
+            background: 'rgba(22, 118, 58, 0.1)',
           }}
         />
         <div
@@ -67,14 +67,14 @@ export default async function Image() {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              background: 'rgba(212, 175, 55, 0.2)',
+              background: 'rgba(22, 118, 58, 0.2)',
               borderRadius: '50px',
               padding: '12px 24px',
               marginBottom: '24px',
             }}
           >
             <span style={{ fontSize: '24px' }}>💪</span>
-            <span style={{ color: '#D4AF37', fontSize: '20px', fontWeight: 600 }}>
+            <span style={{ color: '#30A0CE', fontSize: '20px', fontWeight: 600 }}>
               NOW HIRING
             </span>
           </div>
@@ -97,7 +97,7 @@ export default async function Image() {
           <p
             style={{
               fontSize: '40px',
-              color: '#D4AF37',
+              color: '#30A0CE',
               fontWeight: 700,
               margin: 0,
               marginBottom: '32px',

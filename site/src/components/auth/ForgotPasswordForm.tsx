@@ -46,7 +46,7 @@ export function ForgotPasswordForm({ apiEndpoint, loginPath, userType, extraLink
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -115,7 +115,7 @@ export function ForgotPasswordForm({ apiEndpoint, loginPath, userType, extraLink
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-gold-500 text-white hover:bg-brand-gold-600 transition-all disabled:opacity-50"
+                  className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-green-500 text-white hover:bg-brand-green-600 transition-all disabled:opacity-50"
                 >
                   {isLoading ? 'Sending...' : 'Send Reset Link'}
                 </button>

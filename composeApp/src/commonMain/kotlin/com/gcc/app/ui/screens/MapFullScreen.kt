@@ -366,7 +366,7 @@ private fun SpotInfoCard(
     val statusColor = when (spot.status) {
         com.gcc.shared.model.CommunityReportStatus.PENDING -> Color(0xFFFF9800)
         com.gcc.shared.model.CommunityReportStatus.VERIFIED -> GccGreen
-        com.gcc.shared.model.CommunityReportStatus.RESOLVED -> GccGold
+        com.gcc.shared.model.CommunityReportStatus.RESOLVED -> GccSky
         com.gcc.shared.model.CommunityReportStatus.ACKNOWLEDGED -> Color(0xFF2196F3)
         com.gcc.shared.model.CommunityReportStatus.REJECTED -> Color(0xFFFF5252)
     }

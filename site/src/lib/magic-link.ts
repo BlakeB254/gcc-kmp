@@ -135,7 +135,7 @@ export async function sendMagicLinkEmail(
 
     <div style="text-align: center; margin: 30px 0;">
       <a href="${magicLinkUrl}"
-         style="display: inline-block; background: linear-gradient(135deg, #D4AF37, #B8960C); color: #5D4037; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 16px;">
+         style="display: inline-block; background: linear-gradient(135deg, #16763A, #155B92); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 16px;">
         Sign In to GCC
       </a>
     </div>
@@ -146,7 +146,7 @@ export async function sendMagicLinkEmail(
 
     <p style="color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
       If the button doesn't work, copy and paste this link into your browser:<br>
-      <a href="${magicLinkUrl}" style="color: #D4AF37; word-break: break-all;">${magicLinkUrl}</a>
+      <a href="${magicLinkUrl}" style="color: #16763A; word-break: break-all;">${magicLinkUrl}</a>
     </p>
   </div>
 

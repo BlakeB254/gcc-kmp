@@ -76,7 +76,7 @@ const PaymentSuccessMockup: React.FC<{ frame: number; fps: number; format: Video
     ),
     rotation: frame * (1.5 + (i % 3)) * (i % 2 === 0 ? 1 : -1), // Slower rotation
     opacity: interpolate(frame, [15, 35, 100, 120], [0, 1, 1, 0], { extrapolateRight: 'clamp' }),
-    color: ['#d4a017', '#16a34a', '#0ea5e9', '#f59e0b', '#10b981'][i % 5],
+    color: ['#16763a', '#16a34a', '#0ea5e9', '#f59e0b', '#10b981'][i % 5],
     size: 10 + (i % 4) * 4, // Larger sizes: 10-22px
     delay: i * 0.5,
   }))

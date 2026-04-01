@@ -189,12 +189,12 @@ fun ScoutScreen(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(if (uiState.isLoopClosed) GccGreen else GccGold)
+                            .background(if (uiState.isLoopClosed) GccGreen else GccSky)
                     )
                     Text(
                         text = if (uiState.isLoopClosed) "Loop closed" else "Return to start to close loop",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (uiState.isLoopClosed) GccGreen else GccGold,
+                        color = if (uiState.isLoopClosed) GccGreen else GccSky,
                     )
                 }
             }

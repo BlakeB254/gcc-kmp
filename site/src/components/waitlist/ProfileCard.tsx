@@ -40,14 +40,14 @@ export function ProfileCard({
       `}
     >
       {/* Header with logo */}
-      <div className="bg-gradient-to-r from-brand-brown-700 to-brand-brown-800 px-6 py-4 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-brand-green-700 to-brand-green-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
             <span className="text-xl">🧹</span>
           </div>
           <span className="text-white font-bold text-lg">GCC</span>
         </div>
-        <span className="text-brand-gold-300 font-medium text-sm uppercase tracking-wide">
+        <span className="text-brand-green-300 font-medium text-sm uppercase tracking-wide">
           Early Supporter
         </span>
       </div>
@@ -123,7 +123,7 @@ export function ProfileCardMini({
       </div>
       <a
         href={`/join?ref=${referralCode}`}
-        className="text-sm text-brand-gold-600 hover:text-brand-gold-700 font-medium"
+        className="text-sm text-brand-green-600 hover:text-brand-green-700 font-medium"
       >
         Join the movement →
       </a>

@@ -221,7 +221,7 @@ private fun HeroPointsCard(totalPoints: Int, spacing: GccSpacing) {
                     style = MaterialTheme.typography.displayMedium.copy(
                         fontWeight = FontWeight.Bold,
                     ),
-                    color = GccGoldLight,
+                    color = GccSkyLight,
                 )
                 Spacer(modifier = Modifier.height(spacing.xs))
                 Text(
@@ -254,7 +254,7 @@ private fun BreakdownGrid(breakdown: PointsBreakdown, spacing: GccSpacing) {
             StatCard(
                 value = "${breakdown.volunteerCleanup}",
                 label = "Cleanups",
-                accentColor = CardAccentGold,
+                accentColor = CardAccentSky,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -335,7 +335,7 @@ private fun ActivityRow(entry: PointsLedgerEntry, spacing: GccSpacing) {
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                 ),
-                color = GccGold,
+                color = GccSky,
             )
         }
     }
@@ -362,7 +362,7 @@ private fun NextMilestoneCard(totalPoints: Int, spacing: GccSpacing) {
 
     if (next != null) {
         val progress = totalPoints.toFloat() / next.points
-        GccCard(accentColor = CardAccentGold) {
+        GccCard(accentColor = CardAccentSky) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -378,8 +378,8 @@ private fun NextMilestoneCard(totalPoints: Int, spacing: GccSpacing) {
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth(),
-                        color = GccGold,
-                        trackColor = GccGold.copy(alpha = 0.15f),
+                        color = GccSky,
+                        trackColor = GccSky.copy(alpha = 0.15f),
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -391,7 +391,7 @@ private fun NextMilestoneCard(totalPoints: Int, spacing: GccSpacing) {
             }
         }
     } else if (current != null) {
-        GccCard(accentColor = CardAccentGold) {
+        GccCard(accentColor = CardAccentSky) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -402,7 +402,7 @@ private fun NextMilestoneCard(totalPoints: Int, spacing: GccSpacing) {
                 Text(
                     "Max rank: ${current.name}!",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = GccGold,
+                    color = GccSky,
                 )
             }
         }
@@ -429,7 +429,7 @@ private fun EarnTip(emoji: String, action: String, points: String) {
         Text(
             points,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = GccGold,
+            color = GccSky,
         )
     }
 }

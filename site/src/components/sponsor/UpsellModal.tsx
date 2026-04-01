@@ -25,7 +25,7 @@ export function UpsellModal({ onClose, onProceed, calculatorUrl }: UpsellModalPr
         aria-modal="true"
         aria-labelledby="upsell-modal-title"
       >
-        <div className="bg-gradient-to-r from-brand-gold-500 to-amber-500 p-6 text-white relative">
+        <div className="bg-gradient-to-r from-brand-green-500 to-amber-500 p-6 text-white relative">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
@@ -45,7 +45,7 @@ export function UpsellModal({ onClose, onProceed, calculatorUrl }: UpsellModalPr
           <div className="space-y-3">
             {UPSELL_ITEMS.map(({ icon: Icon, title, desc }) => (
               <div key={title} className="flex items-start gap-3 p-3 rounded-lg bg-neutral-50">
-                <Icon className="w-5 h-5 text-brand-gold-600 flex-shrink-0 mt-0.5" />
+                <Icon className="w-5 h-5 text-brand-green-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium text-neutral-900 text-sm">{title}</p>
                   <p className="text-xs text-neutral-500">{desc}</p>
@@ -56,7 +56,7 @@ export function UpsellModal({ onClose, onProceed, calculatorUrl }: UpsellModalPr
           <div className="flex flex-col gap-2 pt-2">
             <Link
               href={calculatorUrl}
-              className="w-full py-3 rounded-xl bg-brand-gold-500 hover:bg-brand-gold-600 text-brand-brown-900 font-bold text-center transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-brand-green-500 hover:bg-brand-green-600 text-brand-green-900 font-bold text-center transition-colors flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
               Explore Custom Packages

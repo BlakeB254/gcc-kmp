@@ -35,9 +35,9 @@ export const tierConfig: Record<SponsorTier, TierInfo> = {
     label: 'Gold',
     minBlocks: 20,
     maxBlocks: 49,
-    color: 'text-brand-gold-600',
-    bgGradient: 'from-brand-gold-50 to-amber-50',
-    borderColor: 'border-brand-gold-300',
+    color: 'text-brand-green-600',
+    bgGradient: 'from-brand-green-50 to-amber-50',
+    borderColor: 'border-brand-green-300',
   },
   platinum: {
     label: 'Platinum',

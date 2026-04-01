@@ -18,8 +18,8 @@ import {
 export default function SponsorCalculatorPageWrapper() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 to-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600" />
+      <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green-600" />
       </div>
     }>
       <SponsorCalculatorPage />
@@ -69,7 +69,7 @@ function SponsorCalculatorPage() {
   ]
 
   return (
-    <div className="bg-gradient-to-b from-brand-gold-50 to-white">
+    <div className="bg-gradient-to-b from-brand-green-50 to-white">
       {/* Page Title and Steps */}
       <div className="bg-white/80 backdrop-blur border-b sticky top-16 z-10">
         <div className="section-container py-4">
@@ -87,7 +87,7 @@ function SponsorCalculatorPage() {
                   onClick={() => setActiveStep(index)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                     isActive
-                      ? 'bg-brand-gold-500 text-neutral-900'
+                      ? 'bg-brand-green-500 text-neutral-900'
                       : isCompleted
                         ? 'bg-brand-green-100 text-brand-green-700'
                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'

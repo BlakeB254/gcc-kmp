@@ -34,7 +34,7 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
 
     return (
       <section className="mb-16" ref={ref}>
-        <div className="bg-gradient-to-br from-brand-brown-900 to-brand-brown-800 rounded-2xl p-8 text-white shadow-xl">
+        <div className="bg-gradient-to-br from-brand-green-900 to-brand-green-800 rounded-2xl p-8 text-white shadow-xl">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             <div>
               <h3 className="text-2xl font-bold mb-1">Order Summary</h3>
@@ -49,7 +49,7 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
               </div>
             </div>
             <div className="text-center sm:text-right">
-              <p className="text-4xl font-bold text-brand-gold-400">{priceLabel}</p>
+              <p className="text-4xl font-bold text-brand-green-400">{priceLabel}</p>
               {sponsorType !== 'single' && (
                 <p className="text-xs text-white/50 mt-1">Billed {freq.period}</p>
               )}
@@ -70,7 +70,7 @@ export const CheckoutSummary = forwardRef<HTMLDivElement, CheckoutSummaryProps>(
               }
               className={`flex-1 py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
                 isFormReady && !isProcessing
-                  ? 'bg-brand-gold-500 hover:bg-brand-gold-600 text-brand-brown-900 shadow-lg animate-breathe cursor-pointer'
+                  ? 'bg-brand-green-500 hover:bg-brand-green-600 text-brand-green-900 shadow-lg animate-breathe cursor-pointer'
                   : 'bg-white/20 text-white/50 cursor-not-allowed'
               }`}
             >

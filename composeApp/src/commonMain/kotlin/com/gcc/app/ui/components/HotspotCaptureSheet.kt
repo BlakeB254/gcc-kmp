@@ -148,7 +148,7 @@ fun HotspotCaptureSheet(
                             Text(
                                 text = "Severity ${"★".repeat(hotspot.severity.coerceIn(1, 5))}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = GccGold,
+                                color = GccSky,
                             )
                         }
                     }
@@ -291,14 +291,14 @@ fun HotspotCaptureSheet(
                             Text(
                                 text = "BEFORE",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = GccGold,
+                                color = GccSky,
                             )
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(130.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(GccGold.copy(alpha = 0.1f)),
+                                    .background(GccSky.copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(

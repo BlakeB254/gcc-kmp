@@ -76,7 +76,7 @@ internal fun AdminWorkersTab(
             exit = shrinkVertically(),
         ) {
             Surface(
-                color = GccGoldDark.copy(alpha = 0.1f),
+                color = GccSkyDark.copy(alpha = 0.1f),
                 tonalElevation = 2.dp,
             ) {
                 Row(
@@ -157,7 +157,7 @@ internal fun AdminWorkersTab(
                 val verified = worker.verification.status == VerificationStatus.APPROVED
                 val statusColor = when (worker.verification.status) {
                     VerificationStatus.APPROVED -> GccGreen
-                    VerificationStatus.PENDING -> GccGold
+                    VerificationStatus.PENDING -> GccSky
                     VerificationStatus.REJECTED -> GccError
                     VerificationStatus.NEEDS_INFO -> GccBlue
                 }
@@ -168,7 +168,7 @@ internal fun AdminWorkersTab(
                         .fillMaxWidth()
                         .then(
                             if (selectionMode && isSelected) {
-                                Modifier.border(2.dp, GccGold, RoundedCornerShape(8.dp))
+                                Modifier.border(2.dp, GccSky, RoundedCornerShape(8.dp))
                             } else {
                                 Modifier
                             }
@@ -217,7 +217,7 @@ internal fun AdminWorkersTab(
                                         selectionMode = false
                                     }
                                 },
-                                colors = CheckboxDefaults.colors(checkedColor = GccGold),
+                                colors = CheckboxDefaults.colors(checkedColor = GccSky),
                                 modifier = Modifier.padding(end = 8.dp),
                             )
                         }
@@ -247,7 +247,7 @@ internal fun AdminWorkersTab(
                         Text(
                             worker.role,
                             style = MaterialTheme.typography.labelLarge,
-                            color = if (worker.role == "admin") GccGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (worker.role == "admin") GccSky else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                         )
                     }

@@ -73,8 +73,8 @@ export function FileUpload({
       <label
         className={cn(
           'block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200',
-          isDragging && 'border-brand-gold-400 bg-brand-gold-50 scale-[1.02]',
-          !isDragging && !file && 'border-neutral-300 hover:border-brand-gold-400 hover:bg-neutral-50',
+          isDragging && 'border-brand-green-400 bg-brand-green-50 scale-[1.02]',
+          !isDragging && !file && 'border-neutral-300 hover:border-brand-green-400 hover:bg-neutral-50',
           file && 'border-brand-green-400 bg-brand-green-50'
         )}
         onDragOver={handleDragOver}
@@ -127,12 +127,12 @@ export function FileUpload({
           <div className="py-2">
             <div className={cn(
               'w-14 h-14 mx-auto mb-3 rounded-xl flex items-center justify-center transition-colors',
-              isDragging ? 'bg-brand-gold-100' : 'bg-neutral-100'
+              isDragging ? 'bg-brand-green-100' : 'bg-neutral-100'
             )}>
               <svg
                 className={cn(
                   'w-7 h-7 transition-colors',
-                  isDragging ? 'text-brand-gold-600' : 'text-neutral-400'
+                  isDragging ? 'text-brand-green-600' : 'text-neutral-400'
                 )}
                 fill="none"
                 viewBox="0 0 24 24"

@@ -283,7 +283,7 @@ fun DashboardScreen(
                     QuickActionButton(
                         emoji = "\uD83C\uDFC6",
                         label = "Bounties",
-                        bgColor = CardAccentGold,
+                        bgColor = CardAccentSky,
                         onClick = onBountyListClick,
                     )
                     QuickActionButton(
@@ -307,13 +307,13 @@ fun DashboardScreen(
                     QuickActionButton(
                         emoji = "\u2B50",
                         label = "Awards",
-                        bgColor = GccGold,
+                        bgColor = GccSky,
                         onClick = onAchievementsClick,
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDC8E",
                         label = "Points",
-                        bgColor = CardAccentGold,
+                        bgColor = CardAccentSky,
                         onClick = onPointsClick,
                     )
                     QuickActionButton(

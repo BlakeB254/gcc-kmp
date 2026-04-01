@@ -40,7 +40,7 @@ internal fun AdminOverviewTab(
         item { SectionHeader("Platform") }
         item { AdminStatCard("Total Workers", stats.totalWorkers.toString(), "\uD83D\uDC77", onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
-        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccGold, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccSky, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { SectionHeader("Operations") }
         item { AdminStatCard("Active Jobs", stats.activeJobs.toString(), "\u26A1", GccGreen) }
         item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
@@ -52,7 +52,7 @@ internal fun AdminOverviewTab(
         item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen, onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
         item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0", onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
         item { SectionHeader("Issues") }
-        item { AdminStatCard("Open Disputes", stats.openDisputes.toString(), "\u26A0\uFE0F", if (stats.openDisputes > 0) GccError else GccGold) }
+        item { AdminStatCard("Open Disputes", stats.openDisputes.toString(), "\u26A0\uFE0F", if (stats.openDisputes > 0) GccError else GccSky) }
 
         // ─── Cleanliness ────────────────────────────────────────────
         item { SectionHeader("Cleanliness") }
@@ -102,7 +102,7 @@ private fun AdminStatCard(
     label: String,
     value: String,
     icon: String,
-    color: Color = GccGold,
+    color: Color = GccSky,
     onClick: (() -> Unit)? = null,
 ) {
     Surface(

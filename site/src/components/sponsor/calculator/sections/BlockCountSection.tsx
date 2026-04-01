@@ -60,7 +60,7 @@ export function BlockCountSection({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-full bg-brand-gold-100 text-brand-gold-600 flex items-center justify-center text-sm font-bold">
+          <span className="w-8 h-8 rounded-full bg-brand-green-100 text-brand-green-600 flex items-center justify-center text-sm font-bold">
             1
           </span>
           Choose Your Impact
@@ -82,7 +82,7 @@ export function BlockCountSection({
                 className={cn(
                   'py-3 px-4 rounded-xl border-2 font-semibold transition-all',
                   blockCount === count && !customCount
-                    ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
+                    ? 'border-brand-green-500 bg-brand-green-50 text-brand-green-700'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
                 )}
               >
@@ -101,7 +101,7 @@ export function BlockCountSection({
               value={customCount}
               onChange={(e) => handleCustomChange(e.target.value)}
               placeholder="Custom"
-              className="w-24 px-3 py-2 rounded-lg border border-neutral-300 focus:border-brand-gold-500 focus:ring-2 focus:ring-brand-gold-500/20 outline-none"
+              className="w-24 px-3 py-2 rounded-lg border border-neutral-300 focus:border-brand-green-500 focus:ring-2 focus:ring-brand-green-500/20 outline-none"
             />
             <span className="text-sm text-neutral-600">blocks</span>
           </div>
@@ -124,14 +124,14 @@ export function BlockCountSection({
 
         {/* Next Tier Teaser */}
         {savings.nextTier && savings.blocksToNextTier <= 10 && (
-          <div className="bg-brand-gold-50 border border-brand-gold-200 rounded-xl p-4">
+          <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
-              <Info className="w-4 h-4 text-brand-gold-600" />
-              <span className="font-medium text-brand-gold-700">
+              <Info className="w-4 h-4 text-brand-green-600" />
+              <span className="font-medium text-brand-green-700">
                 Add {savings.blocksToNextTier} more blocks for {savings.nextTier.addonDiscount}% off add-ons
               </span>
             </div>
-            <p className="text-sm text-brand-gold-600">
+            <p className="text-sm text-brand-green-600">
               Save more on branding, services, and media production
             </p>
           </div>
@@ -148,7 +148,7 @@ export function BlockCountSection({
               className={cn(
                 'px-4 py-2 rounded-lg border-2 font-medium transition-all',
                 !isRecurring
-                  ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
+                  ? 'border-brand-green-500 bg-brand-green-50 text-brand-green-700'
                   : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
               )}
             >
@@ -161,7 +161,7 @@ export function BlockCountSection({
                 className={cn(
                   'px-4 py-2 rounded-lg border-2 font-medium transition-all',
                   isRecurring && recurringFrequency === value
-                    ? 'border-brand-gold-500 bg-brand-gold-50 text-brand-gold-700'
+                    ? 'border-brand-green-500 bg-brand-green-50 text-brand-green-700'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-700'
                 )}
               >
@@ -187,7 +187,7 @@ export function BlockCountSection({
                 className={cn(
                   'text-center p-2 rounded-lg border',
                   blockCount >= tier.minBlocks && (tier.maxBlocks === null || blockCount <= tier.maxBlocks)
-                    ? 'border-brand-gold-500 bg-brand-gold-50'
+                    ? 'border-brand-green-500 bg-brand-green-50'
                     : 'border-neutral-200'
                 )}
               >

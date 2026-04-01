@@ -100,13 +100,13 @@ export default function SupportersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 via-white to-brand-green-50">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 via-white to-brand-green-50">
       <div className="section-container py-12 lg:py-16">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand-gold-100 mb-4">
-              <Heart className="w-8 h-8 text-brand-gold-600" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand-green-100 mb-4">
+              <Heart className="w-8 h-8 text-brand-green-600" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-3">
               Our Supporters
@@ -126,18 +126,18 @@ export default function SupportersPage() {
                 <p className="text-sm text-neutral-600">Total Raised</p>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <MapPin className="w-6 h-6 text-brand-gold-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-brand-gold-600">{stats.blocksFunded}</p>
+                <MapPin className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-brand-green-600">{stats.blocksFunded}</p>
                 <p className="text-sm text-neutral-600">Blocks Funded</p>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <Users className="w-6 h-6 text-brand-brown-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-brand-brown-600">{stats.totalContributors}</p>
+                <Users className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-brand-green-600">{stats.totalContributors}</p>
                 <p className="text-sm text-neutral-600">Total Supporters</p>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <Heart className="w-6 h-6 text-brand-sky-600 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-brand-sky-600">{stats.recentContributors}</p>
+                <Heart className="w-6 h-6 text-brand-blue-600 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-brand-blue-600">{stats.recentContributors}</p>
                 <p className="text-sm text-neutral-600">This Month</p>
               </div>
             </div>
@@ -149,7 +149,7 @@ export default function SupportersPage() {
               onClick={() => setView('recent')}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all text-sm ${
                 view === 'recent'
-                  ? 'bg-brand-gold-500 text-white shadow-sm'
+                  ? 'bg-brand-green-500 text-white shadow-sm'
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
@@ -160,7 +160,7 @@ export default function SupportersPage() {
               onClick={() => setView('leaderboard')}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all text-sm ${
                 view === 'leaderboard'
-                  ? 'bg-brand-gold-500 text-white shadow-sm'
+                  ? 'bg-brand-green-500 text-white shadow-sm'
                   : 'text-neutral-600 hover:text-neutral-900'
               }`}
             >
@@ -173,7 +173,7 @@ export default function SupportersPage() {
           <div className="bg-white rounded-2xl shadow-lg border border-neutral-100 overflow-hidden">
             {isLoading ? (
               <div className="p-12 text-center">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto text-brand-gold-500 mb-3" />
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto text-brand-green-500 mb-3" />
                 <p className="text-neutral-500">Loading supporters...</p>
               </div>
             ) : error ? (
@@ -181,7 +181,7 @@ export default function SupportersPage() {
                 <p className="text-red-500 mb-3">{error}</p>
                 <button
                   onClick={() => fetchData(view)}
-                  className="text-brand-gold-600 hover:text-brand-gold-700 font-medium"
+                  className="text-brand-green-600 hover:text-brand-green-700 font-medium"
                 >
                   Try again
                 </button>
@@ -209,10 +209,10 @@ export default function SupportersPage() {
                     <div key={contribution.id} className="p-5 hover:bg-neutral-50 transition-colors">
                       <div className="flex items-start gap-4">
                         <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          contribution.type === 'sponsorship' ? 'bg-brand-gold-100' : 'bg-brand-green-100'
+                          contribution.type === 'sponsorship' ? 'bg-brand-green-100' : 'bg-brand-green-100'
                         }`}>
                           {contribution.type === 'sponsorship' ? (
-                            <MapPin className="w-5 h-5 text-brand-gold-600" />
+                            <MapPin className="w-5 h-5 text-brand-green-600" />
                           ) : (
                             <Heart className="w-5 h-5 text-brand-green-600" />
                           )}
@@ -223,7 +223,7 @@ export default function SupportersPage() {
                               {contribution.displayName}
                             </p>
                             <span className={`font-bold text-lg ${
-                              contribution.type === 'sponsorship' ? 'text-brand-gold-600' : 'text-brand-green-600'
+                              contribution.type === 'sponsorship' ? 'text-brand-green-600' : 'text-brand-green-600'
                             }`}>
                               ${contribution.amount}
                             </span>
@@ -241,7 +241,7 @@ export default function SupportersPage() {
                           </p>
                           {contribution.message && (
                             <div className="mt-3 bg-neutral-50 rounded-lg px-4 py-3 flex items-start gap-2">
-                              <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-brand-gold-400" />
+                              <MessageSquare className="w-4 h-4 flex-shrink-0 mt-0.5 text-brand-green-400" />
                               <p className="text-sm text-neutral-700 italic leading-relaxed">
                                 &ldquo;{contribution.message}&rdquo;
                               </p>
@@ -397,12 +397,12 @@ export default function SupportersPage() {
 
           {/* Partnerships Section */}
           <div className="mt-10 bg-white rounded-2xl shadow-lg border border-neutral-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 px-8 py-6">
+            <div className="bg-gradient-to-r from-brand-green-800 to-brand-green-900 px-8 py-6">
               <div className="flex items-center gap-3">
-                <Handshake className="w-7 h-7 text-brand-gold-400" />
+                <Handshake className="w-7 h-7 text-brand-green-400" />
                 <div>
                   <h2 className="text-xl font-bold text-white">Partnerships</h2>
-                  <p className="text-brand-brown-200 text-sm">Organizations and businesses supporting our mission</p>
+                  <p className="text-brand-green-200 text-sm">Organizations and businesses supporting our mission</p>
                 </div>
               </div>
             </div>
@@ -421,7 +421,7 @@ export default function SupportersPage() {
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Link
                     href="/sponsor/enterprise"
-                    className="inline-flex items-center justify-center gap-2 bg-brand-brown-700 text-white font-medium px-6 py-3 rounded-xl hover:bg-brand-brown-800 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 bg-brand-green-700 text-white font-medium px-6 py-3 rounded-xl hover:bg-brand-green-800 transition-colors"
                   >
                     <Building2 className="w-4 h-4" />
                     Enterprise Packages
@@ -429,7 +429,7 @@ export default function SupportersPage() {
                   </Link>
                   <a
                     href="mailto:partnerships@globalcommunitycleaners.org?subject=Partnership%20Inquiry"
-                    className="inline-flex items-center justify-center gap-2 border-2 border-brand-brown-300 text-brand-brown-700 font-medium px-6 py-3 rounded-xl hover:bg-brand-brown-50 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 border-2 border-brand-green-300 text-brand-green-700 font-medium px-6 py-3 rounded-xl hover:bg-brand-green-50 transition-colors"
                   >
                     <Mail className="w-4 h-4" />
                     Contact Us

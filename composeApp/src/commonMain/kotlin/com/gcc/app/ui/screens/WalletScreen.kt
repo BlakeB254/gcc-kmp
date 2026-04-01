@@ -121,7 +121,7 @@ fun WalletScreen(
                             StatCard(
                                 value = formatCents(wallet.bountyFundBalance),
                                 label = "Bounty",
-                                accentColor = CardAccentGold,
+                                accentColor = CardAccentSky,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -291,8 +291,8 @@ private fun AllocateFundsSection(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = GccGold,
-                    cursorColor = GccGold,
+                    focusedBorderColor = GccSky,
+                    cursorColor = GccSky,
                 ),
             )
         }

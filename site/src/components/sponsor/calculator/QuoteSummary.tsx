@@ -201,9 +201,9 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
     priceBreakdown.mediaTotal > 0
 
   return (
-    <div className="bg-white rounded-2xl border-2 border-brand-gold-200 shadow-lg overflow-hidden">
+    <div className="bg-white rounded-2xl border-2 border-brand-green-200 shadow-lg overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-brand-gold-500 to-amber-500 p-4 text-white">
+      <div className="bg-gradient-to-r from-brand-green-500 to-amber-500 p-4 text-white">
         <h3 className="font-bold text-lg">Your Quote</h3>
         <p className="text-sm text-white/80">Live pricing as you build</p>
       </div>
@@ -372,14 +372,14 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
 
         {/* Recognition Level */}
         {recognitionInfo && (
-          <div className="mt-4 p-3 bg-brand-gold-50 rounded-lg border border-brand-gold-200">
+          <div className="mt-4 p-3 bg-brand-green-50 rounded-lg border border-brand-green-200">
             <div className="flex items-center gap-2">
-              <Award className="w-4 h-4 text-brand-gold-600" />
-              <span className="text-sm font-medium text-brand-gold-700">
+              <Award className="w-4 h-4 text-brand-green-600" />
+              <span className="text-sm font-medium text-brand-green-700">
                 {recognitionInfo.name} Recognition
               </span>
             </div>
-            <div className="mt-1 text-xs text-brand-gold-600">
+            <div className="mt-1 text-xs text-brand-green-600">
               {recognitionInfo.recognition.slice(0, 2).join(' • ')}
             </div>
           </div>
@@ -387,14 +387,14 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
 
         {/* Enterprise Badge */}
         {priceBreakdown.isEnterprise && (
-          <div className="mt-4 p-3 bg-brand-brown-50 rounded-lg border border-brand-brown-200">
+          <div className="mt-4 p-3 bg-brand-green-50 rounded-lg border border-brand-green-200">
             <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-brand-brown-600" />
-              <span className="text-sm font-medium text-brand-brown-700">
+              <Building2 className="w-4 h-4 text-brand-green-600" />
+              <span className="text-sm font-medium text-brand-green-700">
                 Enterprise Partnership
               </span>
             </div>
-            <p className="mt-1 text-xs text-brand-brown-600">
+            <p className="mt-1 text-xs text-brand-green-600">
               Dedicated support & exclusive benefits included
             </p>
           </div>
@@ -408,14 +408,14 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
           <>
             <a
               href={`mailto:enterprise@globalcommunitycleaners.org?subject=Enterprise%20Package%20Inquiry%20-%20${formatPrice(priceBreakdown.total)}&body=Package%20Details:%0A- Blocks: ${config.blockCount}%0A- Total: ${formatPrice(priceBreakdown.total)}%0A- Worker Payout: ${formatPrice(priceBreakdown.workerPayoutTotal)}`}
-              className="w-full bg-gradient-to-r from-brand-brown-700 to-brand-brown-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-brown-600 hover:to-brand-brown-700 transition-all"
+              className="w-full bg-gradient-to-r from-brand-green-700 to-brand-green-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-green-600 hover:to-brand-green-700 transition-all"
             >
               <Mail className="w-5 h-5" />
               Contact for Enterprise Package
             </a>
             <button
               onClick={openWalkthroughModal}
-              className="w-full bg-white border-2 border-brand-gold-400 text-brand-gold-700 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-brand-gold-50 transition-all"
+              className="w-full bg-white border-2 border-brand-green-400 text-brand-green-700 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-brand-green-50 transition-all"
             >
               <Calendar className="w-4 h-4" />
               Schedule a Walkthrough Call
@@ -430,7 +430,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
             {/* Primary: Stripe checkout */}
             <button
               onClick={openCheckoutModal}
-              className="w-full bg-gradient-to-r from-brand-gold-500 to-amber-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-gold-400 hover:to-amber-400 transition-all shadow-lg hover:shadow-xl"
+              className="w-full bg-gradient-to-r from-brand-green-500 to-amber-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-green-400 hover:to-amber-400 transition-all shadow-lg hover:shadow-xl"
             >
               <CreditCard className="w-5 h-5" />
               Checkout — {formatPrice(priceBreakdown.total)}
@@ -440,7 +440,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
             {priceBreakdown.total >= 500000 && (
               <button
                 onClick={openWalkthroughModal}
-                className="w-full bg-white border-2 border-brand-gold-300 text-brand-gold-700 font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-brand-gold-50 hover:border-brand-gold-400 transition-all"
+                className="w-full bg-white border-2 border-brand-green-300 text-brand-green-700 font-medium py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-brand-green-50 hover:border-brand-green-400 transition-all"
               >
                 <Phone className="w-4 h-4" />
                 {priceBreakdown.isEnterprise
@@ -523,7 +523,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       setShowModal(false)
                       openCheckoutModal()
                     }}
-                    className="w-full bg-gradient-to-r from-brand-gold-500 to-amber-500 text-white font-bold py-3 rounded-xl hover:from-brand-gold-400 hover:to-amber-400 transition-all"
+                    className="w-full bg-gradient-to-r from-brand-green-500 to-amber-500 text-white font-bold py-3 rounded-xl hover:from-brand-green-400 hover:to-amber-400 transition-all"
                   >
                     Proceed to Checkout Anyway
                   </button>
@@ -541,25 +541,25 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                   {/* Package Summary */}
                   <div className={`rounded-lg p-4 border ${
                     modalMode === 'checkout'
-                      ? 'bg-brand-gold-50 border-brand-gold-200'
-                      : 'bg-brand-sky-50 border-brand-sky-200'
+                      ? 'bg-brand-green-50 border-brand-green-200'
+                      : 'bg-brand-blue-50 border-brand-blue-200'
                   }`}>
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <span className={`text-sm font-medium ${
-                          modalMode === 'checkout' ? 'text-brand-gold-800' : 'text-brand-sky-800'
+                          modalMode === 'checkout' ? 'text-brand-green-800' : 'text-brand-blue-800'
                         }`}>
                           {config.blockCount} block{config.blockCount !== 1 ? 's' : ''}
                           {config.isRecurring && ` (${config.recurringFrequency})`}
                         </span>
                         {priceBreakdown.isEnterprise && (
-                          <span className="ml-2 text-xs bg-brand-brown-100 text-brand-brown-700 px-2 py-0.5 rounded-full">
+                          <span className="ml-2 text-xs bg-brand-green-100 text-brand-green-700 px-2 py-0.5 rounded-full">
                             Enterprise
                           </span>
                         )}
                       </div>
                       <span className={`text-xl font-bold ${
-                        modalMode === 'checkout' ? 'text-brand-gold-800' : 'text-brand-sky-800'
+                        modalMode === 'checkout' ? 'text-brand-green-800' : 'text-brand-blue-800'
                       }`}>
                         {formatPrice(priceBreakdown.total)}
                       </span>
@@ -613,7 +613,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       type="text"
                       value={contactForm.name}
                       onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500"
                       placeholder="Your full name"
                     />
                   </div>
@@ -626,7 +626,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       type="email"
                       value={contactForm.email}
                       onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500"
                       placeholder="your@email.com"
                     />
                   </div>
@@ -639,7 +639,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       type="tel"
                       value={contactForm.phone}
                       onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500"
                       placeholder="(555) 123-4567"
                     />
                   </div>
@@ -652,7 +652,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       type="text"
                       value={contactForm.company}
                       onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500"
                       placeholder="Company name"
                     />
                   </div>
@@ -665,7 +665,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       value={contactForm.notes}
                       onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
                       rows={2}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500 resize-none"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500 resize-none"
                       placeholder={
                         modalMode === 'checkout'
                           ? 'Any special requests or scheduling preferences...'
@@ -682,7 +682,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       <button
                         onClick={handleCheckout}
                         disabled={isProcessing}
-                        className="w-full bg-gradient-to-r from-brand-gold-500 to-amber-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-gold-400 hover:to-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                        className="w-full bg-gradient-to-r from-brand-green-500 to-amber-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-green-400 hover:to-amber-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                       >
                         {isProcessing ? (
                           <>
@@ -712,7 +712,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                       <button
                         onClick={handleWalkthroughRequest}
                         disabled={isProcessing}
-                        className="w-full bg-gradient-to-r from-brand-sky-500 to-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-sky-400 hover:to-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                        className="w-full bg-gradient-to-r from-brand-blue-500 to-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:from-brand-blue-400 hover:to-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                       >
                         {isProcessing ? (
                           <>
@@ -732,7 +732,7 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
                           setModalMode('checkout')
                           setCheckoutError(null)
                         }}
-                        className="w-full py-2 text-brand-gold-600 font-medium hover:text-brand-gold-700 flex items-center justify-center gap-2"
+                        className="w-full py-2 text-brand-green-600 font-medium hover:text-brand-green-700 flex items-center justify-center gap-2"
                       >
                         <CreditCard className="w-4 h-4" />
                         Skip to Checkout Instead

@@ -82,7 +82,7 @@ fun ScanCompleteScreen(
                             .clip(RoundedCornerShape(48.dp))
                             .background(
                                 Brush.radialGradient(
-                                    colors = listOf(GccGoldLight, GccGold, GccGoldDark),
+                                    colors = listOf(GccSkyLight, GccSky, GccSkyDark),
                                 )
                             ),
                         contentAlignment = Alignment.Center,
@@ -118,7 +118,7 @@ fun ScanCompleteScreen(
                         .clip(MaterialTheme.shapes.medium)
                         .background(
                             Brush.horizontalGradient(
-                                colors = listOf(GccGoldDark, GccGold, GccGoldLight),
+                                colors = listOf(GccSkyDark, GccSky, GccSkyLight),
                             )
                         )
                         .padding(vertical = 24.dp, horizontal = 20.dp),
@@ -163,7 +163,7 @@ fun ScanCompleteScreen(
                     StatCard(
                         value = "${uiState.coveragePercent.toInt()}%",
                         label = "Coverage",
-                        accentColor = GccGold,
+                        accentColor = GccSky,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -300,7 +300,7 @@ private fun HotspotSummaryRow(hotspot: ScanHotspot, index: Int) {
             Text(
                 text = "$stars$suffix",
                 style = MaterialTheme.typography.labelSmall,
-                color = GccGold,
+                color = GccSky,
             )
         }
     }

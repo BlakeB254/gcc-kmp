@@ -51,9 +51,9 @@ export function TestimonialsSection() {
               className="card relative"
             >
               {/* Quote mark */}
-              <div className="absolute -top-4 left-6 w-10 h-10 rounded-full bg-brand-gold-100 flex items-center justify-center">
+              <div className="absolute -top-4 left-6 w-10 h-10 rounded-full bg-brand-green-100 flex items-center justify-center">
                 <svg
-                  className="w-5 h-5 text-brand-gold-600"
+                  className="w-5 h-5 text-brand-green-600"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
@@ -70,8 +70,8 @@ export function TestimonialsSection() {
                 {/* Author */}
                 <div className="flex items-center gap-4">
                   {/* Avatar placeholder */}
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-brown-200 to-brand-gold-200 flex items-center justify-center">
-                    <span className="text-lg font-semibold text-brand-brown-700">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-green-200 to-brand-green-200 flex items-center justify-center">
+                    <span className="text-lg font-semibold text-brand-green-700">
                       {testimonial.name.charAt(0)}
                     </span>
                   </div>
@@ -91,7 +91,7 @@ export function TestimonialsSection() {
                   </div>
                 )}
                 {testimonial.blocksFunded && (
-                  <div className="mt-4 inline-flex items-center gap-1 text-sm text-brand-gold-700 bg-brand-gold-50 px-3 py-1 rounded-full">
+                  <div className="mt-4 inline-flex items-center gap-1 text-sm text-brand-green-700 bg-brand-green-50 px-3 py-1 rounded-full">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                     </svg>
@@ -110,7 +110,7 @@ export function TestimonialsSection() {
           </p>
           <a
             href="mailto:stories@globalcommunitycleaners.org"
-            className="text-brand-gold-600 font-semibold hover:text-brand-gold-700 transition-colors"
+            className="text-brand-green-600 font-semibold hover:text-brand-green-700 transition-colors"
           >
             Contact us →
           </a>

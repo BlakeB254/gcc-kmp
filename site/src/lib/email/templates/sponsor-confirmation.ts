@@ -28,7 +28,7 @@ export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html:
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #d4a017 0%, #b8860b 100%); padding: 32px; text-align: center;">
+            <td style="background: linear-gradient(135deg, #16763a 0%, #126431 100%); padding: 32px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Thank You! 💛</h1>
               <p style="margin: 8px 0 0; color: #ffffff; font-size: 14px; font-weight: 500;">Your sponsorship is making a difference</p>
             </td>
@@ -44,14 +44,14 @@ export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html:
               </p>
 
               <!-- Sponsorship Details -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef9c3; border-radius: 12px; margin-bottom: 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #e7f1eb; border-radius: 12px; margin-bottom: 24px;">
                 <tr>
                   <td style="padding: 24px;">
-                    <p style="margin: 0 0 16px; color: #713f12; font-size: 14px; font-weight: 600; text-transform: uppercase;">Sponsorship Details</p>
+                    <p style="margin: 0 0 16px; color: #0b3b1d; font-size: 14px; font-weight: 600; text-transform: uppercase;">Sponsorship Details</p>
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding: 8px 0; border-bottom: 1px solid #fde047;">
-                          <span style="color: #6b5344; font-size: 14px;">Amount</span>
+                          <span style="color: #0e3f66; font-size: 14px;">Amount</span>
                         </td>
                         <td style="padding: 8px 0; border-bottom: 1px solid #fde047; text-align: right;">
                           <span style="color: #1a1a1a; font-size: 16px; font-weight: 600;">$${data.amount}${data.isRecurring ? '/month' : ''}</span>
@@ -59,7 +59,7 @@ export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html:
                       </tr>
                       <tr>
                         <td style="padding: 8px 0; border-bottom: 1px solid #fde047;">
-                          <span style="color: #6b5344; font-size: 14px;">Block</span>
+                          <span style="color: #0e3f66; font-size: 14px;">Block</span>
                         </td>
                         <td style="padding: 8px 0; border-bottom: 1px solid #fde047; text-align: right;">
                           <span style="color: #1a1a1a; font-size: 14px; font-weight: 500;">${data.blockAddress}</span>
@@ -67,7 +67,7 @@ export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html:
                       </tr>
                       <tr>
                         <td style="padding: 8px 0;">
-                          <span style="color: #6b5344; font-size: 14px;">Type</span>
+                          <span style="color: #0e3f66; font-size: 14px;">Type</span>
                         </td>
                         <td style="padding: 8px 0; text-align: right;">
                           <span style="color: #1a1a1a; font-size: 14px; font-weight: 500;">${data.isRecurring ? 'Monthly Recurring' : 'One-time'}</span>
@@ -97,7 +97,7 @@ export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html:
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
                 <tr>
                   <td align="center" style="padding: 8px;">
-                    <a href="${wallLink}" style="display: inline-block; background-color: #d4a017; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 8px;">
+                    <a href="${wallLink}" style="display: inline-block; background-color: #16763a; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 8px;">
                       View Sponsor Wall
                     </a>
                   </td>

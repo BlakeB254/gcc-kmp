@@ -2,10 +2,10 @@ package com.gcc.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// GCC Brand Colors
-val GccGreen = Color(0xFF22C55E)
-val GccGreenDark = Color(0xFF16A34A)
-val GccGreenLight = Color(0xFF86EFAC)
+// GCC Brand Colors — extracted from logo
+val GccGreen = Color(0xFF16763A)
+val GccGreenDark = Color(0xFF0F5228)
+val GccGreenLight = Color(0xFFA1C8B0)
 
 // Neutral
 val GccBackground = Color(0xFFFAFAFA)
@@ -37,33 +37,33 @@ val MapCheckpointUpcoming = Color(0xFF6B7280)
 val MapGeofenceRadius = Color(0x3322C55E)
 val MapGpsBlue = Color(0xFF3B82F6)
 
-// Gold accent
-val GccGold = Color(0xFFF59E0B)
-val GccGoldDark = Color(0xFFD97706)
-val GccGoldLight = Color(0xFFFDE68A)
+// Blue accent — from logo
+val GccBlue = Color(0xFF155B92)
+val GccBlueDark = Color(0xFF0E3F66)
+val GccBlueLight = Color(0xFFCBDAE7)
 
-// Blue accent
-val GccBlue = Color(0xFF3B82F6)
-val GccBlueDark = Color(0xFF2563EB)
-val GccBlueLight = Color(0xFFBFDBFE)
+// Light blue accent — from logo globe
+val GccSky = Color(0xFF30A0CE)
+val GccSkyDark = Color(0xFF2888AF)
+val GccSkyLight = Color(0xFFD1EAF4)
 
 // Gradient colors
-val GradientGreenStart = Color(0xFF22C55E)
-val GradientGreenMid = Color(0xFF16A34A)
-val GradientGreenEnd = Color(0xFF0F4C2A)
-val GradientButtonStart = Color(0xFF22C55E)
-val GradientButtonEnd = Color(0xFF16A34A)
+val GradientGreenStart = Color(0xFF16763A)
+val GradientGreenMid = Color(0xFF126431)
+val GradientGreenEnd = Color(0xFF0B3B1D)
+val GradientButtonStart = Color(0xFF16763A)
+val GradientButtonEnd = Color(0xFF0F5228)
 
 // Card accent strip colors
-val CardAccentGreen = Color(0xFF22C55E)
-val CardAccentGold = Color(0xFFF59E0B)
-val CardAccentBlue = Color(0xFF3B82F6)
+val CardAccentGreen = Color(0xFF16763A)
+val CardAccentBlue = Color(0xFF155B92)
+val CardAccentSky = Color(0xFF30A0CE)
 val CardAccentRed = Color(0xFFEF4444)
 val CardAccentPurple = Color(0xFF8B5CF6)
 
 // Chip background colors (10% alpha tints)
-val ChipBgAvailable = Color(0x1A22C55E)
-val ChipBgClaimed = Color(0x1AF59E0B)
+val ChipBgAvailable = Color(0x1A16763A)
+val ChipBgClaimed = Color(0x1A30A0CE)
 val ChipBgInProgress = Color(0x1A3B82F6)
 val ChipBgPendingReview = Color(0x1A8B5CF6)
 val ChipBgCompleted = Color(0x1A10B981)

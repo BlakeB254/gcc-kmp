@@ -142,7 +142,7 @@ fun AdminRouteDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGoldDark,
+                    containerColor = GccSkyDark,
                     titleContentColor = Color.White,
                 ),
             )
@@ -254,9 +254,9 @@ fun AdminRouteDetailScreen(
                     onClick = { onTestRoute(routeId) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = GccGold,
+                        contentColor = GccSky,
                     ),
-                    border = BorderStroke(1.dp, GccGold),
+                    border = BorderStroke(1.dp, GccSky),
                 ) {
                     Text("\uD83E\uDDEA Test Route")
                 }
@@ -302,7 +302,7 @@ fun AdminRouteDetailScreen(
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
                             textStyle = MaterialTheme.typography.bodyMedium,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = GccGold,
+                                focusedBorderColor = GccSky,
                             ),
                         )
                         ExposedDropdownMenu(
@@ -347,7 +347,7 @@ fun AdminRouteDetailScreen(
                                 if (isTestAssignment) "\uD83E\uDDEA Test Assignment" else "\uD83D\uDCB5 Real Assignment",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (isTestAssignment) GccGold else GccGreen,
+                                color = if (isTestAssignment) GccSky else GccGreen,
                             )
                             Text(
                                 if (isTestAssignment) "No payment, no DB records — for TestFlight testing"
@@ -360,8 +360,8 @@ fun AdminRouteDetailScreen(
                             checked = isTestAssignment,
                             onCheckedChange = { isTestAssignment = it },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = GccGold,
-                                checkedTrackColor = GccGold.copy(alpha = 0.3f),
+                                checkedThumbColor = GccSky,
+                                checkedTrackColor = GccSky.copy(alpha = 0.3f),
                             ),
                         )
                     }
@@ -386,7 +386,7 @@ fun AdminRouteDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = selectedWorkerId != null && !isAssigning,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isTestAssignment) GccGold else GccGreen,
+                            containerColor = if (isTestAssignment) GccSky else GccGreen,
                         ),
                     ) {
                         if (isAssigning) {

@@ -22,10 +22,10 @@ const tierConfig = {
   },
   pioneer: {
     label: 'Pioneer',
-    color: 'from-brand-gold-400 to-amber-500',
-    bgColor: 'bg-brand-gold-100',
-    textColor: 'text-brand-gold-700',
-    borderColor: 'border-brand-gold-300',
+    color: 'from-brand-green-400 to-amber-500',
+    bgColor: 'bg-brand-green-100',
+    textColor: 'text-brand-green-700',
+    borderColor: 'border-brand-green-300',
     icon: Star,
     description: 'Among the first 100 to join GCC',
   },
@@ -96,7 +96,7 @@ function ApprovedContent() {
         particleCount: 150,
         spread: 100,
         origin: { y: 0.6 },
-        colors: ['#ffd700', '#daa520', '#22c55e', '#16a34a', '#b8860b'],
+        colors: ['#ffd700', '#daa520', '#22c55e', '#16a34a', '#126431'],
         ticks: 200,
       })
     }, 300)
@@ -244,7 +244,7 @@ function ApprovedContent() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <Trophy className="w-4 h-4 text-brand-gold-500" />
+                    <Trophy className="w-4 h-4 text-brand-green-500" />
                     <span className="text-2xl font-bold text-neutral-900">#{globalRank}</span>
                   </div>
                   <p className="text-xs text-neutral-500">Global</p>
@@ -258,7 +258,7 @@ function ApprovedContent() {
                 </div>
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <Users className="w-4 h-4 text-brand-sky-500" />
+                    <Users className="w-4 h-4 text-brand-blue-500" />
                     <span className="text-2xl font-bold text-neutral-900">#{neighborhoodRank}</span>
                   </div>
                   <p className="text-xs text-neutral-500">N. Lawndale</p>
@@ -272,25 +272,25 @@ function ApprovedContent() {
         <div className="mb-6">
           <div
             ref={certificateRef}
-            className="bg-gradient-to-b from-amber-50 to-yellow-50 rounded-xl border-4 border-double border-brand-gold-400 p-6 shadow-lg"
+            className="bg-gradient-to-b from-amber-50 to-yellow-50 rounded-xl border-4 border-double border-brand-green-400 p-6 shadow-lg"
             style={{ minHeight: '400px' }}
           >
             {/* Certificate header decoration */}
             <div className="flex justify-center mb-4">
               <div className="flex items-center gap-2">
-                <div className="h-px w-12 bg-gradient-to-r from-transparent to-brand-gold-400" />
-                <span className="text-brand-gold-500 text-2xl">🏆</span>
-                <div className="h-px w-12 bg-gradient-to-l from-transparent to-brand-gold-400" />
+                <div className="h-px w-12 bg-gradient-to-r from-transparent to-brand-green-400" />
+                <span className="text-brand-green-500 text-2xl">🏆</span>
+                <div className="h-px w-12 bg-gradient-to-l from-transparent to-brand-green-400" />
               </div>
             </div>
 
             {/* Title */}
             <div className="text-center mb-6">
-              <h2 className="text-xs uppercase tracking-[0.3em] text-brand-gold-600 mb-1">
+              <h2 className="text-xs uppercase tracking-[0.3em] text-brand-green-600 mb-1">
                 Certificate of
               </h2>
               <h3
-                className="text-3xl font-bold text-brand-brown-800"
+                className="text-3xl font-bold text-brand-green-800"
                 style={{ fontFamily: 'Georgia, serif' }}
               >
                 Certification
@@ -299,14 +299,14 @@ function ApprovedContent() {
 
             {/* Decorative line */}
             <div className="flex items-center justify-center mb-6">
-              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-brand-gold-300 to-transparent" />
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-brand-green-300 to-transparent" />
             </div>
 
             {/* Main content */}
             <div className="text-center mb-6">
               <p className="text-sm text-neutral-600 mb-3">This certifies that</p>
               <p
-                className="text-2xl font-bold text-brand-brown-900 mb-3"
+                className="text-2xl font-bold text-brand-green-900 mb-3"
                 style={{ fontFamily: 'Georgia, serif' }}
               >
                 {workerName}
@@ -338,7 +338,7 @@ function ApprovedContent() {
             </div>
 
             {/* Date and seal row */}
-            <div className="flex items-end justify-between mt-8 pt-4 border-t border-brand-gold-200">
+            <div className="flex items-end justify-between mt-8 pt-4 border-t border-brand-green-200">
               <div>
                 <p className="text-xs text-neutral-500 mb-1">Issued on</p>
                 <p className="text-sm font-medium text-neutral-700">{today}</p>
@@ -346,10 +346,10 @@ function ApprovedContent() {
 
               {/* Official seal */}
               <div className="relative">
-                <div className="w-20 h-20 rounded-full border-4 border-brand-gold-400 bg-gradient-to-br from-brand-gold-100 to-amber-100 flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full border-4 border-brand-green-400 bg-gradient-to-br from-brand-green-100 to-amber-100 flex items-center justify-center">
                   <div className="text-center">
                     <span className="text-2xl">🧹</span>
-                    <p className="text-[8px] font-bold text-brand-gold-700 uppercase">GCC</p>
+                    <p className="text-[8px] font-bold text-brand-green-700 uppercase">GCC</p>
                   </div>
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-brand-green-500 rounded-full flex items-center justify-center">
@@ -366,7 +366,7 @@ function ApprovedContent() {
             </div>
 
             {/* Footer */}
-            <div className="mt-4 pt-3 border-t border-brand-gold-200/50 text-center">
+            <div className="mt-4 pt-3 border-t border-brand-green-200/50 text-center">
               <p className="text-[10px] text-neutral-400">
                 Global Community Cleaners • globalcommunitycleaners.org
               </p>
@@ -385,7 +385,7 @@ function ApprovedContent() {
               font-semibold text-lg transition-all
               ${isSaved
                 ? 'bg-brand-green-500 text-white'
-                : 'bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900'
+                : 'bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900'
               }
             `}
           >
@@ -427,10 +427,10 @@ function ApprovedContent() {
         </div>
 
         {/* Final step: Stripe onboarding */}
-        <div className="bg-white rounded-xl border border-brand-gold-200 shadow-sm p-6">
+        <div className="bg-white rounded-xl border border-brand-green-200 shadow-sm p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-brand-gold-100 rounded-full flex items-center justify-center">
-              <svg className="w-5 h-5 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-10 h-10 bg-brand-green-100 rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
@@ -441,7 +441,7 @@ function ApprovedContent() {
           </div>
 
           <p className="text-sm text-neutral-600 mb-4">
-            Connect your bank account through Stripe to receive <span className="font-semibold text-brand-gold-600">$100 per block</span> within 30 minutes of job completion.
+            Connect your bank account through Stripe to receive <span className="font-semibold text-brand-green-600">$100 per block</span> within 30 minutes of job completion.
           </p>
 
           {/* Benefits */}

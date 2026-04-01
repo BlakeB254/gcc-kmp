@@ -127,7 +127,7 @@ function UpdateContent() {
       <div className="min-h-[60vh] flex items-center justify-center px-4">
         <div className="text-center">
           <p className="text-neutral-600 mb-4">No profile ID provided</p>
-          <Link href="/join" className="text-brand-gold-600 hover:text-brand-gold-700 font-medium">
+          <Link href="/join" className="text-brand-green-600 hover:text-brand-green-700 font-medium">
             Join the waitlist →
           </Link>
         </div>
@@ -173,7 +173,7 @@ function UpdateContent() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-gold-500 focus:border-brand-gold-500"
+                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-green-500 focus:border-brand-green-500"
                   placeholder="Enter the email you signed up with"
                 />
               </div>
@@ -192,7 +192,7 @@ function UpdateContent() {
                   ${
                     loading
                       ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                      : 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                      : 'bg-brand-green-500 text-white hover:bg-brand-green-600'
                   }
                 `}
               >
@@ -225,7 +225,7 @@ function UpdateContent() {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-gold-500"
+                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-green-500"
                 />
               </div>
 
@@ -240,7 +240,7 @@ function UpdateContent() {
                     required
                     value={formData.stateCode}
                     onChange={(e) => setFormData({ ...formData, stateCode: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-gold-500"
+                    className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-green-500"
                   >
                     <option value="">Select state</option>
                     {US_STATES.map((state) => (
@@ -260,7 +260,7 @@ function UpdateContent() {
                     required
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-gold-500"
+                    className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-green-500"
                   />
                 </div>
               </div>
@@ -275,7 +275,7 @@ function UpdateContent() {
                   id="neighborhood"
                   value={formData.neighborhood}
                   onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-gold-500"
+                  className="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:ring-2 focus:ring-brand-green-500"
                 />
               </div>
 
@@ -293,7 +293,7 @@ function UpdateContent() {
                   ${
                     loading
                       ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                      : 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                      : 'bg-brand-green-500 text-white hover:bg-brand-green-600'
                   }
                 `}
               >
@@ -304,7 +304,7 @@ function UpdateContent() {
         </div>
 
         <div className="mt-8 text-center">
-          <Link href="/" className="text-brand-gold-600 hover:text-brand-gold-700 font-medium">
+          <Link href="/" className="text-brand-green-600 hover:text-brand-green-700 font-medium">
             ← Back to homepage
           </Link>
         </div>
@@ -319,7 +319,7 @@ export default function UpdatePage() {
       <Header />
       <Suspense fallback={
         <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
         </div>
       }>
         <UpdateContent />

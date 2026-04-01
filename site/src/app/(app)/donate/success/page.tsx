@@ -62,18 +62,18 @@ function SuccessContent() {
         </p>
 
         {/* Impact Card */}
-        <div className={`rounded-xl p-5 mb-6 ${isBlockSponsorship ? 'bg-brand-gold-50' : 'bg-brand-green-50'}`}>
+        <div className={`rounded-xl p-5 mb-6 ${isBlockSponsorship ? 'bg-brand-green-50' : 'bg-brand-green-50'}`}>
           <div className="flex items-center justify-center gap-2 mb-3">
             {isBlockSponsorship ? (
-              <MapPin className="w-5 h-5 text-brand-gold-600" />
+              <MapPin className="w-5 h-5 text-brand-green-600" />
             ) : (
               <Heart className="w-5 h-5 text-brand-green-600" />
             )}
-            <span className={`font-semibold ${isBlockSponsorship ? 'text-brand-gold-800' : 'text-brand-green-800'}`}>
+            <span className={`font-semibold ${isBlockSponsorship ? 'text-brand-green-800' : 'text-brand-green-800'}`}>
               Your Impact
             </span>
           </div>
-          <ul className={`text-sm space-y-2 ${isBlockSponsorship ? 'text-brand-gold-700' : 'text-brand-green-700'}`}>
+          <ul className={`text-sm space-y-2 ${isBlockSponsorship ? 'text-brand-green-700' : 'text-brand-green-700'}`}>
             <li className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               100% of block funding goes to workers

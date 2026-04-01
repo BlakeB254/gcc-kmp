@@ -63,7 +63,7 @@ function VerifyContent() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
         {status === 'verifying' && (
           <>
-            <div className="w-16 h-16 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+            <div className="w-16 h-16 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
             <h1 className="text-2xl font-bold text-neutral-900 mb-2">Verifying...</h1>
             <p className="text-neutral-600">Please wait while we sign you in.</p>
           </>
@@ -84,8 +84,8 @@ function VerifyContent() {
 
         {status === 'new_user' && (
           <>
-            <div className="w-16 h-16 bg-brand-gold-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-8 h-8 text-brand-gold-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 bg-brand-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-brand-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
@@ -93,7 +93,7 @@ function VerifyContent() {
             <p className="text-neutral-600 mb-6">{message}</p>
             <Link
               href={`/worker/register?token=${registrationToken}`}
-              className="inline-block w-full py-3 px-6 bg-brand-gold-500 text-brand-brown-900 font-semibold rounded-xl hover:bg-brand-gold-400 transition-colors"
+              className="inline-block w-full py-3 px-6 bg-brand-green-500 text-brand-green-900 font-semibold rounded-xl hover:bg-brand-green-400 transition-colors"
             >
               Complete Registration
             </Link>
@@ -111,7 +111,7 @@ function VerifyContent() {
             <p className="text-neutral-600 mb-6">{message}</p>
             <Link
               href="/worker/login"
-              className="inline-block w-full py-3 px-6 bg-brand-gold-500 text-brand-brown-900 font-semibold rounded-xl hover:bg-brand-gold-400 transition-colors"
+              className="inline-block w-full py-3 px-6 bg-brand-green-500 text-brand-green-900 font-semibold rounded-xl hover:bg-brand-green-400 transition-colors"
             >
               Request New Link
             </Link>
@@ -126,7 +126,7 @@ function LoadingSpinner() {
   return (
     <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-        <div className="w-16 h-16 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+        <div className="w-16 h-16 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
         <h1 className="text-2xl font-bold text-neutral-900 mb-2">Loading...</h1>
       </div>
     </div>

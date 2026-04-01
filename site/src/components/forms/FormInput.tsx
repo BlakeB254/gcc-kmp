@@ -43,7 +43,7 @@ export function FormInput({
         htmlFor={id}
         className={cn(
           'block text-sm font-medium transition-colors duration-200',
-          isFocused ? 'text-brand-gold-700' : 'text-neutral-700'
+          isFocused ? 'text-brand-green-700' : 'text-neutral-700'
         )}
       >
         {label}
@@ -72,7 +72,7 @@ export function FormInput({
             'placeholder:text-neutral-400',
             'focus:outline-none',
             disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
-            !showError && !isValid && 'border-neutral-200 focus:border-brand-gold-400 focus:ring-4 focus:ring-brand-gold-50',
+            !showError && !isValid && 'border-neutral-200 focus:border-brand-green-400 focus:ring-4 focus:ring-brand-green-50',
             showError && 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-50 animate-shake',
             isValid && 'border-brand-green-400 focus:border-brand-green-500 focus:ring-4 focus:ring-brand-green-50',
             'pr-10'

@@ -29,7 +29,7 @@ export function StepIndicator({ steps, currentStepIndex }: StepIndicatorProps) {
               className={cn(
                 'w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300',
                 index < currentStepIndex && 'bg-brand-green-500 text-white',
-                index === currentStepIndex && 'bg-brand-gold-500 text-white ring-4 ring-brand-gold-100',
+                index === currentStepIndex && 'bg-brand-green-500 text-white ring-4 ring-brand-green-100',
                 index > currentStepIndex && 'bg-neutral-200 text-neutral-500'
               )}
             >
@@ -45,7 +45,7 @@ export function StepIndicator({ steps, currentStepIndex }: StepIndicatorProps) {
               <div className="flex-1 mx-3 h-1 rounded-full bg-neutral-200 overflow-hidden">
                 <div
                   className={cn(
-                    'h-full bg-brand-gold-500 transition-all duration-500 ease-out',
+                    'h-full bg-brand-green-500 transition-all duration-500 ease-out',
                     index < currentStepIndex ? 'w-full' : 'w-0'
                   )}
                 />
@@ -74,13 +74,13 @@ export function StepIndicator({ steps, currentStepIndex }: StepIndicatorProps) {
           <span className="text-sm font-medium text-neutral-700">
             Step {currentStepIndex + 1} of {steps.length}
           </span>
-          <span className="text-sm text-brand-gold-600 font-medium">
+          <span className="text-sm text-brand-green-600 font-medium">
             {steps[currentStepIndex].label}
           </span>
         </div>
         <div className="h-2 rounded-full bg-neutral-200 overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-brand-gold-500 to-brand-gold-600 transition-all duration-500 ease-out"
+            className="h-full bg-gradient-to-r from-brand-green-500 to-brand-green-600 transition-all duration-500 ease-out"
             style={{ width: `${((currentStepIndex + 1) / steps.length) * 100}%` }}
           />
         </div>

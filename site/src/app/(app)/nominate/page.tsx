@@ -53,11 +53,11 @@ export default function NominatePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       {/* Header */}
       <section className="section-container py-12 text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-brown-100">
-          <MapPin className="h-8 w-8 text-brand-brown-600" />
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-green-100">
+          <MapPin className="h-8 w-8 text-brand-green-600" />
         </div>
         <h1 className="mb-2 text-3xl font-bold">Nominate a Block</h1>
         <p className="mx-auto max-w-xl text-muted-foreground">
@@ -162,11 +162,11 @@ export default function NominatePage() {
               </div>
 
               {/* Info box */}
-              <div className="flex gap-3 rounded-lg bg-brand-sky-50 p-4">
-                <AlertCircle className="h-5 w-5 flex-shrink-0 text-brand-sky-600" />
+              <div className="flex gap-3 rounded-lg bg-brand-blue-50 p-4">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 text-brand-blue-600" />
                 <div className="text-sm">
-                  <p className="font-medium text-brand-sky-800">What happens next?</p>
-                  <p className="text-brand-sky-700">
+                  <p className="font-medium text-brand-blue-800">What happens next?</p>
+                  <p className="text-brand-blue-700">
                     Our team will review your nomination within 48 hours. If approved,
                     the block will be added to our map for workers to claim and sponsors
                     to fund.

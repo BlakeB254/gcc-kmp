@@ -39,9 +39,9 @@ export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { htm
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #6b5344 0%, #4a3931 100%); padding: 32px; text-align: center;">
+            <td style="background: linear-gradient(135deg, #0e3f66 0%, #4a3931 100%); padding: 32px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Global Community Cleaners</h1>
-              <p style="margin: 8px 0 0; color: #d4a017; font-size: 14px; font-weight: 500;">Clean Streets. Real Money. Your Neighborhood.</p>
+              <p style="margin: 8px 0 0; color: #16763a; font-size: 14px; font-weight: 500;">Clean Streets. Real Money. Your Neighborhood.</p>
             </td>
           </tr>
 
@@ -55,12 +55,12 @@ export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { htm
               </p>
 
               <!-- Rank Card -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%); border-radius: 12px; margin-bottom: 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #e7f1eb 0%, #cbe0d3 100%); border-radius: 12px; margin-bottom: 24px;">
                 <tr>
                   <td style="padding: 24px; text-align: center;">
-                    <p style="margin: 0 0 8px; color: #713f12; font-size: 14px; font-weight: 600; text-transform: uppercase;">Your ${data.tier} Status ${emoji}</p>
+                    <p style="margin: 0 0 8px; color: #0b3b1d; font-size: 14px; font-weight: 600; text-transform: uppercase;">Your ${data.tier} Status ${emoji}</p>
                     <p style="margin: 0; color: #1a1a1a; font-size: 48px; font-weight: 700;">#${data.globalRank.toLocaleString()}</p>
-                    <p style="margin: 4px 0 0; color: #6b5344; font-size: 14px;">Global Rank</p>
+                    <p style="margin: 4px 0 0; color: #0e3f66; font-size: 14px;">Global Rank</p>
                   </td>
                 </tr>
                 <tr>
@@ -69,11 +69,11 @@ export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { htm
                       <tr>
                         <td style="text-align: center; width: 50%;">
                           <p style="margin: 0; color: #1a1a1a; font-size: 24px; font-weight: 700;">#${data.cityRank.toLocaleString()}</p>
-                          <p style="margin: 4px 0 0; color: #6b5344; font-size: 12px;">in ${data.city}</p>
+                          <p style="margin: 4px 0 0; color: #0e3f66; font-size: 12px;">in ${data.city}</p>
                         </td>
                         <td style="text-align: center; width: 50%;">
                           <p style="margin: 0; color: #1a1a1a; font-size: 16px; font-weight: 600;">${data.referralCode}</p>
-                          <p style="margin: 4px 0 0; color: #6b5344; font-size: 12px;">Your Referral Code</p>
+                          <p style="margin: 4px 0 0; color: #0e3f66; font-size: 12px;">Your Referral Code</p>
                         </td>
                       </tr>
                     </table>
@@ -89,7 +89,7 @@ export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { htm
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
                 <tr>
                   <td style="background-color: #f5f5f5; border-radius: 8px; padding: 16px; text-align: center;">
-                    <a href="${referralLink}" style="color: #d4a017; font-size: 14px; word-break: break-all; text-decoration: none;">${referralLink}</a>
+                    <a href="${referralLink}" style="color: #16763a; font-size: 14px; word-break: break-all; text-decoration: none;">${referralLink}</a>
                   </td>
                 </tr>
               </table>
@@ -98,7 +98,7 @@ export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { htm
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 32px;">
                 <tr>
                   <td align="center">
-                    <a href="${profileLink}" style="display: inline-block; background-color: #d4a017; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 16px 32px; border-radius: 8px;">
+                    <a href="${profileLink}" style="display: inline-block; background-color: #16763a; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 16px 32px; border-radius: 8px;">
                       View Your Profile Card
                     </a>
                   </td>

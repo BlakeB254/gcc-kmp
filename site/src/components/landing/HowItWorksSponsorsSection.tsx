@@ -104,11 +104,11 @@ export function HowItWorksSponsorsSection() {
   }, [steps.length])
 
   return (
-    <section id="how-sponsors-work" ref={sectionRef} className="py-28 lg:py-32 bg-gradient-to-br from-brand-gold-50 to-white">
+    <section id="how-sponsors-work" ref={sectionRef} className="py-28 lg:py-32 bg-gradient-to-br from-brand-green-50 to-white">
       <div className="section-container">
         {/* Section header */}
         <div className="text-center mb-16 lg:mb-20">
-          <span className="inline-block px-4 py-2 rounded-full bg-brand-gold-100 text-brand-gold-700 text-sm font-medium mb-6">
+          <span className="inline-block px-4 py-2 rounded-full bg-brand-green-100 text-brand-green-700 text-sm font-medium mb-6">
             💛 For Sponsors
           </span>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-neutral-900 mb-6">
@@ -135,26 +135,26 @@ export function HowItWorksSponsorsSection() {
               {index < steps.length - 1 && (
                 <div className="hidden lg:block absolute top-12 left-full w-full h-0.5 -translate-y-1/2 z-0 overflow-hidden">
                   <div
-                    className={`h-full bg-gradient-to-r from-brand-gold-400 to-brand-gold-200 transition-all duration-700 ease-out ${
+                    className={`h-full bg-gradient-to-r from-brand-green-400 to-brand-green-200 transition-all duration-700 ease-out ${
                       visibleSteps.includes(index + 1) ? 'w-full' : 'w-0'
                     }`}
                   />
                 </div>
               )}
 
-              <div className="card relative z-10 h-full p-6 hover:shadow-lg group-hover:border-brand-gold-200 border-2 border-transparent transition-all duration-300 bg-white">
+              <div className="card relative z-10 h-full p-6 hover:shadow-lg group-hover:border-brand-green-200 border-2 border-transparent transition-all duration-300 bg-white">
                 {/* Step number badge */}
-                <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-brand-gold-500 flex items-center justify-center shadow-lg shadow-brand-gold-200 group-hover:scale-110 transition-transform duration-300">
+                <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-brand-green-500 flex items-center justify-center shadow-lg shadow-brand-green-200 group-hover:scale-110 transition-transform duration-300">
                   <span className="text-sm font-bold text-white">{step.number}</span>
                 </div>
 
                 {/* Icon */}
-                <div className="w-16 h-16 rounded-2xl bg-brand-gold-100 flex items-center justify-center text-brand-gold-600 mb-4 group-hover:bg-brand-gold-200 group-hover:scale-105 transition-all duration-300">
+                <div className="w-16 h-16 rounded-2xl bg-brand-green-100 flex items-center justify-center text-brand-green-600 mb-4 group-hover:bg-brand-green-200 group-hover:scale-105 transition-all duration-300">
                   {step.icon}
                 </div>
 
                 {/* Content */}
-                <h3 className="text-xl font-semibold text-neutral-900 mb-2 group-hover:text-brand-gold-700 transition-colors">
+                <h3 className="text-xl font-semibold text-neutral-900 mb-2 group-hover:text-brand-green-700 transition-colors">
                   {step.title}
                 </h3>
                 <p className="text-neutral-600 leading-relaxed text-sm">{step.description}</p>
@@ -212,7 +212,7 @@ export function HowItWorksSponsorsSection() {
           </Link>
           <Link
             href="/sponsor/enterprise"
-            className="px-8 py-3 text-lg font-semibold rounded-lg border-2 border-brand-gold-500 text-brand-gold-700 hover:bg-brand-gold-50 transition-all"
+            className="px-8 py-3 text-lg font-semibold rounded-lg border-2 border-brand-green-500 text-brand-green-700 hover:bg-brand-green-50 transition-all"
           >
             Corporate Partnerships
           </Link>

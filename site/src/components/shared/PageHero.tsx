@@ -16,7 +16,7 @@ export function PageHero({ title, subtitle, breadcrumb }: PageHeroProps) {
             <span key={i} className="flex items-center gap-2">
               {i > 0 && <span>/</span>}
               {crumb.href ? (
-                <Link href={crumb.href} className="hover:text-brand-gold-600 transition-colors">
+                <Link href={crumb.href} className="hover:text-brand-green-600 transition-colors">
                   {crumb.label}
                 </Link>
               ) : (

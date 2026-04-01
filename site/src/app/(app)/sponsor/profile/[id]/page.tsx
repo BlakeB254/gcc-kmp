@@ -78,10 +78,10 @@ const tierConfig: Record<
   gold: {
     label: 'Gold Sponsor',
     icon: Crown,
-    color: 'text-brand-gold-600',
-    bgColor: 'bg-brand-gold-50',
-    borderColor: 'border-brand-gold-200',
-    gradientFrom: 'from-brand-gold-500',
+    color: 'text-brand-green-600',
+    bgColor: 'bg-brand-green-50',
+    borderColor: 'border-brand-green-200',
+    gradientFrom: 'from-brand-green-500',
     gradientTo: 'to-amber-600',
   },
   silver: {
@@ -138,7 +138,7 @@ export default function SponsorProfilePage() {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-gold-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand-green-600" />
           <p className="text-muted-foreground">Loading profile...</p>
         </div>
       </div>
@@ -312,7 +312,7 @@ export default function SponsorProfilePage() {
                       href={sponsor.website.startsWith('http') ? sponsor.website : `https://${sponsor.website}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-3 text-neutral-600 hover:text-brand-gold-600 transition-colors"
+                      className="flex items-center gap-3 text-neutral-600 hover:text-brand-green-600 transition-colors"
                     >
                       <Globe className="w-5 h-5" />
                       <span className="truncate">{sponsor.website.replace(/^https?:\/\//, '')}</span>

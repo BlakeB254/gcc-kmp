@@ -10,7 +10,7 @@ export default function SponsorForgotPasswordPage() {
       extraLinks={
         <p className="text-center text-neutral-500 text-sm mt-6">
           Just want to sponsor a block?{' '}
-          <Link href="/sponsor" className="text-brand-gold-600 hover:underline">
+          <Link href="/sponsor" className="text-brand-green-600 hover:underline">
             Sponsor without an account
           </Link>
         </p>

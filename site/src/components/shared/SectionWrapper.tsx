@@ -17,7 +17,7 @@ const bgClasses = {
   light: 'bg-neutral-50',
   dark: 'bg-neutral-900 text-white',
   green: 'bg-brand-green-900 text-white',
-  brown: 'bg-gradient-to-br from-brand-brown-800 to-brand-brown-900 text-white',
+  brown: 'bg-gradient-to-br from-brand-green-800 to-brand-green-900 text-white',
 }
 
 const maxWidthClasses = {

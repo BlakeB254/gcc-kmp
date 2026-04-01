@@ -13,7 +13,7 @@ export function NLHeroSection() {
     <section className="relative min-h-[100svh] sm:min-h-screen flex items-end sm:items-center justify-center pt-16 pb-20 sm:pb-0 overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0 bg-black">
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-brown-900/90 via-brand-brown-800/70 to-black/95" />
+        <div className="absolute inset-0 bg-gradient-to-b from-brand-green-900/90 via-brand-green-800/70 to-black/95" />
         {/* Subtle pattern overlay */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
@@ -24,7 +24,7 @@ export function NLHeroSection() {
         <div className="max-w-4xl mx-auto text-center bg-black/30 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-none rounded-3xl p-5 sm:p-0">
           {/* Badge */}
           <div
-            className={`inline-flex items-center gap-2 rounded-full bg-brand-gold-500/90 px-4 py-2 mb-6 sm:mb-8 transition-all duration-700 ${
+            className={`inline-flex items-center gap-2 rounded-full bg-brand-green-500/90 px-4 py-2 mb-6 sm:mb-8 transition-all duration-700 ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
@@ -44,7 +44,7 @@ export function NLHeroSection() {
             }`}
           >
             Dr. King Chose{' '}
-            <span className="text-brand-gold-400 animate-glow">North Lawndale.</span>
+            <span className="text-brand-green-400 animate-glow">North Lawndale.</span>
             <br />
             <span className="inline-block mt-3">So Did We.</span>
           </h1>
@@ -57,7 +57,7 @@ export function NLHeroSection() {
           >
             In 1966, Dr. King moved here to fight for dignity. Today, GCC is paying residents
             to restore pride in their own blocks.{' '}
-            <span className="font-semibold text-brand-gold-300">
+            <span className="font-semibold text-brand-green-300">
               1 person. 1 block. $100. Same day.
             </span>
           </p>
@@ -97,7 +97,7 @@ export function NLHeroSection() {
           >
             <div className="grid grid-cols-3 gap-4 sm:gap-6">
               <div className="text-center group hover-scale cursor-default">
-                <p className="text-2xl sm:text-4xl font-bold text-brand-gold-400 mb-1">$100</p>
+                <p className="text-2xl sm:text-4xl font-bold text-brand-green-400 mb-1">$100</p>
                 <p className="text-xs sm:text-sm text-neutral-300 font-medium">Per Block</p>
                 <p className="text-[10px] sm:text-xs text-neutral-400 mt-1">paid same day</p>
               </div>
@@ -107,7 +107,7 @@ export function NLHeroSection() {
                 <p className="text-[10px] sm:text-xs text-neutral-400 mt-1">no phone needed</p>
               </div>
               <div className="text-center group hover-scale cursor-default">
-                <p className="text-2xl sm:text-4xl font-bold text-brand-sky-400 mb-1">Free</p>
+                <p className="text-2xl sm:text-4xl font-bold text-brand-blue-400 mb-1">Free</p>
                 <p className="text-xs sm:text-sm text-neutral-300 font-medium">Food After</p>
                 <p className="text-[10px] sm:text-xs text-neutral-400 mt-1">community meal</p>
               </div>

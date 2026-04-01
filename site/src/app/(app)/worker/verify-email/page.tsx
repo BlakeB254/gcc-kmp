@@ -181,7 +181,7 @@ function VerifyEmailContent() {
   // Complete state - password set, redirecting
   if (isComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-gold-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center">
           <div className="mb-8">
             <Logo variant="short" size="lg" />
@@ -198,7 +198,7 @@ function VerifyEmailContent() {
             <p className="text-neutral-600 mb-4">
               Your account is ready. Redirecting to your dashboard...
             </p>
-            <Loader2 className="w-6 h-6 animate-spin text-brand-gold-500 mx-auto" />
+            <Loader2 className="w-6 h-6 animate-spin text-brand-green-500 mx-auto" />
           </div>
         </div>
       </div>
@@ -208,7 +208,7 @@ function VerifyEmailContent() {
   // Password setup state - after email verified
   if (isVerified) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-gold-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center px-4">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
             <Logo variant="short" size="lg" />
@@ -248,7 +248,7 @@ function VerifyEmailContent() {
                     placeholder="At least 8 characters"
                     minLength={8}
                     required
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border-2 border-neutral-200 focus:border-brand-gold-400 focus:ring-4 focus:ring-brand-gold-50 transition-all"
+                    className="w-full pl-10 pr-10 py-3 rounded-xl border-2 border-neutral-200 focus:border-brand-green-400 focus:ring-4 focus:ring-brand-green-50 transition-all"
                   />
                   <button
                     type="button"
@@ -274,7 +274,7 @@ function VerifyEmailContent() {
                     placeholder="Confirm your password"
                     minLength={8}
                     required
-                    className="w-full pl-10 py-3 rounded-xl border-2 border-neutral-200 focus:border-brand-gold-400 focus:ring-4 focus:ring-brand-gold-50 transition-all"
+                    className="w-full pl-10 py-3 rounded-xl border-2 border-neutral-200 focus:border-brand-green-400 focus:ring-4 focus:ring-brand-green-50 transition-all"
                   />
                 </div>
               </div>
@@ -282,7 +282,7 @@ function VerifyEmailContent() {
               <button
                 type="submit"
                 disabled={isSettingPassword || password.length < 8}
-                className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-brand-gold-600 hover:bg-brand-gold-700 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-brand-green-600 hover:bg-brand-green-700 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
                 {isSettingPassword ? (
                   <>
@@ -311,7 +311,7 @@ function VerifyEmailContent() {
 
   // Verification form
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <Logo variant="short" size="lg" />
@@ -319,8 +319,8 @@ function VerifyEmailContent() {
 
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-gold-100 flex items-center justify-center">
-              <svg className="w-8 h-8 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-green-100 flex items-center justify-center">
+              <svg className="w-8 h-8 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
@@ -353,7 +353,7 @@ function VerifyEmailContent() {
                 }}
                 placeholder="000000"
                 maxLength={6}
-                className="w-full text-center text-2xl font-mono tracking-[0.5em] px-4 py-4 rounded-xl border-2 border-neutral-200 focus:border-brand-gold-400 focus:ring-4 focus:ring-brand-gold-50 transition-all"
+                className="w-full text-center text-2xl font-mono tracking-[0.5em] px-4 py-4 rounded-xl border-2 border-neutral-200 focus:border-brand-green-400 focus:ring-4 focus:ring-brand-green-50 transition-all"
                 autoComplete="one-time-code"
               />
             </div>
@@ -361,7 +361,7 @@ function VerifyEmailContent() {
             <button
               type="submit"
               disabled={isVerifying || verificationCode.length !== 6}
-              className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-brand-gold-600 hover:bg-brand-gold-700 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-brand-green-600 hover:bg-brand-green-700 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {isVerifying ? (
                 <>
@@ -440,7 +440,7 @@ function VerifyEmailContent() {
                       }
                     }}
                     disabled={isResending}
-                    className="text-sm text-brand-gold-600 hover:text-brand-gold-700 font-medium disabled:text-neutral-400"
+                    className="text-sm text-brand-green-600 hover:text-brand-green-700 font-medium disabled:text-neutral-400"
                   >
                     {isResending ? 'Sending...' : 'Resend verification email'}
                   </button>
@@ -466,9 +466,9 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-500">Loading...</p>
         </div>
       </div>

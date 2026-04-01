@@ -49,8 +49,8 @@ internal fun AdminBountiesTab(
         items(bounties, key = { it.id }) { bounty ->
             val statusColor = when (bounty.status) {
                 BountyStatus.OPEN -> GccGreen
-                BountyStatus.CLAIMED, BountyStatus.FIRST_REFUSAL -> GccGold
-                BountyStatus.COMPLETED -> GccGold
+                BountyStatus.CLAIMED, BountyStatus.FIRST_REFUSAL -> GccSky
+                BountyStatus.COMPLETED -> GccSky
                 BountyStatus.IN_PROGRESS -> GccBlue
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }

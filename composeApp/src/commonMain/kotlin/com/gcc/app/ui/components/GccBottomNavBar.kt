@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.DividerColor
-import com.gcc.app.ui.theme.GccGold
+import com.gcc.app.ui.theme.GccSky
 import com.gcc.app.ui.theme.GccGreen
 
 @Composable
@@ -38,7 +38,7 @@ fun GccBottomNavBar(
             NavTab(selected = selectedTab == 0, onClick = { onTabSelected(0) }, icon = Icons.Default.Home, label = "Dashboard")
             NavTab(selected = selectedTab == 1, onClick = { onTabSelected(1) }, icon = Icons.Default.LocationOn, label = "Map")
             if (isAdmin) {
-                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = Icons.Default.Settings, label = "Admin", color = GccGold)
+                NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = Icons.Default.Settings, label = "Admin", color = GccSky)
                 NavTab(selected = selectedTab == 3, onClick = { onTabSelected(3) }, icon = Icons.Default.Person, label = "Profile")
             } else {
                 NavTab(selected = selectedTab == 2, onClick = { onTabSelected(2) }, icon = Icons.Default.Person, label = "Profile")

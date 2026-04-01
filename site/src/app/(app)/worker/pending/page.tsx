@@ -93,7 +93,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     <div className="border-b border-neutral-100 last:border-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between py-4 text-left hover:text-brand-gold-700 transition-colors"
+        className="w-full flex items-center justify-between py-4 text-left hover:text-brand-green-700 transition-colors"
       >
         <span className="font-medium text-neutral-900 pr-4">{question}</span>
         {isOpen ? (
@@ -128,7 +128,7 @@ function StepIndicator({
         <div className={cn(
           'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all',
           step.status === 'completed' && 'bg-brand-green-500 text-white',
-          step.status === 'current' && 'bg-brand-gold-500 text-white ring-4 ring-brand-gold-100 animate-pulse',
+          step.status === 'current' && 'bg-brand-green-500 text-white ring-4 ring-brand-green-100 animate-pulse',
           step.status === 'upcoming' && 'bg-neutral-100 text-neutral-400'
         )}>
           {step.status === 'completed' ? (
@@ -150,12 +150,12 @@ function StepIndicator({
         <div className="flex items-center gap-2">
           <h3 className={cn(
             'font-semibold',
-            step.status === 'current' ? 'text-brand-gold-700' : 'text-neutral-900'
+            step.status === 'current' ? 'text-brand-green-700' : 'text-neutral-900'
           )}>
             {step.title}
           </h3>
           {step.status === 'current' && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-gold-100 text-brand-gold-700">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-green-100 text-brand-green-700">
               In Progress
             </span>
           )}
@@ -195,7 +195,7 @@ function PendingContent() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-neutral-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -215,25 +215,25 @@ function PendingContent() {
         <div className="text-center mb-8">
           {/* Animated Status Icon */}
           <div className="relative inline-block mb-6">
-            <div className="w-24 h-24 rounded-full bg-brand-gold-100 flex items-center justify-center">
-              <Clock className="w-12 h-12 text-brand-gold-600" />
+            <div className="w-24 h-24 rounded-full bg-brand-green-100 flex items-center justify-center">
+              <Clock className="w-12 h-12 text-brand-green-600" />
             </div>
             {/* Pulsing ring */}
-            <div className="absolute inset-0 rounded-full border-4 border-brand-gold-300 animate-ping opacity-30" />
+            <div className="absolute inset-0 rounded-full border-4 border-brand-green-300 animate-ping opacity-30" />
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-3">
             Application Under Review
           </h1>
           <p className="text-neutral-600 max-w-md mx-auto">
-            We're verifying your documents. Most applications are processed within <span className="font-semibold text-brand-gold-700">24-48 hours</span>.
+            We're verifying your documents. Most applications are processed within <span className="font-semibold text-brand-green-700">24-48 hours</span>.
           </p>
         </div>
 
         {/* Status Card */}
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden mb-8">
           {/* Status Bar */}
-          <div className="bg-gradient-to-r from-brand-gold-500 to-brand-gold-600 px-6 py-4 text-white">
+          <div className="bg-gradient-to-r from-brand-green-500 to-brand-green-600 px-6 py-4 text-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -241,12 +241,12 @@ function PendingContent() {
                 </div>
                 <div>
                   <p className="font-semibold">Verification in Progress</p>
-                  <p className="text-brand-gold-100 text-sm">Documents being reviewed</p>
+                  <p className="text-brand-green-100 text-sm">Documents being reviewed</p>
                 </div>
               </div>
               {timeWaiting && (
                 <div className="text-right">
-                  <p className="text-xs text-brand-gold-200">Submitted</p>
+                  <p className="text-xs text-brand-green-200">Submitted</p>
                   <p className="font-mono font-semibold">{timeWaiting} ago</p>
                 </div>
               )}
@@ -256,7 +256,7 @@ function PendingContent() {
           {/* Progress Steps */}
           <div className="p-6">
             <h2 className="font-semibold text-neutral-900 mb-6 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-brand-gold-500" />
+              <Sparkles className="w-5 h-5 text-brand-green-500" />
               Your Journey to Earning
             </h2>
             <div className="space-y-0">
@@ -276,8 +276,8 @@ function PendingContent() {
           {/* Email Notification Card */}
           <div className="bg-white rounded-xl border border-neutral-200 p-5">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand-sky-100 flex items-center justify-center flex-shrink-0">
-                <Mail className="w-5 h-5 text-brand-sky-600" />
+              <div className="w-10 h-10 rounded-lg bg-brand-blue-100 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-5 h-5 text-brand-blue-600" />
               </div>
               <div>
                 <h3 className="font-semibold text-neutral-900 mb-1">Check Your Email</h3>
@@ -306,8 +306,8 @@ function PendingContent() {
           {/* Coverage Area Card */}
           <div className="bg-white rounded-xl border border-neutral-200 p-5">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand-gold-100 flex items-center justify-center flex-shrink-0">
-                <MapPin className="w-5 h-5 text-brand-gold-600" />
+              <div className="w-10 h-10 rounded-lg bg-brand-green-100 flex items-center justify-center flex-shrink-0">
+                <MapPin className="w-5 h-5 text-brand-green-600" />
               </div>
               <div>
                 <h3 className="font-semibold text-neutral-900 mb-1">North Lawndale</h3>
@@ -338,7 +338,7 @@ function PendingContent() {
         <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-neutral-100 bg-neutral-50">
             <h2 className="font-semibold text-neutral-900 flex items-center gap-2">
-              <HelpCircle className="w-5 h-5 text-brand-gold-500" />
+              <HelpCircle className="w-5 h-5 text-brand-green-500" />
               Frequently Asked Questions
             </h2>
           </div>
@@ -362,7 +362,7 @@ function PendingContent() {
           </p>
           <a
             href="mailto:support@globalcommunitycleaners.org"
-            className="inline-flex items-center gap-2 text-brand-gold-600 hover:text-brand-gold-700 font-medium text-sm"
+            className="inline-flex items-center gap-2 text-brand-green-600 hover:text-brand-green-700 font-medium text-sm"
           >
             <Mail className="w-4 h-4" />
             support@globalcommunitycleaners.org
@@ -387,9 +387,9 @@ function PendingContent() {
 export default function PendingPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-500">Loading...</p>
         </div>
       </div>

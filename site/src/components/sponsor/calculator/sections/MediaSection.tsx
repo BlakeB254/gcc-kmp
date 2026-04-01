@@ -38,7 +38,7 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-full bg-brand-gold-100 text-brand-gold-600 flex items-center justify-center text-sm font-bold">
+          <span className="w-8 h-8 rounded-full bg-brand-green-100 text-brand-green-600 flex items-center justify-center text-sm font-bold">
             5
           </span>
           Add Media (Optional)
@@ -53,13 +53,13 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
           {...categoryShowcases.media}
           imageSrc="/images/upsells/media.svg"
           imageAlt="Professional photographer capturing GCC workers cleaning with drone footage"
-          icon={<Camera className="w-8 h-8 text-brand-sky-600" />}
+          icon={<Camera className="w-8 h-8 text-brand-blue-600" />}
         />
 
         {/* Photo Packages */}
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <Camera className="w-5 h-5 text-brand-gold-600" />
+            <Camera className="w-5 h-5 text-brand-green-600" />
             <h3 className="font-semibold text-neutral-900">Photography</h3>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -72,16 +72,16 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
                   className={cn(
                     'text-left p-4 rounded-xl border-2 transition-all',
                     isSelected
-                      ? 'border-brand-gold-500 bg-brand-gold-50'
-                      : 'border-neutral-200 hover:border-brand-gold-300'
+                      ? 'border-brand-green-500 bg-brand-green-50'
+                      : 'border-neutral-200 hover:border-brand-green-300'
                   )}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <h4 className="font-semibold text-neutral-900">{pkg.name}</h4>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-brand-gold-600">{formatPrice(pkg.price)}</span>
+                      <span className="font-bold text-brand-green-600">{formatPrice(pkg.price)}</span>
                       {isSelected && (
-                        <div className="w-5 h-5 rounded-full bg-brand-gold-500 flex items-center justify-center">
+                        <div className="w-5 h-5 rounded-full bg-brand-green-500 flex items-center justify-center">
                           <Check className="w-3 h-3 text-white" />
                         </div>
                       )}
@@ -97,7 +97,7 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
         {/* Video Packages */}
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <Video className="w-5 h-5 text-brand-gold-600" />
+            <Video className="w-5 h-5 text-brand-green-600" />
             <h3 className="font-semibold text-neutral-900">Video Production</h3>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -110,16 +110,16 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
                   className={cn(
                     'text-left p-4 rounded-xl border-2 transition-all',
                     isSelected
-                      ? 'border-brand-gold-500 bg-brand-gold-50'
-                      : 'border-neutral-200 hover:border-brand-gold-300'
+                      ? 'border-brand-green-500 bg-brand-green-50'
+                      : 'border-neutral-200 hover:border-brand-green-300'
                   )}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <h4 className="font-semibold text-neutral-900">{pkg.name}</h4>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-brand-gold-600">{formatPrice(pkg.price)}</span>
+                      <span className="font-bold text-brand-green-600">{formatPrice(pkg.price)}</span>
                       {isSelected && (
-                        <div className="w-5 h-5 rounded-full bg-brand-gold-500 flex items-center justify-center">
+                        <div className="w-5 h-5 rounded-full bg-brand-green-500 flex items-center justify-center">
                           <Check className="w-3 h-3 text-white" />
                         </div>
                       )}
@@ -134,10 +134,10 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
 
         {/* Enterprise CTA */}
         {priceBreakdown.isEnterprise && (
-          <div className="bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 rounded-xl p-6 text-white">
+          <div className="bg-gradient-to-r from-brand-green-800 to-brand-green-900 rounded-xl p-6 text-white">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-full bg-brand-gold-500 flex items-center justify-center flex-shrink-0">
-                <Building2 className="w-6 h-6 text-brand-brown-900" />
+              <div className="w-12 h-12 rounded-full bg-brand-green-500 flex items-center justify-center flex-shrink-0">
+                <Building2 className="w-6 h-6 text-brand-green-900" />
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-lg mb-1">Enterprise Partnership Unlocked</h3>
@@ -148,7 +148,7 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
                 </p>
                 <Link
                   href="/sponsor/enterprise"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold-500 text-brand-brown-900 font-semibold rounded-lg hover:bg-brand-gold-400 transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-green-500 text-brand-green-900 font-semibold rounded-lg hover:bg-brand-green-400 transition-colors"
                 >
                   Learn About Enterprise Benefits
                 </Link>
@@ -170,7 +170,7 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
           {needsCustomQuote ? (
             <Link
               href="/sponsor/enterprise"
-              className="flex-1 bg-gradient-to-r from-brand-brown-700 to-brand-brown-800 text-white font-bold py-4 text-lg rounded-xl flex items-center justify-center gap-2 hover:from-brand-brown-600 hover:to-brand-brown-700 transition-all"
+              className="flex-1 bg-gradient-to-r from-brand-green-700 to-brand-green-800 text-white font-bold py-4 text-lg rounded-xl flex items-center justify-center gap-2 hover:from-brand-green-600 hover:to-brand-green-700 transition-all"
             >
               Request Custom Quote
             </Link>

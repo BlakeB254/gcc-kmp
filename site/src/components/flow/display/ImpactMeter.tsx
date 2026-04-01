@@ -28,7 +28,7 @@ const defaultMetrics: ImpactMetric[] = [
     current: 127,
     target: 200,
     icon: <MapPin className="h-5 w-5" />,
-    color: 'bg-brand-gold-500',
+    color: 'bg-brand-green-500',
   },
   {
     id: 'workers',
@@ -45,7 +45,7 @@ const defaultMetrics: ImpactMetric[] = [
     target: 20000,
     unit: '$',
     icon: <DollarSign className="h-5 w-5" />,
-    color: 'bg-brand-sky-500',
+    color: 'bg-brand-blue-500',
   },
   {
     id: 'litter',
@@ -53,7 +53,7 @@ const defaultMetrics: ImpactMetric[] = [
     current: 8.5,
     target: 15,
     icon: <Leaf className="h-5 w-5" />,
-    color: 'bg-brand-brown-500',
+    color: 'bg-brand-green-500',
   },
 ]
 
@@ -66,7 +66,7 @@ export function ImpactMeter({
     <div className={cn('space-y-6', className)}>
       {title && (
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-brand-gold-500" />
+          <Sparkles className="h-5 w-5 text-brand-green-500" />
           <h3 className="text-lg font-semibold">{title}</h3>
         </div>
       )}

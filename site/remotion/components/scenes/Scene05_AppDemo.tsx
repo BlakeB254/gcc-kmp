@@ -424,7 +424,7 @@ const SuperZoomedSuccessUI: React.FC<{
     x: Math.sin(i * 0.4) * 80 + 50,
     y: interpolate(frame, [0, 45], [-10, 120 + (i % 5) * 15]),
     rotation: frame * (1.5 + (i % 2)) * (i % 2 === 0 ? 1 : -1),
-    color: ['#d4a017', '#16a34a', '#0ea5e9', '#f59e0b', '#ec4899'][i % 5],
+    color: ['#16763a', '#16a34a', '#0ea5e9', '#f59e0b', '#ec4899'][i % 5],
     size: 8 + (i % 4) * 3,
   }))
 

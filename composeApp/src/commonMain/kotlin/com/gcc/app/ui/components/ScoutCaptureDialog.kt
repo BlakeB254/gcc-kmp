@@ -250,7 +250,7 @@ fun ScoutCaptureDialog(
                                     Text(
                                         text = "Severity: ${"★".repeat(sev.coerceIn(1, 5))}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = GccGold,
+                                        color = GccSky,
                                     )
                                 }
                                 result.confidence?.let { conf ->

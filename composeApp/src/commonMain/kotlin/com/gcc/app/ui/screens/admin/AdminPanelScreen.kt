@@ -46,7 +46,7 @@ fun AdminPanelScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGoldDark,
+                    containerColor = GccSkyDark,
                     titleContentColor = Color.White,
                 ),
             )
@@ -73,8 +73,8 @@ fun AdminPanelScreen(
         ) {
             ScrollableTabRow(
                 selectedTabIndex = uiState.selectedTab.ordinal,
-                containerColor = GccGoldDark.copy(alpha = 0.1f),
-                contentColor = GccGoldDark,
+                containerColor = GccSkyDark.copy(alpha = 0.1f),
+                contentColor = GccSkyDark,
                 edgePadding = 8.dp,
             ) {
                 AdminTab.entries.forEach { tab ->
@@ -93,7 +93,7 @@ fun AdminPanelScreen(
             ) {
                 when {
                     uiState.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GccGold)
+                        CircularProgressIndicator(color = GccSky)
                     }
                     uiState.error != null && uiState.selectedTab != AdminTab.SPOTS -> Box(
                         Modifier.fillMaxSize().padding(24.dp),

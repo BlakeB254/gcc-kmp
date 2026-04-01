@@ -35,7 +35,7 @@ function SuccessContent() {
           x: randomInRange(0.1, 0.9),
           y: Math.random() - 0.2,
         },
-        colors: ['#D4A853', '#2D5A3D', '#8B6914'],
+        colors: ['#D4A853', '#2D5A3D', '#0f5228'],
       })
     }, 50)
 
@@ -43,11 +43,11 @@ function SuccessContent() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 to-white flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
         {/* Success Icon */}
-        <div className="w-24 h-24 bg-brand-gold-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
-          <svg className="w-12 h-12 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="w-24 h-24 bg-brand-green-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+          <svg className="w-12 h-12 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
           </svg>
         </div>
@@ -59,7 +59,7 @@ function SuccessContent() {
 
         {/* Description */}
         <p className="text-lg text-neutral-600 mb-6">
-          Your sponsorship of <span className="font-semibold text-brand-gold-700">{blockCode || 'this block'}</span> will
+          Your sponsorship of <span className="font-semibold text-brand-green-700">{blockCode || 'this block'}</span> will
           directly employ a North Lawndale resident and create a cleaner neighborhood.
         </p>
 
@@ -68,7 +68,7 @@ function SuccessContent() {
           <h2 className="font-semibold text-neutral-900 mb-4">Your Impact</h2>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-2xl font-bold text-brand-gold-600">$100</p>
+              <p className="text-2xl font-bold text-brand-green-600">$100</p>
               <p className="text-xs text-neutral-500">To Worker</p>
             </div>
             <div>
@@ -76,26 +76,26 @@ function SuccessContent() {
               <p className="text-xs text-neutral-500">Block Cleaned</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-brand-brown-600">1</p>
+              <p className="text-2xl font-bold text-brand-green-600">1</p>
               <p className="text-xs text-neutral-500">Job Created</p>
             </div>
           </div>
         </div>
 
         {/* What happens next */}
-        <div className="text-left bg-brand-brown-50 rounded-xl p-4 mb-6">
+        <div className="text-left bg-brand-green-50 rounded-xl p-4 mb-6">
           <h3 className="font-semibold text-neutral-900 mb-2 text-sm">What happens next?</h3>
           <ol className="text-sm text-neutral-600 space-y-2">
             <li className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-brand-gold-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+              <span className="w-5 h-5 rounded-full bg-brand-green-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
               <span>Your block is now marked as &quot;available&quot; for workers</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-brand-gold-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+              <span className="w-5 h-5 rounded-full bg-brand-green-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
               <span>A local resident will claim and clean the block</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-brand-gold-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+              <span className="w-5 h-5 rounded-full bg-brand-green-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
               <span>You&apos;ll receive a completion email with before/after photos</span>
             </li>
           </ol>
@@ -166,8 +166,8 @@ function SuccessContent() {
 export default function SponsorSuccessPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-b from-brand-gold-50 to-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600" />
+      <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green-600" />
       </div>
     }>
       <SuccessContent />

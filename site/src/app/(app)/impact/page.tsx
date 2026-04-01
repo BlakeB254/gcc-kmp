@@ -65,10 +65,10 @@ function StatCard({
   isLoading?: boolean
 }) {
   const colorClasses: Record<string, { border: string; bg: string; text: string }> = {
-    gold: { border: 'border-brand-gold-500', bg: 'bg-brand-gold-100', text: 'text-brand-gold-600' },
+    gold: { border: 'border-brand-green-500', bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
     green: { border: 'border-brand-green-500', bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
-    sky: { border: 'border-brand-sky-500', bg: 'bg-brand-sky-100', text: 'text-brand-sky-600' },
-    brown: { border: 'border-brand-brown-500', bg: 'bg-brand-brown-100', text: 'text-brand-brown-600' },
+    sky: { border: 'border-brand-blue-500', bg: 'bg-brand-blue-100', text: 'text-brand-blue-600' },
+    brown: { border: 'border-brand-green-500', bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
   }
   const classes = colorClasses[color] || colorClasses.green
 
@@ -105,10 +105,10 @@ function ImpactPillar({
   color: string
 }) {
   const colorClasses: Record<string, { bg: string; text: string }> = {
-    gold: { bg: 'bg-brand-gold-100', text: 'text-brand-gold-600' },
+    gold: { bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
     green: { bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
-    sky: { bg: 'bg-brand-sky-100', text: 'text-brand-sky-600' },
-    brown: { bg: 'bg-brand-brown-100', text: 'text-brand-brown-600' },
+    sky: { bg: 'bg-brand-blue-100', text: 'text-brand-blue-600' },
+    brown: { bg: 'bg-brand-green-100', text: 'text-brand-green-600' },
   }
   const classes = colorClasses[color] || colorClasses.green
 
@@ -198,7 +198,7 @@ export default function ImpactPage() {
       {/* Milestone Progress */}
       {!isLoading && (
         <section className="section-container pb-12">
-          <Card className="bg-gradient-to-r from-brand-green-50 to-brand-gold-50 border-brand-green-200">
+          <Card className="bg-gradient-to-r from-brand-green-50 to-brand-green-50 border-brand-green-200">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -229,8 +229,8 @@ export default function ImpactPage() {
       <section className="bg-white py-16">
         <div className="section-container">
           <div className="max-w-3xl mx-auto text-center mb-12">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-brown-100">
-              <Shield className="h-8 w-8 text-brand-brown-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-green-100">
+              <Shield className="h-8 w-8 text-brand-green-600" />
             </div>
             <h2 className="text-2xl font-bold mb-4">The Science of Clean Streets</h2>
             <p className="text-muted-foreground leading-relaxed">
@@ -316,15 +316,15 @@ export default function ImpactPage() {
       </section>
 
       {/* The Local Jobs Mission */}
-      <section className="bg-gradient-to-r from-brand-gold-800 to-brand-gold-900 py-16 text-white">
+      <section className="bg-gradient-to-r from-brand-green-800 to-brand-green-900 py-16 text-white">
         <div className="section-container">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-8">
-              <Sparkles className="h-12 w-12 mx-auto mb-4 text-brand-gold-300" />
+              <Sparkles className="h-12 w-12 mx-auto mb-4 text-brand-green-300" />
               <h2 className="text-2xl font-bold mb-4">Creating Dignified Work</h2>
             </div>
 
-            <div className="space-y-6 text-brand-gold-100">
+            <div className="space-y-6 text-brand-green-100">
               <p className="text-lg leading-relaxed">
                 GCC isn&apos;t charity—it&apos;s <strong className="text-white">opportunity</strong>.
                 We believe that residents of North Lawndale are the best people to care for North
@@ -337,7 +337,7 @@ export default function ImpactPage() {
                   <DollarSign className="h-5 w-5" />
                   Our Pay Promise
                 </h3>
-                <p className="text-brand-gold-100">
+                <p className="text-brand-green-100">
                   <strong className="text-white">100% of every sponsorship goes directly to workers</strong>.
                   No administrative fees. No overhead deductions. A $100 block sponsorship means $100
                   in a worker&apos;s pocket. This is radical transparency in action.
@@ -356,12 +356,12 @@ export default function ImpactPage() {
       </section>
 
       {/* Children & Future Generations */}
-      <section className="bg-brand-sky-50 py-16">
+      <section className="bg-brand-blue-50 py-16">
         <div className="section-container">
           <div className="grid gap-8 lg:grid-cols-2 items-center">
             <div>
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-sky-100 mb-6">
-                <Palette className="h-8 w-8 text-brand-sky-600" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-blue-100 mb-6">
+                <Palette className="h-8 w-8 text-brand-blue-600" />
               </div>
               <h2 className="text-2xl font-bold mb-4">A Canvas for Creativity</h2>
               <div className="space-y-4 text-muted-foreground">
@@ -372,7 +372,7 @@ export default function ImpactPage() {
                 </p>
                 <p className="leading-relaxed">
                   But when those same streets are clean, maintained, and visibly cared for? The
-                  message transforms: <strong className="text-brand-sky-700">this is our neighborhood,
+                  message transforms: <strong className="text-brand-blue-700">this is our neighborhood,
                   and it&apos;s worth protecting</strong>.
                 </p>
                 <p className="leading-relaxed">
@@ -384,7 +384,7 @@ export default function ImpactPage() {
             </div>
 
             <div className="bg-white rounded-2xl p-8 shadow-lg">
-              <blockquote className="text-xl italic text-brand-sky-800 mb-4">
+              <blockquote className="text-xl italic text-brand-blue-800 mb-4">
                 &ldquo;The environment shapes the child, and the child shapes the future.&rdquo;
               </blockquote>
               <p className="text-sm text-muted-foreground">
@@ -403,7 +403,7 @@ export default function ImpactPage() {
         <div className="grid gap-8 md:grid-cols-3">
           <Card className="text-center">
             <CardHeader>
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-gold-100 text-2xl font-bold text-brand-gold-600">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-green-100 text-2xl font-bold text-brand-green-600">
                 1
               </div>
               <CardTitle>You Sponsor a Block</CardTitle>
@@ -427,7 +427,7 @@ export default function ImpactPage() {
           </Card>
           <Card className="text-center">
             <CardHeader>
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-sky-100 text-2xl font-bold text-brand-sky-600">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-blue-100 text-2xl font-bold text-brand-blue-600">
                 3
               </div>
               <CardTitle>The Block Transforms</CardTitle>
@@ -450,15 +450,15 @@ export default function ImpactPage() {
             </div>
             <div className="grid gap-6 md:grid-cols-3 text-center">
               <div>
-                <p className="text-4xl font-bold text-brand-gold-400">{stats?.workers.total || 0}</p>
+                <p className="text-4xl font-bold text-brand-green-400">{stats?.workers.total || 0}</p>
                 <p className="text-brand-green-200">Registered Workers</p>
               </div>
               <div>
-                <p className="text-4xl font-bold text-brand-gold-400">{stats?.sponsors.total || 0}</p>
+                <p className="text-4xl font-bold text-brand-green-400">{stats?.sponsors.total || 0}</p>
                 <p className="text-brand-green-200">Sponsors</p>
               </div>
               <div>
-                <p className="text-4xl font-bold text-brand-gold-400">{stats?.movement.waitlistCount || 0}</p>
+                <p className="text-4xl font-bold text-brand-green-400">{stats?.movement.waitlistCount || 0}</p>
                 <p className="text-brand-green-200">On Waitlist</p>
               </div>
             </div>
@@ -468,7 +468,7 @@ export default function ImpactPage() {
 
       {/* Call to Action */}
       <section className="section-container py-16">
-        <div className="rounded-2xl bg-gradient-to-r from-brand-gold-100 to-brand-green-100 p-8 text-center">
+        <div className="rounded-2xl bg-gradient-to-r from-brand-green-100 to-brand-green-100 p-8 text-center">
           <h2 className="mb-4 text-2xl font-bold">Be Part of the Transformation</h2>
           <p className="mb-6 text-muted-foreground max-w-2xl mx-auto">
             Every clean block is a vote for the future we want. Whether you clean, sponsor,

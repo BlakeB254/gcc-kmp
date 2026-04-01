@@ -82,7 +82,7 @@ function SpecificBlockPicker({
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border p-8 text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600 mx-auto" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green-600 mx-auto" />
         <p className="text-neutral-500 mt-3">Loading available blocks...</p>
       </div>
     )
@@ -91,8 +91,8 @@ function SpecificBlockPicker({
   if (blocks.length === 0) {
     return (
       <div className="bg-white rounded-xl border p-8 text-center">
-        <div className="w-12 h-12 bg-brand-gold-100 rounded-full flex items-center justify-center mx-auto mb-3">
-          <Check className="w-6 h-6 text-brand-gold-600" />
+        <div className="w-12 h-12 bg-brand-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <Check className="w-6 h-6 text-brand-green-600" />
         </div>
         <h3 className="font-semibold text-neutral-900 mb-2">All Blocks Funded!</h3>
         <p className="text-neutral-600 text-sm mb-4">
@@ -111,7 +111,7 @@ function SpecificBlockPicker({
       <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b bg-neutral-50">
           <p className="text-sm text-neutral-600 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-brand-gold-600" />
+            <MapPin className="w-4 h-4 text-brand-green-600" />
             Click the checkboxes inside each block to select — selected blocks turn gold
           </p>
         </div>
@@ -125,15 +125,15 @@ function SpecificBlockPicker({
 
       {/* Selected badges */}
       {selectedBlocks.length > 0 && (
-        <div className="bg-brand-gold-50 rounded-xl p-4 border border-brand-gold-200">
-          <p className="text-sm font-semibold text-brand-gold-800 mb-2">
+        <div className="bg-brand-green-50 rounded-xl p-4 border border-brand-green-200">
+          <p className="text-sm font-semibold text-brand-green-800 mb-2">
             {selectedBlocks.length} block{selectedBlocks.length !== 1 ? 's' : ''} selected — ${selectedBlocks.length * 100}
           </p>
           <div className="flex flex-wrap gap-2">
             {selectedBlocks.map((block) => (
               <span
                 key={block.id}
-                className="inline-flex items-center gap-2 bg-white text-brand-gold-800 px-3 py-1.5 rounded-full text-sm border border-brand-gold-200 shadow-sm"
+                className="inline-flex items-center gap-2 bg-white text-brand-green-800 px-3 py-1.5 rounded-full text-sm border border-brand-green-200 shadow-sm"
               >
                 <MapPin className="w-3 h-3" />
                 {block.fromCorner} → {block.toCorner}
@@ -162,8 +162,8 @@ function SpecificBlockPicker({
               aria-label={`${isSelected ? 'Deselect' : 'Select'} block ${block.fromCorner} to ${block.toCorner} on ${formatStreetName(block.streetName)}`}
               className={`w-full text-left px-4 py-3 rounded-lg border transition-all duration-150 ${
                 isSelected
-                  ? 'border-brand-gold-500 bg-brand-gold-50 shadow-sm'
-                  : 'border-neutral-100 bg-white hover:border-brand-gold-300 hover:bg-neutral-50'
+                  ? 'border-brand-green-500 bg-brand-green-50 shadow-sm'
+                  : 'border-neutral-100 bg-white hover:border-brand-green-300 hover:bg-neutral-50'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -172,7 +172,7 @@ function SpecificBlockPicker({
                   <p className="text-xs text-neutral-500">{formatStreetName(block.streetName)}</p>
                 </div>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                  isSelected ? 'border-brand-gold-500 bg-brand-gold-500' : 'border-neutral-300'
+                  isSelected ? 'border-brand-green-500 bg-brand-green-500' : 'border-neutral-300'
                 }`}>
                   {isSelected && <Check className="w-3 h-3 text-white" />}
                 </div>
@@ -215,7 +215,7 @@ function GeneralBlockPicker({
               aria-label={`${count} block${count !== 1 ? 's' : ''} — $${count * 100}`}
               className={`py-4 rounded-xl font-bold text-xl transition-all ${
                 generalBlockCount === count && !isDisabled
-                  ? 'bg-brand-gold-500 text-white shadow-lg scale-105'
+                  ? 'bg-brand-green-500 text-white shadow-lg scale-105'
                   : isDisabled
                     ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
                     : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
@@ -231,13 +231,13 @@ function GeneralBlockPicker({
           Only {availableBlockCount} block{availableBlockCount !== 1 ? 's' : ''} available.
         </div>
       )}
-      <div className="bg-brand-gold-50 rounded-xl p-4 mt-4 flex items-center gap-3">
-        <Users className="w-5 h-5 text-brand-gold-700 flex-shrink-0" />
+      <div className="bg-brand-green-50 rounded-xl p-4 mt-4 flex items-center gap-3">
+        <Users className="w-5 h-5 text-brand-green-700 flex-shrink-0" />
         <div>
-          <p className="font-semibold text-brand-gold-800">
+          <p className="font-semibold text-brand-green-800">
             {generalBlockCount} block{generalBlockCount !== 1 ? 's' : ''} — ${generalBlockCount * 100}
           </p>
-          <p className="text-sm text-brand-gold-600">You&apos;ll see assigned blocks at checkout</p>
+          <p className="text-sm text-brand-green-600">You&apos;ll see assigned blocks at checkout</p>
         </div>
       </div>
     </div>

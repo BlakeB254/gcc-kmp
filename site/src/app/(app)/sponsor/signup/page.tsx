@@ -142,7 +142,7 @@ export default function SponsorSignupPage() {
   }
 
   return (
-    <div className="bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="bg-gradient-to-b from-brand-green-50 to-white">
       <div className="section-container py-12">
         <div className="max-w-md mx-auto">
           {/* Progress indicator */}
@@ -152,9 +152,9 @@ export default function SponsorSignupPage() {
                 key={s}
                 className={`h-2 rounded-full transition-all duration-300 ${
                   s === step
-                    ? 'w-8 bg-brand-gold-500'
+                    ? 'w-8 bg-brand-green-500'
                     : s < step
-                    ? 'w-2 bg-brand-gold-500'
+                    ? 'w-2 bg-brand-green-500'
                     : 'w-2 bg-neutral-200'
                 }`}
               />
@@ -260,8 +260,8 @@ export default function SponsorSignupPage() {
                         onClick={() => setFormData({ ...formData, type: option.value as any })}
                         className={`p-3 rounded-xl border-2 text-center transition-all ${
                           formData.type === option.value
-                            ? 'border-brand-gold-500 bg-brand-gold-50'
-                            : 'border-neutral-200 hover:border-brand-gold-300'
+                            ? 'border-brand-green-500 bg-brand-green-50'
+                            : 'border-neutral-200 hover:border-brand-green-300'
                         }`}
                       >
                         <span className="text-xl block mb-1">{option.icon}</span>
@@ -283,7 +283,7 @@ export default function SponsorSignupPage() {
                   disabled={!canProceedStep1 || isCheckingDuplicate}
                   className={`w-full py-3 px-6 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
                     canProceedStep1 && !isCheckingDuplicate
-                      ? 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                      ? 'bg-brand-green-500 text-white hover:bg-brand-green-600'
                       : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                   }`}
                 >
@@ -357,7 +357,7 @@ export default function SponsorSignupPage() {
                     disabled={!canProceedStep2}
                     className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
                       canProceedStep2
-                        ? 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                        ? 'bg-brand-green-500 text-white hover:bg-brand-green-600'
                         : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                     }`}
                   >
@@ -384,8 +384,8 @@ export default function SponsorSignupPage() {
                         onClick={() => setFormData({ ...formData, preferredFrequency: option.value as any })}
                         className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                           formData.preferredFrequency === option.value
-                            ? 'border-brand-gold-500 bg-brand-gold-50'
-                            : 'border-neutral-200 hover:border-brand-gold-300'
+                            ? 'border-brand-green-500 bg-brand-green-50'
+                            : 'border-neutral-200 hover:border-brand-green-300'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -410,7 +410,7 @@ export default function SponsorSignupPage() {
                       type="checkbox"
                       checked={formData.wantsUpdates}
                       onChange={(e) => setFormData({ ...formData, wantsUpdates: e.target.checked })}
-                      className="rounded border-neutral-300 text-brand-gold-600 focus:ring-brand-gold-500"
+                      className="rounded border-neutral-300 text-brand-green-600 focus:ring-brand-green-500"
                     />
                     <span className="text-sm text-neutral-600">
                       Notify me when my sponsored blocks are cleaned
@@ -422,7 +422,7 @@ export default function SponsorSignupPage() {
                       type="checkbox"
                       checked={formData.isAnonymous}
                       onChange={(e) => setFormData({ ...formData, isAnonymous: e.target.checked })}
-                      className="rounded border-neutral-300 text-brand-gold-600 focus:ring-brand-gold-500"
+                      className="rounded border-neutral-300 text-brand-green-600 focus:ring-brand-green-500"
                     />
                     <span className="text-sm text-neutral-600">
                       Keep my sponsorships anonymous
@@ -447,7 +447,7 @@ export default function SponsorSignupPage() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex-1 py-3 px-6 rounded-xl font-semibold bg-brand-gold-500 text-white hover:bg-brand-gold-600 transition-all disabled:opacity-50"
+                    className="flex-1 py-3 px-6 rounded-xl font-semibold bg-brand-green-500 text-white hover:bg-brand-green-600 transition-all disabled:opacity-50"
                   >
                     {isLoading ? 'Creating Account...' : 'Create Account'}
                   </button>
@@ -459,7 +459,7 @@ export default function SponsorSignupPage() {
           {/* Login link */}
           <p className="text-center text-neutral-600 mt-6">
             Already have an account?{' '}
-            <Link href="/sponsor/login" className="text-brand-gold-600 font-medium hover:underline">
+            <Link href="/sponsor/login" className="text-brand-green-600 font-medium hover:underline">
               Sign in
             </Link>
           </p>
@@ -467,7 +467,7 @@ export default function SponsorSignupPage() {
           {/* One-time sponsor link */}
           <p className="text-center text-neutral-500 text-sm mt-4">
             Just want to sponsor a block?{' '}
-            <Link href="/sponsor" className="text-brand-gold-600 hover:underline">
+            <Link href="/sponsor" className="text-brand-green-600 hover:underline">
               Sponsor without an account
             </Link>
           </p>
@@ -475,7 +475,7 @@ export default function SponsorSignupPage() {
           {/* Worker redirect link */}
           <p className="text-center text-neutral-500 text-sm mt-3">
             Looking to earn money cleaning blocks?{' '}
-            <Link href="/worker/signup" className="text-brand-gold-600 font-semibold hover:underline">
+            <Link href="/worker/signup" className="text-brand-green-600 font-semibold hover:underline">
               Become a Worker
             </Link>
           </p>

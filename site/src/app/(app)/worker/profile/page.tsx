@@ -171,7 +171,7 @@ function AddressChangeModal({
               required
               value={formData.street}
               onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-              className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white placeholder-neutral-400 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent"
+              className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white placeholder-neutral-400 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent"
               placeholder="1234 W Example St"
             />
           </div>
@@ -184,7 +184,7 @@ function AddressChangeModal({
                 required
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent"
               />
             </div>
             <div>
@@ -194,7 +194,7 @@ function AddressChangeModal({
                 required
                 value={formData.state}
                 onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent"
               />
             </div>
             <div>
@@ -205,7 +205,7 @@ function AddressChangeModal({
                 pattern="[0-9]{5}"
                 value={formData.zip}
                 onChange={(e) => setFormData({ ...formData, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })}
-                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent"
                 placeholder="60623"
               />
             </div>
@@ -223,7 +223,7 @@ function AddressChangeModal({
               accept="image/*,.pdf"
               required
               onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-              className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-brand-gold-500 file:text-neutral-900 file:font-medium file:cursor-pointer"
+              className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-brand-green-500 file:text-neutral-900 file:font-medium file:cursor-pointer"
             />
             {proofFile && (
               <p className="text-xs text-brand-green-400 mt-1">Selected: {proofFile.name}</p>
@@ -241,7 +241,7 @@ function AddressChangeModal({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 py-2.5 px-4 rounded-xl font-medium bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900 transition-colors disabled:opacity-50"
+              className="flex-1 py-2.5 px-4 rounded-xl font-medium bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900 transition-colors disabled:opacity-50"
             >
               {isSubmitting ? 'Submitting...' : 'Submit Request'}
             </button>
@@ -410,7 +410,7 @@ export default function WorkerProfilePage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-neutral-900 via-neutral-900 to-neutral-950 text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-400">Loading profile...</p>
         </div>
       </div>
@@ -423,7 +423,7 @@ export default function WorkerProfilePage() {
       <div className="min-h-screen bg-gradient-to-b from-neutral-900 via-neutral-900 to-neutral-950 text-white flex items-center justify-center">
         <div className="text-center">
           <p className="text-neutral-400 mb-4">Failed to load profile</p>
-          <Link href="/worker/dashboard" className="text-brand-gold-500 hover:underline">
+          <Link href="/worker/dashboard" className="text-brand-green-500 hover:underline">
             Return to Dashboard
           </Link>
         </div>
@@ -457,7 +457,7 @@ export default function WorkerProfilePage() {
         <div ref={profileCardRef} className="mb-6">
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-neutral-800 to-neutral-900 border border-neutral-700">
             {/* Cover area with gradient */}
-            <div className="h-24 bg-gradient-to-r from-brand-gold-600 via-brand-gold-500 to-brand-green-600" />
+            <div className="h-24 bg-gradient-to-r from-brand-green-600 via-brand-green-500 to-brand-green-600" />
 
             {/* Profile content */}
             <div className="px-5 pb-5">
@@ -498,7 +498,7 @@ export default function WorkerProfilePage() {
               {/* Stats row */}
               <div className="grid grid-cols-3 gap-3 mb-4 p-3 rounded-xl bg-neutral-800/50">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-brand-gold-400">{workerData.stats.totalJobs}</p>
+                  <p className="text-2xl font-bold text-brand-green-400">{workerData.stats.totalJobs}</p>
                   <p className="text-xs text-neutral-400">Blocks Cleaned</p>
                 </div>
                 <div className="text-center border-l border-r border-neutral-700">
@@ -547,7 +547,7 @@ export default function WorkerProfilePage() {
               'flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all',
               isSaved
                 ? 'bg-brand-green-500 text-white'
-                : 'bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900'
+                : 'bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900'
             )}
           >
             {isSaving ? (
@@ -599,7 +599,7 @@ export default function WorkerProfilePage() {
             <div className="p-4 rounded-xl bg-neutral-800/50 border border-neutral-700/50">
               <p className="text-sm text-neutral-400 mb-1">Weekly Rank</p>
               <div className="flex items-center gap-2">
-                <p className="text-2xl font-bold text-brand-gold-400">#{workerData.stats.weeklyRank}</p>
+                <p className="text-2xl font-bold text-brand-green-400">#{workerData.stats.weeklyRank}</p>
                 {workerData.stats.weeklyRank === 1 && <span className="text-xl">👑</span>}
               </div>
             </div>

@@ -99,9 +99,9 @@ export default function EnterprisePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-900 to-brand-brown-800">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-900 to-brand-green-800">
       {/* Header */}
-      <header className="bg-brand-brown-900/50 backdrop-blur border-b border-white/10 sticky top-0 z-20">
+      <header className="bg-brand-green-900/50 backdrop-blur border-b border-white/10 sticky top-0 z-20">
         <div className="section-container py-4 flex items-center justify-between">
           <Link
             href="/sponsor"
@@ -116,9 +116,9 @@ export default function EnterprisePage() {
       <main className="section-container py-12">
         {/* Hero */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 bg-brand-gold-500/20 px-4 py-2 rounded-full mb-6">
-            <Building2 className="w-4 h-4 text-brand-gold-400" />
-            <span className="text-sm font-medium text-brand-gold-400">Enterprise Partnerships</span>
+          <div className="inline-flex items-center gap-2 bg-brand-green-500/20 px-4 py-2 rounded-full mb-6">
+            <Building2 className="w-4 h-4 text-brand-green-400" />
+            <span className="text-sm font-medium text-brand-green-400">Enterprise Partnerships</span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4">
             Transform Communities at Scale
@@ -141,7 +141,7 @@ export default function EnterprisePage() {
               key={stat.label}
               className="bg-white/5 border border-white/10 rounded-xl p-4 text-center"
             >
-              <stat.icon className="w-6 h-6 text-brand-gold-400 mx-auto mb-2" />
+              <stat.icon className="w-6 h-6 text-brand-green-400 mx-auto mb-2" />
               <p className="text-2xl font-bold text-white">{stat.value}</p>
               <p className="text-sm text-white/60">{stat.label}</p>
             </div>
@@ -158,24 +158,24 @@ export default function EnterprisePage() {
               <Card
                 key={tier.name}
                 className={`bg-white/5 border-white/10 ${
-                  tier.popular ? 'ring-2 ring-brand-gold-500' : ''
+                  tier.popular ? 'ring-2 ring-brand-green-500' : ''
                 }`}
               >
                 {tier.popular && (
-                  <div className="bg-brand-gold-500 text-brand-brown-900 text-xs font-bold text-center py-1">
+                  <div className="bg-brand-green-500 text-brand-green-900 text-xs font-bold text-center py-1">
                     Most Popular
                   </div>
                 )}
                 <CardHeader>
                   <CardTitle className="text-white">{tier.name}</CardTitle>
-                  <p className="text-2xl font-bold text-brand-gold-400">{tier.range}</p>
+                  <p className="text-2xl font-bold text-brand-green-400">{tier.range}</p>
                   <p className="text-sm text-white/60">{tier.blocks}</p>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
                     {tier.benefits.map((benefit, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-white/80">
-                        <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                         {benefit}
                       </li>
                     ))}
@@ -297,7 +297,7 @@ export default function EnterprisePage() {
 
                   <p className="text-xs text-center text-muted-foreground">
                     Or call us directly at{' '}
-                    <a href="tel:+13125551234" className="text-brand-gold-600 hover:underline">
+                    <a href="tel:+13125551234" className="text-brand-green-600 hover:underline">
                       (312) 555-1234
                     </a>
                   </p>

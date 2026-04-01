@@ -9,7 +9,7 @@ This document provides detailed visual specifications for each upsell category i
 ## Brand Guidelines
 
 **Color Palette:**
-- Primary Gold: `#D4AF37` (worker vests, branding elements)
+- Primary Gold: `#16763A` (worker vests, branding elements)
 - Secondary Brown: `#5D4037` (earth tones, professional feel)
 - Accent Green: `#4CAF50` (environmental services)
 - Accent Sky: `#2196F3` (digital/media elements)

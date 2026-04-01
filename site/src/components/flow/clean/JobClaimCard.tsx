@@ -41,8 +41,8 @@ interface JobClaimCardProps {
 
 const difficultyConfig = {
   easy: { label: 'Easy', color: 'bg-brand-green-100 text-brand-green-800' },
-  standard: { label: 'Standard', color: 'bg-brand-gold-100 text-brand-gold-800' },
-  challenging: { label: 'Challenging', color: 'bg-brand-brown-100 text-brand-brown-800' },
+  standard: { label: 'Standard', color: 'bg-brand-green-100 text-brand-green-800' },
+  challenging: { label: 'Challenging', color: 'bg-brand-green-100 text-brand-green-800' },
 }
 
 export function JobClaimCard({
@@ -101,15 +101,15 @@ export function JobClaimCard({
         </div>
 
         {/* Payout highlight */}
-        <div className="rounded-lg bg-brand-gold-50 p-4">
+        <div className="rounded-lg bg-brand-green-50 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-6 w-6 text-brand-gold-600" />
-              <span className="text-sm font-medium text-brand-gold-800">
+              <DollarSign className="h-6 w-6 text-brand-green-600" />
+              <span className="text-sm font-medium text-brand-green-800">
                 Earn for this job
               </span>
             </div>
-            <span className="text-2xl font-bold text-brand-gold-700">
+            <span className="text-2xl font-bold text-brand-green-700">
               {formatCurrency(block.payoutAmount)}
             </span>
           </div>

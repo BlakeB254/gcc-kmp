@@ -75,7 +75,7 @@ const waysToHelp = [
 
 export default function ResidentsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       {/* Hero */}
       <section className="section-container py-16 text-center">
         <div className="mx-auto max-w-3xl">

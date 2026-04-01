@@ -136,26 +136,26 @@ export function HowItWorksSection() {
               {index < steps.length - 1 && (
                 <div className="hidden lg:block absolute top-12 left-full w-full h-0.5 -translate-y-1/2 z-0 overflow-hidden">
                   <div
-                    className={`h-full bg-gradient-to-r from-brand-gold-400 to-brand-gold-200 transition-all duration-700 ease-out ${
+                    className={`h-full bg-gradient-to-r from-brand-green-400 to-brand-green-200 transition-all duration-700 ease-out ${
                       visibleSteps.includes(index + 1) ? 'w-full' : 'w-0'
                     }`}
                   />
                 </div>
               )}
 
-              <div className="card relative z-10 h-full p-golden-md hover-lift group-hover:border-brand-gold-200 border-2 border-transparent transition-all duration-300">
+              <div className="card relative z-10 h-full p-golden-md hover-lift group-hover:border-brand-green-200 border-2 border-transparent transition-all duration-300">
                 {/* Step number badge with pulse */}
-                <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-brand-gold-500 flex items-center justify-center shadow-lg shadow-brand-gold-200 group-hover:scale-110 transition-transform duration-300">
+                <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-brand-green-500 flex items-center justify-center shadow-lg shadow-brand-green-200 group-hover:scale-110 transition-transform duration-300">
                   <span className="text-sm font-bold text-white">{step.number}</span>
                 </div>
 
                 {/* Icon with hover animation */}
-                <div className="w-16 h-16 rounded-2xl bg-brand-brown-50 flex items-center justify-center text-brand-brown-600 mb-golden-md group-hover:bg-brand-gold-100 group-hover:text-brand-gold-700 group-hover:scale-105 transition-all duration-300">
+                <div className="w-16 h-16 rounded-2xl bg-brand-green-50 flex items-center justify-center text-brand-green-600 mb-golden-md group-hover:bg-brand-green-100 group-hover:text-brand-green-700 group-hover:scale-105 transition-all duration-300">
                   {step.icon}
                 </div>
 
                 {/* Content with golden spacing */}
-                <h3 className="text-xl font-semibold text-neutral-900 mb-golden-xs group-hover:text-brand-gold-700 transition-colors">
+                <h3 className="text-xl font-semibold text-neutral-900 mb-golden-xs group-hover:text-brand-green-700 transition-colors">
                   {step.title}
                 </h3>
                 <p className="text-neutral-600 leading-relaxed">{step.description}</p>
@@ -165,10 +165,10 @@ export function HowItWorksSection() {
         </div>
 
         {/* Requirements note with improved spacing */}
-        <div className="mt-16 lg:mt-20 p-6 sm:p-8 rounded-2xl bg-brand-brown-50 border border-brand-brown-100 hover-lift">
+        <div className="mt-16 lg:mt-20 p-6 sm:p-8 rounded-2xl bg-brand-green-50 border border-brand-green-100 hover-lift">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-golden-md">
-            <div className="w-14 h-14 rounded-full bg-brand-brown-100 flex items-center justify-center flex-shrink-0 group-hover:bg-brand-brown-200 transition-colors">
-              <svg className="w-7 h-7 text-brand-brown-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-14 h-14 rounded-full bg-brand-green-100 flex items-center justify-center flex-shrink-0 group-hover:bg-brand-green-200 transition-colors">
+              <svg className="w-7 h-7 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>

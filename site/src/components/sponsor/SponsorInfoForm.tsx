@@ -43,9 +43,9 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
 
         <div className="bg-white rounded-2xl border-2 border-neutral-200 shadow-lg overflow-hidden">
           {/* Header strip */}
-          <div className="bg-gradient-to-r from-brand-brown-800 to-brand-brown-900 px-6 py-4">
+          <div className="bg-gradient-to-r from-brand-green-800 to-brand-green-900 px-6 py-4">
             <p className="text-white font-semibold flex items-center gap-2">
-              <Shield className="w-4 h-4 text-brand-gold-400" />
+              <Shield className="w-4 h-4 text-brand-green-400" />
               Secure Sponsor Information
             </p>
             <p className="text-white/70 text-sm">Your details are only used for receipts and optional public recognition</p>
@@ -59,7 +59,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
 
             <div className="grid sm:grid-cols-2 gap-4 pb-5 border-b border-neutral-200">
               <div className="group">
-                <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
+                <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-green-600 transition-colors">
                   Your Name <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -72,7 +72,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
                 />
               </div>
               <div className="group">
-                <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
+                <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-green-600 transition-colors">
                   Email <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -87,7 +87,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
             </div>
 
             <div className="group py-5 border-b border-neutral-200">
-              <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
+              <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-green-600 transition-colors">
                 Company/Organization <span className="text-neutral-400 text-xs font-normal">(optional)</span>
               </label>
               <input
@@ -100,7 +100,7 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
             </div>
 
             <div className="group py-5 border-b border-neutral-200">
-              <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-gold-600 transition-colors">
+              <label className="block text-sm font-medium text-neutral-700 mb-1 group-focus-within:text-brand-green-600 transition-colors">
                 Message for the Worker <span className="text-neutral-400 text-xs font-normal">(optional)</span>
               </label>
               <textarea
@@ -116,14 +116,14 @@ export const SponsorInfoForm = forwardRef<HTMLDivElement, SponsorInfoFormProps>(
                 type="checkbox"
                 checked={formData.isAnonymous}
                 onChange={(e) => update({ isAnonymous: e.target.checked })}
-                className="rounded border-neutral-300 text-brand-gold-600 focus:ring-brand-gold-500"
+                className="rounded border-neutral-300 text-brand-green-600 focus:ring-brand-green-500"
               />
               <span className="text-sm text-neutral-600">Sponsor anonymously</span>
             </label>
 
             {/* Optional cleaning schedule */}
             <details className="pt-5">
-              <summary className="text-sm font-medium text-neutral-700 cursor-pointer flex items-center gap-2 hover:text-brand-gold-600 transition-colors">
+              <summary className="text-sm font-medium text-neutral-700 cursor-pointer flex items-center gap-2 hover:text-brand-green-600 transition-colors">
                 <Calendar className="w-4 h-4" />
                 Schedule a cleaning date
                 <span className="text-xs text-neutral-400 ml-1">(optional)</span>

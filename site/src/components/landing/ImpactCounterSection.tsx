@@ -5,11 +5,11 @@ import { ImpactCounter } from '@/components/shared/ImpactCounter'
 
 export function ImpactCounterSection() {
   return (
-    <section id="impact" className="py-28 lg:py-32 bg-gradient-to-br from-brand-brown-800 to-brand-brown-900 text-white">
+    <section id="impact" className="py-28 lg:py-32 bg-gradient-to-br from-brand-green-800 to-brand-green-900 text-white">
       <div className="section-container">
         {/* Section header */}
         <div className="text-center mb-16 lg:mb-20">
-          <div className="inline-flex items-center gap-2 rounded-full bg-brand-gold-500/90 px-4 py-2 mb-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-500/90 px-4 py-2 mb-6">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
@@ -17,7 +17,7 @@ export function ImpactCounterSection() {
             <span className="text-sm font-medium text-white tracking-wide">Live Impact</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold mb-6">Building a Movement</h2>
-          <p className="text-lg text-brand-brown-200 max-w-2xl mx-auto">
+          <p className="text-lg text-brand-green-200 max-w-2xl mx-auto">
             Real-time numbers showing how our community is transforming North Lawndale, one block at a time.
           </p>
         </div>

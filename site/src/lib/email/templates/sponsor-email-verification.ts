@@ -39,7 +39,7 @@ export function sponsorEmailVerificationEmail(data: SponsorEmailVerificationData
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
                 <tr>
                   <td align="center">
-                    <a href="${data.verificationUrl}" style="display: inline-block; padding: 16px 48px; background: linear-gradient(135deg, #d4a017 0%, #b8860b 100%); color: #ffffff; text-decoration: none; font-size: 18px; font-weight: 600; border-radius: 12px; box-shadow: 0 4px 12px rgba(212, 160, 23, 0.3);">
+                    <a href="${data.verificationUrl}" style="display: inline-block; padding: 16px 48px; background: linear-gradient(135deg, #16763a 0%, #126431 100%); color: #ffffff; text-decoration: none; font-size: 18px; font-weight: 600; border-radius: 12px; box-shadow: 0 4px 12px rgba(212, 160, 23, 0.3);">
                       Verify My Email
                     </a>
                   </td>
@@ -64,8 +64,8 @@ export function sponsorEmailVerificationEmail(data: SponsorEmailVerificationData
                 This verification link expires in <strong>24 hours</strong>. If you didn't sign up as a GCC sponsor, you can safely ignore this email.
               </p>
 
-              <div style="margin: 24px 0; padding: 16px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #d4a017;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
+              <div style="margin: 24px 0; padding: 16px; background-color: #e7f1eb; border-radius: 8px; border-left: 4px solid #16763a;">
+                <p style="margin: 0; color: #0b3b1d; font-size: 14px; line-height: 1.5;">
                   <strong>100% of your sponsorship goes directly to workers.</strong> No admin fees, no overhead - every dollar makes a direct impact in Chicago neighborhoods.
                 </p>
               </div>

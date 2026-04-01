@@ -103,7 +103,7 @@ fun BountyDetailScreen(
                             .size(80.dp)
                             .align(Alignment.Center)
                             .clip(CircleShape)
-                            .background(GccGold.copy(alpha = 0.2f)),
+                            .background(GccSky.copy(alpha = 0.2f)),
                     ) {
                         Box(
                             modifier = Modifier
@@ -265,13 +265,13 @@ fun BountyDetailScreen(
             if (bounty.status == BountyStatus.FIRST_REFUSAL && bounty.firstRefusalExpiresAt != null) {
                 item {
                     GccCard(
-                        accentColor = CardAccentGold,
+                        accentColor = CardAccentSky,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     ) {
                         Text(
                             "First Refusal Active",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = GccGold,
+                            color = GccSky,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(

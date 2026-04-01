@@ -130,7 +130,7 @@ export default function CommunityPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
       {/* Header */}
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-40">
         <div className="section-container py-4">
@@ -179,7 +179,7 @@ export default function CommunityPage() {
                     onClick={() => setSelectedCategory(key)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                       isSelected
-                        ? 'bg-brand-gold-500 text-white shadow-md'
+                        ? 'bg-brand-green-500 text-white shadow-md'
                         : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
                     }`}
                   >
@@ -201,7 +201,7 @@ export default function CommunityPage() {
           {/* Loading State */}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-10 h-10 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin mb-4" />
+              <div className="w-10 h-10 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-neutral-500">Loading posts...</p>
             </div>
           ) : posts.length === 0 ? (
@@ -225,7 +225,7 @@ export default function CommunityPage() {
                   <Link
                     key={post.id}
                     href={`/community/post/${post.id}`}
-                    className="block bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-lg hover:border-brand-gold-200 transition-all group"
+                    className="block bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-lg hover:border-brand-green-200 transition-all group"
                   >
                     <div className="flex items-start gap-4">
                       <div className="flex-1 min-w-0">
@@ -247,7 +247,7 @@ export default function CommunityPage() {
                         </div>
 
                         {/* Title */}
-                        <h3 className="text-lg font-semibold text-neutral-900 mb-1 group-hover:text-brand-gold-600 transition-colors line-clamp-2">
+                        <h3 className="text-lg font-semibold text-neutral-900 mb-1 group-hover:text-brand-green-600 transition-colors line-clamp-2">
                           {post.title}
                         </h3>
 
@@ -262,7 +262,7 @@ export default function CommunityPage() {
                             <Users className="w-3.5 h-3.5" />
                             {post.authorName}
                             <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${
-                              post.authorType === 'worker' ? 'bg-brand-gold-100 text-brand-gold-700' : 'bg-brand-green-100 text-brand-green-700'
+                              post.authorType === 'worker' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-green-100 text-brand-green-700'
                             }`}>
                               {post.authorType}
                             </span>
@@ -290,7 +290,7 @@ export default function CommunityPage() {
                         </div>
                       </div>
 
-                      <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-brand-gold-500 transition-colors" />
+                      <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-brand-green-500 transition-colors" />
                     </div>
                   </Link>
                 )
@@ -307,7 +307,7 @@ export default function CommunityPage() {
                   onClick={() => fetchPosts(selectedCategory, page)}
                   className={`w-10 h-10 rounded-lg font-medium transition-colors ${
                     page === pagination.page
-                      ? 'bg-brand-gold-500 text-white'
+                      ? 'bg-brand-green-500 text-white'
                       : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
                   }`}
                 >
@@ -343,7 +343,7 @@ export default function CommunityPage() {
                 <select
                   value={newPost.category}
                   onChange={(e) => setNewPost({ ...newPost, category: e.target.value })}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                 >
                   {Object.entries(categoryConfig)
                     .filter(([key]) => key !== 'all' && key !== 'announcements')
@@ -366,7 +366,7 @@ export default function CommunityPage() {
                   onChange={(e) => setNewPost({ ...newPost, title: e.target.value })}
                   placeholder="What's on your mind?"
                   maxLength={255}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                   required
                 />
                 <p className="mt-1 text-xs text-neutral-500 text-right">
@@ -385,7 +385,7 @@ export default function CommunityPage() {
                   placeholder="Share your thoughts, tips, or questions..."
                   rows={6}
                   maxLength={10000}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all resize-none"
                   required
                 />
                 <p className="mt-1 text-xs text-neutral-500 text-right">
@@ -405,7 +405,7 @@ export default function CommunityPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !newPost.title.trim() || !newPost.content.trim()}
-                  className="flex-1 py-3 px-4 bg-brand-gold-500 text-white font-semibold rounded-xl hover:bg-brand-gold-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3 px-4 bg-brand-green-500 text-white font-semibold rounded-xl hover:bg-brand-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>

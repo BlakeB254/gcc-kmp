@@ -82,7 +82,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-full bg-brand-gold-100 text-brand-gold-600 flex items-center justify-center text-sm font-bold">
+          <span className="w-8 h-8 rounded-full bg-brand-green-100 text-brand-green-600 flex items-center justify-center text-sm font-bold">
             2
           </span>
           Add Branding (Optional)
@@ -98,7 +98,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.workerBranding}
             imageSrc="/images/upsells/worker-branding.svg"
             imageAlt="Workers wearing branded vests and shirts while cleaning Chicago streets"
-            icon={<Shirt className="w-8 h-8 text-brand-gold-600" />}
+            icon={<Shirt className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
             {Object.entries(workerBrandingAddons).map(([key, addon]) => (
@@ -148,7 +148,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.streetAdvertising}
             imageSrc="/images/upsells/street-advertising.svg"
             imageAlt="Yard signs and banners on a freshly cleaned Chicago block"
-            icon={<Megaphone className="w-8 h-8 text-brand-brown-600" />}
+            icon={<Megaphone className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
             {Object.entries(streetAdvertisingAddons).map(([key, addon]) => (
@@ -172,7 +172,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.digitalPresence}
             imageSrc="/images/upsells/digital-presence.svg"
             imageAlt="Social media posts featuring sponsor logos and before/after cleaning photos"
-            icon={<Globe className="w-8 h-8 text-brand-sky-600" />}
+            icon={<Globe className="w-8 h-8 text-brand-blue-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
             {Object.entries(digitalPresenceAddons).map(([key, addon]) => (

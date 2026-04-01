@@ -84,7 +84,7 @@ export function BlockSelector({
   return (
     <div className={cn('space-y-6', className)}>
       {/* Summary card */}
-      <Card className="bg-gradient-to-br from-brand-gold-50 to-amber-50">
+      <Card className="bg-gradient-to-br from-brand-green-50 to-amber-50">
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             {/* Counter controls */}
@@ -116,13 +116,13 @@ export function BlockSelector({
             {/* Total and tier */}
             <div className="text-center sm:text-right">
               <div className="flex items-center justify-center gap-2 sm:justify-end">
-                <DollarSign className="h-5 w-5 text-brand-gold-600" />
-                <span className="text-3xl font-bold text-brand-gold-700">
+                <DollarSign className="h-5 w-5 text-brand-green-600" />
+                <span className="text-3xl font-bold text-brand-green-700">
                   {formatCurrency(totalAmount)}
                 </span>
               </div>
               {selectedCount > 0 && (
-                <Badge className="mt-1 bg-brand-gold-100 text-brand-gold-800">
+                <Badge className="mt-1 bg-brand-green-100 text-brand-green-800">
                   {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)} Sponsor
                 </Badge>
               )}
@@ -198,7 +198,7 @@ export function BlockSelector({
                 </div>
 
                 {/* Price */}
-                <span className="font-semibold text-brand-gold-700">
+                <span className="font-semibold text-brand-green-700">
                   {formatCurrency(pricePerBlock)}
                 </span>
               </button>

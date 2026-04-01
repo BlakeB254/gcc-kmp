@@ -43,7 +43,7 @@ export function WorkerCTASection() {
   ]
 
   return (
-    <section className="py-28 lg:py-32 bg-brand-brown-900 relative overflow-hidden">
+    <section className="py-28 lg:py-32 bg-brand-green-900 relative overflow-hidden">
       {/* Background image with overlay - optimized for mobile */}
       <div className="absolute inset-0">
         <picture>
@@ -64,7 +64,7 @@ export function WorkerCTASection() {
             sizes="100vw"
           />
         </picture>
-        <div className="absolute inset-0 bg-gradient-to-r from-brand-brown-900 via-brand-brown-900/95 to-brand-brown-900/80" />
+        <div className="absolute inset-0 bg-gradient-to-r from-brand-green-900 via-brand-green-900/95 to-brand-green-900/80" />
       </div>
 
       <div className="section-container relative z-10">
@@ -101,7 +101,7 @@ export function WorkerCTASection() {
               </div>
             </div>
             {/* Decorative elements */}
-            <div className="absolute -z-10 -bottom-4 -right-4 w-full h-full rounded-2xl bg-brand-gold-500/30" />
+            <div className="absolute -z-10 -bottom-4 -right-4 w-full h-full rounded-2xl bg-brand-green-500/30" />
           </div>
 
           {/* Right column - Content */}
@@ -115,7 +115,7 @@ export function WorkerCTASection() {
 
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
               Turn Your Time Into{' '}
-              <span className="text-brand-gold-400">Real Income</span>
+              <span className="text-brand-green-400">Real Income</span>
             </h2>
             <p className="text-lg text-neutral-300 mb-8">
               Join dozens of North Lawndale residents earning money while making their
@@ -156,7 +156,7 @@ export function WorkerCTASection() {
             {/* Launch info */}
             <div className="mt-10 pt-8 border-t border-neutral-700 grid grid-cols-3 gap-6">
               <div>
-                <p className="text-2xl font-bold text-brand-gold-400">$100</p>
+                <p className="text-2xl font-bold text-brand-green-400">$100</p>
                 <p className="text-sm text-neutral-500">Per Block</p>
               </div>
               <div>
@@ -164,7 +164,7 @@ export function WorkerCTASection() {
                 <p className="text-sm text-neutral-500">To Workers</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-brand-sky-400">Now</p>
+                <p className="text-2xl font-bold text-brand-blue-400">Now</p>
                 <p className="text-sm text-neutral-500">Hiring</p>
               </div>
             </div>

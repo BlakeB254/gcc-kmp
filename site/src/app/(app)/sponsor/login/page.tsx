@@ -50,7 +50,7 @@ export default function SponsorLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -105,10 +105,10 @@ export default function SponsorLoginPage() {
 
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2">
-                <input type="checkbox" className="rounded border-neutral-300 text-brand-gold-600" />
+                <input type="checkbox" className="rounded border-neutral-300 text-brand-green-600" />
                 <span className="text-sm text-neutral-600">Remember me</span>
               </label>
-              <Link href="/sponsor/forgot-password" className="text-sm text-brand-gold-600 hover:underline">
+              <Link href="/sponsor/forgot-password" className="text-sm text-brand-green-600 hover:underline">
                 Forgot password?
               </Link>
             </div>
@@ -116,7 +116,7 @@ export default function SponsorLoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-gold-500 text-white hover:bg-brand-gold-600 transition-all disabled:opacity-50"
+              className="w-full py-3 px-6 rounded-xl font-semibold bg-brand-green-500 text-white hover:bg-brand-green-600 transition-all disabled:opacity-50"
             >
               {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
@@ -125,7 +125,7 @@ export default function SponsorLoginPage() {
           <div className="mt-6 pt-6 border-t border-neutral-200 text-center">
             <p className="text-neutral-600">
               Don't have an account?{' '}
-              <Link href="/sponsor/signup" className="text-brand-gold-600 font-medium hover:underline">
+              <Link href="/sponsor/signup" className="text-brand-green-600 font-medium hover:underline">
                 Create one
               </Link>
             </p>
@@ -135,7 +135,7 @@ export default function SponsorLoginPage() {
         {/* Quick sponsor link */}
         <p className="text-center text-neutral-500 text-sm mt-6">
           Just want to sponsor a block?{' '}
-          <Link href="/sponsor" className="text-brand-gold-600 hover:underline">
+          <Link href="/sponsor" className="text-brand-green-600 hover:underline">
             Sponsor without an account
           </Link>
         </p>

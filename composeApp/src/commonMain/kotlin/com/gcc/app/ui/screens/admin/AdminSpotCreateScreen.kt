@@ -103,7 +103,7 @@ fun AdminSpotCreateScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGoldDark,
+                    containerColor = GccSkyDark,
                     titleContentColor = Color.White,
                 ),
             )
@@ -150,8 +150,8 @@ fun AdminSpotCreateScreen(
                             onClick = { areaMode = AreaMode.CIRCLE },
                             label = { Text("Circle") },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                                selectedLabelColor = GccGold,
+                                selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                                selectedLabelColor = GccSky,
                             ),
                         )
                         FilterChip(
@@ -159,8 +159,8 @@ fun AdminSpotCreateScreen(
                             onClick = { areaMode = AreaMode.RECTANGLE },
                             label = { Text("Rectangle") },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                                selectedLabelColor = GccGold,
+                                selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                                selectedLabelColor = GccSky,
                             ),
                         )
                     }
@@ -202,24 +202,24 @@ fun AdminSpotCreateScreen(
                             when (areaMode) {
                                 AreaMode.CIRCLE -> {
                                     val pixelRadius = metersToPixels(radiusMeters.toDouble(), spotLat, mapZoom)
-                                    drawCircle(color = GccGold.copy(alpha = 0.2f), radius = pixelRadius, center = center)
-                                    drawCircle(color = GccGold, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                                    drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
+                                    drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                                 }
                                 AreaMode.RECTANGLE -> {
                                     val pxW = metersToPixels(rectWidth.toDouble(), spotLat, mapZoom)
                                     val pxH = metersToPixels(rectHeight.toDouble(), spotLat, mapZoom)
                                     val topLeft = androidx.compose.ui.geometry.Offset(center.x - pxW, center.y - pxH)
                                     val rectSize = androidx.compose.ui.geometry.Size(pxW * 2, pxH * 2)
-                                    drawRect(color = GccGold.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
-                                    drawRect(color = GccGold, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                                    drawRect(color = GccSky.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
+                                    drawRect(color = GccSky, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                                 }
                             }
 
                             // Big crosshair target
-                            drawCircle(color = GccGold, radius = 20f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
-                            drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x - 30f, center.y), end = androidx.compose.ui.geometry.Offset(center.x + 30f, center.y), strokeWidth = 1.5f)
-                            drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x, center.y - 30f), end = androidx.compose.ui.geometry.Offset(center.x, center.y + 30f), strokeWidth = 1.5f)
-                            drawCircle(color = GccGold, radius = 3f, center = center)
+                            drawCircle(color = GccSky, radius = 20f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                            drawLine(color = GccSky.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x - 30f, center.y), end = androidx.compose.ui.geometry.Offset(center.x + 30f, center.y), strokeWidth = 1.5f)
+                            drawLine(color = GccSky.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x, center.y - 30f), end = androidx.compose.ui.geometry.Offset(center.x, center.y + 30f), strokeWidth = 1.5f)
+                            drawCircle(color = GccSky, radius = 3f, center = center)
                         }
 
                         Box(
@@ -234,7 +234,7 @@ fun AdminSpotCreateScreen(
                                 AreaMode.CIRCLE -> "${radiusMeters.toInt()}m radius"
                                 AreaMode.RECTANGLE -> "${rectWidth.toInt()}m x ${rectHeight.toInt()}m"
                             }
-                            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccSky)
                         }
 
                         Surface(
@@ -247,7 +247,7 @@ fun AdminSpotCreateScreen(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Text("Drag to position", style = MaterialTheme.typography.labelSmall, color = GccGoldDark)
+                                Text("Drag to position", style = MaterialTheme.typography.labelSmall, color = GccSkyDark)
                                 Text("${formatCoord(spotLat)}, ${formatCoord(spotLng)}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
@@ -264,7 +264,7 @@ fun AdminSpotCreateScreen(
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
                                     contentPadding = PaddingValues(0.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
                                 ) { Text("\u2212", style = MaterialTheme.typography.titleMedium) }
                                 Slider(
                                     value = radiusMeters,
@@ -272,17 +272,17 @@ fun AdminSpotCreateScreen(
                                     valueRange = 5f..100f,
                                     steps = 18,
                                     modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                                    colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                                 )
                                 OutlinedButton(
                                     onClick = { radiusMeters = (radiusMeters + 5).coerceAtMost(100f) },
                                     modifier = Modifier.size(36.dp),
                                     shape = CircleShape,
                                     contentPadding = PaddingValues(0.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
                                 ) { Text("+", style = MaterialTheme.typography.titleMedium) }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("${radiusMeters.toInt()}m", color = GccGold, fontWeight = FontWeight.Bold)
+                                Text("${radiusMeters.toInt()}m", color = GccSky, fontWeight = FontWeight.Bold)
                             }
                         }
                         AreaMode.RECTANGLE -> {
@@ -294,10 +294,10 @@ fun AdminSpotCreateScreen(
                                     valueRange = 5f..100f,
                                     steps = 18,
                                     modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                                    colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("${rectWidth.toInt()}m", color = GccGold, fontWeight = FontWeight.Bold)
+                                Text("${rectWidth.toInt()}m", color = GccSky, fontWeight = FontWeight.Bold)
                             }
                             Text("Height", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -307,10 +307,10 @@ fun AdminSpotCreateScreen(
                                     valueRange = 5f..100f,
                                     steps = 18,
                                     modifier = Modifier.weight(1f),
-                                    colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                                    colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("${rectHeight.toInt()}m", color = GccGold, fontWeight = FontWeight.Bold)
+                                Text("${rectHeight.toInt()}m", color = GccSky, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -364,8 +364,8 @@ fun AdminSpotCreateScreen(
                                 },
                                 label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                                    selectedLabelColor = GccGold,
+                                    selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                                    selectedLabelColor = GccSky,
                                 ),
                             )
                         }

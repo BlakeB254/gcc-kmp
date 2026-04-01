@@ -15,7 +15,7 @@ export function FAQSection({ limit }: FAQSectionProps) {
       <div className="section-container">
         {/* Section Header */}
         <div className="text-center mb-golden-xl animate-fade-in-up">
-          <span className="inline-block px-golden-sm py-1 rounded-full bg-brand-gold-100 text-brand-gold-700 text-sm font-medium mb-golden-sm">
+          <span className="inline-block px-golden-sm py-1 rounded-full bg-brand-green-100 text-brand-green-700 text-sm font-medium mb-golden-sm">
             Questions?
           </span>
           <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-golden-sm">
@@ -36,7 +36,7 @@ export function FAQSection({ limit }: FAQSectionProps) {
           <div className="text-center mt-golden-lg animate-fade-in-up">
             <Link
               href="/faq"
-              className="inline-flex items-center gap-2 text-brand-gold-600 hover:text-brand-gold-700 font-medium link-underline"
+              className="inline-flex items-center gap-2 text-brand-green-600 hover:text-brand-green-700 font-medium link-underline"
             >
               See all FAQs
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -54,7 +54,7 @@ export function FAQSection({ limit }: FAQSectionProps) {
             </p>
             <a
               href="mailto:hello@globalcommunitycleaners.org"
-              className="inline-flex items-center gap-2 text-brand-gold-600 hover:text-brand-gold-700 font-medium link-underline"
+              className="inline-flex items-center gap-2 text-brand-green-600 hover:text-brand-green-700 font-medium link-underline"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path

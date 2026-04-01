@@ -32,10 +32,10 @@ export function MobileAppCTASection() {
 
   return (
     <>
-      <section className="py-28 lg:py-32 bg-gradient-to-br from-brand-brown-900 via-brand-brown-800 to-neutral-900 text-white overflow-hidden relative">
+      <section className="py-28 lg:py-32 bg-gradient-to-br from-brand-green-900 via-brand-green-800 to-neutral-900 text-white overflow-hidden relative">
         {/* Background decorations */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/4 -left-20 w-64 h-64 bg-brand-gold-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/4 -left-20 w-64 h-64 bg-brand-green-500/10 rounded-full blur-3xl" />
           <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-brand-green-500/10 rounded-full blur-3xl" />
         </div>
 
@@ -49,14 +49,14 @@ export function MobileAppCTASection() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-green-500" />
                 </span>
-                <span className="text-sm font-medium text-brand-gold-300">
+                <span className="text-sm font-medium text-brand-green-300">
                   Coming February 2nd
                 </span>
               </div>
 
               <h2 className="text-4xl sm:text-5xl font-bold mb-6">
                 GCC Goes{' '}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-gold-400 to-brand-gold-300">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-green-400 to-brand-green-300">
                   Mobile
                 </span>
               </h2>
@@ -75,7 +75,7 @@ export function MobileAppCTASection() {
                       key={index}
                       className="flex gap-3 p-4 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
                     >
-                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-brand-gold-500 to-brand-gold-600 flex items-center justify-center">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-brand-green-500 to-brand-green-600 flex items-center justify-center">
                         <Icon className="w-5 h-5 text-white" />
                       </div>
                       <div>
@@ -90,7 +90,7 @@ export function MobileAppCTASection() {
               {/* CTA Button */}
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="group w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900 font-bold text-lg rounded-xl transition-all shadow-lg shadow-brand-gold-500/25 hover:shadow-brand-gold-500/40"
+                className="group w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900 font-bold text-lg rounded-xl transition-all shadow-lg shadow-brand-green-500/25 hover:shadow-brand-green-500/40"
               >
                 <Bell className="w-5 h-5" />
                 Get Notified When It Launches
@@ -125,7 +125,7 @@ export function MobileAppCTASection() {
             <div className="relative flex justify-center lg:justify-end">
               {/* Glow effect */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-72 h-72 bg-brand-gold-500/20 rounded-full blur-3xl animate-pulse" />
+                <div className="w-72 h-72 bg-brand-green-500/20 rounded-full blur-3xl animate-pulse" />
               </div>
 
               {/* Phone mockup */}
@@ -134,7 +134,7 @@ export function MobileAppCTASection() {
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-neutral-950 rounded-b-2xl z-10" />
 
                 {/* Screen content */}
-                <div className="absolute inset-2 rounded-[2.5rem] bg-gradient-to-b from-brand-brown-800 to-brand-brown-900 overflow-hidden">
+                <div className="absolute inset-2 rounded-[2.5rem] bg-gradient-to-b from-brand-green-800 to-brand-green-900 overflow-hidden">
                   {/* Status bar */}
                   <div className="flex items-center justify-between px-6 pt-12 pb-2">
                     <span className="text-xs text-white/60">9:41</span>
@@ -148,12 +148,12 @@ export function MobileAppCTASection() {
                   {/* App header */}
                   <div className="px-5 py-4 border-b border-white/10">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-gold-400 to-brand-gold-600 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-green-400 to-brand-green-600 flex items-center justify-center">
                         <span className="text-lg">🧹</span>
                       </div>
                       <div>
                         <p className="font-bold text-white text-sm">GCC</p>
-                        <p className="text-xs text-brand-gold-400">North Lawndale</p>
+                        <p className="text-xs text-brand-green-400">North Lawndale</p>
                       </div>
                     </div>
                   </div>
@@ -162,7 +162,7 @@ export function MobileAppCTASection() {
                   <div className="p-4">
                     <div className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/10">
                       <div className="flex items-center justify-between mb-3">
-                        <p className="text-xs font-medium text-brand-gold-400">Available Near You</p>
+                        <p className="text-xs font-medium text-brand-green-400">Available Near You</p>
                         <span className="px-2 py-0.5 bg-brand-green-500/20 text-brand-green-400 text-xs rounded-full">
                           3 jobs
                         </span>
@@ -180,15 +180,15 @@ export function MobileAppCTASection() {
                             className="flex items-center justify-between p-2 rounded-lg bg-white/5"
                           >
                             <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-lg bg-brand-gold-500/20 flex items-center justify-center">
-                                <MapPin className="w-4 h-4 text-brand-gold-400" />
+                              <div className="w-8 h-8 rounded-lg bg-brand-green-500/20 flex items-center justify-center">
+                                <MapPin className="w-4 h-4 text-brand-green-400" />
                               </div>
                               <div>
                                 <p className="text-xs font-medium text-white">{job.block}</p>
                                 <p className="text-[10px] text-neutral-400">{job.distance} away</p>
                               </div>
                             </div>
-                            <p className="text-sm font-bold text-brand-gold-400">${job.amount}</p>
+                            <p className="text-sm font-bold text-brand-green-400">${job.amount}</p>
                           </div>
                         ))}
                       </div>
@@ -200,12 +200,12 @@ export function MobileAppCTASection() {
                     <div className="flex items-center justify-around p-3 bg-neutral-900/90 backdrop-blur rounded-2xl border border-white/10">
                       {['Jobs', 'Map', 'Profile'].map((label, i) => (
                         <div key={i} className="flex flex-col items-center gap-1">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${i === 0 ? 'bg-brand-gold-500' : 'bg-white/10'}`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${i === 0 ? 'bg-brand-green-500' : 'bg-white/10'}`}>
                             {i === 0 && <Wallet className="w-4 h-4 text-neutral-900" />}
                             {i === 1 && <MapPin className="w-4 h-4 text-neutral-400" />}
                             {i === 2 && <div className="w-4 h-4 rounded-full bg-neutral-500" />}
                           </div>
-                          <span className={`text-[10px] ${i === 0 ? 'text-brand-gold-400' : 'text-neutral-500'}`}>
+                          <span className={`text-[10px] ${i === 0 ? 'text-brand-green-400' : 'text-neutral-500'}`}>
                             {label}
                           </span>
                         </div>
@@ -227,12 +227,12 @@ export function MobileAppCTASection() {
               </div>
 
               <div className="absolute -right-4 bottom-1/3 bg-white rounded-xl shadow-xl p-3 hidden lg:flex items-center gap-2 animate-float-delayed">
-                <div className="w-8 h-8 rounded-full bg-brand-gold-100 flex items-center justify-center">
-                  <Zap className="w-4 h-4 text-brand-gold-600" />
+                <div className="w-8 h-8 rounded-full bg-brand-green-100 flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-brand-green-600" />
                 </div>
                 <div>
                   <p className="text-[10px] text-neutral-500">Instant Payout</p>
-                  <p className="text-sm font-bold text-brand-gold-600">Sent to bank</p>
+                  <p className="text-sm font-bold text-brand-green-600">Sent to bank</p>
                 </div>
               </div>
             </div>

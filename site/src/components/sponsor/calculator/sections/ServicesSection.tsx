@@ -41,7 +41,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-full bg-brand-gold-100 text-brand-gold-600 flex items-center justify-center text-sm font-bold">
+          <span className="w-8 h-8 rounded-full bg-brand-green-100 text-brand-green-600 flex items-center justify-center text-sm font-bold">
             3
           </span>
           Add Services (Optional)
@@ -81,7 +81,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.seasonalServices}
             imageSrc="/images/upsells/seasonal-services.svg"
             imageAlt="Workers doing snow removal in a Chicago neighborhood"
-            icon={<Snowflake className="w-8 h-8 text-brand-sky-600" />}
+            icon={<Snowflake className="w-8 h-8 text-brand-blue-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
             {Object.entries(seasonalServices).map(([key, service]) => (
@@ -139,7 +139,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.businessEngagement}
             imageSrc="/images/upsells/business-engagement.svg"
             imageAlt="Worker handing out promotional materials to a smiling resident"
-            icon={<Briefcase className="w-8 h-8 text-brand-brown-600" />}
+            icon={<Briefcase className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
             {Object.entries(businessEngagementAddons).map(([key, addon]) => (

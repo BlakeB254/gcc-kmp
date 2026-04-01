@@ -50,18 +50,18 @@ export function CorporatePartnerSection() {
   ]
 
   return (
-    <section className="py-28 lg:py-32 bg-gradient-to-br from-neutral-900 via-neutral-800 to-brand-brown-900 text-white overflow-hidden">
+    <section className="py-28 lg:py-32 bg-gradient-to-br from-neutral-900 via-neutral-800 to-brand-green-900 text-white overflow-hidden">
       <div className="section-container">
         {/* Header */}
         <div className="text-center mb-16 lg:mb-20">
-          <div className="inline-flex items-center gap-2 rounded-full bg-brand-gold-500/20 border border-brand-gold-500/30 px-4 py-2 mb-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-500/20 border border-brand-green-500/30 px-4 py-2 mb-6">
             <span className="text-xl">🏢</span>
-            <span className="text-sm font-medium text-brand-gold-300">For Corporations & Businesses</span>
+            <span className="text-sm font-medium text-brand-green-300">For Corporations & Businesses</span>
           </div>
 
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
             Turn Your Ad Budget Into{' '}
-            <span className="text-brand-gold-400">Community Wages</span>
+            <span className="text-brand-green-400">Community Wages</span>
           </h2>
 
           <p className="text-lg text-neutral-300 max-w-3xl mx-auto">
@@ -108,12 +108,12 @@ export function CorporatePartnerSection() {
 
         {/* The Math */}
         <div className="max-w-4xl mx-auto mb-16 lg:mb-20">
-          <div className="bg-gradient-to-r from-brand-gold-500/20 to-brand-gold-600/20 rounded-2xl p-6 sm:p-8 border border-brand-gold-500/30">
+          <div className="bg-gradient-to-r from-brand-green-500/20 to-brand-green-600/20 rounded-2xl p-6 sm:p-8 border border-brand-green-500/30">
             <h3 className="text-2xl font-bold text-center mb-6">The Simple Math</h3>
 
             <div className="grid sm:grid-cols-3 gap-6 text-center">
               <div className="bg-white/10 rounded-xl p-4 sm:p-6">
-                <p className="text-3xl sm:text-4xl font-bold text-brand-gold-400 mb-2">$10,000</p>
+                <p className="text-3xl sm:text-4xl font-bold text-brand-green-400 mb-2">$10,000</p>
                 <p className="text-sm text-neutral-300">Monthly ad spend → GCC</p>
               </div>
               <div className="bg-white/10 rounded-xl p-4 sm:p-6">
@@ -129,7 +129,7 @@ export function CorporatePartnerSection() {
             <p className="text-center text-neutral-300 mt-6 text-sm">
               <strong className="text-white">Zero</strong> goes to platform fees.
               <strong className="text-white"> Zero</strong> goes to algorithms.
-              <strong className="text-brand-gold-400"> 100%</strong> becomes wages in North Lawndale.
+              <strong className="text-brand-green-400"> 100%</strong> becomes wages in North Lawndale.
             </p>
           </div>
         </div>
@@ -142,7 +142,7 @@ export function CorporatePartnerSection() {
             {corporateBenefits.map((benefit, index) => (
               <div
                 key={index}
-                className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 hover:border-brand-gold-500/30 transition-all"
+                className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 hover:border-brand-green-500/30 transition-all"
               >
                 <div className="flex items-start gap-4">
                   <span className="text-3xl">{benefit.icon}</span>
@@ -160,7 +160,7 @@ export function CorporatePartnerSection() {
         <div className="max-w-4xl mx-auto mb-16 lg:mb-20">
           <div className="bg-white/5 rounded-2xl p-6 sm:p-8 border border-white/10">
             <div className="flex flex-col sm:flex-row items-center gap-6">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-gold-400 to-brand-gold-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-green-400 to-brand-green-600 flex items-center justify-center flex-shrink-0">
                 <span className="text-4xl">✨</span>
               </div>
               <div className="text-center sm:text-left">
@@ -171,10 +171,10 @@ export function CorporatePartnerSection() {
                   add-ons fund branded vests, signage, graffiti removal, and more.
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                  <span className="px-3 py-1 rounded-full bg-brand-gold-500/20 text-brand-gold-300 text-xs">Logo vests</span>
-                  <span className="px-3 py-1 rounded-full bg-brand-gold-500/20 text-brand-gold-300 text-xs">Block signage</span>
-                  <span className="px-3 py-1 rounded-full bg-brand-gold-500/20 text-brand-gold-300 text-xs">Social recognition</span>
-                  <span className="px-3 py-1 rounded-full bg-brand-gold-500/20 text-brand-gold-300 text-xs">Impact reports</span>
+                  <span className="px-3 py-1 rounded-full bg-brand-green-500/20 text-brand-green-300 text-xs">Logo vests</span>
+                  <span className="px-3 py-1 rounded-full bg-brand-green-500/20 text-brand-green-300 text-xs">Block signage</span>
+                  <span className="px-3 py-1 rounded-full bg-brand-green-500/20 text-brand-green-300 text-xs">Social recognition</span>
+                  <span className="px-3 py-1 rounded-full bg-brand-green-500/20 text-brand-green-300 text-xs">Impact reports</span>
                 </div>
               </div>
             </div>
@@ -190,7 +190,7 @@ export function CorporatePartnerSection() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/sponsor/enterprise"
-              className="px-8 py-4 rounded-xl bg-brand-gold-500 text-white font-semibold hover:bg-brand-gold-600 transition-all text-lg"
+              className="px-8 py-4 rounded-xl bg-brand-green-500 text-white font-semibold hover:bg-brand-green-600 transition-all text-lg"
             >
               Start Corporate Partnership
             </Link>
@@ -204,7 +204,7 @@ export function CorporatePartnerSection() {
 
           <p className="mt-6 text-sm text-neutral-500">
             Contact us at{' '}
-            <a href="mailto:partnerships@globalcommunitycleaners.org" className="text-brand-gold-400 hover:underline">
+            <a href="mailto:partnerships@globalcommunitycleaners.org" className="text-brand-green-400 hover:underline">
               partnerships@globalcommunitycleaners.org
             </a>
             {' '}for bulk sponsorships

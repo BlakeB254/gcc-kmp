@@ -87,7 +87,7 @@ export default function BusinessDashboardPage() {
     : 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-brown-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-brand-green-50 to-white">
       {/* Header */}
       <section className="section-container py-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -209,7 +209,7 @@ export default function BusinessDashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-brand-gold-600" />
+                <Calendar className="h-5 w-5 text-brand-green-600" />
                 Recent Sponsorships
               </CardTitle>
               <CardDescription>
@@ -299,8 +299,8 @@ export default function BusinessDashboardPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="hover:shadow-md transition-shadow cursor-pointer">
             <CardContent className="flex items-center gap-4 pt-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-gold-100">
-                <FileText className="h-6 w-6 text-brand-gold-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-green-100">
+                <FileText className="h-6 w-6 text-brand-green-600" />
               </div>
               <div>
                 <p className="font-semibold">2024 Tax Summary</p>
@@ -321,8 +321,8 @@ export default function BusinessDashboardPage() {
           </Card>
           <Card className="hover:shadow-md transition-shadow cursor-pointer">
             <CardContent className="flex items-center gap-4 pt-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-sky-100">
-                <Download className="h-6 w-6 text-brand-sky-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-blue-100">
+                <Download className="h-6 w-6 text-brand-blue-600" />
               </div>
               <div>
                 <p className="font-semibold">Block Photos</p>

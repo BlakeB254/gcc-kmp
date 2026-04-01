@@ -59,7 +59,7 @@ export const Scene13_LogoTagline: React.FC<Scene13Props> = ({ format }) => {
           }}
         >
           <Img
-            src={staticFile('assets/gcc-logo.jpg')}
+            src={staticFile('assets/gcc-logo.png')}
             style={{
               width: '100%',
               height: '100%',

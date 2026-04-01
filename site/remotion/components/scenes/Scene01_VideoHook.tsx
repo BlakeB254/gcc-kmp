@@ -278,7 +278,7 @@ const SuperZoomedPaymentUI: React.FC<{
     x: 50 + Math.cos(i * 0.8) * 40,
     y: interpolate(frame, [10, 90], [30, 70 + (i % 5) * 8], { extrapolateRight: 'clamp' }),
     rotation: frame * (2 + (i % 3)),
-    color: ['#d4a017', '#16a34a', '#0ea5e9', '#f59e0b'][i % 4],
+    color: ['#16763a', '#16a34a', '#0ea5e9', '#f59e0b'][i % 4],
     opacity: interpolate(frame, [10, 25, 70, 90], [0, 1, 1, 0], { extrapolateRight: 'clamp' }),
   }))
 

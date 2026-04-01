@@ -47,12 +47,12 @@ export function Logo({
   const content = (
     <div className={cn('flex items-center gap-2', className)}>
       {/* Logo Image */}
-      <div className={cn('relative rounded-full overflow-hidden', config.container)}>
+      <div className={cn('relative overflow-hidden', config.container)}>
         <Image
-          src="/images/gcc-logo.jpg"
+          src="/images/gcc-symbol.png"
           alt="GCC Logo"
           fill
-          className="object-cover"
+          className="object-contain"
           priority
         />
       </div>
@@ -62,7 +62,7 @@ export function Logo({
         className={cn(
           'font-bold',
           variant === 'short' ? config.text : config.fullText,
-          theme === 'light' ? 'text-brand-brown-800' : 'text-white'
+          theme === 'light' ? 'text-brand-green-800' : 'text-white'
         )}
       >
         {variant === 'full' ? 'Global Community Cleaners' : 'GCC'}
@@ -98,7 +98,7 @@ export function LogoFallback({
       {/* Icon Circle */}
       <div
         className={cn(
-          'rounded-full bg-brand-gold-500 flex items-center justify-center',
+          'rounded-full bg-brand-green-500 flex items-center justify-center',
           config.container
         )}
       >
@@ -112,7 +112,7 @@ export function LogoFallback({
         className={cn(
           'font-bold',
           variant === 'short' ? config.text : config.fullText,
-          theme === 'light' ? 'text-brand-brown-800' : 'text-white'
+          theme === 'light' ? 'text-brand-green-800' : 'text-white'
         )}
       >
         {variant === 'full' ? 'Global Community Cleaners' : 'GCC'}

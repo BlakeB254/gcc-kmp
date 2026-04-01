@@ -85,7 +85,7 @@ fun GccButton(
                 enabled = enabled && !isLoading,
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = GccGold,
+                    containerColor = GccSky,
                     contentColor = Color.White,
                 ),
             ) {

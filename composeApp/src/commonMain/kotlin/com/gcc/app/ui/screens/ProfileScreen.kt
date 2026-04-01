@@ -206,7 +206,7 @@ fun ProfileScreen(
                 StatCard(
                     value = "${uiState.streakDays}",
                     label = "Streak",
-                    accentColor = CardAccentGold,
+                    accentColor = CardAccentSky,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -322,7 +322,7 @@ private fun VerificationBanner(
             title = "More Info Needed"
             subtitle = "We need additional information to verify your account"
             buttonText = "Provide Info"
-            accentColor = GccGold
+            accentColor = GccSky
         }
         VerificationStatus.APPROVED -> return
     }

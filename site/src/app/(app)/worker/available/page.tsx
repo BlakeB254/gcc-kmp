@@ -35,7 +35,7 @@ const BlockMap = dynamic(
     loading: () => (
       <div className="h-full bg-neutral-100 animate-pulse flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-gold-600 mx-auto mb-3" />
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-green-600 mx-auto mb-3" />
           <span className="text-neutral-500">Loading map...</span>
         </div>
       </div>
@@ -260,7 +260,7 @@ export default function WorkerAvailablePage() {
             </div>
 
             {/* Payout Info */}
-            <div className="bg-gradient-to-r from-brand-gold-50 to-emerald-50 rounded-lg p-3 mb-4">
+            <div className="bg-gradient-to-r from-brand-green-50 to-emerald-50 rounded-lg p-3 mb-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-neutral-500 uppercase tracking-wide">Payout</p>
@@ -286,7 +286,7 @@ export default function WorkerAvailablePage() {
                   w-full py-4 rounded-xl font-semibold text-white transition-all
                   ${isClaiming
                     ? 'bg-neutral-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-brand-gold-600 to-brand-gold-700 hover:from-brand-gold-700 hover:to-brand-gold-800 active:scale-[0.98]'
+                    : 'bg-gradient-to-r from-brand-green-600 to-brand-green-700 hover:from-brand-green-700 hover:to-brand-green-800 active:scale-[0.98]'
                   }
                 `}
               >
@@ -339,7 +339,7 @@ export default function WorkerAvailablePage() {
           </p>
           <button
             onClick={fetchBlocks}
-            className="text-brand-gold-600 font-medium text-sm hover:text-brand-gold-700"
+            className="text-brand-green-600 font-medium text-sm hover:text-brand-green-700"
           >
             Refresh
           </button>

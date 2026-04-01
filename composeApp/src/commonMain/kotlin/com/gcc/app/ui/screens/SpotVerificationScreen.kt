@@ -343,7 +343,7 @@ private fun CompletePhase(
 
         if (pointsAwarded > 0) {
             Spacer(modifier = Modifier.height(24.dp))
-            GccCard(accentColor = CardAccentGold) {
+            GccCard(accentColor = CardAccentSky) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -363,7 +363,7 @@ private fun CompletePhase(
                     Text(
                         "+$pointsAwarded",
                         style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = GccGold,
+                        color = GccSky,
                     )
                 }
             }

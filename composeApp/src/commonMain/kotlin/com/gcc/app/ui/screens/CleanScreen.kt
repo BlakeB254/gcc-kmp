@@ -320,7 +320,7 @@ private fun HotspotMapMarker(
         hotspot.status == HotspotStatus.CLEANED -> GccGreen
         hotspot.status == HotspotStatus.SKIPPED -> TextSubtle
         isNearby -> GccError
-        else -> GccGold
+        else -> GccSky
     }
 
     // Pulse animation for the nearby hotspot
@@ -371,7 +371,7 @@ private fun HotspotListItem(
     isNearby: Boolean = false,
 ) {
     val (statusText, statusColor) = when (hotspot.status) {
-        HotspotStatus.DETECTED -> if (isNearby) "Nearby" to GccError else "Pending" to GccGold
+        HotspotStatus.DETECTED -> if (isNearby) "Nearby" to GccError else "Pending" to GccSky
         HotspotStatus.CLEANED -> "Cleaned" to GccGreen
         HotspotStatus.SKIPPED -> "Skipped" to TextMuted
     }

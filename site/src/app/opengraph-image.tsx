@@ -20,7 +20,7 @@ export default async function Image() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #1a472a 0%, #2d5a3d 30%, #8B7355 70%, #6B5344 100%)',
+          background: 'linear-gradient(135deg, #0b3b1d 0%, #16763a 30%, #155B92 70%, #0e3f66 100%)',
           fontFamily: 'system-ui, sans-serif',
           position: 'relative',
           overflow: 'hidden',
@@ -34,7 +34,7 @@ export default async function Image() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(212, 175, 55, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 40%)',
+            backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(22, 118, 58, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 40%)',
           }}
         />
 
@@ -64,7 +64,7 @@ export default async function Image() {
                 width: '80px',
                 height: '80px',
                 borderRadius: '20px',
-                background: 'linear-gradient(135deg, #D4AF37 0%, #C5A028 100%)',
+                background: 'linear-gradient(135deg, #16763A 0%, #126431 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -109,7 +109,7 @@ export default async function Image() {
           <p
             style={{
               fontSize: '32px',
-              color: '#D4AF37',
+              color: '#30A0CE',
               fontWeight: 600,
               margin: 0,
               marginBottom: '40px',
@@ -147,13 +147,13 @@ export default async function Image() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: 'rgba(212, 175, 55, 0.2)',
+                background: 'rgba(22, 118, 58, 0.2)',
                 borderRadius: '50px',
                 padding: '12px 24px',
               }}
             >
               <span style={{ fontSize: '24px' }}>💰</span>
-              <span style={{ color: '#D4AF37', fontSize: '20px', fontWeight: 600 }}>
+              <span style={{ color: '#30A0CE', fontSize: '20px', fontWeight: 600 }}>
                 100% to Workers
               </span>
             </div>

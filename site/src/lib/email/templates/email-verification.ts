@@ -20,7 +20,7 @@ export function emailVerificationEmail(data: EmailVerificationData): { html: str
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #d4a017 0%, #b8860b 100%); padding: 32px; text-align: center;">
+            <td style="background: linear-gradient(135deg, #16763a 0%, #126431 100%); padding: 32px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Verify Your Email</h1>
               <p style="margin: 8px 0 0; color: #fff8dc; font-size: 14px; font-weight: 500;">One more step to join GCC!</p>
             </td>

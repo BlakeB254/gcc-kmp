@@ -10,7 +10,7 @@ interface CTABannerProps {
 
 const variantClasses = {
   green: 'bg-brand-green-600 hover:bg-brand-green-700 text-white',
-  gold: 'bg-brand-gold-500 hover:bg-brand-gold-600 text-white',
+  gold: 'bg-brand-green-500 hover:bg-brand-green-600 text-white',
   outline: 'border-2 border-white/80 bg-white/10 text-white hover:bg-white/20',
 }
 

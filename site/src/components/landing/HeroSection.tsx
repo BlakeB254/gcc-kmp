@@ -67,7 +67,7 @@ export function HeroSection() {
         <div className="max-w-4xl mx-auto text-center bg-black/30 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-none rounded-3xl p-5 sm:p-0">
           {/* Full brand name for recognition */}
           <p
-            className={`text-sm sm:text-base font-semibold text-brand-gold-300 uppercase tracking-[0.2em] mb-4 transition-all duration-700 ${
+            className={`text-sm sm:text-base font-semibold text-brand-green-300 uppercase tracking-[0.2em] mb-4 transition-all duration-700 ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
@@ -76,7 +76,7 @@ export function HeroSection() {
 
           {/* Badge with pulse animation */}
           <div
-            className={`inline-flex items-center gap-2 rounded-full bg-brand-gold-500/90 px-4 py-2 mb-6 sm:mb-8 transition-all duration-700 delay-75 ${
+            className={`inline-flex items-center gap-2 rounded-full bg-brand-green-500/90 px-4 py-2 mb-6 sm:mb-8 transition-all duration-700 delay-75 ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
@@ -96,7 +96,7 @@ export function HeroSection() {
             }`}
           >
             Clean Streets.{' '}
-            <span className="text-brand-gold-400 animate-glow">Real Money.</span>
+            <span className="text-brand-green-400 animate-glow">Real Money.</span>
             <br />
             <span className="inline-block mt-3">Your Neighborhood.</span>
           </h1>
@@ -108,7 +108,7 @@ export function HeroSection() {
             }`}
           >
             We're launching in Chicago and expanding fast.{' '}
-            <span className="font-semibold text-brand-gold-300">Earn $100+ per block</span> while
+            <span className="font-semibold text-brand-green-300">Earn $100+ per block</span> while
             making your community shine. Whether you're in North Lawndale or anywhere else—
             <span className="text-white font-semibold"> the earlier you sign up, the better your position.</span>
           </p>
@@ -139,7 +139,7 @@ export function HeroSection() {
               </Link>
               <Link
                 href="/join"
-                className="group w-full sm:w-auto text-lg py-4 px-8 hover-lift inline-flex items-center justify-center rounded-lg border-2 border-brand-gold-400/80 bg-brand-gold-500/20 backdrop-blur-sm font-semibold text-white transition-all hover:bg-brand-gold-500/30 hover:border-brand-gold-400"
+                className="group w-full sm:w-auto text-lg py-4 px-8 hover-lift inline-flex items-center justify-center rounded-lg border-2 border-brand-green-400/80 bg-brand-green-500/20 backdrop-blur-sm font-semibold text-white transition-all hover:bg-brand-green-500/30 hover:border-brand-green-400"
               >
                 <span className="flex items-center justify-center gap-2">
                   🌍 I'm Elsewhere — Join Waitlist
@@ -178,7 +178,7 @@ export function HeroSection() {
             <div className="grid grid-cols-3 gap-4 sm:gap-6">
               {/* Earnings */}
               <div className="text-center group hover-scale cursor-default">
-                <p className="text-2xl sm:text-4xl font-bold text-brand-gold-400 mb-1 transition-transform duration-300 group-hover:scale-110">
+                <p className="text-2xl sm:text-4xl font-bold text-brand-green-400 mb-1 transition-transform duration-300 group-hover:scale-110">
                   $100
                 </p>
                 <p className="text-xs sm:text-sm text-neutral-300 font-medium">Minimum</p>
@@ -196,7 +196,7 @@ export function HeroSection() {
 
               {/* Payout */}
               <div className="text-center group hover-scale cursor-default">
-                <p className="text-2xl sm:text-4xl font-bold text-brand-sky-400 mb-1 transition-transform duration-300 group-hover:scale-110">
+                <p className="text-2xl sm:text-4xl font-bold text-brand-blue-400 mb-1 transition-transform duration-300 group-hover:scale-110">
                   15-30m
                 </p>
                 <p className="text-xs sm:text-sm text-neutral-300 font-medium">Payout</p>
@@ -207,7 +207,7 @@ export function HeroSection() {
             {/* Instant payout note */}
             <div className="mt-4 pt-4 border-t border-white/10 text-center">
               <p className="text-xs sm:text-sm text-neutral-300">
-                <span className="text-brand-gold-400 font-semibold">Instant payouts</span> unlocked after completing your probationary period
+                <span className="text-brand-green-400 font-semibold">Instant payouts</span> unlocked after completing your probationary period
               </p>
               <p className="text-[10px] sm:text-xs text-neutral-500 mt-1">
                 Build trust, verify quality, then get paid the moment your work is approved

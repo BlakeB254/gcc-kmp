@@ -119,7 +119,7 @@ function SuccessContent() {
               particleCount: 150,
               spread: 100,
               origin: { y: 0.6 },
-              colors: ['#D4A574', '#ffd700', '#daa520', '#f59e0b', '#d4a017'],
+              colors: ['#D4A574', '#ffd700', '#daa520', '#f59e0b', '#16763a'],
               ticks: 200,
             })
             // Side bursts
@@ -129,7 +129,7 @@ function SuccessContent() {
                 angle: 60,
                 spread: 65,
                 origin: { x: 0, y: 0.6 },
-                colors: ['#D4A574', '#d4a017', '#f59e0b'],
+                colors: ['#D4A574', '#16763a', '#f59e0b'],
               })
               confetti({
                 particleCount: 75,
@@ -146,7 +146,7 @@ function SuccessContent() {
                 spread: 160,
                 startVelocity: 25,
                 origin: { y: 0 },
-                colors: ['#ffd700', '#daa520', '#b8860b'],
+                colors: ['#ffd700', '#daa520', '#126431'],
               })
             }, 400)
           }, 300)
@@ -211,8 +211,8 @@ function SuccessContent() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-neutral-900 to-neutral-950">
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <div className="w-16 h-16 border-4 border-brand-gold-500/30 rounded-full" />
-            <div className="absolute inset-0 w-16 h-16 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-16 h-16 border-4 border-brand-green-500/30 rounded-full" />
+            <div className="absolute inset-0 w-16 h-16 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           </div>
           <p className="text-neutral-400">Loading your membership...</p>
         </div>
@@ -230,7 +230,7 @@ function SuccessContent() {
             </svg>
           </div>
           <p className="text-red-400 mb-4">{error || 'Profile not found'}</p>
-          <Link href="/join" className="text-brand-gold-400 hover:text-brand-gold-300 font-medium">
+          <Link href="/join" className="text-brand-green-400 hover:text-brand-green-300 font-medium">
             ← Back to signup
           </Link>
         </div>
@@ -256,7 +256,7 @@ function SuccessContent() {
     <div className="min-h-screen bg-gradient-to-b from-neutral-900 via-neutral-900 to-neutral-950">
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-gold-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-green-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-brand-green-500/5 rounded-full blur-3xl" />
       </div>
 
@@ -268,8 +268,8 @@ function SuccessContent() {
           <div className="text-center mb-golden-lg animate-fade-in-down">
             {isExisting ? (
               <>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-gold-500/10 border border-brand-gold-500/20 mb-4">
-                  <span className="text-brand-gold-400 text-sm font-medium">Welcome Back</span>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-green-500/10 border border-brand-green-500/20 mb-4">
+                  <span className="text-brand-green-400 text-sm font-medium">Welcome Back</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
                   Your Membership Card
@@ -285,7 +285,7 @@ function SuccessContent() {
                   <span className="text-brand-green-400 text-sm font-medium">Position Locked Forever</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-                  Welcome to the <span className="text-brand-gold-400">Movement!</span>
+                  Welcome to the <span className="text-brand-green-400">Movement!</span>
                 </h1>
               </>
             )}
@@ -385,7 +385,7 @@ function SuccessContent() {
                 font-semibold text-lg transition-all hover-lift
                 ${isSaved
                   ? 'bg-brand-green-500 text-white'
-                  : 'bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900 animate-breathe hover:animate-none'
+                  : 'bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900 animate-breathe hover:animate-none'
                 }
               `}
             >
@@ -469,8 +469,8 @@ function SuccessContent() {
 
           {/* Referral Stats */}
           {profile.referralCount > 0 && (
-            <div className="mb-golden-md p-golden-sm rounded-xl bg-brand-gold-500/10 border border-brand-gold-500/20 text-center animate-fade-in-up hover-scale" style={{ animationDelay: '0.55s' }}>
-              <p className="text-brand-gold-400 font-medium">
+            <div className="mb-golden-md p-golden-sm rounded-xl bg-brand-green-500/10 border border-brand-green-500/20 text-center animate-fade-in-up hover-scale" style={{ animationDelay: '0.55s' }}>
+              <p className="text-brand-green-400 font-medium">
                 🌟 You've brought {profile.referralCount} {profile.referralCount === 1 ? 'person' : 'people'} to the movement!
               </p>
             </div>
@@ -483,15 +483,15 @@ function SuccessContent() {
             </h3>
             <ul className="space-y-golden-xs text-sm">
               <li className="flex items-start gap-golden-xs text-neutral-300 group">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-gold-500/20 flex items-center justify-center text-xs text-brand-gold-400 group-hover:bg-brand-gold-500/30 transition-colors">1</span>
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-green-500/20 flex items-center justify-center text-xs text-brand-green-400 group-hover:bg-brand-green-500/30 transition-colors">1</span>
                 <span>We'll email you when we expand to {isChicago ? 'your neighborhood' : profile.location.city}</span>
               </li>
               <li className="flex items-start gap-golden-xs text-neutral-300 group">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-gold-500/20 flex items-center justify-center text-xs text-brand-gold-400 group-hover:bg-brand-gold-500/30 transition-colors">2</span>
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-green-500/20 flex items-center justify-center text-xs text-brand-green-400 group-hover:bg-brand-green-500/30 transition-colors">2</span>
                 <span>Share your card to help us grow and climb the leaderboard</span>
               </li>
               <li className="flex items-start gap-golden-xs text-neutral-300 group">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-gold-500/20 flex items-center justify-center text-xs text-brand-gold-400 group-hover:bg-brand-gold-500/30 transition-colors">3</span>
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-green-500/20 flex items-center justify-center text-xs text-brand-green-400 group-hover:bg-brand-green-500/30 transition-colors">3</span>
                 <span>More signups in your city = faster expansion to your area</span>
               </li>
             </ul>
@@ -501,14 +501,14 @@ function SuccessContent() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-sm">
             <Link
               href={`/join/update?id=${profile.id}`}
-              className="text-neutral-400 hover:text-brand-gold-400 transition-colors"
+              className="text-neutral-400 hover:text-brand-green-400 transition-colors"
             >
               Moved? Update your location →
             </Link>
             <span className="hidden sm:block text-neutral-700">•</span>
             <Link
               href="/"
-              className="text-brand-gold-400 hover:text-brand-gold-300 font-medium transition-colors"
+              className="text-brand-green-400 hover:text-brand-green-300 font-medium transition-colors"
             >
               ← Back to homepage
             </Link>
@@ -525,8 +525,8 @@ export default function JoinSuccessPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-neutral-900 to-neutral-950">
           <div className="relative">
-            <div className="w-16 h-16 border-4 border-brand-gold-500/30 rounded-full" />
-            <div className="absolute inset-0 w-16 h-16 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-16 h-16 border-4 border-brand-green-500/30 rounded-full" />
+            <div className="absolute inset-0 w-16 h-16 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           </div>
         </div>
       }

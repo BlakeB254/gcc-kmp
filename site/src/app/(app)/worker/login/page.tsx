@@ -178,7 +178,7 @@ export default function WorkerLoginPage() {
                 <input type="checkbox" className="rounded border-neutral-300" />
                 <span className="text-sm text-neutral-600">Remember me</span>
               </label>
-              <Link href="/worker/forgot-password" className="text-sm text-brand-gold-600 hover:underline">
+              <Link href="/worker/forgot-password" className="text-sm text-brand-green-600 hover:underline">
                 Forgot password?
               </Link>
             </div>
@@ -194,7 +194,7 @@ export default function WorkerLoginPage() {
 
           <p className="mt-8 text-center text-neutral-600">
             Don&apos;t have an account?{' '}
-            <Link href="/worker/signup" className="text-brand-gold-600 font-medium hover:underline">
+            <Link href="/worker/signup" className="text-brand-green-600 font-medium hover:underline">
               Sign up to start earning
             </Link>
           </p>

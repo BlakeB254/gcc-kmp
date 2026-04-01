@@ -334,7 +334,7 @@ function DonateContent() {
             onClick={() => handleTabChange('sponsor')}
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
               activeTab === 'sponsor'
-                ? 'bg-white text-brand-gold-700 shadow-sm'
+                ? 'bg-white text-brand-green-700 shadow-sm'
                 : 'text-neutral-600 hover:text-neutral-900'
             }`}
           >
@@ -385,14 +385,14 @@ function DonateContent() {
           <div
             className={`p-5 rounded-xl border-2 transition-all cursor-pointer ${
               activeTab === 'sponsor'
-                ? 'border-brand-gold-500 bg-brand-gold-50'
+                ? 'border-brand-green-500 bg-brand-green-50'
                 : 'border-neutral-200 bg-white hover:border-neutral-300'
             }`}
             onClick={() => handleTabChange('sponsor')}
           >
             <div className="flex items-start gap-3">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                activeTab === 'sponsor' ? 'bg-brand-gold-500 text-white' : 'bg-neutral-100 text-neutral-500'
+                activeTab === 'sponsor' ? 'bg-brand-green-500 text-white' : 'bg-neutral-100 text-neutral-500'
               }`}>
                 <MapPin className="w-5 h-5" />
               </div>
@@ -403,15 +403,15 @@ function DonateContent() {
                 </p>
                 <ul className="space-y-1 text-sm text-neutral-600">
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-brand-gold-500" />
+                    <Check className="w-4 h-4 text-brand-green-500" />
                     Select blocks on map
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-brand-gold-500" />
+                    <Check className="w-4 h-4 text-brand-green-500" />
                     Block credited to you
                   </li>
                   <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-brand-gold-500" />
+                    <Check className="w-4 h-4 text-brand-green-500" />
                     Before/after photos
                   </li>
                 </ul>
@@ -570,13 +570,13 @@ function DonateContent() {
                     {selectedBlocks.map((block) => (
                       <div
                         key={block.id}
-                        className="inline-flex items-center gap-2 bg-brand-gold-100 text-brand-gold-800 px-3 py-1.5 rounded-full text-sm"
+                        className="inline-flex items-center gap-2 bg-brand-green-100 text-brand-green-800 px-3 py-1.5 rounded-full text-sm"
                       >
                         <MapPin className="w-3 h-3" />
                         {formatStreetName(block.streetName) || block.code}
                         <button
                           onClick={() => toggleBlockSelection(block)}
-                          className="hover:text-brand-gold-600"
+                          className="hover:text-brand-green-600"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -596,12 +596,12 @@ function DonateContent() {
                       onClick={() => toggleBlockSelection(block)}
                       className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all ${
                         isSelected
-                          ? 'border-brand-gold-500 bg-brand-gold-50'
+                          ? 'border-brand-green-500 bg-brand-green-50'
                           : 'border-neutral-200 hover:border-neutral-300 bg-white'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <MapPin className={`w-4 h-4 ${isSelected ? 'text-brand-gold-600' : 'text-neutral-400'}`} />
+                        <MapPin className={`w-4 h-4 ${isSelected ? 'text-brand-green-600' : 'text-neutral-400'}`} />
                         <div className="text-left">
                           <p className="font-medium text-neutral-900">{formatStreetName(block.streetName) || block.code}</p>
                           {block.fromCorner && block.toCorner && (
@@ -625,7 +625,7 @@ function DonateContent() {
                     onClick={() => setFrequency('one_time')}
                     className={`flex-1 py-3 rounded-lg font-medium transition-all ${
                       frequency === 'one_time'
-                        ? 'bg-brand-gold-100 text-brand-gold-700 border-2 border-brand-gold-500'
+                        ? 'bg-brand-green-100 text-brand-green-700 border-2 border-brand-green-500'
                         : 'bg-neutral-100 text-neutral-600 border-2 border-transparent hover:bg-neutral-200'
                     }`}
                   >
@@ -635,7 +635,7 @@ function DonateContent() {
                     onClick={() => setFrequency('monthly')}
                     className={`flex-1 py-3 rounded-lg font-medium transition-all ${
                       frequency === 'monthly'
-                        ? 'bg-brand-gold-100 text-brand-gold-700 border-2 border-brand-gold-500'
+                        ? 'bg-brand-green-100 text-brand-green-700 border-2 border-brand-green-500'
                         : 'bg-neutral-100 text-neutral-600 border-2 border-transparent hover:bg-neutral-200'
                     }`}
                   >
@@ -646,15 +646,15 @@ function DonateContent() {
 
               {/* Total */}
               {selectedBlocks.length > 0 && (
-                <div className="bg-brand-gold-50 rounded-xl p-5">
+                <div className="bg-brand-green-50 rounded-xl p-5">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-brand-gold-800">Total</span>
-                    <span className="text-2xl font-bold text-brand-gold-700">
+                    <span className="font-semibold text-brand-green-800">Total</span>
+                    <span className="text-2xl font-bold text-brand-green-700">
                       ${selectedBlocks.length * 100}
                       {frequency === 'monthly' && <span className="text-lg">/month</span>}
                     </span>
                   </div>
-                  <p className="text-sm text-brand-gold-600 mt-1">
+                  <p className="text-sm text-brand-green-600 mt-1">
                     = {selectedBlocks.length} block{selectedBlocks.length > 1 ? 's' : ''} sponsored
                   </p>
                 </div>
@@ -663,7 +663,7 @@ function DonateContent() {
               <button
                 onClick={handleContinue}
                 disabled={selectedBlocks.length === 0}
-                className="btn-primary w-full py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed bg-brand-gold-500 hover:bg-brand-gold-600"
+                className="btn-primary w-full py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed bg-brand-green-500 hover:bg-brand-green-600"
               >
                 Continue - ${selectedBlocks.length * 100}
                 {frequency === 'monthly' ? '/month' : ''}
@@ -685,12 +685,12 @@ function DonateContent() {
               </div>
 
               {/* Summary */}
-              <div className={`rounded-xl p-4 ${activeTab === 'donate' ? 'bg-brand-green-50' : 'bg-brand-gold-50'}`}>
+              <div className={`rounded-xl p-4 ${activeTab === 'donate' ? 'bg-brand-green-50' : 'bg-brand-green-50'}`}>
                 <div className="flex justify-between items-center">
-                  <span className={activeTab === 'donate' ? 'text-brand-green-700' : 'text-brand-gold-700'}>
+                  <span className={activeTab === 'donate' ? 'text-brand-green-700' : 'text-brand-green-700'}>
                     {activeTab === 'donate' ? 'General Donation' : `${selectedBlocks.length} Block${selectedBlocks.length > 1 ? 's' : ''}`}
                   </span>
-                  <span className={`text-xl font-bold ${activeTab === 'donate' ? 'text-brand-green-800' : 'text-brand-gold-800'}`}>
+                  <span className={`text-xl font-bold ${activeTab === 'donate' ? 'text-brand-green-800' : 'text-brand-green-800'}`}>
                     ${totalAmount}
                     {frequency === 'monthly' && '/mo'}
                   </span>
@@ -790,7 +790,7 @@ function DonateContent() {
                   className={`w-full py-4 text-lg font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeTab === 'donate'
                       ? 'bg-brand-green-600 hover:bg-brand-green-700 text-white'
-                      : 'bg-brand-gold-500 hover:bg-brand-gold-600 text-white'
+                      : 'bg-brand-green-500 hover:bg-brand-green-600 text-white'
                   }`}
                 >
                   {isProcessing ? (
@@ -901,9 +901,9 @@ function DonateContent() {
         </div>
 
         {/* Dedicated Sponsor Page Callout */}
-        <div className="mt-10 bg-gradient-to-r from-brand-gold-50 to-amber-50 rounded-2xl p-6 lg:p-8 border border-brand-gold-200">
+        <div className="mt-10 bg-gradient-to-r from-brand-green-50 to-amber-50 rounded-2xl p-6 lg:p-8 border border-brand-green-200">
           <div className="flex flex-col sm:flex-row items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-brand-gold-500 flex items-center justify-center flex-shrink-0">
+            <div className="w-14 h-14 rounded-full bg-brand-green-500 flex items-center justify-center flex-shrink-0">
               <MapPin className="w-7 h-7 text-white" />
             </div>
             <div className="flex-1 text-center sm:text-left">
@@ -916,7 +916,7 @@ function DonateContent() {
             </div>
             <Link
               href="/sponsor"
-              className="flex-shrink-0 inline-flex items-center gap-2 bg-brand-gold-500 hover:bg-brand-gold-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+              className="flex-shrink-0 inline-flex items-center gap-2 bg-brand-green-500 hover:bg-brand-green-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
             >
               Go to Sponsor Page
               <ChevronRight className="w-4 h-4" />
@@ -935,7 +935,7 @@ function DonateContent() {
           </Link>
           <Link
             href="/sponsor/calculator"
-            className="text-neutral-600 hover:text-brand-gold-600 flex items-center gap-1"
+            className="text-neutral-600 hover:text-brand-green-600 flex items-center gap-1"
           >
             <Sparkles className="w-4 h-4" />
             Enterprise Packages

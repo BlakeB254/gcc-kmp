@@ -145,7 +145,7 @@ function WorkerSignupForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 py-golden-lg sm:py-golden-xl px-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 py-golden-lg sm:py-golden-xl px-4">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="text-center mb-golden-md sm:mb-golden-lg">

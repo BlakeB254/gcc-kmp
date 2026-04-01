@@ -11,15 +11,15 @@ const buttonVariants = cva(
       variant: {
         // Gold primary - main CTA
         default:
-          'bg-brand-gold-600 text-white shadow-sm hover:bg-brand-gold-700 active:bg-brand-gold-800',
+          'bg-brand-green-600 text-white shadow-sm hover:bg-brand-green-700 active:bg-brand-green-800',
         // Brown secondary - alternative actions
         secondary:
-          'border-2 border-brand-brown-700 bg-transparent text-brand-brown-700 hover:bg-brand-brown-50 active:bg-brand-brown-100',
+          'border-2 border-brand-green-700 bg-transparent text-brand-green-700 hover:bg-brand-green-50 active:bg-brand-green-100',
         // Green success - confirmations
         success:
           'bg-brand-green-600 text-white shadow-sm hover:bg-brand-green-700 active:bg-brand-green-800',
         // Sky info/link style
-        link: 'text-brand-sky-600 underline-offset-4 hover:underline',
+        link: 'text-brand-blue-600 underline-offset-4 hover:underline',
         // Destructive
         destructive:
           'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',

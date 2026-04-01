@@ -171,7 +171,7 @@ private fun PendingReviewView(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    GccCard(accentColor = GccGold) {
+    GccCard(accentColor = GccSky) {
         Text(
             "Review typically takes 1–2 business days. You'll receive a notification when your account is approved.",
             style = MaterialTheme.typography.bodySmall,
@@ -214,7 +214,7 @@ private fun RejectedView(
     Spacer(modifier = Modifier.height(16.dp))
 
     // Show which documents need resubmission
-    GccCard(accentColor = GccGold) {
+    GccCard(accentColor = GccSky) {
         if (verification.governmentIdStatus == DocumentStatus.REJECTED
             || verification.governmentIdStatus == DocumentStatus.RESUBMIT) {
             DocumentStatusRow("\uD83C\uDD94", "Government ID", "Needs resubmission")

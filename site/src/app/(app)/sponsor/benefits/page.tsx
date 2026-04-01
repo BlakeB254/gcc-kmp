@@ -118,7 +118,7 @@ export default function SponsorBenefitsPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="text-center">
               <CardContent className="pt-6">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-gold-100 text-2xl font-bold text-brand-gold-600">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-green-100 text-2xl font-bold text-brand-green-600">
                   1
                 </div>
                 <h3 className="mb-2 font-semibold">You Sponsor</h3>
@@ -140,7 +140,7 @@ export default function SponsorBenefitsPage() {
             </Card>
             <Card className="text-center">
               <CardContent className="pt-6">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-sky-100 text-2xl font-bold text-brand-sky-600">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-blue-100 text-2xl font-bold text-brand-blue-600">
                   3
                 </div>
                 <h3 className="mb-2 font-semibold">Impact Verified</h3>
@@ -191,10 +191,10 @@ export default function SponsorBenefitsPage() {
             </Card>
 
             {/* Tax Receipt PDF */}
-            <Card className="border-2 border-brand-gold-200 bg-brand-gold-50">
+            <Card className="border-2 border-brand-green-200 bg-brand-green-50">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-gold-600 text-white flex-shrink-0">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-green-600 text-white flex-shrink-0">
                     <FileText className="h-7 w-7" />
                   </div>
                   <div>
@@ -205,15 +205,15 @@ export default function SponsorBenefitsPage() {
                     </p>
                     <ul className="space-y-1 text-sm text-muted-foreground">
                       <li className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-brand-gold-600" />
+                        <CheckCircle className="h-4 w-4 text-brand-green-600" />
                         100% tax-deductible
                       </li>
                       <li className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-brand-gold-600" />
+                        <CheckCircle className="h-4 w-4 text-brand-green-600" />
                         Instant download link
                       </li>
                       <li className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-brand-gold-600" />
+                        <CheckCircle className="h-4 w-4 text-brand-green-600" />
                         Includes block details & date
                       </li>
                     </ul>
@@ -277,7 +277,7 @@ export default function SponsorBenefitsPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-4xl font-bold text-brand-gold-400">$0</p>
+                  <p className="text-4xl font-bold text-brand-green-400">$0</p>
                   <p className="text-white/80 mt-2">
                     platform fees on basic sponsorships
                   </p>
@@ -298,8 +298,8 @@ export default function SponsorBenefitsPage() {
                   <div className="bg-brand-green-700/50 px-4 py-2 rounded-lg">
                     <span className="text-brand-green-300 font-semibold">Worker Payout</span>
                   </div>
-                  <div className="bg-brand-gold-600/50 px-4 py-2 rounded-lg">
-                    <span className="text-brand-gold-300 font-semibold">GCC Operations</span>
+                  <div className="bg-brand-green-600/50 px-4 py-2 rounded-lg">
+                    <span className="text-brand-green-300 font-semibold">GCC Operations</span>
                   </div>
                   <div className="bg-white/10 px-4 py-2 rounded-lg">
                     <span className="text-white font-semibold">Total</span>
@@ -322,10 +322,10 @@ export default function SponsorBenefitsPage() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           {/* Worker Branding */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
-              <div className="w-12 h-12 rounded-xl bg-brand-gold-100 flex items-center justify-center mb-3">
-                <Shirt className="w-6 h-6 text-brand-gold-600" />
+              <div className="w-12 h-12 rounded-xl bg-brand-green-100 flex items-center justify-center mb-3">
+                <Shirt className="w-6 h-6 text-brand-green-600" />
               </div>
               <CardTitle className="text-lg">Worker Branding</CardTitle>
             </CardHeader>
@@ -334,18 +334,18 @@ export default function SponsorBenefitsPage() {
                 Put your logo on workers' vests, shirts, and hats as they clean.
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Vests $15/block</span>
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">T-Shirts $12/block</span>
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Hats $8/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Vests $15/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">T-Shirts $12/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Hats $8/block</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Street Advertising */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
-              <div className="w-12 h-12 rounded-xl bg-brand-gold-100 flex items-center justify-center mb-3">
-                <Megaphone className="w-6 h-6 text-brand-gold-600" />
+              <div className="w-12 h-12 rounded-xl bg-brand-green-100 flex items-center justify-center mb-3">
+                <Megaphone className="w-6 h-6 text-brand-green-600" />
               </div>
               <CardTitle className="text-lg">Street Advertising</CardTitle>
             </CardHeader>
@@ -354,15 +354,15 @@ export default function SponsorBenefitsPage() {
                 Block signs, banners, and sidewalk stencils with your branding.
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Signs $25/block</span>
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Banners $50/block</span>
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Chalk Art $100/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Signs $25/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Banners $50/block</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Chalk Art $100/block</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Enhanced Services */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
               <div className="w-12 h-12 rounded-xl bg-brand-green-100 flex items-center justify-center mb-3">
                 <Sparkles className="w-6 h-6 text-brand-green-600" />
@@ -381,10 +381,10 @@ export default function SponsorBenefitsPage() {
           </Card>
 
           {/* Photography */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
-              <div className="w-12 h-12 rounded-xl bg-brand-sky-100 flex items-center justify-center mb-3">
-                <Camera className="w-6 h-6 text-brand-sky-600" />
+              <div className="w-12 h-12 rounded-xl bg-brand-blue-100 flex items-center justify-center mb-3">
+                <Camera className="w-6 h-6 text-brand-blue-600" />
               </div>
               <CardTitle className="text-lg">Photography</CardTitle>
             </CardHeader>
@@ -393,17 +393,17 @@ export default function SponsorBenefitsPage() {
                 Professional photo packages to capture your impact for marketing.
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs bg-brand-sky-50 text-brand-sky-700 px-2 py-1 rounded">Basic $500</span>
-                <span className="text-xs bg-brand-sky-50 text-brand-sky-700 px-2 py-1 rounded">Premium $3,500</span>
+                <span className="text-xs bg-brand-blue-50 text-brand-blue-700 px-2 py-1 rounded">Basic $500</span>
+                <span className="text-xs bg-brand-blue-50 text-brand-blue-700 px-2 py-1 rounded">Premium $3,500</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Video Production */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
-              <div className="w-12 h-12 rounded-xl bg-brand-brown-100 flex items-center justify-center mb-3">
-                <Film className="w-6 h-6 text-brand-brown-600" />
+              <div className="w-12 h-12 rounded-xl bg-brand-green-100 flex items-center justify-center mb-3">
+                <Film className="w-6 h-6 text-brand-green-600" />
               </div>
               <CardTitle className="text-lg">Video Production</CardTitle>
             </CardHeader>
@@ -412,17 +412,17 @@ export default function SponsorBenefitsPage() {
                 From social clips to full documentaries showcasing your partnership.
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs bg-brand-brown-50 text-brand-brown-700 px-2 py-1 rounded">Social $1,000</span>
-                <span className="text-xs bg-brand-brown-50 text-brand-brown-700 px-2 py-1 rounded">Documentary $35,000</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Social $1,000</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Documentary $35,000</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Events */}
-          <Card className="border-2 border-transparent hover:border-brand-gold-200 transition-colors">
+          <Card className="border-2 border-transparent hover:border-brand-green-200 transition-colors">
             <CardHeader className="pb-2">
-              <div className="w-12 h-12 rounded-xl bg-brand-gold-100 flex items-center justify-center mb-3">
-                <Gift className="w-6 h-6 text-brand-gold-600" />
+              <div className="w-12 h-12 rounded-xl bg-brand-green-100 flex items-center justify-center mb-3">
+                <Gift className="w-6 h-6 text-brand-green-600" />
               </div>
               <CardTitle className="text-lg">Event Packages</CardTitle>
             </CardHeader>
@@ -431,8 +431,8 @@ export default function SponsorBenefitsPage() {
                 Cleanup crews for block parties, grand openings, and corporate events.
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Pop-Up $300</span>
-                <span className="text-xs bg-brand-gold-50 text-brand-gold-700 px-2 py-1 rounded">Large Event $1,500</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Pop-Up $300</span>
+                <span className="text-xs bg-brand-green-50 text-brand-green-700 px-2 py-1 rounded">Large Event $1,500</span>
               </div>
             </CardContent>
           </Card>
@@ -449,12 +449,12 @@ export default function SponsorBenefitsPage() {
       </section>
 
       {/* Enterprise Partnerships */}
-      <section className="bg-gradient-to-br from-brand-brown-900 to-brand-brown-800 py-16 text-white">
+      <section className="bg-gradient-to-br from-brand-green-900 to-brand-green-800 py-16 text-white">
         <div className="section-container">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 bg-brand-gold-500/20 px-4 py-2 rounded-full mb-6">
-              <Building2 className="w-4 h-4 text-brand-gold-400" />
-              <span className="text-sm font-medium text-brand-gold-400">$25,000+</span>
+            <div className="inline-flex items-center gap-2 bg-brand-green-500/20 px-4 py-2 rounded-full mb-6">
+              <Building2 className="w-4 h-4 text-brand-green-400" />
+              <span className="text-sm font-medium text-brand-green-400">$25,000+</span>
             </div>
             <h2 className="text-3xl font-bold mb-4">Enterprise Partnerships</h2>
             <p className="text-lg text-white/80 max-w-2xl mx-auto">
@@ -467,22 +467,22 @@ export default function SponsorBenefitsPage() {
             {/* Community Champion */}
             <div className="bg-white/5 rounded-xl p-6 border border-white/10">
               <div className="flex items-center gap-2 mb-4">
-                <Award className="w-5 h-5 text-brand-gold-400" />
+                <Award className="w-5 h-5 text-brand-green-400" />
                 <span className="font-semibold">Community Champion</span>
               </div>
-              <p className="text-2xl font-bold text-brand-gold-400 mb-2">$25k - $49k</p>
+              <p className="text-2xl font-bold text-brand-green-400 mb-2">$25k - $49k</p>
               <p className="text-sm text-white/60 mb-4">250-500 blocks</p>
               <ul className="space-y-2 text-sm text-white/80">
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Full branded campaign
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Quarterly impact reports
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Dedicated account manager
                 </li>
               </ul>
@@ -491,73 +491,73 @@ export default function SponsorBenefitsPage() {
             {/* Impact Partner */}
             <div className="bg-white/5 rounded-xl p-6 border border-white/10">
               <div className="flex items-center gap-2 mb-4">
-                <Star className="w-5 h-5 text-brand-gold-400" />
+                <Star className="w-5 h-5 text-brand-green-400" />
                 <span className="font-semibold">Impact Partner</span>
               </div>
-              <p className="text-2xl font-bold text-brand-gold-400 mb-2">$50k - $99k</p>
+              <p className="text-2xl font-bold text-brand-green-400 mb-2">$50k - $99k</p>
               <p className="text-sm text-white/60 mb-4">Neighborhood adoption</p>
               <ul className="space-y-2 text-sm text-white/80">
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Photo + video package
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Press release support
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Named block/corner option
                 </li>
               </ul>
             </div>
 
             {/* Movement Partner */}
-            <div className="bg-white/10 rounded-xl p-6 border border-brand-gold-500/50 relative">
-              <div className="absolute -top-3 right-4 bg-brand-gold-500 text-brand-brown-900 text-xs font-bold px-3 py-1 rounded-full">
+            <div className="bg-white/10 rounded-xl p-6 border border-brand-green-500/50 relative">
+              <div className="absolute -top-3 right-4 bg-brand-green-500 text-brand-green-900 text-xs font-bold px-3 py-1 rounded-full">
                 Popular
               </div>
               <div className="flex items-center gap-2 mb-4">
-                <Trophy className="w-5 h-5 text-brand-gold-400" />
+                <Trophy className="w-5 h-5 text-brand-green-400" />
                 <span className="font-semibold">Movement Partner</span>
               </div>
-              <p className="text-2xl font-bold text-brand-gold-400 mb-2">$250k - $499k</p>
+              <p className="text-2xl font-bold text-brand-green-400 mb-2">$250k - $499k</p>
               <p className="text-sm text-white/60 mb-4">Multi-neighborhood</p>
               <ul className="space-y-2 text-sm text-white/80">
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Full documentary crew
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Named initiative
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Speaking opportunities
                 </li>
               </ul>
             </div>
 
             {/* Founding Partner */}
-            <div className="bg-gradient-to-br from-brand-gold-500/20 to-brand-gold-500/5 rounded-xl p-6 border border-brand-gold-500/30">
+            <div className="bg-gradient-to-br from-brand-green-500/20 to-brand-green-500/5 rounded-xl p-6 border border-brand-green-500/30">
               <div className="flex items-center gap-2 mb-4">
-                <Building2 className="w-5 h-5 text-brand-gold-400" />
+                <Building2 className="w-5 h-5 text-brand-green-400" />
                 <span className="font-semibold">Founding Partner</span>
               </div>
-              <p className="text-2xl font-bold text-brand-gold-400 mb-2">$1M+</p>
+              <p className="text-2xl font-bold text-brand-green-400 mb-2">$1M+</p>
               <p className="text-sm text-white/60 mb-4">Movement-defining</p>
               <ul className="space-y-2 text-sm text-white/80">
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Feature documentary
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Co-branding rights
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-brand-gold-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-brand-green-400 flex-shrink-0 mt-0.5" />
                   Historic recognition
                 </li>
               </ul>
@@ -565,7 +565,7 @@ export default function SponsorBenefitsPage() {
           </div>
 
           <div className="text-center">
-            <Button size="lg" variant="secondary" className="bg-brand-gold-500 text-brand-brown-900 hover:bg-brand-gold-400" asChild>
+            <Button size="lg" variant="secondary" className="bg-brand-green-500 text-brand-green-900 hover:bg-brand-green-400" asChild>
               <Link href="/sponsor/enterprise">
                 Explore Enterprise Partnerships
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -576,7 +576,7 @@ export default function SponsorBenefitsPage() {
       </section>
 
       {/* Benefits Grid */}
-      <section className="bg-brand-brown-50 py-16">
+      <section className="bg-brand-green-50 py-16">
         <div className="section-container">
           <h2 className="mb-8 text-center text-2xl font-bold">
             Why Sponsor With GCC?

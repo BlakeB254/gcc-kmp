@@ -53,21 +53,21 @@ export function NLLegacySection() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="py-golden-2xl bg-brand-brown-50">
+    <section ref={sectionRef} className="py-golden-2xl bg-brand-green-50">
       <div className="section-container">
         {/* Section header */}
         <div className="text-center mb-16">
-          <p className="text-sm font-semibold text-brand-gold-600 uppercase tracking-[0.2em] mb-3">
+          <p className="text-sm font-semibold text-brand-green-600 uppercase tracking-[0.2em] mb-3">
             The Legacy
           </p>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-brand-brown-900 mb-6">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-brand-green-900 mb-6">
             A Movement Born on Hamlin Avenue
           </h2>
           <blockquote className="max-w-3xl mx-auto">
-            <p className="text-lg sm:text-xl text-brand-brown-700 italic leading-relaxed">
+            <p className="text-lg sm:text-xl text-brand-green-700 italic leading-relaxed">
               "The slum of Lawndale was truly an island of poverty in the midst of an ocean of plenty."
             </p>
-            <cite className="block mt-3 text-sm text-brand-brown-500 not-italic font-medium">
+            <cite className="block mt-3 text-sm text-brand-green-500 not-italic font-medium">
               — Dr. Martin Luther King Jr., 1966
             </cite>
           </blockquote>
@@ -79,7 +79,7 @@ export function NLLegacySection() {
             <li
               key={event.title}
               data-index={index}
-              className={`relative pl-8 sm:pl-12 pb-12 last:pb-0 border-l-2 border-brand-gold-300 transition-all duration-700 ${
+              className={`relative pl-8 sm:pl-12 pb-12 last:pb-0 border-l-2 border-brand-green-300 transition-all duration-700 ${
                 visibleItems.has(index)
                   ? 'opacity-100 translate-x-0'
                   : 'opacity-0 -translate-x-4'
@@ -87,17 +87,17 @@ export function NLLegacySection() {
               style={{ transitionDelay: `${index * 150}ms` }}
             >
               {/* Timeline dot */}
-              <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-brand-gold-500 border-4 border-brand-brown-50" />
+              <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-brand-green-500 border-4 border-brand-green-50" />
 
               {/* Year badge */}
-              <div className="inline-flex items-center rounded-full bg-brand-gold-100 px-3 py-1 mb-3">
-                <span className="text-sm font-bold text-brand-gold-700">{event.year}</span>
+              <div className="inline-flex items-center rounded-full bg-brand-green-100 px-3 py-1 mb-3">
+                <span className="text-sm font-bold text-brand-green-700">{event.year}</span>
               </div>
 
-              <h3 className="text-xl font-bold text-brand-brown-900 mb-2">
+              <h3 className="text-xl font-bold text-brand-green-900 mb-2">
                 {event.title}
               </h3>
-              <p className="text-brand-brown-600 leading-relaxed">
+              <p className="text-brand-green-600 leading-relaxed">
                 {event.description}
               </p>
             </li>

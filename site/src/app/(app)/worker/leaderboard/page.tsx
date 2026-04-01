@@ -48,7 +48,7 @@ interface LeaderboardData {
 
 const tierBadgeConfig = {
   founder: { label: 'Founder', color: 'bg-purple-500', textColor: 'text-purple-600' },
-  pioneer: { label: 'Pioneer', color: 'bg-brand-gold-500', textColor: 'text-brand-gold-600' },
+  pioneer: { label: 'Pioneer', color: 'bg-brand-green-500', textColor: 'text-brand-green-600' },
   early: { label: 'Early', color: 'bg-brand-green-500', textColor: 'text-brand-green-600' },
   standard: { label: 'Standard', color: 'bg-neutral-500', textColor: 'text-neutral-600' },
 }
@@ -61,7 +61,7 @@ const scopeConfig: Record<LeaderboardScope, { label: string; icon: typeof Globe;
 }
 
 const rankStyles = {
-  1: 'bg-gradient-to-r from-brand-gold-100 to-amber-100 border-brand-gold-300',
+  1: 'bg-gradient-to-r from-brand-green-100 to-amber-100 border-brand-green-300',
   2: 'bg-gradient-to-r from-slate-100 to-gray-100 border-slate-300',
   3: 'bg-gradient-to-r from-amber-100 to-orange-100 border-amber-300',
 } as const
@@ -75,13 +75,13 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
       className={cn(
         'flex items-center gap-4 rounded-xl border p-4 transition-all',
         isTop3 ? rankStyles[entry.rank as 1 | 2 | 3] : 'bg-card hover:bg-muted/50',
-        entry.isCurrentUser && 'ring-2 ring-brand-gold-500 ring-offset-2'
+        entry.isCurrentUser && 'ring-2 ring-brand-green-500 ring-offset-2'
       )}
     >
       {/* Rank */}
       <div className="flex w-8 items-center justify-center">
         {entry.rank === 1 ? (
-          <Crown className="h-7 w-7 text-brand-gold-500" />
+          <Crown className="h-7 w-7 text-brand-green-500" />
         ) : entry.rank === 2 ? (
           <Medal className="h-6 w-6 text-slate-400" />
         ) : entry.rank === 3 ? (
@@ -93,8 +93,8 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
 
       {/* Avatar & Name */}
       <div className="flex flex-1 items-center gap-3">
-        <Avatar className={cn(isTop3 && 'ring-2 ring-offset-2', entry.rank === 1 && 'ring-brand-gold-500')}>
-          <AvatarFallback className="bg-brand-brown-100 text-brand-brown-700">
+        <Avatar className={cn(isTop3 && 'ring-2 ring-offset-2', entry.rank === 1 && 'ring-brand-green-500')}>
+          <AvatarFallback className="bg-brand-green-100 text-brand-green-700">
             {entry.name
               .split(' ')
               .map((n) => n[0])
@@ -104,7 +104,7 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
         <div>
           <p className="font-semibold">
             {entry.name}
-            {entry.isCurrentUser && <span className="ml-2 text-xs text-brand-gold-600">(You)</span>}
+            {entry.isCurrentUser && <span className="ml-2 text-xs text-brand-green-600">(You)</span>}
           </p>
           <div className="flex items-center gap-2">
             {entry.tier !== 'standard' && (
@@ -123,13 +123,13 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
       <div className="flex items-center gap-6">
         {entry.rating && entry.rating > 4.5 && (
           <div className="flex items-center gap-1 text-sm">
-            <Star className="h-4 w-4 text-brand-gold-500 fill-brand-gold-500" />
+            <Star className="h-4 w-4 text-brand-green-500 fill-brand-green-500" />
             <span className="font-medium">{entry.rating.toFixed(1)}</span>
           </div>
         )}
         <div className="text-right">
           <p className="text-sm text-muted-foreground">{entry.jobs} jobs</p>
-          <p className="font-bold text-brand-gold-700">{formatCurrency(entry.earnings)}</p>
+          <p className="font-bold text-brand-green-700">{formatCurrency(entry.earnings)}</p>
         </div>
       </div>
     </div>
@@ -214,7 +214,7 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <div className="bg-gradient-to-b from-brand-gold-50 to-white">
+    <div className="bg-gradient-to-b from-brand-green-50 to-white">
       {/* Page Title and Refresh */}
       <div className="section-container pt-6 pb-2 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Leaderboard</h1>
@@ -240,7 +240,7 @@ export default function LeaderboardPage() {
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap',
                   scope === s
-                    ? 'bg-brand-gold-500 text-neutral-900'
+                    ? 'bg-brand-green-500 text-neutral-900'
                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                 )}
               >
@@ -255,7 +255,7 @@ export default function LeaderboardPage() {
       {/* Loading State */}
       {isLoading && (
         <div className="section-container py-16 text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-gold-600 mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green-600 mx-auto mb-4" />
           <p className="text-neutral-600">Loading leaderboard...</p>
         </div>
       )}
@@ -280,12 +280,12 @@ export default function LeaderboardPage() {
             <section className="section-container py-6">
               <div
                 ref={rankCardRef}
-                className="p-1 bg-gradient-to-r from-brand-gold-500 via-brand-green-500 to-brand-gold-500 rounded-2xl"
+                className="p-1 bg-gradient-to-r from-brand-green-500 via-brand-green-500 to-brand-green-500 rounded-2xl"
               >
                 <div className="bg-neutral-900 rounded-xl p-5 text-white">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-brand-gold-400 to-brand-gold-600 flex items-center justify-center">
+                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-brand-green-400 to-brand-green-600 flex items-center justify-center">
                         <span className="text-2xl font-bold text-neutral-900">
                           {currentUser.name
                             .split(' ')
@@ -315,7 +315,7 @@ export default function LeaderboardPage() {
 
                   <div className="grid grid-cols-3 gap-4 mb-4">
                     <div className="text-center p-3 rounded-lg bg-neutral-800">
-                      <p className="text-2xl font-bold text-brand-gold-400">#{currentUser.rank}</p>
+                      <p className="text-2xl font-bold text-brand-green-400">#{currentUser.rank}</p>
                       <p className="text-xs text-neutral-400">{scopeConfig[scope].label}</p>
                     </div>
                     <div className="text-center p-3 rounded-lg bg-neutral-800">
@@ -332,7 +332,7 @@ export default function LeaderboardPage() {
 
                   <div className="flex items-center justify-between pt-3 border-t border-neutral-700">
                     <p className="text-sm text-neutral-400">Total Earned</p>
-                    <p className="text-xl font-bold text-brand-gold-400">
+                    <p className="text-xl font-bold text-brand-green-400">
                       {formatCurrency(currentUser.earnings)}
                     </p>
                   </div>
@@ -354,7 +354,7 @@ export default function LeaderboardPage() {
                     'flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all',
                     isSaved
                       ? 'bg-brand-green-500 text-white'
-                      : 'bg-brand-gold-500 hover:bg-brand-gold-400 text-neutral-900'
+                      : 'bg-brand-green-500 hover:bg-brand-green-400 text-neutral-900'
                   )}
                 >
                   {isSaving ? (
@@ -411,7 +411,7 @@ export default function LeaderboardPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
-                    <Trophy className="h-5 w-5 text-brand-gold-500" />
+                    <Trophy className="h-5 w-5 text-brand-green-500" />
                     {scopeConfig[scope].label} Rankings
                   </CardTitle>
                   <Badge variant="warning">Live</Badge>
@@ -434,7 +434,7 @@ export default function LeaderboardPage() {
           </section>
 
           {/* Achievements Section */}
-          <section className="bg-brand-brown-800 py-16 text-white">
+          <section className="bg-brand-green-800 py-16 text-white">
             <div className="section-container text-center">
               <h2 className="mb-4 text-2xl font-bold">Climb the Ranks</h2>
               <p className="mb-8 text-white/70">
@@ -450,7 +450,7 @@ export default function LeaderboardPage() {
                   const Icon = item.icon
                   return (
                     <div key={item.label} className="rounded-xl bg-white/10 p-4 backdrop-blur">
-                      <Icon className="mx-auto h-8 w-8 text-brand-gold-400" />
+                      <Icon className="mx-auto h-8 w-8 text-brand-green-400" />
                       <p className="mt-2 text-sm font-medium">{item.label}</p>
                       <p className="text-xs text-white/60">{item.description}</p>
                     </div>

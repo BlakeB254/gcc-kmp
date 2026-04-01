@@ -59,7 +59,7 @@ fun AdminWorkerDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGoldDark,
+                    containerColor = GccSkyDark,
                     titleContentColor = Color.White,
                 ),
             )
@@ -70,7 +70,7 @@ fun AdminWorkerDetailScreen(
                 Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = GccGold)
+                CircularProgressIndicator(color = GccSky)
             }
             worker == null -> Box(
                 Modifier.fillMaxSize().padding(padding),
@@ -229,7 +229,7 @@ fun AdminWorkerDetailScreen(
                         item {
                             LinearProgressIndicator(
                                 modifier = Modifier.fillMaxWidth(),
-                                color = GccGold,
+                                color = GccSky,
                             )
                         }
                     }
@@ -390,7 +390,7 @@ private fun OverallVerificationCard(worker: Worker) {
     val status = worker.verification.status
     val statusColor = when (status) {
         VerificationStatus.APPROVED -> GccGreen
-        VerificationStatus.PENDING -> GccGold
+        VerificationStatus.PENDING -> GccSky
         VerificationStatus.REJECTED -> GccError
         VerificationStatus.NEEDS_INFO -> GccBlue
     }
@@ -451,7 +451,7 @@ private fun DocumentCard(
 ) {
     val statusColor = when (status) {
         DocumentStatus.APPROVED -> GccGreen
-        DocumentStatus.PENDING -> GccGold
+        DocumentStatus.PENDING -> GccSky
         DocumentStatus.REJECTED -> GccError
         DocumentStatus.RESUBMIT -> GccBlue
     }

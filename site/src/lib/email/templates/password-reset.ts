@@ -19,7 +19,7 @@ export function passwordResetEmail(data: PasswordResetData): { html: string; tex
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #d4a017 0%, #b8860b 100%); padding: 32px; text-align: center;">
+            <td style="background: linear-gradient(135deg, #16763a 0%, #126431 100%); padding: 32px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Reset Your Password</h1>
               <p style="margin: 8px 0 0; color: #fff8dc; font-size: 14px; font-weight: 500;">Let's get you back in!</p>
             </td>
@@ -48,8 +48,8 @@ export function passwordResetEmail(data: PasswordResetData): { html: string; tex
               <!-- Security notice -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
                 <tr>
-                  <td style="padding: 20px; background-color: #fef9c3; border-radius: 12px; border-left: 4px solid #d4a017;">
-                    <p style="margin: 0; color: #6b5344; font-size: 14px; line-height: 1.6;">
+                  <td style="padding: 20px; background-color: #e7f1eb; border-radius: 12px; border-left: 4px solid #16763a;">
+                    <p style="margin: 0; color: #0e3f66; font-size: 14px; line-height: 1.6;">
                       <strong>Security Notice:</strong> This link expires in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email - your password will remain unchanged.
                     </p>
                   </td>

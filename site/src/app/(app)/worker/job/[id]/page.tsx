@@ -283,7 +283,7 @@ export default function JobExecutionPage() {
         </div>
         <div className="text-right">
           <p className="text-xs text-neutral-400">Payout</p>
-          <p className="font-bold text-brand-gold-400">$100</p>
+          <p className="font-bold text-brand-green-400">$100</p>
         </div>
       </header>
 
@@ -295,7 +295,7 @@ export default function JobExecutionPage() {
         </div>
         <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-brand-gold-500 transition-all duration-300"
+            className="h-full bg-brand-green-500 transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -345,7 +345,7 @@ export default function JobExecutionPage() {
             {currentCheckpoint && photosTaken < 8 && (
               <div className="text-center max-w-sm">
                 <div className="mb-6">
-                  <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand-gold-500/20 text-brand-gold-400 text-2xl font-bold">
+                  <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-brand-green-500/20 text-brand-green-400 text-2xl font-bold">
                     {currentCheckpointIndex + 1}
                   </span>
                 </div>
@@ -444,7 +444,7 @@ export default function JobExecutionPage() {
                     isComplete
                       ? 'bg-brand-green-500 text-white'
                       : isCurrent
-                      ? 'bg-brand-gold-500 text-white'
+                      ? 'bg-brand-green-500 text-white'
                       : 'bg-neutral-700'
                   }`}
                 >

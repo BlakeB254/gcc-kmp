@@ -238,7 +238,7 @@ export function SponsorBlockMap({
               'fill-color': [
                 'case',
                 ['==', ['get', 'selected'], true],
-                '#D4A017',
+                '#16763A',
                 '#22C55E',
               ],
               'fill-opacity': [
@@ -259,7 +259,7 @@ export function SponsorBlockMap({
               'line-color': [
                 'case',
                 ['==', ['get', 'selected'], true],
-                '#B8860B',
+                '#126431',
                 '#14532D',
               ],
               'line-width': [
@@ -300,8 +300,8 @@ export function SponsorBlockMap({
               <button
                 className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-md ${
                   isSelected
-                    ? 'bg-brand-gold-500 border-brand-gold-700 scale-110'
-                    : 'bg-white/90 border-neutral-400 hover:border-brand-gold-500 hover:scale-105'
+                    ? 'bg-brand-green-500 border-brand-green-700 scale-110'
+                    : 'bg-white/90 border-neutral-400 hover:border-brand-green-500 hover:scale-105'
                 }`}
                 aria-label={`${isSelected ? 'Deselect' : 'Select'} block ${block.fromCorner} to ${block.toCorner}`}
               >
@@ -315,7 +315,7 @@ export function SponsorBlockMap({
       {/* Selection count overlay */}
       {selectedBlockIds.length > 0 && (
         <div
-          className="absolute top-3 left-3 z-10 bg-brand-gold-500 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold"
+          className="absolute top-3 left-3 z-10 bg-brand-green-500 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold"
           role="status"
           aria-live="polite"
           aria-label={`${selectedBlockIds.length} block${selectedBlockIds.length !== 1 ? 's' : ''} selected`}

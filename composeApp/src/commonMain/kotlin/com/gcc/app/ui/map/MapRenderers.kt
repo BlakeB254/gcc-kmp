@@ -240,7 +240,7 @@ internal fun DrawScope.drawFundableBlocks(
                     BlockStatus.AVAILABLE -> MapAreaBorder
                     BlockStatus.FUNDED -> GccGreen
                     BlockStatus.IN_PROGRESS -> GccBlue
-                    BlockStatus.COMPLETED -> GccGold
+                    BlockStatus.COMPLETED -> GccSky
                 }
                 drawRoundRect(
                     color = filledColor,

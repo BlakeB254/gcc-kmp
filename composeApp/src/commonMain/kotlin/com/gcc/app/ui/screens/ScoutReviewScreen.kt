@@ -173,7 +173,7 @@ fun ScoutReviewScreen(
                 }
 
                 // ── Estimated Cleanup ─────────────────────────────────────────
-                GccCard(accentColor = CardAccentGold) {
+                GccCard(accentColor = CardAccentSky) {
                     Text(
                         text = "Estimated Cleanup",
                         style = MaterialTheme.typography.titleSmall.copy(
@@ -198,7 +198,7 @@ fun ScoutReviewScreen(
                     ScanSummaryRow(
                         label = "Loop closed",
                         value = if (uiState.isLoopClosed) "Yes" else "No",
-                        valueColor = if (uiState.isLoopClosed) GccGreen else GccGold,
+                        valueColor = if (uiState.isLoopClosed) GccGreen else GccSky,
                     )
                 }
 
@@ -366,7 +366,7 @@ private fun HotspotMiniCard(
             Text(
                 text = severityStars,
                 style = MaterialTheme.typography.labelSmall,
-                color = GccGold,
+                color = GccSky,
                 textAlign = TextAlign.Center,
             )
 

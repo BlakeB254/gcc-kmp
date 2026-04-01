@@ -183,12 +183,12 @@ function JoinForm() {
   const canProceedStep2 = isUSA ? formData.stateCode : (formData.stateName || true)
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-brand-green-900 via-brand-brown-900 to-neutral-900 relative overflow-hidden">
+    <main className="min-h-screen bg-gradient-to-br from-brand-green-900 via-brand-green-900 to-neutral-900 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* Globe grid lines */}
         <div className="absolute top-1/4 -right-1/4 w-[800px] h-[800px] opacity-5">
-          <svg viewBox="0 0 400 400" className="w-full h-full text-brand-gold-400">
+          <svg viewBox="0 0 400 400" className="w-full h-full text-brand-green-400">
             <circle cx="200" cy="200" r="180" fill="none" stroke="currentColor" strokeWidth="0.5" />
             <circle cx="200" cy="200" r="140" fill="none" stroke="currentColor" strokeWidth="0.5" />
             <circle cx="200" cy="200" r="100" fill="none" stroke="currentColor" strokeWidth="0.5" />
@@ -200,7 +200,7 @@ function JoinForm() {
           </svg>
         </div>
         {/* Gradient orbs */}
-        <div className="absolute -top-40 -left-40 w-80 h-80 bg-brand-gold-500/10 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -left-40 w-80 h-80 bg-brand-green-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-brand-green-500/10 rounded-full blur-3xl" />
       </div>
 
@@ -208,15 +208,15 @@ function JoinForm() {
         <div className="max-w-xl mx-auto">
           {/* Hero section */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 rounded-full bg-brand-gold-500/20 border border-brand-gold-500/30 px-4 py-1.5 mb-6">
+            <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-500/20 border border-brand-green-500/30 px-4 py-1.5 mb-6">
               <span className="text-xl">🌍</span>
-              <span className="text-sm font-medium text-brand-gold-300">Global Movement</span>
+              <span className="text-sm font-medium text-brand-green-300">Global Movement</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
               Secure Your Position
               <br />
-              <span className="text-brand-gold-400">In the Movement</span>
+              <span className="text-brand-green-400">In the Movement</span>
             </h1>
 
             <p className="text-lg text-neutral-300 max-w-md mx-auto">
@@ -232,14 +232,14 @@ function JoinForm() {
             )}
 
             {urlSource === 'worker-signup' && (
-              <div className="mt-4 p-4 rounded-xl bg-brand-sky-500/10 border border-brand-sky-500/20 text-center animate-fade-in-up">
-                <p className="text-brand-sky-300 text-sm">
+              <div className="mt-4 p-4 rounded-xl bg-brand-blue-500/10 border border-brand-blue-500/20 text-center animate-fade-in-up">
+                <p className="text-brand-blue-300 text-sm">
                   <span className="font-semibold">💼 Future Worker Detected!</span>
                   <br />
-                  <span className="text-brand-sky-400/80">We'll prioritize you when GCC expands to your area</span>
+                  <span className="text-brand-blue-400/80">We'll prioritize you when GCC expands to your area</span>
                 </p>
                 {(urlEmail || urlName) && (
-                  <p className="text-brand-sky-400/60 text-xs mt-2">
+                  <p className="text-brand-blue-400/60 text-xs mt-2">
                     ✓ Your info from signup has been preserved
                   </p>
                 )}
@@ -279,9 +279,9 @@ function JoinForm() {
                 key={s}
                 className={`h-2 rounded-full transition-all duration-300 ${
                   s === step
-                    ? 'w-8 bg-brand-gold-500'
+                    ? 'w-8 bg-brand-green-500'
                     : s < step
-                    ? 'w-2 bg-brand-gold-500'
+                    ? 'w-2 bg-brand-green-500'
                     : 'w-2 bg-white/20'
                 }`}
               />
@@ -302,7 +302,7 @@ function JoinForm() {
                   {/* Email */}
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-neutral-300 mb-2">
-                      Email address <span className="text-brand-gold-400">*</span>
+                      Email address <span className="text-brand-green-400">*</span>
                     </label>
                     <input
                       type="email"
@@ -310,7 +310,7 @@ function JoinForm() {
                       required
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                       placeholder="you@example.com"
                     />
                   </div>
@@ -318,14 +318,14 @@ function JoinForm() {
                   {/* Country */}
                   <div>
                     <label htmlFor="country" className="block text-sm font-medium text-neutral-300 mb-2">
-                      Country <span className="text-brand-gold-400">*</span>
+                      Country <span className="text-brand-green-400">*</span>
                     </label>
                     <select
                       id="country"
                       required
                       value={formData.country}
                       onChange={(e) => setFormData({ ...formData, country: e.target.value, stateCode: '', stateName: '' })}
-                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                     >
                       {COUNTRIES.map((country) => (
                         <option key={country.code} value={country.code} className="bg-neutral-800">
@@ -338,7 +338,7 @@ function JoinForm() {
                   {/* City */}
                   <div>
                     <label htmlFor="city" className="block text-sm font-medium text-neutral-300 mb-2">
-                      City <span className="text-brand-gold-400">*</span>
+                      City <span className="text-brand-green-400">*</span>
                     </label>
                     <input
                       type="text"
@@ -346,7 +346,7 @@ function JoinForm() {
                       required
                       value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                       placeholder={isUSA ? "Chicago, New York, etc." : "London, Toronto, etc."}
                     />
                   </div>
@@ -355,7 +355,7 @@ function JoinForm() {
                   {isUSA && (
                     <div>
                       <label htmlFor="zipCode" className="block text-sm font-medium text-neutral-300 mb-2">
-                        Zip Code <span className="text-brand-gold-400">*</span>
+                        Zip Code <span className="text-brand-green-400">*</span>
                       </label>
                       <input
                         type="text"
@@ -374,7 +374,7 @@ function JoinForm() {
                             stateCode: detectedState || formData.stateCode,
                           })
                         }}
-                        className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                        className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                         placeholder="60623"
                       />
                       {formData.zipCode.length === 5 && formData.stateCode && (
@@ -409,7 +409,7 @@ function JoinForm() {
                       transition-all transform
                       ${
                         canProceedStep1
-                          ? 'bg-brand-gold-500 text-white hover:bg-brand-gold-400 hover:scale-[1.02] active:scale-[0.98]'
+                          ? 'bg-brand-green-500 text-white hover:bg-brand-green-400 hover:scale-[1.02] active:scale-[0.98]'
                           : 'bg-white/10 text-neutral-500 cursor-not-allowed'
                       }
                     `}
@@ -463,7 +463,7 @@ function JoinForm() {
                           id="state"
                           value={formData.stateCode || 'IL'}
                           onChange={(e) => setFormData({ ...formData, stateCode: e.target.value })}
-                          className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                          className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                         >
                           {US_STATES.map((state) => (
                             <option key={state.code} value={state.code} className="bg-neutral-800">
@@ -483,7 +483,7 @@ function JoinForm() {
                           id="communityArea"
                           value={formData.communityArea}
                           onChange={(e) => setFormData({ ...formData, communityArea: e.target.value })}
-                          className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                          className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                         >
                           <option value="" className="bg-neutral-800">Select community area</option>
                           {CHICAGO_COMMUNITY_AREAS.map((area) => (
@@ -503,7 +503,7 @@ function JoinForm() {
                             type="text"
                             value={formData.customCommunityArea}
                             onChange={(e) => setFormData({ ...formData, customCommunityArea: e.target.value })}
-                            className="mt-3 w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                            className="mt-3 w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                             placeholder="Enter your community area"
                           />
                         )}
@@ -531,9 +531,9 @@ function JoinForm() {
                     /* GLOBAL WAITLIST FLOW (non-launch zip codes) */
                     <>
                       <div className="text-center mb-6">
-                        <div className="inline-flex items-center gap-2 rounded-full bg-brand-gold-500/20 border border-brand-gold-500/30 px-4 py-2 mb-4">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-500/20 border border-brand-green-500/30 px-4 py-2 mb-4">
                           <span className="text-xl">🌍</span>
-                          <span className="text-sm font-medium text-brand-gold-300">Global Waitlist</span>
+                          <span className="text-sm font-medium text-brand-green-300">Global Waitlist</span>
                         </div>
                         <h2 className="text-xl font-bold text-white mb-2">Join the Global Movement</h2>
                         <p className="text-neutral-400 text-sm">
@@ -546,14 +546,14 @@ function JoinForm() {
                       {isUSA ? (
                         <div>
                           <label htmlFor="state" className="block text-sm font-medium text-neutral-300 mb-2">
-                            State <span className="text-brand-gold-400">*</span>
+                            State <span className="text-brand-green-400">*</span>
                           </label>
                           <select
                             id="state"
                             required
                             value={formData.stateCode}
                             onChange={(e) => setFormData({ ...formData, stateCode: e.target.value })}
-                            className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                            className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                           >
                             <option value="" className="bg-neutral-800">Select state</option>
                             {US_STATES.map((state) => (
@@ -573,7 +573,7 @@ function JoinForm() {
                             id="stateName"
                             value={formData.stateName}
                             onChange={(e) => setFormData({ ...formData, stateName: e.target.value })}
-                            className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                            className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                             placeholder="Ontario, England, etc."
                           />
                         </div>
@@ -607,7 +607,7 @@ function JoinForm() {
                       </div>
 
                       {/* Expansion interest note */}
-                      <div className="p-3 rounded-lg bg-brand-gold-500/10 border border-brand-gold-500/20 text-brand-gold-200 text-sm">
+                      <div className="p-3 rounded-lg bg-brand-green-500/10 border border-brand-green-500/20 text-brand-green-200 text-sm">
                         💡 <strong>Tip:</strong> The more signups from your city, the faster we expand there!
                       </div>
                     </>
@@ -636,7 +636,7 @@ function JoinForm() {
                         transition-all transform
                         ${
                           canProceedStep2
-                            ? 'bg-brand-gold-500 text-white hover:bg-brand-gold-400 hover:scale-[1.02] active:scale-[0.98]'
+                            ? 'bg-brand-green-500 text-white hover:bg-brand-green-400 hover:scale-[1.02] active:scale-[0.98]'
                             : 'bg-white/10 text-neutral-500 cursor-not-allowed'
                         }
                       `}
@@ -674,7 +674,7 @@ function JoinForm() {
                         <button
                           type="button"
                           onClick={() => setStep(1)}
-                          className="text-xs text-brand-gold-400 hover:text-brand-gold-300"
+                          className="text-xs text-brand-green-400 hover:text-brand-green-300"
                         >
                           Edit
                         </button>
@@ -696,7 +696,7 @@ function JoinForm() {
                             const name = prompt('Enter your name:', formData.name)
                             if (name !== null) setFormData({ ...formData, name })
                           }}
-                          className="text-xs text-brand-gold-400 hover:text-brand-gold-300"
+                          className="text-xs text-brand-green-400 hover:text-brand-green-300"
                         >
                           Edit
                         </button>
@@ -712,7 +712,7 @@ function JoinForm() {
                         id="name"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                        className="w-full px-4 py-3.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-neutral-500 focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                         placeholder="John Doe"
                       />
                     </div>
@@ -724,7 +724,7 @@ function JoinForm() {
                       I'm interested in...
                     </p>
                     <div className="space-y-3">
-                      <label className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-brand-gold-500/30 cursor-pointer transition-all group">
+                      <label className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-brand-green-500/30 cursor-pointer transition-all group">
                         <div className="relative">
                           <input
                             type="checkbox"
@@ -734,7 +734,7 @@ function JoinForm() {
                           />
                           <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                             formData.wantsToBeWorker
-                              ? 'bg-brand-gold-500 border-brand-gold-500'
+                              ? 'bg-brand-green-500 border-brand-green-500'
                               : 'border-white/30 group-hover:border-white/50'
                           }`}>
                             {formData.wantsToBeWorker && (
@@ -751,7 +751,7 @@ function JoinForm() {
                         <span className="text-2xl">💪</span>
                       </label>
 
-                      <label className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-brand-gold-500/30 cursor-pointer transition-all group">
+                      <label className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-brand-green-500/30 cursor-pointer transition-all group">
                         <div className="relative">
                           <input
                             type="checkbox"
@@ -761,7 +761,7 @@ function JoinForm() {
                           />
                           <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                             formData.wantsToBeSponsor
-                              ? 'bg-brand-gold-500 border-brand-gold-500'
+                              ? 'bg-brand-green-500 border-brand-green-500'
                               : 'border-white/30 group-hover:border-white/50'
                           }`}>
                             {formData.wantsToBeSponsor && (
@@ -791,7 +791,7 @@ function JoinForm() {
                       />
                       <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
                         formData.emailUpdates
-                          ? 'bg-brand-gold-500 border-brand-gold-500'
+                          ? 'bg-brand-green-500 border-brand-green-500'
                           : 'border-white/30'
                       }`}>
                         {formData.emailUpdates && (
@@ -837,7 +837,7 @@ function JoinForm() {
                         ${
                           isSubmitting
                             ? 'bg-white/10 text-neutral-500 cursor-not-allowed'
-                            : 'bg-brand-gold-500 text-white hover:bg-brand-gold-400 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-brand-gold-500/20'
+                            : 'bg-brand-green-500 text-white hover:bg-brand-green-400 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-brand-green-500/20'
                         }
                       `}
                     >
@@ -880,7 +880,7 @@ function JoinForm() {
 
           {/* Back link */}
           <div className="mt-8 text-center">
-            <Link href="/" className="text-brand-gold-400 hover:text-brand-gold-300 font-medium transition-colors">
+            <Link href="/" className="text-brand-green-400 hover:text-brand-green-300 font-medium transition-colors">
               ← Back to homepage
             </Link>
           </div>
@@ -893,9 +893,9 @@ function JoinForm() {
 export default function JoinPage() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen bg-gradient-to-br from-brand-green-900 via-brand-brown-900 to-neutral-900 flex items-center justify-center">
+      <main className="min-h-screen bg-gradient-to-br from-brand-green-900 via-brand-green-900 to-neutral-900 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-400">Loading...</p>
         </div>
       </main>

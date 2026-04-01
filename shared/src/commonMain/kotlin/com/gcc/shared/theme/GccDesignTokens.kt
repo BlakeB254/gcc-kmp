@@ -65,26 +65,26 @@ object GccElevation {
 
 // Brand colors as Long values (used by both platforms)
 object GccColors {
-    const val Green = 0xFF22C55E
-    const val GreenDark = 0xFF14532D
-    const val Gold = 0xFFF59E0B
-    const val Blue = 0xFF3B82F6
+    const val Green = 0xFF16763A
+    const val GreenDark = 0xFF0B3B1D
+    const val Blue = 0xFF155B92
+    const val Sky = 0xFF30A0CE
     const val Error = 0xFFEF4444
     const val Emerald = 0xFF10B981
 
     // Status colors
-    const val StatusAvailable = 0xFF22C55E
-    const val StatusInProgress = 0xFF3B82F6
+    const val StatusAvailable = 0xFF16763A
+    const val StatusInProgress = 0xFF155B92
     const val StatusCompleted = 0xFF10B981  // emerald (standardized)
     const val StatusCancelled = 0xFFEF4444
     const val StatusWarning = 0xFFF59E0B
 
     // Bounty colors
     const val BountyOpen = 0xFFEF4444
-    const val BountyAmount = 0xFF22C55E
-    const val BountyClaimed = 0xFF3B82F6
+    const val BountyAmount = 0xFF16763A
+    const val BountyClaimed = 0xFF155B92
     const val BountyCompleted = 0xFF10B981
     const val SpotReport = 0xFFF97316
-    const val SpotterReward = 0xFFF59E0B
+    const val SpotterReward = 0xFF30A0CE
     const val SecretBounty = 0xFF8B5CF6
 }

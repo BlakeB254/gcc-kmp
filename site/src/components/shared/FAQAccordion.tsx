@@ -35,19 +35,19 @@ function AccordionItem({
         className="w-full py-golden-md px-golden-sm flex items-center justify-between text-left group focus-glow rounded-lg"
         aria-expanded={isOpen}
       >
-        <span className="text-base sm:text-lg font-medium text-neutral-900 pr-4 group-hover:text-brand-gold-700 transition-colors">
+        <span className="text-base sm:text-lg font-medium text-neutral-900 pr-4 group-hover:text-brand-green-700 transition-colors">
           {item.question}
         </span>
         <span
           className={`
-            flex-shrink-0 w-8 h-8 rounded-full bg-brand-gold-100
+            flex-shrink-0 w-8 h-8 rounded-full bg-brand-green-100
             flex items-center justify-center transition-all duration-300
-            group-hover:bg-brand-gold-200
-            ${isOpen ? 'rotate-180 bg-brand-gold-500' : ''}
+            group-hover:bg-brand-green-200
+            ${isOpen ? 'rotate-180 bg-brand-green-500' : ''}
           `}
         >
           <svg
-            className={`w-5 h-5 transition-colors ${isOpen ? 'text-white' : 'text-brand-gold-600'}`}
+            className={`w-5 h-5 transition-colors ${isOpen ? 'text-white' : 'text-brand-green-600'}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

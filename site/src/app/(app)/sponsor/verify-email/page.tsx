@@ -93,7 +93,7 @@ function VerifyEmailContent() {
 
   if (!sponsorId) {
     return (
-      <div className="bg-gradient-to-b from-brand-brown-50 to-white min-h-[70vh]">
+      <div className="bg-gradient-to-b from-brand-green-50 to-white min-h-[70vh]">
         <div className="section-container py-12">
           <div className="max-w-md mx-auto text-center">
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8">
@@ -108,7 +108,7 @@ function VerifyEmailContent() {
               </p>
               <Link
                 href="/sponsor/signup"
-                className="inline-block px-6 py-3 bg-brand-gold-500 text-white font-semibold rounded-xl hover:bg-brand-gold-600 transition-all"
+                className="inline-block px-6 py-3 bg-brand-green-500 text-white font-semibold rounded-xl hover:bg-brand-green-600 transition-all"
               >
                 Sign Up Again
               </Link>
@@ -121,7 +121,7 @@ function VerifyEmailContent() {
 
   if (success) {
     return (
-      <div className="bg-gradient-to-b from-brand-brown-50 to-white min-h-[70vh]">
+      <div className="bg-gradient-to-b from-brand-green-50 to-white min-h-[70vh]">
         <div className="section-container py-12">
           <div className="max-w-md mx-auto text-center">
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8">
@@ -135,7 +135,7 @@ function VerifyEmailContent() {
                 Your email has been verified successfully. Redirecting you to your dashboard...
               </p>
               <div className="flex justify-center">
-                <div className="w-8 h-8 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
               </div>
             </div>
           </div>
@@ -145,12 +145,12 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div className="bg-gradient-to-b from-brand-brown-50 to-white min-h-[70vh]">
+    <div className="bg-gradient-to-b from-brand-green-50 to-white min-h-[70vh]">
       <div className="section-container py-12">
         <div className="max-w-md mx-auto">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-brand-gold-100 flex items-center justify-center">
-              <svg className="w-10 h-10 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-brand-green-100 flex items-center justify-center">
+              <svg className="w-10 h-10 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
@@ -162,7 +162,7 @@ function VerifyEmailContent() {
 
           {isVerifying && token ? (
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8 text-center">
-              <div className="w-12 h-12 mx-auto mb-4 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-12 h-12 mx-auto mb-4 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
               <p className="text-neutral-600">Verifying your email...</p>
             </div>
           ) : (
@@ -196,7 +196,7 @@ function VerifyEmailContent() {
                 disabled={code.length !== 6 || isVerifying}
                 className={`w-full py-3 px-6 rounded-xl font-semibold transition-all ${
                   code.length === 6 && !isVerifying
-                    ? 'bg-brand-gold-500 text-white hover:bg-brand-gold-600'
+                    ? 'bg-brand-green-500 text-white hover:bg-brand-green-600'
                     : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                 }`}
               >
@@ -208,7 +208,7 @@ function VerifyEmailContent() {
                   Didn't receive the email?{' '}
                   <button
                     type="button"
-                    className="text-brand-gold-600 font-medium hover:underline"
+                    className="text-brand-green-600 font-medium hover:underline"
                     onClick={() => {
                       // TODO: Implement resend verification email
                       setError('Please check your spam folder or contact support.')
@@ -223,7 +223,7 @@ function VerifyEmailContent() {
 
           <p className="text-center text-neutral-500 text-sm mt-6">
             Wrong email?{' '}
-            <Link href="/sponsor/signup" className="text-brand-gold-600 hover:underline">
+            <Link href="/sponsor/signup" className="text-brand-green-600 hover:underline">
               Sign up with a different email
             </Link>
           </p>
@@ -236,10 +236,10 @@ function VerifyEmailContent() {
 export default function SponsorVerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="bg-gradient-to-b from-brand-brown-50 to-white min-h-[70vh]">
+      <div className="bg-gradient-to-b from-brand-green-50 to-white min-h-[70vh]">
         <div className="section-container py-12">
           <div className="max-w-md mx-auto text-center">
-            <div className="w-12 h-12 mx-auto border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-12 h-12 mx-auto border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           </div>
         </div>
       </div>

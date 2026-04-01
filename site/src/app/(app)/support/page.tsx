@@ -120,7 +120,7 @@ export default function SupportPage() {
   const closedTickets = tickets.filter((t) => t.status === 'resolved' || t.status === 'closed')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
       {/* Header */}
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-40">
         <div className="section-container py-4">
@@ -158,9 +158,9 @@ export default function SupportPage() {
       <main className="section-container py-8">
         <div className="max-w-4xl mx-auto">
           {/* Intro Card */}
-          <div className="bg-gradient-to-r from-brand-gold-500 to-brand-gold-600 rounded-2xl p-6 mb-8 text-white">
+          <div className="bg-gradient-to-r from-brand-green-500 to-brand-green-600 rounded-2xl p-6 mb-8 text-white">
             <h2 className="text-xl font-bold mb-2">We're Here to Help</h2>
-            <p className="text-brand-gold-100 mb-4">
+            <p className="text-brand-green-100 mb-4">
               Have an issue, suggestion, or feedback? Let us know and we'll get back to you as soon as possible.
               Your input helps us build a better GCC for everyone.
             </p>
@@ -192,7 +192,7 @@ export default function SupportPage() {
           {/* Loading State */}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-10 h-10 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin mb-4" />
+              <div className="w-10 h-10 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-neutral-500">Loading tickets...</p>
             </div>
           ) : (
@@ -228,7 +228,7 @@ export default function SupportPage() {
                         <Link
                           key={ticket.id}
                           href={`/support/ticket/${ticket.id}`}
-                          className="block bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-lg hover:border-brand-gold-200 transition-all group"
+                          className="block bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-lg hover:border-brand-green-200 transition-all group"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
@@ -247,7 +247,7 @@ export default function SupportPage() {
                                   </span>
                                 )}
                               </div>
-                              <h4 className="font-semibold text-neutral-900 mb-1 group-hover:text-brand-gold-600 transition-colors">
+                              <h4 className="font-semibold text-neutral-900 mb-1 group-hover:text-brand-green-600 transition-colors">
                                 {ticket.subject}
                               </h4>
                               <p className="text-sm text-neutral-500 flex items-center gap-1">
@@ -255,7 +255,7 @@ export default function SupportPage() {
                                 {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
                               </p>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-brand-gold-500 transition-colors" />
+                            <ChevronRight className="w-5 h-5 text-neutral-400 group-hover:text-brand-green-500 transition-colors" />
                           </div>
                         </Link>
                       )
@@ -287,7 +287,7 @@ export default function SupportPage() {
                                 <CatIcon className="w-4 h-4" />
                               </div>
                               <div>
-                                <h4 className="font-medium text-neutral-700 group-hover:text-brand-gold-600 transition-colors">
+                                <h4 className="font-medium text-neutral-700 group-hover:text-brand-green-600 transition-colors">
                                   {ticket.subject}
                                 </h4>
                                 <p className="text-xs text-neutral-500">
@@ -340,7 +340,7 @@ export default function SupportPage() {
                         onClick={() => setNewTicket({ ...newTicket, category: key })}
                         className={`flex items-center gap-2 p-3 rounded-xl border-2 text-left transition-all ${
                           isSelected
-                            ? 'border-brand-gold-500 bg-brand-gold-50'
+                            ? 'border-brand-green-500 bg-brand-green-50'
                             : 'border-neutral-200 hover:border-neutral-300'
                         }`}
                       >
@@ -365,7 +365,7 @@ export default function SupportPage() {
                   onChange={(e) => setNewTicket({ ...newTicket, subject: e.target.value })}
                   placeholder="Brief summary of your issue or feedback"
                   maxLength={255}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all"
                   required
                 />
               </div>
@@ -380,7 +380,7 @@ export default function SupportPage() {
                   onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
                   placeholder="Please provide as much detail as possible..."
                   rows={5}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all resize-none"
                   required
                 />
               </div>
@@ -397,7 +397,7 @@ export default function SupportPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !newTicket.subject.trim() || !newTicket.description.trim()}
-                  className="flex-1 py-3 px-4 bg-brand-gold-500 text-white font-semibold rounded-xl hover:bg-brand-gold-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3 px-4 bg-brand-green-500 text-white font-semibold rounded-xl hover:bg-brand-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>

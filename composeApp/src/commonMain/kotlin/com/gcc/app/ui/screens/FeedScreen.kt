@@ -310,11 +310,11 @@ private fun FeedCard(
     }
     val accentColor = when (item.type) {
         FeedItemType.SPOT_REPORT -> CardAccentPurple
-        FeedItemType.BOUNTY_CREATED, FeedItemType.BOUNTY_COMPLETED -> CardAccentGold
+        FeedItemType.BOUNTY_CREATED, FeedItemType.BOUNTY_COMPLETED -> CardAccentSky
         FeedItemType.JOB_COMPLETED -> CardAccentGreen
         FeedItemType.VOLUNTEER_CLEANUP -> CardAccentBlue
         FeedItemType.BADGE_UNLOCKED -> CardAccentRed
-        FeedItemType.LEADERBOARD_CHANGE -> CardAccentGold
+        FeedItemType.LEADERBOARD_CHANGE -> CardAccentSky
         FeedItemType.ARTICLE -> GccGreenDark
     }
 
@@ -766,11 +766,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBountyScene(
 ) {
     if (isBefore) {
         // Messy scene
-        val messColor = CardAccentGold.copy(alpha = 0.2f)
+        val messColor = CardAccentSky.copy(alpha = 0.2f)
         drawRoundRect(messColor, Offset(w * 0.1f, h * 0.5f), Size(w * 0.3f, h * 0.25f), CornerRadius(2f))
         drawRoundRect(messColor, Offset(w * 0.45f, h * 0.4f), Size(w * 0.2f, h * 0.35f), CornerRadius(2f))
         drawRoundRect(messColor, Offset(w * 0.6f, h * 0.55f), Size(w * 0.25f, h * 0.2f), CornerRadius(2f))
-        drawLine(CardAccentGold.copy(alpha = 0.3f), Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)
+        drawLine(CardAccentSky.copy(alpha = 0.3f), Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)
     } else {
         // Clean scene with checkmark
         drawLine(GccGreen.copy(alpha = 0.3f), Offset(0f, h * 0.75f), Offset(w, h * 0.75f), 1.5f)

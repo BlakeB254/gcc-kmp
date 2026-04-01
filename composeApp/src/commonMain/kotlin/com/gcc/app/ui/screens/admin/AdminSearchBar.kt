@@ -7,7 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.gcc.app.ui.theme.GccGold
+import com.gcc.app.ui.theme.GccSky
 
 @Composable
 internal fun AdminSearchBar(
@@ -31,8 +31,8 @@ internal fun AdminSearchBar(
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = GccGold,
-            cursorColor = GccGold,
+            focusedBorderColor = GccSky,
+            cursorColor = GccSky,
         ),
         modifier = modifier
             .fillMaxWidth()

@@ -101,10 +101,10 @@ const tierConfig = {
   pioneer: {
     label: 'Pioneer Sponsor',
     emoji: '⭐',
-    color: 'from-brand-gold-400 to-amber-500',
-    bgColor: 'bg-brand-gold-100',
-    textColor: 'text-brand-gold-700',
-    borderColor: 'border-brand-gold-200',
+    color: 'from-brand-green-400 to-amber-500',
+    bgColor: 'bg-brand-green-100',
+    textColor: 'text-brand-green-700',
+    borderColor: 'border-brand-green-200',
     description: 'First 100 sponsors',
     icon: Star,
   },
@@ -142,13 +142,13 @@ const impactMetrics = [
     icon: Users,
     title: 'Workers Paid',
     description: 'Every $100 goes directly to a verified North Lawndale resident, providing meaningful income to the community.',
-    color: 'bg-brand-gold-100 text-brand-gold-600',
+    color: 'bg-brand-green-100 text-brand-green-600',
   },
   {
     icon: Heart,
     title: 'Community Impact',
     description: 'Your sponsorship funds local employment, improves public health, and builds community pride in North Lawndale.',
-    color: 'bg-brand-sky-100 text-brand-sky-600',
+    color: 'bg-brand-blue-100 text-brand-blue-600',
   },
 ]
 
@@ -205,7 +205,7 @@ function RankingCard({
   }, [rank, delay])
 
   return (
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center hover:shadow-md hover:border-brand-gold-200 transition-all">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center hover:shadow-md hover:border-brand-green-200 transition-all">
       <div className={cn('w-10 h-10 mx-auto rounded-lg flex items-center justify-center mb-2', colorClass)}>
         <Icon className="w-5 h-5 text-white" />
       </div>
@@ -230,7 +230,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="inline-flex items-center gap-1 text-sm text-brand-gold-600 hover:text-brand-gold-700 font-medium"
+      className="inline-flex items-center gap-1 text-sm text-brand-green-600 hover:text-brand-green-700 font-medium"
     >
       {copied ? (
         <>
@@ -262,7 +262,7 @@ function StatCard({
   colorClass: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 hover:shadow-md hover:border-brand-gold-200 transition-all">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 hover:shadow-md hover:border-brand-green-200 transition-all">
       <div className="flex items-start justify-between mb-2 sm:mb-3">
         <div className={cn('w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center', colorClass)}>
           <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -282,12 +282,12 @@ function SponsorshipItem({ sponsorship }: { sponsorship: Sponsorship }) {
       <div className="flex items-center gap-3 sm:gap-4">
         <div className={cn(
           'w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0',
-          sponsorship.status === 'cleaned' ? 'bg-brand-green-100' : 'bg-brand-gold-100'
+          sponsorship.status === 'cleaned' ? 'bg-brand-green-100' : 'bg-brand-green-100'
         )}>
           {sponsorship.status === 'cleaned' ? (
             <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-green-600" />
           ) : (
-            <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-brand-gold-600" />
+            <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-brand-green-600" />
           )}
         </div>
         <div className="min-w-0">
@@ -417,9 +417,9 @@ export default function SponsorDashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-500">Loading dashboard...</p>
         </div>
       </div>
@@ -431,7 +431,7 @@ export default function SponsorDashboardPage() {
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-neutral-600 mb-4">Unable to load profile</p>
-          <Link href="/sponsor/login" className="text-brand-gold-600 hover:text-brand-gold-700 font-medium">
+          <Link href="/sponsor/login" className="text-brand-green-600 hover:text-brand-green-700 font-medium">
             Return to Login
           </Link>
         </div>
@@ -452,7 +452,7 @@ export default function SponsorDashboardPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-gold-50 pb-24 sm:pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 pb-24 sm:pb-8">
       {/* Header */}
       <header className="bg-white/90 backdrop-blur-sm border-b border-neutral-100 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
@@ -468,7 +468,7 @@ export default function SponsorDashboardPage() {
           <div className="flex items-center gap-2">
             <Link
               href="/sponsor"
-              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-brand-gold-500 text-white font-medium hover:bg-brand-gold-600 transition-colors text-sm"
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-brand-green-500 text-white font-medium hover:bg-brand-green-600 transition-colors text-sm"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Sponsor a Block</span>
@@ -527,7 +527,7 @@ export default function SponsorDashboardPage() {
           <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden mb-4 sm:mb-6">
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 bg-gradient-to-r from-neutral-50 to-white">
               <h2 className="font-semibold text-neutral-900 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-brand-gold-500" />
+                <Trophy className="w-5 h-5 text-brand-green-500" />
                 Your Movement Ranking
               </h2>
               <p className="text-sm text-neutral-500 mt-1">
@@ -540,20 +540,20 @@ export default function SponsorDashboardPage() {
                   icon={Globe}
                   label="Global Sponsor"
                   rank={profile.signupRankings?.global}
-                  colorClass="bg-gradient-to-br from-brand-gold-400 to-amber-500"
+                  colorClass="bg-gradient-to-br from-brand-green-400 to-amber-500"
                   delay={0}
                 />
               </div>
 
               {/* Referral Link */}
               {profile.referralCode && (
-                <div className="mt-6 p-4 rounded-xl bg-brand-gold-50 border border-brand-gold-200">
+                <div className="mt-6 p-4 rounded-xl bg-brand-green-50 border border-brand-green-200">
                   <div className="flex items-center gap-2 mb-2">
-                    <Share2 className="w-4 h-4 text-brand-gold-700" />
-                    <p className="text-sm font-medium text-brand-gold-800">Your Referral Link</p>
+                    <Share2 className="w-4 h-4 text-brand-green-700" />
+                    <p className="text-sm font-medium text-brand-green-800">Your Referral Link</p>
                   </div>
-                  <div className="flex items-center gap-2 bg-white rounded-lg border border-brand-gold-200 p-2">
-                    <p className="flex-1 font-mono text-sm text-brand-gold-900 truncate">
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-brand-green-200 p-2">
+                    <p className="flex-1 font-mono text-sm text-brand-green-900 truncate">
                       globalcommunitycleaners.org/join?ref={profile.referralCode}
                     </p>
                     <CopyButton text={`https://globalcommunitycleaners.org/join?ref=${profile.referralCode}`} />
@@ -568,13 +568,13 @@ export default function SponsorDashboardPage() {
                     </a>
                     <a
                       href={`mailto:?subject=${encodeURIComponent('Support Clean Streets in Chicago!')}&body=${encodeURIComponent(`Hi!\n\nI've been supporting Global Community Cleaners (GCC) - they pay North Lawndale residents $100 to clean blocks in their neighborhood.\n\nYou can sponsor a block or join the movement here: https://globalcommunitycleaners.org/join?ref=${profile.referralCode}\n\n100% of sponsorships go directly to the workers!`)}`}
-                      className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-brand-gold-600 text-white rounded-lg text-sm font-medium hover:bg-brand-gold-700 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-brand-green-600 text-white rounded-lg text-sm font-medium hover:bg-brand-green-700 transition-colors"
                     >
                       <Mail className="w-4 h-4" />
                       Email
                     </a>
                   </div>
-                  <p className="text-xs text-brand-gold-700 mt-3 text-center">
+                  <p className="text-xs text-brand-green-700 mt-3 text-center">
                     Share with friends and help grow the movement!
                   </p>
                 </div>
@@ -589,7 +589,7 @@ export default function SponsorDashboardPage() {
             icon={DollarSign}
             label="Total Contributed"
             value={formatCurrency(profile.stats?.totalContributed || 0)}
-            colorClass="bg-brand-gold-100 text-brand-gold-600"
+            colorClass="bg-brand-green-100 text-brand-green-600"
           />
           <StatCard
             icon={MapPin}
@@ -601,7 +601,7 @@ export default function SponsorDashboardPage() {
             icon={CheckCircle2}
             label="Blocks Cleaned"
             value={cleanedCount}
-            colorClass="bg-brand-sky-100 text-brand-sky-600"
+            colorClass="bg-brand-blue-100 text-brand-blue-600"
           />
           <StatCard
             icon={Clock}
@@ -645,7 +645,7 @@ export default function SponsorDashboardPage() {
                 </div>
                 <button
                   onClick={() => setActiveTab('history')}
-                  className="text-brand-gold-600 hover:text-brand-gold-700 text-sm font-medium flex items-center gap-1"
+                  className="text-brand-green-600 hover:text-brand-green-700 text-sm font-medium flex items-center gap-1"
                 >
                   View All
                   <ChevronRight className="w-4 h-4" />
@@ -654,8 +654,8 @@ export default function SponsorDashboardPage() {
 
               {sponsorships.length === 0 ? (
                 <div className="p-6 sm:p-8 text-center">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-4 rounded-2xl bg-brand-gold-100 flex items-center justify-center">
-                    <Gift className="w-7 h-7 sm:w-8 sm:h-8 text-brand-gold-600" />
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-4 rounded-2xl bg-brand-green-100 flex items-center justify-center">
+                    <Gift className="w-7 h-7 sm:w-8 sm:h-8 text-brand-green-600" />
                   </div>
                   <p className="text-neutral-700 font-medium mb-2">No sponsorships yet</p>
                   <p className="text-sm text-neutral-500 mb-4">
@@ -663,7 +663,7 @@ export default function SponsorDashboardPage() {
                   </p>
                   <Link
                     href="/sponsor"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-gold-500 text-white font-medium hover:bg-brand-gold-600 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-green-500 text-white font-medium hover:bg-brand-green-600 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     Sponsor a Block
@@ -682,10 +682,10 @@ export default function SponsorDashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <Link
                 href="/sponsor"
-                className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-brand-gold-200 transition-all group"
+                className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-brand-green-200 transition-all group"
               >
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-brand-gold-100 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
-                  <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-brand-gold-600" />
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-brand-green-100 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                  <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-brand-green-600" />
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-neutral-900">Sponsor Another Block</p>
@@ -710,10 +710,10 @@ export default function SponsorDashboardPage() {
 
               <Link
                 href="/community"
-                className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-brand-sky-200 transition-all group"
+                className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-brand-blue-200 transition-all group"
               >
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-brand-sky-100 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
-                  <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-sky-600" />
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-brand-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-blue-600" />
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-neutral-900">Community Forum</p>
@@ -762,7 +762,7 @@ export default function SponsorDashboardPage() {
         {activeTab === 'impact' && (
           <div className="space-y-4 sm:space-y-6">
             {/* Impact Summary */}
-            <div className="bg-gradient-to-br from-brand-gold-500 to-brand-gold-600 rounded-2xl p-5 sm:p-6 text-white">
+            <div className="bg-gradient-to-br from-brand-green-500 to-brand-green-600 rounded-2xl p-5 sm:p-6 text-white">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
                 <Sparkles className="w-5 h-5" />
                 Your Total Impact
@@ -770,18 +770,18 @@ export default function SponsorDashboardPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div className="bg-white/10 rounded-xl p-3 sm:p-4 text-center backdrop-blur-sm">
                   <p className="text-2xl sm:text-3xl font-bold">{profile.stats?.blocksFunded || 0}</p>
-                  <p className="text-xs sm:text-sm text-brand-gold-100">Blocks Funded</p>
+                  <p className="text-xs sm:text-sm text-brand-green-100">Blocks Funded</p>
                 </div>
                 <div className="bg-white/10 rounded-xl p-3 sm:p-4 text-center backdrop-blur-sm">
                   <p className="text-2xl sm:text-3xl font-bold">{cleanedCount}</p>
-                  <p className="text-xs sm:text-sm text-brand-gold-100">Streets Cleaned</p>
+                  <p className="text-xs sm:text-sm text-brand-green-100">Streets Cleaned</p>
                 </div>
                 <div className="bg-white/10 rounded-xl p-3 sm:p-4 text-center backdrop-blur-sm col-span-2 sm:col-span-1">
                   <p className="text-2xl sm:text-3xl font-bold">{cleanedCount}</p>
-                  <p className="text-xs sm:text-sm text-brand-gold-100">Workers Paid</p>
+                  <p className="text-xs sm:text-sm text-brand-green-100">Workers Paid</p>
                 </div>
               </div>
-              <p className="text-brand-gold-100 text-sm mt-4 text-center">
+              <p className="text-brand-green-100 text-sm mt-4 text-center">
                 Thank you for supporting cleaner streets in North Lawndale!
               </p>
             </div>
@@ -830,7 +830,7 @@ export default function SponsorDashboardPage() {
                 <label className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors">
                   <div className="flex items-center gap-3">
                     {settings.wantsUpdates ? (
-                      <Bell className="w-5 h-5 text-brand-gold-600" />
+                      <Bell className="w-5 h-5 text-brand-green-600" />
                     ) : (
                       <BellOff className="w-5 h-5 text-neutral-400" />
                     )}
@@ -843,7 +843,7 @@ export default function SponsorDashboardPage() {
                     onClick={() => setSettings({ ...settings, wantsUpdates: !settings.wantsUpdates })}
                     className={cn(
                       'w-11 sm:w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ml-2',
-                      settings.wantsUpdates ? 'bg-brand-gold-500' : 'bg-neutral-300'
+                      settings.wantsUpdates ? 'bg-brand-green-500' : 'bg-neutral-300'
                     )}
                   >
                     <span className={cn(
@@ -858,7 +858,7 @@ export default function SponsorDashboardPage() {
                     {settings.isAnonymous ? (
                       <EyeOff className="w-5 h-5 text-neutral-400" />
                     ) : (
-                      <Eye className="w-5 h-5 text-brand-gold-600" />
+                      <Eye className="w-5 h-5 text-brand-green-600" />
                     )}
                     <div>
                       <p className="font-medium text-neutral-900 text-sm sm:text-base">Anonymous Donations</p>
@@ -869,7 +869,7 @@ export default function SponsorDashboardPage() {
                     onClick={() => setSettings({ ...settings, isAnonymous: !settings.isAnonymous })}
                     className={cn(
                       'w-11 sm:w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ml-2',
-                      settings.isAnonymous ? 'bg-brand-gold-500' : 'bg-neutral-300'
+                      settings.isAnonymous ? 'bg-brand-green-500' : 'bg-neutral-300'
                     )}
                   >
                     <span className={cn(
@@ -913,7 +913,7 @@ export default function SponsorDashboardPage() {
               <button
                 onClick={handleSaveSettings}
                 disabled={isSavingSettings}
-                className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold bg-brand-gold-500 text-white hover:bg-brand-gold-600 transition-all disabled:opacity-50 text-sm sm:text-base"
+                className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold bg-brand-green-500 text-white hover:bg-brand-green-600 transition-all disabled:opacity-50 text-sm sm:text-base"
               >
                 {isSavingSettings ? 'Saving...' : 'Save Settings'}
               </button>
@@ -932,7 +932,7 @@ export default function SponsorDashboardPage() {
               </p>
               <a
                 href="mailto:support@globalcommunitycleaners.org"
-                className="inline-flex items-center gap-2 text-brand-gold-600 hover:text-brand-gold-700 font-medium text-sm sm:text-base"
+                className="inline-flex items-center gap-2 text-brand-green-600 hover:text-brand-green-700 font-medium text-sm sm:text-base"
               >
                 <HelpCircle className="w-4 h-4" />
                 support@globalcommunitycleaners.org
@@ -951,12 +951,12 @@ export default function SponsorDashboardPage() {
               onClick={() => setActiveTab('overview')}
               className={cn(
                 'flex flex-col items-center gap-1 py-2 px-4',
-                activeTab === 'overview' ? 'text-brand-gold-600' : 'text-neutral-400'
+                activeTab === 'overview' ? 'text-brand-green-600' : 'text-neutral-400'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-xl flex items-center justify-center',
-                activeTab === 'overview' ? 'bg-brand-gold-100' : 'bg-neutral-50'
+                activeTab === 'overview' ? 'bg-brand-green-100' : 'bg-neutral-50'
               )}>
                 <Home className="w-5 h-5" />
               </div>
@@ -966,12 +966,12 @@ export default function SponsorDashboardPage() {
               onClick={() => setActiveTab('history')}
               className={cn(
                 'flex flex-col items-center gap-1 py-2 px-4',
-                activeTab === 'history' ? 'text-brand-gold-600' : 'text-neutral-400'
+                activeTab === 'history' ? 'text-brand-green-600' : 'text-neutral-400'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-xl flex items-center justify-center',
-                activeTab === 'history' ? 'bg-brand-gold-100' : 'bg-neutral-50'
+                activeTab === 'history' ? 'bg-brand-green-100' : 'bg-neutral-50'
               )}>
                 <History className="w-5 h-5" />
               </div>
@@ -981,12 +981,12 @@ export default function SponsorDashboardPage() {
               onClick={() => setActiveTab('impact')}
               className={cn(
                 'flex flex-col items-center gap-1 py-2 px-4',
-                activeTab === 'impact' ? 'text-brand-gold-600' : 'text-neutral-400'
+                activeTab === 'impact' ? 'text-brand-green-600' : 'text-neutral-400'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-xl flex items-center justify-center',
-                activeTab === 'impact' ? 'bg-brand-gold-100' : 'bg-neutral-50'
+                activeTab === 'impact' ? 'bg-brand-green-100' : 'bg-neutral-50'
               )}>
                 <TrendingUp className="w-5 h-5" />
               </div>
@@ -996,12 +996,12 @@ export default function SponsorDashboardPage() {
               onClick={() => setActiveTab('settings')}
               className={cn(
                 'flex flex-col items-center gap-1 py-2 px-4',
-                activeTab === 'settings' ? 'text-brand-gold-600' : 'text-neutral-400'
+                activeTab === 'settings' ? 'text-brand-green-600' : 'text-neutral-400'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-xl flex items-center justify-center',
-                activeTab === 'settings' ? 'bg-brand-gold-100' : 'bg-neutral-50'
+                activeTab === 'settings' ? 'bg-brand-green-100' : 'bg-neutral-50'
               )}>
                 <User className="w-5 h-5" />
               </div>

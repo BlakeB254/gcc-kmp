@@ -107,7 +107,7 @@ function WaitlistContent() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-gold-50 py-12 px-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 py-12 px-4">
         <div className="max-w-lg mx-auto text-center">
           <div className="mb-8">
             <Logo variant="short" size="lg" />
@@ -128,20 +128,20 @@ function WaitlistContent() {
             </p>
 
             {referralCode && (
-              <div className="bg-brand-gold-50 border border-brand-gold-200 rounded-xl p-4 mb-6">
-                <p className="text-sm text-brand-gold-800 mb-2">
+              <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-4 mb-6">
+                <p className="text-sm text-brand-green-800 mb-2">
                   Share your referral code to move up the list:
                 </p>
                 <div className="flex items-center justify-center gap-2">
-                  <span className="font-mono font-bold text-xl text-brand-gold-700 tracking-wide">
+                  <span className="font-mono font-bold text-xl text-brand-green-700 tracking-wide">
                     {referralCode}
                   </span>
                   <button
                     onClick={() => navigator.clipboard.writeText(referralCode)}
-                    className="p-2 rounded-lg hover:bg-brand-gold-100 transition-colors"
+                    className="p-2 rounded-lg hover:bg-brand-green-100 transition-colors"
                     title="Copy code"
                   >
-                    <svg className="w-5 h-5 text-brand-gold-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-5 h-5 text-brand-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                   </button>
@@ -152,13 +152,13 @@ function WaitlistContent() {
             <div className="flex flex-col gap-3">
               <Link
                 href="/"
-                className="inline-flex items-center justify-center gap-2 bg-brand-gold-600 hover:bg-brand-gold-700 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:shadow-lg"
+                className="inline-flex items-center justify-center gap-2 bg-brand-green-600 hover:bg-brand-green-700 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:shadow-lg"
               >
                 Back to Home
               </Link>
               <Link
                 href="/sponsor"
-                className="text-brand-gold-600 hover:text-brand-gold-700 font-medium text-sm"
+                className="text-brand-green-600 hover:text-brand-green-700 font-medium text-sm"
               >
                 Want to sponsor a block instead?
               </Link>
@@ -170,7 +170,7 @@ function WaitlistContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-sky-50 via-white to-brand-gold-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-blue-50 via-white to-brand-green-50 py-12 px-4">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -191,18 +191,18 @@ function WaitlistContent() {
         {/* Form Card */}
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-neutral-200 p-6 sm:p-8 shadow-lg">
           {/* Motivational banner */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-brand-sky-50 to-brand-gold-50 border border-brand-sky-200 rounded-xl">
+          <div className="mb-6 p-4 bg-gradient-to-r from-brand-blue-50 to-brand-green-50 border border-brand-blue-200 rounded-xl">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-brand-sky-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-brand-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-brand-blue-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-brand-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-medium text-brand-sky-800">
+                <p className="text-sm font-medium text-brand-blue-800">
                   You're part of something big
                 </p>
-                <p className="text-xs text-brand-sky-700 mt-1">
+                <p className="text-xs text-brand-blue-700 mt-1">
                   Every signup helps us plan our expansion. The more interest from your area, the faster we'll get there.
                 </p>
               </div>
@@ -233,7 +233,7 @@ function WaitlistContent() {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="you@example.com"
-                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-sky-400 focus:ring-4 focus:ring-brand-sky-50 focus:outline-none transition-all"
+                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-blue-400 focus:ring-4 focus:ring-brand-blue-50 focus:outline-none transition-all"
               />
             </div>
 
@@ -248,7 +248,7 @@ function WaitlistContent() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Your name"
-                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-sky-400 focus:ring-4 focus:ring-brand-sky-50 focus:outline-none transition-all"
+                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-blue-400 focus:ring-4 focus:ring-brand-blue-50 focus:outline-none transition-all"
               />
             </div>
 
@@ -264,7 +264,7 @@ function WaitlistContent() {
                 onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
                 placeholder="(555) 123-4567"
                 maxLength={14}
-                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-sky-400 focus:ring-4 focus:ring-brand-sky-50 focus:outline-none transition-all"
+                className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-blue-400 focus:ring-4 focus:ring-brand-blue-50 focus:outline-none transition-all"
               />
               <p className="text-xs text-neutral-500 mt-1">We'll text you when we launch in your area</p>
             </div>
@@ -281,7 +281,7 @@ function WaitlistContent() {
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="Your city"
-                  className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-sky-400 focus:ring-4 focus:ring-brand-sky-50 focus:outline-none transition-all"
+                  className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-blue-400 focus:ring-4 focus:ring-brand-blue-50 focus:outline-none transition-all"
                 />
               </div>
               <div>
@@ -295,7 +295,7 @@ function WaitlistContent() {
                   onChange={(e) => setFormData({ ...formData, zip: e.target.value.replace(/\D/g, '').slice(0, 5) })}
                   placeholder="12345"
                   maxLength={5}
-                  className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-sky-400 focus:ring-4 focus:ring-brand-sky-50 focus:outline-none transition-all"
+                  className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-base focus:border-brand-blue-400 focus:ring-4 focus:ring-brand-blue-50 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -323,7 +323,7 @@ function WaitlistContent() {
                     type="checkbox"
                     checked={formData.wantsToBeSponsor}
                     onChange={(e) => setFormData({ ...formData, wantsToBeSponsor: e.target.checked })}
-                    className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-gold-600 focus:ring-brand-gold-500"
+                    className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-green-600 focus:ring-brand-green-500"
                   />
                   <div>
                     <span className="text-sm font-medium text-neutral-900">Sponsor a block</span>
@@ -335,7 +335,7 @@ function WaitlistContent() {
                     type="checkbox"
                     checked={formData.wantsToVolunteer}
                     onChange={(e) => setFormData({ ...formData, wantsToVolunteer: e.target.checked })}
-                    className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-sky-600 focus:ring-brand-sky-500"
+                    className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-blue-600 focus:ring-brand-blue-500"
                   />
                   <div>
                     <span className="text-sm font-medium text-neutral-900">Volunteer my time</span>
@@ -351,7 +351,7 @@ function WaitlistContent() {
                 type="checkbox"
                 checked={formData.emailUpdates}
                 onChange={(e) => setFormData({ ...formData, emailUpdates: e.target.checked })}
-                className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-gold-600 focus:ring-brand-gold-500 mt-0.5"
+                className="w-5 h-5 rounded border-2 border-neutral-300 text-brand-green-600 focus:ring-brand-green-500 mt-0.5"
               />
               <span className="text-sm text-neutral-600">
                 Send me updates about GCC's expansion and community impact
@@ -365,8 +365,8 @@ function WaitlistContent() {
             disabled={isSubmitting || !formData.email}
             className={cn(
               'w-full mt-8 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-semibold text-white shadow-lg transition-all',
-              'bg-brand-sky-600 hover:bg-brand-sky-700 hover:shadow-xl active:scale-[0.98]',
-              'focus:outline-none focus:ring-2 focus:ring-brand-sky-500 focus:ring-offset-2',
+              'bg-brand-blue-600 hover:bg-brand-blue-700 hover:shadow-xl active:scale-[0.98]',
+              'focus:outline-none focus:ring-2 focus:ring-brand-blue-500 focus:ring-offset-2',
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
           >
@@ -394,14 +394,14 @@ function WaitlistContent() {
           {isFromWorkerSignup ? (
             <>
               Live in North Lawndale?{' '}
-              <Link href="/worker/signup" className="text-brand-gold-600 font-semibold hover:underline">
+              <Link href="/worker/signup" className="text-brand-green-600 font-semibold hover:underline">
                 Continue signing up
               </Link>
             </>
           ) : (
             <>
               Ready to get started?{' '}
-              <Link href="/" className="text-brand-gold-600 font-semibold hover:underline">
+              <Link href="/" className="text-brand-green-600 font-semibold hover:underline">
                 Back to home
               </Link>
             </>
@@ -415,7 +415,7 @@ function WaitlistContent() {
 // Loading fallback for Suspense
 function WaitlistLoading() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-sky-50 via-white to-brand-gold-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-blue-50 via-white to-brand-green-50 py-12 px-4">
       <div className="max-w-lg mx-auto">
         <div className="text-center mb-8">
           <div className="mb-6">

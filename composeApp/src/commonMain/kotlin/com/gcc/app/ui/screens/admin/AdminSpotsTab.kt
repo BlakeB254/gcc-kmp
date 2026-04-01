@@ -124,8 +124,8 @@ internal fun AdminSpotsTab(
                         onClick = { showArchived = true },
                         label = { Text("Archived (${archivedReports.size})") },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                            selectedLabelColor = GccGold,
+                            selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                            selectedLabelColor = GccSky,
                         ),
                     )
                 }
@@ -185,9 +185,9 @@ internal fun AdminSpotsTab(
                 } ?: "No description"
                 val mediaCount = report.mediaUrls.size
                 val statusColor = when (report.status) {
-                    CommunityReportStatus.PENDING -> GccGold
+                    CommunityReportStatus.PENDING -> GccSky
                     CommunityReportStatus.VERIFIED -> GccGreen
-                    CommunityReportStatus.RESOLVED -> GccGold
+                    CommunityReportStatus.RESOLVED -> GccSky
                     CommunityReportStatus.ACKNOWLEDGED -> GccBlue
                     CommunityReportStatus.REJECTED -> GccError
                 }
@@ -237,12 +237,12 @@ internal fun AdminSpotsTab(
                                     report.tags.take(4).forEach { tag ->
                                         Surface(
                                             shape = RoundedCornerShape(4.dp),
-                                            color = GccGold.copy(alpha = 0.1f),
+                                            color = GccSky.copy(alpha = 0.1f),
                                         ) {
                                             Text(
                                                 tag.name.lowercase(),
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = GccGold,
+                                                color = GccSky,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                             )
                                         }

@@ -195,9 +195,9 @@ export default function PostDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-brand-gold-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-brand-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-neutral-500">Loading post...</p>
         </div>
       </div>
@@ -206,10 +206,10 @@ export default function PostDetailPage() {
 
   if (error || !post) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-500 mb-4">{error || 'Post not found'}</p>
-          <Link href="/community" className="text-brand-gold-600 hover:underline">
+          <Link href="/community" className="text-brand-green-600 hover:underline">
             Return to community
           </Link>
         </div>
@@ -218,7 +218,7 @@ export default function PostDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-brown-50 via-white to-brand-gold-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
       {/* Header */}
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-40">
         <div className="section-container py-4">
@@ -286,14 +286,14 @@ export default function PostDetailPage() {
 
               {/* Author */}
               <div className="flex items-center gap-3 mb-6 pb-6 border-b border-neutral-100">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-gold-400 to-brand-gold-600 flex items-center justify-center text-white font-bold">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-green-400 to-brand-green-600 flex items-center justify-center text-white font-bold">
                   {post.authorName.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-neutral-900">{post.authorName}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      post.authorType === 'worker' ? 'bg-brand-gold-100 text-brand-gold-700' : 'bg-brand-green-100 text-brand-green-700'
+                      post.authorType === 'worker' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-green-100 text-brand-green-700'
                     }`}>
                       {post.authorType}
                     </span>
@@ -368,7 +368,7 @@ export default function PostDetailPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-neutral-900 text-sm">{reply.authorName}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            reply.authorType === 'worker' ? 'bg-brand-gold-100 text-brand-gold-700' : 'bg-brand-green-100 text-brand-green-700'
+                            reply.authorType === 'worker' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-green-100 text-brand-green-700'
                           }`}>
                             {reply.authorType}
                           </span>
@@ -398,7 +398,7 @@ export default function PostDetailPage() {
                       {post.status === 'active' && (
                         <button
                           onClick={() => setReplyingTo(reply)}
-                          className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-brand-gold-600 transition-colors"
+                          className="flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-brand-green-600 transition-colors"
                         >
                           <Reply className="w-3.5 h-3.5" />
                           Reply
@@ -434,7 +434,7 @@ export default function PostDetailPage() {
                   placeholder="Write your reply..."
                   rows={3}
                   maxLength={5000}
-                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-gold-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-brand-green-500 focus:border-transparent transition-all resize-none"
                   required
                 />
                 <div className="flex items-center justify-between mt-3">
@@ -444,7 +444,7 @@ export default function PostDetailPage() {
                   <button
                     type="submit"
                     disabled={isSubmitting || !replyContent.trim()}
-                    className="px-5 py-2 bg-brand-gold-500 text-white font-semibold rounded-lg hover:bg-brand-gold-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                    className="px-5 py-2 bg-brand-green-500 text-white font-semibold rounded-lg hover:bg-brand-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                   >
                     {isSubmitting ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

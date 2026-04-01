@@ -70,8 +70,8 @@ export function Header() {
               href={link.href}
               className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                 pathname.startsWith(link.href.split('/').slice(0, 2).join('/'))
-                  ? 'text-brand-gold-600 bg-brand-gold-50'
-                  : 'text-neutral-600 hover:text-brand-brown-700 hover:bg-neutral-50'
+                  ? 'text-brand-green-600 bg-brand-green-50'
+                  : 'text-neutral-600 hover:text-brand-green-700 hover:bg-neutral-50'
               }`}
             >
               {link.label}
@@ -90,7 +90,7 @@ export function Header() {
           </Link>
           <Link
             href="/worker/signup"
-            className="text-sm font-medium py-2 px-4 rounded-lg border-2 border-brand-gold-500 text-brand-gold-700 hover:bg-brand-gold-50 transition-colors"
+            className="text-sm font-medium py-2 px-4 rounded-lg border-2 border-brand-green-500 text-brand-green-700 hover:bg-brand-green-50 transition-colors"
           >
             Start Earning
           </Link>
@@ -145,7 +145,7 @@ export function Header() {
               </Link>
               <Link
                 href="/worker/signup"
-                className="flex-1 py-2.5 px-4 text-sm font-semibold text-center text-brand-gold-700 border-2 border-brand-gold-500 hover:bg-brand-gold-50 rounded-lg transition-colors"
+                className="flex-1 py-2.5 px-4 text-sm font-semibold text-center text-brand-green-700 border-2 border-brand-green-500 hover:bg-brand-green-50 rounded-lg transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Start Earning

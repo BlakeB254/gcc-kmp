@@ -278,8 +278,8 @@ private fun LocationPhase(
                 onClick = { onAreaModeChange(AreaMode.CIRCLE) },
                 label = { Text("Circle") },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                    selectedLabelColor = GccGold,
+                    selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                    selectedLabelColor = GccSky,
                 ),
             )
             FilterChip(
@@ -287,8 +287,8 @@ private fun LocationPhase(
                 onClick = { onAreaModeChange(AreaMode.RECTANGLE) },
                 label = { Text("Rectangle") },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                    selectedLabelColor = GccGold,
+                    selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                    selectedLabelColor = GccSky,
                 ),
             )
         }
@@ -337,24 +337,24 @@ private fun LocationPhase(
                 when (areaMode) {
                     AreaMode.CIRCLE -> {
                         val pixelRadius = metersToPixels(radiusMeters, spotLat, mapZoom)
-                        drawCircle(color = GccGold.copy(alpha = 0.2f), radius = pixelRadius, center = center)
-                        drawCircle(color = GccGold, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                        drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
+                        drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
                     AreaMode.RECTANGLE -> {
                         val pxW = metersToPixels(rectWidth, spotLat, mapZoom)
                         val pxH = metersToPixels(rectHeight, spotLat, mapZoom)
                         val topLeft = androidx.compose.ui.geometry.Offset(center.x - pxW, center.y - pxH)
                         val rectSize = androidx.compose.ui.geometry.Size(pxW * 2, pxH * 2)
-                        drawRect(color = GccGold.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
-                        drawRect(color = GccGold, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+                        drawRect(color = GccSky.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
+                        drawRect(color = GccSky, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
                 }
 
                 // Center crosshair — big target ring + crosshair lines
-                drawCircle(color = GccGold, radius = 20f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
-                drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x - 30f, center.y), end = androidx.compose.ui.geometry.Offset(center.x + 30f, center.y), strokeWidth = 1.5f)
-                drawLine(color = GccGold.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x, center.y - 30f), end = androidx.compose.ui.geometry.Offset(center.x, center.y + 30f), strokeWidth = 1.5f)
-                drawCircle(color = GccGold, radius = 3f, center = center)
+                drawCircle(color = GccSky, radius = 20f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                drawLine(color = GccSky.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x - 30f, center.y), end = androidx.compose.ui.geometry.Offset(center.x + 30f, center.y), strokeWidth = 1.5f)
+                drawLine(color = GccSky.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(center.x, center.y - 30f), end = androidx.compose.ui.geometry.Offset(center.x, center.y + 30f), strokeWidth = 1.5f)
+                drawCircle(color = GccSky, radius = 3f, center = center)
             }
 
             // Floating info card
@@ -400,7 +400,7 @@ private fun LocationPhase(
                 Text(
                     label,
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = GccGold,
+                    color = GccSky,
                 )
             }
         }
@@ -408,7 +408,7 @@ private fun LocationPhase(
         Spacer(modifier = Modifier.height(12.dp))
 
         // Size controls
-        GccCard(accentColor = CardAccentGold) {
+        GccCard(accentColor = CardAccentSky) {
             Text(
                 "Affected Area",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
@@ -426,7 +426,7 @@ private fun LocationPhase(
                             modifier = Modifier.size(36.dp),
                             shape = CircleShape,
                             contentPadding = PaddingValues(0.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
                         ) { Text("\u2212", style = MaterialTheme.typography.titleMedium) }
                         Slider(
                             value = radiusMeters.toFloat(),
@@ -434,17 +434,17 @@ private fun LocationPhase(
                             valueRange = 5f..100f,
                             steps = 18,
                             modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                            colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                         )
                         OutlinedButton(
                             onClick = { onRadiusChange((radiusMeters + 5).coerceAtMost(100.0).toFloat()) },
                             modifier = Modifier.size(36.dp),
                             shape = CircleShape,
                             contentPadding = PaddingValues(0.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGold),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
                         ) { Text("+", style = MaterialTheme.typography.titleMedium) }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("${radiusMeters.toInt()}m", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                        Text("${radiusMeters.toInt()}m", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = GccSky)
                     }
                 }
                 AreaMode.RECTANGLE -> {
@@ -457,10 +457,10 @@ private fun LocationPhase(
                             valueRange = 5f..100f,
                             steps = 18,
                             modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                            colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("${rectWidth.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                        Text("${rectWidth.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccSky)
                     }
                     // Height slider
                     Text("Height", style = MaterialTheme.typography.labelSmall, color = TextMuted)
@@ -471,10 +471,10 @@ private fun LocationPhase(
                             valueRange = 5f..100f,
                             steps = 18,
                             modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(thumbColor = GccGold, activeTrackColor = GccGold),
+                            colors = SliderDefaults.colors(thumbColor = GccSky, activeTrackColor = GccSky),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("${rectHeight.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccGold)
+                        Text("${rectHeight.toInt()}m", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = GccSky)
                     }
                 }
             }
@@ -567,8 +567,8 @@ private fun DescriptionPhase(
                         onClick = { onToggleTag(tag) },
                         label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = GccGold.copy(alpha = 0.15f),
-                            selectedLabelColor = GccGold,
+                            selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                            selectedLabelColor = GccSky,
                         ),
                     )
                 }
@@ -608,7 +608,7 @@ private fun DescriptionPhase(
                     Text(
                         if (selectedTags.isNotEmpty()) "${selectedTags.size} tag${if (selectedTags.size != 1) "s" else ""}" else "No tags",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (selectedTags.isNotEmpty()) GccGold else TextSubtle,
+                        color = if (selectedTags.isNotEmpty()) GccSky else TextSubtle,
                     )
                 }
             }
@@ -759,7 +759,7 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
                 style = MaterialTheme.typography.bodySmall,
                 color = when {
                     sev >= 4 -> GccError
-                    sev >= 3 -> CardAccentGold
+                    sev >= 3 -> CardAccentSky
                     else -> TextMuted
                 },
             )
@@ -837,7 +837,7 @@ private fun ResultPhase(
         item {
             report?.let {
                 if (it.observerRewardPoints > 0) {
-                    GccCard(accentColor = CardAccentGold) {
+                    GccCard(accentColor = CardAccentSky) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -857,7 +857,7 @@ private fun ResultPhase(
                             Text(
                                 "+${it.observerRewardPoints} pts",
                                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                                color = GccGold,
+                                color = GccSky,
                             )
                         }
                     }
@@ -1038,7 +1038,7 @@ private fun BountyMatchCard(
     bounty: Bounty,
     onAccept: () -> Unit,
 ) {
-    GccCard(accentColor = CardAccentGold) {
+    GccCard(accentColor = CardAccentSky) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1071,7 +1071,7 @@ private fun BountyMatchCard(
                 Text(
                     "$${bounty.amount / 100}",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = GccGold,
+                    color = GccSky,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(onClick = onAccept) {

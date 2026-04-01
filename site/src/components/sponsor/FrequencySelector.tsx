@@ -34,8 +34,8 @@ export function FrequencySelector({ blockCount, sponsorType, onSponsorTypeChange
             aria-label={`${label}${sub ? ` — $${amount}${sub}` : ` — $${amount}`}`}
             className={`p-4 rounded-xl border-2 text-center transition-all duration-200 relative hover-lift ${
               sponsorType === value
-                ? 'border-brand-gold-500 bg-brand-gold-50 shadow-lg'
-                : 'border-neutral-200 bg-white hover:border-brand-gold-300'
+                ? 'border-brand-green-500 bg-brand-green-50 shadow-lg'
+                : 'border-neutral-200 bg-white hover:border-brand-green-300'
             }`}
           >
             {badge && (
