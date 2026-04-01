@@ -70,17 +70,15 @@ export async function POST(request: NextRequest) {
     // Calculate movement rankings
     const signupTimestamp = new Date()
 
-    const [{ waitlistCount }] = await db
-      .select({ waitlistCount: sql<number>`count(*)` })
-      .from(waitlistEntries)
-
-    const [{ workersCount }] = await db
-      .select({ workersCount: sql<number>`count(*)` })
-      .from(workers)
-
-    const [{ sponsorsCount }] = await db
-      .select({ sponsorsCount: sql<number>`count(*)` })
-      .from(sponsors)
+    const [
+      [{ waitlistCount }],
+      [{ workersCount }],
+      [{ sponsorsCount }],
+    ] = await Promise.all([
+      db.select({ waitlistCount: sql<number>`count(*)` }).from(waitlistEntries),
+      db.select({ workersCount: sql<number>`count(*)` }).from(workers),
+      db.select({ sponsorsCount: sql<number>`count(*)` }).from(sponsors),
+    ])
 
     const globalRank = Number(waitlistCount) + Number(workersCount) + Number(sponsorsCount) + 1
     const earlyAdopterTier = getEarlyAdopterTier(globalRank)

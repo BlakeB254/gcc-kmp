@@ -42,12 +42,10 @@ function WorkerSignupForm() {
   const updateForm = useCallback((updates: Partial<FormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
     setError(null)
-    Object.keys(updates).forEach((key) => {
-      setFieldErrors((prev) => {
-        const next = { ...prev }
-        delete next[key]
-        return next
-      })
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      Object.keys(updates).forEach((key) => delete next[key])
+      return next
     })
   }, [])
 
