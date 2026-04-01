@@ -42,7 +42,8 @@ fun buildCommunityAreasGeoJson(areas: List<CommunityArea> = chicagoCommunityArea
  */
 fun buildRoutesGeoJson(routeCoordinates: List<List<Coordinates>>): String {
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
-    val features = routeCoordinates.mapIndexed { index, coords ->
+    val features = routeCoordinates.mapIndexedNotNull { index, coords ->
+        if (coords.size < 2) return@mapIndexedNotNull null // LineString needs >= 2 positions
         val closed = closeLoop(coords)
         val lineCoords = closed.joinToString(",") { "[${it.lng},${it.lat}]" }
         """{"type":"Feature","properties":{"routeIndex":$index},"geometry":{"type":"LineString","coordinates":[$lineCoords]}}"""
@@ -91,7 +92,8 @@ private fun closeLoop(coords: List<Coordinates>): List<Coordinates> {
  */
 fun buildRoutePolygonsGeoJson(routeCoordinates: List<List<Coordinates>>): String {
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
-    val features = routeCoordinates.mapIndexed { index, coords ->
+    val features = routeCoordinates.mapIndexedNotNull { index, coords ->
+        if (coords.size < 3) return@mapIndexedNotNull null // Polygon ring needs >= 4 positions (3 unique + close)
         val closed = closeLoop(coords)
         val ring = closed.joinToString(",") { "[${it.lng},${it.lat}]" }
         """{"type":"Feature","properties":{"routeIndex":$index},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
