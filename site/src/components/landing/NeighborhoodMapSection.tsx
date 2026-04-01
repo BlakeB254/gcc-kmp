@@ -744,11 +744,10 @@ export function NeighborhoodMapSection() {
                     ],
                   }}
                 />
-                {/* Individual dots — color by spot status */}
+                {/* Individual dots — always visible, color by spot status */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
-                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -760,17 +759,17 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 4,
-                      15, 6,
-                      17, 8,
+                      8, 2, 10, 3, 12, 4, 14, 5,
+                      15, 6, 17, 8,
                     ],
                     'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': 1.5,
+                    'circle-stroke-width': [
+                      'interpolate', ['linear'], ['zoom'],
+                      8, 0.5, 12, 1, 15, 1.5,
+                    ],
                     'circle-opacity': [
                       'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 0,
-                      14.5, 0.8,
-                      15, 1,
+                      8, 0.7, 12, 0.85, 15, 1,
                     ],
                   }}
                 />
