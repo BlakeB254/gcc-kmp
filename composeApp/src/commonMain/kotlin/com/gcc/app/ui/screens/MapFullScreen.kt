@@ -21,9 +21,10 @@ import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.MyLocationButton
 import com.gcc.app.ui.map.RouteOverlay
-import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.map.findCommunityAreaForLocation
+import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.GccBottomNavBar
 import com.gcc.app.ui.components.NetworkImage
@@ -114,19 +115,15 @@ fun MapFullScreen(
         }
     }
 
-    // Compute camera center from the service area bounds (North Lawndale)
-    val serviceArea = remember {
-        chicagoCommunityAreas.find { it.isServiceArea }
+    val resolved = remember(uiState.serviceArea, currentLocation) {
+        resolveMapCenter(
+            serviceArea = uiState.serviceArea,
+            currentLocation = currentLocation,
+        )
     }
-    val myAreaCenterLat = serviceArea?.let { (it.bounds.north + it.bounds.south) / 2.0 }
-        ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
-    val myAreaCenterLng = serviceArea?.let { (it.bounds.east + it.bounds.west) / 2.0 }
-        ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
-
-    // Camera center and zoom depend on mode (overridden when tapping a spot/bounty)
-    val centerLat = overrideCenterLat ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLat else MapStyles.NORTH_LAWNDALE_CENTER_LAT
-    val centerLng = overrideCenterLng ?: if (mapMode == MapMode.MY_AREA) myAreaCenterLng else MapStyles.NORTH_LAWNDALE_CENTER_LNG
-    val mapZoom = overrideZoom ?: if (mapMode == MapMode.MY_AREA) MapStyles.ZOOM_SERVICE_AREA else MapStyles.ZOOM_CITY
+    val centerLat = overrideCenterLat ?: resolved.lat
+    val centerLng = overrideCenterLng ?: resolved.lng
+    val mapZoom = overrideZoom ?: resolved.zoom
 
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
@@ -170,18 +167,8 @@ fun MapFullScreen(
         }
     }
 
-    // Check if user is outside their service area
-    val isExploring = remember(currentLocation, serviceArea) {
-        val loc = currentLocation ?: return@remember false
-        val sa = serviceArea ?: return@remember false
-        loc.lat !in sa.bounds.south..sa.bounds.north ||
-        loc.lng !in sa.bounds.west..sa.bounds.east
-    }
-
     // Worker info for the panel
-    val areaName = uiState.serviceAreaName
-        ?: serviceArea?.displayName?.replace("\n", " ")
-        ?: "North Lawndale"
+    val areaName = uiState.serviceAreaName ?: "Your Area"
     val totalRoutes = uiState.routes.size
     val jobsCompleted = uiState.worker?.stats?.jobsCompleted ?: 0
     val totalEarnings = uiState.worker?.stats?.totalEarnings ?: 0
@@ -250,7 +237,7 @@ fun MapFullScreen(
             onBountyTap = { bountyId ->
                 onBountyClick(bountyId)
             },
-            cameraBounds = if (mapMode == MapMode.MY_AREA && overrideCenterLat == null) serviceArea?.bounds else null,
+            cameraBounds = null,
             bounties = visibleBounties,
             spots = visibleSpots,
             mapMode = mapMode,
@@ -320,6 +307,23 @@ fun MapFullScreen(
                         selectedRouteForZoom = route
                     },
                     modifier = Modifier.align(Alignment.BottomStart),
+                )
+            }
+
+            // My Location button
+            if (currentLocation != null && selectedSpot == null) {
+                MyLocationButton(
+                    onClick = {
+                        overrideCenterLat = currentLocation?.lat
+                        overrideCenterLng = currentLocation?.lng
+                        overrideZoom = MapStyles.ZOOM_NEIGHBORHOOD
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(
+                            end = 16.dp,
+                            bottom = if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty()) 80.dp else 16.dp,
+                        ),
                 )
             }
 
