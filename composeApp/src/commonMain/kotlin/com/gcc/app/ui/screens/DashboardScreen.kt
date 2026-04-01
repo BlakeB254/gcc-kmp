@@ -26,8 +26,9 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.MyLocationButton
 import com.gcc.app.ui.map.RouteThumbnail
-import com.gcc.app.ui.map.chicagoCommunityAreas
+import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.ui.theme.*
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.viewmodel.DashboardViewModel
@@ -99,16 +100,13 @@ fun DashboardScreen(
         }
     }
 
-    // Always center on the user's service area (community area) for a consistent view
-    val serviceArea = remember { chicagoCommunityAreas.find { it.isServiceArea } }
-    val mapCenter = remember(serviceArea) {
-        val sa = serviceArea
-        if (sa != null) Pair(
-            (sa.bounds.north + sa.bounds.south) / 2.0,
-            (sa.bounds.east + sa.bounds.west) / 2.0,
-        ) else Pair(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
+    val mapCenter = remember(uiState.serviceArea, currentLocation) {
+        resolveMapCenter(
+            serviceArea = uiState.serviceArea,
+            currentLocation = currentLocation,
+            defaultZoom = MapStyles.ZOOM_NEIGHBORHOOD,
+        )
     }
-    val mapZoom = MapStyles.ZOOM_SERVICE_AREA
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -209,9 +207,9 @@ fun DashboardScreen(
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
-                        centerLat = mapCenter.first,
-                        centerLng = mapCenter.second,
-                        zoom = mapZoom,
+                        centerLat = mapCenter.lat,
+                        centerLng = mapCenter.lng,
+                        zoom = mapCenter.zoom,
                         currentLocation = currentLocation,
                         routeCoordinates = routeCoordinates,
                         spots = uiState.spots,
@@ -226,22 +224,33 @@ fun DashboardScreen(
                             .clickable(onClick = onMapClick),
                     )
 
-                    // Expand affordance — small icon in bottom-right corner
-                    Surface(
+                    // Expand affordance + my-location button
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(8.dp)
-                            .size(28.dp),
-                        shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.85f),
-                        shadowElevation = 2.dp,
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                "\u2922", // ⤢ expand arrows
-                                fontSize = 14.sp,
-                                color = GccGreenDark,
+                        if (currentLocation != null) {
+                            MyLocationButton(
+                                onClick = onMapClick,
+                                modifier = Modifier.size(28.dp),
                             )
+                        }
+                        Surface(
+                            modifier = Modifier.size(28.dp),
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.85f),
+                            shadowElevation = 2.dp,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "\u2922",
+                                    fontSize = 14.sp,
+                                    color = GccGreenDark,
+                                )
+                            }
                         }
                     }
                 }
