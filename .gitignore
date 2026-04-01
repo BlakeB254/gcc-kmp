@@ -45,3 +45,6 @@ site/.env.local
 .env.production
 .env.development
 .vercel
+
+# Fastlane secrets
+iosApp/fastlane/api_key.json

@@ -1,0 +1,25 @@
+# App Store submission configuration
+app_identifier "com.globalcommunitycleaners.worker"
+team_id "7BBNW25LZM"
+
+# API Key authentication (no Apple ID login needed)
+api_key_path "./fastlane/api_key.json"
+
+# Categories
+primary_category "PRODUCTIVITY"
+secondary_category "NAVIGATION"
+
+# Age rating
+app_rating_config_path "./fastlane/rating_config.json"
+
+# Paths
+metadata_path "./fastlane/metadata"
+screenshots_path "./fastlane/screenshots"
+
+# Options
+overwrite_screenshots true
+skip_binary_upload true
+submit_for_review false
+automatic_release false
+phased_release false
+run_precheck_before_submit false
