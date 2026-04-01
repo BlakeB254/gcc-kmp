@@ -93,10 +93,10 @@ export const workers = pgTable('workers', {
   emailVerifiedAt: timestamp('email_verified_at', { mode: 'string', withTimezone: true }),
 
   // Address
-  addressStreet: varchar('address_street').notNull(),
-  addressCity: varchar('address_city').default('Chicago').notNull(),
-  addressState: varchar('address_state').default('IL').notNull(),
-  addressZip: varchar('address_zip').notNull(),
+  addressStreet: varchar('address_street').default('').notNull(),
+  addressCity: varchar('address_city').default('').notNull(),
+  addressState: varchar('address_state').default('').notNull(),
+  addressZip: varchar('address_zip').default('').notNull(),
   addressNeighborhood: varchar('address_neighborhood'), // Chicago community area name
   addressIsNorthLawndale: boolean('address_is_north_lawndale'),
 
