@@ -1,6 +1,8 @@
 import { ImageResponse } from 'next/og'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 export const alt = 'Global Community Cleaners - Clean Streets. Real Money. Your Neighborhood.'
 export const size = {
@@ -10,6 +12,9 @@ export const size = {
 export const contentType = 'image/png'
 
 export default async function Image() {
+  const logoData = await readFile(join(process.cwd(), 'public/images/gcc-logo.png'))
+  const logoSrc = `data:image/png;base64,${logoData.toString('base64')}`
+
   return new ImageResponse(
     (
       <div
@@ -50,42 +55,16 @@ export default async function Image() {
             position: 'relative',
           }}
         >
-          {/* Logo/Brand mark */}
-          <div
+          {/* Logo */}
+          <img
+            src={logoSrc}
+            width={400}
+            height={267}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '20px',
               marginBottom: '30px',
+              filter: 'drop-shadow(0 8px 32px rgba(0, 0, 0, 0.3))',
             }}
-          >
-            <div
-              style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '20px',
-                background: 'linear-gradient(135deg, #16763A 0%, #126431 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '40px',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-              }}
-            >
-              🧹
-            </div>
-            <span
-              style={{
-                fontSize: '48px',
-                fontWeight: 800,
-                color: 'white',
-                textShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                letterSpacing: '-1px',
-              }}
-            >
-              GCC
-            </span>
-          </div>
+          />
 
           {/* Main headline */}
           <h1

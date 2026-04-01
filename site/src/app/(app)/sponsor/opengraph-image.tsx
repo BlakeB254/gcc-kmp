@@ -191,7 +191,7 @@ export default async function Image() {
           }}
         >
           <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '18px' }}>
-            🧹 Global Community Cleaners — globalcommunitycleaners.org/sponsor
+            Global Community Cleaners — globalcommunitycleaners.org/sponsor
           </span>
         </div>
       </div>
