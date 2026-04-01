@@ -32,8 +32,8 @@ class RegisterViewModel(
         phone: String,
         password: String,
         addressStreet: String = "",
-        addressCity: String = "Chicago",
-        addressState: String = "IL",
+        addressCity: String = "",
+        addressState: String = "",
         addressZip: String = "",
     ) {
         val validationError = validate(name, email, password)

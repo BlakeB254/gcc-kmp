@@ -34,8 +34,8 @@ fun RegisterScreen(
 
     // Address
     var addressStreet by remember { mutableStateOf("") }
-    var addressCity by remember { mutableStateOf("Chicago") }
-    var addressState by remember { mutableStateOf("IL") }
+    var addressCity by remember { mutableStateOf("") }
+    var addressState by remember { mutableStateOf("") }
     var addressZip by remember { mutableStateOf("") }
 
     LaunchedEffect(uiState.isRegistered) {
@@ -129,12 +129,12 @@ fun RegisterScreen(
 
                 // --- Address ---
                 Text(
-                    "Your Address",
+                    "Your Address (Optional)",
                     style = MaterialTheme.typography.titleSmall,
                     color = TextMuted,
                 )
                 Text(
-                    "Required for neighborhood verification",
+                    "Can be added later during verification",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted.copy(alpha = 0.7f),
                 )
@@ -160,7 +160,7 @@ fun RegisterScreen(
                     GccTextField(
                         value = addressState,
                         onValueChange = { addressState = it },
-                        label = "State",
+                        label = "State / Province",
                         modifier = Modifier.weight(0.5f),
                         capitalization = KeyboardCapitalization.Characters,
                     )
