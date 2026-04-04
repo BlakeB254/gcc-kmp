@@ -316,7 +316,7 @@ fun MapFullScreen(
                     onClick = {
                         overrideCenterLat = currentLocation?.lat
                         overrideCenterLng = currentLocation?.lng
-                        overrideZoom = MapStyles.ZOOM_NEIGHBORHOOD
+                        overrideZoom = MapStyles.ZOOM_ACTIVE_JOB
                     },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

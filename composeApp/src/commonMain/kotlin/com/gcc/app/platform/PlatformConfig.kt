@@ -19,3 +19,6 @@ expect fun getPlatformName(): String
  * On other platforms, this is a no-op.
  */
 expect fun saveToSystemCredentials(email: String, password: String)
+
+/** Open a URL in the system browser (Safari on iOS, Chrome on Android). */
+expect fun openUrl(url: String)

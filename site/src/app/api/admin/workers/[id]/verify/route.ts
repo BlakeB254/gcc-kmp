@@ -30,6 +30,22 @@ export async function POST(
       verificationReviewedAt: new Date(),
     }
 
+    // If approving, verify that required documents have been submitted
+    if (status === 'approved') {
+      const [worker] = await db.select().from(workers).where(eq(workers.id, workerId)).limit(1)
+      if (!worker) {
+        return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
+      }
+      const hasGovId = worker.verificationGovernmentIdId || governmentIdStatus === 'approved'
+      const hasProofOfAddress = worker.verificationProofOfAddressId || proofOfAddressStatus === 'approved'
+      if (!hasGovId || !hasProofOfAddress) {
+        return NextResponse.json(
+          { error: 'Cannot approve: worker has not submitted required verification documents (government ID and proof of address)' },
+          { status: 400 }
+        )
+      }
+    }
+
     if (status) updates.verificationStatus = status
     if (governmentIdStatus) updates.verificationGovernmentIdStatus = governmentIdStatus
     if (proofOfAddressStatus) updates.verificationProofOfAddressStatus = proofOfAddressStatus

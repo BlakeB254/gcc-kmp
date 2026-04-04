@@ -51,12 +51,8 @@ fun BountyListScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GccLogo(size = 24.dp)
-                        Text("Bounties")
-                    }
-                },
+                title = { Text("Bounties") },
+                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -143,75 +139,130 @@ private fun BountyListItem(
         accentColor = CardAccentSky,
         onClick = onClick,
     ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(13.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                // Thumbnail image
-                if (bounty.mediaUrls.isNotEmpty()) {
-                    BountyThumbnail(
-                        bounty = bounty,
-                        modifier = Modifier.size(80.dp),
-                    )
+        // Title + amount row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    bounty.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BountyStatusChip(bounty.status)
+                    bounty.communityArea?.let { area ->
+                        Text(area, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
                 }
+            }
+            Text(
+                "$$dollars.${cents.padTwo()}",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = GccGreen,
+            )
+        }
 
-                // Text content
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Text(
-                            bounty.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            "$$dollars.${cents.padTwo()}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = GccGreen,
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BountyStatusChip(bounty.status)
-                        bounty.communityArea?.let { area ->
-                            Text(
-                                area,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted,
+        bounty.description?.let { desc ->
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Location map + spot photos row
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().height(100.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Mini location map with cross streets
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp)),
+            ) {
+                com.gcc.app.ui.map.GccMap(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = bounty.locationLat,
+                    centerLng = bounty.locationLng,
+                    zoom = 15.5,
+                    currentLocation = com.gcc.shared.model.Coordinates(
+                        lat = bounty.locationLat,
+                        lng = bounty.locationLng,
+                    ),
+                    enableGestures = false,
+                    showBuildings = false,
+                    showGridLines = false,
+                )
+                // Cross street label overlay
+                bounty.neighborhood?.let { hood ->
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(4.dp)
+                            .background(
+                                Color.Black.copy(alpha = 0.6f),
+                                RoundedCornerShape(4.dp),
                             )
-                        }
-                    }
-                    bounty.description?.let { desc ->
-                        Spacer(modifier = Modifier.height(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
                         Text(
-                            desc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            hood,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
                         )
                     }
                 }
             }
 
-            // Photo count badge
-            if (bounty.mediaUrls.size > 1) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "\uD83D\uDCF7 ${bounty.mediaUrls.size} photos",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSubtle,
-                )
+            // Spot photos (right side)
+            if (bounty.mediaUrls.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    bounty.mediaUrls.take(2).forEach { url ->
+                        val isReal = url.startsWith("http")
+                        if (isReal) {
+                            com.gcc.app.ui.components.NetworkImage(
+                                url = url,
+                                contentDescription = "Spot photo",
+                                modifier = Modifier
+                                    .size(if (bounty.mediaUrls.size == 1) 100.dp else 48.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                decodeWidth = 128,
+                                decodeHeight = 128,
+                            )
+                        } else {
+                            BountyThumbnail(
+                                bounty = bounty,
+                                modifier = Modifier
+                                    .size(if (bounty.mediaUrls.size == 1) 100.dp else 48.dp),
+                            )
+                        }
+                    }
+                    if (bounty.mediaUrls.size > 2) {
+                        Text(
+                            "+${bounty.mediaUrls.size - 2} more",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSubtle,
+                        )
+                    }
+                }
             }
         }
     }

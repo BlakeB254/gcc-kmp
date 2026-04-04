@@ -35,15 +35,8 @@ fun AchievementsScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        GccLogo(size = 28.dp)
-                        Text("Achievements")
-                    }
-                },
+                title = { Text("Achievements") },
+                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     TextButton(onClick = onBack) {
                         Text("\u2190 Back", color = Color.White)

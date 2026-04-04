@@ -14,6 +14,7 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.initSecureStorageContext
+import com.gcc.app.platform.PlatformUrlOpener
 import com.gcc.app.platform.ShareManager
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.GlobalContext
@@ -31,6 +32,7 @@ class MainActivity : FragmentActivity() {
         LocationProvider.initContext(this)
         LocationTrackingController.initContext(this)
         ShareManager.initContext(this)
+        PlatformUrlOpener.initContext(this)
         PushNotificationManager.initContext(this)
         BiometricAuth.initActivity(this)
 

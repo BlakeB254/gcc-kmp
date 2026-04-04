@@ -36,6 +36,12 @@ class GccApiClient(
         })
     }
 
+    /** Unauthenticated client for website calls (no Bearer token). */
+    private val siteClient = HttpClient {
+        expectSuccess = false
+        install(ContentNegotiation) { json(this@GccApiClient.json) }
+    }
+
     // ── HTTP Helpers ───────────────────────────────────────────────────
 
     private fun checkUnauthorized(statusCode: Int) {
@@ -232,16 +238,31 @@ class GccApiClient(
         get("/api/wallet")
 
     suspend fun depositToWallet(amountCents: Int, fundType: String = "general"): SponsorWallet =
-        postJson("/api/wallet/deposit", mapOf("amount" to amountCents, "fundType" to fundType))
+        postJson("/api/wallet/deposit", mapOf("amount" to amountCents.toString(), "fundType" to fundType))
 
     suspend fun allocateWalletFunds(general: Int, route: Int, bounty: Int): SponsorWallet =
-        postJson("/api/wallet/allocate", mapOf("general" to general, "route" to route, "bounty" to bounty))
+        postJson("/api/wallet/allocate", mapOf("general" to general.toString(), "route" to route.toString(), "bounty" to bounty.toString()))
 
     suspend fun getWalletTransactions(limit: Int = 50, offset: Int = 0): List<WalletTransaction> =
         get("/api/wallet/transactions") {
             parameter("limit", limit)
             parameter("offset", offset)
         }
+
+    // ── Stripe Checkout (via website) ────────────────────────────────
+
+    suspend fun createCheckoutSession(request: CheckoutRequest): CheckoutResponse {
+        val siteUrl = "https://globalcommunitycleaners.org"
+        val response = siteClient.post("$siteUrl/api/contribute/checkout") {
+            contentType(io.ktor.http.ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("Checkout failed: $errorBody")
+        }
+        return response.body<CheckoutResponse>()
+    }
 
     // ── Feed Social ────────────────────────────────────────────────────
 
@@ -273,23 +294,68 @@ class GccApiClient(
     suspend fun register(request: RegisterRequest): AuthResponse =
         postJson("/api/auth/register", request)
 
+    suspend fun loginWithApple(
+        identityToken: String,
+        fullName: String?,
+        email: String?,
+    ): AuthResponse {
+        val siteUrl = "https://globalcommunitycleaners.org"
+        val response = siteClient.post("$siteUrl/api/auth/apple") {
+            contentType(io.ktor.http.ContentType.Application.Json)
+            setBody(AppleAuthRequest(identityToken = identityToken, fullName = fullName, email = email))
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("Apple auth failed: $errorBody")
+        }
+        return response.body<ApiResponse<AuthResponse>>().data
+    }
+
+    suspend fun loginWithGoogle(idToken: String): AuthResponse {
+        val siteUrl = "https://globalcommunitycleaners.org"
+        val response = siteClient.post("$siteUrl/api/auth/google") {
+            contentType(io.ktor.http.ContentType.Application.Json)
+            setBody(GoogleAuthRequest(idToken = idToken))
+        }
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("Google auth failed: $errorBody")
+        }
+        return response.body<ApiResponse<AuthResponse>>().data
+    }
+
     // ── Public API ────────────────────────────────────────────────────
 
     suspend fun verify2FA(twoFactorToken: String, code: String): AuthResponse =
         postJson("/api/auth/verify-2fa", Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
 
     suspend fun getSponsorWall(): List<Sponsor> {
-        val response = httpClient.get("$baseUrl/api/public/sponsor-wall")
-        if (!response.status.isSuccess()) {
-            val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
-        }
-        // The public sponsor-wall endpoint may return a raw array or ApiResponse wrapper
-        val text = response.bodyAsText()
+        val siteUrl = "https://globalcommunitycleaners.org"
         return try {
-            json.decodeFromString<ApiResponse<List<Sponsor>>>(text).data
+            val response = siteClient.get("$siteUrl/api/public/sponsor-wall")
+            if (!response.status.isSuccess()) return emptyList()
+            val body = response.body<kotlinx.serialization.json.JsonObject>()
+            val sponsorsArray = body["sponsors"] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+            val now = kotlinx.datetime.Clock.System.now()
+            sponsorsArray.mapNotNull { element ->
+                val obj = element as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(key: String): String? = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                fun int(key: String): Int = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
+                Sponsor(
+                    id = int("id"),
+                    name = str("name") ?: "Sponsor",
+                    email = "",
+                    type = try { SponsorType.valueOf((str("type") ?: "individual").uppercase()) } catch (_: Exception) { SponsorType.INDIVIDUAL },
+                    stats = SponsorStats(
+                        totalDonated = int("totalContribution"),
+                        blocksSponsored = int("blocksSponsored"),
+                    ),
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            }
         } catch (_: Exception) {
-            json.decodeFromString<List<Sponsor>>(text)
+            emptyList()
         }
     }
 
@@ -434,6 +500,56 @@ class GccApiClient(
     // Blocks
     suspend fun getAdminBlocks(): List<Block> =
         get("/api/admin/blocks")
+
+    suspend fun getAvailableBlocks(): List<Block> {
+        val siteUrl = "https://globalcommunitycleaners.org"
+        val response = siteClient.get("$siteUrl/api/blocks")
+        if (!response.status.isSuccess()) {
+            throw Exception("Failed to load blocks")
+        }
+        val body = response.body<kotlinx.serialization.json.JsonObject>()
+        val dataArray = body["data"] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+        val now = kotlinx.datetime.Clock.System.now()
+
+        // Fetch routes to get display names (e.g., "1500 S. Pulaski Road")
+        // Routes are ordered by code, blocks are ordered by code — they align 1:1
+        val routeDisplayNames = try {
+            val routes = getRoutes()
+            routes.sortedBy { it.code }.map { it.displayName }
+        } catch (_: Exception) { emptyList() }
+
+        val sortedBlocks = dataArray.mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+            .filter { obj ->
+                // Filter out test blocks
+                val name = (obj["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                name.lowercase() != "test" && name.isNotBlank()
+            }
+        return sortedBlocks.mapIndexed { index, obj ->
+            fun str(key: String): String? = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+            val blockName = str("name") ?: "Block"
+            val fromCorner = str("fromCorner")
+            // Use route display name, or build "1500 S. X Ave" from fromCorner
+            val displayName = routeDisplayNames.getOrNull(index)
+                ?: fromCorner?.let { "1500 $it" }
+                ?: blockName
+
+            Block(
+                id = str("id")?.toIntOrNull() ?: 0,
+                code = str("code") ?: "",
+                name = displayName,
+                status = str("status")?.let { s ->
+                    try { BlockStatus.valueOf(s.uppercase()) } catch (_: Exception) { BlockStatus.AVAILABLE }
+                } ?: BlockStatus.AVAILABLE,
+                displayImage = str("displayImage"),
+                createdAt = now,
+                updatedAt = now,
+            )
+        }
+    }
+
+    suspend fun sponsorBlock(request: SponsorBlockRequest): Block =
+        postJson("/api/blocks/${request.blockId}/sponsor", request)
 
     suspend fun createBlock(request: AdminBlockRequest): Block =
         postJson("/api/admin/blocks", request)

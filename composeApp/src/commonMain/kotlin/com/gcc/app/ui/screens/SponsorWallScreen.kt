@@ -54,15 +54,8 @@ fun SponsorWallScreen(onBack: () -> Unit = {}) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        GccLogo(size = 24.dp)
-                        Text("Our Sponsors")
-                    }
-                },
+                title = { Text("Our Sponsors") },
+                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

@@ -114,22 +114,26 @@ actual fun GccMap(
             )
         }
 
-        LaunchedEffect(camera.position) {
-            val pos = camera.position
-            val lat = pos.target.latitude
-            val lng = pos.target.longitude
-            val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
-            val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
-            if (clampedLat != lat || clampedLng != lng) {
-                camera.animateTo(
-                    finalPosition = pos.copy(
-                        target = Position(latitude = clampedLat, longitude = clampedLng)
-                    ),
-                    duration = 300.milliseconds,
-                )
-            }
+        LaunchedEffect(paddedBounds) {
+            snapshotFlow { camera.position }
+                .collect { pos ->
+                    val lat = pos.target.latitude
+                    val lng = pos.target.longitude
+                    val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
+                    val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
+                    if (clampedLat != lat || clampedLng != lng) {
+                        camera.animateTo(
+                            finalPosition = pos.copy(
+                                target = Position(latitude = clampedLat, longitude = clampedLng)
+                            ),
+                            duration = 300.milliseconds,
+                        )
+                    }
+                }
         }
     }
+
+    val scaleBarZoom by remember { derivedStateOf { camera.position.zoom } }
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -712,7 +716,7 @@ actual fun GccMap(
                     },
                 )
                 ScaleBar(
-                    zoom = camera.position.zoom,
+                    zoom = scaleBarZoom,
                 )
             }
         }

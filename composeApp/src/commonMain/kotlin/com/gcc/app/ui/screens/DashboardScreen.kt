@@ -167,6 +167,7 @@ fun DashboardScreen(
             // --- Header with greeting (respects safe area) ---
             item {
                 Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                Spacer(modifier = Modifier.height(8.dp))
             }
             item {
                 Row(
@@ -191,7 +192,7 @@ fun DashboardScreen(
                         }
                     }
                     GccLogo(
-                        size = 32.dp,
+                        size = 72.dp,
                         modifier = Modifier.clickable(onClick = onProfileClick),
                     )
                 }
@@ -294,7 +295,7 @@ fun DashboardScreen(
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC5",
-                        label = "Leader-\nboard",
+                        label = "Rankings",
                         bgColor = CardAccentPurple,
                         onClick = onLeaderboardClick,
                     )
@@ -303,18 +304,6 @@ fun DashboardScreen(
                         label = "Feed",
                         bgColor = GccGreen,
                         onClick = onFeedClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\u2B50",
-                        label = "Awards",
-                        bgColor = GccSky,
-                        onClick = onAchievementsClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\uD83D\uDC8E",
-                        label = "Points",
-                        bgColor = CardAccentSky,
-                        onClick = onPointsClick,
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDCCA",
@@ -327,18 +316,6 @@ fun DashboardScreen(
                         label = "Sponsors",
                         bgColor = CardAccentBlue,
                         onClick = onSponsorWallClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\uD83D\uDDFA\uFE0F",
-                        label = "Map",
-                        bgColor = GccGreenDark,
-                        onClick = onMapClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\u2699\uFE0F",
-                        label = "Settings",
-                        bgColor = TextMuted,
-                        onClick = onSettingsClick,
                     )
                 }
             }

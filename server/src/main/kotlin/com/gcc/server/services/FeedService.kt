@@ -27,22 +27,38 @@ class FeedService {
             try { FeedItemType.valueOf(it.uppercase()) } catch (_: Exception) { null }
         }
 
-        // 1. Spot reports
+        // 1. Spot reports — include photos and location
         if (typeFilter == null || typeFilter == FeedItemType.SPOT_REPORT) {
             val spots = CommunityReports
-                .join(Workers, JoinType.INNER) { CommunityReports.reporterId eq Workers.id }
+                .join(Workers, JoinType.LEFT) { CommunityReports.reporterId eq Workers.id }
                 .selectAll()
                 .orderBy(CommunityReports.createdAt, SortOrder.DESC)
                 .limit(perSourceLimit)
                 .map { row ->
+                    val coords = row[CommunityReports.coordinates]
+                    val lat = coords.getOrElse(1) { 0.0 }
+                    val lng = coords.getOrElse(0) { 0.0 }
+                    // Extract photo URLs from beforePhotos JSON array
+                    val photos = try {
+                        val json = row[CommunityReports.beforePhotos]
+                        if (json is kotlinx.serialization.json.JsonArray) {
+                            json.mapNotNull { el ->
+                                (el as? kotlinx.serialization.json.JsonPrimitive)?.content
+                            }
+                        } else emptyList()
+                    } catch (_: Exception) { emptyList<String>() }
+
                     FeedItem(
                         id = "spot_${row[CommunityReports.id]}",
                         type = FeedItemType.SPOT_REPORT,
-                        actorName = row[Workers.name],
-                        actorTier = enumValueOfOrDefault(row[Workers.earlyAdopterTier]),
-                        title = "Reported ${row[CommunityReports.type]} sighting",
+                        actorName = row.getOrNull(Workers.name) ?: row[CommunityReports.reporterName] ?: "Community Member",
+                        actorTier = row.getOrNull(Workers.earlyAdopterTier)?.let { enumValueOfOrDefault<EarlyAdopterTier>(it) } ?: EarlyAdopterTier.STANDARD,
+                        title = row[CommunityReports.title] ?: "Reported ${row[CommunityReports.type]} sighting",
                         description = row[CommunityReports.description] ?: "Community report submitted",
-                        mediaUrls = emptyList(), // mediaIds are int refs, not URLs
+                        mediaUrls = photos,
+                        locationLat = lat,
+                        locationLng = lng,
+                        communityArea = row[CommunityReports.locationNeighborhood],
                         timestamp = row[CommunityReports.createdAt],
                     )
                 }
@@ -72,6 +88,8 @@ class FeedService {
                         amount = row[Bounties.amount],
                         communityArea = row[Bounties.communityArea],
                         mediaUrls = row[Bounties.mediaUrls],
+                        locationLat = row[Bounties.locationLat],
+                        locationLng = row[Bounties.locationLng],
                         timestamp = row[Bounties.createdAt],
                     )
                 }

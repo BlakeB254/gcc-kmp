@@ -139,27 +139,35 @@ actual fun GccMap(
             )
         }
 
-        // Bounds check — snap back if user pans too far outside service area
-        LaunchedEffect(camera.position) {
-            val pos = camera.position
-            val lat = pos.target.latitude
-            val lng = pos.target.longitude
-            // Only snap if significantly outside padded bounds (reduces flicker from micro-adjustments)
-            val outsideLat = lat < paddedBounds.south - 0.005 || lat > paddedBounds.north + 0.005
-            val outsideLng = lng < paddedBounds.west - 0.005 || lng > paddedBounds.east + 0.005
-            if (outsideLat || outsideLng) {
-                val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
-                val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
-                camera.animateTo(
-                    finalPosition = CameraPosition(
-                        target = Position(latitude = clampedLat, longitude = clampedLng),
-                        zoom = pos.zoom,
-                    ),
-                    duration = 300.milliseconds,
-                )
-            }
+        // Bounds check — snap back if user pans too far outside service area.
+        // Uses snapshotFlow so camera.position is NOT read in the composition scope,
+        // which would otherwise cause the entire composable tree (including all MapLibre
+        // layers) to recompose on every frame during pan — producing heatmap flicker.
+        LaunchedEffect(paddedBounds) {
+            snapshotFlow { camera.position }
+                .collect { pos ->
+                    val lat = pos.target.latitude
+                    val lng = pos.target.longitude
+                    val outsideLat = lat < paddedBounds.south - 0.005 || lat > paddedBounds.north + 0.005
+                    val outsideLng = lng < paddedBounds.west - 0.005 || lng > paddedBounds.east + 0.005
+                    if (outsideLat || outsideLng) {
+                        val clampedLat = lat.coerceIn(paddedBounds.south, paddedBounds.north)
+                        val clampedLng = lng.coerceIn(paddedBounds.west, paddedBounds.east)
+                        camera.animateTo(
+                            finalPosition = CameraPosition(
+                                target = Position(latitude = clampedLat, longitude = clampedLng),
+                                zoom = pos.zoom,
+                            ),
+                            duration = 300.milliseconds,
+                        )
+                    }
+                }
         }
     }
+
+    // Derive zoom separately so panning (which changes lat/lng but not zoom)
+    // does NOT trigger recomposition of the Box — only actual zoom changes do.
+    val scaleBarZoom by remember { derivedStateOf { camera.position.zoom } }
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -909,7 +917,7 @@ actual fun GccMap(
                     },
                 )
                 ScaleBar(
-                    zoom = camera.position.zoom,
+                    zoom = scaleBarZoom,
                 )
             }
         }

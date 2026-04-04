@@ -5,6 +5,9 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -89,16 +92,18 @@ fun AdminSpotCreateScreen(
                     )
                 },
                 navigationIcon = {
-                    TextButton(onClick = {
+                    IconButton(onClick = {
                         when (step) {
                             SpotCreateStep.CAMERA -> onBack()
                             SpotCreateStep.MAP -> step = SpotCreateStep.CAMERA
                             SpotCreateStep.DETAILS -> step = SpotCreateStep.MAP
                         }
                     }) {
-                        Text(
-                            if (step == SpotCreateStep.CAMERA) "Cancel" else "\u2190 Back",
-                            color = Color.White,
+                        Icon(
+                            if (step == SpotCreateStep.CAMERA) Icons.Default.Close
+                            else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (step == SpotCreateStep.CAMERA) "Cancel" else "Back",
+                            tint = Color.White,
                         )
                     }
                 },

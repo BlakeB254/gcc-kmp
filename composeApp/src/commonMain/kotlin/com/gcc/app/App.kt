@@ -154,6 +154,8 @@ fun App(component: RootComponent) {
                 )
                 is Screen.Leaderboard -> LeaderboardScreen(
                     onBack = component::navigateBack,
+                    onAchievementsClick = component::navigateToAchievements,
+                    onPointsClick = component::navigateToPoints,
                 )
                 is Screen.Feed -> FeedScreen(
                     onBack = component::navigateBack,

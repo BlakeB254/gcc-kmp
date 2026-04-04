@@ -57,4 +57,31 @@ platform :ios do
       skip_waiting_for_build_processing: true,
     )
   end
+
+  desc "Submit latest build to App Store Review"
+  lane :submit do
+    api_key = app_store_connect_api_key(
+      key_id: "XKAYZ4N88V",
+      issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
+      key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_XKAYZ4N88V.p8"),
+      in_house: false,
+    )
+
+    deliver(
+      api_key: api_key,
+      app_version: "1.0.3",
+      build_number: "71",
+      submit_for_review: true,
+      automatic_release: true,
+      skip_screenshots: true,
+      skip_binary_upload: true,
+      force: true,
+      release_notes: {
+        "en-US" => "• Sponsor a block cleaning — pick a block, date, and preferred time with Stripe checkout\n• Post bounties on dirty spots with public/secret visibility and anonymous posting\n• Sign in with Apple and Google\n• Redesigned login screen\n• Community feed with spot report photos and location maps\n• Sponsor wall showing real contributor data\n• Rankings hub combining leaderboard, awards, and points\n• Improved map with street-level zoom on location button\n• Block selector shows route display names with images\n• Bug fixes and performance improvements",
+      },
+      submission_information: {
+        add_id_info_uses_idfa: false,
+      },
+    )
+  end
 end

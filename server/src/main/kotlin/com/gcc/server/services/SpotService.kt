@@ -112,6 +112,16 @@ class SpotService {
  */
 fun ResultRow.toReport(): CommunityReport {
     val coords = this[CommunityReports.coordinates]
+    // Extract photo URLs from beforePhotos JSON (array of URL strings)
+    val photos = try {
+        val json = this[CommunityReports.beforePhotos]
+        if (json is kotlinx.serialization.json.JsonArray) {
+            json.mapNotNull { el ->
+                (el as? kotlinx.serialization.json.JsonPrimitive)?.content
+            }
+        } else emptyList()
+    } catch (_: Exception) { emptyList<String>() }
+
     return CommunityReport(
         id = this[CommunityReports.id],
         reporterId = this[CommunityReports.reporterId],
@@ -122,7 +132,7 @@ fun ResultRow.toReport(): CommunityReport {
             lat = coords.getOrElse(1) { 0.0 }
         ),
         description = this[CommunityReports.description],
-        mediaUrls = emptyList(), // mediaIds are integer refs, not URLs
+        mediaUrls = photos,
         status = enumValueOfOrDefault(this[CommunityReports.status]),
         upvotes = this[CommunityReports.thankCount],
         verifiedBy = this[CommunityReports.reviewedById],

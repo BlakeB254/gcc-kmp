@@ -14,6 +14,6 @@ data class SponsorWallet(
     val bountyFundBalance: Int = 0,
     val totalDeposited: Int = 0,
     val totalSpent: Int = 0,
-    val createdAt: Instant,
-    val updatedAt: Instant,
+    val createdAt: Instant? = null,
+    val updatedAt: Instant? = null,
 )

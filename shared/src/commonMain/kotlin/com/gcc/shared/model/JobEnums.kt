@@ -65,6 +65,12 @@ enum class BountyStatus {
 }
 
 @Serializable
+enum class BountyVisibility {
+    @SerialName("public") PUBLIC,
+    @SerialName("secret") SECRET
+}
+
+@Serializable
 enum class DisputeType {
     @SerialName("quality") QUALITY,
     @SerialName("incomplete") INCOMPLETE,

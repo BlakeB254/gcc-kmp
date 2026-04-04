@@ -31,3 +31,15 @@ data class VerificationDocumentSubmission(
     val governmentIdUrl: String,
     val proofOfAddressUrl: String,
 )
+
+@Serializable
+data class AppleAuthRequest(
+    val identityToken: String,
+    val fullName: String? = null,
+    val email: String? = null,
+)
+
+@Serializable
+data class GoogleAuthRequest(
+    val idToken: String,
+)

@@ -9,6 +9,11 @@ actual fun getApiBaseUrl(): String = "https://api.globalcommunitycleaners.org"
 
 actual fun getPlatformName(): String = "ios"
 
+actual fun openUrl(url: String) {
+    val nsUrl = platform.Foundation.NSURL.URLWithString(url) ?: return
+    platform.UIKit.UIApplication.sharedApplication.openURL(nsUrl, options = emptyMap<Any?, Any>()) { _ -> }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 actual fun saveToSystemCredentials(email: String, password: String) {
     @Suppress("UNCHECKED_CAST")

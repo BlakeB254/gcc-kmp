@@ -15,5 +15,5 @@ data class WalletTransaction(
     val referenceType: WalletReferenceType? = null,
     val description: String? = null,
     val stripePaymentIntentId: String? = null,
-    val createdAt: Instant,
+    val createdAt: Instant? = null,
 )

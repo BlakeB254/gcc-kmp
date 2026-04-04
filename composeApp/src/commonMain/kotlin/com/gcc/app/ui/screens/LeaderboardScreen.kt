@@ -49,6 +49,8 @@ import org.koin.compose.koinInject
 @Composable
 fun LeaderboardScreen(
     onBack: () -> Unit = {},
+    onAchievementsClick: () -> Unit = {},
+    onPointsClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<LeaderboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -65,21 +67,15 @@ fun LeaderboardScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GccLogo(size = 24.dp)
-                        Text("Leaderboard")
-                    }
-                },
+                title = { Text("Rankings") },
+                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGreen,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surface,
                 ),
             )
         },
@@ -89,6 +85,34 @@ fun LeaderboardScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // Section navigation tabs
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                FilterChip(
+                    selected = true,
+                    onClick = { },
+                    label = { Text("\uD83C\uDFC6 Leaderboard") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = GccGreen.copy(alpha = 0.12f),
+                        selectedLabelColor = GccGreen,
+                    ),
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = onAchievementsClick,
+                    label = { Text("\u2B50 Awards") },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = onPointsClick,
+                    label = { Text("\uD83D\uDC8E Points") },
+                )
+            }
+
             // Period toggle tabs
             Row(
                 modifier = Modifier

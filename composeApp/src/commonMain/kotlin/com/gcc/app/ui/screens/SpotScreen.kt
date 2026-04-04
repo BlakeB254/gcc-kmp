@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
@@ -97,7 +98,9 @@ fun SpotScreen(
                         SpotPhase.RESULT -> "Report Submitted"
                     },
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
                 )
+                GccLogo(size = 72.dp, modifier = Modifier.padding(end = 4.dp))
             }
         },
     ) { padding ->

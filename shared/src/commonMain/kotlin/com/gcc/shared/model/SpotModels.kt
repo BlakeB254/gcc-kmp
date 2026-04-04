@@ -88,6 +88,43 @@ data class CreateBountyRequest(
     val communityArea: String? = null,
     val neighborhood: String? = null,
     val mediaUrls: List<String> = emptyList(),
+    val triggerReportId: Int? = null,
+    val visibility: BountyVisibility = BountyVisibility.PUBLIC,
+    val isAnonymous: Boolean = false,
+    val posterName: String? = null,
+)
+
+@Serializable
+data class SponsorBlockRequest(
+    val blockId: Int,
+    val preferredDate: String,
+    val preferredTime: String,
+    val amountCents: Int = 10000,
+    val isAnonymous: Boolean = false,
+    val posterName: String? = null,
+)
+
+@Serializable
+data class CheckoutRequest(
+    val amount: Int? = null,
+    val blockIds: List<Int>? = null,
+    val frequency: String = "one_time",
+    val allocationType: String = "general",
+    val name: String,
+    val email: String,
+    val displayName: String? = null,
+    val isAnonymous: Boolean = false,
+    val message: String? = null,
+    val preferredCleaningDate: String? = null,
+    val preferredCleaningTimeStart: String? = null,
+    val preferredCleaningTimeEnd: String? = null,
+)
+
+@Serializable
+data class CheckoutResponse(
+    val checkoutUrl: String,
+    val sessionId: String,
+    val demo: Boolean = false,
 )
 
 @Serializable

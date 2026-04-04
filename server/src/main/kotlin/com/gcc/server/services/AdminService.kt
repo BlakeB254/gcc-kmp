@@ -23,8 +23,17 @@ class AdminService(
         reviewNotes: String?,
     ): Worker? = dbQuery {
         val now = Clock.System.now()
-        val existing = Workers.selectAll().where { Workers.id eq workerId }
-            .firstOrNull()?.toWorker() ?: return@dbQuery null
+        val existingRow = Workers.selectAll().where { Workers.id eq workerId }
+            .firstOrNull() ?: return@dbQuery null
+
+        // Block approval if required documents haven't been submitted
+        if (status == VerificationStatus.APPROVED) {
+            val hasGovId = existingRow[Workers.verificationGovernmentIdId] != null
+            val hasProofOfAddress = existingRow[Workers.verificationProofOfAddressId] != null
+            if (!hasGovId || !hasProofOfAddress) {
+                throw IllegalStateException("Cannot approve: worker has not submitted required verification documents")
+            }
+        }
 
         Workers.update({ Workers.id eq workerId }) {
             it[verificationStatus] = status.name.lowercase()
@@ -53,13 +62,18 @@ class AdminService(
             .firstOrNull()?.toWorker()
     }
 
-    /** Bulk verify multiple workers at once. Returns count of updated workers. */
+    /** Bulk verify multiple workers at once. Only approves workers who have submitted documents. */
     suspend fun bulkVerifyWorkers(workerIds: List<Int>): Int = dbQuery {
         val now = Clock.System.now()
         var count = 0
         for (id in workerIds) {
-            val exists = Workers.selectAll().where { Workers.id eq id }
+            val row = Workers.selectAll().where { Workers.id eq id }
                 .firstOrNull() ?: continue
+
+            // Skip workers who haven't submitted required documents
+            val hasGovId = row[Workers.verificationGovernmentIdId] != null
+            val hasProofOfAddress = row[Workers.verificationProofOfAddressId] != null
+            if (!hasGovId || !hasProofOfAddress) continue
 
             Workers.update({ Workers.id eq id }) {
                 it[verificationStatus] = "approved"

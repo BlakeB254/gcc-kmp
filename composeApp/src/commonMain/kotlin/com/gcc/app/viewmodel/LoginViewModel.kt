@@ -2,7 +2,10 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.platform.isAppleSignInAvailable
+import com.gcc.app.platform.openUrl
 import com.gcc.app.platform.saveToSystemCredentials
+import com.gcc.app.platform.signInWithApple
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -116,6 +119,66 @@ class LoginViewModel(
     fun cancel2FA() {
         _uiState.value = LoginUiState()
     }
+
+    fun loginWithApple() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val result = signInWithApple()
+                if (result == null) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    return@launch
+                }
+                val authData = apiClient.loginWithApple(
+                    identityToken = result.identityToken,
+                    fullName = result.fullName,
+                    email = result.email,
+                )
+                tokenManager.saveToken(authData.token!!)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isLoggedIn = true,
+                    worker = authData.worker,
+                    isAdmin = tokenManager.isAdmin(),
+                )
+                registerPushToken()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Apple Sign-In failed",
+                )
+            }
+        }
+    }
+
+    fun loginWithGoogle() {
+        // Google Sign-In uses web OAuth flow — open browser to website's Google auth page
+        openUrl("https://globalcommunitycleaners.org/auth/google?mobile=true")
+    }
+
+    fun handleGoogleAuthToken(token: String) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val authData = apiClient.loginWithGoogle(token)
+                tokenManager.saveToken(authData.token!!)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isLoggedIn = true,
+                    worker = authData.worker,
+                    isAdmin = tokenManager.isAdmin(),
+                )
+                registerPushToken()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Google Sign-In failed",
+                )
+            }
+        }
+    }
+
+    val canUseAppleSignIn: Boolean get() = isAppleSignInAvailable()
 
     /** Reset to initial state. Call when LoginScreen enters composition
      *  to prevent stale isLoggedIn from a previous session. */

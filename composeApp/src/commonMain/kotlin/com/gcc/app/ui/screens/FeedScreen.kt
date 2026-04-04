@@ -12,6 +12,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -85,6 +88,7 @@ fun FeedScreen(
                 isLoading = uiState.isLoadingComments,
                 isPosting = uiState.isPostingComment,
                 onPost = { viewModel.postComment(it) },
+                onDismiss = { viewModel.closeComments() },
             )
         }
     }
@@ -102,12 +106,8 @@ fun FeedScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GccLogo(size = 24.dp)
-                        Text("Community Feed")
-                    }
-                },
+                title = { Text("Community Feed") },
+                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -979,6 +979,7 @@ private fun CommentSheet(
     isLoading: Boolean,
     isPosting: Boolean,
     onPost: (String) -> Unit,
+    onDismiss: () -> Unit = {},
 ) {
     var commentText by remember { mutableStateOf("") }
 
@@ -988,11 +989,20 @@ private fun CommentSheet(
             .padding(horizontal = 16.dp)
             .padding(bottom = 24.dp),
     ) {
-        Text(
-            "Comments",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-        )
-        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Comments",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "Close")
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (isLoading) {
             Box(
@@ -1068,6 +1078,15 @@ private fun CommentSheet(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodySmall,
+                keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (commentText.isNotBlank()) {
+                            onPost(commentText.trim())
+                            commentText = ""
+                        }
+                    },
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = GccGreen,
                     cursorColor = GccGreen,
