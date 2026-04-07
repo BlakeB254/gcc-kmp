@@ -62,10 +62,9 @@ platform :ios do
       beta_app_description: "GCC (Global Community Cleaners) is a civic cleaning app for Chicago's North Lawndale community. Workers walk assigned block routes, document trash with photos and LiDAR scanning, and earn payouts for verified cleanups.",
       beta_app_feedback_email: "blakeb254@icloud.com",
       demo_account_required: false,
-      localized_app_info: {
-        "default" => {
-          feedback_email: "blakeb254@icloud.com",
-          description: "GCC (Global Community Cleaners) is a civic cleaning app for Chicago's North Lawndale community. Workers walk assigned block routes, document trash with photos and LiDAR scanning, and earn payouts for verified cleanups.",
+      localized_build_info: {
+        "en-US" => {
+          whats_new: File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
         },
       },
     )
