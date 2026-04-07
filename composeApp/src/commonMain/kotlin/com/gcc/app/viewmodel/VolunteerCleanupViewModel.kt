@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,9 @@ data class VolunteerCleanupUiState(
     val reportId: Int = 0,
     val cleanup: VolunteerCleanup? = null,
     val elapsedSeconds: Long = 0,
+    val capturedBeforePhotos: List<CapturedPhoto> = emptyList(),
+    val capturedAfterPhotos: List<CapturedPhoto> = emptyList(),
+    val capturedTrashHeapPhoto: CapturedPhoto? = null,
     val beforePhotoUrls: List<String> = emptyList(),
     val afterPhotoUrls: List<String> = emptyList(),
     val trashHeapUrl: String? = null,
@@ -75,17 +79,44 @@ class VolunteerCleanupViewModel(
 
     fun addBeforeScanPhoto(scanPhoto: ScanCapturedPhoto) {
         beforeScanData = scanPhoto
-        addBeforePhoto("before_${_uiState.value.beforePhotoUrls.size + 1}.jpg")
+        val photo = CapturedPhoto(
+            bytes = scanPhoto.photoBytes ?: byteArrayOf(),
+            width = scanPhoto.photoWidth,
+            height = scanPhoto.photoHeight,
+            depthAnalysis = scanPhoto.depthAnalysis,
+            attestation = scanPhoto.attestation,
+        )
+        _uiState.value = _uiState.value.copy(
+            capturedBeforePhotos = _uiState.value.capturedBeforePhotos + photo,
+        )
     }
 
     fun addAfterScanPhoto(scanPhoto: ScanCapturedPhoto) {
         afterScanData = scanPhoto
-        addAfterPhoto("after_${_uiState.value.afterPhotoUrls.size + 1}.jpg")
+        val photo = CapturedPhoto(
+            bytes = scanPhoto.photoBytes ?: byteArrayOf(),
+            width = scanPhoto.photoWidth,
+            height = scanPhoto.photoHeight,
+            depthAnalysis = scanPhoto.depthAnalysis,
+            attestation = scanPhoto.attestation,
+        )
+        _uiState.value = _uiState.value.copy(
+            capturedAfterPhotos = _uiState.value.capturedAfterPhotos + photo,
+        )
     }
 
     fun setTrashHeapScanPhoto(scanPhoto: ScanCapturedPhoto) {
         trashHeapScanData = scanPhoto
-        setTrashHeapUrl("trash_heap.jpg")
+        val photo = CapturedPhoto(
+            bytes = scanPhoto.photoBytes ?: byteArrayOf(),
+            width = scanPhoto.photoWidth,
+            height = scanPhoto.photoHeight,
+            depthAnalysis = scanPhoto.depthAnalysis,
+            attestation = scanPhoto.attestation,
+        )
+        _uiState.value = _uiState.value.copy(
+            capturedTrashHeapPhoto = photo,
+        )
     }
 
     fun uploadBeforePhotos(photoBytes: List<ByteArray>) {
@@ -111,14 +142,19 @@ class VolunteerCleanupViewModel(
         scope.launch {
             _uiState.value = state.copy(isSubmitting = true, error = null)
             try {
+                val beforeUrls = if (state.capturedBeforePhotos.isNotEmpty()) {
+                    apiClient.uploadSpotPhotos(state.capturedBeforePhotos.map { it.bytes })
+                } else { emptyList() }
+
                 val request = StartVolunteerRequest(
-                    beforeMediaUrls = state.beforePhotoUrls,
+                    beforeMediaUrls = beforeUrls,
                     beforeDepthAnalysis = beforeScanData?.depthAnalysis,
                     beforeAiAnalysis = beforeScanData?.aiAnalysis,
                 )
                 val cleanup = apiClient.startVolunteerCleanup(state.reportId, request)
                 _uiState.value = _uiState.value.copy(
                     cleanup = cleanup,
+                    beforePhotoUrls = beforeUrls,
                     phase = VolunteerPhase.IN_PROGRESS,
                     isSubmitting = false,
                 )
@@ -141,12 +177,17 @@ class VolunteerCleanupViewModel(
                 phase = VolunteerPhase.SUBMITTING,
             )
             try {
+                val beforeUrls = if (state.capturedBeforePhotos.isNotEmpty()) {
+                    apiClient.uploadSpotPhotos(state.capturedBeforePhotos.map { it.bytes })
+                } else { emptyList() }
+
                 val cleanup = apiClient.reportSpotAlreadyClean(
                     state.reportId,
-                    state.beforePhotoUrls,
+                    beforeUrls,
                 )
                 _uiState.value = _uiState.value.copy(
                     cleanup = cleanup,
+                    beforePhotoUrls = beforeUrls,
                     isSubmitting = false,
                     isCompleted = true,
                     pointsAwarded = cleanup.pointsAwarded,
@@ -192,29 +233,32 @@ class VolunteerCleanupViewModel(
         val state = _uiState.value
         scope.launch {
             _uiState.value = state.copy(
-                phase = VolunteerPhase.SUBMITTING,
-                isSubmitting = true,
-                error = null,
+                phase = VolunteerPhase.SUBMITTING, isSubmitting = true, error = null,
             )
             try {
+                val afterUrls = if (state.capturedAfterPhotos.isNotEmpty()) {
+                    apiClient.uploadSpotPhotos(state.capturedAfterPhotos.map { it.bytes })
+                } else { emptyList() }
+
+                val trashHeapUrl = state.capturedTrashHeapPhoto?.let { photo ->
+                    apiClient.uploadSpotPhotos(listOf(photo.bytes)).firstOrNull()
+                }
+
                 val request = CompleteVolunteerRequest(
-                    afterMediaUrls = state.afterPhotoUrls,
-                    trashHeapMediaUrl = state.trashHeapUrl,
+                    afterMediaUrls = afterUrls,
+                    trashHeapMediaUrl = trashHeapUrl,
                     afterDepthAnalysis = afterScanData?.depthAnalysis,
                     afterAiAnalysis = afterScanData?.aiAnalysis,
                 )
                 val cleanup = apiClient.completeVolunteerCleanup(state.reportId, request)
                 _uiState.value = _uiState.value.copy(
-                    cleanup = cleanup,
-                    isSubmitting = false,
-                    isCompleted = true,
-                    pointsAwarded = cleanup.pointsAwarded,
-                    phase = VolunteerPhase.COMPLETE,
+                    cleanup = cleanup, afterPhotoUrls = afterUrls, trashHeapUrl = trashHeapUrl,
+                    isSubmitting = false, isCompleted = true,
+                    pointsAwarded = cleanup.pointsAwarded, phase = VolunteerPhase.COMPLETE,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    isSubmitting = false,
-                    phase = VolunteerPhase.TRASH_HEAP_PHOTO,
+                    isSubmitting = false, phase = VolunteerPhase.TRASH_HEAP_PHOTO,
                     error = e.message ?: "Failed to complete cleanup",
                 )
             }
