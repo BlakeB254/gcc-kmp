@@ -78,10 +78,10 @@ fun VolunteerCleanupScreen(
             ) {
                 when (uiState.phase) {
                     VolunteerPhase.BEFORE_PHOTOS -> BeforePhotosPhase(
-                        beforePhotoCount = uiState.beforePhotoUrls.size,
+                        beforePhotoCount = uiState.capturedBeforePhotos.size,
                         isSubmitting = uiState.isSubmitting,
                         error = uiState.error,
-                        onCapture = { viewModel.addBeforePhoto("before_${uiState.beforePhotoUrls.size + 1}.jpg") },
+                        onCapture = { viewModel.addBeforePhoto("before_${uiState.capturedBeforePhotos.size + 1}.jpg") },
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.addBeforeScanPhoto(it) },
                         onConfirmMessStillHere = { viewModel.startCleanup() },
@@ -98,15 +98,15 @@ fun VolunteerCleanupScreen(
                     )
 
                     VolunteerPhase.AFTER_PHOTOS -> AfterPhotosPhase(
-                        afterPhotoCount = uiState.afterPhotoUrls.size,
-                        onCapture = { viewModel.addAfterPhoto("after_${uiState.afterPhotoUrls.size + 1}.jpg") },
+                        afterPhotoCount = uiState.capturedAfterPhotos.size,
+                        onCapture = { viewModel.addAfterPhoto("after_${uiState.capturedAfterPhotos.size + 1}.jpg") },
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.addAfterScanPhoto(it) },
                         onNext = { viewModel.advancePhase() },
                     )
 
                     VolunteerPhase.TRASH_HEAP_PHOTO -> TrashHeapPhase(
-                        hasTrashHeap = uiState.trashHeapUrl != null,
+                        hasTrashHeap = uiState.capturedTrashHeapPhoto != null,
                         onCapture = { viewModel.setTrashHeapUrl("trash_heap.jpg") },
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.setTrashHeapScanPhoto(it) },
