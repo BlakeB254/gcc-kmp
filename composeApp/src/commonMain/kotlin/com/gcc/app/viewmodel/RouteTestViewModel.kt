@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +41,7 @@ class RouteTestViewModel(
     val uiState: StateFlow<RouteTestUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var generatedCheckpoints: List<RouteCheckpoint> = emptyList()
 
     fun onCleared() {
         timerJob?.cancel()
@@ -52,7 +54,9 @@ class RouteTestViewModel(
             try {
                 val route = apiClient.getRoute(routeId)
 
-                val checkpointItems = route.checkpoints
+                generatedCheckpoints = CheckpointGenerator.generateIfMissing(route)
+
+                val checkpointItems = generatedCheckpoints
                     .sortedBy { it.sequenceOrder }
                     .mapIndexed { index, cp ->
                         CheckpointUiItem(
@@ -95,11 +99,14 @@ class RouteTestViewModel(
         val withinGeofence = distance <= currentCheckpoint.geofenceRadius
 
         val updatedCheckpoints = checkpoints.map { item ->
-            val cpDistance = GeofenceVerification.distanceMeters(
-                location.lat, location.lng,
-                item.checkpoint.coordinates.lat, item.checkpoint.coordinates.lng,
-            )
-            item.copy(distanceMeters = cpDistance)
+            if (item.status == CheckpointStatus.COMPLETED) item
+            else {
+                val cpDistance = GeofenceVerification.distanceMeters(
+                    location.lat, location.lng,
+                    item.checkpoint.coordinates.lat, item.checkpoint.coordinates.lng,
+                )
+                item.copy(distanceMeters = cpDistance)
+            }
         }
 
         _uiState.value = state.copy(
@@ -182,7 +189,7 @@ class RouteTestViewModel(
         stopTimer()
         locationTrackingController.stopTracking()
         val route = _uiState.value.route ?: return
-        val checkpointItems = route.checkpoints
+        val checkpointItems = generatedCheckpoints
             .sortedBy { it.sequenceOrder }
             .mapIndexed { index, cp ->
                 CheckpointUiItem(

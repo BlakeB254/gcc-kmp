@@ -6,6 +6,7 @@ import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.detectDeviceType
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -89,8 +90,9 @@ class RouteScanViewModel(
             phase = ScanPhase.SCOUTING,
         )
 
-        // Initialise coverage grid from route checkpoints
-        val waypoints = route.checkpoints
+        // Initialise coverage grid from route checkpoints (auto-generate if missing)
+        val effectiveCheckpoints = CheckpointGenerator.generateIfMissing(route)
+        val waypoints = effectiveCheckpoints
             .sortedBy { it.sequenceOrder }
             .map { it.coordinates }
         coverageTracker.initFromRoute(waypoints)

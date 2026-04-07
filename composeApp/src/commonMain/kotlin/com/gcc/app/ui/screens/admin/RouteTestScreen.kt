@@ -93,26 +93,63 @@ fun RouteTestScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             // Map section (55% height)
             Box(modifier = Modifier.weight(0.55f)) {
-                val routeCoords = remember(uiState.route) {
+                // Prefer geometry for route path, fall back to auto-generated checkpoints
+                val routeCoords = remember(uiState.route, uiState.checkpoints) {
                     uiState.route?.geometry?.coordinates?.map {
                         com.gcc.shared.model.Coordinates(lng = it[0], lat = it[1])
-                    } ?: uiState.route?.checkpoints
-                        ?.sortedBy { it.sequenceOrder }
-                        ?.map { it.coordinates }
+                    } ?: uiState.checkpoints
+                        .sortedBy { it.checkpoint.sequenceOrder }
+                        .map { it.checkpoint.coordinates }
+                        .ifEmpty { null }
                     ?: emptyList()
                 }
 
+                val mapLocation = currentLocation ?: uiState.currentLocation
+
+                // Compute route-only bounds once (stable across GPS updates)
+                val routeCenter = remember(routeCoords) {
+                    if (routeCoords.isEmpty()) null
+                    else com.gcc.shared.model.Coordinates(
+                        lng = routeCoords.sumOf { it.lng } / routeCoords.size,
+                        lat = routeCoords.sumOf { it.lat } / routeCoords.size,
+                    )
+                }
+
+                // Fit zoom to route + user location, recomputed only when route changes
+                val mapZoom = remember(routeCoords) {
+                    if (routeCoords.size < 2) MapStyles.ZOOM_ACTIVE_JOB
+                    else {
+                        val latSpan = routeCoords.maxOf { it.lat } - routeCoords.minOf { it.lat }
+                        val lngSpan = routeCoords.maxOf { it.lng } - routeCoords.minOf { it.lng }
+                        // Pad span to leave room for user dot outside the route
+                        val span = maxOf(latSpan, lngSpan * 1.2) * 1.6
+                        when {
+                            span < 0.002 -> 16.5
+                            span < 0.004 -> 16.0
+                            span < 0.007 -> 15.5
+                            span < 0.01  -> 15.0
+                            span < 0.02  -> 14.5
+                            span < 0.04  -> 14.0
+                            else         -> 13.0
+                        }
+                    }
+                }
+                val mapCenter = routeCenter ?: com.gcc.shared.model.Coordinates(
+                    lng = mapLocation?.lng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG,
+                    lat = mapLocation?.lat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT,
+                )
+
                 GccMap(
                     modifier = Modifier.fillMaxSize(),
-                    centerLat = uiState.currentLocation?.lat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT,
-                    centerLng = uiState.currentLocation?.lng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG,
-                    zoom = MapStyles.ZOOM_ACTIVE_JOB,
-                    currentLocation = uiState.currentLocation,
+                    centerLat = mapCenter.lat,
+                    centerLng = mapCenter.lng,
+                    zoom = mapZoom,
+                    currentLocation = mapLocation,
                     routeCoordinates = if (routeCoords.isNotEmpty()) listOf(routeCoords) else emptyList(),
                 ) {
                     ActiveJobOverlay(
                         checkpoints = uiState.checkpoints,
-                        currentLocation = uiState.currentLocation,
+                        currentLocation = mapLocation,
                         currentCheckpointIndex = uiState.currentCheckpointIndex,
                         isWithinGeofence = uiState.isWithinGeofence,
                         modifier = Modifier.align(Alignment.TopStart),
@@ -148,11 +185,19 @@ fun RouteTestScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextMuted,
                         )
+                        if (uiState.checkpoints.isNotEmpty()) {
+                            Text(
+                                "${uiState.checkpoints.size} checkpoints detected",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = GccGreen,
+                            )
+                        }
                         Spacer(Modifier.weight(1f))
                         GccButton(
-                            text = "Start Test",
+                            text = if (uiState.checkpoints.isEmpty()) "No Checkpoints" else "Start Test",
                             onClick = { viewModel.startTest() },
                             variant = GccButtonVariant.PRIMARY,
+                            enabled = uiState.checkpoints.isNotEmpty(),
                         )
                     } else if (uiState.isLapTransition) {
                         // Lap 1 → Lap 2 transition

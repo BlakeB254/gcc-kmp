@@ -31,6 +31,14 @@ Create Apple Distribution certificate if needed
 
 Build and upload to App Store Connect
 
+### ios submit
+
+```sh
+[bundle exec] fastlane ios submit
+```
+
+Submit latest build to App Store Review
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

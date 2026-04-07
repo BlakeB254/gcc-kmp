@@ -469,7 +469,7 @@ fun RouteDetailScreen(
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
 
-                    if (route.checkpoints.isNotEmpty()) {
+                    if (route.checkpoints.isNotEmpty() || route.geometry != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         GccButton(
                             text = "Scout & Clean",

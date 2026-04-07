@@ -1,0 +1,1 @@
+Bug fix: Resolved a crash that occurred when viewing the admin routes tab. Routes without map data are now handled gracefully.
