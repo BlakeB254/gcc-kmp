@@ -93,7 +93,7 @@ platform :ios do
     deliver(
       api_key: api_key,
       app_version: "1.0.3",
-      build_number: "75",
+      build_number: "78",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,
