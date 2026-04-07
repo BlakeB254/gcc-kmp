@@ -53,7 +53,10 @@ data class GeoJSONPolygon(
 data class GeoJSONLineString(
     val type: String = "LineString",
     val coordinates: List<Point>
-)
+) {
+    fun toCoordinates(): List<Coordinates> =
+        coordinates.map { Coordinates(lng = it[0], lat = it[1]) }
+}
 
 @Serializable
 data class GeoJSONPoint(

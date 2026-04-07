@@ -20,13 +20,11 @@ object CheckpointGenerator {
         if (route.checkpoints.isNotEmpty()) return route.checkpoints
 
         val geometry = route.geometry ?: return emptyList()
-        val coords = geometry.coordinates
-        if (coords.size < 2) return emptyList()
+        val allCoords = geometry.toCoordinates()
+        if (allCoords.size < 2) return emptyList()
 
-        // Convert geometry points to Coordinates, filtering out near-duplicates
         val uniquePoints = mutableListOf<Coordinates>()
-        for (point in coords) {
-            val coord = Coordinates(lng = point[0], lat = point[1])
+        for (coord in allCoords) {
             val lastPoint = uniquePoints.lastOrNull()
             if (lastPoint == null ||
                 GeofenceVerification.distanceMeters(
@@ -61,7 +59,7 @@ object CheckpointGenerator {
             }
 
             RouteCheckpoint(
-                id = -(index + 1), // negative IDs for generated checkpoints
+                id = null,
                 name = checkpointName(index, type),
                 sequenceOrder = index,
                 coordinates = coord,

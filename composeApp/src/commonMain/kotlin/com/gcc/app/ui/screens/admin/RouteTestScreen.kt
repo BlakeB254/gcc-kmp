@@ -54,7 +54,6 @@ fun RouteTestScreen(
         onDispose {
             locationProvider.stopLocationUpdates()
             viewModel.cleanup()
-            viewModel.onCleared()
         }
     }
 
@@ -93,11 +92,9 @@ fun RouteTestScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             // Map section (55% height)
             Box(modifier = Modifier.weight(0.55f)) {
-                // Prefer geometry for route path, fall back to auto-generated checkpoints
                 val routeCoords = remember(uiState.route, uiState.checkpoints) {
-                    uiState.route?.geometry?.coordinates?.map {
-                        com.gcc.shared.model.Coordinates(lng = it[0], lat = it[1])
-                    } ?: uiState.checkpoints
+                    uiState.route?.geometry?.toCoordinates()
+                    ?: uiState.checkpoints
                         .sortedBy { it.checkpoint.sequenceOrder }
                         .map { it.checkpoint.coordinates }
                         .ifEmpty { null }
