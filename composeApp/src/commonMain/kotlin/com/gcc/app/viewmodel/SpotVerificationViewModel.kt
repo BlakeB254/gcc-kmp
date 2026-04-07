@@ -39,6 +39,7 @@ data class SpotVerificationUiState(
     // Spot info for display
     val expectedVerificationCount: Int = 0,
     // Spot location for geofencing the camera
+    val isLoadingSpot: Boolean = true,
     val spotCoordinates: Coordinates? = null,
     // Scan enrichment data
     val scanDepthAnalysis: DepthAnalysis? = null,
@@ -62,9 +63,9 @@ class SpotVerificationViewModel(
         scope.launch {
             try {
                 val report = apiClient.getSpot(reportId)
-                _uiState.update { it.copy(spotCoordinates = report.coordinates) }
+                _uiState.update { it.copy(spotCoordinates = report.coordinates, isLoadingSpot = false) }
             } catch (_: Exception) {
-                // Non-fatal: geofence will be skipped if coordinates unavailable
+                _uiState.update { it.copy(isLoadingSpot = false) }
             }
         }
     }

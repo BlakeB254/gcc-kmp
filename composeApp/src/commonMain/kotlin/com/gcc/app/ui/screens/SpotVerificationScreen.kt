@@ -78,7 +78,22 @@ fun SpotVerificationScreen(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
                 when (uiState.phase) {
-                    VerificationPhase.CAMERA -> CameraPhase(
+                    VerificationPhase.CAMERA -> if (uiState.isLoadingSpot) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = GccGreen, modifier = Modifier.size(32.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    "Loading spot data...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextMuted,
+                                )
+                            }
+                        }
+                    } else CameraPhase(
                         spotLocation = uiState.spotCoordinates,
                         onScanCapture = { scanPhoto ->
                             viewModel.setScanPhoto(

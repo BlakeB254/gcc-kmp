@@ -809,27 +809,19 @@ actual fun GccMap(
                 ),
             )
 
-            // Individual spot dots — fade in as heatmap fades out (z14-14.5 crossfade)
+            // Invisible expanded tap target for spots (larger hit area)
             CircleLayer(
-                id = MapStyles.LAYER_SPOT_MARKERS,
+                id = "${MapStyles.LAYER_SPOT_MARKERS}-tap",
                 source = spotSrc,
                 minZoom = 14f,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
+                color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(2.dp),
-                    14.5 to const(3.dp),
-                    16 to const(5.dp),
-                    17 to const(6.dp),
-                    20 to const(8.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(0f),
-                    14.5 to const(0.8f),
-                    15 to const(1f),
+                    14 to const(12.dp),
+                    15 to const(14.dp),
+                    16 to const(16.dp),
+                    18 to const(18.dp),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val raw = features.firstOrNull()?.properties?.get("id")
@@ -841,6 +833,30 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
+            )
+
+            // Visible spot dots — fade in as heatmap fades out (z14-14.5 crossfade)
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_MARKERS,
+                source = spotSrc,
+                minZoom = 14f,
+                color = const(MapStyles.SPOT_MARKER_COLOR),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(4.dp),
+                    14.5 to const(5.dp),
+                    16 to const(7.dp),
+                    17 to const(8.dp),
+                    20 to const(10.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(0f),
+                    14.5 to const(0.8f),
+                    15 to const(1f),
+                ),
             )
 
             // ── Verification indicator — orange ring on spots needing verification ──
