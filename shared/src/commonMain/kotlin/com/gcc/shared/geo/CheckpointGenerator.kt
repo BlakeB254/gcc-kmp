@@ -3,19 +3,15 @@ package com.gcc.shared.geo
 import com.gcc.shared.model.*
 
 /**
- * Generates checkpoint waypoints from a route's GeoJSON geometry when the
- * server hasn't provided explicit checkpoints. Uses the geometry vertices
- * (corner points of the block route) as natural checkpoint locations.
+ * Generates 8 checkpoint waypoints from a route's GeoJSON geometry when the
+ * server hasn't provided explicit checkpoints. For rectangular block routes:
+ * 4 corners + 2 midpoints along each street length = 8 checkpoints.
  */
 object CheckpointGenerator {
 
     private const val MIN_DISTANCE_BETWEEN_CHECKPOINTS_M = 10.0
+    private const val TARGET_CHECKPOINTS = 8
 
-    /**
-     * Generate checkpoints from a route's geometry coordinates.
-     * Returns the original checkpoints if they already exist, or
-     * synthesized checkpoints from geometry vertices.
-     */
     fun generateIfMissing(route: Route): List<RouteCheckpoint> {
         if (route.checkpoints.isNotEmpty()) return route.checkpoints
 
@@ -23,6 +19,7 @@ object CheckpointGenerator {
         val allCoords = geometry.toCoordinates()
         if (allCoords.size < 2) return emptyList()
 
+        // Deduplicate near-identical consecutive points
         val uniquePoints = mutableListOf<Coordinates>()
         for (coord in allCoords) {
             val lastPoint = uniquePoints.lastOrNull()
@@ -38,43 +35,114 @@ object CheckpointGenerator {
 
         if (uniquePoints.size < 2) return emptyList()
 
-        // Check if it's a loop (first ≈ last point)
+        // Remove duplicate closing point if loop
         val isLoop = GeofenceVerification.distanceMeters(
             uniquePoints.first().lat, uniquePoints.first().lng,
             uniquePoints.last().lat, uniquePoints.last().lng,
         ) < MIN_DISTANCE_BETWEEN_CHECKPOINTS_M
 
-        // If it's a loop, remove the duplicate closing point
-        val points = if (isLoop && uniquePoints.size > 2) {
+        val corners = if (isLoop && uniquePoints.size > 2) {
             uniquePoints.dropLast(1)
         } else {
             uniquePoints
         }
 
-        return points.mapIndexed { index, coord ->
+        // For block routes with 4 corners, add 2 midpoints per segment = 8 total
+        // For other shapes, interpolate to reach TARGET_CHECKPOINTS
+        val checkpointCoords = if (corners.size >= 3) {
+            interpolateToTarget(corners, isLoop)
+        } else {
+            corners
+        }
+
+        return checkpointCoords.mapIndexed { index, coord ->
             val type = when {
                 index == 0 -> CheckpointType.ROUTE_START
-                index == points.size - 1 && !isLoop -> CheckpointType.ROUTE_END
+                index == checkpointCoords.size - 1 && !isLoop -> CheckpointType.ROUTE_END
                 else -> CheckpointType.PHOTO_POINT
             }
 
             RouteCheckpoint(
                 id = null,
-                name = checkpointName(index, type),
+                name = checkpointName(index, checkpointCoords.size, type),
                 sequenceOrder = index,
                 coordinates = coord,
                 photoRequired = true,
-                geofenceRadius = 20.0, // slightly wider for generated checkpoints
+                geofenceRadius = 20.0,
                 type = type,
             )
         }
     }
 
-    private fun checkpointName(index: Int, type: CheckpointType): String {
+    /**
+     * Given corner points of a route, add midpoints along each segment
+     * to reach approximately TARGET_CHECKPOINTS total.
+     */
+    private fun interpolateToTarget(corners: List<Coordinates>, isLoop: Boolean): List<Coordinates> {
+        val segments = if (isLoop) corners.size else corners.size - 1
+        if (segments == 0) return corners
+
+        // Calculate how many midpoints per segment to reach target
+        val midpointsNeeded = TARGET_CHECKPOINTS - corners.size
+        if (midpointsNeeded <= 0) return corners
+
+        // Measure each segment length to distribute midpoints proportionally
+        val segmentLengths = (0 until segments).map { i ->
+            val from = corners[i]
+            val to = corners[(i + 1) % corners.size]
+            GeofenceVerification.distanceMeters(from.lat, from.lng, to.lat, to.lng)
+        }
+        val totalLength = segmentLengths.sum()
+        if (totalLength < 1.0) return corners
+
+        // Allocate midpoints per segment proportional to length
+        val midpointsPerSegment = segmentLengths.map { len ->
+            val share = (len / totalLength) * midpointsNeeded
+            share.toInt().coerceAtLeast(if (len > 30.0) 1 else 0)
+        }.toMutableList()
+
+        // Distribute remaining midpoints to longest segments
+        var remaining = midpointsNeeded - midpointsPerSegment.sum()
+        while (remaining > 0) {
+            val longestIdx = segmentLengths.indices.maxByOrNull {
+                segmentLengths[it] / (midpointsPerSegment[it] + 1)
+            } ?: break
+            midpointsPerSegment[longestIdx]++
+            remaining--
+        }
+
+        // Build the final point list
+        val result = mutableListOf<Coordinates>()
+        for (i in 0 until segments) {
+            val from = corners[i]
+            val to = corners[(i + 1) % corners.size]
+            val count = midpointsPerSegment[i]
+
+            result.add(from)
+            for (m in 1..count) {
+                val fraction = m.toDouble() / (count + 1)
+                result.add(
+                    Coordinates(
+                        lat = from.lat + (to.lat - from.lat) * fraction,
+                        lng = from.lng + (to.lng - from.lng) * fraction,
+                    )
+                )
+            }
+        }
+
+        // For non-loop routes, add the final corner
+        if (!isLoop) {
+            result.add(corners.last())
+        }
+
+        return result
+    }
+
+    private fun checkpointName(index: Int, total: Int, type: CheckpointType): String {
         return when (type) {
             CheckpointType.ROUTE_START -> "Start"
             CheckpointType.ROUTE_END -> "Finish"
-            else -> "Checkpoint ${index + 1}"
+            else -> "Checkpoint ${index + 1} of $total"
         }
     }
 }

@@ -75,12 +75,19 @@ fun RouteDetailScreen(
             if (uiState.isLoading) {
                 CircularProgressIndicator(color = GccGreen)
             } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Route not found")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Route not found", style = MaterialTheme.typography.titleMedium)
                     uiState.error?.let { error ->
-                        Spacer(modifier = Modifier.height(8.dp))
                         Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
                     }
+                    GccButton(
+                        text = "Go Back",
+                        onClick = onBack,
+                        variant = GccButtonVariant.OUTLINED,
+                    )
                 }
             }
         }

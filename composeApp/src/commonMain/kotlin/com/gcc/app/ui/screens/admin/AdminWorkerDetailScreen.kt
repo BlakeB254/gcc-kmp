@@ -185,6 +185,9 @@ fun AdminWorkerDetailScreen(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         Text("Quick Actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
+                        val hasRequiredDocs = documents?.governmentId?.url != null &&
+                            documents?.proofOfAddress?.url != null
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -201,9 +204,9 @@ fun AdminWorkerDetailScreen(
                                         )
                                     },
                                     modifier = Modifier.weight(1f),
-                                    enabled = !isLoading,
+                                    enabled = !isLoading && hasRequiredDocs,
                                     colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                                ) { Text("Approve All") }
+                                ) { Text(if (hasRequiredDocs) "Approve All" else "No Documents") }
                             }
                             if (w.verification.status != VerificationStatus.REJECTED) {
                                 OutlinedButton(

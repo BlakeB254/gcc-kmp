@@ -65,7 +65,15 @@ fun AdminRouteDetailScreen(
 
     if (route == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Route not found")
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Route not found", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onBack) {
+                    Text("\u2190 Back")
+                }
+            }
         }
         return
     }
