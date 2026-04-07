@@ -25,6 +25,9 @@ data class VerifySpotRequest(
     val verifierLat: Double? = null,
     val verifierLng: Double? = null,
     val expectedVerificationCount: Int? = null,
+    val depthAnalysis: DepthAnalysis? = null,
+    val aiAnalysis: OnDeviceAnalysisResult? = null,
+    val captureAttestation: CaptureAttestation? = null,
 )
 
 @Serializable

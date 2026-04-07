@@ -56,12 +56,16 @@ data class PhotoUploadResponse(
 @Serializable
 data class StartVolunteerRequest(
     val beforeMediaUrls: List<String> = emptyList(),
+    val beforeDepthAnalysis: DepthAnalysis? = null,
+    val beforeAiAnalysis: OnDeviceAnalysisResult? = null,
 )
 
 @Serializable
 data class CompleteVolunteerRequest(
     val afterMediaUrls: List<String> = emptyList(),
     val trashHeapMediaUrl: String? = null,
+    val afterDepthAnalysis: DepthAnalysis? = null,
+    val afterAiAnalysis: OnDeviceAnalysisResult? = null,
 )
 
 @Serializable
