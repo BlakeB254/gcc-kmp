@@ -57,7 +57,7 @@ platform :ios do
       skip_waiting_for_build_processing: false,
       distribute_external: true,
       groups: ["Beta Testers"],
-      changelog: File.read("fastlane/metadata/en-US/release_notes.txt"),
+      changelog: File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       notify_external_testers: true,
     )
   end
@@ -71,7 +71,7 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "74"
+    build = options[:build] || "75"
 
     upload_to_testflight(
       api_key: api_key,
@@ -80,7 +80,7 @@ platform :ios do
       groups: ["Beta Testers"],
       app_version: "1.0.3",
       build_number: build,
-      changelog: File.read("fastlane/metadata/en-US/release_notes.txt"),
+      changelog: File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       notify_external_testers: true,
     )
   end
@@ -104,7 +104,7 @@ platform :ios do
       skip_binary_upload: true,
       force: true,
       release_notes: {
-        "en-US" => File.read("fastlane/metadata/en-US/release_notes.txt"),
+        "en-US" => File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       },
       submission_information: {
         add_id_info_uses_idfa: false,

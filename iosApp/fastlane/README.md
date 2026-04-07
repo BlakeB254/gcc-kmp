@@ -31,6 +31,14 @@ Create Apple Distribution certificate if needed
 
 Build and upload to App Store Connect
 
+### ios distribute
+
+```sh
+[bundle exec] fastlane ios distribute
+```
+
+Distribute an existing build to TestFlight groups
+
 ### ios submit
 
 ```sh
