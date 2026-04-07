@@ -3,17 +3,33 @@ package com.gcc.app.platform
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AuthenticationServices.*
 import platform.Foundation.*
+import platform.UIKit.UIApplication
+import platform.UIKit.UIWindow
 import platform.darwin.NSObject
 import kotlin.coroutines.resume
 
 actual fun isAppleSignInAvailable(): Boolean = true
 
+@Suppress("CAST_NEVER_SUCCEEDS")
 actual suspend fun signInWithApple(): SocialAuthResult? = suspendCancellableCoroutine { cont ->
     val request = ASAuthorizationAppleIDProvider().createRequest().apply {
         requestedScopes = listOf(ASAuthorizationScopeFullName, ASAuthorizationScopeEmail)
     }
 
     val controller = ASAuthorizationController(authorizationRequests = listOf(request))
+
+    // Presentation context provider — required for iPad to anchor the sign-in sheet
+    val presentationProvider = object : NSObject(), ASAuthorizationControllerPresentationContextProvidingProtocol {
+        override fun presentationAnchorForAuthorizationController(
+            controller: ASAuthorizationController,
+        ): UIWindow {
+            val scenes = UIApplication.sharedApplication.connectedScenes
+            val windowScene = scenes.firstOrNull() as? platform.UIKit.UIWindowScene
+            return windowScene?.windows?.firstOrNull() as? UIWindow
+                ?: UIApplication.sharedApplication.windows.firstOrNull() as? UIWindow
+                ?: UIWindow()
+        }
+    }
 
     val delegate = object : NSObject(), ASAuthorizationControllerDelegateProtocol {
         override fun authorizationController(
@@ -63,5 +79,6 @@ actual suspend fun signInWithApple(): SocialAuthResult? = suspendCancellableCoro
     }
 
     controller.delegate = delegate
+    controller.presentationContextProvider = presentationProvider
     controller.performRequests()
 }
