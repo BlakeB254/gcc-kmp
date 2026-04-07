@@ -50,11 +50,38 @@ platform :ios do
       }
     )
 
-    # Upload to App Store Connect
+    # Upload to App Store Connect and distribute to TestFlight testers
     upload_to_testflight(
       api_key: api_key,
       ipa: "/tmp/gcc-build/GCC.ipa",
-      skip_waiting_for_build_processing: true,
+      skip_waiting_for_build_processing: false,
+      distribute_external: true,
+      groups: ["Beta Testers"],
+      changelog: File.read("fastlane/metadata/en-US/release_notes.txt"),
+      notify_external_testers: true,
+    )
+  end
+
+  desc "Distribute an existing build to TestFlight groups"
+  lane :distribute do |options|
+    api_key = app_store_connect_api_key(
+      key_id: "XKAYZ4N88V",
+      issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
+      key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_XKAYZ4N88V.p8"),
+      in_house: false,
+    )
+
+    build = options[:build] || "74"
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_submission: false,
+      distribute_external: true,
+      groups: ["Beta Testers"],
+      app_version: "1.0.3",
+      build_number: build,
+      changelog: File.read("fastlane/metadata/en-US/release_notes.txt"),
+      notify_external_testers: true,
     )
   end
 
@@ -70,14 +97,14 @@ platform :ios do
     deliver(
       api_key: api_key,
       app_version: "1.0.3",
-      build_number: "71",
+      build_number: "74",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,
       skip_binary_upload: true,
       force: true,
       release_notes: {
-        "en-US" => "• Sponsor a block cleaning — pick a block, date, and preferred time with Stripe checkout\n• Post bounties on dirty spots with public/secret visibility and anonymous posting\n• Sign in with Apple and Google\n• Redesigned login screen\n• Community feed with spot report photos and location maps\n• Sponsor wall showing real contributor data\n• Rankings hub combining leaderboard, awards, and points\n• Improved map with street-level zoom on location button\n• Block selector shows route display names with images\n• Bug fixes and performance improvements",
+        "en-US" => File.read("fastlane/metadata/en-US/release_notes.txt"),
       },
       submission_information: {
         add_id_info_uses_idfa: false,

@@ -1,1 +1,7 @@
-Bug fix: Resolved a crash that occurred when viewing the admin routes tab. Routes without map data are now handled gracefully.
+• Spot scan verification — geofence enforcement, LiDAR depth analysis, and AI classification for spot reports, verifications, and volunteer cleanups
+• Route scanning — auto-generated checkpoints from route geometry with 2-lap verification flow (Scout & Clean)
+• Improved map interaction — larger spot tap targets for easier selection
+• Intelligent map zoom — route test mode fits both GPS position and route path in view
+• Sponsor sheet — added close button for easier dismissal
+• Queue-based route assignment — blocks assigned by signup position
+• Bug fixes and performance improvements
