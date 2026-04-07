@@ -105,6 +105,20 @@ class SpotViewModel(
         }
     }
 
+    fun addScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        val photo = CapturedPhoto(
+            bytes = scanPhoto.photoBytes ?: byteArrayOf(),
+            width = scanPhoto.photoWidth,
+            height = scanPhoto.photoHeight,
+            depthAnalysis = scanPhoto.depthAnalysis,
+            attestation = scanPhoto.attestation,
+        )
+        addPhoto(photo)
+        if (scanPhoto.aiAnalysis != null) {
+            _uiState.value = _uiState.value.copy(aiAnalysis = scanPhoto.aiAnalysis)
+        }
+    }
+
     fun removePhoto(index: Int) {
         val current = _uiState.value.capturedPhotos.toMutableList()
         if (index in current.indices) {

@@ -22,6 +22,8 @@ import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
+import com.gcc.app.ui.components.SpotScanCapture
+import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.metersToPixels
@@ -115,6 +117,8 @@ fun SpotScreen(
                     onCapture = { photo -> viewModel.addPhoto(photo) },
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
+                    spotLocation = currentLocation,
+                    onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -192,6 +196,8 @@ private fun CameraPhase(
     onCapture: (CapturedPhoto) -> Unit,
     onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
+    spotLocation: Coordinates? = null,
+    onScanCapture: (ScanCapturedPhoto) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
@@ -200,14 +206,36 @@ private fun CameraPhase(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CameraCapture(
-            capturedPhotos = photos,
-            onCapture = onCapture,
-            onRemovePhoto = onRemovePhoto,
-            modifier = Modifier.weight(1f),
-            showMiniMap = true,
-            currentLocation = currentLocation,
-        )
+        if (spotLocation != null) {
+            SpotScanCapture(
+                spotLocation = spotLocation,
+                geofenceRadius = 50.0,
+                maxPhotos = 3,
+                capturedPhotos = photos,
+                onPhotoCaptured = onScanCapture,
+                onRemovePhoto = onRemovePhoto,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            CameraCapture(
+                capturedPhotos = photos,
+                onCapture = { photo ->
+                    onScanCapture(
+                        ScanCapturedPhoto(
+                            photoBytes = photo.bytes,
+                            photoWidth = photo.width,
+                            photoHeight = photo.height,
+                            depthAnalysis = photo.depthAnalysis,
+                            attestation = photo.attestation,
+                        )
+                    )
+                },
+                onRemovePhoto = onRemovePhoto,
+                modifier = Modifier.weight(1f),
+                showMiniMap = true,
+                currentLocation = currentLocation,
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
