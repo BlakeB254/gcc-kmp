@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,18 +17,20 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.detectDeviceType
+import com.gcc.app.platform.getDeviceModel
+import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.ScanCapturedPhoto
+import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccBlue
+import com.gcc.app.ui.theme.GccError
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
-private val GeofenceGreen = Color(0xFF22C55E)
-private val GeofenceRed = Color(0xFFEF4444)
 private val GeofenceYellow = Color(0xFFEAB308)
 
 @Composable
@@ -47,9 +50,10 @@ fun SpotScanCapture(
 
     val deviceType = remember { detectDeviceType() }
     val sessionId = remember { generateSessionId() }
+    val analyzer = remember { OnDeviceAnalyzer() }
     var captureIndex by remember { mutableStateOf(0) }
 
-    val distanceToSpot = remember(currentLocation) {
+    val distanceToSpot = remember(currentLocation, spotLocation) {
         currentLocation?.let { loc ->
             GeofenceVerification.distanceMeters(
                 loc.lat, loc.lng,
@@ -59,33 +63,32 @@ fun SpotScanCapture(
     }
     val isWithinGeofence = distanceToSpot?.let { it <= geofenceRadius } ?: false
     val canCapture = !requireGeofence || isWithinGeofence
+    val currentCanCapture by rememberUpdatedState(canCapture)
 
     var gpsWaitStarted by remember { mutableStateOf(Clock.System.now()) }
-    val gpsTimedOut = remember(currentLocation) {
-        if (currentLocation != null) {
-            gpsWaitStarted = Clock.System.now()
-            false
-        } else {
-            (Clock.System.now() - gpsWaitStarted).inWholeSeconds > 10
-        }
+    LaunchedEffect(currentLocation) {
+        if (currentLocation != null) gpsWaitStarted = Clock.System.now()
     }
+    val gpsTimedOut = currentLocation == null &&
+        (Clock.System.now() - gpsWaitStarted).inWholeSeconds > 10
 
     Box(modifier = modifier) {
         CameraCapture(
             capturedPhotos = capturedPhotos,
             onCapture = { photo ->
-                if (!canCapture) return@CameraCapture
+                if (!currentCanCapture) return@CameraCapture
 
                 val idx = captureIndex
                 captureIndex = captureIndex + 1
                 val location = currentLocation
 
-                val attestation = CaptureAttestation(
+                // Prefer attestation from CameraManager when available
+                val attestation = photo.attestation ?: CaptureAttestation(
                     capturedAt = Clock.System.now().toEpochMilliseconds(),
                     capturedLat = location?.lat,
                     capturedLng = location?.lng,
-                    deviceModel = getPlatformDeviceModel(),
-                    osVersion = getPlatformOsVersion(),
+                    deviceModel = getDeviceModel(),
+                    osVersion = getOsVersion(),
                     sessionId = sessionId,
                     captureIndex = idx,
                     isLiveCapture = true,
@@ -104,7 +107,6 @@ fun SpotScanCapture(
                 if (idx == 0) {
                     scope.launch {
                         try {
-                            val analyzer = OnDeviceAnalyzer()
                             val analysis = analyzer.analyzePhoto(
                                 imageBytes = photo.bytes,
                                 depthAnalysis = photo.depthAnalysis,
@@ -153,11 +155,21 @@ private fun GeofenceBadge(
     gpsTimedOut: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val (bgColor, text) = when {
-        distanceToSpot == null && gpsTimedOut -> GeofenceYellow to "Enable Location Services"
-        distanceToSpot == null -> GeofenceYellow to "Waiting for GPS..."
-        isWithinGeofence -> GeofenceGreen to "${distanceToSpot.toInt()}m from spot"
-        else -> GeofenceRed to "${distanceToSpot.toInt()}m away — move closer"
+    val bgColor: Color
+    val text: String
+    when {
+        distanceToSpot == null && gpsTimedOut -> {
+            bgColor = GeofenceYellow; text = "Enable Location Services"
+        }
+        distanceToSpot == null -> {
+            bgColor = GeofenceYellow; text = "Waiting for GPS..."
+        }
+        isWithinGeofence -> {
+            bgColor = GccAvailable; text = "${distanceToSpot.toInt()}m from spot"
+        }
+        else -> {
+            bgColor = GccError; text = "${distanceToSpot.toInt()}m away — move closer"
+        }
     }
 
     Box(
@@ -192,6 +204,4 @@ private fun LidarBadge(modifier: Modifier = Modifier) {
     }
 }
 
-expect fun getPlatformDeviceModel(): String
-expect fun getPlatformOsVersion(): String
 expect fun generateSessionId(): String

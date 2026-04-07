@@ -47,6 +47,7 @@ class VolunteerCleanupViewModel(
 
     private var beforeScanData: ScanCapturedPhoto? = null
     private var afterScanData: ScanCapturedPhoto? = null
+    private var trashHeapScanData: ScanCapturedPhoto? = null
 
     fun initForReport(reportId: Int) {
         timerJob?.cancel()
@@ -83,6 +84,7 @@ class VolunteerCleanupViewModel(
     }
 
     fun setTrashHeapScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        trashHeapScanData = scanPhoto
         setTrashHeapUrl("trash_heap.jpg")
     }
 

@@ -5,37 +5,37 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000354">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000337">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.00328">
+      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.003656">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: get_certificates" time="1.468556">
+      <testcase classname="fastlane.lanes" name="2: get_certificates" time="1.207887">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="3: get_provisioning_profile" time="0.906749">
+      <testcase classname="fastlane.lanes" name="3: get_provisioning_profile" time="0.974775">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="4: cd ../.. &amp;&amp; ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks" time="11.560509">
+      <testcase classname="fastlane.lanes" name="4: cd ../.. &amp;&amp; ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks" time="10.389725">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="5: build_app" time="1824.645623">
+      <testcase classname="fastlane.lanes" name="5: build_app" time="1890.186551">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="6: upload_to_testflight" time="29.253307">
+      <testcase classname="fastlane.lanes" name="6: upload_to_testflight" time="27.636566">
         
       </testcase>
     
