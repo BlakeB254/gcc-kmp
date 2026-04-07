@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
@@ -27,6 +28,7 @@ enum class VerificationPhase {
 data class SpotVerificationUiState(
     val reportId: Int = 0,
     val phase: VerificationPhase = VerificationPhase.CAMERA,
+    val capturedPhoto: CapturedPhoto? = null,
     val photoUrl: String? = null,
     val pointsAwarded: Int = 0,
     val spotResolved: Boolean = false,
@@ -70,19 +72,23 @@ class SpotVerificationViewModel(
         }
     }
 
-    fun setPhoto(url: String) {
-        _uiState.update { it.copy(photoUrl = url, phase = VerificationPhase.DECISION) }
-    }
-
-    fun setScanPhoto(scanPhoto: ScanCapturedPhoto, url: String) {
+    fun setScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        val photo = CapturedPhoto(
+            bytes = scanPhoto.photoBytes ?: byteArrayOf(),
+            width = scanPhoto.photoWidth,
+            height = scanPhoto.photoHeight,
+            depthAnalysis = scanPhoto.depthAnalysis,
+            attestation = scanPhoto.attestation,
+        )
         _uiState.update {
             it.copy(
+                capturedPhoto = photo,
                 scanDepthAnalysis = scanPhoto.depthAnalysis,
                 scanAiAnalysis = scanPhoto.aiAnalysis,
                 scanAttestation = scanPhoto.attestation,
+                phase = VerificationPhase.DECISION,
             )
         }
-        setPhoto(url)
     }
 
     fun setVerifierLocation(lat: Double, lng: Double) {
@@ -91,7 +97,7 @@ class SpotVerificationViewModel(
 
     fun submitVerification(result: SpotVerificationResult) {
         val state = _uiState.value
-        val photoUrl = state.photoUrl ?: return
+        val photo = state.capturedPhoto ?: return
 
         _uiState.update { it.copy(
             phase = VerificationPhase.SUBMITTING,
@@ -102,6 +108,10 @@ class SpotVerificationViewModel(
 
         scope.launch {
             try {
+                val urls = apiClient.uploadSpotPhotos(listOf(photo.bytes))
+                val photoUrl = urls.firstOrNull()
+                    ?: throw Exception("No URL returned from upload")
+
                 val response = apiClient.verifySpot(
                     state.reportId,
                     VerifySpotRequest(
@@ -117,6 +127,7 @@ class SpotVerificationViewModel(
                 )
                 _uiState.update { it.copy(
                     phase = VerificationPhase.COMPLETE,
+                    photoUrl = photoUrl,
                     pointsAwarded = response.pointsAwarded,
                     spotResolved = response.spotResolved,
                     isSubmitting = false,
