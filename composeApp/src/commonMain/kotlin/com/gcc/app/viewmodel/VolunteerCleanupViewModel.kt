@@ -34,6 +34,7 @@ data class VolunteerCleanupUiState(
     val error: String? = null,
     val phase: VolunteerPhase = VolunteerPhase.BEFORE_PHOTOS,
     val pointsAwarded: Int = 0,
+    val spotLocation: Coordinates? = null,
 )
 
 class VolunteerCleanupViewModel(
@@ -44,18 +45,45 @@ class VolunteerCleanupViewModel(
     private val _uiState = MutableStateFlow(VolunteerCleanupUiState())
     val uiState: StateFlow<VolunteerCleanupUiState> = _uiState.asStateFlow()
 
+    private var beforeScanData: ScanCapturedPhoto? = null
+    private var afterScanData: ScanCapturedPhoto? = null
+
     fun initForReport(reportId: Int) {
         timerJob?.cancel()
+        beforeScanData = null
+        afterScanData = null
         _uiState.value = VolunteerCleanupUiState(
             reportId = reportId,
             phase = VolunteerPhase.BEFORE_PHOTOS,
         )
+        scope.launch {
+            try {
+                val report = apiClient.getSpot(reportId)
+                _uiState.value = _uiState.value.copy(spotLocation = report.coordinates)
+            } catch (_: Exception) {
+                // spotLocation stays null — fallback placeholder will be shown
+            }
+        }
     }
 
     fun addBeforePhoto(url: String) {
         _uiState.value = _uiState.value.copy(
             beforePhotoUrls = _uiState.value.beforePhotoUrls + url,
         )
+    }
+
+    fun addBeforeScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        beforeScanData = scanPhoto
+        addBeforePhoto("before_${_uiState.value.beforePhotoUrls.size + 1}.jpg")
+    }
+
+    fun addAfterScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        afterScanData = scanPhoto
+        addAfterPhoto("after_${_uiState.value.afterPhotoUrls.size + 1}.jpg")
+    }
+
+    fun setTrashHeapScanPhoto(scanPhoto: ScanCapturedPhoto) {
+        setTrashHeapUrl("trash_heap.jpg")
     }
 
     fun uploadBeforePhotos(photoBytes: List<ByteArray>) {
@@ -81,7 +109,11 @@ class VolunteerCleanupViewModel(
         scope.launch {
             _uiState.value = state.copy(isSubmitting = true, error = null)
             try {
-                val request = StartVolunteerRequest(beforeMediaUrls = state.beforePhotoUrls)
+                val request = StartVolunteerRequest(
+                    beforeMediaUrls = state.beforePhotoUrls,
+                    beforeDepthAnalysis = beforeScanData?.depthAnalysis,
+                    beforeAiAnalysis = beforeScanData?.aiAnalysis,
+                )
                 val cleanup = apiClient.startVolunteerCleanup(state.reportId, request)
                 _uiState.value = _uiState.value.copy(
                     cleanup = cleanup,
@@ -166,6 +198,8 @@ class VolunteerCleanupViewModel(
                 val request = CompleteVolunteerRequest(
                     afterMediaUrls = state.afterPhotoUrls,
                     trashHeapMediaUrl = state.trashHeapUrl,
+                    afterDepthAnalysis = afterScanData?.depthAnalysis,
+                    afterAiAnalysis = afterScanData?.aiAnalysis,
                 )
                 val cleanup = apiClient.completeVolunteerCleanup(state.reportId, request)
                 _uiState.value = _uiState.value.copy(

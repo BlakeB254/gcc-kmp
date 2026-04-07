@@ -23,6 +23,7 @@ import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.VolunteerPhase
 import com.gcc.app.util.padTwo
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.ScanCapturedPhoto
 import org.koin.compose.koinInject
 
 @Composable
@@ -81,6 +82,8 @@ fun VolunteerCleanupScreen(
                         isSubmitting = uiState.isSubmitting,
                         error = uiState.error,
                         onCapture = { viewModel.addBeforePhoto("before_${uiState.beforePhotoUrls.size + 1}.jpg") },
+                        spotLocation = uiState.spotLocation,
+                        onScanCapture = { viewModel.addBeforeScanPhoto(it) },
                         onConfirmMessStillHere = { viewModel.startCleanup() },
                         onAlreadyClean = { viewModel.reportAlreadyClean() },
                         onBack = onBack,
@@ -97,12 +100,16 @@ fun VolunteerCleanupScreen(
                     VolunteerPhase.AFTER_PHOTOS -> AfterPhotosPhase(
                         afterPhotoCount = uiState.afterPhotoUrls.size,
                         onCapture = { viewModel.addAfterPhoto("after_${uiState.afterPhotoUrls.size + 1}.jpg") },
+                        spotLocation = uiState.spotLocation,
+                        onScanCapture = { viewModel.addAfterScanPhoto(it) },
                         onNext = { viewModel.advancePhase() },
                     )
 
                     VolunteerPhase.TRASH_HEAP_PHOTO -> TrashHeapPhase(
                         hasTrashHeap = uiState.trashHeapUrl != null,
                         onCapture = { viewModel.setTrashHeapUrl("trash_heap.jpg") },
+                        spotLocation = uiState.spotLocation,
+                        onScanCapture = { viewModel.setTrashHeapScanPhoto(it) },
                         onSubmit = { viewModel.advancePhase() },
                     )
 
@@ -175,6 +182,8 @@ private fun BeforePhotosPhase(
     isSubmitting: Boolean,
     error: String?,
     onCapture: () -> Unit,
+    spotLocation: Coordinates?,
+    onScanCapture: (ScanCapturedPhoto) -> Unit,
     onConfirmMessStillHere: () -> Unit,
     onAlreadyClean: () -> Unit,
     onBack: () -> Unit,
@@ -197,50 +206,59 @@ private fun BeforePhotosPhase(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Camera placeholder
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GccOnBackground.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "\uD83D\uDCF7",
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "Before Photo",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-                if (beforePhotoCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
+        if (spotLocation != null) {
+            SpotScanCapture(
+                spotLocation = spotLocation,
+                geofenceRadius = 30.0,
+                maxPhotos = 3,
+                onPhotoCaptured = onScanCapture,
+                modifier = Modifier.fillMaxWidth().height(300.dp),
+            )
+        } else {
+            // Fallback placeholder when spot location is not yet loaded
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GccOnBackground.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "$beforePhotoCount photo${if (beforePhotoCount != 1) "s" else ""} captured",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GccGreen,
+                        "\uD83D\uDCF7",
+                        style = MaterialTheme.typography.displayLarge,
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Before Photo",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                    if (beforePhotoCount > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "$beforePhotoCount photo${if (beforePhotoCount != 1) "s" else ""} captured",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GccGreen,
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // Capture button
-        OutlinedButton(
-            onClick = onCapture,
-            modifier = Modifier.size(72.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-        ) {
-            Text(
-                "\uD83D\uDCF8",
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            OutlinedButton(
+                onClick = onCapture,
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+            ) {
+                Text(
+                    "\uD83D\uDCF8",
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
         }
 
         error?.let {
@@ -481,6 +499,8 @@ private fun InProgressPhase(
 private fun AfterPhotosPhase(
     afterPhotoCount: Int,
     onCapture: () -> Unit,
+    spotLocation: Coordinates?,
+    onScanCapture: (ScanCapturedPhoto) -> Unit,
     onNext: () -> Unit,
 ) {
     Column(
@@ -500,49 +520,59 @@ private fun AfterPhotosPhase(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Camera placeholder
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GccOnBackground.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "\uD83D\uDCF7",
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "After Photo",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-                if (afterPhotoCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
+        if (spotLocation != null) {
+            SpotScanCapture(
+                spotLocation = spotLocation,
+                geofenceRadius = 30.0,
+                maxPhotos = 3,
+                onPhotoCaptured = onScanCapture,
+                modifier = Modifier.fillMaxWidth().height(300.dp),
+            )
+        } else {
+            // Fallback placeholder when spot location is not yet loaded
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GccOnBackground.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        "$afterPhotoCount photo${if (afterPhotoCount != 1) "s" else ""} captured",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = GccGreen,
+                        "\uD83D\uDCF7",
+                        style = MaterialTheme.typography.displayLarge,
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "After Photo",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                    if (afterPhotoCount > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "$afterPhotoCount photo${if (afterPhotoCount != 1) "s" else ""} captured",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GccGreen,
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedButton(
-            onClick = onCapture,
-            modifier = Modifier.size(72.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-        ) {
-            Text(
-                "\uD83D\uDCF8",
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            OutlinedButton(
+                onClick = onCapture,
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+            ) {
+                Text(
+                    "\uD83D\uDCF8",
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -562,6 +592,8 @@ private fun AfterPhotosPhase(
 private fun TrashHeapPhase(
     hasTrashHeap: Boolean,
     onCapture: () -> Unit,
+    spotLocation: Coordinates?,
+    onScanCapture: (ScanCapturedPhoto) -> Unit,
     onSubmit: () -> Unit,
 ) {
     Column(
@@ -581,45 +613,81 @@ private fun TrashHeapPhase(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Camera placeholder
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GccOnBackground.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "\uD83D\uDDD1\uFE0F",
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    if (hasTrashHeap) "Photo captured" else "Trash Heap",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (hasTrashHeap) GccGreen else Color.White.copy(alpha = 0.7f),
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         if (!hasTrashHeap) {
-            OutlinedButton(
-                onClick = onCapture,
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-            ) {
-                Text(
-                    "\uD83D\uDCF8",
-                    style = MaterialTheme.typography.headlineMedium,
+            if (spotLocation != null) {
+                SpotScanCapture(
+                    spotLocation = spotLocation,
+                    geofenceRadius = 30.0,
+                    maxPhotos = 1,
+                    requireGeofence = false,
+                    onPhotoCaptured = onScanCapture,
+                    modifier = Modifier.fillMaxWidth().height(300.dp),
                 )
+            } else {
+                // Fallback placeholder when spot location is not yet loaded
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(GccOnBackground.copy(alpha = 0.85f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "\uD83D\uDDD1\uFE0F",
+                            style = MaterialTheme.typography.displayLarge,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "Trash Heap",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedButton(
+                    onClick = onCapture,
+                    modifier = Modifier.size(72.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
+                ) {
+                    Text(
+                        "\uD83D\uDCF8",
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+        } else {
+            // Show captured state
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GccOnBackground.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "\uD83D\uDDD1\uFE0F",
+                        style = MaterialTheme.typography.displayLarge,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Photo captured",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = GccGreen,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         GccButton(
