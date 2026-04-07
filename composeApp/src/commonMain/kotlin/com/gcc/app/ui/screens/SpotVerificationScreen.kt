@@ -18,6 +18,8 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.VerificationPhase
+import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.shared.model.SpotVerificationResult
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
@@ -77,7 +79,13 @@ fun SpotVerificationScreen(
             ) {
                 when (uiState.phase) {
                     VerificationPhase.CAMERA -> CameraPhase(
-                        onCapture = { viewModel.setPhoto("verify_${reportId}_${Clock.System.now().epochSeconds}.jpg") },
+                        spotLocation = uiState.spotCoordinates,
+                        onScanCapture = { scanPhoto ->
+                            viewModel.setScanPhoto(
+                                scanPhoto,
+                                "verify_${reportId}_${Clock.System.now().epochSeconds}.jpg",
+                            )
+                        },
                         onBack = onBack,
                     )
                     VerificationPhase.DECISION -> DecisionPhase(
@@ -128,7 +136,8 @@ fun SpotVerificationScreen(
 
 @Composable
 private fun CameraPhase(
-    onCapture: () -> Unit,
+    spotLocation: Coordinates?,
+    onScanCapture: (ScanCapturedPhoto) -> Unit,
     onBack: () -> Unit,
 ) {
     Column(
@@ -149,40 +158,30 @@ private fun CameraPhase(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Camera viewfinder placeholder
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GccOnBackground.copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "\uD83D\uDCF7",
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "Verification Photo",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = onCapture,
-            modifier = Modifier.size(72.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-        ) {
-            Text(
-                "\uD83D\uDCF8",
-                style = MaterialTheme.typography.headlineMedium,
+        if (spotLocation != null) {
+            SpotScanCapture(
+                spotLocation = spotLocation,
+                geofenceRadius = 30.0,
+                maxPhotos = 1,
+                onPhotoCaptured = onScanCapture,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            CameraCapture(
+                capturedPhotos = emptyList(),
+                onCapture = { photo ->
+                    onScanCapture(
+                        ScanCapturedPhoto(
+                            photoBytes = photo.bytes,
+                            photoWidth = photo.width,
+                            photoHeight = photo.height,
+                            depthAnalysis = photo.depthAnalysis,
+                            attestation = photo.attestation,
+                        )
+                    )
+                },
+                maxPhotos = 1,
+                modifier = Modifier.weight(1f),
             )
         }
 

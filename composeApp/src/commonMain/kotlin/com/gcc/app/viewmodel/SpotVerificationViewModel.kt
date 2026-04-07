@@ -1,6 +1,11 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.model.CaptureAttestation
+import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.DepthAnalysis
+import com.gcc.shared.model.OnDeviceAnalysisResult
+import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.shared.model.SpotVerificationResult
 import com.gcc.shared.model.VerifySpotRequest
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +38,12 @@ data class SpotVerificationUiState(
     val verifierLng: Double? = null,
     // Spot info for display
     val expectedVerificationCount: Int = 0,
+    // Spot location for geofencing the camera
+    val spotCoordinates: Coordinates? = null,
+    // Scan enrichment data
+    val scanDepthAnalysis: DepthAnalysis? = null,
+    val scanAiAnalysis: OnDeviceAnalysisResult? = null,
+    val scanAttestation: CaptureAttestation? = null,
 )
 
 class SpotVerificationViewModel(
@@ -48,10 +59,29 @@ class SpotVerificationViewModel(
             reportId = reportId,
             expectedVerificationCount = expectedVerificationCount,
         )
+        scope.launch {
+            try {
+                val report = apiClient.getSpot(reportId)
+                _uiState.update { it.copy(spotCoordinates = report.coordinates) }
+            } catch (_: Exception) {
+                // Non-fatal: geofence will be skipped if coordinates unavailable
+            }
+        }
     }
 
     fun setPhoto(url: String) {
         _uiState.update { it.copy(photoUrl = url, phase = VerificationPhase.DECISION) }
+    }
+
+    fun setScanPhoto(scanPhoto: ScanCapturedPhoto, url: String) {
+        _uiState.update {
+            it.copy(
+                scanDepthAnalysis = scanPhoto.depthAnalysis,
+                scanAiAnalysis = scanPhoto.aiAnalysis,
+                scanAttestation = scanPhoto.attestation,
+            )
+        }
+        setPhoto(url)
     }
 
     fun setVerifierLocation(lat: Double, lng: Double) {
@@ -79,6 +109,9 @@ class SpotVerificationViewModel(
                         verifierLat = state.verifierLat,
                         verifierLng = state.verifierLng,
                         expectedVerificationCount = state.expectedVerificationCount,
+                        depthAnalysis = state.scanDepthAnalysis,
+                        aiAnalysis = state.scanAiAnalysis,
+                        captureAttestation = state.scanAttestation,
                     ),
                 )
                 _uiState.update { it.copy(

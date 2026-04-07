@@ -700,6 +700,9 @@ class GccApiClient(
 
     // ── Spot Verification Lifecycle ──────────────────────────────────
 
+    suspend fun getSpot(spotId: Int): CommunityReport =
+        get("/api/spots/$spotId")
+
     suspend fun verifySpot(spotId: Int, request: VerifySpotRequest): VerifySpotResponse =
         postJson("/api/spots/$spotId/verify", request)
 
