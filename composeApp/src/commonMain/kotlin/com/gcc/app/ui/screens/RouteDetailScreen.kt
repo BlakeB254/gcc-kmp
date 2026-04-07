@@ -444,40 +444,27 @@ fun RouteDetailScreen(
                     }
                 }
 
-                // Claim route button
+                // Route status and actions
                 item {
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    uiState.claimError?.let { error ->
-                        Text(
-                            error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = GccError,
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
-
-                    val isClaimable = route.status == com.gcc.shared.model.RouteStatus.PUBLISHED
-                    GccButton(
-                        text = if (isClaimable) "Claim Route" else "Not Claimable",
-                        onClick = { viewModel.claimRoute(routeId) },
-                        variant = GccButtonVariant.PRIMARY,
-                        trailingText = if (isClaimable) payoutString else null,
-                        enabled = isClaimable && !uiState.isClaiming,
-                        isLoading = uiState.isClaiming,
+                    // Queue-based assignment notice
+                    Text(
+                        "Blocks are assigned based on your position in the signup queue.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    if (route.checkpoints.isNotEmpty() || route.geometry != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        GccButton(
-                            text = "Scout & Clean",
-                            onClick = { onStartScan(routeId) },
-                            variant = GccButtonVariant.SECONDARY,
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                        )
-                    }
+                    val isFunded = false // Blocks not yet funded/available
+                    GccButton(
+                        text = if (isFunded) "Scout & Clean" else "Not Yet Available",
+                        onClick = { onStartScan(routeId) },
+                        variant = GccButtonVariant.PRIMARY,
+                        enabled = isFunded,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
                 }
             }
         }
