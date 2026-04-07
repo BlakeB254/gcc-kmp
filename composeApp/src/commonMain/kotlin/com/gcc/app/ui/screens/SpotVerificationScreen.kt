@@ -21,7 +21,6 @@ import com.gcc.app.viewmodel.VerificationPhase
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.shared.model.SpotVerificationResult
-import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
 @Composable
@@ -96,10 +95,7 @@ fun SpotVerificationScreen(
                     } else CameraPhase(
                         spotLocation = uiState.spotCoordinates,
                         onScanCapture = { scanPhoto ->
-                            viewModel.setScanPhoto(
-                                scanPhoto,
-                                "verify_${reportId}_${Clock.System.now().epochSeconds}.jpg",
-                            )
+                            viewModel.setScanPhoto(scanPhoto)
                         },
                         onBack = onBack,
                     )
