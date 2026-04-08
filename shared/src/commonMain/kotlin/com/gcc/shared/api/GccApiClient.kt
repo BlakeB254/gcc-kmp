@@ -252,7 +252,7 @@ class GccApiClient(
     // ── Stripe Checkout (via website) ────────────────────────────────
 
     suspend fun createCheckoutSession(request: CheckoutRequest): CheckoutResponse {
-        val siteUrl = "https://globalcommunitycleaners.org"
+        val siteUrl = "https://www.globalcommunitycleaners.org"
         val response = siteClient.post("$siteUrl/api/contribute/checkout") {
             contentType(io.ktor.http.ContentType.Application.Json)
             setBody(request)
@@ -299,7 +299,7 @@ class GccApiClient(
         fullName: String?,
         email: String?,
     ): AuthResponse {
-        val siteUrl = "https://globalcommunitycleaners.org"
+        val siteUrl = "https://www.globalcommunitycleaners.org"
         val response = siteClient.post("$siteUrl/api/auth/apple") {
             contentType(io.ktor.http.ContentType.Application.Json)
             setBody(AppleAuthRequest(identityToken = identityToken, fullName = fullName, email = email))
@@ -312,7 +312,7 @@ class GccApiClient(
     }
 
     suspend fun loginWithGoogle(idToken: String): AuthResponse {
-        val siteUrl = "https://globalcommunitycleaners.org"
+        val siteUrl = "https://www.globalcommunitycleaners.org"
         val response = siteClient.post("$siteUrl/api/auth/google") {
             contentType(io.ktor.http.ContentType.Application.Json)
             setBody(GoogleAuthRequest(idToken = idToken))
@@ -330,7 +330,7 @@ class GccApiClient(
         postJson("/api/auth/verify-2fa", Verify2FARequest(twoFactorToken = twoFactorToken, code = code))
 
     suspend fun getSponsorWall(): List<Sponsor> {
-        val siteUrl = "https://globalcommunitycleaners.org"
+        val siteUrl = "https://www.globalcommunitycleaners.org"
         return try {
             val response = siteClient.get("$siteUrl/api/public/sponsor-wall")
             if (!response.status.isSuccess()) return emptyList()
@@ -502,7 +502,7 @@ class GccApiClient(
         get("/api/admin/blocks")
 
     suspend fun getAvailableBlocks(): List<Block> {
-        val siteUrl = "https://globalcommunitycleaners.org"
+        val siteUrl = "https://www.globalcommunitycleaners.org"
         val response = siteClient.get("$siteUrl/api/blocks")
         if (!response.status.isSuccess()) {
             throw Exception("Failed to load blocks")
