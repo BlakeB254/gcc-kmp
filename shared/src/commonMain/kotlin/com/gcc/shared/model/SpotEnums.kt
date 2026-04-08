@@ -32,6 +32,7 @@ enum class SpotTag {
     @SerialName("hazardous") HAZARDOUS,
     @SerialName("electronics") ELECTRONICS,
     @SerialName("clothing") CLOTHING,
+    @SerialName("graffiti") GRAFFITI,
     @SerialName("other") OTHER,
 }
 

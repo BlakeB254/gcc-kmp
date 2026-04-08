@@ -14,6 +14,7 @@ fun SpotTag.displayLabel(): String = when (this) {
     SpotTag.HAZARDOUS -> "Hazardous"
     SpotTag.ELECTRONICS -> "Electronics"
     SpotTag.CLOTHING -> "Clothing"
+    SpotTag.GRAFFITI -> "Graffiti"
     SpotTag.OTHER -> "Other"
 }
 
@@ -29,5 +30,6 @@ fun SpotTag.emoji(): String = when (this) {
     SpotTag.HAZARDOUS -> "\u2622\uFE0F"
     SpotTag.ELECTRONICS -> "\uD83D\uDD0C"
     SpotTag.CLOTHING -> "\uD83D\uDC55"
+    SpotTag.GRAFFITI -> "\uD83C\uDFA8"
     SpotTag.OTHER -> "\uD83D\uDCE6"
 }
