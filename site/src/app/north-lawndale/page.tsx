@@ -1,5 +1,5 @@
-import { Header } from '@/components/landing/Header'
-import { FooterSection } from '@/components/landing/FooterSection'
+import { NLHeader } from '@/components/north-lawndale/NLHeader'
+import { NLFooterSection } from '@/components/north-lawndale/NLFooterSection'
 import { NLHeroSection } from '@/components/north-lawndale/NLHeroSection'
 import { NLLegacySection } from '@/components/north-lawndale/NLLegacySection'
 import { NLStatsSection } from '@/components/north-lawndale/NLStatsSection'
@@ -10,14 +10,14 @@ import { NLSignupSection } from '@/components/north-lawndale/NLSignupSection'
 export default function NorthLawndalePage() {
   return (
     <main className="flex min-h-screen flex-col">
-      <Header />
+      <NLHeader />
       <NLHeroSection />
       <NLLegacySection />
       <NLStatsSection />
       <NLHowItWorksSection />
       <NLImpactSection />
       <NLSignupSection />
-      <FooterSection />
+      <NLFooterSection />
     </main>
   )
 }
