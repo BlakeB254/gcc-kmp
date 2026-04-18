@@ -48,3 +48,13 @@ site/.env.local
 
 # Fastlane secrets
 iosApp/fastlane/api_key.json
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+**/venv/
+**/__pycache__/
+**/*.pyc
+target/
+.cache/
