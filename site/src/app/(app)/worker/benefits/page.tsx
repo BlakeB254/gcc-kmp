@@ -9,6 +9,7 @@ import {
   Heart,
   ArrowRight,
   CheckCircle,
+  Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -67,7 +68,7 @@ const earningsExamples = [
 
 const requirements = [
   'Must be 18 years or older',
-  'Live in or near North Lawndale (60623, 60624)',
+  'Live in or near our launch area — North Lawndale, Chicago (60623, 60624)',
   'Valid government ID',
   'Smartphone with camera',
   'Ability to walk and perform light physical work',
@@ -189,6 +190,54 @@ export default function WorkerBenefitsPage() {
               </ul>
             </CardContent>
           </Card>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Outside North Lawndale?{' '}
+            <Link href="/join" className="font-semibold text-brand-green-700 hover:underline">
+              Join the waitlist
+            </Link>{' '}
+            — we&apos;ll open your zip code next.
+          </p>
+        </div>
+      </section>
+
+      {/* Expansion / Global partners callout */}
+      <section className="bg-gradient-to-br from-brand-green-700 via-brand-green-800 to-brand-green-900 py-16 text-white">
+        <div className="section-container">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur">
+              <Globe className="h-7 w-7" />
+            </div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-brand-green-200">
+              Global Community Cleaners — expanding worldwide
+            </p>
+            <h2 className="mb-4 text-2xl font-bold sm:text-3xl">
+              We launched in North Lawndale. We&apos;re bringing GCC to every neighborhood next.
+            </h2>
+            <p className="mb-8 text-white/90 leading-relaxed">
+              North Lawndale (Chicago) is our proving ground — paid block-cleaning work run by residents, for residents,
+              with 100% of sponsor dollars going to workers. The model is built to scale: if you&apos;re a community
+              leader, nonprofit, municipality, or business that wants clean streets and paid opportunity for your
+              neighborhood — anywhere in the world — we want to partner with you.
+            </p>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/sponsor/enterprise"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3 text-base font-bold text-brand-green-800 shadow-lg transition-colors hover:bg-brand-green-50"
+              >
+                Bring GCC to your area
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+              <Link
+                href="/join"
+                className="inline-flex items-center justify-center rounded-lg border-2 border-white/60 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-white/10"
+              >
+                Join the workforce waitlist
+              </Link>
+            </div>
+            <p className="mt-6 text-xs text-white/70">
+              Currently hiring workers in North Lawndale only (60623, 60624). Expansion partnerships open worldwide.
+            </p>
+          </div>
         </div>
       </section>
 
