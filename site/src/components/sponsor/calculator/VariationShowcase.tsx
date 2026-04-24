@@ -235,7 +235,37 @@ export function VariationShowcase({
           )}
         </div>
 
-        <div className="flex-1 p-6">
+        {/* Sponsor info panel — immediately below the image so it swaps
+            in lockstep with the image cycle, giving sponsors a visible
+            second co-branded surface. */}
+        <SponsorInfoPanel sponsor={panelSponsor} isBaseline={showingBaseline} />
+
+        {/* Chip row — lets users lock a variation. Kept tight to the info
+            panel so the sponsor-cycle cluster reads as a single unit. */}
+        <div className={cn('flex flex-wrap items-center gap-2 px-6 pt-4 pb-2', styles.bg)}>
+          <span className="text-xs text-neutral-500 mr-1">Preview sponsor:</span>
+          {SPONSOR_ORDER.map((slug, i) => {
+            const sponsor = SPONSORS[slug]
+            const isActive = i === activeIdx
+            return (
+              <button
+                key={slug}
+                onClick={() => handleChipClick(slug)}
+                aria-pressed={isActive}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+                  isActive
+                    ? `${sponsor.brandColors.bg} ${sponsor.brandColors.text} border-transparent`
+                    : 'bg-white/80 text-neutral-700 border-neutral-300 hover:border-neutral-400'
+                )}
+              >
+                {sponsor.name}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex-1 p-6 pt-4">
           <div className="flex items-start justify-between mb-3">
             <div>
               <span className={cn('text-xs font-semibold uppercase tracking-wider', styles.text)}>
@@ -249,29 +279,6 @@ export function VariationShowcase({
           </div>
 
           <p className="text-neutral-700 mb-4">{description}</p>
-
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-xs text-neutral-500 mr-1">Preview sponsor:</span>
-            {SPONSOR_ORDER.map((slug, i) => {
-              const sponsor = SPONSORS[slug]
-              const isActive = i === activeIdx
-              return (
-                <button
-                  key={slug}
-                  onClick={() => handleChipClick(slug)}
-                  aria-pressed={isActive}
-                  className={cn(
-                    'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
-                    isActive
-                      ? `${sponsor.brandColors.bg} ${sponsor.brandColors.text} border-transparent`
-                      : 'bg-white/80 text-neutral-700 border-neutral-300 hover:border-neutral-400'
-                  )}
-                >
-                  {sponsor.name}
-                </button>
-              )
-            })}
-          </div>
 
           <div className="space-y-2 mb-4">
             <p className="text-sm font-semibold text-neutral-900">Why sponsors love this:</p>
@@ -287,9 +294,7 @@ export function VariationShowcase({
             </ul>
           </div>
 
-          <SponsorInfoPanel sponsor={panelSponsor} isBaseline={showingBaseline} />
-
-          <p className="mt-3 text-[11px] text-neutral-400 italic">
+          <p className="text-[11px] text-neutral-400 italic">
             Mockup preview — Monday Coffee, Del Kar Pharmacy, Barney&apos;s New Life, and Black Panther Party Cubs are fictional example sponsors.
           </p>
         </div>
@@ -302,18 +307,18 @@ function SponsorInfoPanel({ sponsor, isBaseline }: { sponsor: Sponsor; isBaselin
   return (
     <div
       className={cn(
-        'rounded-xl p-4 flex items-start gap-4 transition-colors duration-500',
+        'flex items-start gap-4 px-6 py-4 border-b border-white/10 transition-colors duration-500',
         sponsor.brandColors.bg,
         sponsor.brandColors.text
       )}
       aria-label={isBaseline ? 'GCC baseline sponsor info' : `Sponsor preview: ${sponsor.name}`}
     >
-      <div className="relative w-16 h-16 flex-shrink-0 rounded-lg bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center">
+      <div className="relative w-20 h-20 flex-shrink-0 rounded-lg bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center">
         <Image
           src={sponsor.logoPath}
           alt={`${sponsor.name} logo`}
-          width={56}
-          height={56}
+          width={72}
+          height={72}
           className="object-contain"
           onError={(e) => {
             e.currentTarget.style.display = 'none'
@@ -327,9 +332,9 @@ function SponsorInfoPanel({ sponsor, isBaseline }: { sponsor: Sponsor; isBaselin
           </span>
           <div className={cn('h-1 flex-1 min-w-[20px] rounded-full opacity-50', sponsor.brandColors.accent)} />
         </div>
-        <h4 className="text-base font-bold mt-0.5 truncate">{sponsor.name}</h4>
-        <p className="text-xs opacity-90 mt-0.5">{sponsor.tagline}</p>
-        <div className="mt-2 space-y-1 text-[11px] opacity-90">
+        <h4 className="text-lg font-bold mt-0.5 truncate">{sponsor.name}</h4>
+        <p className="text-sm opacity-90 mt-0.5">{sponsor.tagline}</p>
+        <div className="mt-2 space-y-0.5 text-[11px] opacity-90">
           <p>
             <span className="font-semibold">Campaign:</span> {sponsor.campaign}
           </p>
