@@ -245,3 +245,7 @@ The point of GCC isn't philanthropy. It's **infrastructure** — a transparent, 
 **If you're a brand looking for a CSR program that actually shows up in the community every week:** we want to co-brand real work with real impact, not a one-time photo op.
 
 globalcommunitycleaners.org
+
+---
+
+_Last updated: 2026-04-24. Live preview: https://gcc-omega.vercel.app_
