@@ -30,6 +30,7 @@ import com.gcc.app.ui.components.GccBottomNavBar
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.components.PhotoStrip
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
@@ -52,6 +53,8 @@ fun MapFullScreen(
     val uiState by viewModel.uiState.collectAsState()
     val bountyViewModel = koinInject<BountyViewModel>()
     val bountyState by bountyViewModel.uiState.collectAsState()
+    val affectedBlocksVm = koinInject<AffectedBlocksViewModel>()
+    val affectedState by affectedBlocksVm.uiState.collectAsState()
     val locationProvider = koinInject<LocationProvider>()
     val tokenManager = koinInject<TokenManager>()
     val isAdmin = remember { tokenManager.isAdmin() }
@@ -70,7 +73,14 @@ fun MapFullScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { locationProvider.stopLocationUpdates() }
+        // Location updates are started in the LaunchedEffect above; this
+        // handler owns the heatmap polling lifecycle so it cleans up when
+        // the user leaves the map screen.
+        affectedBlocksVm.startPolling()
+        onDispose {
+            locationProvider.stopLocationUpdates()
+            affectedBlocksVm.stopPolling()
+        }
     }
 
     // Dual-mode state
@@ -241,6 +251,19 @@ fun MapFullScreen(
             bounties = visibleBounties,
             spots = visibleSpots,
             mapMode = mapMode,
+            affectedBlocks = affectedState.blocks,
+            onAffectedBlockTap = { blockId ->
+                affectedBlocksVm.selectBlock(blockId)
+                // Zoom in so the polygon fill resolves clearly — same
+                // camera override pattern routes + spots already use.
+                val block = affectedState.blocks.firstOrNull { it.blockId == blockId }
+                val center = block?.center
+                if (center != null) {
+                    overrideCenterLat = center.lat
+                    overrideCenterLng = center.lng
+                    overrideZoom = MapStyles.ZOOM_ROUTE
+                }
+            },
         ) {
             // Top bar: toggle + community info inline
             Row(
@@ -350,8 +373,137 @@ fun MapFullScreen(
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
                 )
             }
+
+            // Affected-block info card — shown when a heatmap polygon is tapped
+            affectedState.selectedBlock?.let { block ->
+                AffectedBlockInfoCard(
+                    block = block,
+                    onDismiss = {
+                        affectedBlocksVm.clearSelection()
+                        overrideCenterLat = null
+                        overrideCenterLng = null
+                        overrideZoom = null
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                )
+            }
         }
     }
+    }
+}
+
+@Composable
+private fun AffectedBlockInfoCard(
+    block: com.gcc.shared.model.AffectedBlock,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val statusColor = when (block.status) {
+        com.gcc.shared.model.AffectedBlockStatus.IN_PROGRESS -> Color(0xFFFF9800)
+        com.gcc.shared.model.AffectedBlockStatus.COMPLETED -> GccGreen
+        com.gcc.shared.model.AffectedBlockStatus.FUNDED -> GccSky
+        com.gcc.shared.model.AffectedBlockStatus.AVAILABLE -> Color(0xFF9E9E9E)
+    }
+    val fundingPct = if (block.fundingGoal > 0) {
+        ((block.fundingCurrent / block.fundingGoal) * 100).toInt().coerceIn(0, 100)
+    } else 0
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    block.code ?: "Block #${block.blockId}",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = statusColor.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            block.status.name.lowercase().replace('_', ' '),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusColor,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                    TextButton(
+                        onClick = onDismiss,
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Text("✕", color = TextMuted)
+                    }
+                }
+            }
+
+            block.name?.let { name ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    maxLines = 2,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column {
+                    Text(
+                        "Funding",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSubtle,
+                    )
+                    Text(
+                        "$fundingPct%",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = GccGreen,
+                    )
+                }
+                Column {
+                    Text(
+                        "Sponsors",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSubtle,
+                    )
+                    Text(
+                        "${block.sponsorCount}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                }
+                block.scheduledCleaningAt?.let { scheduled ->
+                    Column {
+                        Text(
+                            "Scheduled",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSubtle,
+                        )
+                        Text(
+                            // ISO timestamp — trim to YYYY-MM-DD for glance
+                            scheduled.take(10),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

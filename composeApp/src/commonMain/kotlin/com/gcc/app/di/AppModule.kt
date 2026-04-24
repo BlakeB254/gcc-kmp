@@ -30,6 +30,8 @@ import com.gcc.app.viewmodel.PointsDashboardViewModel
 import com.gcc.app.viewmodel.ImpactViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
+import com.gcc.app.viewmodel.AffectedBlocksViewModel
+import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +86,8 @@ val appModule = module {
     singleOf(::PointsDashboardViewModel)
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
+    single { AffectedAreasRepository(get()) }
+    singleOf(::AffectedBlocksViewModel)
     factory { RouteScanViewModel(get(), get()) }
     factory { RouteTestViewModel(get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
