@@ -177,6 +177,19 @@ function SponsorPage() {
           {/* Hero */}
           <SponsorHero blockCount={blocks.length} isLoading={isLoading} />
 
+          {/* Returning-sponsor sign-in prompt */}
+          <div className="mb-6 rounded-xl border border-brand-green-200 bg-brand-green-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-brand-green-900">
+              <strong>Already sponsored before?</strong> Sign in to see all your donations, scheduled cleanings, and receipts.
+            </p>
+            <Link
+              href="/sponsor/login"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-green-700 border border-brand-green-200 hover:bg-brand-green-100 transition-colors"
+            >
+              Sign in to dashboard →
+            </Link>
+          </div>
+
           {/* Pre-selected block confirmation */}
           {preselectedBlock && (
             <PreselectedBlockBanner block={preselectedBlock} />
