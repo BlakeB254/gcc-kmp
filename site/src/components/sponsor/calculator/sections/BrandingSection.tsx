@@ -4,6 +4,8 @@ import { ChevronRight, ChevronLeft, Shirt, Wrench, Megaphone, Globe } from 'luci
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AddonCard } from '@/components/sponsor/calculator/cards/AddonCard'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
+import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
+import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
 import {
   workerBrandingAddons,
   equipmentBrandingAddons,
@@ -94,10 +96,11 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
       <CardContent className="space-y-8">
         {/* Worker Branding */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.workerBranding}
-            imageSrc="/images/upsells/worker-branding.svg"
-            imageAlt="Workers wearing branded vests and shirts while cleaning Chicago streets"
+            baseImageSrc={baseImageSrcFor('worker-branding')}
+            variationImageSrcs={variationImageSrcsFor('worker-branding')}
+            imageAlt="Community worker in a green GCC vest sweeping a Chicago sidewalk"
             icon={<Shirt className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -119,10 +122,11 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
 
         {/* Equipment Branding */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.equipmentBranding}
-            imageSrc="/images/upsells/equipment-branding.svg"
-            imageAlt="Branded cleaning equipment including brooms, rakes, and rolling bins"
+            baseImageSrc={baseImageSrcFor('equipment-branding')}
+            variationImageSrcs={variationImageSrcsFor('equipment-branding')}
+            imageAlt="GCC-branded cleaning cart with broom and rake on a Chicago sidewalk"
             icon={<Wrench className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -144,10 +148,11 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
 
         {/* Street Advertising */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.streetAdvertising}
-            imageSrc="/images/upsells/street-advertising.svg"
-            imageAlt="Yard signs and banners on a freshly cleaned Chicago block"
+            baseImageSrc={baseImageSrcFor('street-advertising')}
+            variationImageSrcs={variationImageSrcsFor('street-advertising')}
+            imageAlt="Cleaned by GCC yard sign in a North Lawndale parkway"
             icon={<Megaphone className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -168,10 +173,11 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
 
         {/* Digital Presence */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.digitalPresence}
-            imageSrc="/images/upsells/digital-presence.svg"
-            imageAlt="Social media posts featuring sponsor logos and before/after cleaning photos"
+            baseImageSrc={baseImageSrcFor('digital-presence')}
+            variationImageSrcs={variationImageSrcsFor('digital-presence')}
+            imageAlt="Smartphone showing a GCC social media post"
             icon={<Globe className="w-8 h-8 text-brand-blue-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
