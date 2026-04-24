@@ -281,17 +281,17 @@ actual fun GccMap(
                 textIgnorePlacement = const(false),
             )
 
-            // ── Route polygon fill — visible at overview zooms, fades at street level ──
+            // ── Route polygon fill — invisible tap target ──
+            // Was previously a solid green fill (zoom 10-14 dominant, fading
+            // by 16) but it overlapped the affected-block heatmap and the
+            // clean-zone base layer so it read as a duplicated heatmap. The
+            // line stack below (glow + casing + core) carries the route
+            // visual; this fill stays ONLY for tap targeting at all zooms.
             FillLayer(
                 id = MapStyles.LAYER_ROUTE_FILL,
                 source = routePolygonsSrc,
-                color = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(MapStyles.ROUTE_FILL_COLOR),
-                    14 to const(MapStyles.ROUTE_FILL_COLOR),
-                    16 to const(Color.Transparent),
-                ),
+                color = const(MapStyles.ROUTE_FILL_COLOR),
+                opacity = const(0.001f),
                 onClick = if (onRouteTap != null) { features ->
                     val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
                     if (idx != null) {
