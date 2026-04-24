@@ -9,6 +9,7 @@ import {
   SPONSOR_ORDER,
   type Sponsor,
   type SponsorSlug,
+  type ZoomRegion,
 } from '@/components/sponsor/calculator/variationData'
 
 interface VariationShowcaseProps {
@@ -23,6 +24,8 @@ interface VariationShowcaseProps {
   imageAlt?: string
   accentColor?: 'gold' | 'green' | 'brown' | 'sky'
   icon?: React.ReactNode
+  /** Optional: square fractional region of the image to show as a PiP zoom */
+  zoomRegion?: ZoomRegion
 }
 
 const accentStyles = {
@@ -66,6 +69,7 @@ export function VariationShowcase({
   imageAlt,
   accentColor = 'gold',
   icon,
+  zoomRegion,
 }: VariationShowcaseProps) {
   const styles = accentStyles[accentColor]
   const rootRef = useRef<HTMLDivElement>(null)
@@ -233,6 +237,13 @@ export function VariationShowcase({
               {icon}
             </div>
           )}
+          {zoomRegion && (
+            <PipZoom
+              imageSrc={activeImageSrc}
+              region={zoomRegion}
+              altText={`Zoomed view of ${activeSponsor.name} branding: ${zoomRegion.label}`}
+            />
+          )}
         </div>
 
         {/* Sponsor info panel — immediately below the image so it swaps
@@ -294,10 +305,46 @@ export function VariationShowcase({
             </ul>
           </div>
 
-          <p className="text-[11px] text-neutral-400 italic">
-            Mockup preview — Monday Coffee, Del Kar Pharmacy, Barney&apos;s New Life, and Black Panther Party Cubs are fictional example sponsors.
-          </p>
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-900 leading-relaxed">
+            <p className="font-semibold mb-1">⚠ AI-generated mockup — illustrative only</p>
+            <p>
+              Preview sponsors (Monday Coffee, Del Kar Pharmacy, Barney&apos;s New Life, Black Panther Party Cubs) are examples.
+              The branded scenes above are AI-generated approximations produced from each sponsor&apos;s reference logo —
+              some lettering and placement will not be pixel-accurate. For a real sponsorship, we work directly with your
+              team to co-produce the final photography and creative using your actual logos, campaign messaging, and brand
+              guidelines.
+            </p>
+          </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PipZoom({ imageSrc, region, altText }: { imageSrc: string; region: ZoomRegion; altText: string }) {
+  const scale = 1 / region.size
+  return (
+    <div className="absolute bottom-3 right-3 w-40 aspect-[3/2] rounded-lg overflow-hidden shadow-2xl ring-2 ring-white/90 bg-neutral-900 pointer-events-none">
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="absolute top-0 left-0"
+          style={{
+            width: `${scale * 100}%`,
+            height: `${scale * 100}%`,
+            transform: `translate(${-region.x * scale * 100}%, ${-region.y * scale * 100}%)`,
+          }}
+        >
+          <Image
+            src={imageSrc}
+            alt={altText}
+            fill
+            sizes="160px"
+            className="object-cover"
+          />
+        </div>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-3 pb-1 text-center">
+        <span className="text-[9px] font-bold text-white uppercase tracking-wider">🔍 {region.label}</span>
       </div>
     </div>
   )

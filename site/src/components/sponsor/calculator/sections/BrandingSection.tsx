@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AddonCard } from '@/components/sponsor/calculator/cards/AddonCard'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
 import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
-import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
+import { baseImageSrcFor, variationImageSrcsFor, zoomRegionFor } from '@/components/sponsor/calculator/variationData'
 import {
   workerBrandingAddons,
   equipmentBrandingAddons,
@@ -100,6 +100,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.workerBranding}
             baseImageSrc={baseImageSrcFor('worker-branding')}
             variationImageSrcs={variationImageSrcsFor('worker-branding')}
+          zoomRegion={zoomRegionFor('worker-branding')}
             imageAlt="Community worker in a green GCC vest sweeping a Chicago sidewalk"
             icon={<Shirt className="w-8 h-8 text-brand-green-600" />}
           />
@@ -126,6 +127,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.equipmentBranding}
             baseImageSrc={baseImageSrcFor('equipment-branding')}
             variationImageSrcs={variationImageSrcsFor('equipment-branding')}
+          zoomRegion={zoomRegionFor('equipment-branding')}
             imageAlt="GCC-branded cleaning cart with broom and rake on a Chicago sidewalk"
             icon={<Wrench className="w-8 h-8 text-brand-green-600" />}
           />
@@ -152,6 +154,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.streetAdvertising}
             baseImageSrc={baseImageSrcFor('street-advertising')}
             variationImageSrcs={variationImageSrcsFor('street-advertising')}
+          zoomRegion={zoomRegionFor('street-advertising')}
             imageAlt="Cleaned by GCC yard sign in a North Lawndale parkway"
             icon={<Megaphone className="w-8 h-8 text-brand-green-600" />}
           />
@@ -177,6 +180,7 @@ export function BrandingSection({ config, onChange, onNext, onBack }: BrandingSe
             {...categoryShowcases.digitalPresence}
             baseImageSrc={baseImageSrcFor('digital-presence')}
             variationImageSrcs={variationImageSrcsFor('digital-presence')}
+          zoomRegion={zoomRegionFor('digital-presence')}
             imageAlt="Smartphone showing a GCC social media post"
             icon={<Globe className="w-8 h-8 text-brand-blue-600" />}
           />

@@ -154,6 +154,39 @@ export function variationImageSrcsFor(slug: CardSlug): Record<SponsorSlug, strin
   }
 }
 
+/**
+ * A square (rw == rh) fractional region of the card image to show as a
+ * picture-in-picture zoom, for cards where the sponsor branding lands on
+ * a small surface that's hard to read at thumbnail scale (chest patch,
+ * tree-well marker, spreader decal, etc).
+ *
+ * Cards where the branding is already a clear hero (yard sign, banner,
+ * chyron, flyer) omit the entry — no PiP renders.
+ */
+export interface ZoomRegion {
+  /** X of top-left, 0..1 as fraction of image width */
+  x: number
+  /** Y of top-left, 0..1 as fraction of image height */
+  y: number
+  /** Square size (same width and height), 0..1 as fraction of image width */
+  size: number
+  /** Short label rendered under the PiP */
+  label: string
+}
+
+export const ZOOM_REGIONS: Partial<Record<CardSlug, ZoomRegion>> = {
+  'worker-branding': { x: 0.18, y: 0.18, size: 0.22, label: 'Vest patch closeup' },
+  'equipment-branding': { x: 0.55, y: 0.28, size: 0.3, label: 'Cart panel closeup' },
+  'digital-presence': { x: 0.36, y: 0.5, size: 0.22, label: 'Post caption closeup' },
+  'enhanced-cleaning': { x: 0.6, y: 0.28, size: 0.22, label: 'Wall plaque closeup' },
+  'seasonal-services': { x: 0.12, y: 0.35, size: 0.22, label: 'Spreader decal closeup' },
+  'green-services': { x: 0.68, y: 0.45, size: 0.22, label: 'Tree-well plaque closeup' },
+}
+
+export function zoomRegionFor(slug: CardSlug): ZoomRegion | undefined {
+  return ZOOM_REGIONS[slug]
+}
+
 export const CARD_PROMPTS: Record<CardSlug, CardPrompt> = {
   'worker-branding': {
     slug: 'worker-branding',

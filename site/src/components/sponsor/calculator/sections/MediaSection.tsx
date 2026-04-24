@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
 import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
-import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
+import { baseImageSrcFor, variationImageSrcsFor, zoomRegionFor } from '@/components/sponsor/calculator/variationData'
 import { cn } from '@/lib/utils'
 import {
   formatPrice,
@@ -55,6 +55,7 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
           {...categoryShowcases.media}
           baseImageSrc={baseImageSrcFor('media')}
           variationImageSrcs={variationImageSrcsFor('media')}
+          zoomRegion={zoomRegionFor('media')}
           imageAlt="Professional photographer and drone capturing a GCC cleaning crew"
           icon={<Camera className="w-8 h-8 text-brand-blue-600" />}
         />

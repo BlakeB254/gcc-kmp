@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AddonCard } from '@/components/sponsor/calculator/cards/AddonCard'
 import { categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
 import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
-import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
+import { baseImageSrcFor, variationImageSrcsFor, zoomRegionFor } from '@/components/sponsor/calculator/variationData'
 import {
   enhancedCleaningServices,
   seasonalServices,
@@ -59,6 +59,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.enhancedCleaning}
             baseImageSrc={baseImageSrcFor('enhanced-cleaning')}
             variationImageSrcs={variationImageSrcsFor('enhanced-cleaning')}
+          zoomRegion={zoomRegionFor('enhanced-cleaning')}
             imageAlt="Freshly pressure-washed brick wall with GCC plaque in a Chicago alley"
             icon={<Sparkles className="w-8 h-8 text-brand-green-600" />}
           />
@@ -84,6 +85,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.seasonalServices}
             baseImageSrc={baseImageSrcFor('seasonal-services')}
             variationImageSrcs={variationImageSrcsFor('seasonal-services')}
+          zoomRegion={zoomRegionFor('seasonal-services')}
             imageAlt="Cleared snowy sidewalk with GCC salt spreader"
             icon={<Snowflake className="w-8 h-8 text-brand-blue-600" />}
           />
@@ -109,6 +111,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.greenServices}
             baseImageSrc={baseImageSrcFor('green-services')}
             variationImageSrcs={variationImageSrcsFor('green-services')}
+          zoomRegion={zoomRegionFor('green-services')}
             imageAlt="Mulched urban tree well with GCC Planted-by marker"
             icon={<Leaf className="w-8 h-8 text-brand-green-600" />}
           />
@@ -144,6 +147,7 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
             {...categoryShowcases.businessEngagement}
             baseImageSrc={baseImageSrcFor('business-engagement')}
             variationImageSrcs={variationImageSrcsFor('business-engagement')}
+          zoomRegion={zoomRegionFor('business-engagement')}
             imageAlt="GCC worker handing a branded community flyer to a resident"
             icon={<Briefcase className="w-8 h-8 text-brand-green-600" />}
           />

@@ -3,7 +3,7 @@
 import { forwardRef } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { MapPin, Check, Users, X } from 'lucide-react'
+import { MapPin, Check, Users, X, Calendar } from 'lucide-react'
 import { StepHeader } from './StepHeader'
 import type { SponsorBlock, SponsorshipMode } from './types'
 import { GENERAL_BLOCK_COUNTS, formatStreetName } from './types'
@@ -92,15 +92,34 @@ function SpecificBlockPicker({
     return (
       <div className="bg-white rounded-xl border p-8 text-center">
         <div className="w-12 h-12 bg-brand-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-          <Check className="w-6 h-6 text-brand-green-600" />
+          <Calendar className="w-6 h-6 text-brand-green-600" />
         </div>
-        <h3 className="font-semibold text-neutral-900 mb-2">All Blocks Funded!</h3>
-        <p className="text-neutral-600 text-sm mb-4">
-          All available blocks have been sponsored. Check back soon or support our general fund.
+        <h3 className="font-semibold text-neutral-900 mb-2">New blocks are released on a rolling schedule</h3>
+        <p className="text-neutral-600 text-sm mb-4 max-w-lg mx-auto">
+          No blocks show up right now because we&apos;re between cleaning cycles — new block-cleaning opportunities drop every week.
+          You can still sponsor right now: reserve any upcoming block with a flexible sponsorship below, or reach out to schedule a
+          custom sponsorship for a specific day, week, or month.
         </p>
-        <Link href="/donate" className="btn-primary inline-block">
-          Donate to General Fund
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/sponsor/calculator"
+            className="btn-primary inline-block"
+          >
+            Reserve flexible sponsorship
+          </Link>
+          <Link
+            href="/sponsor/enterprise"
+            className="inline-block px-4 py-2 rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold text-sm"
+          >
+            Request custom schedule
+          </Link>
+          <Link
+            href="/donate"
+            className="inline-block px-4 py-2 rounded-lg text-brand-green-700 hover:underline font-semibold text-sm"
+          >
+            Support general fund →
+          </Link>
+        </div>
       </div>
     )
   }

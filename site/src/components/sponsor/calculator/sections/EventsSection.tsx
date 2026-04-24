@@ -4,7 +4,7 @@ import { ChevronRight, ChevronLeft, Calendar, Users, Trash2 } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
 import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
-import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
+import { baseImageSrcFor, variationImageSrcsFor, zoomRegionFor } from '@/components/sponsor/calculator/variationData'
 import { cn } from '@/lib/utils'
 import {
   formatPrice,
@@ -66,6 +66,7 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
           {...categoryShowcases.events}
           baseImageSrc={baseImageSrcFor('events')}
           variationImageSrcs={variationImageSrcsFor('events')}
+          zoomRegion={zoomRegionFor('events')}
           imageAlt="Community block-party event with GCC-branded tent and crew"
         />
 

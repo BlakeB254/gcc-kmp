@@ -210,9 +210,11 @@ export function BlockSelector({
       {availableBlocks.length === 0 && (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <MapPin className="mx-auto h-12 w-12 text-muted-foreground/50" />
-          <h3 className="mt-4 font-semibold">All blocks are sponsored!</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Thank you to our amazing sponsors. Check back soon for more blocks.
+          <h3 className="mt-4 font-semibold">New blocks drop every week</h3>
+          <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+            No blocks show up in this view right now, but we&apos;re always accepting new sponsorships —
+            choose a flexible block count below to reserve the next available cycle, or contact us to schedule a
+            custom sponsorship for a specific day, week, or month.
           </p>
         </div>
       )}
