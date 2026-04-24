@@ -209,7 +209,6 @@ function SpecificBlockPicker({
 function GeneralBlockPicker({
   generalBlockCount,
   availableBlockCount,
-  canUseGeneralMode,
   onCountChange,
 }: {
   generalBlockCount: number
@@ -217,37 +216,39 @@ function GeneralBlockPicker({
   canUseGeneralMode: boolean
   onCountChange: (count: number) => void
 }) {
+  const needsScheduling = generalBlockCount > availableBlockCount
   return (
     <div className="bg-white rounded-xl border p-6 shadow-sm">
       <p className="text-sm text-neutral-600 mb-5">
-        Choose how many blocks to sponsor. GCC assigns available blocks based on community need.
+        Choose how many blocks to sponsor. GCC assigns the blocks based on community need —
+        we schedule new cleaning blocks every week, so any count locks in your sponsorship
+        for the next available cycle.
       </p>
       <div className="grid grid-cols-4 gap-3 mb-5">
-        {GENERAL_BLOCK_COUNTS.map((count) => {
-          const isDisabled = count > availableBlockCount
-          return (
-            <button
-              key={count}
-              onClick={() => !isDisabled && onCountChange(count)}
-              disabled={isDisabled}
-              aria-pressed={generalBlockCount === count && !isDisabled}
-              aria-label={`${count} block${count !== 1 ? 's' : ''} — $${count * 100}`}
-              className={`py-4 rounded-xl font-bold text-xl transition-all ${
-                generalBlockCount === count && !isDisabled
-                  ? 'bg-brand-green-500 text-white shadow-lg scale-105'
-                  : isDisabled
-                    ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
-            >
-              {count}
-            </button>
-          )
-        })}
+        {GENERAL_BLOCK_COUNTS.map((count) => (
+          <button
+            key={count}
+            onClick={() => onCountChange(count)}
+            aria-pressed={generalBlockCount === count}
+            aria-label={`${count} block${count !== 1 ? 's' : ''} — $${count * 100}`}
+            className={`py-4 rounded-xl font-bold text-xl transition-all ${
+              generalBlockCount === count
+                ? 'bg-brand-green-500 text-white shadow-lg scale-105'
+                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+            }`}
+          >
+            {count}
+          </button>
+        ))}
       </div>
-      {!canUseGeneralMode && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-          Only {availableBlockCount} block{availableBlockCount !== 1 ? 's' : ''} available.
+      {needsScheduling && (
+        <div className="bg-brand-green-50 border border-brand-green-200 rounded-lg p-3 text-sm text-brand-green-800 mb-4 flex items-start gap-2">
+          <Calendar className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <p>
+            {availableBlockCount > 0
+              ? `${availableBlockCount} block${availableBlockCount === 1 ? '' : 's'} ready to assign now. The other ${generalBlockCount - availableBlockCount} will roll into the next weekly cycle as new blocks are scheduled.`
+              : `New blocks are released every week — your sponsorship reserves the next ${generalBlockCount} block${generalBlockCount === 1 ? '' : 's'} GCC schedules in your area.`}
+          </p>
         </div>
       )}
       <div className="bg-brand-green-50 rounded-xl p-4 mt-4 flex items-center gap-3">
