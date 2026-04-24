@@ -650,17 +650,16 @@ actual fun GccMap(
                 FillLayer(
                     id = "affected-block-fill",
                     source = affectedSrc,
-                    // Single brand-green fill. Categorical status -> color
-                    // lookup needs MapLibre's `match` expression which
-                    // isn't the right signature here; we ship single-
-                    // color first and layer categorical in a follow-up.
-                    color = const(Color(0xFF16763A)),
+                    // Warm amber — reads against the clean-zone green base
+                    // wash so active blocks pop as "something is happening
+                    // here" rather than blending into the baseline.
+                    color = const(Color(0xFFFF6B35)),
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
                         12 to const(0f),
-                        13 to const(0.25f),
-                        15 to const(0.5f),
+                        13 to const(0.35f),
+                        15 to const(0.55f),
                         17 to const(0.7f),
                     ),
                     onClick = if (onAffectedBlockTap != null) { features ->

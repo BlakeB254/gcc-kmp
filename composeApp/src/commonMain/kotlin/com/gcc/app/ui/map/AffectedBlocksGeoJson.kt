@@ -20,8 +20,13 @@ import com.gcc.shared.model.Coordinates
  * actual geometry — a point-only fallback would pollute the map).
  */
 internal fun affectedBlocksToGeoJson(blocks: List<AffectedBlock>): String {
+    // Skip AVAILABLE blocks — the map already paints the full world as a
+    // green "clean zone" baseline, so fully-available blocks would render a
+    // second green fill on top of that and read as a duplicate layer.
+    // Only emit polygons for blocks with real activity (funded / in-progress
+    // / completed) so the affected-block layer visually adds information.
     val features = blocks
-        .filter { it.polygon.size >= 3 }
+        .filter { it.polygon.size >= 3 && it.status != AffectedBlockStatus.AVAILABLE }
         .joinToString(separator = ",", transform = ::blockFeature)
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
