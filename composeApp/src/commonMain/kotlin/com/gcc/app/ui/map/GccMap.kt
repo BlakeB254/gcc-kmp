@@ -11,6 +11,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.MapGpsBlue
 import com.gcc.shared.geo.MapProjection
+import com.gcc.shared.model.AffectedBlock
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.Coordinates
@@ -52,7 +53,11 @@ data class ContextPin(
  * @param showControls       Show zoom controls (+ / - buttons and preset bar) and scale bar
  * @param statusBarPadding   Add status bar padding to controls (use in full-screen map)
  * @param zoomPresets        Which zoom presets to show (defaults to overview: City/Area)
- * @param content            Overlay content (composables positioned in the Box)
+ * @param affectedBlocks      Blocks in any non-trivial state (funded, scheduled, cleaning, completed) to render
+ *                            as an intensity-weighted heatmap at low zoom and as colored polygons at street zoom.
+ *                            Drives the dynamic "affected areas" view in the app.
+ * @param onAffectedBlockTap  Callback fired with a block id when the user taps a polygon.
+ * @param content             Overlay content (composables positioned in the Box)
  */
 @Composable
 expect fun GccMap(
@@ -83,6 +88,8 @@ expect fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>> = emptyList(),
     imageStars: List<Coordinates> = emptyList(),
     routePolygons: List<Pair<Int, List<Coordinates>>> = emptyList(),
+    affectedBlocks: List<AffectedBlock> = emptyList(),
+    onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

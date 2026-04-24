@@ -73,6 +73,8 @@ actual fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
+    affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
+    onAffectedBlockTap: ((Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
