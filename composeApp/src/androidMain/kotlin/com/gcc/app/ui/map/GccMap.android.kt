@@ -648,14 +648,11 @@ actual fun GccMap(
                 FillLayer(
                     id = "affected-block-fill",
                     source = affectedSrc,
-                    color = interpolate(
-                        type = exponential(1.0f),
-                        input = feature.get("status").asString(),
-                        "in_progress" to const(Color(0xFFFF9800)), // orange
-                        "completed" to const(Color(0xFF4CAF50)),   // green
-                        "funded" to const(Color(0xFF30A0CE)),      // blue
-                        "available" to const(Color(0xFFBDBDBD)),   // neutral gray
-                    ),
+                    // Single brand-green fill. MapLibre's interpolate is
+                    // for numeric value ramps, not categorical lookup —
+                    // we ship single-color first and add status-keyed
+                    // coloring via `match` in a follow-up.
+                    color = const(Color(0xFF16763A)),
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
