@@ -48,20 +48,20 @@ HEADLINE_LINE_GAP = 14
 
 # Device frame metrics — sized so a 1206×2622 sim screenshot maps 1:1
 # with comfortable bezel margins on a 1320-wide canvas.
-DEVICE_TOP = 700
-DEVICE_W = 968                      # outer bezel width
-DEVICE_H = int(DEVICE_W * (2622 / 1206))  # preserve sim aspect (~2104)
+DEVICE_TOP = 600                    # raised so device clears the footer
+DEVICE_W = 920                      # outer bezel width — slightly trimmed for breathing room
+DEVICE_H = int(DEVICE_W * (2622 / 1206))  # preserve sim aspect (~2000)
 BEZEL_PX = 16                       # bezel thickness on each side
-BEZEL_RADIUS = 88                   # outer corner radius
+BEZEL_RADIUS = 84                   # outer corner radius
 SCREEN_RADIUS = BEZEL_RADIUS - BEZEL_PX
-ISLAND_W = 280
-ISLAND_H = 70
+ISLAND_W = 220                      # tightened — closer to real 16-Pro pill
+ISLAND_H = 64
 ISLAND_TOP_OFFSET = 22
 
 # Footer wordmark
 FOOTER_TEXT = "globalcommunitycleaners.org"
 FOOTER_SIZE = 36
-FOOTER_BOTTOM = 70
+FOOTER_BOTTOM = 90                  # nudged down so device shadow doesn't kiss it
 
 # ── Fonts ─────────────────────────────────────────────────────────────────
 FONT_BOLD_CANDIDATES = [
@@ -271,31 +271,31 @@ OUT_DIR = REPO / "screenshots" / "appstore-framed"
 
 CONFIGS = [
     {
-        "src": "07-fixed-map.png",
+        "src": "12-tap-map.png",
         "out": "01-heatmap.png",
         "headline": "See every block.",
-        "subcopy": "Live heatmap of every cleaning, scheduled or done, near you.",
+        "subcopy": "Live heatmap of cleanings scheduled, in progress, and done.",
     },
     {
-        "src": "05-post-login.png",
-        "out": "02-routes.png",
+        "src": "10-map-fixed.png",
+        "out": "02-profile.png",
+        "headline": "Track your earnings.",
+        "subcopy": "Same-day Stripe payout. Streaks. Badges. Real money for real work.",
+    },
+    {
+        "src": "12-tap-map.png",
+        "out": "03-routes.png",
         "headline": "Pick your block.",
-        "subcopy": "Tap a route. Claim the job. Get paid the same day.",
+        "subcopy": "Tap a route, claim the job, log your work, get paid.",
     },
     {
         "src": "04-further.png",
-        "out": "03-onboarding.png",
+        "out": "04-onboarding.png",
         "headline": "$100 per block.",
         "subcopy": "100% pays a neighbor to clean their own street.",
     },
     {
-        "src": "06-location-set.png",
-        "out": "04-impact.png",
-        "headline": "Every cleaning, photographed.",
-        "subcopy": "Sponsors see exactly what their dollars paid for.",
-    },
-    {
-        "src": "07-fixed-map.png",
+        "src": "12-tap-map.png",
         "out": "05-launch.png",
         "headline": "Built for North Lawndale.",
         "subcopy": "Expanding neighborhood by neighborhood — bring it to yours.",
