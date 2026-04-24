@@ -173,17 +173,18 @@ export function VariationShowcase({
       ref={rootRef}
       className={cn('rounded-2xl border overflow-hidden mb-6', styles.border, styles.bg)}
     >
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col">
         <div
           ref={containerRef}
-          className="relative lg:w-2/5 h-48 lg:h-auto min-h-[12rem] overflow-hidden select-none"
+          className="relative w-full aspect-[3/2] overflow-hidden select-none bg-neutral-900"
         >
           <Image
             src={baseImageSrc}
             alt={imageAlt ? `${imageAlt} — GCC-only baseline` : title}
             fill
-            className="object-cover"
-            sizes="(max-width: 1024px) 100vw, 40vw"
+            className="object-cover object-center"
+            sizes="(max-width: 1024px) 100vw, (max-width: 1400px) 90vw, 720px"
+            priority={false}
           />
           <div
             className="absolute inset-0"
@@ -198,11 +199,11 @@ export function VariationShowcase({
               src={activeImageSrc}
               alt={`${imageAlt ?? title} co-branded with ${activeSponsor.name}. Campaign: ${activeSponsor.campaign}.`}
               fill
-              className="object-cover"
-              sizes="(max-width: 1024px) 100vw, 40vw"
+              className="object-cover object-center"
+              sizes="(max-width: 1024px) 100vw, (max-width: 1400px) 90vw, 720px"
             />
           </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent lg:bg-gradient-to-r pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
           {hasEntered && !prefersReducedMotion && (
             <div
               role="slider"
