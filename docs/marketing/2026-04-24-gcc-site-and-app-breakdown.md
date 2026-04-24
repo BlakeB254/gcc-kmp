@@ -1,6 +1,8 @@
 # Global Community Cleaners — Site & App Breakdown
 
 > A long-form, CTA-ready narrative covering everything sponsors, workers, and community members can do with GCC today and what's shipping next. Written to lift-and-drop into a landing page, press kit, investor memo, or long-caption social post.
+>
+> **Editorial note — read before publishing externally:** the four named businesses that appear in the sponsor calculator's co-branded preview (Monday Coffee, Del Kar Pharmacy, Barney's New Life Health Foods, Black Panther Party Cubs) are **illustrative AI-generated mockups** used to show *what co-branded sponsorship could look like*. They are not signed GCC partners. Do not describe them as "launch partners," "sponsors," or otherwise imply an endorsement in external materials until a signed partnership is in place. The calculator UI itself already labels them "AI-generated mockup — illustrative only" — keep the same framing anywhere else they appear.
 
 ---
 
@@ -31,7 +33,7 @@ There is no middle layer siphoning off the sponsor's contribution. **The full $1
 - **Small businesses** want clean sidewalks in front of their storefront and to be visibly invested in their community.
 - **Enterprises** want a CSR program that's photographable, accountable, and local — not a generic check to a large nonprofit.
 - **Residents** want to pay the kid down the block to sweep the block, without figuring out the logistics themselves.
-- **Neighborhood institutions** — churches, community orgs, Black Panther Party Cubs, Del Kar Pharmacy, Barney's New Life, Monday Coffee — want to co-brand the work and make it part of their visible community footprint.
+- **Neighborhood institutions** — churches, community orgs, youth-empowerment programs, pharmacies, cafés, independent grocers — want to co-brand the work and make it part of their visible community footprint.
 
 ### The calculator
 
@@ -206,7 +208,7 @@ Tell us. The program is designed to scale: any neighborhood with a resident work
 > In North Lawndale, residents clean their own blocks. Sponsors pay them directly — $100 a block, 100% to the worker. You pick the block, they post before-and-after photos. It's paid work for neighbors, clean streets for the block, and real transparency for you. Start a campaign today at globalcommunitycleaners.org/sponsor.
 
 **Long (email / press release):**
-> Global Community Cleaners is a transparent, paid, resident-run street-cleaning program. Every $100 a sponsor contributes pays one North Lawndale resident to clean one specific block on a specific date — with before-and-after photos delivered the same day. Sponsors can co-brand the work (custom vests, yard signs, social-media co-posts), schedule recurring cleanings, and add enhanced services (snow removal, tree-well planting, pressure-washing) up to 12 hours before the cleaning happens. Workers earn same-day payouts via Stripe. Sponsors see an itemized ledger of every dollar. Communities get visibly cleaner streets and dignified employment for their neighbors. Launch partners: Monday Coffee, Del Kar Pharmacy, Barney's New Life Health Foods, Black Panther Party Cubs. Expansion partnerships open globally — we're looking for community leaders, nonprofits, municipalities, and businesses anywhere in the world ready to bring this model to their neighborhood. globalcommunitycleaners.org.
+> Global Community Cleaners is a transparent, paid, resident-run street-cleaning program. Every $100 a sponsor contributes pays one North Lawndale resident to clean one specific block on a specific date — with before-and-after photos delivered the same day. Sponsors can co-brand the work (custom vests, yard signs, social-media co-posts), schedule recurring cleanings, and add enhanced services (snow removal, tree-well planting, pressure-washing) up to 12 hours before the cleaning happens. Workers earn same-day payouts via Stripe. Sponsors see an itemized ledger of every dollar. Communities get visibly cleaner streets and dignified employment for their neighbors. The sponsor calculator ships with AI-generated co-branded mockups (clearly labeled as illustrative) so a prospective sponsor can see exactly what their brand would look like on a vest, cart, or yard sign before committing. Partnerships open globally — we're looking for community leaders, nonprofits, municipalities, and businesses anywhere in the world ready to bring this model to their neighborhood. globalcommunitycleaners.org.
 
 **App-install CTA (iMessage share / QR poster):**
 > Get the GCC app. See the heatmap of every cleaned, scheduled, and funding-ready block in your neighborhood. If you're a resident, earn $100 per block. If you're a sponsor, pick the exact block your business will fund. globalcommunitycleaners.org/app
