@@ -248,4 +248,4 @@ globalcommunitycleaners.org
 
 ---
 
-_Last updated: 2026-04-24. Live preview: https://gcc-omega.vercel.app_
+_Last updated: 2026-04-24. Live preview: https://gcc-omega.vercel.app. Auto-deploy via GitHub → Vercel._
