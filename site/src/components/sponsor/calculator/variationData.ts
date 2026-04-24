@@ -3,6 +3,7 @@
  * Consumed by the VariationShowcase component and by scripts/generate-upsell-images.ts.
  *
  * Related spec: docs/superpowers/specs/2026-04-24-sponsor-upsell-cobranded-variations-design.md
+ * (see "Revision 1" for the 4-sponsor + info-panel expansion)
  */
 
 export type CardSlug =
@@ -17,37 +18,118 @@ export type CardSlug =
   | 'events'
   | 'media'
 
-export type SponsorSlug = 'monday-coffee' | 'del-kar' | 'barneys'
+export type SponsorSlug = 'monday-coffee' | 'del-kar' | 'barneys' | 'bpp-cubs'
+
+export interface BrandColors {
+  /** Tailwind-friendly background class (solid or gradient-from) */
+  bg: string
+  /** Text color class on top of bg */
+  text: string
+  /** Accent color class for chip, dividers, slogan underline */
+  accent: string
+}
 
 export interface Sponsor {
-  slug: SponsorSlug
+  slug: SponsorSlug | 'gcc'
   name: string
+  tagline: string
   campaign: string
   logoPath: string
+  address: string
+  websiteUrl: string
+  instagramHandle?: string
+  brandColors: BrandColors
+}
+
+/**
+ * GCC baseline — rendered as the pre-wipe sponsor info panel content.
+ * Same shape as a Sponsor so the panel renders from a single data type.
+ */
+export const GCC_BASELINE: Sponsor = {
+  slug: 'gcc',
+  name: 'Global Community Cleaners',
+  tagline: 'Paid block cleaning by North Lawndale residents',
+  campaign: 'GCC Community Partnership',
+  logoPath: '/images/gcc-logo.png',
+  address: '1512 S. Millard Ave, Chicago, IL 60623',
+  websiteUrl: 'globalcommunitycleaners.org',
+  instagramHandle: '@gcc_cleaners',
+  brandColors: {
+    bg: 'bg-brand-green-700',
+    text: 'text-white',
+    accent: 'bg-brand-green-400',
+  },
 }
 
 export const SPONSORS: Record<SponsorSlug, Sponsor> = {
   'monday-coffee': {
     slug: 'monday-coffee',
     name: 'Monday Coffee',
+    tagline: 'Small-batch coffee roaster on Pulaski Rd.',
     campaign: 'Monday Morning Street Cleaners',
     logoPath: '/images/mockup-sponsors/monday-coffee.png',
+    address: '3511 W. Pulaski Rd, Chicago, IL 60624',
+    websiteUrl: 'mondaycoffee.example',
+    instagramHandle: '@mondaycoffee.co',
+    brandColors: {
+      bg: 'bg-[#E24A42]',
+      text: 'text-white',
+      accent: 'bg-[#F4B400]',
+    },
   },
   'del-kar': {
     slug: 'del-kar',
     name: 'Del Kar Pharmacy',
+    tagline: 'Your neighborhood pharmacy since 1987',
     campaign: 'Healthy Blocks by Del Kar',
     logoPath: '/images/mockup-sponsors/del-kar-pharmacy.png',
+    address: '1442 S. Ogden Ave, Chicago, IL 60608',
+    websiteUrl: 'delkarpharmacy.example',
+    instagramHandle: '@delkarrx',
+    brandColors: {
+      bg: 'bg-[#1E3A8A]',
+      text: 'text-white',
+      accent: 'bg-[#15803D]',
+    },
   },
   barneys: {
     slug: 'barneys',
     name: "Barney's New Life",
+    tagline: 'Organic grocery + community health foods',
     campaign: 'New Life in the Streets',
     logoPath: '/images/mockup-sponsors/barneys-new-life.png',
+    address: '2812 W. Madison St, Chicago, IL 60612',
+    websiteUrl: 'barneysnewlife.example',
+    instagramHandle: '@barneysnewlife',
+    brandColors: {
+      bg: 'bg-[#8B5A2B]',
+      text: 'text-white',
+      accent: 'bg-[#A7C957]',
+    },
+  },
+  'bpp-cubs': {
+    slug: 'bpp-cubs',
+    name: 'Black Panther Party Cubs',
+    tagline: 'Youth empowerment + mentorship program',
+    campaign: 'Cubs Clean the Block',
+    logoPath: '/images/mockup-sponsors/bpp-cubs.png',
+    address: '1601 S. Christiana Ave, Chicago, IL 60623',
+    websiteUrl: 'bppcubs.example',
+    instagramHandle: '@bpp.cubs',
+    brandColors: {
+      bg: 'bg-[#0A0A0A]',
+      text: 'text-[#F4B400]',
+      accent: 'bg-[#F4B400]',
+    },
   },
 }
 
-export const SPONSOR_ORDER: SponsorSlug[] = ['monday-coffee', 'del-kar', 'barneys']
+export const SPONSOR_ORDER: SponsorSlug[] = [
+  'monday-coffee',
+  'del-kar',
+  'barneys',
+  'bpp-cubs',
+]
 
 export interface CardPrompt {
   slug: CardSlug

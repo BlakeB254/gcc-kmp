@@ -221,3 +221,45 @@ Each call passes `baseImageSrc` + a `variations` array of three entries. The bul
 ## Changelog
 
 - 2026-04-24: Initial design, approved by user
+- 2026-04-24 (rev 1): **User revision mid-implementation** — expanded the card from image-only mockup to image + structured sponsor info panel, and added a 4th sponsor (Black Panther Party Cubs). See "Revision 1" section below for full deltas.
+
+---
+
+## Revision 1 — Sponsor info panel + 4th sponsor
+
+### Changes
+
+1. **4 sponsors instead of 3.** Adds "Black Panther Party Cubs" (youth empowerment program archetype, black + gold brand). Full roster: Monday Coffee (red), Del Kar Pharmacy (navy + green), Barney's New Life (brown + green), BPP Cubs (black + gold). This gives a deliberately diverse color palette and sponsor-archetype spread (retail / wellness / food co-op / community youth program).
+
+2. **Card anatomy expanded.** Each card now has two co-branded elements — the wipe image (unchanged) AND a new "Sponsor Info Panel" showing structured business data for the currently-active sponsor. Pre-wipe panel shows GCC as the baseline sponsor. Post-wipe panel shows one of the 4 mockup sponsors.
+
+3. **Business data per sponsor.** Each sponsor entry now carries:
+   - `name`
+   - `tagline` (1-line business descriptor)
+   - `campaign` (unchanged from rev 0)
+   - `address` (fictional North Lawndale / West Side Chicago address)
+   - `websiteUrl` (fictional `.example` TLD, not clickable)
+   - `instagramHandle` (optional)
+   - `brandColors` (background + text + accent — drives the info-panel colors)
+
+4. **GCC baseline.** A constant `GCC_BASELINE` entry (same shape as a `Sponsor`) is added to `variationData.ts` so the pre-wipe info panel renders from the same data type.
+
+5. **Image count: 10 base + 40 variations = 50 total** (was 40). Plan Task 6 scales from 30 → 40 edits.
+
+6. **Component changes.** `VariationShowcase` gets a new `<SponsorInfoPanel>` region below the benefits list (or alongside, depending on viewport). Content source:
+   - Pre-wipe: `GCC_BASELINE`
+   - Post-wipe: `SPONSORS[activeSlug]`
+   - Swaps synchronously with the wipe + sponsor cycle.
+   - Info panel accent styling uses the active sponsor's `brandColors`.
+
+### Out-of-scope for rev 1
+
+- Real-sponsor onboarding (still mockups only)
+- Click-through behavior on websiteUrl (rendered as text-only, not anchor)
+- Instagram handle embeds (rendered as plain text `@handle`)
+
+### New success criteria
+
+- Pre-wipe state shows the GCC baseline info panel (green brand, GCC logo, campaign "GCC Community Partnership", Chicago address, gcc.example URL)
+- Post-wipe info panel swaps to the currently-active sponsor and matches that sponsor's brand colors
+- Clicking any of the 4 sponsor chips updates BOTH the image AND the info panel in lockstep

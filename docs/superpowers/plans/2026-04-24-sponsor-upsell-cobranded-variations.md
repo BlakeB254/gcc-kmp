@@ -8,7 +8,14 @@
 
 **Tech Stack:** Next.js 15 App Router (existing), TypeScript, Tailwind, lucide-react icons, Playwright for E2E. Image generation via nanobanana MCP (Gemini 2.5/3 Pro Image) with ComfyUI FLUX.2 Klein as fallback.
 
-**Reference spec:** `docs/superpowers/specs/2026-04-24-sponsor-upsell-cobranded-variations-design.md`
+**Reference spec:** `docs/superpowers/specs/2026-04-24-sponsor-upsell-cobranded-variations-design.md` (see spec "Revision 1" section for the info-panel + 4th-sponsor deltas applied mid-execution)
+
+**Revision 1 impact on this plan:**
+- Task 1: adds `bpp-cubs.png` to the mockup-sponsor logo set (done inline pre-subagent)
+- Task 3: `Sponsor` interface expands with `tagline`, `address`, `websiteUrl`, `instagramHandle?`, `brandColors`; `SPONSOR_ORDER` becomes 4-long; `GCC_BASELINE` constant is added
+- Task 6: regenerates 40 variations (not 30) — one extra sponsor per card
+- Task 7: `VariationShowcase` gains a `<SponsorInfoPanel>` region that renders the active sponsor's business data and brand colors; swaps in lockstep with the image wipe
+- Tasks 9–11: callsite prop shape unchanged (`VariationShowcase` keeps the same API; info panel reads data from `variationData`)
 
 **Branch guidance:** Run on `main` (current branch) or a dedicated worktree. No migrations or DB changes. The 10 existing SVGs stay in place as backup — only `imageSrc` values change in the codebase.
 
