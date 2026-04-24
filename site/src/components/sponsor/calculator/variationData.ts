@@ -141,6 +141,19 @@ export interface CardPrompt {
   shotHint: string
 }
 
+export function baseImageSrcFor(slug: CardSlug): string {
+  return `/images/upsells/${slug}-base.jpg`
+}
+
+export function variationImageSrcsFor(slug: CardSlug): Record<SponsorSlug, string> {
+  return {
+    'monday-coffee': `/images/upsells/${slug}-monday-coffee.jpg`,
+    'del-kar': `/images/upsells/${slug}-del-kar.jpg`,
+    barneys: `/images/upsells/${slug}-barneys.jpg`,
+    'bpp-cubs': `/images/upsells/${slug}-bpp-cubs.jpg`,
+  }
+}
+
 export const CARD_PROMPTS: Record<CardSlug, CardPrompt> = {
   'worker-branding': {
     slug: 'worker-branding',
