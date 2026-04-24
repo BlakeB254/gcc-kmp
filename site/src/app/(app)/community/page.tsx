@@ -137,7 +137,7 @@ export default function CommunityPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/" className="flex items-center gap-2">
-                <Logo variant="short" size="sm" />
+                <Logo variant="short" size="sm" linkToHome={false} />
               </Link>
               <div className="hidden sm:block h-6 w-px bg-neutral-200" />
               <h1 className="hidden sm:block text-lg font-semibold text-neutral-900">

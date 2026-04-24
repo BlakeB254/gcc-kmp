@@ -51,7 +51,7 @@ export function ForgotPasswordForm({ apiEndpoint, loginPath, userType, extraLink
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
-            <Logo variant="full" size="md" />
+            <Logo variant="full" size="md" linkToHome={false} />
           </Link>
         </div>
 

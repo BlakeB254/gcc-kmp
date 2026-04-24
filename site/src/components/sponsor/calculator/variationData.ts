@@ -174,14 +174,13 @@ export interface ZoomRegion {
   label: string
 }
 
-export const ZOOM_REGIONS: Partial<Record<CardSlug, ZoomRegion>> = {
-  'worker-branding': { x: 0.18, y: 0.18, size: 0.22, label: 'Vest patch closeup' },
-  'equipment-branding': { x: 0.55, y: 0.28, size: 0.3, label: 'Cart panel closeup' },
-  'digital-presence': { x: 0.36, y: 0.5, size: 0.22, label: 'Post caption closeup' },
-  'enhanced-cleaning': { x: 0.6, y: 0.28, size: 0.22, label: 'Wall plaque closeup' },
-  'seasonal-services': { x: 0.12, y: 0.35, size: 0.22, label: 'Spreader decal closeup' },
-  'green-services': { x: 0.68, y: 0.45, size: 0.22, label: 'Tree-well plaque closeup' },
-}
+/**
+ * No PiP zoom on any card — every card's base image is composed tightly
+ * enough that the co-branding surface reads at card-thumbnail scale without
+ * a magnified inset. Kept as a typed empty map so the rendering code path
+ * still works if a future card wants to opt in.
+ */
+export const ZOOM_REGIONS: Partial<Record<CardSlug, ZoomRegion>> = {}
 
 export function zoomRegionFor(slug: CardSlug): ZoomRegion | undefined {
   return ZOOM_REGIONS[slug]
@@ -191,10 +190,10 @@ export const CARD_PROMPTS: Record<CardSlug, CardPrompt> = {
   'worker-branding': {
     slug: 'worker-branding',
     basePrompt:
-      "Documentary editorial photograph of a Black community worker in a bright kelly-green GCC-branded work vest, sweeping a clean brick sidewalk in North Lawndale Chicago. Mature trees line the residential street. Late morning natural light, warm amber + green color grade. Mid-range shot, subject three-quarter view, face partially out of frame. Vest clearly shows white 'GCC' wordmark on chest patch. 3:2 landscape.",
+      "Close-in documentary editorial photograph shot DIRECTLY BEHIND a Black community worker, the camera positioned about 4 feet behind the subject's shoulder blades. The back of a bright kelly-green high-visibility work vest DOMINATES the composition, filling approximately 70% of the frame area, with the top edge of the vest collar at roughly 15% from the top and the vest bottom hem at 95% from the top. The vest back is clean and flat, displaying a LARGE bold white 'GCC' wordmark centered between the shoulder blades (the letters should be massive, roughly 22% of the frame height tall, perfectly readable from across a street), plus the tagline 'GLOBAL COMMUNITY CLEANERS' in clear white uppercase text arched below it. Two horizontal reflective silver safety strips cross the vest. Only the worker's beanie hat and the top of their shoulders and the crook of their arms are visible — no face, no head turn. A wooden broom handle angles down and forward out of frame. Soft-focus brick North Lawndale Chicago sidewalk and faint tree bokeh fill the narrow strip around the vest. Warm late-morning natural light, amber + green color grade, shallow depth of field so the vest text is tack sharp. 3:2 landscape. Medium-close shot, 85mm lens compression.",
     surface:
-      "Add the sponsor's logo as a clean embroidered patch on the upper-left chest of the vest, matching the position and style of the GCC chest patch. Add the sponsor's campaign slogan text in white across the shoulder blades of the vest back where visible. Keep the original GCC chest patch intact — this is a CO-branded uniform, not a replacement.",
-    shotHint: 'Mid-range 50mm lens, natural light',
+      "Keep the EXACT same tight behind-the-subject composition and lighting. Modify ONLY the back of the green vest: keep a small centered 'GCC' wordmark at the top of the vest back (about 30% smaller than the base image), place the sponsor's official logo prominently in the center of the vest back between the shoulder blades (large enough to be instantly legible, roughly 30% of the frame width), and set the sponsor's campaign slogan in bold white uppercase text arched across the lower back of the vest above the bottom hem. The sponsor logo + slogan must be the primary visuals on the vest back, perfectly readable at card-thumbnail scale. Do not change the worker, broom, background, or lighting.",
+    shotHint: 'Tight behind-the-subject medium-close, 85mm lens, shallow DOF',
   },
   'equipment-branding': {
     slug: 'equipment-branding',

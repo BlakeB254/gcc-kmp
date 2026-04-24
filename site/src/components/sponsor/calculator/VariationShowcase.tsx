@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   GCC_BASELINE,
@@ -56,8 +56,7 @@ const accentStyles = {
 }
 
 const WIPE_DURATION_MS = 1200
-const SPONSOR_CYCLE_MS = 3000
-const CROSSFADE_MS = 600
+const SPONSOR_CYCLE_MS = 2800
 
 export function VariationShowcase({
   title,
@@ -108,12 +107,23 @@ export function VariationShowcase({
     return () => io.disconnect()
   }, [hasEntered])
 
-  useEffect(() => {
+  // Play a GCC-baseline → sponsor wipe every time the active sponsor changes
+  // (including the initial mount when it enters the viewport). Using
+  // useLayoutEffect guarantees that wipeProgress is reset to 0 in the same
+  // commit that flips to the new sponsor's image — so the new variation is
+  // never briefly visible before the wipe starts.
+  //
+  // The info panel derives `showingBaseline` from the same wipeProgress, so
+  // the panel swap is naturally synchronized with the image reveal: during
+  // the first half the panel shows GCC, during the second half it shows the
+  // incoming sponsor. Wipe + branding change = one synchronized event.
+  useLayoutEffect(() => {
     if (!hasEntered) return
     if (prefersReducedMotion) {
       setWipeProgress(1)
       return
     }
+    setWipeProgress(0)
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
@@ -123,13 +133,14 @@ export function VariationShowcase({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [hasEntered, prefersReducedMotion])
+  }, [hasEntered, activeIdx, prefersReducedMotion])
 
+  // Cycle to the next sponsor after the wipe finishes + a breathing pause.
   useEffect(() => {
     if (!hasEntered || isPaused || isDragging || prefersReducedMotion) return
     const interval = setInterval(() => {
       setActiveIdx((prev) => (prev + 1) % SPONSOR_ORDER.length)
-    }, SPONSOR_CYCLE_MS + CROSSFADE_MS)
+    }, SPONSOR_CYCLE_MS + WIPE_DURATION_MS)
     return () => clearInterval(interval)
   }, [hasEntered, isPaused, isDragging, prefersReducedMotion])
 
@@ -165,9 +176,10 @@ export function VariationShowcase({
   const handleChipClick = (slug: SponsorSlug) => {
     const idx = SPONSOR_ORDER.indexOf(slug)
     if (idx < 0) return
+    if (idx === activeIdx) return
     setActiveIdx(idx)
-    setWipeProgress(1)
     setIsPaused(true)
+    // Wipe plays automatically via the activeIdx-dependent layout effect.
   }
 
   const inset = useMemo(() => `inset(0 ${(1 - wipeProgress) * 100}% 0 0)`, [wipeProgress])
@@ -195,11 +207,14 @@ export function VariationShowcase({
             style={{
               clipPath: inset,
               WebkitClipPath: inset,
-              transition: isDragging ? 'none' : `clip-path ${CROSSFADE_MS}ms ease-out`,
+              // No CSS transition — the wipe is driven per-frame via
+              // requestAnimationFrame in the layout effect above. A CSS
+              // transition here would smooth over the rAF updates and
+              // produce visible stutter.
+              transition: 'none',
             }}
           >
             <Image
-              key={activeImageSrc}
               src={activeImageSrc}
               alt={`${imageAlt ?? title} co-branded with ${activeSponsor.name}. Campaign: ${activeSponsor.campaign}.`}
               fill
@@ -321,32 +336,73 @@ export function VariationShowcase({
   )
 }
 
+/**
+ * Infographic picture-in-picture zoom.
+ *
+ * Two coordinated elements render as siblings inside the image container:
+ *   1. A source-region indicator drawn over the main image at the ZoomRegion
+ *      coordinates, marked "A".
+ *   2. A PiP viewer docked in the top-right, also marked "A", showing the
+ *      same region magnified.
+ *
+ * Color choice: amber is used on purpose. The underlying scene is dominated
+ * by a kelly-green vest, so a green indicator disappears into the subject.
+ * Amber has maximum contrast against both green and the surrounding street.
+ *
+ * Coordinate system: ZoomRegion.size is a fraction of the image *width*.
+ * The source indicator uses `aspectRatio: 1 / 1` so it stays square inside
+ * the 3:2 container without manual height math. The PiP translate uses
+ * `-x * 100%` / `-y * 100%` because CSS translate percentages resolve
+ * against the translated element's own dimensions (not the parent).
+ */
 function PipZoom({ imageSrc, region, altText }: { imageSrc: string; region: ZoomRegion; altText: string }) {
   const scale = 1 / region.size
   return (
-    <div className="absolute bottom-3 right-3 w-40 aspect-[3/2] rounded-lg overflow-hidden shadow-2xl ring-2 ring-white/90 bg-neutral-900 pointer-events-none">
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute top-0 left-0"
-          style={{
-            width: `${scale * 100}%`,
-            height: `${scale * 100}%`,
-            transform: `translate(${-region.x * scale * 100}%, ${-region.y * scale * 100}%)`,
-          }}
-        >
-          <Image
-            src={imageSrc}
-            alt={altText}
-            fill
-            sizes="160px"
-            className="object-cover"
-          />
+    <>
+      {/* Source-region indicator drawn on top of the main image */}
+      <div
+        className="absolute border-[3px] border-amber-400 rounded-sm shadow-[0_0_0_2px_rgba(0,0,0,0.5),inset_0_0_0_1px_rgba(0,0,0,0.4)] pointer-events-none"
+        style={{
+          left: `${region.x * 100}%`,
+          top: `${region.y * 100}%`,
+          width: `${region.size * 100}%`,
+          aspectRatio: '1 / 1',
+        }}
+        aria-hidden="true"
+      >
+        <span className="absolute -top-3 -left-3 bg-amber-400 text-neutral-900 text-xs font-black w-7 h-7 rounded-full shadow-lg flex items-center justify-center border-2 border-white">
+          A
+        </span>
+      </div>
+
+      {/* PiP viewer docked top-right, higher up in frame */}
+      <div className="absolute top-3 right-3 w-48 aspect-[3/2] rounded-lg overflow-hidden shadow-2xl ring-[3px] ring-amber-400 bg-neutral-900 pointer-events-none">
+        <span className="absolute -top-2 -left-2 z-10 bg-amber-400 text-neutral-900 text-xs font-black w-7 h-7 rounded-full shadow-lg flex items-center justify-center border-2 border-white">
+          A
+        </span>
+        <div className="absolute inset-0 overflow-hidden">
+          <div
+            className="absolute top-0 left-0"
+            style={{
+              width: `${scale * 100}%`,
+              height: `${scale * 100}%`,
+              transform: `translate(${-region.x * 100}%, ${-region.y * 100}%)`,
+            }}
+          >
+            <Image
+              src={imageSrc}
+              alt={altText}
+              fill
+              sizes="192px"
+              className="object-cover"
+            />
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent pt-3 pb-1 text-center">
+          <span className="text-[10px] font-bold text-white uppercase tracking-wider">🔍 {region.label}</span>
         </div>
       </div>
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent pt-3 pb-1 text-center">
-        <span className="text-[9px] font-bold text-white uppercase tracking-wider">🔍 {region.label}</span>
-      </div>
-    </div>
+    </>
   )
 }
 
