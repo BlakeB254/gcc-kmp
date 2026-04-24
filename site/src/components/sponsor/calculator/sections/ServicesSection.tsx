@@ -3,7 +3,9 @@
 import { ChevronRight, ChevronLeft, Sparkles, Leaf, Snowflake, Briefcase } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AddonCard } from '@/components/sponsor/calculator/cards/AddonCard'
-import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
+import { categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
+import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
+import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
 import {
   enhancedCleaningServices,
   seasonalServices,
@@ -53,10 +55,11 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
       <CardContent className="space-y-8">
         {/* Enhanced Cleaning */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.enhancedCleaning}
-            imageSrc="/images/upsells/enhanced-cleaning.svg"
-            imageAlt="Pressure washing a sidewalk showing dramatic before and after"
+            baseImageSrc={baseImageSrcFor('enhanced-cleaning')}
+            variationImageSrcs={variationImageSrcsFor('enhanced-cleaning')}
+            imageAlt="Freshly pressure-washed brick wall with GCC plaque in a Chicago alley"
             icon={<Sparkles className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -77,10 +80,11 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
 
         {/* Seasonal Services */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.seasonalServices}
-            imageSrc="/images/upsells/seasonal-services.svg"
-            imageAlt="Workers doing snow removal in a Chicago neighborhood"
+            baseImageSrc={baseImageSrcFor('seasonal-services')}
+            variationImageSrcs={variationImageSrcsFor('seasonal-services')}
+            imageAlt="Cleared snowy sidewalk with GCC salt spreader"
             icon={<Snowflake className="w-8 h-8 text-brand-blue-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -101,10 +105,11 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
 
         {/* Green Services */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.greenServices}
-            imageSrc="/images/upsells/green-services.svg"
-            imageAlt="Community garden and tree well care in an urban setting"
+            baseImageSrc={baseImageSrcFor('green-services')}
+            variationImageSrcs={variationImageSrcsFor('green-services')}
+            imageAlt="Mulched urban tree well with GCC Planted-by marker"
             icon={<Leaf className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
@@ -135,10 +140,11 @@ export function ServicesSection({ config, onChange, onNext, onBack }: ServicesSe
 
         {/* Business Engagement */}
         <div>
-          <CategoryShowcase
+          <VariationShowcase
             {...categoryShowcases.businessEngagement}
-            imageSrc="/images/upsells/business-engagement.svg"
-            imageAlt="Worker handing out promotional materials to a smiling resident"
+            baseImageSrc={baseImageSrcFor('business-engagement')}
+            variationImageSrcs={variationImageSrcsFor('business-engagement')}
+            imageAlt="GCC worker handing a branded community flyer to a resident"
             icon={<Briefcase className="w-8 h-8 text-brand-green-600" />}
           />
           <div className="grid sm:grid-cols-2 gap-3">
