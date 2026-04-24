@@ -1,7 +1,4 @@
-• Spot scan verification — geofence enforcement, LiDAR depth analysis, and AI classification for spot reports, verifications, and volunteer cleanups
-• Route scanning — auto-generated checkpoints from route geometry with 2-lap verification flow (Scout & Clean)
-• Improved map interaction — larger spot tap targets for easier selection
-• Intelligent map zoom — route test mode fits both GPS position and route path in view
-• Sponsor sheet — added close button for easier dismissal
-• Queue-based route assignment — blocks assigned by signup position
-• Bug fixes and performance improvements
+• Dynamic affected-block heatmap — see every funded, scheduled, in-progress, and completed cleaning at a glance, with a 30-second live refresh.
+• Tap-to-inspect — tap any block on the map for an instant readout of status, sponsor count, funding progress, and scheduled cleaning date.
+• Cleaner map visuals — removed the duplicate route-fill overlay; the heatmap now reads as one coherent layer over the green clean-zone baseline.
+• Map polish across the app — same routing, same blocks, fewer visual collisions.
