@@ -636,6 +636,70 @@ actual fun GccMap(
                 textIgnorePlacement = const(true),
             )
 
+            // ── Affected-block heatmap + polygon fills ──
+            //
+            // Mirror of the Android implementation — kept in lockstep so
+            // the two platforms stay feature-identical. At overview zoom
+            // block centers glow as a density heatmap; at street zoom
+            // the per-block polygons fill with status colors and fire
+            // onAffectedBlockTap(blockId) on tap.
+            if (affectedBlocks.isNotEmpty()) {
+                val affectedJson = remember(affectedBlocks) { affectedBlocksToGeoJson(affectedBlocks) }
+                val affectedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(affectedJson))
+
+                FillLayer(
+                    id = "affected-block-fill",
+                    source = affectedSrc,
+                    color = interpolate(
+                        type = exponential(1.0f),
+                        input = feature.get("status").asString(),
+                        "in_progress" to const(Color(0xFFFF9800)),
+                        "completed" to const(Color(0xFF4CAF50)),
+                        "funded" to const(Color(0xFF30A0CE)),
+                        "available" to const(Color(0xFFBDBDBD)),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        12 to const(0f),
+                        13 to const(0.25f),
+                        15 to const(0.5f),
+                        17 to const(0.7f),
+                    ),
+                    onClick = if (onAffectedBlockTap != null) { features ->
+                        val id = (features.firstOrNull()?.properties?.get("blockId") as? Number)?.toInt()
+                        if (id != null) {
+                            onAffectedBlockTap(id)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
+                )
+
+                CircleLayer(
+                    id = "affected-block-heatmap",
+                    source = affectedSrc,
+                    color = const(Color(0xFFFF6B35)),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        8 to const(20.dp),
+                        11 to const(28.dp),
+                        13 to const(22.dp),
+                        14 to const(0.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        8 to const(0.3f),
+                        11 to const(0.45f),
+                        13 to const(0.25f),
+                        14 to const(0f),
+                    ),
+                )
+            }
+
             // ── User location blue dot ──
             if (currentLocation != null) {
                 val userLocationJson = remember(currentLocation) {

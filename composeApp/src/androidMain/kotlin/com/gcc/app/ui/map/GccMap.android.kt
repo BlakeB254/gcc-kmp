@@ -634,6 +634,73 @@ actual fun GccMap(
                 } else null,
             )
 
+            // ── Affected-block heatmap + polygon fills ──
+            //
+            // At overview zoom (11-13) the block centers glow as a density
+            // heatmap, at street zoom (14+) each block polygon fills with
+            // its status color at an alpha keyed to the intensity score.
+            // Tapping a polygon fires onAffectedBlockTap(blockId).
+            if (affectedBlocks.isNotEmpty()) {
+                val affectedJson = remember(affectedBlocks) { affectedBlocksToGeoJson(affectedBlocks) }
+                val affectedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(affectedJson))
+
+                // Status-colored fill — per-block polygon visible at zoom 13+
+                FillLayer(
+                    id = "affected-block-fill",
+                    source = affectedSrc,
+                    color = interpolate(
+                        type = exponential(1.0f),
+                        input = feature.get("status").asString(),
+                        "in_progress" to const(Color(0xFFFF9800)), // orange
+                        "completed" to const(Color(0xFF4CAF50)),   // green
+                        "funded" to const(Color(0xFF30A0CE)),      // blue
+                        "available" to const(Color(0xFFBDBDBD)),   // neutral gray
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        12 to const(0f),
+                        13 to const(0.25f),
+                        15 to const(0.5f),
+                        17 to const(0.7f),
+                    ),
+                    onClick = if (onAffectedBlockTap != null) { features ->
+                        val id = (features.firstOrNull()?.properties?.get("blockId") as? Number)?.toInt()
+                        if (id != null) {
+                            onAffectedBlockTap(id)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
+                )
+
+                // Overview-zoom density glow — a large soft circle per block
+                // center, weighted by intensity. Fades out at street zoom
+                // where the per-block polygons take over.
+                CircleLayer(
+                    id = "affected-block-heatmap",
+                    source = affectedSrc,
+                    color = const(Color(0xFFFF6B35)), // warm amber accent — reads against both the green baseline map and any polygon fill
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        8 to const(20.dp),
+                        11 to const(28.dp),
+                        13 to const(22.dp),
+                        14 to const(0.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        8 to const(0.3f),
+                        11 to const(0.45f),
+                        13 to const(0.25f),
+                        14 to const(0f),
+                    ),
+                )
+            }
+
             // ── User location blue dot (Apple Maps style) ──
             if (currentLocation != null) {
                 val userLocationJson = remember(currentLocation) {
