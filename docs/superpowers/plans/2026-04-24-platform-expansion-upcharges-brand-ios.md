@@ -14,10 +14,18 @@
 
 ### Domain rules (locked)
 
-- Sponsor books a **package** (`sponsor_packages` row) over N blocks. Each block gets a scheduled `cleaning_date` (derive from existing `blocks.scheduledDate` or wherever block→cleaning date is stored — confirm in Task A0).
-- **Campaign-wide upcharges** (applied to every block in the package) receive the calculator discount ladder (same schedule as initial booking).
-- **Per-block upcharges** (applied to some subset of blocks) are allowed but **charged at full list price — no discount**.
-- **T-12h cutoff** (per individual block's scheduled cleaning start time):
+- Sponsor books a **package** (`sponsor_packages`) over N blocks. At checkout, a `transactions` row is created per block (existing pattern). Each transaction's scheduled cleaning date is **optional** — sponsor may pick one, or defer and let GCC assign it.
+- **Booking attachment model:**
+  - New column `transactions.sponsorPackageId` links each transaction back to its package (so "all blocks in this campaign" is one query).
+  - New column `transactions.scheduledCleaningAt` combines date + start time into one timestamp (nullable).
+  - New column `transactions.assignmentStatus` (enum: `awaiting_assignment | scheduled | in_progress | completed | cancelled`) tracks the cleaning-lifecycle separately from the Stripe `status` column.
+- **GCC assignment flow** (for transactions the sponsor didn't schedule):
+  - GCC admin assigns a specific `blockId` (if not already picked) and `scheduledCleaningAt` via an admin queue.
+  - On assignment, `assignmentStatus` flips to `scheduled` and the sponsor is notified (email + dashboard toast + inbox entry).
+  - Sponsor dashboard shows an **itemized ledger** — every transaction as a line item with "assigned block / assigned date / amount / upcharges / subtotal" — that updates live as GCC fills things in.
+- **Campaign-wide upcharges** (applied to every transaction in the package) receive the calculator discount ladder (same schedule as initial booking). Subsequent transactions added to the same package retroactively inherit campaign upcharges.
+- **Per-block upcharges** (applied to some subset) are allowed but **charged at full list price — no discount**.
+- **T-12h cutoff** is only meaningful once `scheduledCleaningAt` is set. Before scheduling, sponsor can add/remove upcharges freely with no cutoff. Once `scheduledCleaningAt` is set:
   - **≥ T-12h:** sponsor can add/remove upcharges directly, Stripe is charged immediately on confirmation.
   - **< T-12h:** submission becomes a **request** — GCC admin must manually approve before charge. Sponsor sees "Awaiting GCC" state; resolves to Confirmed+Charged or Denied.
 - **Refunds:** removing an auto-applied upcharge ≥ T-12h issues a Stripe refund; removing after <12h is not allowed (must request cancellation).
@@ -27,32 +35,105 @@
 - **Create:**
   - `site/src/lib/upcharges/catalog.ts` — typed catalog with `{ slug, name, priceCents, campaignDiscountable, description, category }`
   - `site/src/lib/upcharges/pricing.ts` — `computeUpchargeBundlePrice(items, scope)` respecting discount rules
-  - `site/src/db/migrations/000X_block_upcharges.sql` — new tables
-  - `site/src/app/api/sponsor/blocks/[blockId]/upcharges/route.ts` — POST add, DELETE remove (T-12h+ direct path)
-  - `site/src/app/api/sponsor/blocks/[blockId]/upcharge-requests/route.ts` — POST request (T-12h- path)
-  - `site/src/app/api/sponsor/packages/[packageId]/upcharges/route.ts` — campaign-wide path (all blocks)
+  - `site/src/lib/upcharges/deadline.ts` — `isBeforeCutoff(scheduledCleaningAt | null, hours = 12)` — returns `true` if unscheduled, so unscheduled txs always use the direct path
+  - `site/src/lib/upcharges/ledger.ts` — builds the sponsor-facing itemized ledger from transactions + upcharges + package
+  - `site/src/db/migrations/000X_transactions_assignment.sql` — add assignment columns + backfill `scheduledCleaningAt` from existing date+time pair
+  - `site/src/db/migrations/000Y_block_upcharges.sql` — new upcharge tables
+  - `site/src/app/api/sponsor/transactions/[txId]/upcharges/route.ts` — POST add, DELETE remove (unscheduled & T-12h+ path)
+  - `site/src/app/api/sponsor/transactions/[txId]/upcharge-requests/route.ts` — POST request (T-12h- path only)
+  - `site/src/app/api/sponsor/packages/[packageId]/upcharges/route.ts` — campaign-wide path (all transactions)
+  - `site/src/app/api/sponsor/packages/[packageId]/ledger/route.ts` — GET itemized ledger payload
   - `site/src/app/api/admin/upcharge-requests/route.ts` — GET queue, POST approve/deny
+  - `site/src/app/api/admin/transactions/[txId]/assign/route.ts` — POST to set `blockId` + `scheduledCleaningAt`, triggers sponsor notice
+  - `site/src/app/api/admin/unassigned-transactions/route.ts` — GET admin queue of `awaiting_assignment` rows
   - `site/src/app/api/stripe/webhook/route.ts:handleUpchargeChargeSucceeded` — mark upcharge `confirmed`
-  - `site/src/components/sponsor/dashboard/UpchargePanel.tsx` — per-block + campaign UI
+  - `site/src/components/sponsor/dashboard/ItemizedLedger.tsx` — live per-transaction line-item view
+  - `site/src/components/sponsor/dashboard/UpchargePanel.tsx` — per-transaction + campaign UI
   - `site/src/components/sponsor/dashboard/UpchargeCatalogModal.tsx` — picker
   - `site/src/components/admin/UpchargeRequestQueue.tsx`
+  - `site/src/components/admin/UnassignedTransactionQueue.tsx`
   - `site/src/app/(app)/admin/upcharge-requests/page.tsx`
-  - `site/src/lib/upcharges/deadline.ts` — `isBeforeCutoff(cleaningStartAt, hours = 12)`
+  - `site/src/app/(app)/admin/transaction-assignments/page.tsx`
+  - `site/src/lib/notifications/sendAssignmentNotice.ts` — email + dashboard inbox fan-out
   - `site/tests/e2e/upcharge-flow.spec.ts`
 - **Modify:**
-  - `site/src/db/schema.ts` — add `blockUpcharges`, `upchargeRequests`, `upchargeRequestStatusEnum`
-  - `site/src/app/(app)/sponsor/dashboard/page.tsx` — mount UpchargePanel for each block + campaign summary
+  - `site/src/db/schema.ts` — add `assignmentStatusEnum`, `blockUpcharges`, `upchargeStatusEnum`; add `sponsorPackageId`, `scheduledCleaningAt`, `assignmentStatus` columns to `transactions`
+  - `site/src/app/(app)/sponsor/dashboard/page.tsx` — mount `ItemizedLedger` above block list; mount `UpchargePanel` per transaction
+  - `site/src/app/api/sponsor/checkout/route.ts` (or the calculator checkout handler) — write `sponsorPackageId` on newly created transactions, initialize `assignmentStatus` based on whether the sponsor picked a date
   - `site/src/lib/stripe/createCharge.ts` (if exists, else add) — accept upcharge-specific metadata
 
 ### Tasks
 
-#### Task A0: Confirm cleaning-date source
+#### Task A0: Assignment schema + backfill
 
-- [ ] **Step 1:** Read `src/db/schema.ts` and locate the column that represents a block's scheduled cleaning start timestamp. Candidates: `blocks.scheduledDate`, a `cleanings` table, or `sponsorship_schedule`.
+**Context (resolved 2026-04-24):** Cleaning date lives on `transactions.preferredCleaningDate` (+ `preferredCleaningTimeStart`/`End` as HH:MM varchars). `sponsorPackages` has no FK to its transactions today. Upcharges attach to **`transactions.id`** — one transaction = one sponsor's booking of one block on one date = the atomic "cleaning event" upcharges modify. Sponsor-scheduled date is optional: unscheduled transactions wait in an admin queue until GCC assigns a block + date.
 
-- [ ] **Step 2:** If a dedicated `cleanings` / `block_schedules` table exists, upcharges attach to **cleaning row** (a block can be cleaned multiple times). If only `blocks.scheduledDate` exists (one-shot schedule), upcharges attach to block directly. Document the decision at the top of the new `upcharges/deadline.ts` file.
+**Files:**
+- Modify: `site/src/db/schema.ts`
+- Create: `site/src/db/migrations/<timestamp>_transactions_assignment.sql`
 
-- [ ] **Step 3:** Commit a short note: `chore(upcharges): confirm cleaning-date attachment`
+- [ ] **Step 1: Add enum + columns to `transactions`**
+
+```ts
+// site/src/db/schema.ts — new enum
+export const assignmentStatusEnum = pgEnum('enum_transactions_assignment_status', [
+  'awaiting_assignment',  // sponsor didn't pick date; GCC hasn't assigned yet
+  'scheduled',            // blockId + scheduledCleaningAt set
+  'in_progress',          // cleaning underway
+  'completed',            // cleaning done
+  'cancelled',
+])
+
+// Inside transactions pgTable — append:
+sponsorPackageId: integer('sponsor_package_id'),  // FK to sponsor_packages, nullable for legacy
+scheduledCleaningAt: timestamp('scheduled_cleaning_at', { mode: 'string', withTimezone: true }),
+assignmentStatus: assignmentStatusEnum('assignment_status').default('awaiting_assignment').notNull(),
+```
+
+- [ ] **Step 2: Generate Drizzle migration**
+
+```bash
+cd site && pnpm exec drizzle-kit generate --name transactions_assignment
+```
+
+- [ ] **Step 3: Extend the migration with backfill SQL**
+
+Hand-edit the generated SQL and append:
+
+```sql
+-- Backfill scheduledCleaningAt from existing date + time strings
+UPDATE transactions
+SET scheduled_cleaning_at = (
+  preferred_cleaning_date + COALESCE(preferred_cleaning_time_start, '00:00')::time
+)
+WHERE preferred_cleaning_date IS NOT NULL
+  AND scheduled_cleaning_at IS NULL;
+
+-- Flip legacy rows with a date to 'scheduled'
+UPDATE transactions
+SET assignment_status = 'scheduled'
+WHERE scheduled_cleaning_at IS NOT NULL
+  AND assignment_status = 'awaiting_assignment';
+```
+
+- [ ] **Step 4: Apply migration**
+
+```bash
+cd site && pnpm exec drizzle-kit migrate
+```
+
+Verify: `psql $DATABASE_URL -c '\d transactions' | grep -E "sponsor_package_id|scheduled_cleaning_at|assignment_status"` — three rows.
+
+- [ ] **Step 5: Patch the checkout handler to write `sponsorPackageId` on new transactions**
+
+Find the route that creates transactions on calculator-flow checkout (grep `insert(transactions)` under `src/app/api/sponsor/`). Ensure it passes the `sponsorPackageId` from the package being paid, and sets `assignmentStatus` to `'scheduled'` if the sponsor picked a date or `'awaiting_assignment'` otherwise.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add site/src/db/schema.ts site/src/db/migrations/ site/src/app/api/sponsor/
+git commit -m "feat(upcharges): transactions.assignment_status + sponsor_package_id + backfill"
+```
 
 #### Task A1: Upcharge catalog
 
