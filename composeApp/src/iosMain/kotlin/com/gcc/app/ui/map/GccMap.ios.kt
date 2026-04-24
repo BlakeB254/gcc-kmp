@@ -350,20 +350,17 @@ actual fun GccMap(
                 textOpacity = const(if (isMyArea) 0f else 1f),
             )
 
-            // ── Route polygon fill — tappable at all zoom levels ──
-            // Visible green at overview, fades to near-invisible at street level
-            // but stays non-transparent so taps still register on the polygon.
+            // ── Route polygon fill — invisible tap target ──
+            // Was previously a solid green fill at high opacity, but it
+            // overlapped the affected-block heatmap and the clean-zone base
+            // layer to look like a duplicated heatmap. The line stack below
+            // (glow + casing + core) carries the visual route presence;
+            // this fill is kept ONLY for tap targeting at all zoom levels.
             FillLayer(
                 id = MapStyles.LAYER_ROUTE_FILL,
                 source = routePolygonsSrc,
                 color = const(MapStyles.ROUTE_FILL_COLOR),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(1f),
-                    14 to const(0.8f),
-                    16 to const(0.05f),
-                ),
+                opacity = const(0.001f),
                 onClick = if (onRouteTap != null) { features ->
                     val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
                     if (idx != null) {
