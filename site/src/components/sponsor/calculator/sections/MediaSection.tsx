@@ -4,6 +4,8 @@ import { ChevronLeft, Camera, Video, Check, Building2 } from 'lucide-react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
+import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
+import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
 import { cn } from '@/lib/utils'
 import {
   formatPrice,
@@ -49,10 +51,11 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
       </CardHeader>
       <CardContent className="space-y-8">
         {/* Media Showcase */}
-        <CategoryShowcase
+        <VariationShowcase
           {...categoryShowcases.media}
-          imageSrc="/images/upsells/media.svg"
-          imageAlt="Professional photographer capturing GCC workers cleaning with drone footage"
+          baseImageSrc={baseImageSrcFor('media')}
+          variationImageSrcs={variationImageSrcsFor('media')}
+          imageAlt="Professional photographer and drone capturing a GCC cleaning crew"
           icon={<Camera className="w-8 h-8 text-brand-blue-600" />}
         />
 

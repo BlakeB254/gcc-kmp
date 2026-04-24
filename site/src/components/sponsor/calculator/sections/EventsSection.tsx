@@ -3,6 +3,8 @@
 import { ChevronRight, ChevronLeft, Calendar, Users, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CategoryShowcase, categoryShowcases } from '@/components/sponsor/calculator/CategoryShowcase'
+import { VariationShowcase } from '@/components/sponsor/calculator/VariationShowcase'
+import { baseImageSrcFor, variationImageSrcsFor } from '@/components/sponsor/calculator/variationData'
 import { cn } from '@/lib/utils'
 import {
   formatPrice,
@@ -60,11 +62,11 @@ export function EventsSection({ config, onChange, onNext, onBack }: EventsSectio
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Events Showcase */}
-        <CategoryShowcase
+        <VariationShowcase
           {...categoryShowcases.events}
-          imageSrc="/images/upsells/events.svg"
-          imageAlt="GCC cleaning crew at a block party event with branded equipment"
-          icon={<Calendar className="w-8 h-8 text-brand-green-600" />}
+          baseImageSrc={baseImageSrcFor('events')}
+          variationImageSrcs={variationImageSrcsFor('events')}
+          imageAlt="Community block-party event with GCC-branded tent and crew"
         />
 
         {/* Event Packages */}
