@@ -7,6 +7,35 @@ import { MapPin, Check, Users, X, Calendar } from 'lucide-react'
 import { StepHeader } from './StepHeader'
 import type { SponsorBlock, SponsorshipMode } from './types'
 import { GENERAL_BLOCK_COUNTS, formatStreetName } from './types'
+import { NORTH_LAWNDALE_BLOCKS, type BlockDefinition } from '@/data/blocks'
+
+/**
+ * Convert a static BlockDefinition (from the hardcoded route data) into
+ * the SponsorBlock shape used by the map + selection flow. We mark these
+ * with status='available' so they render on the map and can be selected
+ * — the `upcoming-` id prefix signals to the backend that this is a
+ * route-reservation rather than a funded-block claim, and the server
+ * can create or reserve the block on demand at checkout.
+ */
+function fallbackRouteBlocks(): SponsorBlock[] {
+  return NORTH_LAWNDALE_BLOCKS.map((b: BlockDefinition) => ({
+    id: `upcoming-${b.code}`,
+    code: b.code,
+    streetName: b.streetName,
+    fromCorner: b.fromCorner,
+    toCorner: b.toCorner,
+    status: 'available' as const,
+    location: {
+      neighborhood: 'North Lawndale',
+      boundary: b.geo.polygon,
+      center: b.geo.center,
+    },
+    geo: {
+      center: { coordinates: b.geo.center.coordinates },
+      polygon: { coordinates: b.geo.polygon.coordinates },
+    },
+  }))
+}
 
 const SponsorBlockMap = dynamic(
   () => import('./SponsorBlockMap').then(mod => ({ default: mod.SponsorBlockMap })),
@@ -88,54 +117,41 @@ function SpecificBlockPicker({
     )
   }
 
-  if (blocks.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border p-8 text-center">
-        <div className="w-12 h-12 bg-brand-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-          <Calendar className="w-6 h-6 text-brand-green-600" />
-        </div>
-        <h3 className="font-semibold text-neutral-900 mb-2">New blocks are released on a rolling schedule</h3>
-        <p className="text-neutral-600 text-sm mb-4 max-w-lg mx-auto">
-          No blocks show up right now because we&apos;re between cleaning cycles — new block-cleaning opportunities drop every week.
-          You can still sponsor right now: reserve any upcoming block with a flexible sponsorship below, or reach out to schedule a
-          custom sponsorship for a specific day, week, or month.
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/sponsor/calculator"
-            className="btn-primary inline-block"
-          >
-            Reserve flexible sponsorship
-          </Link>
-          <Link
-            href="/sponsor/enterprise"
-            className="inline-block px-4 py-2 rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold text-sm"
-          >
-            Request custom schedule
-          </Link>
-          <Link
-            href="/donate"
-            className="inline-block px-4 py-2 rounded-lg text-brand-green-700 hover:underline font-semibold text-sm"
-          >
-            Support general fund →
-          </Link>
-        </div>
-      </div>
-    )
-  }
+  // When the db has no blocks ready right now, fall back to the hardcoded
+  // North Lawndale route polygons so sponsors can always see the map and
+  // reserve an upcoming block. The empty-state banner above the map makes
+  // clear these are route-reservations, not live-funded blocks.
+  const isFallback = blocks.length === 0
+  const displayBlocks = isFallback ? fallbackRouteBlocks() : blocks
 
   return (
     <div className="space-y-5">
+      {isFallback && (
+        <div className="rounded-xl border border-brand-green-200 bg-brand-green-50 p-4 flex items-start gap-3">
+          <Calendar className="w-5 h-5 text-brand-green-700 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-brand-green-900">
+            <p className="font-semibold mb-1">New blocks are released on a rolling schedule</p>
+            <p className="text-brand-green-800">
+              These are the planned cleaning routes across our North Lawndale launch area. Select any block on the map
+              to reserve your sponsorship for its next cleaning cycle — we schedule blocks weekly, and your sponsorship
+              locks in the next available date once the block is activated.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Map — same green polygon + route line visual as home page */}
       <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b bg-neutral-50">
           <p className="text-sm text-neutral-600 flex items-center gap-2">
             <MapPin className="w-4 h-4 text-brand-green-600" />
-            Click the checkboxes inside each block to select — selected blocks turn gold
+            {isFallback
+              ? 'Click a route polygon to reserve it — selected routes turn gold'
+              : 'Click the checkboxes inside each block to select — selected blocks turn gold'}
           </p>
         </div>
         <SponsorBlockMap
-          blocks={blocks}
+          blocks={displayBlocks}
           selectedBlockIds={selectedBlocks.map(b => b.id)}
           onToggleBlock={onToggleBlock}
           height="450px"
@@ -171,7 +187,7 @@ function SpecificBlockPicker({
 
       {/* Block list */}
       <div className="space-y-2 max-h-[200px] overflow-y-auto bg-white rounded-xl border p-3" role="listbox" aria-label="Available blocks">
-        {blocks.map((block) => {
+        {displayBlocks.map((block) => {
           const isSelected = selectedBlocks.some(b => b.id === block.id)
           return (
             <button

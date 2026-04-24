@@ -675,7 +675,8 @@ export function CombinedMap({
                 'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
                   SPOT_ZOOM.DOTS_MIN, 0,
-                  14, 1,
+                  SPOT_ZOOM.DOTS_MIN + 0.5, 0.6,
+                  SPOT_ZOOM.DOTS_MIN + 1, 1,
                 ],
               }}
             />
