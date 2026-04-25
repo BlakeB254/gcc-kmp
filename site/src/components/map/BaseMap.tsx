@@ -1,40 +1,10 @@
 'use client'
 
-import { ReactNode, Component, useState, useEffect } from 'react'
+import { ReactNode, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import { MAP_STYLE_URL, ZOOM } from '@/lib/design-tokens'
 import 'maplibre-gl/dist/maplibre-gl.css'
-
-// ─── WebGL detection ──────────────────────────────────────────────────────────
-
-function canUseWebGL(): boolean {
-  if (typeof window === 'undefined') return true
-  try {
-    const canvas = document.createElement('canvas')
-    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null
-    if (!gl) return false
-
-    // Chrome returns a non-null context even when the GPU is blacklisted.
-    // The debug renderer string is "Disabled" in that case — same value seen
-    // in the production error: GL_RENDERER = Disabled.
-    const ext = gl.getExtension('WEBGL_debug_renderer_info')
-    if (ext) {
-      const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string
-      if (!renderer || renderer === 'Disabled') return false
-    }
-
-    // Final sanity: confirm the context can actually compile a shader.
-    // A blacklisted/sandboxed context returns null here.
-    const shader = gl.createShader(gl.VERTEX_SHADER)
-    if (!shader) return false
-    gl.deleteShader(shader)
-
-    return true
-  } catch {
-    return false
-  }
-}
 
 // ─── Leaflet fallback (lazy-loaded, SSR disabled) ────────────────────────────
 
@@ -51,22 +21,6 @@ export interface FallbackGeoJSONLayer {
 }
 
 const LeafletFallback = dynamic(() => import('./LeafletFallback'), { ssr: false })
-
-// ─── MapLibre error boundary ─────────────────────────────────────────────────
-
-class MapErrorBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode; fallback: ReactNode }) {
-    super(props)
-    this.state = { hasError: false }
-  }
-  static getDerivedStateFromError() { return { hasError: true } }
-  render() {
-    return this.state.hasError ? this.props.fallback : this.props.children
-  }
-}
 
 // ─── BaseMap ──────────────────────────────────────────────────────────────────
 
@@ -110,18 +64,15 @@ export function BaseMap({
   mapRef,
   fallbackLayers,
 }: BaseMapProps) {
-  const [webGLAvailable, setWebGLAvailable] = useState<boolean | null>(null)
+  // Starts false — let MapLibre try. Flips to true the moment MapLibre fires
+  // any error whose type is webglcontextcreationerror (GPU blacklisted/sandboxed).
+  const [useLeaflet, setUseLeaflet] = useState(false)
 
-  useEffect(() => {
-    setWebGLAvailable(canUseWebGL())
+  const handleMapError = useCallback((evt: any) => {
+    if (evt?.error?.type === 'webglcontextcreationerror' || evt?.type === 'error') {
+      setUseLeaflet(true)
+    }
   }, [])
-
-  // Skeleton while client-side check runs (avoids SSR hydration mismatch)
-  if (webGLAvailable === null) {
-    return (
-      <div style={{ height, width: '100%' }} className={`rounded-xl bg-neutral-100 animate-pulse ${className}`} />
-    )
-  }
 
   const leafletFallback = (
     <LeafletFallback
@@ -134,29 +85,28 @@ export function BaseMap({
     />
   )
 
-  if (!webGLAvailable) return leafletFallback
+  if (useLeaflet) return leafletFallback
 
   return (
-    <MapErrorBoundary fallback={leafletFallback}>
-      <div style={{ height, width: '100%' }} className={`rounded-xl overflow-hidden relative ${className}`}>
-        <Map
-          ref={mapRef}
-          initialViewState={initialViewState}
-          mapStyle={MAP_STYLE_URL}
-          interactiveLayerIds={interactiveLayerIds}
-          onClick={onClick}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={onMouseLeave}
-          cursor={cursor}
-        >
-          <NavigationControl position="top-right" />
-          <ScaleControl position="bottom-left" />
-          {children}
-          {popup}
-        </Map>
-        {legend}
-      </div>
-    </MapErrorBoundary>
+    <div style={{ height, width: '100%' }} className={`rounded-xl overflow-hidden relative ${className}`}>
+      <Map
+        ref={mapRef}
+        initialViewState={initialViewState}
+        mapStyle={MAP_STYLE_URL}
+        interactiveLayerIds={interactiveLayerIds}
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        cursor={cursor}
+        onError={handleMapError}
+      >
+        <NavigationControl position="top-right" />
+        <ScaleControl position="bottom-left" />
+        {children}
+        {popup}
+      </Map>
+      {legend}
+    </div>
   )
 }
 
