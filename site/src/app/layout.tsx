@@ -70,8 +70,19 @@ export const metadata: Metadata = {
     },
   },
   manifest: '/manifest.json',
+  // iOS Smart Banner + iMessage rich preview association — when iMessage
+  // (or Safari) sees a link to globalcommunitycleaners.org, it now knows
+  // there's a matching App Store listing to surface as a download CTA.
+  appleWebApp: {
+    capable: true,
+    title: 'GCC',
+    statusBarStyle: 'black-translucent',
+  },
   alternates: {
     canonical: siteUrl,
+  },
+  other: {
+    'apple-itunes-app': 'app-id=6760203806',
   },
 }
 
