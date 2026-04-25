@@ -52,7 +52,7 @@ export function Logo({
         alt="Global Community Cleaners"
         width={1248}
         height={832}
-        className={cn('h-9 w-auto object-contain', className)}
+        className={cn('h-12 w-auto object-contain', className)}
         priority
       />
     )
