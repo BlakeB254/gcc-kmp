@@ -56,7 +56,7 @@ export function Header() {
         }
       `}
     >
-      <nav className="section-container flex h-16 items-center justify-between">
+      <nav className="section-container flex h-24 items-center justify-between">
         {/* Logo */}
         <div className="hover-scale">
           <Logo size="md" variant="full" />
