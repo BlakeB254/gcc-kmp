@@ -15,7 +15,6 @@ import {
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
-import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
 import type { Route } from './RouteMap'
 
@@ -448,39 +447,6 @@ export function CombinedMap({
     </div>
   ) : undefined
 
-  // Leaflet fallback: render routes as lines, spots as circles
-  const fallbackLayers = useMemo<FallbackGeoJSONLayer[]>(() => {
-    const layers: FallbackGeoJSONLayer[] = []
-
-    if (routes.length > 0) {
-      layers.push({
-        geojson: routeGeoJson,
-        style: (feature) => {
-          const status = (feature?.properties?.status as RouteDisplayStatus) ?? 'published'
-          return {
-            color: ROUTE_COLORS[status]?.fill ?? ROUTE_COLORS.published.fill,
-            weight: 4,
-            opacity: 0.9,
-          }
-        },
-      })
-    }
-
-    if (spots.length > 0) {
-      layers.push({
-        geojson: spotGeoJson,
-        style: () => ({
-          color: SPOT_COLORS.MARKER,
-          fillColor: SPOT_COLORS.MARKER,
-          fillOpacity: 0.7,
-          weight: 2,
-        }),
-      })
-    }
-
-    return layers
-  }, [routeGeoJson, spotGeoJson, routes.length, spots.length])
-
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: pulseKeyframes }} />
@@ -488,7 +454,6 @@ export function CombinedMap({
       <BaseMap
         height={height}
         initialViewState={initialViewState}
-        fallbackLayers={fallbackLayers}
         interactiveLayerIds={[
           ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
           ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-verification-ring'] : []),

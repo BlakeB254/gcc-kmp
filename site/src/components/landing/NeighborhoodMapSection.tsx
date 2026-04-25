@@ -1,16 +1,12 @@
 'use client'
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import dynamic from 'next/dynamic'
 import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
-import type { FallbackGeoJSONLayer } from '@/components/map/BaseMap'
-
-const LeafletFallback = dynamic(() => import('@/components/map/LeafletFallback'), { ssr: false })
 
 /**
  * NeighborhoodMapSection Component
@@ -188,7 +184,6 @@ function hardcodedBlockToDisplayBlock(block: BlockDefinition): BlockWithStatus {
 
 export function NeighborhoodMapSection() {
   const mapRef = useRef<MapRef>(null)
-  const [useLeaflet, setUseLeaflet] = useState(false)
   const [selectedBlock, setSelectedBlock] = useState<BlockWithStatus | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -199,12 +194,6 @@ export function NeighborhoodMapSection() {
   const [spotRawData, setSpotRawData] = useState<any[]>([])
   const [selectedSpot, setSelectedSpot] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-
-  const handleMapError = useCallback((evt: any) => {
-    if (evt?.error?.type === 'webglcontextcreationerror' || evt?.type === 'error') {
-      setUseLeaflet(true)
-    }
-  }, [])
 
   // Fetch blocks from database API, fall back to hardcoded data
   useEffect(() => {
@@ -476,27 +465,6 @@ export function NeighborhoodMapSection() {
     }
   }, [blocksWithStatus])
 
-  // Leaflet fallback layers (blocks only — routes/bounties/spots aren't supported
-  // by the canvas renderer without significant extra wiring)
-  const fallbackLayers: FallbackGeoJSONLayer[] = useMemo(() => [{
-    geojson: geojsonData as GeoJSON.FeatureCollection,
-    style: (feature) => {
-      const status = (feature?.properties?.status as BlockStatus) ?? 'unfunded'
-      return {
-        fillColor: STATUS_COLORS[status] ?? STATUS_COLORS.unfunded,
-        fillOpacity: 0.35,
-        color: STATUS_COLORS[status] ?? STATUS_COLORS.unfunded,
-        weight: 2,
-        opacity: 0.8,
-      }
-    },
-    onEachFeature: (feature, layer) => {
-      if (feature.properties?.streetName) {
-        layer.bindTooltip(feature.properties.streetName, { sticky: true })
-      }
-    },
-  }], [geojsonData])
-
   // Show loading state
   if (isLoading) {
     return (
@@ -509,31 +477,6 @@ export function NeighborhoodMapSection() {
             <p className="text-lg text-neutral-600">Loading blocks...</p>
           </div>
           <div className="h-[500px] bg-neutral-200 rounded-2xl animate-pulse" />
-        </div>
-      </section>
-    )
-  }
-
-  if (useLeaflet) {
-    return (
-      <section className="py-24 bg-neutral-50">
-        <div className="section-container">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-4">
-              Our Launch Area: Roosevelt Road
-            </h2>
-            <p className="text-lg text-neutral-600 max-w-2xl mx-auto">
-              10 blocks along Roosevelt Road from Kedzie Ave to Lawndale Ave.
-            </p>
-          </div>
-          <div className="rounded-2xl overflow-hidden shadow-xl border-4 border-brand-green-500">
-            <LeafletFallback
-              height="500px"
-              center={[41.8666, -87.7120]}
-              zoom={15}
-              layers={fallbackLayers}
-            />
-          </div>
         </div>
       </section>
     )
@@ -612,7 +555,6 @@ export function NeighborhoodMapSection() {
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
               onLoad={() => setMapLoaded(true)}
-              onError={handleMapError}
               cursor={hoveredBlockId ? 'pointer' : 'grab'}
               maxBounds={[
                 [MAP_BOUNDS.west - 0.01, MAP_BOUNDS.south - 0.01],
