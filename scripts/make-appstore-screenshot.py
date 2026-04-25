@@ -187,29 +187,32 @@ def draw_wrapped_text(
     return y
 
 
-def build_device_layer(screenshot_path: Path) -> Image.Image:
+def build_device_layer(screenshot_path: Path, device_top: int = DEVICE_TOP) -> Image.Image:
     """
     Render the iPhone bezel + screen-content + dynamic island on a transparent
     canvas the same size as the output. Easier to apply a soft shadow once
     against the background than per-component.
+
+    `device_top` overrides the default DEVICE_TOP so the caller can push the
+    device down when the caption block grew (3-line headline, etc).
     """
     layer = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
 
     device_left = (CANVAS_W - DEVICE_W) // 2
     device_right = device_left + DEVICE_W
-    device_bottom = DEVICE_TOP + DEVICE_H
+    device_bottom = device_top + DEVICE_H
 
     # Outer bezel: rounded rect, dark titanium tone
     draw.rounded_rectangle(
-        [device_left, DEVICE_TOP, device_right, device_bottom],
+        [device_left, device_top, device_right, device_bottom],
         radius=BEZEL_RADIUS,
         fill=(20, 20, 22, 255),
     )
 
     # Inner screen mask
     screen_left = device_left + BEZEL_PX
-    screen_top = DEVICE_TOP + BEZEL_PX
+    screen_top = device_top + BEZEL_PX
     screen_right = device_right - BEZEL_PX
     screen_bottom = device_bottom - BEZEL_PX
     screen_w = screen_right - screen_left
@@ -268,18 +271,22 @@ def compose(
     # Headline
     head_font = load_font(FONT_BOLD_CANDIDATES, HEADLINE_SIZE)
     sub_font = load_font(FONT_REGULAR_CANDIDATES, SUBCOPY_SIZE)
-    new_top = draw_wrapped_text(
+    head_end = draw_wrapped_text(
         draw, headline, HEADLINE_TOP, head_font, WHITE,
         HEADLINE_LINE_GAP, max_width=CANVAS_W - 160,
     )
+    sub_end = head_end
     if subcopy:
-        draw_wrapped_text(
-            draw, subcopy, new_top + SUBCOPY_GAP, sub_font, TEXT_SUB,
+        sub_end = draw_wrapped_text(
+            draw, subcopy, head_end + SUBCOPY_GAP, sub_font, TEXT_SUB,
             SUBCOPY_LINE_GAP, max_width=CANVAS_W - 220,
         )
 
-    # Device frame + screen
-    device_layer = build_device_layer(screenshot_path)
+    # Device frame + screen — positioned just below the caption block, with
+    # a 60px breathing gap. Falls back to the default DEVICE_TOP when the
+    # caption is short enough.
+    device_top = max(DEVICE_TOP, sub_end + 60)
+    device_layer = build_device_layer(screenshot_path, device_top=device_top)
     canvas = apply_device_shadow(canvas, device_layer)
 
     # Footer URL
@@ -307,44 +314,44 @@ SITE_HERO_DIR = REPO / "site" / "public" / "images" / "upsells"
 
 CONFIGS = [
     {
-        "src": "12-tap-map.png",
-        "out": "01-heatmap.png",
-        "headline": "See every block.",
-        "subcopy": "Live heatmap of cleanings scheduled, in progress, and done.",
-        # Worker behind sweeping in vest — the human face of the program
+        # Slot 1 — signup (test-account login screen, no admin tab)
+        "src": "04-further.png",
+        "out": "01-signup.png",
+        "headline": "Sign up.",
+        "subcopy": "Verify your address. Onboard in minutes. Earn from your block.",
         "hero": SITE_HERO_DIR / "worker-branding-base.jpg",
     },
     {
-        "src": "10-map-fixed.png",
-        "out": "02-profile.png",
-        "headline": "Earn $100 per block.",
-        "subcopy": "Same-day Stripe payout. Streaks, badges, real money for real work.",
-        # Equipment cart on the sidewalk — work in progress
+        # Slot 2 — clean heatmap, 3-tab nav, North Lawndale view
+        "src": "22-map-clean.png",
+        "out": "02-heatmap.png",
+        "headline": "Track your community's cleanliness.",
+        "subcopy": "Live heatmap of cleanings scheduled, in progress, and done.",
+        "hero": SITE_HERO_DIR / "events-base.jpg",
+    },
+    {
+        # Slot 3 — profile / contribution tracker (3-tab nav)
+        "src": "24-profile-3tab.png",
+        "out": "03-profile.png",
+        "headline": "Track your contribution.",
+        "subcopy": "Earnings, streaks, badges — real money for real work.",
         "hero": SITE_HERO_DIR / "equipment-branding-base.jpg",
     },
     {
-        "src": "12-tap-map.png",
-        "out": "03-routes.png",
-        "headline": "Pick your block.",
-        "subcopy": "Tap a route, claim the job, log your work, get paid.",
-        # Yard sign on residential block — visible community marker
+        # Slot 4 — spot detail card with photo (3-tab nav)
+        "src": "21-spot-detail.png",
+        "out": "04-spot-detail.png",
+        "headline": "Tap any spot for the full story.",
+        "subcopy": "Photos, history, and the action you can take — in one tap.",
         "hero": SITE_HERO_DIR / "street-advertising-base.jpg",
     },
     {
-        "src": "04-further.png",
-        "out": "04-onboarding.png",
-        "headline": "100% to your neighbor.",
-        "subcopy": "Every $100 sponsored pays one resident to clean one block — line-itemized.",
-        # Phone showing the social-share post — "your work, public"
+        # Slot 5 — route detail with $100 payout + map highlight
+        "src": "25-route-detail.png",
+        "out": "05-route-detail.png",
+        "headline": "Real blocks. Real $100 payouts.",
+        "subcopy": "Each route mapped, photographed, and ready to claim.",
         "hero": SITE_HERO_DIR / "digital-presence-base.jpg",
-    },
-    {
-        "src": "12-tap-map.png",
-        "out": "05-launch.png",
-        "headline": "Built for North Lawndale.",
-        "subcopy": "Expanding neighborhood by neighborhood — bring it to yours.",
-        # Community event tent — community celebration
-        "hero": SITE_HERO_DIR / "events-base.jpg",
     },
 ]
 
