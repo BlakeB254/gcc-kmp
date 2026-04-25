@@ -76,14 +76,14 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "75"
+    build = options[:build] || "81"
 
     upload_to_testflight(
       api_key: api_key,
       skip_submission: false,
       distribute_external: true,
       groups: ["Beta Testers"],
-      app_version: "1.0.3",
+      app_version: "1.0.5",
       build_number: build,
       changelog: File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       notify_external_testers: true,
