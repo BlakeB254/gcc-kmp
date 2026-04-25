@@ -80,6 +80,9 @@ platform :ios do
 
     upload_to_testflight(
       api_key: api_key,
+      # distribute_only: true tells pilot to distribute an EXISTING build
+      # in App Store Connect rather than try to upload a fresh IPA.
+      distribute_only: true,
       skip_submission: false,
       distribute_external: true,
       groups: ["Beta Testers"],
