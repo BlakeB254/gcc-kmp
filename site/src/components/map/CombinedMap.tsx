@@ -642,7 +642,14 @@ export function CombinedMap({
                   'interpolate', ['linear'], ['zoom'],
                   14, 2, 14.5, 3, 16, 5, 17, 7,
                 ],
-                'circle-color': SPOT_COLORS.MARKER,
+                'circle-color': [
+                  'match', ['get', 'status'],
+                  'pending',      SPOT_STATUS_COLORS.pending,
+                  'verified',     SPOT_STATUS_COLORS.verified,
+                  'acknowledged', SPOT_STATUS_COLORS.acknowledged,
+                  'resolved',     SPOT_STATUS_COLORS.resolved,
+                  SPOT_COLORS.MARKER,
+                ],
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
                 'circle-opacity': [

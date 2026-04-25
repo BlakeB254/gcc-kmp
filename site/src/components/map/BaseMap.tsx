@@ -12,25 +12,13 @@ function canUseWebGL(): boolean {
   if (typeof window === 'undefined') return true
   try {
     const canvas = document.createElement('canvas')
-    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null
-    if (!gl) return false
-
-    // Chrome returns a non-null context even when the GPU is blacklisted.
-    // The debug renderer string is "Disabled" in that case — same value seen
-    // in the production error: GL_RENDERER = Disabled.
-    const ext = gl.getExtension('WEBGL_debug_renderer_info')
-    if (ext) {
-      const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string
-      if (!renderer || renderer === 'Disabled') return false
-    }
-
-    // Final sanity: confirm the context can actually compile a shader.
-    // A blacklisted/sandboxed context returns null here.
-    const shader = gl.createShader(gl.VERTEX_SHADER)
-    if (!shader) return false
-    gl.deleteShader(shader)
-
-    return true
+    // failIfMajorPerformanceCaveat:true returns null when the GPU is blacklisted
+    // (Chrome's sandbox returns a non-null context without this flag, but fails
+    // later; with it Chrome correctly returns null for blacklisted/no-GPU envs).
+    const gl =
+      canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ||
+      canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true })
+    return gl !== null
   } catch {
     return false
   }

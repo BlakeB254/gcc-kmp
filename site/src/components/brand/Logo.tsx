@@ -44,10 +44,33 @@ export function Logo({
 }: LogoProps) {
   const config = sizeConfig[size]
 
+  // Full variant: show the horizontal logo image (symbol + wordmark baked in)
+  if (variant === 'full') {
+    const imgContent = (
+      <Image
+        src="/images/gcc-logo.png"
+        alt="Global Community Cleaners"
+        width={1248}
+        height={832}
+        className={cn('h-9 w-auto object-contain', className)}
+        priority
+      />
+    )
+    if (linkToHome) {
+      return (
+        <Link href="/" className="inline-flex items-center hover:opacity-90 transition-opacity">
+          {imgContent}
+        </Link>
+      )
+    }
+    return imgContent
+  }
+
+  const config2 = config
   const content = (
     <div className={cn('flex items-center gap-2', className)}>
       {/* Logo Image */}
-      <div className={cn('relative overflow-hidden', config.container)}>
+      <div className={cn('relative overflow-hidden', config2.container)}>
         <Image
           src="/images/gcc-symbol.png"
           alt="GCC Logo"
@@ -61,11 +84,11 @@ export function Logo({
       <span
         className={cn(
           'font-bold',
-          variant === 'short' ? config.text : config.fullText,
+          config2.text,
           theme === 'light' ? 'text-brand-green-800' : 'text-white'
         )}
       >
-        {variant === 'full' ? 'Global Community Cleaners' : 'GCC'}
+        GCC
       </span>
     </div>
   )

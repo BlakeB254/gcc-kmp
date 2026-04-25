@@ -1,12 +1,16 @@
 'use client'
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
+import type { FallbackGeoJSONLayer } from '@/components/map/BaseMap'
+
+const LeafletFallback = dynamic(() => import('@/components/map/LeafletFallback'), { ssr: false })
 
 /**
  * NeighborhoodMapSection Component
@@ -184,6 +188,7 @@ function hardcodedBlockToDisplayBlock(block: BlockDefinition): BlockWithStatus {
 
 export function NeighborhoodMapSection() {
   const mapRef = useRef<MapRef>(null)
+  const [webglReady, setWebglReady] = useState<boolean | null>(null)
   const [selectedBlock, setSelectedBlock] = useState<BlockWithStatus | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -194,6 +199,18 @@ export function NeighborhoodMapSection() {
   const [spotRawData, setSpotRawData] = useState<any[]>([])
   const [selectedSpot, setSelectedSpot] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    try {
+      const canvas = document.createElement('canvas')
+      const gl =
+        canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ||
+        canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true })
+      setWebglReady(gl !== null)
+    } catch {
+      setWebglReady(false)
+    }
+  }, [])
 
   // Fetch blocks from database API, fall back to hardcoded data
   useEffect(() => {
@@ -351,6 +368,35 @@ export function NeighborhoodMapSection() {
     type: 'FeatureCollection' as const,
     features: spotFeatures,
   }), [spotFeatures])
+
+  // GeoJSON layers for the Leaflet canvas fallback (no WebGL)
+  const fallbackLayers: FallbackGeoJSONLayer[] = useMemo(() => [
+    {
+      geojson: {
+        type: 'FeatureCollection' as const,
+        features: blocksWithStatus.map((block) => ({
+          type: 'Feature' as const,
+          id: block.id,
+          properties: {
+            code: block.code,
+            streetName: block.streetName,
+            fromCorner: block.fromCorner,
+            toCorner: block.toCorner,
+            color: STATUS_COLORS[block.status] || STATUS_COLORS.unfunded,
+          },
+          geometry: block.geo.polygon,
+        })),
+      },
+      style: (feature) => {
+        const color = (feature?.properties?.color as string) || STATUS_COLORS.unfunded
+        return { color, fillColor: color, fillOpacity: 0.25, weight: 2, opacity: 0.7 }
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties
+        if (p) layer.bindPopup(`<strong>${p.streetName || p.code}</strong><br/>${p.fromCorner || ''} → ${p.toCorner || ''}`)
+      },
+    },
+  ], [blocksWithStatus])
 
   // Convert to GeoJSON for MapLibre
   const geojsonData = useMemo(() => ({
@@ -541,6 +587,16 @@ export function NeighborhoodMapSection() {
         {/* Map container */}
         <div className="relative rounded-2xl overflow-hidden shadow-xl border-4 border-brand-green-500">
           <div className="h-[500px] sm:h-[600px]">
+            {webglReady === null ? (
+              <div className="h-full bg-neutral-200 animate-pulse rounded-xl" />
+            ) : webglReady === false ? (
+              <LeafletFallback
+                height="100%"
+                center={[41.8666, -87.7120]}
+                zoom={15}
+                layers={fallbackLayers}
+              />
+            ) : (
             <Map
               ref={mapRef}
               initialViewState={{
@@ -555,12 +611,13 @@ export function NeighborhoodMapSection() {
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
               onLoad={() => setMapLoaded(true)}
+              onError={() => setWebglReady(false)}
               cursor={hoveredBlockId ? 'pointer' : 'grab'}
               maxBounds={[
-                [MAP_BOUNDS.west - 0.01, MAP_BOUNDS.south - 0.01],
-                [MAP_BOUNDS.east + 0.01, MAP_BOUNDS.north + 0.01],
+                [MAP_BOUNDS.west - 0.004, MAP_BOUNDS.south - 0.004],
+                [MAP_BOUNDS.east + 0.004, MAP_BOUNDS.north + 0.004],
               ]}
-              minZoom={11}
+              minZoom={14}
               maxZoom={18}
             >
               <NavigationControl position="top-right" />
@@ -796,6 +853,7 @@ export function NeighborhoodMapSection() {
 
               {/* No in-map popup — detail card is rendered outside the map below */}
             </Map>
+            )}
           </div>
 
           {/* Block detail card — overlaid inside the map canvas */}
