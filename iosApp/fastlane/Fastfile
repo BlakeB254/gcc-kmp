@@ -33,7 +33,11 @@ platform :ios do
     # Build the Kotlin framework first (release config for device)
     sh("cd ../.. && ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks")
 
-    # Archive
+    # Archive — leave automatic signing in place (the project's
+    # CODE_SIGN_STYLE = Automatic). The earlier errSecInternalComponent
+    # was a keychain partition-list issue, not a wrong-cert issue;
+    # unlocking the keychain + opening the partition list (apple-tool,
+    # apple, codesign) above is what actually unblocks codesign.
     build_app(
       project: "iosApp.xcodeproj",
       scheme: "iosApp",
@@ -43,6 +47,11 @@ platform :ios do
       output_directory: "/tmp/gcc-build",
       output_name: "GCC.ipa",
       clean: true,
+      # Explicitly point codesign at the unlocked login keychain — when
+      # xcodebuild runs over SSH the default search-list resolution can
+      # miss the GUI-user's keychain and codesign returns
+      # errSecInternalComponent on embedded frameworks.
+      xcargs: 'OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/login.keychain-db"',
       export_options: {
         provisioningProfiles: {
           "com.globalcommunitycleaners.worker" => profile["provisioningProfile"]
@@ -92,8 +101,8 @@ platform :ios do
 
     deliver(
       api_key: api_key,
-      app_version: "1.0.4",
-      build_number: "80",
+      app_version: "1.0.5",
+      build_number: "81",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,
@@ -106,6 +115,30 @@ platform :ios do
       },
       submission_information: {
         add_id_info_uses_idfa: false,
+      },
+    )
+  end
+
+  desc "Push screenshots + metadata only (no binary, no review submit)"
+  lane :screenshots do
+    api_key = app_store_connect_api_key(
+      key_id: "XKAYZ4N88V",
+      issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
+      key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_XKAYZ4N88V.p8"),
+      in_house: false,
+    )
+    deliver(
+      api_key: api_key,
+      app_version: "1.0.5",
+      submit_for_review: false,
+      skip_binary_upload: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      force: true,
+      precheck_include_in_app_purchases: false,
+      release_notes: {
+        "en-US" => File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       },
     )
   end

@@ -82,12 +82,59 @@ def load_font(candidates: list[str], size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def make_background() -> Image.Image:
-    """Vertical brand-green gradient with a soft radial highlight upper-third."""
+def make_background(hero_photo: Path | None = None) -> Image.Image:
+    """
+    If `hero_photo` is provided, use it as a full-bleed photographic
+    background with a brand-tinted darken overlay so the caption + device
+    read clearly. Otherwise fall back to the brand-green gradient.
+
+    The pattern matches what top-selling App Store apps (Headspace,
+    Strava, Cash App) do: a real photo grounds the screenshot in the
+    product's world, then a darken layer keeps the typography readable.
+    """
+    if hero_photo and hero_photo.exists():
+        photo = Image.open(hero_photo).convert("RGB")
+        # Cover-fit into 1320x2868: scale to whichever dim is smaller
+        # of (CANVAS_W/photo_W, CANVAS_H/photo_H) — actually we want max
+        # so the photo covers without letterbox.
+        ph_w, ph_h = photo.size
+        scale = max(CANVAS_W / ph_w, CANVAS_H / ph_h)
+        new_w = int(ph_w * scale)
+        new_h = int(ph_h * scale)
+        photo = photo.resize((new_w, new_h), Image.LANCZOS)
+        left = (new_w - CANVAS_W) // 2
+        top = (new_h - CANVAS_H) // 2
+        bg = photo.crop((left, top, left + CANVAS_W, top + CANVAS_H)).convert("RGBA")
+
+        # Two-stop overlay so caption (top) and footer (bottom) stay legible:
+        #   top 35% — dark at 65% alpha, fades to 25%
+        #   middle — even mid-tone darken at 25%
+        #   bottom 18% — dark at 50% alpha for footer
+        overlay = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+        op = overlay.load()
+        for y in range(CANVAS_H):
+            t = y / (CANVAS_H - 1)
+            if t < 0.35:
+                # Top band: 65% → 25%
+                k = t / 0.35
+                a = int(165 - (165 - 64) * k)
+            elif t < 0.82:
+                # Middle: gentle darken
+                a = 64
+            else:
+                # Bottom 18%: ramp 25% → 50% for footer legibility
+                k = (t - 0.82) / 0.18
+                a = int(64 + (128 - 64) * k)
+            row = (BRAND_GREEN_900[0], BRAND_GREEN_900[1], BRAND_GREEN_900[2], a)
+            for x in range(CANVAS_W):
+                op[x, y] = row
+
+        bg = Image.alpha_composite(bg, overlay).convert("RGB")
+        return bg
+
+    # ── Fallback: brand-green gradient (used when no hero photo) ──
     bg = Image.new("RGB", (CANVAS_W, CANVAS_H), BRAND_GREEN_700)
     pixels = bg.load()
-
-    # Vertical gradient: GREEN_900 → GREEN_500 → GREEN_900
     for y in range(CANVAS_H):
         t = y / (CANVAS_H - 1)
         if t < 0.5:
@@ -102,20 +149,6 @@ def make_background() -> Image.Image:
             b = BRAND_GREEN_500[2] + (BRAND_GREEN_900[2] - BRAND_GREEN_500[2]) * k
         for x in range(CANVAS_W):
             pixels[x, y] = (int(r), int(g), int(b))
-
-    # Soft radial highlight in upper third — subtle "spotlight on hero"
-    overlay = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
-    od = ImageDraw.Draw(overlay)
-    cx, cy = CANVAS_W // 2, CANVAS_H // 3
-    radius = 720
-    for r in range(radius, 0, -8):
-        alpha = int(28 * (1 - r / radius))
-        od.ellipse(
-            [cx - r, cy - r, cx + r, cy + r],
-            fill=(255, 255, 255, alpha),
-        )
-    overlay = overlay.filter(ImageFilter.GaussianBlur(60))
-    bg = Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
     return bg
 
 
@@ -226,8 +259,9 @@ def compose(
     headline: str,
     subcopy: str,
     out_path: Path,
+    hero_photo: Path | None = None,
 ) -> None:
-    canvas = make_background()
+    canvas = make_background(hero_photo)
     canvas = canvas.convert("RGBA")
     draw = ImageDraw.Draw(canvas)
 
@@ -269,36 +303,48 @@ REPO = SCRIPT_DIR.parent
 RAW_DIR = REPO / "screenshots" / "raw"
 OUT_DIR = REPO / "screenshots" / "appstore-framed"
 
+SITE_HERO_DIR = REPO / "site" / "public" / "images" / "upsells"
+
 CONFIGS = [
     {
         "src": "12-tap-map.png",
         "out": "01-heatmap.png",
         "headline": "See every block.",
         "subcopy": "Live heatmap of cleanings scheduled, in progress, and done.",
+        # Worker behind sweeping in vest — the human face of the program
+        "hero": SITE_HERO_DIR / "worker-branding-base.jpg",
     },
     {
         "src": "10-map-fixed.png",
         "out": "02-profile.png",
-        "headline": "Track your earnings.",
-        "subcopy": "Same-day Stripe payout. Streaks. Badges. Real money for real work.",
+        "headline": "Earn $100 per block.",
+        "subcopy": "Same-day Stripe payout. Streaks, badges, real money for real work.",
+        # Equipment cart on the sidewalk — work in progress
+        "hero": SITE_HERO_DIR / "equipment-branding-base.jpg",
     },
     {
         "src": "12-tap-map.png",
         "out": "03-routes.png",
         "headline": "Pick your block.",
         "subcopy": "Tap a route, claim the job, log your work, get paid.",
+        # Yard sign on residential block — visible community marker
+        "hero": SITE_HERO_DIR / "street-advertising-base.jpg",
     },
     {
         "src": "04-further.png",
         "out": "04-onboarding.png",
-        "headline": "$100 per block.",
-        "subcopy": "100% pays a neighbor to clean their own street.",
+        "headline": "100% to your neighbor.",
+        "subcopy": "Every $100 sponsored pays one resident to clean one block — line-itemized.",
+        # Phone showing the social-share post — "your work, public"
+        "hero": SITE_HERO_DIR / "digital-presence-base.jpg",
     },
     {
         "src": "12-tap-map.png",
         "out": "05-launch.png",
         "headline": "Built for North Lawndale.",
         "subcopy": "Expanding neighborhood by neighborhood — bring it to yours.",
+        # Community event tent — community celebration
+        "hero": SITE_HERO_DIR / "events-base.jpg",
     },
 ]
 
@@ -320,7 +366,11 @@ def main() -> int:
             if not src.exists():
                 print(f"  ! skipping {cfg['out']} — source missing: {src}")
                 continue
-            compose(src, cfg["headline"], cfg["subcopy"], OUT_DIR / cfg["out"])
+            hero = cfg.get("hero")
+            if hero and not Path(hero).exists():
+                print(f"  ! hero photo missing for {cfg['out']}, falling back to gradient: {hero}")
+                hero = None
+            compose(src, cfg["headline"], cfg["subcopy"], OUT_DIR / cfg["out"], hero_photo=hero)
         return 0
 
     if not args.src or not args.headline or not args.out:

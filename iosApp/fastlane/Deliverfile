@@ -2,8 +2,8 @@
 app_identifier "com.globalcommunitycleaners.worker"
 team_id "7BBNW25LZM"
 
-# API Key authentication (no Apple ID login needed)
-api_key_path "./fastlane/api_key.json"
+# API Key authentication is provided inline by each Fastfile lane via
+# `app_store_connect_api_key(...)`. No separate JSON file needed.
 
 # Categories
 primary_category "PRODUCTIVITY"
