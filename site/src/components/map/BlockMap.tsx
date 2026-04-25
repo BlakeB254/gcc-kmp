@@ -5,6 +5,7 @@ import { Source, Layer, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import { BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS, ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
 import { BaseMap, MapLegend } from './BaseMap'
+import type { FallbackGeoJSONLayer } from './BaseMap'
 
 /**
  * BlockMap Component
@@ -329,6 +330,30 @@ export function BlockMap({
     label,
   }))
 
+  // GeoJSON layer for the Leaflet (no-WebGL) fallback — same data, canvas-rendered
+  const fallbackLayers: FallbackGeoJSONLayer[] = useMemo(() => [{
+    geojson: geojsonData,
+    style: (feature) => {
+      const status = (feature?.properties?.status as BlockStatus) ?? 'unfunded'
+      const selected = feature?.properties?.selected === true
+      return {
+        fillColor: selected ? '#16763A' : GCC_BLOCK_COLORS[status],
+        fillOpacity: selected ? 0.7 : GCC_BLOCK_OPACITY[status],
+        color: selected ? '#126431' : GCC_BLOCK_COLORS[status],
+        weight: selected ? 4 : 2,
+      }
+    },
+    onEachFeature: interactive ? (feature, layer) => {
+      layer.on('click', () => {
+        const block = blocks.find(b => b.id === feature.properties?.id)
+        if (block) onBlockSelect?.(block)
+      })
+      if (feature.properties?.streetName) {
+        layer.bindTooltip(feature.properties.streetName, { sticky: true })
+      }
+    } : undefined,
+  }], [geojsonData, interactive, blocks, onBlockSelect])
+
   return (
     <BaseMap
       height={height}
@@ -337,6 +362,7 @@ export function BlockMap({
       onClick={interactive ? onClick : undefined}
       cursor={interactive ? 'pointer' : 'default'}
       mapRef={(ref) => setMapRef(ref)}
+      fallbackLayers={fallbackLayers}
       legend={
         showLegend ? (
           <div className="mt-4 flex flex-wrap gap-4 justify-center text-xs">

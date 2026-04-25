@@ -1,9 +1,57 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { ReactNode, Component, useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import Map, { NavigationControl, ScaleControl } from 'react-map-gl/maplibre'
 import { MAP_STYLE_URL, ZOOM } from '@/lib/design-tokens'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+// ─── WebGL detection ──────────────────────────────────────────────────────────
+
+function canUseWebGL(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    return !!gl
+  } catch {
+    return false
+  }
+}
+
+// ─── Leaflet fallback (lazy-loaded, SSR disabled) ────────────────────────────
+
+export interface FallbackGeoJSONLayer {
+  geojson: GeoJSON.FeatureCollection
+  style: (feature: GeoJSON.Feature) => {
+    color?: string
+    fillColor?: string
+    fillOpacity?: number
+    weight?: number
+    opacity?: number
+  }
+  onEachFeature?: (feature: GeoJSON.Feature, layer: any) => void
+}
+
+const LeafletFallback = dynamic(() => import('./LeafletFallback'), { ssr: false })
+
+// ─── MapLibre error boundary ─────────────────────────────────────────────────
+
+class MapErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; fallback: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children
+  }
+}
+
+// ─── BaseMap ──────────────────────────────────────────────────────────────────
 
 interface BaseMapProps {
   height?: string
@@ -22,6 +70,8 @@ interface BaseMapProps {
   legend?: ReactNode    // Legend content
   className?: string
   mapRef?: (ref: any) => void
+  /** GeoJSON layers passed to the Leaflet fallback when WebGL is unavailable */
+  fallbackLayers?: FallbackGeoJSONLayer[]
 }
 
 export function BaseMap({
@@ -41,30 +91,60 @@ export function BaseMap({
   legend,
   className = '',
   mapRef,
+  fallbackLayers,
 }: BaseMapProps) {
+  const [webGLAvailable, setWebGLAvailable] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    setWebGLAvailable(canUseWebGL())
+  }, [])
+
+  // Skeleton while client-side check runs (avoids SSR hydration mismatch)
+  if (webGLAvailable === null) {
+    return (
+      <div style={{ height, width: '100%' }} className={`rounded-xl bg-neutral-100 animate-pulse ${className}`} />
+    )
+  }
+
+  const leafletFallback = (
+    <LeafletFallback
+      height={height}
+      center={[initialViewState.latitude, initialViewState.longitude]}
+      zoom={initialViewState.zoom}
+      layers={fallbackLayers}
+      className={className}
+      legend={legend}
+    />
+  )
+
+  if (!webGLAvailable) return leafletFallback
+
   return (
-    <div style={{ height, width: '100%' }} className={`rounded-xl overflow-hidden relative ${className}`}>
-      <Map
-        ref={mapRef}
-        initialViewState={initialViewState}
-        mapStyle={MAP_STYLE_URL}
-        interactiveLayerIds={interactiveLayerIds}
-        onClick={onClick}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-        cursor={cursor}
-      >
-        <NavigationControl position="top-right" />
-        <ScaleControl position="bottom-left" />
-        {children}
-        {popup}
-      </Map>
-      {legend}
-    </div>
+    <MapErrorBoundary fallback={leafletFallback}>
+      <div style={{ height, width: '100%' }} className={`rounded-xl overflow-hidden relative ${className}`}>
+        <Map
+          ref={mapRef}
+          initialViewState={initialViewState}
+          mapStyle={MAP_STYLE_URL}
+          interactiveLayerIds={interactiveLayerIds}
+          onClick={onClick}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
+          cursor={cursor}
+        >
+          <NavigationControl position="top-right" />
+          <ScaleControl position="bottom-left" />
+          {children}
+          {popup}
+        </Map>
+        {legend}
+      </div>
+    </MapErrorBoundary>
   )
 }
 
-// Reusable Legend component
+// ─── MapLegend ────────────────────────────────────────────────────────────────
+
 interface LegendItem {
   color: string
   label: string
