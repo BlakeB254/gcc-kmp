@@ -119,7 +119,12 @@ data class AdminStatsResponse(
     val totalSponsors: Int,
     val totalJobs: Int,
     val completedJobs: Int,
+    /** Jobs currently being worked (status = 'in_progress'). */
     val activeJobs: Int,
+    /** Jobs published but not yet claimed (status = 'available'). */
+    val availableJobs: Int = 0,
+    /** Jobs claimed by a worker but not yet started (status = 'claimed'). */
+    val claimedJobs: Int = 0,
     val totalRevenue: Int,
     val totalRoutes: Int,
     val totalBlocks: Int,

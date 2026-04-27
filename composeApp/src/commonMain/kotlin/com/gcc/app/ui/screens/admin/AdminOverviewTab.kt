@@ -42,7 +42,11 @@ internal fun AdminOverviewTab(
         item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccSky, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { SectionHeader("Operations") }
-        item { AdminStatCard("Active Jobs", stats.activeJobs.toString(), "\u26A1", GccGreen) }
+        // "Jobs in Progress" = workers actively cleaning right now (status = 'in_progress').
+        item { AdminStatCard("Jobs in Progress", stats.activeJobs.toString(), "\u26A1", GccGreen) }
+        // Backlog — jobs that exist but haven't been started yet.
+        item { AdminStatCard("Open Jobs", stats.availableJobs.toString(), "\uD83D\uDCCB") }
+        item { AdminStatCard("Claimed (Not Started)", stats.claimedJobs.toString(), "\u23F1\uFE0F") }
         item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
         item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA", onClick = { onNavigateToTab(AdminTab.ROUTES) }) }
         item { SectionHeader("Spots") }
