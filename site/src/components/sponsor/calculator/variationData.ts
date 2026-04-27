@@ -48,7 +48,7 @@ export interface Sponsor {
 export const GCC_BASELINE: Sponsor = {
   slug: 'gcc',
   name: 'Global Community Cleaners',
-  tagline: 'Paid block cleaning by North Lawndale residents',
+  tagline: 'Paid block cleaning by neighborhood residents — pilot active in North Lawndale',
   campaign: 'GCC Community Partnership',
   logoPath: '/images/gcc-logo.png',
   address: '1512 S. Millard Ave, Chicago, IL 60623',

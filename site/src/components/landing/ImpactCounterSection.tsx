@@ -38,7 +38,7 @@ export function ImpactCounterSection() {
                 <h3 className="text-xl font-bold text-white mb-2">100% Transparent</h3>
                 <p className="text-brand-green-100">
                   <strong>Every $100 donated goes directly to a worker.</strong> GCC operates on separate funding—
-                  your sponsorship is 100% wages for North Lawndale residents.
+                  your sponsorship is 100% wages for the resident cleaning that block.
                 </p>
               </div>
             </div>

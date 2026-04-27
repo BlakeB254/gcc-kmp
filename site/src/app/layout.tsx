@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: '%s | Global Community Cleaners',
   },
   description:
-    'Global Community Cleaners (GCC) connects North Lawndale residents with paid block cleaning opportunities. Earn $100 per block while making your community shine. Join the movement to transform Chicago neighborhoods.',
+    'Global Community Cleaners (GCC) connects neighborhood residents worldwide with paid block-cleaning opportunities. Earn $100 per block while making your community shine. Pilot launched in North Lawndale, Chicago — expanding globally.',
   keywords: [
     'Global Community Cleaners',
     'GCC',
