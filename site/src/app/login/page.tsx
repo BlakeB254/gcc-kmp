@@ -46,18 +46,12 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<LoginErrorState | null>(null)
 
-  function landingFor(data: UniversalLoginResponse): string {
+  function landingFor(_data: UniversalLoginResponse): string {
+    // Honor explicit ?next= (e.g., a deep-link to /admin/routes); otherwise
+    // every successful sign-in lands in the unified /member portal where
+    // worker and sponsor sections render side by side.
     if (next && next.startsWith('/')) return next
-    if (data.roles?.includes('admin')) return '/admin/routes'
-    if (data.accountType === 'sponsor') return '/sponsor/dashboard'
-    if (data.accountType === 'worker') {
-      const docs = data.user?.documents
-      const allUploaded = docs?.governmentIdUploaded && docs?.proofOfAddressUploaded
-      if (!allUploaded) return '/worker/documents'
-      if (data.user?.verificationStatus !== 'approved') return '/worker/pending'
-      return '/worker/dashboard'
-    }
-    return '/'
+    return '/member'
   }
 
   async function handleSubmit(e: React.FormEvent) {

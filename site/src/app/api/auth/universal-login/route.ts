@@ -18,8 +18,10 @@
  *   - user: a profile from the verified side
  *   - token: a Bearer JWT (used by the admin panel's localStorage flow)
  *
- * Mobile + legacy clients keep using /api/auth/login, /api/workers/login,
- * /api/sponsors/login — those endpoints are untouched.
+ * The mobile app keeps using /api/auth/login (Bearer-token-based) — that
+ * endpoint is untouched. The legacy /api/workers/login and
+ * /api/sponsors/login web cookie endpoints have been removed; their pages
+ * now redirect to /login and use this universal endpoint.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
