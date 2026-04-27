@@ -19,11 +19,14 @@ test.describe('Homepage', () => {
     await expect(homePage.navItems.first()).toBeVisible()
   })
 
-  test('shows join waitlist CTA', async () => {
+  test('shows path to /join from community section', async () => {
+    // Hero now has a single unified signup CTA. The waitlist (/join) is still
+    // reachable, just from the community section instead of the hero.
+    await homePage.scrollToSection('community')
     await expect(homePage.joinWaitlistButton).toBeVisible()
   })
 
-  test('shows start earning CTA', async () => {
+  test('shows start earning CTA in hero', async () => {
     await expect(homePage.startEarningButton).toBeVisible()
   })
 
@@ -99,6 +102,6 @@ test.describe('Homepage - Mobile', () => {
     await homePage.goto()
 
     await expect(homePage.heroHeading).toBeVisible()
-    await expect(homePage.joinWaitlistButton).toBeVisible()
+    await expect(homePage.startEarningButton).toBeVisible()
   })
 })

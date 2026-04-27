@@ -1,14 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState, useEffect } from 'react'
 import { Logo } from '@/components/brand/Logo'
 import {
   Clock,
   Mail,
   CheckCircle2,
-  AlertCircle,
   FileText,
   CreditCard,
   MapPin,
@@ -19,7 +18,8 @@ import {
   Sparkles,
   Shield,
   DollarSign,
-  Users
+  Users,
+  Upload,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,60 +31,106 @@ const faqs = [
   },
   {
     question: 'What documents are being verified?',
-    answer: 'We verify your government-issued ID (driver\'s license, state ID, or passport) and proof of North Lawndale residency (utility bill, bank statement, or lease agreement from the past 90 days).'
+    answer: 'We verify your government-issued ID (driver\'s license, state ID, or passport) and proof of address (utility bill, bank statement, or lease agreement from the past 90 days). Your address determines which paid blocks you can claim once your neighborhood goes active.'
   },
   {
     question: 'What if my documents are rejected?',
-    answer: 'You\'ll receive a detailed email explaining what needs to be corrected. Common issues include blurry photos, expired documents, or mismatched addresses. You can resubmit updated documents through the link in your email.'
+    answer: 'You\'ll receive a detailed email explaining what needs to be corrected. Common issues include blurry photos, expired documents, or mismatched addresses. You can resubmit updated documents from this page anytime.'
   },
   {
-    question: 'Can I start working before verification?',
-    answer: 'No, all workers must complete identity verification before claiming blocks. This protects both our community and ensures fair payment processing through Stripe.'
+    question: 'Can I do anything before verification finishes?',
+    answer: 'Yes — you can already submit spot reports anywhere in the world (helping us map dirty blocks). Paid block routes unlock once both your verification is complete and paid blocks are active in your neighborhood.'
   },
   {
     question: 'How much will I earn?',
-    answer: 'Each block pays $100, deposited directly to your bank account within 30 minutes of job completion through Stripe. There are no fees deducted from your pay.'
+    answer: 'Each paid block pays $100, deposited directly to your bank account within 30 minutes of job completion through Stripe. There are no fees deducted from your pay.'
   },
 ]
 
-// Step configuration
-const steps = [
-  {
-    id: 1,
-    title: 'Submit Application',
-    description: 'Upload your ID and proof of address',
-    icon: FileText,
-    status: 'completed' as const,
-  },
-  {
-    id: 2,
-    title: 'Document Review',
-    description: 'Our team verifies your identity',
-    icon: Shield,
-    status: 'current' as const,
-  },
-  {
-    id: 3,
-    title: 'Get Approved',
-    description: 'Receive your worker certification',
-    icon: CheckCircle2,
-    status: 'upcoming' as const,
-  },
-  {
-    id: 4,
-    title: 'Set Up Payouts',
-    description: 'Connect your bank via Stripe',
-    icon: CreditCard,
-    status: 'upcoming' as const,
-  },
-  {
-    id: 5,
-    title: 'Start Earning',
-    description: 'Claim blocks and get paid $100 each',
-    icon: DollarSign,
-    status: 'upcoming' as const,
-  },
-]
+type StepStatus = 'completed' | 'current' | 'upcoming'
+
+interface StepDef {
+  id: number
+  title: string
+  description: string
+  icon: typeof FileText
+  status: StepStatus
+}
+
+interface WorkerDocsState {
+  governmentIdUploaded: boolean
+  proofOfAddressUploaded: boolean
+}
+
+interface WorkerStatus {
+  verificationStatus: 'pending' | 'approved' | 'rejected' | 'needs_resubmission' | string
+  documents: WorkerDocsState
+  stripeOnboardingStatus: string
+}
+
+function buildSteps(status: WorkerStatus | null): StepDef[] {
+  const docsUploaded =
+    !!status && status.documents.governmentIdUploaded && status.documents.proofOfAddressUploaded
+  const approved = status?.verificationStatus === 'approved'
+  const stripeReady = status?.stripeOnboardingStatus === 'completed'
+
+  // Step 1 — Upload documents. Only "completed" once BOTH are actually on file.
+  const step1Status: StepStatus = docsUploaded ? 'completed' : 'current'
+
+  // Step 2 — Document review. Current only after upload, completed once approved.
+  const step2Status: StepStatus = !docsUploaded
+    ? 'upcoming'
+    : approved
+      ? 'completed'
+      : 'current'
+
+  // Step 3 — Get approved. Same gating as step 2's completion.
+  const step3Status: StepStatus = approved ? 'completed' : 'upcoming'
+
+  // Step 4 — Stripe onboarding.
+  const step4Status: StepStatus = stripeReady ? 'completed' : approved ? 'current' : 'upcoming'
+
+  // Step 5 — Start earning.
+  const step5Status: StepStatus = approved && stripeReady ? 'current' : 'upcoming'
+
+  return [
+    {
+      id: 1,
+      title: 'Upload Documents',
+      description: 'Submit your government ID and proof of address',
+      icon: FileText,
+      status: step1Status,
+    },
+    {
+      id: 2,
+      title: 'Document Review',
+      description: 'Our team verifies your identity',
+      icon: Shield,
+      status: step2Status,
+    },
+    {
+      id: 3,
+      title: 'Get Approved',
+      description: 'Receive your worker certification',
+      icon: CheckCircle2,
+      status: step3Status,
+    },
+    {
+      id: 4,
+      title: 'Set Up Payouts',
+      description: 'Connect your bank via Stripe',
+      icon: CreditCard,
+      status: step4Status,
+    },
+    {
+      id: 5,
+      title: 'Start Earning',
+      description: 'Claim blocks and get paid $100 each',
+      icon: DollarSign,
+      status: step5Status,
+    },
+  ]
+}
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -116,7 +162,7 @@ function StepIndicator({
   step,
   isLast
 }: {
-  step: typeof steps[0];
+  step: StepDef;
   isLast: boolean
 }) {
   const Icon = step.icon
@@ -167,32 +213,44 @@ function StepIndicator({
 }
 
 function PendingContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const workerId = searchParams.get('id')
-  const [timeWaiting, setTimeWaiting] = useState('')
 
-  // Calculate estimated time remaining (mock - would be from API)
+  const [status, setStatus] = useState<WorkerStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
-    const submittedAt = new Date()
-    submittedAt.setHours(submittedAt.getHours() - 2) // Mock: submitted 2 hours ago
-
-    const updateTime = () => {
-      const now = new Date()
-      const diff = now.getTime() - submittedAt.getTime()
-      const hours = Math.floor(diff / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-      if (hours > 0) {
-        setTimeWaiting(`${hours}h ${minutes}m`)
-      } else {
-        setTimeWaiting(`${minutes} minutes`)
+    const load = async () => {
+      try {
+        const res = await fetch('/api/workers/me', { credentials: 'include' })
+        if (res.status === 401) {
+          router.replace('/worker/login')
+          return
+        }
+        const data = await res.json()
+        if (data?.user) {
+          setStatus({
+            verificationStatus: data.user.verificationStatus || 'pending',
+            documents: {
+              governmentIdUploaded: !!data.user.documents?.governmentIdUploaded,
+              proofOfAddressUploaded: !!data.user.documents?.proofOfAddressUploaded,
+            },
+            stripeOnboardingStatus: data.user.stripeOnboardingStatus || 'not_started',
+          })
+        }
+      } finally {
+        setLoading(false)
       }
     }
+    load()
+  }, [router])
 
-    updateTime()
-    const interval = setInterval(updateTime, 60000)
-    return () => clearInterval(interval)
-  }, [])
+  const docsUploaded =
+    !!status &&
+    status.documents.governmentIdUploaded &&
+    status.documents.proofOfAddressUploaded
+  const steps = buildSteps(status)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-green-50 via-white to-brand-green-50">
@@ -211,45 +269,90 @@ function PendingContent() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-8">
-        {/* Status Hero */}
+        {/* Status Hero — copy adapts based on whether docs are actually on file */}
         <div className="text-center mb-8">
-          {/* Animated Status Icon */}
           <div className="relative inline-block mb-6">
             <div className="w-24 h-24 rounded-full bg-brand-green-100 flex items-center justify-center">
-              <Clock className="w-12 h-12 text-brand-green-600" />
+              {docsUploaded ? (
+                <Clock className="w-12 h-12 text-brand-green-600" />
+              ) : (
+                <Upload className="w-12 h-12 text-brand-green-600" />
+              )}
             </div>
-            {/* Pulsing ring */}
             <div className="absolute inset-0 rounded-full border-4 border-brand-green-300 animate-ping opacity-30" />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-3">
-            Application Under Review
-          </h1>
-          <p className="text-neutral-600 max-w-md mx-auto">
-            We're verifying your documents. Most applications are processed within <span className="font-semibold text-brand-green-700">24-48 hours</span>.
-          </p>
+          {loading ? (
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-3">
+              Loading your status…
+            </h1>
+          ) : docsUploaded ? (
+            <>
+              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-3">
+                Application Under Review
+              </h1>
+              <p className="text-neutral-600 max-w-md mx-auto">
+                We're verifying your documents. Most applications are processed within{' '}
+                <span className="font-semibold text-brand-green-700">24–48 hours</span>.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 mb-3">
+                Finish Your Application
+              </h1>
+              <p className="text-neutral-600 max-w-md mx-auto">
+                We still need your documents before we can verify you and unlock paid blocks.
+              </p>
+            </>
+          )}
         </div>
+
+        {/* If docs missing, surface the resume CTA prominently */}
+        {!loading && !docsUploaded && (
+          <div className="mb-8 bg-white rounded-2xl border-2 border-brand-green-300 shadow-sm p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-brand-green-100 text-brand-green-700 flex items-center justify-center flex-shrink-0">
+                <Upload className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-semibold text-neutral-900 mb-1">Upload your documents</h2>
+                <p className="text-sm text-neutral-600 mb-4">
+                  {status?.documents.governmentIdUploaded
+                    ? 'Just one more — we still need your proof of address.'
+                    : status?.documents.proofOfAddressUploaded
+                      ? 'Just one more — we still need your government ID.'
+                      : 'Government-issued ID and proof of address. Takes 2 minutes.'}
+                </p>
+                <button
+                  onClick={() => router.push('/worker/documents')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-green-600 text-white font-semibold hover:bg-brand-green-700 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Resume Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Status Card */}
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden mb-8">
-          {/* Status Bar */}
           <div className="bg-gradient-to-r from-brand-green-500 to-brand-green-600 px-6 py-4 text-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="font-semibold">Verification in Progress</p>
-                  <p className="text-brand-green-100 text-sm">Documents being reviewed</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                <Shield className="w-5 h-5" />
               </div>
-              {timeWaiting && (
-                <div className="text-right">
-                  <p className="text-xs text-brand-green-200">Submitted</p>
-                  <p className="font-mono font-semibold">{timeWaiting} ago</p>
-                </div>
-              )}
+              <div>
+                <p className="font-semibold">
+                  {docsUploaded ? 'Verification in Progress' : 'Documents Needed'}
+                </p>
+                <p className="text-brand-green-100 text-sm">
+                  {docsUploaded
+                    ? 'Your team is reviewing your documents'
+                    : 'Upload your ID and proof of address to begin review'}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -267,6 +370,25 @@ function PendingContent() {
                   isLast={index === steps.length - 1}
                 />
               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Spot reports — encouragement that anyone can start contributing immediately */}
+        <div className="bg-gradient-to-r from-brand-blue-50 to-brand-green-50 rounded-2xl border border-brand-blue-200 p-5 sm:p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white text-brand-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <MapPin className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-neutral-900 mb-1">
+                You can start helping right now
+              </h3>
+              <p className="text-sm text-neutral-600">
+                Submit spot reports anywhere — log dirty blocks in your neighborhood and help us
+                map where work is needed. Paid blocks unlock once your verification is complete
+                and your area goes active.
+              </p>
             </div>
           </div>
         </div>
@@ -310,9 +432,9 @@ function PendingContent() {
                 <MapPin className="w-5 h-5 text-brand-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-neutral-900 mb-1">North Lawndale</h3>
+                <h3 className="font-semibold text-neutral-900 mb-1">Your Neighborhood</h3>
                 <p className="text-sm text-neutral-600">
-                  Blocks are available throughout North Lawndale. Work as close to home as you like.
+                  Paid blocks are tied to the address on your proof-of-address. We'll unlock routes near you as we expand into your area.
                 </p>
               </div>
             </div>
@@ -327,7 +449,7 @@ function PendingContent() {
               <div>
                 <h3 className="font-semibold text-neutral-900 mb-1">Join the Movement</h3>
                 <p className="text-sm text-neutral-600">
-                  Be part of a community transforming our neighborhood, one block at a time.
+                  Be part of a community transforming neighborhoods worldwide, one block at a time.
                 </p>
               </div>
             </div>

@@ -13,7 +13,8 @@ export class HomePage {
   constructor(page: Page) {
     this.page = page
     this.heroHeading = page.locator('h1').first()
-    this.joinWaitlistButton = page.getByRole('link', { name: /join waitlist/i }).first()
+    // Hero collapsed to a single CTA — /join is now reached via the community section ("Join Movement").
+    this.joinWaitlistButton = page.getByRole('link', { name: /join (waitlist|movement)/i }).first()
     this.startEarningButton = page.getByRole('link', { name: /start earning/i }).first()
     this.workerLoginLink = page.getByRole('link', { name: /worker login/i }).first()
     this.navItems = page.locator('nav button')

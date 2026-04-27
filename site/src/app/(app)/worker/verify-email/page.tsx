@@ -167,10 +167,10 @@ function VerifyEmailContent() {
       // Mark as complete
       setIsComplete(true)
 
-      // Redirect to dashboard after a brief delay
+      // Send the worker to the document upload step before the review screen.
       setTimeout(() => {
-        router.push('/worker/pending')
-      }, 2000)
+        router.push('/worker/documents')
+      }, 1500)
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : 'Failed to set password')
     } finally {
@@ -193,10 +193,10 @@ function VerifyEmailContent() {
             </div>
 
             <h1 className="text-2xl font-bold text-neutral-900 mb-2">
-              You're All Set!
+              Account Ready!
             </h1>
             <p className="text-neutral-600 mb-4">
-              Your account is ready. Redirecting to your dashboard...
+              One more step — let's verify your identity so you can get paid.
             </p>
             <Loader2 className="w-6 h-6 animate-spin text-brand-green-500 mx-auto" />
           </div>

@@ -107,10 +107,10 @@ export function HeroSection() {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            We're launching in Chicago and expanding fast.{' '}
-            <span className="font-semibold text-brand-green-300">Earn $100+ per block</span> while
-            making your community shine. Whether you're in North Lawndale or anywhere else—
-            <span className="text-white font-semibold"> the earlier you sign up, the better your position.</span>
+            <span className="font-semibold text-brand-green-300">Earn $100+ per block</span> cleaning
+            your own neighborhood — wherever you live. Sign up now, verify your ID, and we'll
+            unlock paid blocks in your area as we expand.{' '}
+            <span className="text-white font-semibold">The earlier you sign up, the better your position.</span>
           </p>
 
           {/* CTA Buttons with micro-interactions */}
@@ -119,30 +119,14 @@ export function HeroSection() {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            {/* Primary CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 w-full">
+            {/* Primary CTA — single onboarding entry for all users */}
+            <div className="flex justify-center w-full">
               <Link
                 href="/worker/signup"
-                className="group btn-primary w-full sm:w-auto text-lg py-4 px-8 animate-breathe hover:animate-none relative overflow-hidden"
+                className="group btn-primary w-full sm:w-auto text-lg py-4 px-10 animate-breathe hover:animate-none relative overflow-hidden"
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  🏠 I'm in Chicago — Start Earning
-                  <svg
-                    className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </span>
-              </Link>
-              <Link
-                href="/join"
-                className="group w-full sm:w-auto text-lg py-4 px-8 hover-lift inline-flex items-center justify-center rounded-lg border-2 border-brand-green-400/80 bg-brand-green-500/20 backdrop-blur-sm font-semibold text-white transition-all hover:bg-brand-green-500/30 hover:border-brand-green-400"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  🌍 I'm Elsewhere — Join Waitlist
+                  🧹 Start Earning — Sign Up
                   <svg
                     className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1"
                     fill="none"

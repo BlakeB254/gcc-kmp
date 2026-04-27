@@ -79,6 +79,12 @@ export async function GET(request: NextRequest) {
         emailVerifiedAt: worker.emailVerifiedAt,
         verificationStatus: worker.verificationStatus || 'pending',
         verificationNotes: worker.verificationReviewNotes,
+        documents: {
+          governmentIdUploaded: worker.verificationGovernmentIdId !== null,
+          governmentIdStatus: worker.verificationGovernmentIdStatus || 'pending',
+          proofOfAddressUploaded: worker.verificationProofOfAddressId !== null,
+          proofOfAddressStatus: worker.verificationProofOfAddressStatus || 'pending',
+        },
         address: {
           street: worker.addressStreet,
           city: worker.addressCity,
