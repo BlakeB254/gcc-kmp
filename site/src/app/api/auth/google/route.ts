@@ -94,9 +94,11 @@ export async function POST(request: NextRequest) {
           salt: null,
           hash: null,
           emailVerified: tokenInfo.email_verified === 'true',
+          // Address is collected during onboarding. Do NOT default to Chicago/IL —
+          // OAuth signups happen worldwide and a default would mislabel everyone.
           addressStreet: '',
-          addressCity: 'Chicago',
-          addressState: 'IL',
+          addressCity: '',
+          addressState: '',
           addressZip: '',
           verificationStatus: 'pending',
           verificationGovernmentIdStatus: 'pending',

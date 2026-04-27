@@ -160,8 +160,8 @@ function AddressChangeModal({
           )}
 
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs">
-            <strong>Note:</strong> GCC is currently only available in North Lawndale (zip codes 60623 and 60624).
-            Address changes are limited to one per 24 hours and require manual approval.
+            <strong>Note:</strong> Paid blocks are currently active in our pilot service area; spot reports
+            work anywhere in the world. Address changes are limited to one per 24 hours and require manual approval.
           </div>
 
           <div>

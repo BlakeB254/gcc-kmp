@@ -11,11 +11,11 @@ import { Header } from '@/components/landing/Header'
 export const metadata: Metadata = {
   title: 'Clean Streets. Real Money. Your Neighborhood.',
   description:
-    'Global Community Cleaners connects North Lawndale residents with paid block-cleaning opportunities. Sponsor a block for $100 or earn money keeping your neighborhood clean.',
+    'Global Community Cleaners connects neighborhood residents worldwide with paid block-cleaning opportunities. Sponsor a block for $100 or earn money keeping your neighborhood clean.',
   openGraph: {
     title: 'Global Community Cleaners | Clean Streets. Real Money. Your Neighborhood.',
     description:
-      'Sponsor a block for $100 or earn money keeping your neighborhood clean. Join the movement transforming North Lawndale, Chicago.',
+      'Sponsor a block for $100 or earn money keeping your neighborhood clean. Join the movement transforming neighborhoods worldwide — pilot active in North Lawndale, Chicago.',
   },
 }
 

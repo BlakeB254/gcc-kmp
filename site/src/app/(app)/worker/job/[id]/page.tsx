@@ -236,12 +236,14 @@ export default function JobExecutionPage() {
     setError(null)
 
     try {
+      // workerId is derived server-side from the auth cookie/Bearer token —
+      // do NOT send it from the client.
       const res = await fetch('/api/jobs/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           jobId,
-          workerId: 'current-worker-id', // TODO: Get from auth
           photos,
           gpsPath,
         }),

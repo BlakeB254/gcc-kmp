@@ -39,7 +39,7 @@ export function FooterSection() {
               <Logo variant="full" size="md" theme="dark" />
             </div>
             <p className="text-neutral-400 max-w-sm leading-relaxed">
-              Connecting North Lawndale residents with paid block cleaning opportunities.
+              Connecting neighborhood residents worldwide with paid block-cleaning opportunities.
               <strong className="text-white"> 100% of every $100</strong> goes directly to workers.
             </p>
           </div>

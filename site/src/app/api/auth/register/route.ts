@@ -60,9 +60,11 @@ export async function POST(request: NextRequest) {
         salt,
         hash,
         emailVerified: false,
+        // Address is collected during onboarding. Don't fall back to Chicago/IL —
+        // global signups must not be silently re-located.
         addressStreet: addressStreet || '',
-        addressCity: addressCity || 'Chicago',
-        addressState: addressState || 'IL',
+        addressCity: addressCity || '',
+        addressState: addressState || '',
         addressZip: addressZip || '',
         verificationStatus: 'pending',
         verificationGovernmentIdStatus: 'pending',

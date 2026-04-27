@@ -4,8 +4,27 @@ import { jobs, blocks, media } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { put } from '@vercel/blob'
 import { processImage } from '@/lib/image-utils'
+import { verifyToken } from '@/lib/auth'
+import { verifyMobileToken } from '@/lib/mobile-auth'
 
 export const runtime = 'nodejs'
+
+/**
+ * Resolve the worker id from auth — Bearer token (mobile) or `worker-token`
+ * cookie (web). Never trust a worker id from the request body.
+ */
+async function getAuthenticatedWorkerId(request: NextRequest): Promise<number | null> {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const result = await verifyMobileToken(authHeader.substring(7))
+    if (result) return result.workerId
+  }
+  const token = request.cookies.get('worker-token')?.value
+  if (!token) return null
+  const payload = await verifyToken(token)
+  if (!payload || payload.type !== 'worker') return null
+  return payload.id
+}
 
 interface PhotoSubmission {
   checkpointType: string
@@ -22,17 +41,22 @@ interface PhotoSubmission {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { jobId, workerId, photos, gpsPath } = body
+    const workerId = await getAuthenticatedWorkerId(request)
+    if (!workerId) {
+      return Response.json({ message: 'Not authenticated' }, { status: 401 })
+    }
 
-    if (!jobId || !workerId || !photos) {
+    const body = await request.json()
+    const { jobId, photos, gpsPath } = body
+
+    if (!jobId || !photos) {
       return Response.json(
-        { message: 'Job ID, Worker ID, and photos are required' },
+        { message: 'Job ID and photos are required' },
         { status: 400 }
       )
     }
 
-    // Verify job exists and belongs to worker
+    // Verify job exists and belongs to the authenticated worker.
     const [job] = await db
       .select()
       .from(jobs)
@@ -43,7 +67,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ message: 'Job not found' }, { status: 404 })
     }
 
-    if (job.workerId !== Number(workerId)) {
+    if (job.workerId !== workerId) {
       return Response.json(
         { message: 'This job does not belong to you' },
         { status: 403 }
@@ -137,7 +161,7 @@ export async function POST(request: NextRequest) {
         .update(blocks)
         .set({
           status: 'completed',
-          completedById: Number(workerId),
+          completedById: workerId,
           completedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })

@@ -100,12 +100,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check zip code is in service area
+    // Check zip code is in an active paid-block service area.
+    // Anyone can sign up worldwide and submit spot reports; paid blocks unlock
+    // when their neighborhood goes active.
     if (!VALID_ZIP_CODES.includes(zip)) {
       return NextResponse.json(
         {
           error:
-            'GCC is currently only available in North Lawndale (zip codes 60623 and 60624). Moving outside the service area is not supported.',
+            'Paid blocks aren\'t active in this zip code yet. You can still sign up and submit spot reports anywhere — we\'ll unlock paid work in your neighborhood as we expand.',
           code: 'OUTSIDE_SERVICE_AREA',
         },
         { status: 400 }

@@ -15,7 +15,7 @@ export function SponsorCTASection() {
         </svg>
       ),
       title: 'Choose Your Block',
-      description: 'Sponsor the block outside your business, home, or anywhere in North Lawndale.',
+      description: 'Sponsor the block outside your business, home, or anywhere in our active service area.',
     },
     {
       icon: (
