@@ -4,11 +4,18 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Logo } from '@/components/brand/Logo'
-import { Menu, X, Heart, LogIn } from 'lucide-react'
+import { Menu, X, Heart, LogIn, UserCircle2 } from 'lucide-react'
+
+interface SessionState {
+  loaded: boolean
+  authenticated: boolean
+  firstName?: string
+}
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [session, setSession] = useState<SessionState>({ loaded: false, authenticated: false })
   const pathname = usePathname()
 
   // Don't render header on authenticated pages or special themed pages
@@ -35,6 +42,32 @@ export function Header() {
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Detect login state on mount so the nav can swap "Sign in" → "Account".
+  // 401 is the expected unauthenticated response and not an error.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/session', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return
+        if (data?.authenticated) {
+          setSession({
+            loaded: true,
+            authenticated: true,
+            firstName: typeof data.name === 'string' ? data.name.split(' ')[0] : undefined,
+          })
+        } else {
+          setSession({ loaded: true, authenticated: false })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSession({ loaded: true, authenticated: false })
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const navLinks = [
@@ -81,14 +114,25 @@ export function Header() {
 
         {/* Desktop CTA Buttons */}
         <div className="hidden lg:flex lg:items-center gap-2">
-          <Link
-            href="/login"
-            className="text-sm font-medium py-2 px-3 rounded-lg text-neutral-600 hover:text-brand-green-700 hover:bg-neutral-50 transition-colors inline-flex items-center gap-1.5"
-            aria-label="Sign in to your account"
-          >
-            <LogIn className="w-4 h-4" />
-            Sign in
-          </Link>
+          {session.authenticated ? (
+            <Link
+              href="/member"
+              className="text-sm font-semibold py-2 px-3 rounded-lg text-brand-green-700 hover:bg-brand-green-50 transition-colors inline-flex items-center gap-1.5"
+              aria-label="Open your member portal"
+            >
+              <UserCircle2 className="w-4 h-4" />
+              {session.firstName ? `Hi, ${session.firstName}` : 'Account'}
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="text-sm font-medium py-2 px-3 rounded-lg text-neutral-600 hover:text-brand-green-700 hover:bg-neutral-50 transition-colors inline-flex items-center gap-1.5"
+              aria-label="Sign in to your account"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign in
+            </Link>
+          )}
           <Link
             href="/donate"
             className="text-sm font-semibold py-2 px-5 rounded-lg bg-brand-green-600 text-white hover:bg-brand-green-700 transition-colors flex items-center gap-1.5"
@@ -141,16 +185,27 @@ export function Header() {
 
             <hr className="border-neutral-200 my-2" />
 
-            {/* Single unified sign-in — workers, sponsors, and admins all log in here. */}
+            {/* Single entry point — swaps to "Account" once the user is signed in. */}
             <div className="pt-1">
-              <Link
-                href="/login"
-                className="block w-full py-2.5 px-3 text-sm font-medium text-center text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <LogIn className="w-4 h-4" />
-                Sign in
-              </Link>
+              {session.authenticated ? (
+                <Link
+                  href="/member"
+                  className="block w-full py-2.5 px-3 text-sm font-semibold text-center text-white bg-brand-green-600 hover:bg-brand-green-700 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <UserCircle2 className="w-4 h-4" />
+                  {session.firstName ? `Hi, ${session.firstName}` : 'Account'}
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  className="block w-full py-2.5 px-3 text-sm font-medium text-center text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in
+                </Link>
+              )}
             </div>
 
             {/* Compact CTAs */}
