@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 const NAV_ITEMS = [
   { href: '/admin/routes', label: 'Routes & Blocks' },
@@ -10,19 +10,32 @@ const NAV_ITEMS = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken')
     if (!token) {
-      setAuthed(false)
-    } else {
-      // Validate token with a lightweight check
-      fetch('/api/admin/routes', { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => setAuthed(r.ok))
-        .catch(() => setAuthed(false))
+      // Send unauthenticated visitors to the unified /login page; pass `next`
+      // so they land back at the admin route they were trying to reach.
+      router.replace(`/login?next=${encodeURIComponent(pathname || '/admin/routes')}`)
+      return
     }
-  }, [])
+    // Validate the token with a lightweight admin-only call.
+    fetch('/api/admin/routes', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (r.ok) {
+          setAuthed(true)
+        } else {
+          // Token invalid/expired — punt to /login.
+          localStorage.removeItem('adminToken')
+          router.replace(`/login?next=${encodeURIComponent(pathname || '/admin/routes')}`)
+        }
+      })
+      .catch(() => {
+        router.replace(`/login?next=${encodeURIComponent(pathname || '/admin/routes')}`)
+      })
+  }, [pathname, router])
 
   if (authed === null) {
     return (
@@ -30,10 +43,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="text-neutral-400 text-sm">Loading…</div>
       </div>
     )
-  }
-
-  if (!authed) {
-    return <LoginForm onSuccess={() => setAuthed(true)} />
   }
 
   return (
@@ -60,7 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button
             onClick={() => {
               localStorage.removeItem('adminToken')
-              setAuthed(false)
+              router.replace('/login')
             }}
             className="px-3 py-2 rounded-md text-sm text-neutral-500 hover:text-red-400 transition-colors w-full text-left"
           >
@@ -71,71 +80,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">{children}</main>
-    </div>
-  )
-}
-
-/** Inline login form — no separate page needed */
-function LoginForm({ onSuccess }: { onSuccess: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || 'Login failed')
-        return
-      }
-      localStorage.setItem('adminToken', data.token)
-      onSuccess()
-    } catch {
-      setError('Network error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-      <form onSubmit={handleSubmit} className="w-80 space-y-4">
-        <h1 className="text-lg font-semibold text-white text-center">GCC Admin</h1>
-        {error && <div className="text-red-400 text-sm text-center">{error}</div>}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-3 py-2 rounded-md bg-neutral-900 border border-neutral-700 text-white text-sm focus:outline-none focus:border-neutral-500"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-3 py-2 rounded-md bg-neutral-900 border border-neutral-700 text-white text-sm focus:outline-none focus:border-neutral-500"
-          required
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-2 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-500 disabled:opacity-50 transition-colors"
-        >
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
     </div>
   )
 }

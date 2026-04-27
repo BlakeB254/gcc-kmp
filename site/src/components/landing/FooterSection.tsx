@@ -5,7 +5,7 @@ export function FooterSection() {
   const workerLinks = [
     { href: '/worker/benefits', label: 'How It Works' },
     { href: '/worker/signup', label: 'Sign Up to Earn' },
-    { href: '/worker/login', label: 'Worker Login' },
+    { href: '/login', label: 'Sign In' },
     { href: '/worker/leaderboard', label: 'Leaderboard' },
     { href: '/faq', label: 'FAQ' },
   ]
@@ -15,7 +15,7 @@ export function FooterSection() {
     { href: '/sponsor', label: 'Sponsor a Block' },
     { href: '/sponsor/calculator', label: 'Custom Package' },
     { href: '/sponsor/enterprise', label: 'Enterprise' },
-    { href: '/sponsor/login', label: 'Sponsor Login' },
+    { href: '/login', label: 'Sign In' },
     { href: '/supporters', label: 'Our Supporters' },
   ]
 

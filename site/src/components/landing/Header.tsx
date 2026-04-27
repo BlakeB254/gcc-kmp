@@ -82,9 +82,9 @@ export function Header() {
         {/* Desktop CTA Buttons */}
         <div className="hidden lg:flex lg:items-center gap-2">
           <Link
-            href="/sponsor/login"
+            href="/login"
             className="text-sm font-medium py-2 px-3 rounded-lg text-neutral-600 hover:text-brand-green-700 hover:bg-neutral-50 transition-colors inline-flex items-center gap-1.5"
-            aria-label="Sign in to your sponsor dashboard"
+            aria-label="Sign in to your account"
           >
             <LogIn className="w-4 h-4" />
             Sign in
@@ -141,23 +141,15 @@ export function Header() {
 
             <hr className="border-neutral-200 my-2" />
 
-            {/* Sign-in links */}
-            <div className="flex gap-2 pt-1">
+            {/* Single unified sign-in — workers, sponsors, and admins all log in here. */}
+            <div className="pt-1">
               <Link
-                href="/sponsor/login"
-                className="flex-1 py-2.5 px-3 text-sm font-medium text-center text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
+                href="/login"
+                className="block w-full py-2.5 px-3 text-sm font-medium text-center text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <LogIn className="w-4 h-4" />
-                Sponsor sign in
-              </Link>
-              <Link
-                href="/worker/login"
-                className="flex-1 py-2.5 px-3 text-sm font-medium text-center text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <LogIn className="w-4 h-4" />
-                Worker sign in
+                Sign in
               </Link>
             </div>
 
