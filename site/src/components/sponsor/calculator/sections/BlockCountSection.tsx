@@ -180,12 +180,12 @@ export function BlockCountSection({
             <Info className="w-4 h-4" />
             View volume discount tiers
           </button>
-          <div className="mt-3 grid grid-cols-4 gap-2">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {volumeDiscounts.map((tier, index) => (
               <div
                 key={index}
                 className={cn(
-                  'text-center p-2 rounded-lg border',
+                  'text-center p-2 rounded-lg border min-w-0',
                   blockCount >= tier.minBlocks && (tier.maxBlocks === null || blockCount <= tier.maxBlocks)
                     ? 'border-brand-green-500 bg-brand-green-50'
                     : 'border-neutral-200'
@@ -194,9 +194,13 @@ export function BlockCountSection({
                 <p className="text-xs text-neutral-500">
                   {tier.minBlocks}{tier.maxBlocks ? `-${tier.maxBlocks}` : '+'}
                 </p>
-                <p className="font-semibold text-neutral-900">{formatPrice(tier.pricePerBlock)}/block</p>
+                {/* Stack price + unit so the tile never overflows on narrow phones. */}
+                <p className="font-semibold text-neutral-900 leading-tight">
+                  <span className="block tabular-nums">{formatPrice(tier.pricePerBlock)}</span>
+                  <span className="block text-xs font-normal text-neutral-500">/ block</span>
+                </p>
                 {tier.addonDiscount > 0 && (
-                  <p className="text-xs text-brand-green-600">{tier.addonDiscount}% off add-ons</p>
+                  <p className="mt-1 text-xs text-brand-green-600">{tier.addonDiscount}% off add-ons</p>
                 )}
               </div>
             ))}
