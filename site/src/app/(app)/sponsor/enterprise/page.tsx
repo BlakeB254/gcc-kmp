@@ -37,7 +37,9 @@ const enterpriseTiers = [
     name: 'Impact Partner',
     range: '$50,000 - $99,999',
     blocks: '500-1,000 blocks',
-    popular: true,
+    // No "Most Popular" label until we have actual data — pre-launch this would
+    // be misleading.
+    popular: false,
     benefits: [
       'Everything in Community Champion',
       'Standard photo + video package',
