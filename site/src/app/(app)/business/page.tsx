@@ -36,7 +36,7 @@ const programs = [
     description:
       'Double your employees charitable contributions. We track and match donations up to your set limit.',
     features: ['2x impact', 'Employee engagement', 'Tax benefits for company'],
-    popular: true,
+    popular: false,
   },
   {
     icon: Heart,
