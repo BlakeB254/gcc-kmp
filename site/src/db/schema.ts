@@ -681,6 +681,36 @@ export const sponsorDeliverableItems = pgTable('sponsor_deliverable_items', {
 })
 
 // =====================
+// EMAIL UNSUBSCRIBES + NEWSLETTER SEND LOG
+// =====================
+
+// Single source of truth for opt-outs across all our subscriber surfaces
+// (sponsors, waitlist, future newsletter signups). The /unsubscribe page
+// upserts here; outbound sends LEFT JOIN against it and exclude matches.
+export const emailUnsubscribes = pgTable('email_unsubscribes', {
+  id: serial('id').primaryKey(),
+  email: varchar('email').notNull().unique(),
+  reason: varchar('reason'),               // free-text reason from user
+  unsubscribedFrom: varchar('unsubscribed_from'), // 'newsletter' | 'all' | etc.
+  unsubscribedAt: timestamp('unsubscribed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// One row per outbound send so we can show send history in the admin
+// and avoid double-sending the same issue to the same address.
+export const newsletterSends = pgTable('newsletter_sends', {
+  id: serial('id').primaryKey(),
+  issueSlug: varchar('issue_slug').notNull(),  // e.g. '2026-05-01-issue-01'
+  subject: varchar('subject').notNull(),
+  recipientCount: integer('recipient_count').notNull(),
+  successCount: integer('success_count').notNull(),
+  failureCount: integer('failure_count').notNull(),
+  failedRecipients: jsonb('failed_recipients'),  // [{ email, error }]
+  triggeredByWorkerId: integer('triggered_by_worker_id'),
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+})
+
+// =====================
 // FEEDBACK & COMMUNITY
 // =====================
 
@@ -1227,6 +1257,10 @@ export type SponsorDeliverablePackage = typeof sponsorDeliverablePackages.$infer
 export type NewSponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferInsert
 export type SponsorDeliverableItem = typeof sponsorDeliverableItems.$inferSelect
 export type NewSponsorDeliverableItem = typeof sponsorDeliverableItems.$inferInsert
+export type EmailUnsubscribe = typeof emailUnsubscribes.$inferSelect
+export type NewEmailUnsubscribe = typeof emailUnsubscribes.$inferInsert
+export type NewsletterSend = typeof newsletterSends.$inferSelect
+export type NewNewsletterSend = typeof newsletterSends.$inferInsert
 export type FeedbackTicket = typeof feedbackTickets.$inferSelect
 export type NewFeedbackTicket = typeof feedbackTickets.$inferInsert
 export type FeedbackReply = typeof feedbackReplies.$inferSelect

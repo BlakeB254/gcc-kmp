@@ -1,0 +1,318 @@
+// First Newsletter — May 1, 2026 — "Sixty years and two blocks"
+//
+// Email-safe HTML: table-based layout, inline styles, 600px max width.
+// Tested visually against Gmail (web/mobile), Apple Mail (macOS/iOS), Outlook web.
+
+interface Issue1Data {
+  recipientName?: string | null
+  unsubscribeUrl: string  // Required for CAN-SPAM compliance
+  appUrl: string          // e.g. https://globalcommunitycleaners.org
+  logoUrl: string         // Absolute URL to logo (must be public, not file://)
+}
+
+const BRAND_GREEN = '#16763a'
+const BRAND_GREEN_DARK = '#0b3b1d'
+const ACCENT_GOLD = '#f59e0b'
+const NEUTRAL_900 = '#171717'
+const NEUTRAL_700 = '#404040'
+const NEUTRAL_500 = '#737373'
+const NEUTRAL_200 = '#e5e5e5'
+const BG_GRAY = '#f5f5f5'
+const BG_EMERALD = '#ecfdf5'
+
+export function newsletterIssue1Email(d: Issue1Data): { html: string; text: string; subject: string } {
+  const subject = "Sixty years and two blocks — Issue #1 from Global Community Cleaners"
+  const greeting = d.recipientName ? d.recipientName.split(' ')[0] : 'friend'
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>${subject}</title>
+<!--[if mso]>
+<style type="text/css">table, td { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; } body, table, td, p, a { font-family: Arial, sans-serif !important; }</style>
+<![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:${BG_GRAY};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${NEUTRAL_900};-webkit-text-size-adjust:100%;">
+
+<!-- Preheader (hidden, shows in inbox preview) -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${BG_GRAY};">
+Sixty years ago Dr. King moved to North Lawndale. Today, six blocks away, our work begins. — ${greeting}, here is Issue #1.
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BG_GRAY};">
+<tr><td align="center" style="padding:24px 12px;">
+
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.04);">
+
+  <!-- Header / Logo -->
+  <tr>
+    <td style="padding:32px 32px 16px 32px;background:linear-gradient(135deg,${BRAND_GREEN} 0%,${BRAND_GREEN_DARK} 100%);text-align:center;">
+      <img src="${d.logoUrl}" alt="Global Community Cleaners NFP" width="220" style="display:block;margin:0 auto;width:220px;max-width:65%;height:auto;background:transparent;" />
+      <p style="margin:16px 0 0 0;color:#ffffff;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;opacity:0.85;">Issue #1 · May 1, 2026 · The Founder's Letter</p>
+    </td>
+  </tr>
+
+  <!-- Lead headline -->
+  <tr>
+    <td style="padding:32px 32px 8px 32px;">
+      <h1 style="margin:0 0 12px 0;color:${NEUTRAL_900};font-size:28px;line-height:1.2;font-weight:700;letter-spacing:-0.01em;">Sixty years and two blocks</h1>
+      <p style="margin:0;color:${NEUTRAL_500};font-size:15px;line-height:1.55;">Hi ${greeting} — this is the first newsletter from Global Community Cleaners. Here is why we exist, what we are doing, and what's next.</p>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr><td style="padding:24px 32px 0 32px;">
+
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      On <strong>January 26, 1966</strong>, Dr. Martin Luther King Jr. carried his bags up to a third-floor walk-up at <strong>1550 South Hamlin Avenue</strong> in North Lawndale and started what he called the &ldquo;action phase&rdquo; of the Chicago Freedom Movement &mdash; the campaign that brought him here to focus on housing conditions and economic opportunity in Chicago neighborhoods. The campaign produced the Summit Agreement, which fed directly into the 1968 Fair Housing Act.
+    </p>
+
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      Today, Global Community Cleaners &mdash; the organization sending this email &mdash; is headquartered at <strong>1844 South Harding, 2nd Floor</strong>, a six-block walk from the apartment Dr. King moved into.
+    </p>
+
+    <p style="margin:0 0 24px 0;color:${BRAND_GREEN_DARK};font-size:18px;line-height:1.5;font-weight:600;font-style:italic;">
+      Sixty years. Two blocks of distance. Same neighborhood, same work.
+    </p>
+
+  </td></tr>
+
+  <!-- Section: Broken Windows -->
+  <tr><td style="padding:8px 32px 0 32px;">
+    <h2 style="margin:24px 0 12px 0;color:${NEUTRAL_900};font-size:22px;line-height:1.25;font-weight:700;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">What &ldquo;broken windows&rdquo; actually proved</h2>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">Most people know the phrase. Almost no one has read the modern research.</p>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      The original 1982 essay by Wilson and Kelling argued that visible disorder invites bigger problems. The intuition was right that physical conditions matter. The newer research has refined what <em>kind</em> of attention to those conditions actually moves the needle.
+    </p>
+
+    <p style="margin:0 0 8px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      <strong>The lesson:</strong> invest in the people on the block, and the block follows. Sociologist Robert Sampson's Chicago research shows that neighborhoods scoring high on <em>collective efficacy</em> &mdash; neighbors stepping in for each other &mdash; run roughly <strong>40% lower</strong> crime rates, even when other variables look similar on paper.
+    </p>
+  </td></tr>
+
+  <!-- Highlight stats card -->
+  <tr><td style="padding:16px 32px 0 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BG_EMERALD};border-left:4px solid ${BRAND_GREEN};border-radius:8px;">
+      <tr><td style="padding:20px 24px;">
+        <p style="margin:0 0 8px 0;color:${BRAND_GREEN_DARK};font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">The Branas Trial · Philadelphia · 2018</p>
+        <p style="margin:0 0 12px 0;color:${NEUTRAL_900};font-size:15px;line-height:1.6;"><strong>Greening 541 vacant lots</strong> in a randomized citywide trial:</p>
+        <ul style="margin:0;padding:0 0 0 18px;color:${NEUTRAL_700};font-size:15px;line-height:1.7;">
+          <li><strong style="color:${BRAND_GREEN_DARK};">29.1%</strong> drop in nearby gun assaults</li>
+          <li><strong style="color:${BRAND_GREEN_DARK};">41.5%</strong> fewer residents reporting depression</li>
+          <li><strong style="color:${BRAND_GREEN_DARK};">68.7%</strong> drop for residents below the poverty line</li>
+          <li><strong style="color:${BRAND_GREEN_DARK};">$7.43</strong> tax-revenue return per public dollar spent (Wharton, 2023)</li>
+        </ul>
+        <p style="margin:12px 0 0 0;color:${NEUTRAL_500};font-size:12px;line-height:1.5;">Branas et al., <em>PNAS</em> 2018 · South et al., <em>JAMA Network Open</em> 2018 · Moyer et al., <em>AJPH</em> 2019</p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:16px 32px 0 32px;">
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      Cleaning blocks is one of the highest-ROI neighborhood interventions ever measured &mdash; for safety, for mental health, for property values. <strong>And it works best when it is done by the people who live there.</strong>
+    </p>
+  </td></tr>
+
+  <!-- North Lawndale data -->
+  <tr><td style="padding:8px 32px 0 32px;">
+    <h2 style="margin:24px 0 12px 0;color:${NEUTRAL_900};font-size:22px;line-height:1.25;font-weight:700;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">The neighborhood we are working in</h2>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">The data on North Lawndale is not subtle.</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.5;"><strong>Life expectancy gap:</strong> 87.3 years in the Loop. 66.6 in adjacent West Garfield Park. <strong>A 20-year gap inside the same city.</strong></p>
+        <p style="margin:4px 0 0 0;color:${NEUTRAL_500};font-size:12px;">CDPH, 2023 Life Expectancy Data Brief (Sept 2025)</p>
+      </td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.5;"><strong>Citywide gap:</strong> Black Chicagoans died 10.6 years earlier than non-Black Chicagoans in 2023.</p>
+      </td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.5;"><strong>Violent crime:</strong> roughly 3&times; the citywide rate &mdash; the community is on the official list of areas &ldquo;most affected by violence.&rdquo;</p>
+        <p style="margin:4px 0 0 0;color:${NEUTRAL_500};font-size:12px;">UIC Great Cities Institute, 2022</p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">This is the gap a $100 block-cleaning fee is built to close.</p>
+  </td></tr>
+
+  <!-- Founder section -->
+  <tr><td style="padding:8px 32px 0 32px;">
+    <h2 style="margin:24px 0 12px 0;color:${NEUTRAL_900};font-size:22px;line-height:1.25;font-weight:700;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">Meet the founder, in his own words</h2>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      <strong>Shaquille Tate</strong> was born at Mt. Sinai Hospital in North Lawndale and grew up on the blocks running from <strong>15th Street to Ridgeway</strong>. He drives for Divvy across the entire city for his day job, which means he sees what every Chicago neighborhood looks like from the curb. Asked on a 2026 radio interview how the idea found him, he answered:
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+      <tr><td style="padding:14px 18px;background-color:#fefce8;border-left:4px solid ${ACCENT_GOLD};border-radius:6px;">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:16px;line-height:1.7;font-style:italic;">&ldquo;I had to come back to the North Lawndale community, and I'm walking past abandoned houses &mdash; boards on the windows, broken windows, trash everywhere on the floor.&rdquo;</p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">He had been reading about the broken-windows theory. He knew the academic framing. He was looking for a different lever:</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+      <tr><td style="padding:14px 18px;background-color:#fefce8;border-left:4px solid ${ACCENT_GOLD};border-radius:6px;">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:16px;line-height:1.7;font-style:italic;">&ldquo;What if somebody could get all these kids to clean up their block? And if they were to clean up their block, to get paid to clean up their block.&rdquo;</p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">Then the line that became the entire model:</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+      <tr><td style="padding:14px 18px;background-color:#fefce8;border-left:4px solid ${ACCENT_GOLD};border-radius:6px;">
+        <p style="margin:0;color:${NEUTRAL_900};font-size:16px;line-height:1.7;font-style:italic;">&ldquo;I'm employing elders and I'm employing youth and I'm paying them a hundred dollars to clean up their blocks. I want to start with a 10-block radius&hellip; This is more than just picking up trash.&rdquo;</p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      He's right. It is about cleaning, but it is also about cash, dignity, ownership, and the simple fact that <strong>the people best equipped to take care of a block are the people who live on it</strong> &mdash; if someone is willing to pay them like the work matters. Because it does.
+    </p>
+  </td></tr>
+
+  <!-- How GCC works -->
+  <tr><td style="padding:8px 32px 0 32px;">
+    <h2 style="margin:24px 0 12px 0;color:${NEUTRAL_900};font-size:22px;line-height:1.25;font-weight:700;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">How GCC actually works</h2>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 16px 0;">
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};"><p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.6;"><strong>$100 per block.</strong> 100% goes to the resident doing the work. GCC's overhead is funded separately.</p></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};"><p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.6;"><strong>One participant per block.</strong> Gate to crest, both sides, including the alley.</p></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};"><p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.6;"><strong>Elders and youth.</strong> Both. The model is intergenerational by design.</p></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${NEUTRAL_200};"><p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.6;"><strong>Same-day pay.</strong> Finish the work, get paid.</p></td></tr>
+      <tr><td style="padding:8px 0;"><p style="margin:0;color:${NEUTRAL_900};font-size:14px;line-height:1.6;"><strong>Before-and-after photos.</strong> Sponsors receive proof. Block status is logged in our system.</p></td></tr>
+    </table>
+  </td></tr>
+
+  <!-- UIC announcement -->
+  <tr><td style="padding:16px 32px 0 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;">
+      <tr><td style="padding:20px 24px;">
+        <p style="margin:0 0 8px 0;color:#92400e;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">A first thank-you in public</p>
+        <p style="margin:0 0 8px 0;color:${NEUTRAL_900};font-size:18px;line-height:1.4;font-weight:700;">University of Illinois Chicago committed $2,000 to the pilot.</p>
+        <p style="margin:0;color:${NEUTRAL_700};font-size:14px;line-height:1.6;">UIC's Office of Community Engagement sent a check to 1844 S. Harding before our online portal was even ready to take it. We are grateful, and we will earn it block by block.</p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- The Ask / CTA -->
+  <tr><td style="padding:32px 32px 8px 32px;">
+    <h2 style="margin:0 0 16px 0;color:${NEUTRAL_900};font-size:22px;line-height:1.25;font-weight:700;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">The ask</h2>
+
+    <p style="margin:0 0 20px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">If you have read this far, you already know what we are doing. Here is what to do with that knowledge.</p>
+
+    <!-- Primary CTA buttons -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+      <tr>
+        <td align="center" style="padding:0 4px 8px 0;width:50%;">
+          <a href="${d.appUrl}/sponsor" style="display:block;padding:14px 16px;background-color:${BRAND_GREEN};color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;border-radius:8px;text-align:center;">Sponsor a block — $100</a>
+        </td>
+        <td align="center" style="padding:0 0 8px 4px;width:50%;">
+          <a href="${d.appUrl}/sponsor?amount=2000" style="display:block;padding:14px 16px;background-color:${NEUTRAL_900};color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;border-radius:8px;text-align:center;">Recognized sponsor — $2,000</a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:8px 0 14px 0;color:${NEUTRAL_700};font-size:14px;line-height:1.65;">
+      <strong>$100</strong> = one cleanup, one paid resident, one before/after photo set in your inbox.<br>
+      <strong>$2,000</strong> = your name on our public sponsor wall, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition.
+    </p>
+
+    <p style="margin:0 0 12px 0;color:${NEUTRAL_700};font-size:14px;line-height:1.65;">
+      <strong>Forward this email</strong> to one foundation officer, one community-affairs lead at a Chicago employer, and one neighbor. Real change happens on inbox-by-inbox referrals.
+    </p>
+  </td></tr>
+
+  <!-- What's next -->
+  <tr><td style="padding:24px 32px 0 32px;">
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:14px;line-height:1.65;border-top:1px solid ${NEUTRAL_200};padding-top:20px;">
+      <strong>In June</strong> we publish the first block-by-block before-and-after report. <strong>In July</strong> we hope to announce our next institutional sponsor here.
+    </p>
+    <p style="margin:0 0 16px 0;color:${NEUTRAL_900};font-size:15px;line-height:1.6;font-weight:600;">In the meantime — Dr. King's apartment is six blocks away. The work continues.</p>
+    <p style="margin:0 0 32px 0;color:${NEUTRAL_500};font-size:13px;font-style:italic;">— The team at Global Community Cleaners NFP</p>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:24px 32px;background-color:#fafafa;border-top:1px solid ${NEUTRAL_200};text-align:center;">
+      <p style="margin:0 0 6px 0;color:${NEUTRAL_700};font-size:12px;line-height:1.6;"><strong>Global Community Cleaners NFP</strong></p>
+      <p style="margin:0 0 6px 0;color:${NEUTRAL_500};font-size:12px;line-height:1.6;">1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623</p>
+      <p style="margin:0 0 12px 0;color:${NEUTRAL_500};font-size:12px;line-height:1.6;">501(c)(3) tax-exempt nonprofit</p>
+      <p style="margin:0;color:${NEUTRAL_500};font-size:11px;line-height:1.6;">
+        You are receiving this because you signed up at globalcommunitycleaners.org or made a contribution.<br>
+        <a href="${d.unsubscribeUrl}" style="color:${NEUTRAL_500};text-decoration:underline;">Unsubscribe</a> · <a href="${d.appUrl}" style="color:${NEUTRAL_500};text-decoration:underline;">Visit our site</a>
+      </p>
+    </td>
+  </tr>
+
+</table>
+
+</td></tr></table>
+
+</body>
+</html>`
+
+  const text = `Sixty years and two blocks
+=============================
+Issue #1 · May 1, 2026 · The Founder's Letter
+
+Hi ${greeting},
+
+This is the first newsletter from Global Community Cleaners. Here is why we exist, what we are doing, and what's next.
+
+SIXTY YEARS AND TWO BLOCKS
+On January 26, 1966, Dr. Martin Luther King Jr. moved into 1550 S. Hamlin Avenue in North Lawndale to begin the "action phase" of the Chicago Freedom Movement. His campaign produced the Summit Agreement, which fed directly into the 1968 Fair Housing Act.
+
+Today, Global Community Cleaners is headquartered at 1844 S. Harding, 2nd Floor — a six-block walk from the apartment Dr. King moved into.
+
+Sixty years. Two blocks of distance. Same neighborhood, same work.
+
+WHAT BROKEN WINDOWS ACTUALLY PROVED
+A 2018 randomized citywide trial in Philadelphia (Branas et al., PNAS) showed that greening 541 vacant lots cut nearby gun assaults by 29.1% and dropped depression rates 41.5% (68.7% for residents below the poverty line). Wharton's analysis: $7.43 in tax-revenue return per public dollar spent.
+
+Cleaning blocks is one of the highest-ROI neighborhood interventions ever measured. It works best when done by the people who live there.
+
+THE NEIGHBORHOOD WE WORK IN
+- Life expectancy: 87.3 in the Loop, 66.6 in adjacent West Garfield Park — a 20-year gap inside the same city. (CDPH 2025)
+- Citywide gap: Black Chicagoans died 10.6 years earlier than non-Black Chicagoans in 2023.
+- Violent crime: roughly 3x the citywide rate. (UIC Great Cities Institute 2022)
+
+THE FOUNDER, IN HIS OWN WORDS
+Shaquille Tate, born at Mt. Sinai Hospital in North Lawndale, grew up on the blocks from 15th to Ridgeway. From his 2026 radio interview:
+
+  "I had to come back to the North Lawndale community, and I'm walking past abandoned houses — boards on the windows, broken windows, trash everywhere on the floor."
+
+  "What if somebody could get all these kids to clean up their block? And if they were to clean up their block, to get paid to clean up their block."
+
+  "I'm employing elders and I'm employing youth and I'm paying them a hundred dollars to clean up their blocks. I want to start with a 10-block radius. This is more than just picking up trash."
+
+HOW IT WORKS
+$100 per block. 100% goes to the resident. One participant per block, gate to crest, both sides, including the alley. Same-day pay. Before/after photos to sponsors.
+
+A FIRST THANK-YOU
+University of Illinois Chicago committed $2,000 to the pilot. Their Office of Community Engagement sent a check to 1844 S. Harding before our online portal was even ready to take it.
+
+THE ASK
+1. Sponsor a block: $100. ${d.appUrl}/sponsor
+2. Become a recognized sponsor: $2,000. Name on the wall, certificate, tax receipt, newsletter feature.
+3. Forward this email to one foundation officer, one community-affairs lead, and one neighbor.
+
+In June we publish the first block-by-block before-and-after report. In July we hope to announce our next institutional sponsor here. In the meantime, Dr. King's apartment is six blocks away. The work continues.
+
+— The team at Global Community Cleaners NFP
+
+---
+Global Community Cleaners NFP
+1844 S. Harding Ave, 2nd Floor, Chicago, IL 60623
+501(c)(3) tax-exempt nonprofit
+
+Unsubscribe: ${d.unsubscribeUrl}
+`
+
+  return { html, text, subject }
+}
