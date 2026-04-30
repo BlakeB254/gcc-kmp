@@ -10,7 +10,14 @@
 
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let resendClient: Resend | null = null
+function getResend(): Resend | null {
+  if (resendClient) return resendClient
+  const key = process.env.RESEND_API_KEY
+  if (!key) return null
+  resendClient = new Resend(key)
+  return resendClient
+}
 
 // Carrier email-to-SMS gateways (US carriers)
 // Format: {10-digit-number}@{gateway}
@@ -137,6 +144,11 @@ async function trySendToGateway(
 ): Promise<SMSResult> {
   const gateway = CARRIER_GATEWAYS[carrier]
   const toEmail = `${phone10}@${gateway}`
+
+  const resend = getResend()
+  if (!resend) {
+    return { success: false, carrier, error: 'RESEND_API_KEY not configured' }
+  }
 
   try {
     const { data, error } = await resend.emails.send({
