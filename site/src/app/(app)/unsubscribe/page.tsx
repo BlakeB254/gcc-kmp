@@ -1,9 +1,25 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 export default function UnsubscribePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-neutral-50 py-16">
+          <div className="mx-auto max-w-xl rounded-xl bg-white p-8 shadow text-sm text-neutral-500">
+            Loading…
+          </div>
+        </div>
+      }
+    >
+      <UnsubscribeForm />
+    </Suspense>
+  )
+}
+
+function UnsubscribeForm() {
   const params = useSearchParams()
   const token = params.get('token') || ''
   const [status, setStatus] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle')
