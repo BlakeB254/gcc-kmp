@@ -52,23 +52,26 @@ export default async function SponsorCertificatePage({
               'radial-gradient(circle at top right, rgba(22,118,58,0.06), transparent 60%), radial-gradient(circle at bottom left, rgba(245,158,11,0.05), transparent 60%)',
           }}
         >
-          <div className="flex h-full flex-col items-center justify-between border-[6px] border-double border-emerald-800/70 px-12 py-10 text-center">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-800">
-                Global Community Cleaners
-              </p>
-              <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900">
+          <div className="flex h-full flex-col items-center justify-between border-[6px] border-double border-emerald-800/70 px-12 py-8 text-center">
+            <div className="flex flex-col items-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/gcc-logo.png"
+                alt="Global Community Cleaners"
+                className="h-24 w-auto object-contain"
+              />
+              <h1 className="mt-4 font-serif text-5xl font-bold tracking-tight text-neutral-900">
                 Certificate of Appreciation
               </h1>
-              <p className="mt-4 text-sm uppercase tracking-widest text-neutral-500">
+              <p className="mt-3 text-sm uppercase tracking-widest text-neutral-500">
                 Presented to
               </p>
             </div>
 
-            <div className="my-8">
-              <p className="font-serif text-6xl italic text-emerald-900">{display}</p>
-              <div className="mx-auto mt-6 h-px w-2/3 bg-neutral-300" />
-              <p className="mt-6 max-w-2xl text-balance text-base leading-relaxed text-neutral-700">
+            <div className="my-6">
+              <p className="font-serif text-5xl italic text-emerald-900">{display}</p>
+              <div className="mx-auto mt-5 h-px w-2/3 bg-neutral-300" />
+              <p className="mt-5 max-w-2xl text-balance text-base leading-relaxed text-neutral-700">
                 In grateful recognition of a generous {amount} sponsorship of Global
                 Community Cleaners — funding clean blocks and paid local work in
                 North Lawndale and beyond. Your support puts every dollar directly

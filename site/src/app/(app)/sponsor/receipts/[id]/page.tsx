@@ -51,13 +51,18 @@ export default async function SponsorReceiptPage({
         </div>
 
         <div className="bg-white p-12 shadow-lg print:shadow-none">
-          <div className="flex items-start justify-between border-b border-neutral-200 pb-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700">
+          <div className="flex items-start justify-between gap-6 border-b border-neutral-200 pb-6">
+            <div className="flex flex-col">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/gcc-logo.png"
+                alt={ORG_NAME}
+                className="h-16 w-auto object-contain"
+              />
+              <p className="mt-3 text-xs font-semibold uppercase tracking-widest text-emerald-700">
                 Donation Receipt
               </p>
-              <h1 className="mt-2 text-2xl font-bold text-neutral-900">{ORG_NAME}</h1>
-              <p className="mt-1 text-sm text-neutral-600">{ORG_ADDRESS}</p>
+              <p className="mt-2 text-sm text-neutral-600">{ORG_ADDRESS}</p>
               <p className="mt-1 text-sm text-neutral-600">EIN: {ORG_EIN}</p>
               <p className="mt-1 text-sm text-neutral-600">501(c)(3) tax-exempt nonprofit</p>
             </div>
