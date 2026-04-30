@@ -8,7 +8,7 @@ import { PrintButton } from '@/components/sponsor/PrintButton'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const ORG_NAME = 'Global Community Cleaners'
+const ORG_NAME = 'Global Community Cleaners NFP'
 const ORG_ADDRESS = process.env.GCC_MAILING_ADDRESS || 'Chicago, IL'
 const ORG_EIN = process.env.GCC_EIN || '00-0000000'
 

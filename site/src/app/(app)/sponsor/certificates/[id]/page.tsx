@@ -57,8 +57,8 @@ export default async function SponsorCertificatePage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/images/gcc-logo.png"
-                alt="Global Community Cleaners"
-                className="h-24 w-auto object-contain"
+                alt="Global Community Cleaners NFP"
+                className="h-44 w-auto object-contain"
               />
               <h1 className="mt-4 font-serif text-5xl font-bold tracking-tight text-neutral-900">
                 Certificate of Appreciation
@@ -87,7 +87,7 @@ export default async function SponsorCertificatePage({
                 <p className="mt-1 text-sm text-neutral-800">{date}</p>
               </div>
               <div className="text-center">
-                <p className="font-serif text-2xl italic text-emerald-900">GCC</p>
+                <p className="font-serif text-xl italic text-emerald-900">Global Community Cleaners NFP</p>
                 <p className="text-[10px] uppercase tracking-widest text-neutral-500">501(c)(3)</p>
               </div>
               <div className="text-right">
