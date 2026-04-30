@@ -602,6 +602,85 @@ export const sponsorPackages = pgTable('sponsor_packages', {
 })
 
 // =====================
+// SPONSOR DELIVERABLES
+// =====================
+// Tracks the recognition deliverables owed to a sponsor at a given gift level.
+// Triggered automatically by Stripe webhook for online payments at/above the
+// $2,000 threshold, or created manually by an admin for offline payments
+// (checks, wires, ACH).
+
+export const sponsorDeliverableSourceEnum = pgEnum('enum_sponsor_deliverables_source', [
+  'online',  // From Stripe checkout webhook
+  'offline', // Manually entered by admin (check, wire, ACH, in-person)
+])
+
+export const sponsorDeliverableStatusEnum = pgEnum('enum_sponsor_deliverables_status', [
+  'pending',
+  'in_progress',
+  'completed',
+])
+
+export const sponsorDeliverableItemKindEnum = pgEnum('enum_sponsor_deliverable_items_kind', [
+  'recognition_wall',
+  'certificate',
+  'tax_receipt',
+  'newsletter_feature',
+  'social_recognition',
+])
+
+export const sponsorDeliverableItemStatusEnum = pgEnum('enum_sponsor_deliverable_items_status', [
+  'pending',
+  'completed',
+])
+
+// One row per qualifying gift. Holds the gift context plus aggregate status.
+export const sponsorDeliverablePackages = pgTable('sponsor_deliverable_packages', {
+  id: serial('id').primaryKey(),
+  sponsorId: integer('sponsor_id').notNull(), // FK to sponsors
+
+  // Linkage to the originating money — at most one of these will be set.
+  transactionId: integer('transaction_id'),       // Set for online (Stripe) payments
+  sponsorPackageId: integer('sponsor_package_id'), // Set if tied to a calculator package
+
+  // Money + provenance
+  amountCents: integer('amount_cents').notNull(), // Qualifying amount in cents
+  source: sponsorDeliverableSourceEnum('source').notNull(),
+  externalReference: varchar('external_reference'), // e.g., "UIC check #1234"
+
+  // The tier label that drove the item set (matches sponsor-tiers.ts).
+  tier: varchar('tier', { length: 20 }).notNull(), // 'silver' | 'gold' | 'platinum' | etc.
+
+  status: sponsorDeliverableStatusEnum('status').default('pending').notNull(),
+
+  // Free-form admin notes
+  notes: text('notes'),
+
+  // Audit
+  createdByWorkerId: integer('created_by_worker_id'), // Admin worker who created it (offline)
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// One row per item inside a package (5 items at the $2K silver level).
+export const sponsorDeliverableItems = pgTable('sponsor_deliverable_items', {
+  id: serial('id').primaryKey(),
+  packageId: integer('package_id').notNull(), // FK to sponsorDeliverablePackages
+
+  kind: sponsorDeliverableItemKindEnum('kind').notNull(),
+  status: sponsorDeliverableItemStatusEnum('status').default('pending').notNull(),
+
+  // Per-item rendered output (certificate URL, receipt number, social copy, etc.)
+  data: jsonb('data'),
+
+  triggeredByWorkerId: integer('triggered_by_worker_id'),
+  triggeredAt: timestamp('triggered_at', { mode: 'string', withTimezone: true }),
+
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
 // FEEDBACK & COMMUNITY
 // =====================
 
@@ -1144,6 +1223,10 @@ export type Transaction = typeof transactions.$inferSelect
 export type NewTransaction = typeof transactions.$inferInsert
 export type SponsorPackage = typeof sponsorPackages.$inferSelect
 export type NewSponsorPackage = typeof sponsorPackages.$inferInsert
+export type SponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferSelect
+export type NewSponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferInsert
+export type SponsorDeliverableItem = typeof sponsorDeliverableItems.$inferSelect
+export type NewSponsorDeliverableItem = typeof sponsorDeliverableItems.$inferInsert
 export type FeedbackTicket = typeof feedbackTickets.$inferSelect
 export type NewFeedbackTicket = typeof feedbackTickets.$inferInsert
 export type FeedbackReply = typeof feedbackReplies.$inferSelect

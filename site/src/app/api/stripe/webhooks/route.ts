@@ -1,12 +1,26 @@
 import { NextRequest } from 'next/server'
 import { stripe, isStripeConfigured } from '@/lib/stripe/client'
 import { db } from '@/db'
-import { workers, jobs, blocks, transactions, sponsors } from '@/db/schema'
+import {
+  workers,
+  jobs,
+  blocks,
+  transactions,
+  sponsors,
+  sponsorDeliverablePackages,
+} from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import Stripe from 'stripe'
 import { sendEmail } from '@/lib/email'
 import { sponsorConfirmationEmail } from '@/lib/email/templates/sponsor-confirmation'
 import { donationConfirmationEmail } from '@/lib/email/templates/donation-confirmation'
+import { adminPackageCreatedEmail } from '@/lib/email/templates/sponsor-deliverable'
+import { createDeliverablePackage } from '@/lib/sponsor-deliverable-engine'
+import {
+  DELIVERABLE_THRESHOLD_CENTS,
+  itemsForTier,
+  tierFromAmount,
+} from '@/lib/sponsor-deliverables'
 
 export const runtime = 'nodejs'
 
@@ -255,6 +269,81 @@ export async function POST(request: NextRequest) {
               console.log('[Webhook] Donation confirmation email sent to:', sponsor.email)
             } else {
               console.error('[Webhook] Failed to send donation email:', emailResult.error)
+            }
+          }
+        }
+
+        // Auto-create sponsor deliverable package for $2,000+ gifts.
+        // Idempotency: Stripe retries the same event, so we only create one
+        // package per (sponsorId, stripeCheckoutSessionId).
+        if (sponsorId && amountCents >= DELIVERABLE_THRESHOLD_CENTS) {
+          const tier = tierFromAmount(amountCents)
+          if (tier) {
+            try {
+              const existingForSession = await db
+                .select({ id: sponsorDeliverablePackages.id })
+                .from(sponsorDeliverablePackages)
+                .where(eq(sponsorDeliverablePackages.externalReference, `stripe_session:${session.id}`))
+                .limit(1)
+
+              if (existingForSession.length === 0) {
+                // Find the most recent transaction we just created for this session
+                // so the deliverable package can link back to it.
+                const recentTx = await db
+                  .select({ id: transactions.id })
+                  .from(transactions)
+                  .where(eq(transactions.stripeCheckoutSessionId, session.id))
+                  .limit(1)
+
+                const { packageId } = await createDeliverablePackage({
+                  sponsorId: Number(sponsorId),
+                  amountCents,
+                  source: 'online',
+                  tier,
+                  transactionId: recentTx[0]?.id ?? null,
+                  externalReference: `stripe_session:${session.id}`,
+                  itemKinds: itemsForTier(tier).map((it) => it.kind),
+                })
+
+                console.log(
+                  `[Webhook] Created deliverable package #${packageId} (${tier}) for $${amountCents / 100} sponsorship`
+                )
+
+                // Notify admin
+                const adminTo =
+                  process.env.ADMIN_NOTIFICATION_EMAIL ||
+                  process.env.ADMIN_EMAILS?.split(',')[0]?.trim()
+                if (adminTo) {
+                  const [s] = await db
+                    .select()
+                    .from(sponsors)
+                    .where(eq(sponsors.id, Number(sponsorId)))
+                    .limit(1)
+                  if (s) {
+                    const display = s.businessName || s.name
+                    const siteUrl =
+                      process.env.NEXT_PUBLIC_APP_URL ||
+                      'https://globalcommunitycleaners.org'
+                    const content = adminPackageCreatedEmail({
+                      sponsorName: display,
+                      sponsorEmail: s.email,
+                      amountCents,
+                      source: 'online',
+                      externalRef: `Stripe session ${session.id}`,
+                      adminUrl: `${siteUrl}/admin/sponsors?package=${packageId}`,
+                    })
+                    await sendEmail({
+                      to: adminTo,
+                      subject: `[GCC] New ${tier} sponsorship: ${display} ($${amountCents / 100})`,
+                      html: content.html,
+                      text: content.text,
+                    })
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('[Webhook] Failed to create deliverable package:', err)
+              // Don't fail the webhook over deliverable bookkeeping
             }
           }
         }
