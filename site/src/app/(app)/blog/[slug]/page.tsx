@@ -73,7 +73,7 @@ function Issue1() {
             We're not a cleaning service. We're the field-evidence layer for community cleanliness in North Lawndale.
           </h2>
           <p>
-            Most organizations talk about a problem. We hold the data on it. The GCC mobile app is live on iOS and Android, and North Lawndale residents have already used it to map &mdash; with photos, GPS, and timestamps &mdash; <strong>110+ trash and dumping hotspots</strong> across the community.
+            Most organizations talk about a problem. We hold the data on it. The GCC mobile app is live on iOS (Android version in development), and North Lawndale residents have already used it to map &mdash; with photos, GPS, and timestamps &mdash; <strong>110+ trash and dumping hotspots</strong> across the community.
           </p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`${media}/stats/app-live.png`} alt="The app is live. 110+ hotspots already mapped by the community." className="mt-6 w-full rounded-xl shadow-sm" />

@@ -1,0 +1,41 @@
+[ATTACH IMAGE: site/public/flyers/issue-01-paid-infrastructure.png — also live at https://www.globalcommunitycleaners.org/flyers/issue-01-paid-infrastructure.png]
+
+Today, Global Community Cleaners (GCC) is dropping Issue #1 of our newsletter — and we're ramping up.
+
+We're lining up the first 20 paid block cleanups in North Lawndale right now. That's 20% of our way to the goal we set for the pilot:
+
+→ 100 blocks cleaned
+→ 100 community members earning real money on their own street
+
+The model is simple. $100 cleans one block. 100% of it goes to the resident doing the work. Same-day Stripe payout. One participant per block — gate to crest, both sides, including the alley. GPS-tagged before/after photos. Zero overhead pulled from the cleaning fee.
+
+We're not running a charity drive — we're running a measurable civic-cleanliness program with real data. The GCC mobile app is live, and residents have already used it to map 110+ trash and dumping hotspots in our neighborhood, with photos and GPS coordinates. We hold the field evidence, we publish the patterns we see, and we put the money on the block.
+
+📖 Issue #1 is here, with the full data, the academic studies behind the model, and our long-term infrastructure observations:
+https://www.globalcommunitycleaners.org/blog/2026-05-01-issue-01
+
+———
+
+We're in scale-up mode. Three asks for the network.
+
+1) Sponsor cleanups. Every $100 puts a paid block on a North Lawndale street. We're also recruiting recognized sponsors at the $2,000 tier — name on our public sponsor wall, digital certificate, 501(c)(3) tax receipt (EIN 39-3553882), monthly newsletter feature, and social-media recognition.
+👉 https://www.globalcommunitycleaners.org/sponsor
+
+2) In-kind tech support, so we can serve the community better. We built the GCC app and infrastructure ourselves, and right now we are short on the following — even gently used would help massively:
+   • Android phone or tablet (we currently have NO Android device, blocking us from properly developing, testing, and shipping the Android version of the app)
+   • A laptop for the engineering team
+   • Newer Mac systems for iOS builds and design work
+   • NVIDIA GPUs for the AI / hotspot-classification pipeline
+   • Cloud credits — AWS, GCP, Vercel, Anthropic, OpenAI
+
+If your company has a community-giving or in-kind donation program, or you have any of the above sitting unused, please DM or reply.
+
+3) Spread it through your network — and bring this to your community. The GCC model travels. The app is global, the funding mechanic is repeatable, the impact data is measurable. If you live somewhere outside of Chicago and are passionate about launching a paid neighborhood cleanup model in your own community, please reach out. Sponsor leads from outside North Lawndale are equally welcome.
+
+We built GCC to serve a public good. We're not making a profit. We put everything we have into this. Anything anyone can contribute — dollars, hardware, credits, a forwarded post, a referred sponsor, a connection in another city — makes a real difference and is genuinely appreciated.
+
+— Shaquille Tate, Founder
+Global Community Cleaners NFP · 501(c)(3) · EIN 39-3553882
+1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623
+
+#NorthLawndale #Chicago #CommunityImpact #501c3 #InKindDonations #SocialImpact #NonprofitTech #CivicTech #UrbanRenewal #PaidInfrastructure

@@ -15,6 +15,24 @@ interface Issue1Data {
   mediaBaseUrl?: string   // Optional override for stat / condition image base. Defaults to `${appUrl}/newsletter/issue-01`.
 }
 
+/**
+ * Picks a friendly first-name greeting. Falls back to "friend" if the name
+ * looks like an organization, contains weird characters, or is empty —
+ * "Hi The" or "Hi Orvil1955!" feels worse than "Hi friend".
+ */
+function friendlyGreetingName(raw: string | null | undefined): string {
+  if (!raw) return 'friend'
+  const trimmed = raw.trim()
+  if (!trimmed) return 'friend'
+  const first = trimmed.split(/\s+/)[0]
+  // Reject if too short, contains digits/special chars, or is a determiner
+  if (first.length < 2) return 'friend'
+  if (!/^[A-Za-z'\-]+$/.test(first)) return 'friend'
+  if (/^(the|a|an|global|community|gcc|test|admin)$/i.test(first)) return 'friend'
+  // Title-case it (handles "blake" → "Blake", "BLAKE" → "Blake")
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+}
+
 const BRAND_GREEN = '#16763a'
 const BRAND_GREEN_DARK = '#0b3b1d'
 const ACCENT_GOLD = '#fbbf24'
@@ -27,8 +45,8 @@ const BG_GRAY = '#f5f5f5'
 const BG_EMERALD = '#ecfdf5'
 
 export function newsletterIssue1Email(d: Issue1Data): { html: string; text: string; subject: string } {
-  const subject = "Sixty years and two blocks — Issue #1 from Global Community Cleaners"
-  const greeting = d.recipientName ? d.recipientName.split(' ')[0] : 'friend'
+  const subject = "Sixty years and two blocks — GCC Issue #1"
+  const greeting = friendlyGreetingName(d.recipientName)
   const media = d.mediaBaseUrl || `${d.appUrl}/newsletter/issue-01`
 
   const html = `<!DOCTYPE html>
@@ -65,8 +83,9 @@ Sixty years ago Dr. King moved to North Lawndale. Today, six blocks away, our wo
   <!-- Lead -->
   <tr>
     <td style="padding:36px 32px 8px 32px;">
-      <h1 style="margin:0 0 14px 0;color:${NEUTRAL_900};font-size:30px;line-height:1.15;font-weight:800;letter-spacing:-0.015em;">Sixty years and two blocks</h1>
-      <p style="margin:0;color:${NEUTRAL_500};font-size:15px;line-height:1.55;">Hi ${greeting} — this is the first newsletter from Global Community Cleaners. Three things: where we come from, what we already know about our neighborhood, and what we're going to do about it.</p>
+      <h1 style="margin:0 0 16px 0;color:${NEUTRAL_900};font-size:32px;line-height:1.1;font-weight:800;letter-spacing:-0.018em;">Sixty years<br>and two blocks</h1>
+      <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:17px;line-height:1.55;font-weight:500;">Six decades after Dr. King moved to North Lawndale, GCC sits six blocks away — paying residents $100 to clean their own streets, with 100% of every fee going straight to the worker.</p>
+      <p style="margin:0;color:${NEUTRAL_500};font-size:14px;line-height:1.55;">Hi ${greeting} — this is Issue #1. Inside: the field data, the academic studies behind the model, the patterns we're seeing, and how the first 20 cleanups come together.</p>
     </td>
   </tr>
 
@@ -91,7 +110,7 @@ Sixty years ago Dr. King moved to North Lawndale. Today, six blocks away, our wo
     <p style="margin:0 0 4px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§2 · The data we already hold</p>
     <h2 style="margin:0 0 14px 0;color:${NEUTRAL_900};font-size:24px;line-height:1.25;font-weight:700;">We're not a cleaning service. We're the field-evidence layer for community cleanliness in North Lawndale.</h2>
     <p style="margin:0 0 18px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
-      Most organizations talk about a problem. We hold the data on it. The GCC mobile app is live on iOS and Android, and North Lawndale residents have already used it to map &mdash; with photos, GPS, and timestamps &mdash; <strong>110+ trash and dumping hotspots</strong> across the community.
+      Most organizations talk about a problem. We hold the data on it. The GCC mobile app is live on iOS (Android version in development), and North Lawndale residents have already used it to map &mdash; with photos, GPS, and timestamps &mdash; <strong>110+ trash and dumping hotspots</strong> across the community.
     </p>
   </td></tr>
 
