@@ -91,16 +91,6 @@ A $100 block sponsorship gets your name on our public sponsor wall. A **$2,000+ 
 
 ---
 
-## A first thank-you we needed to make in public
-
-Speaking of $2,000 — **Global Community Cleaners just received its first major institutional sponsor.**
-
-The **University of Illinois Chicago** committed **$2,000** to the pilot. Their Office of Community Engagement sent a check to 1844 S. Harding before our online portal was even ready to take it. We are grateful, and proud, and we will earn it block by block.
-
-UIC sits about a mile and a half from the office where this newsletter was written. The university and the neighborhood share a property line. We hope this is the first of many institutional partnerships, and we are very glad it started here.
-
----
-
 ## The ask
 
 If you read this far, you already know what we are doing and why it works. Here is what to do with that knowledge.
@@ -116,7 +106,7 @@ If you read this far, you already know what we are doing and why it works. Here 
 
 In June we will publish our first **block-by-block before-and-after report**: which streets we cleaned, who cleaned them, and what the photo evidence looks like. Sponsors at every level will receive it directly.
 
-In July, we hope to be in a position to announce our next institutional sponsor. We will name them here.
+In July, we'll feature the residents who claimed the first cleanups — the elders and the youth doing the work — in this newsletter. Names, photos, the blocks they took on, and what the neighborhood looks like before vs. after their first round.
 
 In the meantime — Dr. King's apartment is six blocks away. The work continues.
 

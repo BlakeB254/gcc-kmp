@@ -4,27 +4,39 @@ Issue #1 · May 1, 2026 · The Founder's Letter
 
 Hi Daisy,
 
-This is the first newsletter from Global Community Cleaners. Here is why we exist, what we are doing, and what's next.
+This is the first newsletter from Global Community Cleaners. Three things: where we come from, what we already know about our neighborhood, and what we're going to do about it.
 
-SIXTY YEARS AND TWO BLOCKS
+§1 · THE HISTORY
 On January 26, 1966, Dr. Martin Luther King Jr. moved into 1550 S. Hamlin Avenue in North Lawndale to begin the "action phase" of the Chicago Freedom Movement. His campaign produced the Summit Agreement, which fed directly into the 1968 Fair Housing Act.
 
 Today, Global Community Cleaners is headquartered at 1844 S. Harding, 2nd Floor — a six-block walk from the apartment Dr. King moved into.
 
 Sixty years. Two blocks of distance. Same neighborhood, same work.
 
-WHAT BROKEN WINDOWS ACTUALLY PROVED
+§2 · THE DATA WE ALREADY HOLD
+We're not a cleaning service — we're the field-evidence layer for community cleanliness in North Lawndale. The GCC mobile app is live, and residents have already mapped 110+ trash and dumping hotspots — with photos, GPS, and timestamps.
+
+§3 · WHAT 110 HOTSPOTS ACTUALLY LOOK LIKE
+Dumped cardboard on residential blocks. Construction debris on vacant lots. Wind-driven trash accumulation along fencelines. All photographed by residents, all in or near North Lawndale, all in recent weeks.
+
+§4 · PATTERNS THE DATA REVEALS
+- Pattern 1 — Wind-driven fenceline accumulation. Fencelines next to vacant fields and lots are catching disproportionate trash because wind funnels light debris into them. Long-term fix: simple windbreak plantings or screen fabric, plus cleanup cadence keyed to wind events.
+- Pattern 2 — Walkway corridors without trash receptacles. Several major pedestrian corridors have no public bins for blocks at a time; hotspot density there is measurably higher. Long-term fix: targeted bin placement at high-foot-traffic intersections.
+
+We clean the blocks. We also identify what infrastructure could stop the next round of accumulation before it starts.
+
+§5 · WHY THIS WORKS
 A 2018 randomized citywide trial in Philadelphia (Branas et al., PNAS) showed that greening 541 vacant lots cut nearby gun assaults by 29.1% and dropped depression rates 41.5% (68.7% for residents below the poverty line). Wharton's analysis: $7.43 in tax-revenue return per public dollar spent.
 
-Cleaning blocks is one of the highest-ROI neighborhood interventions ever measured. It works best when done by the people who live there.
+The newer evidence runs through "collective efficacy" — Sampson's Chicago research shows neighborhoods scoring high on it run ~40% lower crime rates. Invest in the people on the block, and the block follows.
 
-THE NEIGHBORHOOD WE WORK IN
+§6 · THE NEIGHBORHOOD WE WORK IN
 - Life expectancy: 87.3 in the Loop, 66.6 in adjacent West Garfield Park — a 20-year gap inside the same city. (CDPH 2025)
 - Citywide gap: Black Chicagoans died 10.6 years earlier than non-Black Chicagoans in 2023.
-- Violent crime: roughly 3x the citywide rate. (UIC Great Cities Institute 2022)
+- Violent crime: ~3x the citywide rate. (UIC Great Cities Institute 2022)
 
-THE FOUNDER, IN HIS OWN WORDS
-Shaquille Tate, born at Mt. Sinai Hospital in North Lawndale, grew up on the blocks from 15th to Ridgeway. From his 2026 radio interview:
+§7 · MEET THE FOUNDER
+Shaquille Tate, born at Mt. Sinai Hospital in North Lawndale, grew up on the blocks from 15th to Ridgeway:
 
   "I had to come back to the North Lawndale community, and I'm walking past abandoned houses — boards on the windows, broken windows, trash everywhere on the floor."
 
@@ -32,24 +44,24 @@ Shaquille Tate, born at Mt. Sinai Hospital in North Lawndale, grew up on the blo
 
   "I'm employing elders and I'm employing youth and I'm paying them a hundred dollars to clean up their blocks. I want to start with a 10-block radius. This is more than just picking up trash."
 
-HOW IT WORKS
-$100 per block. 100% goes to the resident. One participant per block, gate to crest, both sides, including the alley. Same-day pay. Before/after photos to sponsors.
+§8 · HOW THE MODEL WORKS
+$100 cleans one block. 100% goes to the resident. One participant per block, gate to crest, both sides, including the alley. Same-day pay. Before-and-after photos to sponsors. Elders and youth — intergenerational by design.
 
-A FIRST THANK-YOU
-University of Illinois Chicago committed $2,000 to the pilot. Their Office of Community Engagement sent a check to 1844 S. Harding before our online portal was even ready to take it.
-
-THE ASK
+§9 · THE ASK
 1. Sponsor a block: $100. https://globalcommunitycleaners.org/sponsor
 2. Become a recognized sponsor: $2,000. Name on the wall, certificate, tax receipt, newsletter feature.
 3. Forward this email to one foundation officer, one community-affairs lead, and one neighbor.
 
-In June we publish the first block-by-block before-and-after report. In July we hope to announce our next institutional sponsor here. In the meantime, Dr. King's apartment is six blocks away. The work continues.
+§10 · WHAT'S NEXT
+In June we publish the first block-by-block before-and-after report. In July we'll feature the residents who claimed the first cleanups — names, photos, the blocks they took on.
+
+In the meantime, Dr. King's apartment is six blocks away. The work continues.
 
 — The team at Global Community Cleaners NFP
 
 ---
 Global Community Cleaners NFP
 1844 S. Harding Ave, 2nd Floor, Chicago, IL 60623
-501(c)(3) tax-exempt nonprofit
+501(c)(3) tax-exempt nonprofit · EIN 00-0000000
 
 Unsubscribe: https://globalcommunitycleaners.org/unsubscribe?token=preview
