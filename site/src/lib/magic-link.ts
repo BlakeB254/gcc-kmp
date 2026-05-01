@@ -8,7 +8,16 @@
 import crypto from 'crypto'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Defer Resend instantiation until first use so a missing key doesn't crash
+// at module-eval time (e.g. during `next build` page-data collection).
+let resendClient: Resend | null = null
+function getResend(): Resend | null {
+  if (resendClient) return resendClient
+  const key = process.env.RESEND_API_KEY
+  if (!key) return null
+  resendClient = new Resend(key)
+  return resendClient
+}
 
 interface MagicLinkData {
   token: string
@@ -156,6 +165,12 @@ export async function sendMagicLinkEmail(
 </body>
 </html>
 `
+
+  const resend = getResend()
+  if (!resend) {
+    console.warn('[Magic link] SKIPPED — RESEND_API_KEY not configured. Token:', token)
+    return { success: false, error: 'Email service not configured (missing RESEND_API_KEY)' }
+  }
 
   try {
     const { error } = await resend.emails.send({

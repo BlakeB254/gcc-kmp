@@ -602,6 +602,115 @@ export const sponsorPackages = pgTable('sponsor_packages', {
 })
 
 // =====================
+// SPONSOR DELIVERABLES
+// =====================
+// Tracks the recognition deliverables owed to a sponsor at a given gift level.
+// Triggered automatically by Stripe webhook for online payments at/above the
+// $2,000 threshold, or created manually by an admin for offline payments
+// (checks, wires, ACH).
+
+export const sponsorDeliverableSourceEnum = pgEnum('enum_sponsor_deliverables_source', [
+  'online',  // From Stripe checkout webhook
+  'offline', // Manually entered by admin (check, wire, ACH, in-person)
+])
+
+export const sponsorDeliverableStatusEnum = pgEnum('enum_sponsor_deliverables_status', [
+  'pending',
+  'in_progress',
+  'completed',
+])
+
+export const sponsorDeliverableItemKindEnum = pgEnum('enum_sponsor_deliverable_items_kind', [
+  'recognition_wall',
+  'certificate',
+  'tax_receipt',
+  'newsletter_feature',
+  'social_recognition',
+])
+
+export const sponsorDeliverableItemStatusEnum = pgEnum('enum_sponsor_deliverable_items_status', [
+  'pending',
+  'completed',
+])
+
+// One row per qualifying gift. Holds the gift context plus aggregate status.
+export const sponsorDeliverablePackages = pgTable('sponsor_deliverable_packages', {
+  id: serial('id').primaryKey(),
+  sponsorId: integer('sponsor_id').notNull(), // FK to sponsors
+
+  // Linkage to the originating money — at most one of these will be set.
+  transactionId: integer('transaction_id'),       // Set for online (Stripe) payments
+  sponsorPackageId: integer('sponsor_package_id'), // Set if tied to a calculator package
+
+  // Money + provenance
+  amountCents: integer('amount_cents').notNull(), // Qualifying amount in cents
+  source: sponsorDeliverableSourceEnum('source').notNull(),
+  externalReference: varchar('external_reference'), // e.g., "UIC check #1234"
+
+  // The tier label that drove the item set (matches sponsor-tiers.ts).
+  tier: varchar('tier', { length: 20 }).notNull(), // 'silver' | 'gold' | 'platinum' | etc.
+
+  status: sponsorDeliverableStatusEnum('status').default('pending').notNull(),
+
+  // Free-form admin notes
+  notes: text('notes'),
+
+  // Audit
+  createdByWorkerId: integer('created_by_worker_id'), // Admin worker who created it (offline)
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// One row per item inside a package (5 items at the $2K silver level).
+export const sponsorDeliverableItems = pgTable('sponsor_deliverable_items', {
+  id: serial('id').primaryKey(),
+  packageId: integer('package_id').notNull(), // FK to sponsorDeliverablePackages
+
+  kind: sponsorDeliverableItemKindEnum('kind').notNull(),
+  status: sponsorDeliverableItemStatusEnum('status').default('pending').notNull(),
+
+  // Per-item rendered output (certificate URL, receipt number, social copy, etc.)
+  data: jsonb('data'),
+
+  triggeredByWorkerId: integer('triggered_by_worker_id'),
+  triggeredAt: timestamp('triggered_at', { mode: 'string', withTimezone: true }),
+
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// =====================
+// EMAIL UNSUBSCRIBES + NEWSLETTER SEND LOG
+// =====================
+
+// Single source of truth for opt-outs across all our subscriber surfaces
+// (sponsors, waitlist, future newsletter signups). The /unsubscribe page
+// upserts here; outbound sends LEFT JOIN against it and exclude matches.
+export const emailUnsubscribes = pgTable('email_unsubscribes', {
+  id: serial('id').primaryKey(),
+  email: varchar('email').notNull().unique(),
+  reason: varchar('reason'),               // free-text reason from user
+  unsubscribedFrom: varchar('unsubscribed_from'), // 'newsletter' | 'all' | etc.
+  unsubscribedAt: timestamp('unsubscribed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// One row per outbound send so we can show send history in the admin
+// and avoid double-sending the same issue to the same address.
+export const newsletterSends = pgTable('newsletter_sends', {
+  id: serial('id').primaryKey(),
+  issueSlug: varchar('issue_slug').notNull(),  // e.g. '2026-05-01-issue-01'
+  subject: varchar('subject').notNull(),
+  recipientCount: integer('recipient_count').notNull(),
+  successCount: integer('success_count').notNull(),
+  failureCount: integer('failure_count').notNull(),
+  failedRecipients: jsonb('failed_recipients'),  // [{ email, error }]
+  triggeredByWorkerId: integer('triggered_by_worker_id'),
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+})
+
+// =====================
 // FEEDBACK & COMMUNITY
 // =====================
 
@@ -1144,6 +1253,14 @@ export type Transaction = typeof transactions.$inferSelect
 export type NewTransaction = typeof transactions.$inferInsert
 export type SponsorPackage = typeof sponsorPackages.$inferSelect
 export type NewSponsorPackage = typeof sponsorPackages.$inferInsert
+export type SponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferSelect
+export type NewSponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferInsert
+export type SponsorDeliverableItem = typeof sponsorDeliverableItems.$inferSelect
+export type NewSponsorDeliverableItem = typeof sponsorDeliverableItems.$inferInsert
+export type EmailUnsubscribe = typeof emailUnsubscribes.$inferSelect
+export type NewEmailUnsubscribe = typeof emailUnsubscribes.$inferInsert
+export type NewsletterSend = typeof newsletterSends.$inferSelect
+export type NewNewsletterSend = typeof newsletterSends.$inferInsert
 export type FeedbackTicket = typeof feedbackTickets.$inferSelect
 export type NewFeedbackTicket = typeof feedbackTickets.$inferInsert
 export type FeedbackReply = typeof feedbackReplies.$inferSelect

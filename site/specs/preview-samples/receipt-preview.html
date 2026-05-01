@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Tax Receipt Preview — University of Illinois Chicago</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  @media print {
+    @page { size: letter; margin: 0.5in; }
+    body { background: #ffffff !important; }
+    .print\:hidden { display: none !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen bg-neutral-100 py-12">
+
+  <div class="mx-auto max-w-3xl px-4">
+
+    <div class="mb-6 flex items-center justify-between print:hidden">
+      <a href="#" class="text-sm text-neutral-600 hover:text-neutral-900">← Sponsor wall</a>
+      <button onclick="window.print()" class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
+        Print / Save as PDF
+      </button>
+    </div>
+
+    <div class="bg-white p-12 shadow-lg">
+
+      <div class="flex items-start justify-between gap-6 border-b border-neutral-200 pb-6">
+        <div class="flex flex-col">
+          <img src="gcc-logo.png" alt="Global Community Cleaners NFP" class="h-20 w-auto object-contain" />
+          <p class="mt-3 text-xs font-semibold uppercase tracking-widest text-emerald-700">Donation Receipt</p>
+          <p class="mt-2 text-sm text-neutral-600">Chicago, IL</p>
+          <p class="mt-1 text-sm text-neutral-600">EIN: XX-XXXXXXX</p>
+          <p class="mt-1 text-sm text-neutral-600">501(c)(3) tax-exempt nonprofit</p>
+        </div>
+        <div class="text-right">
+          <p class="text-xs uppercase tracking-widest text-neutral-500">Receipt #</p>
+          <p class="mt-1 text-lg font-semibold text-neutral-900">GCC-2026-00001</p>
+          <p class="mt-3 text-xs uppercase tracking-widest text-neutral-500">Date</p>
+          <p class="mt-1 text-sm text-neutral-900">May 1, 2026</p>
+        </div>
+      </div>
+
+      <div class="mt-8">
+        <p class="text-xs uppercase tracking-widest text-neutral-500">Donor</p>
+        <p class="mt-2 text-lg font-semibold text-neutral-900">University of Illinois Chicago</p>
+        <p class="mt-1 text-sm text-neutral-700">1200 W Harrison St, Chicago, IL 60607</p>
+        <p class="mt-1 text-sm text-neutral-700">development@uic.edu</p>
+      </div>
+
+      <div class="mt-8 rounded-lg bg-emerald-50 p-6">
+        <p class="text-xs uppercase tracking-widest text-emerald-800">Contribution</p>
+        <p class="mt-2 text-4xl font-bold text-emerald-900">$2,000</p>
+        <p class="mt-2 text-sm text-emerald-900/80">
+          Source: Offline · Reference: UIC initial gift
+        </p>
+      </div>
+
+      <div class="mt-8 space-y-3 text-sm leading-relaxed text-neutral-700">
+        <p>
+          Thank you for your generous contribution to Global Community Cleaners NFP, a registered 501(c)(3)
+          tax-exempt nonprofit organization.
+        </p>
+        <p>
+          <strong>No goods or services were provided</strong> in exchange for this contribution.
+          Your gift is tax-deductible to the fullest extent allowed by law.
+        </p>
+        <p>
+          Please retain this receipt for your records. Consult your tax advisor for guidance
+          on charitable deduction limits applicable to your situation.
+        </p>
+      </div>
+
+      <div class="mt-12 border-t border-neutral-200 pt-6 text-center text-xs text-neutral-500">
+        <p>This receipt was generated electronically and is valid without a signature.</p>
+      </div>
+
+    </div>
+
+    <div class="mx-auto mt-8 max-w-3xl rounded-lg border border-neutral-200 bg-white p-4 text-xs text-neutral-500 print:hidden">
+      <strong class="text-neutral-700">Preview</strong> — EIN and mailing address shown as placeholders. Set <code class="rounded bg-neutral-100 px-1 py-0.5">GCC_EIN</code> and <code class="rounded bg-neutral-100 px-1 py-0.5">GCC_MAILING_ADDRESS</code> as Vercel env vars (or in <code class="rounded bg-neutral-100 px-1 py-0.5">.env.local</code>) and the real values render automatically. The donor address pulls from <code class="rounded bg-neutral-100 px-1 py-0.5">sponsors.address_*</code> when filled in via the admin form.
+    </div>
+
+  </div>
+
+</body>
+</html>
