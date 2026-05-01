@@ -263,9 +263,35 @@ Sixty years ago Dr. King moved to North Lawndale. Today, six blocks away, our wo
     </p>
   </td></tr>
 
-  <!-- §9 — The ask -->
+  <!-- §9 — Anyone, anywhere can participate -->
   <tr><td style="padding:32px 32px 0 32px;">
-    <p style="margin:0 0 4px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§9 · The ask</p>
+    <p style="margin:0 0 4px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§9 · Anyone, anywhere can participate</p>
+    <h2 style="margin:0 0 14px 0;color:${NEUTRAL_900};font-size:24px;line-height:1.25;font-weight:700;">You don't have to live in Chicago to put a hotspot on the map.</h2>
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      The GCC app is global. Any user, anywhere in the world, can <strong>spot</strong> illegal dumping, blight, or unsafe conditions in their own neighborhood, photograph it, and add it to the map. Other users earn points by <strong>verifying</strong> a spot is real, still there, or has been resolved. The data layer compounds with every contribution.
+    </p>
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:16px;line-height:1.65;">
+      We're building this into a <strong>points system worth participating in</strong>. We are actively working with local businesses to back the points with rewards our community actually wants:
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 14px 0;">
+      <tr><td style="padding:14px 18px;background-color:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">
+        <p style="margin:0 0 4px 0;color:#0c4a6e;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Reward types in development</p>
+        <p style="margin:0;color:${NEUTRAL_900};font-size:15px;line-height:1.65;">🏟️ Sports &amp; concert tickets &nbsp;·&nbsp; 🎁 Gift cards from neighborhood businesses &nbsp;·&nbsp; 🍽️ Restaurant credits &nbsp;·&nbsp; 🛍️ Discounts from partner retailers &nbsp;·&nbsp; 💎 Redeemable points across our internal network</p>
+      </td></tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 16px 0;">
+      <tr><td style="padding:18px 22px;background:linear-gradient(135deg,${BRAND_GREEN_DARK} 0%,${BRAND_GREEN} 100%);border-radius:10px;">
+        <p style="margin:0 0 6px 0;color:${ACCENT_GOLD};font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">Local businesses, this is your invitation</p>
+        <p style="margin:0 0 8px 0;color:#ffffff;font-size:16px;line-height:1.5;font-weight:600;">If you can put real value behind these points &mdash; tickets, gift cards, table reservations, in-store credits &mdash; we will put your brand directly in front of the residents already cleaning their own streets.</p>
+        <p style="margin:0;color:#ffffff;font-size:14px;line-height:1.55;opacity:0.92;">It's the cleanest community-affairs ROI in Chicago: documented impact, photographable proof, audience that lives right where you sell. Email <a href="mailto:hello@globalcommunitycleaners.org" style="color:${ACCENT_GOLD};text-decoration:underline;">hello@globalcommunitycleaners.org</a> with the subject line <strong>&ldquo;Partner on points&rdquo;</strong>.</p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- §10 — The ask -->
+  <tr><td style="padding:32px 32px 0 32px;">
+    <p style="margin:0 0 4px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§10 · The ask</p>
     <h2 style="margin:0 0 16px 0;color:${NEUTRAL_900};font-size:24px;line-height:1.25;font-weight:700;">If this resonates, here is exactly what to do with that.</h2>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 12px 0;">
@@ -288,12 +314,15 @@ Sixty years ago Dr. King moved to North Lawndale. Today, six blocks away, our wo
     </p>
   </td></tr>
 
-  <!-- §10 — What's next -->
+  <!-- §11 — What's next -->
   <tr><td style="padding:32px 32px 0 32px;">
-    <p style="margin:0 0 8px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§10 · What's next</p>
-    <h2 style="margin:0 0 14px 0;color:${NEUTRAL_900};font-size:24px;line-height:1.25;font-weight:700;">Right now we're preparing the first 20 cleanups.</h2>
+    <p style="margin:0 0 8px 0;color:${BRAND_GREEN};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;border-top:2px solid ${NEUTRAL_200};padding-top:24px;">§11 · What's next</p>
+    <h2 style="margin:0 0 14px 0;color:${NEUTRAL_900};font-size:24px;line-height:1.25;font-weight:700;">Right now we're lining up the first 20 cleanups.</h2>
     <p style="margin:0 0 14px 0;color:${NEUTRAL_700};font-size:15px;line-height:1.65;">
       Twenty blocks &mdash; twenty paid residents &mdash; <strong>20% of our way to the 100-block goal</strong> we set for the North Lawndale pilot. One hundred blocks cleaned, one hundred community members earning real money on their own street. That's the floor, not the ceiling.
+    </p>
+    <p style="margin:0 0 14px 0;color:${NEUTRAL_500};font-size:14px;line-height:1.6;font-style:italic;">
+      The first 20 are pending a soft commitment we're closing with a local partner; we'll name them in the next issue once the funding has cleared and the work is underway. In the meantime, every $100 block sponsorship we receive between now and then funds an additional cleanup on top of those 20.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 18px 0;">

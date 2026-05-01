@@ -193,8 +193,44 @@ function Issue1() {
           </p>
         </Section>
 
-        {/* §9 The ask */}
-        <Section label="§9 · The ask">
+        {/* §9 Anyone, anywhere can participate */}
+        <Section label="§9 · Anyone, anywhere can participate">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            You don't have to live in Chicago to put a hotspot on the map.
+          </h2>
+          <p>
+            The GCC app is global. Any user, anywhere in the world, can <strong>spot</strong> illegal dumping, blight, or unsafe conditions in their own neighborhood, photograph it, and add it to the map. Other users earn points by <strong>verifying</strong> a spot is real, still there, or has been resolved. The data layer compounds with every contribution.
+          </p>
+          <p>
+            We're building this into a <strong>points system worth participating in</strong>. We are actively working with local businesses to back the points with rewards our community actually wants:
+          </p>
+          <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-5 py-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-sky-900">
+              Reward types in development
+            </p>
+            <p className="text-sm leading-relaxed text-neutral-900">
+              🏟️ Sports &amp; concert tickets · 🎁 Gift cards from neighborhood businesses · 🍽️ Restaurant credits · 🛍️ Discounts from partner retailers · 💎 Redeemable points across our internal network
+            </p>
+          </div>
+          <div className="mt-5 rounded-xl bg-gradient-to-br from-emerald-900 to-emerald-700 px-7 py-6 text-white shadow-lg">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+              Local businesses, this is your invitation
+            </p>
+            <p className="text-base font-semibold leading-snug">
+              If you can put real value behind these points &mdash; tickets, gift cards, table reservations, in-store credits &mdash; we will put your brand directly in front of the residents already cleaning their own streets.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed opacity-90">
+              It's the cleanest community-affairs ROI in Chicago: documented impact, photographable proof, audience that lives right where you sell. Email{' '}
+              <a className="text-amber-300 underline" href="mailto:hello@globalcommunitycleaners.org?subject=Partner%20on%20points">
+                hello@globalcommunitycleaners.org
+              </a>{' '}
+              with the subject line <strong>"Partner on points"</strong>.
+            </p>
+          </div>
+        </Section>
+
+        {/* §10 The ask */}
+        <Section label="§10 · The ask">
           <h2 className="text-3xl font-bold leading-tight text-neutral-900">
             If this resonates, here is exactly what to do with that.
           </h2>
@@ -218,13 +254,16 @@ function Issue1() {
           </p>
         </Section>
 
-        {/* §10 What's next */}
-        <Section label="§10 · What's next">
+        {/* §11 What's next */}
+        <Section label="§11 · What's next">
           <h2 className="text-3xl font-bold leading-tight text-neutral-900">
-            Right now we're preparing the first 20 cleanups.
+            Right now we're lining up the first 20 cleanups.
           </h2>
           <p>
             Twenty blocks &mdash; twenty paid residents &mdash; <strong>20% of our way to the 100-block goal</strong> we set for the North Lawndale pilot. One hundred blocks cleaned, one hundred community members earning real money on their own street. That's the floor, not the ceiling.
+          </p>
+          <p className="italic text-neutral-500">
+            The first 20 are pending a soft commitment we're closing with a local partner; we'll name them in the next issue once the funding has cleared and the work is underway. In the meantime, every $100 block sponsorship we receive between now and then funds an additional cleanup on top of those 20.
           </p>
           <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Goal · North Lawndale pilot</p>

@@ -25,7 +25,9 @@ We just dropped Issue #1 of our newsletter today, with the full data + the 110+ 
 
 **1) Donations on the cleanup side.** Every $100 puts a paid block on a North Lawndale street. If you've ever wished you could send dollars somewhere where every cent went to the work and not the overhead — this is that. globalcommunitycleaners.org/sponsor
 
-**2) Help on the technical side.** I built GCC to serve a public good. We are not making a profit and we put everything we have into this. If anyone in my network can spare any of the following, it would massively accelerate what we can build:
+**2) Local Chicago businesses — partner on our points system.** The GCC app lets anyone, anywhere, map and verify trash hotspots in their own neighborhood. Users earn points for it. We want to back those points with **real rewards from real local businesses**: sports/concert tickets, gift cards, restaurant credits, in-store discounts. If your brand wants documented community impact, photographable proof, and an audience that literally lives where you sell — email **hello@globalcommunitycleaners.org** with the subject line **"Partner on points"**.
+
+**3) Help on the technical side.** I built GCC to serve a public good. We are not making a profit and we put everything we have into this. If anyone in my network can spare any of the following, it would massively accelerate what we can build:
 
   ▸ **An Android phone or tablet** — we currently don't have an Android device, which is blocking us from properly developing, testing, and shipping the Android version of the GCC app.
   ▸ **A laptop** — for the engineering team to do the Android dev work, plus general field operations.
