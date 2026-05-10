@@ -96,10 +96,10 @@ The heatmap is a user-facing feature bump. Update both:
 ```bash
 # In Xcode: iosApp target → General tab
 #   Version:     1.0.6     (marketing-visible — the one in App Store)
-#   Build:       81        (auto-increments, used by TestFlight)
+#   Build:       85        (auto-increments, used by TestFlight)
 ```
 
-Or edit directly: `iosApp/iosApp/Info.plist` (`CFBundleShortVersionString` = 1.0.6, `CFBundleVersion` = 84).
+Or edit directly: `iosApp/iosApp/Info.plist` (`CFBundleShortVersionString` = 1.0.6, `CFBundleVersion` = 85).
 
 ### 2. App Store Connect release notes
 

@@ -46,12 +46,13 @@ platform :ios do
     release_config.build_settings.delete("PROVISIONING_PROFILE_SPECIFIER")
     project.save
 
-    # Build the Kotlin framework first (release config for device)
-    sh("cd ../.. && ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks")
+    # Build the Kotlin framework first (release config for device).
+    # The archive script copies this prebuilt framework into Xcode's search path
+    # so the archive step does not have to link Kotlin/Native again.
+    sh("cd ../.. && ./gradlew :composeApp:linkReleaseFrameworkIosArm64")
 
     signing_args = [
       "DEVELOPMENT_TEAM=7BBNW25LZM",
-      'OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/login.keychain-db"',
     ].join(" ")
 
     # Archive with distribution signing while leaving dependency targets on
@@ -93,7 +94,7 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "84"
+    build = options[:build] || "85"
 
     upload_to_testflight(
       api_key: api_key,
@@ -122,7 +123,7 @@ platform :ios do
     deliver(
       api_key: api_key,
       app_version: "1.0.6",
-      build_number: "84",
+      build_number: "85",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,
