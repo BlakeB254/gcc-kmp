@@ -67,6 +67,7 @@ interface BaseMapProps {
   }
   interactiveLayerIds?: string[]
   onClick?: (e: any) => void
+  onMove?: (e: any) => void
   onMouseEnter?: (e: any) => void
   onMouseLeave?: (e: any) => void
   cursor?: string
@@ -88,6 +89,7 @@ export function BaseMap({
   },
   interactiveLayerIds,
   onClick,
+  onMove,
   onMouseEnter,
   onMouseLeave,
   cursor,
@@ -133,6 +135,7 @@ export function BaseMap({
           mapStyle={MAP_STYLE_URL}
           interactiveLayerIds={interactiveLayerIds}
           onClick={onClick}
+          onMove={onMove}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           cursor={cursor}

@@ -39,6 +39,8 @@ interface SpotReport {
   createdAt?: string
   tags?: string[]
   needsVerification?: boolean
+  bountyId?: string | number | null
+  observerRewardPoints?: number
 }
 
 interface BountyMapProps {

@@ -66,7 +66,22 @@ export default function BountiesPage() {
       if (bountiesResult.status === 'fulfilled' && bountiesResult.value) {
         const data = bountiesResult.value
         const apiBounties = data.bounties || data.data || []
-        setBounties(apiBounties)
+        setBounties(apiBounties
+          .map((b: any) => {
+            const lng = b.coordinates?.[0] ?? b.locationLng ?? b.lng
+            const lat = b.coordinates?.[1] ?? b.locationLat ?? b.lat
+            if (!Number.isFinite(Number(lng)) || !Number.isFinite(Number(lat))) return null
+            return {
+              id: String(b.id),
+              title: b.title || 'Cleanup bounty',
+              description: b.description || 'Community cleanup opportunity',
+              amountCents: b.amountCents ?? b.amount ?? 0,
+              status: b.status || 'open',
+              pledgeCount: b.pledgeCount ?? 0,
+              coordinates: [Number(lng), Number(lat)] as [number, number],
+            }
+          })
+          .filter(Boolean) as Bounty[])
       }
 
       // Process spots — merge map markers with full report data for descriptions/photos
@@ -86,6 +101,8 @@ export default function BountiesPage() {
               status: full?.status || undefined,
               reporterName: full?.reporterName || undefined,
               createdAt: full?.createdAt || undefined,
+              bountyId: full?.bountyId ?? null,
+              observerRewardPoints: full?.observerRewardPoints ?? 0,
               tags: full?.tags || s.tags || [],
               needsVerification: full?.needsVerification ?? false,
               nextVerificationDue: full?.nextVerificationDue || null,

@@ -135,9 +135,24 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
             val rectHeight = (s.affectedArea as? AffectedArea.Rectangle)?.heightMeters ?: 0.0
             val rectRotation = (s.affectedArea as? AffectedArea.Rectangle)?.rotationDeg ?: 0.0
             val tagsStr = s.tags.joinToString(",") { "\"${it.name.lowercase()}\"" }
-            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+            val heatWeight = spotHeatWeight(s)
+            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"heatWeight":$heatWeight,"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
         }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+private fun spotHeatWeight(spot: CommunityReport): Double {
+    val statusWeight = when (spot.status) {
+        CommunityReportStatus.VERIFIED -> 1.45
+        CommunityReportStatus.ACKNOWLEDGED -> 1.25
+        CommunityReportStatus.PENDING -> 1.0
+        else -> 0.8
+    }
+    val bountyBoost = if (spot.bountyId != null) 0.4 else 0.0
+    val verificationBoost = if (spot.needsVerification) 0.25 else 0.0
+    val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 100.0
+    val radiusBoost = ((spot.affectedRadiusMeters - 20.0) / 180.0).coerceIn(0.0, 0.35)
+    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.65, 2.4)
 }
 
 /** Spots that have progressed into a bounty, rendered as a distinct halo. */

@@ -432,24 +432,34 @@ internal fun DrawScope.drawSpotMarkers(
     if (spots.isEmpty()) return
 
     val filteredSpots = spots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
+    if (filteredSpots.isNotEmpty() && effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
+        val cleanT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
+            (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
+        val cleanOpacity = (0.18f * (1f - cleanT)).coerceAtLeast(0f)
+        drawRect(color = MapStyles.CLEAN_BASE_COLOR.copy(alpha = cleanOpacity))
+    }
 
     for (spot in filteredSpots) {
         val pos = latLngToPixel(spot.coordinates.lat, spot.coordinates.lng, centerLat, centerLng, zoom, w, h)
         // Skip if off screen
         if (pos.x < -50f || pos.x > w + 50f || pos.y < -50f || pos.y > h + 50f) continue
 
-        if (effectiveZoom < MapStyles.SPOT_HEATMAP_MAX_ZOOM) {
-            // Far zoom: large translucent orange circles (heatmap wash)
-            val t = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
-                (MapStyles.SPOT_HEATMAP_MAX_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
-            val radius = MapStyles.SPOT_HEATMAP_RADIUS_FAR + (MapStyles.SPOT_HEATMAP_RADIUS_CLOSE - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * t
-            val opacity = MapStyles.SPOT_HEATMAP_OPACITY_FAR + (MapStyles.SPOT_HEATMAP_OPACITY_CLOSE - MapStyles.SPOT_HEATMAP_OPACITY_FAR) * t
+        if (effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
+            val growthT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) / 5.0).toFloat().coerceIn(0f, 1f)
+            val fadeT = ((effectiveZoom - 13.0) / (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - 13.0)).toFloat().coerceIn(0f, 1f)
+            val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
+                (MapStyles.SPOT_HEATMAP_RADIUS_MID - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * growthT
+            val radius = baseRadius * (1f - fadeT)
+            val weight = canvasSpotHeatWeight(spot)
+            val opacity = (0.3f + 0.16f * weight) * (1f - fadeT)
             if (opacity > 0f) {
-                drawCircle(
-                    color = MapStyles.SPOT_MARKER_COLOR.copy(alpha = opacity),
-                    radius = radius,
-                    center = pos,
-                )
+                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.45f), radius = radius * 1.35f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_LOW.copy(alpha = opacity * 0.5f), radius = radius * 0.95f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = opacity * 0.55f), radius = radius * 0.55f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_HIGH.copy(alpha = opacity * 0.5f), radius = radius * 0.32f, center = pos)
+                if (weight > 1.55f) {
+                    drawCircle(color = MapStyles.SPOT_HEAT_PEAK.copy(alpha = opacity * 0.42f), radius = radius * 0.13f, center = pos)
+                }
             }
         }
 
@@ -470,6 +480,20 @@ internal fun DrawScope.drawSpotMarkers(
             )
         }
     }
+}
+
+private fun canvasSpotHeatWeight(spot: com.gcc.shared.model.CommunityReport): Float {
+    val statusWeight = when (spot.status) {
+        com.gcc.shared.model.CommunityReportStatus.VERIFIED -> 1.45f
+        com.gcc.shared.model.CommunityReportStatus.ACKNOWLEDGED -> 1.25f
+        com.gcc.shared.model.CommunityReportStatus.PENDING -> 1f
+        else -> 0.8f
+    }
+    val bountyBoost = if (spot.bountyId != null) 0.4f else 0f
+    val verificationBoost = if (spot.needsVerification) 0.25f else 0f
+    val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 100f
+    val radiusBoost = (((spot.affectedRadiusMeters - 20.0) / 180.0).coerceIn(0.0, 0.35)).toFloat()
+    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.65f, 2.4f)
 }
 
 /** Draw a green circle node at the given canvas position for checkpoints with photos. */
@@ -553,4 +577,3 @@ internal fun DrawScope.drawContextPin(position: Offset) {
         center = Offset(position.x, position.y - pinHeight * 0.78f),
     )
 }
-

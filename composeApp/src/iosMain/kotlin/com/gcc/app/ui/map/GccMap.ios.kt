@@ -770,6 +770,7 @@ actual fun GccMap(
 
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
+            val spotHeatWeightExpr = feature["heatWeight"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.FloatValue>
 
             // ── Clean zone: subtle green tint across entire map ──
             // Covers the full visible area so ALL clean zones read as green.
@@ -786,17 +787,18 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.22f),
-                    10 to const(0.24f),
-                    12 to const(0.2f),
-                    13 to const(0.16f),
+                    7 to const(0.16f),
+                    8 to const(0.24f),
+                    10 to const(0.3f),
+                    12 to const(0.27f),
+                    13 to const(0.2f),
                     14 to const(0.08f),
                     14.5 to const(0f),
                 ),
             )
 
             // Heatmap: visible from widest zoom (z8) through z15.
-            // Green fringe -> yellow caution -> orange/red hotspots.
+            // Broad green fringe -> yellow/orange activity -> red/white hot cores.
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
@@ -806,41 +808,48 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),
-                    0.015 to const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.65f)),
-                    0.08 to const(MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = 0.86f)),
-                    0.22 to const(MapStyles.SPOT_HEAT_HIGH.copy(alpha = 0.92f)),
-                    0.52 to const(Color(0xFFEF4444)),
-                    1.0 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    0.02 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.55f)),
+                    0.12 to const(MapStyles.SPOT_HEAT_EDGE),
+                    0.26 to const(MapStyles.SPOT_HEAT_LOW),
+                    0.45 to const(MapStyles.SPOT_HEAT_MEDIUM),
+                    0.62 to const(MapStyles.SPOT_HEAT_HIGH),
+                    0.8 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    0.94 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
+                    1.0 to const(MapStyles.SPOT_HEAT_PEAK),
                 ),
+                weight = spotHeatWeightExpr,
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.012f),
-                    10 to const(0.04f),
-                    12 to const(0.09f),
-                    13 to const(0.13f),
-                    14 to const(0.08f),
-                    15 to const(0.03f),
+                    8 to const(0.08f),
+                    10 to const(0.13f),
+                    12 to const(0.21f),
+                    13 to const(0.26f),
+                    14 to const(0.16f),
+                    14.5 to const(0.05f),
+                    15 to const(0.02f),
                 ),
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(4.dp),
-                    10 to const(7.dp),
-                    12 to const(11.dp),
-                    13 to const(15.dp),
-                    14 to const(9.dp),
-                    14.5 to const(5.dp),
-                    15 to const(3.dp),
+                    8 to const(18.dp),
+                    10 to const(28.dp),
+                    12 to const(42.dp),
+                    13 to const(52.dp),
+                    13.75 to const(34.dp),
+                    14.25 to const(18.dp),
+                    14.5 to const(0.dp),
+                    15 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.48f),
-                    10 to const(0.58f),
-                    12 to const(0.68f),
-                    13 to const(0.72f),
-                    14 to const(0.34f),
+                    8 to const(0.74f),
+                    10 to const(0.82f),
+                    12 to const(0.86f),
+                    13 to const(0.82f),
+                    13.75 to const(0.54f),
+                    14.25 to const(0.22f),
                     14.5 to const(0f),
                 ),
             )

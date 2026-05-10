@@ -124,26 +124,30 @@ object MapStyles {
     const val LAYER_SPOT_MARKER_HALOS = "spot-marker-halos"
     const val LAYER_BOUNTIED_SPOT_HALOS = "bountied-spot-halos"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
-    val SPOT_HEAT_LOW = Color(0xFF86EFAC)
+    val SPOT_HEAT_EDGE = Color(0xFF2EEA52)
+    val SPOT_HEAT_LOW = Color(0xFF7CFC2F)
     val SPOT_HEAT_MEDIUM = Color(0xFFFDE047)
     val SPOT_HEAT_HIGH = Color(0xFFF97316)
     val SPOT_HEAT_EXTREME = Color(0xFFDC2626)
+    val SPOT_HEAT_NEAR_PEAK = Color(0xFFFFF7AD)
+    val SPOT_HEAT_PEAK = Color.White
     val CLEAN_BASE_COLOR = Color(0xFF22C55E)
 
-    // Spot heatmap layer (visible only when zoomed into service area)
+    // Spot heatmap layer: broad green overview field, then yellow/orange/red/white density.
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val SPOT_HEATMAP_RADIUS_FAR = 4.0f     // tight at wide zoom
-    const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 6.0f   // shrinks before individual dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.28f
+    const val SPOT_HEATMAP_RADIUS_FAR = 18.0f
+    const val SPOT_HEATMAP_RADIUS_MID = 52.0f
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 0.0f
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.74f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
-    // Heatmap color: green fringe -> yellow caution -> orange/red hotspot.
+    // Heatmap fallback color for non-native renderers.
     val SPOT_HEATMAP_COLOR = SPOT_HEAT_EXTREME
 
     // Zoom thresholds — heatmap and dots crossfade at neighborhood/street zoom.
     const val SPOT_HEATMAP_MIN_ZOOM = 8.0
     const val SPOT_HEATMAP_MAX_ZOOM = 15.0
+    const val SPOT_HEATMAP_FADE_OUT_ZOOM = 14.5
     const val SPOT_DOTS_MIN_ZOOM = 14.0
 }
 

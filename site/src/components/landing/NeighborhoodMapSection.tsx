@@ -6,7 +6,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM, SPOT_CLEAN_BASE_PAINT, SPOT_HEATMAP_PAINT, getSpotHeatWeight } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 import type { FallbackGeoJSONLayer } from '@/components/map/BaseMap'
 
@@ -337,6 +337,13 @@ export function NeighborhoodMapSection() {
                   radiusMeters: s.radiusMeters || s.affectedRadiusMeters || 15,
                   needsVerification: s.needsVerification ? 1 : 0,
                   status,
+                  heatWeight: getSpotHeatWeight({
+                    status,
+                    bountyId: fullReport?.bountyId ?? null,
+                    observerRewardPoints: fullReport?.observerRewardPoints ?? 0,
+                    radiusMeters: s.radiusMeters || s.affectedRadiusMeters || fullReport?.affectedRadiusMeters || 15,
+                    needsVerification: s.needsVerification ? 1 : 0,
+                  }),
                 },
                 geometry: { type: 'Point' as const, coordinates: [lng, lat] },
               }
@@ -731,17 +738,29 @@ export function NeighborhoodMapSection() {
                 <Layer
                   id="homepage-bounty-dots"
                   type="circle"
+                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': BOUNTY_COLORS.OPEN,
-                    'circle-radius': 7,
+                    'circle-radius': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 5,
+                      15, 7,
+                      17, 9,
+                    ],
                     'circle-stroke-color': '#ffffff',
                     'circle-stroke-width': 2,
-                    'circle-opacity': 0.9,
+                    'circle-opacity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 0,
+                      SPOT_ZOOM.HEATMAP_FADE_OUT, 0.8,
+                      15, 0.9,
+                    ],
                   }}
                 />
                 <Layer
                   id="homepage-bounty-labels"
                   type="symbol"
+                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   layout={{
                     'text-field': ['get', 'amount'],
                     'text-size': 11,
@@ -753,58 +772,57 @@ export function NeighborhoodMapSection() {
                     'text-color': BOUNTY_COLORS.OPEN,
                     'text-halo-color': '#ffffff',
                     'text-halo-width': 1.5,
+                    'text-opacity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 0,
+                      SPOT_ZOOM.HEATMAP_FADE_OUT, 1,
+                    ],
                   }}
                 />
               </Source>
 
               {/* Spot reports — heatmap (zoomed out) + dots (zoomed in) */}
+              {spotFeatures.length > 0 && (
+                <Source
+                  id="homepage-clean-zone-base"
+                  type="geojson"
+                  data={{
+                    type: 'FeatureCollection',
+                    features: [{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'Polygon',
+                        coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                      },
+                    }],
+                  }}
+                >
+                  <Layer
+                    id="homepage-clean-zone-fill"
+                    type="fill"
+                    beforeId="homepage-route-glow"
+                    paint={SPOT_CLEAN_BASE_PAINT}
+                  />
+                </Source>
+              )}
+
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
                 {/* Heatmap — density visualization at overview zoom.
-                    Matches CombinedMap tuning: green→yellow→orange→red palette,
+                    Matches CombinedMap tuning: green→yellow→orange→red/white palette,
                     fades out by z14.5 to crossfade with individual dots. */}
                 <Layer
                   id="homepage-spot-heatmap"
                   type="heatmap"
+                  minzoom={SPOT_ZOOM.HEATMAP_MIN}
                   maxzoom={SPOT_ZOOM.HEATMAP_MAX}
-                  paint={{
-                    'heatmap-weight': 1,
-                    'heatmap-intensity': [
-                      'interpolate', ['linear'], ['zoom'],
-                      8, 0.006, 9, 0.012, 10, 0.03, 11, 0.07,
-                      12, 0.1, 13, 0.12, 13.5, 0.1,
-                      14, 0.07, SPOT_ZOOM.HEATMAP_MAX, 0.04,
-                    ],
-                    'heatmap-color': [
-                      'interpolate', ['linear'], ['heatmap-density'],
-                      0,    'rgba(0,0,0,0)',
-                      0.01, SPOT_COLORS.HEATMAP_EDGE,
-                      0.04, '#86EFAC',
-                      0.08, SPOT_COLORS.HEATMAP_LOW,
-                      0.12, '#FDE047',
-                      0.18, SPOT_COLORS.HEATMAP_MED,
-                      0.25, '#F97316',
-                      0.35, SPOT_COLORS.HEATMAP_HIGH,
-                      0.6,  '#DC2626',
-                      1.0,  SPOT_COLORS.HEATMAP_PEAK,
-                    ],
-                    'heatmap-radius': [
-                      'interpolate', ['linear'], ['zoom'],
-                      8, 2, 9, 3, 10, 5, 11, 7,
-                      12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5,
-                      SPOT_ZOOM.HEATMAP_MAX, 3,
-                    ],
-                    'heatmap-opacity': [
-                      'interpolate', ['linear'], ['zoom'],
-                      8, 0.5, 9, 0.55, 10, 0.6,
-                      11, 0.65, 12, 0.65, 13, 0.6,
-                      13.5, 0.5, 14, 0.35, 14.5, 0,
-                    ],
-                  }}
+                  paint={SPOT_HEATMAP_PAINT}
                 />
-                {/* Individual dots — always visible, color by spot status */}
+                {/* Individual dots — close zoom only, color by spot status */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
+                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -816,17 +834,21 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 2, 10, 3, 12, 4, 14, 5,
+                      SPOT_ZOOM.DOTS_MIN, 4,
+                      14.5, 5,
                       15, 6, 17, 8,
                     ],
                     'circle-stroke-color': '#ffffff',
                     'circle-stroke-width': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 0.5, 12, 1, 15, 1.5,
+                      SPOT_ZOOM.DOTS_MIN, 1,
+                      15, 1.5,
                     ],
                     'circle-opacity': [
                       'interpolate', ['linear'], ['zoom'],
-                      8, 0.7, 12, 0.85, 15, 1,
+                      SPOT_ZOOM.DOTS_MIN, 0,
+                      SPOT_ZOOM.HEATMAP_FADE_OUT, 0.8,
+                      15, 1,
                     ],
                   }}
                 />

@@ -94,7 +94,7 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "85"
+    build = options[:build] || "86"
 
     upload_to_testflight(
       api_key: api_key,
@@ -123,7 +123,7 @@ platform :ios do
     deliver(
       api_key: api_key,
       app_version: "1.0.6",
-      build_number: "85",
+      build_number: "86",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,

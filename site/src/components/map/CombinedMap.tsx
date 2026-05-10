@@ -12,6 +12,9 @@ import {
   SPOT_STATUS_COLORS,
   SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
+  SPOT_CLEAN_BASE_PAINT,
+  SPOT_HEATMAP_PAINT,
+  getSpotHeatWeight,
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
@@ -114,6 +117,14 @@ export function CombinedMap({
   const mapRef = useRef<MapRef | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [popup, setPopup] = useState<PopupTarget | null>(null)
+  const [currentZoom, setCurrentZoom] = useState(ZOOM.NEIGHBORHOOD)
+  const detailZoomOpacity = Math.max(
+    0,
+    Math.min(
+      1,
+      (currentZoom - SPOT_ZOOM.DOTS_MIN) / (SPOT_ZOOM.HEATMAP_FADE_OUT - SPOT_ZOOM.DOTS_MIN)
+    )
+  )
 
   // ----- fit bounds on load -----
   useEffect(() => {
@@ -171,6 +182,8 @@ export function CombinedMap({
           id: spot.id,
           radiusMeters: spot.radiusMeters,
           label: spot.label || '',
+          heatWeight: getSpotHeatWeight(spot),
+          hasBounty: spot.bountyId != null,
           needsVerification: spot.needsVerification ?? false,
           tags: JSON.stringify(spot.tags ?? []),
         },
@@ -482,6 +495,7 @@ export function CombinedMap({
           ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-verification-ring'] : []),
         ]}
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
+        onMove={(event) => setCurrentZoom(event.viewState.zoom)}
         cursor="pointer"
         legend={legendNode}
         popup={popupNode}
@@ -598,15 +612,8 @@ export function CombinedMap({
             <Layer
               id="clean-zone-fill"
               type="fill"
-              paint={{
-                'fill-color': '#16A34A',
-                'fill-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 0.35, 9, 0.38, 10, 0.4,
-                  11, 0.4, 12, 0.35, 13, 0.25,
-                  13.5, 0.18, 14, 0.1, 14.5, 0,
-                ],
-              }}
+              beforeId="combined-route-case-layer"
+              paint={SPOT_CLEAN_BASE_PAINT}
             />
           </Source>
         )}
@@ -619,40 +626,9 @@ export function CombinedMap({
             <Layer
               id="combined-spot-heatmap"
               type="heatmap"
-              maxzoom={15}
-              paint={{
-                'heatmap-weight': 1,
-                'heatmap-intensity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 0.006, 9, 0.012, 10, 0.03,
-                  11, 0.07, 12, 0.1, 13, 0.12,
-                  13.5, 0.1, 14, 0.07, 15, 0.04,
-                ],
-                'heatmap-color': [
-                  'interpolate', ['linear'], ['heatmap-density'],
-                  0,    'rgba(0,0,0,0)',
-                  0.01, SPOT_COLORS.HEATMAP_EDGE,
-                  0.04, '#86EFAC',
-                  0.08, SPOT_COLORS.HEATMAP_LOW,
-                  0.12, '#FDE047',
-                  0.18, SPOT_COLORS.HEATMAP_MED,
-                  0.25, '#F97316',
-                  0.35, SPOT_COLORS.HEATMAP_HIGH,
-                  0.6,  '#DC2626',
-                  1.0,  SPOT_COLORS.HEATMAP_PEAK,
-                ],
-                'heatmap-radius': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 2, 9, 3, 10, 5, 11, 7,
-                  12, 9, 13, 12, 13.5, 9, 14, 7, 14.5, 5, 15, 3,
-                ],
-                'heatmap-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  8, 0.5, 9, 0.55, 10, 0.6,
-                  11, 0.65, 12, 0.65, 13, 0.6,
-                  13.5, 0.5, 14, 0.35, 14.5, 0,
-                ],
-              }}
+              minzoom={SPOT_ZOOM.HEATMAP_MIN}
+              maxzoom={SPOT_ZOOM.HEATMAP_MAX}
+              paint={SPOT_HEATMAP_PAINT}
             />
 
             {/* Individual spot dots — fade in as heatmap fades out (z14-14.5 crossfade) */}
@@ -698,7 +674,7 @@ export function CombinedMap({
                 'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
                   SPOT_ZOOM.DOTS_MIN, 0,
-                  14, 1,
+                  SPOT_ZOOM.HEATMAP_FADE_OUT, 1,
                 ],
               }}
             />
@@ -709,7 +685,7 @@ export function CombinedMap({
         {/* BOUNTY MARKERS                                              */}
         {/* ============================================================ */}
 
-        {bounties.map((bounty) => (
+        {detailZoomOpacity > 0.01 && bounties.map((bounty) => (
           <Marker
             key={`bounty-${bounty.id}`}
             longitude={bounty.coordinates[0]}
@@ -725,6 +701,7 @@ export function CombinedMap({
               style={{
                 width: 36,
                 height: 36,
+                opacity: detailZoomOpacity,
                 backgroundColor: BOUNTY_STATUS_COLOR[bounty.status],
                 animation:
                   bounty.status === 'open'

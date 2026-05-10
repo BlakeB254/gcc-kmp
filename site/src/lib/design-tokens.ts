@@ -63,21 +63,115 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap: light green (clean) → yellow (caution) → red (dirty)
-  HEATMAP_EDGE: '#BBF7D0',    // very light green (clean fringe)
-  HEATMAP_LOW: '#4ADE80',     // medium green (some reports)
-  CLEAN_ZONE: '#DCFCE7',      // green-100 (clean baseline tint)
-  HEATMAP_MED: '#EAB308',     // yellow (moderate density)
-  HEATMAP_HIGH: '#EF4444',    // red (high density)
-  HEATMAP_PEAK: '#B91C1C',    // deep red (hotspot cores)
+  // Heatmap: broad green field -> yellow/orange activity -> red/white hot cores.
+  HEATMAP_EDGE: '#2EEA52',
+  HEATMAP_LOW: '#7CFC2F',
+  CLEAN_ZONE: '#22C55E',
+  HEATMAP_MED: '#FDE047',
+  HEATMAP_HIGH: '#F97316',
+  HEATMAP_EXTREME: '#DC2626',
+  HEATMAP_PEAK: '#FFFFFF',
 } as const
 
-// Zoom thresholds — 3 layers: far dots (z8-11.5), heatmap (z11-15), close dots (z14+)
+// Zoom thresholds — heatmap owns overview zooms; close spot/bounty detail takes over at z14+.
 export const SPOT_ZOOM = {
-  HEATMAP_MIN: 11,     // heatmap starts (far dots hand off)
-  HEATMAP_MAX: 15,     // heatmap fades out
+  HEATMAP_MIN: 8,      // broad overview layer starts
+  HEATMAP_MAX: 15,     // layer is gone before street detail dominates
+  HEATMAP_FADE_OUT: 14.5,
   DOTS_MIN: 14,        // close-zoom dots appear (crossfade with heatmap)
 } as const
+
+export type SpotHeatWeightInput = {
+  status?: string | null
+  bountyId?: string | number | null
+  amountCents?: number | null
+  observerRewardPoints?: number | null
+  radiusMeters?: number | null
+  affectedRadiusMeters?: number | null
+  needsVerification?: boolean | number | null
+}
+
+export function getSpotHeatWeight(spot: SpotHeatWeightInput): number {
+  const statusWeight =
+    spot.status === 'verified' ? 1.45 :
+    spot.status === 'acknowledged' ? 1.25 :
+    spot.status === 'pending' || !spot.status ? 1.0 :
+    0.8
+
+  const bountyBoost = spot.bountyId != null || (spot.amountCents ?? 0) > 0 ? 0.4 : 0
+  const verificationBoost = spot.needsVerification === true || spot.needsVerification === 1 ? 0.25 : 0
+  const rewardBoost = Math.min(Math.max(spot.observerRewardPoints ?? 0, 0), 25) / 100
+  const radiusMeters = spot.radiusMeters ?? spot.affectedRadiusMeters ?? 15
+  const radiusBoost = Math.min(Math.max((radiusMeters - 20) / 180, 0), 0.35)
+
+  return Math.min(Math.max(statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost, 0.65), 2.4)
+}
+
+export const SPOT_CLEAN_BASE_PAINT: any = {
+  'fill-color': SPOT_COLORS.CLEAN_ZONE,
+  'fill-opacity': [
+    'interpolate', ['linear'], ['zoom'],
+    7, 0.16,
+    8, 0.24,
+    10, 0.3,
+    12, 0.27,
+    13, 0.2,
+    14, 0.08,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
+  ],
+}
+
+export const SPOT_HEATMAP_PAINT: any = {
+  'heatmap-weight': [
+    'interpolate', ['linear'], ['to-number', ['coalesce', ['get', 'heatWeight'], 1]],
+    0, 0.6,
+    1, 1,
+    2.4, 2.4,
+  ],
+  'heatmap-intensity': [
+    'interpolate', ['linear'], ['zoom'],
+    8, 0.08,
+    10, 0.13,
+    12, 0.21,
+    13, 0.26,
+    14, 0.16,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0.05,
+    SPOT_ZOOM.HEATMAP_MAX, 0.02,
+  ],
+  'heatmap-color': [
+    'interpolate', ['linear'], ['heatmap-density'],
+    0, 'rgba(0,0,0,0)',
+    0.02, 'rgba(46,234,82,0.55)',
+    0.12, SPOT_COLORS.HEATMAP_EDGE,
+    0.26, SPOT_COLORS.HEATMAP_LOW,
+    0.45, SPOT_COLORS.HEATMAP_MED,
+    0.62, SPOT_COLORS.HEATMAP_HIGH,
+    0.8, SPOT_COLORS.HEATMAP_EXTREME,
+    0.94, '#FFF7AD',
+    1.0, SPOT_COLORS.HEATMAP_PEAK,
+  ],
+  'heatmap-radius': [
+    'interpolate', ['linear'], ['zoom'],
+    8, 18,
+    10, 28,
+    12, 42,
+    13, 52,
+    13.75, 34,
+    14.25, 18,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
+    SPOT_ZOOM.HEATMAP_MAX, 0,
+  ],
+  'heatmap-opacity': [
+    'interpolate', ['linear'], ['zoom'],
+    8, 0.74,
+    10, 0.82,
+    12, 0.86,
+    13, 0.82,
+    13.75, 0.54,
+    14.25, 0.22,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
+  ],
+}
 
 export const COMMUNITY_AREA_COLORS = {
   FILL: 'rgba(239, 68, 68, 0.08)',
