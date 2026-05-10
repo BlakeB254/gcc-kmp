@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 
 data class RouteDetailUiState(
     val route: Route? = null,
+    val worker: Worker? = null,
     val isClaiming: Boolean = false,
     val claimError: String? = null,
     val claimedJobId: Int? = null,
@@ -33,8 +34,14 @@ class RouteDetailViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val route = apiClient.getRoute(routeId)
+                val worker = try {
+                    apiClient.getWorkerProfile()
+                } catch (_: Exception) {
+                    null
+                }
                 _uiState.value = _uiState.value.copy(
                     route = route,
+                    worker = worker,
                     isLoading = false,
                 )
                 // Fetch area cleanliness score in background

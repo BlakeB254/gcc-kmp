@@ -7,6 +7,7 @@ import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.createSecureStorage
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
+import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BiometricAuthViewModel
@@ -31,6 +32,7 @@ import com.gcc.app.viewmodel.ImpactViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
 import com.gcc.app.viewmodel.AffectedBlocksViewModel
+import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
@@ -56,6 +58,7 @@ val appModule = module {
     single { PushNotificationManager() }
     single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
+    single { detectDeviceCapabilities() }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(
@@ -88,6 +91,7 @@ val appModule = module {
     singleOf(::SponsorWallViewModel)
     single { AffectedAreasRepository(get()) }
     singleOf(::AffectedBlocksViewModel)
+    singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get()) }
     factory { RouteTestViewModel(get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }

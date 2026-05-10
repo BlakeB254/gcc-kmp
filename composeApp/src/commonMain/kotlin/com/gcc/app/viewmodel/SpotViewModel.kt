@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.sqrt
 
 enum class SpotPhase { CAMERA, LOCATION, DESCRIPTION, SUBMITTING, RESULT }
 
@@ -35,6 +37,7 @@ data class SpotUiState(
     val spotLat: Double? = null,
     val spotLng: Double? = null,
     val affectedRadiusMeters: Double = 15.0,
+    val hasAdjustedAffectedRadius: Boolean = false,
     val areaMode: AreaMode = AreaMode.CIRCLE,
     val rectWidth: Double = 20.0,
     val rectHeight: Double = 10.0,
@@ -44,6 +47,9 @@ data class SpotUiState(
     val isSubmitting: Boolean = false,
     val submittedReport: CommunityReport? = null,
     val matchingBounties: List<Bounty> = emptyList(),
+    val createdBounty: Bounty? = null,
+    val isCreatingBounty: Boolean = false,
+    val bountyCreateError: String? = null,
     val error: String? = null,
     val phase: SpotPhase = SpotPhase.CAMERA,
     // On-device AI analysis
@@ -136,7 +142,10 @@ class SpotViewModel(
     }
 
     fun setRadius(meters: Double) {
-        _uiState.value = _uiState.value.copy(affectedRadiusMeters = meters)
+        _uiState.value = _uiState.value.copy(
+            affectedRadiusMeters = meters,
+            hasAdjustedAffectedRadius = true,
+        )
     }
 
     fun setSpotLocation(lat: Double, lng: Double) {
@@ -208,21 +217,29 @@ class SpotViewModel(
                 val lat = state.spotLat ?: state.currentLat
                 val lng = state.spotLng ?: state.currentLng
 
-                // Query API for spots within 50m
-                val nearbySpots = apiClient.getSpots(lat = lat, lng = lng, radiusMeters = 50.0)
+                // Match the server's duplicate radius (~15m). The earlier
+                // 50m radius routinely crossed streets and alleys and
+                // blocked legitimate separate spots — see server-side
+                // /api/spots route for the same constant.
+                val nearbySpots = apiClient.getSpots(lat = lat, lng = lng, radiusMeters = 15.0)
                 if (nearbySpots.isEmpty()) return@launch
 
-                // If we have photos and the analyzer supports comparison, check visual similarity
-                val firstPhoto = state.capturedPhotos.firstOrNull()
                 var bestMatch: DuplicateMatch? = null
 
                 for (spot in nearbySpots) {
                     val distance = GeofenceVerification.distanceMeters(lat, lng, spot.coordinates.lat, spot.coordinates.lng)
-                    // GPS proximity alone is a strong signal at <50m
-                    var similarity = if (distance < 20.0) 0.8f else 0.6f
+                    // Only flag at <8m as visually likely-duplicate (one
+                    // dump pile rather than two). Between 8m and the
+                    // server's 15m hard limit the server will return a
+                    // 409 if it really is a true overlap, but the client
+                    // shouldn't volunteer a confidence-flag confirmation.
+                    val similarity = when {
+                        distance < 4.0 -> 0.9f
+                        distance < 8.0 -> 0.75f
+                        else -> 0f
+                    }
 
-                    // TODO: download spot photo and compare visually when compareImages is available
-                    if (similarity > 0.7f) {
+                    if (similarity >= 0.75f) {
                         if (bestMatch == null || similarity > bestMatch.visualSimilarity) {
                             bestMatch = DuplicateMatch(
                                 existingSpot = spot,
@@ -267,9 +284,11 @@ class SpotViewModel(
                 // Collect depth analysis from the first photo that has it
                 val depthAnalysis = state.capturedPhotos.firstNotNullOfOrNull { it.depthAnalysis }
 
+                val effectiveRadiusMeters = state.effectiveAffectedRadiusMeters()
+
                 // Build affected area from mode
                 val affectedArea: AffectedArea? = when (state.areaMode) {
-                    AreaMode.CIRCLE -> AffectedArea.Circle(radiusMeters = state.affectedRadiusMeters)
+                    AreaMode.CIRCLE -> AffectedArea.Circle(radiusMeters = effectiveRadiusMeters)
                     AreaMode.RECTANGLE -> AffectedArea.Rectangle(
                         widthMeters = state.rectWidth,
                         heightMeters = state.rectHeight,
@@ -289,7 +308,7 @@ class SpotViewModel(
                     lng = submitLng,
                     description = state.description.ifBlank { null },
                     mediaUrls = uploadedUrls.ifEmpty { null },
-                    affectedRadiusMeters = state.affectedRadiusMeters,
+                    affectedRadiusMeters = effectiveRadiusMeters,
                     affectedArea = affectedArea,
                     tags = state.selectedTags,
                     reporterName = if (tokenManager.isAdmin()) "GCC" else null,
@@ -306,7 +325,7 @@ class SpotViewModel(
                     _uiState.value = _uiState.value.copy(
                         isSubmitting = false,
                         phase = SpotPhase.DESCRIPTION,
-                        error = "A spot report already exists within 50m of this location",
+                        error = "A spot report already exists within 15m of this location",
                     )
                     return@launch
                 }
@@ -315,10 +334,18 @@ class SpotViewModel(
                     throw Exception("Server error ${response.status.value}: $errorBody")
                 }
                 val spotResponse = response.body<ApiResponse<SpotResponse>>()
+                // Server credits the report row separately from the points
+                // ledger; copy pointsAwarded onto the report so the success
+                // card can render the "+N pts" reward without an extra fetch.
+                val rewardedReport = spotResponse.data.report.copy(
+                    observerRewardPoints = spotResponse.data.pointsAwarded
+                        .takeIf { it > 0 }
+                        ?: spotResponse.data.report.observerRewardPoints,
+                )
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
                     phase = SpotPhase.RESULT,
-                    submittedReport = spotResponse.data.report,
+                    submittedReport = rewardedReport,
                     matchingBounties = spotResponse.data.matchingBounties,
                 )
             } catch (e: Exception) {
@@ -348,7 +375,67 @@ class SpotViewModel(
         }
     }
 
+    fun createBountyForSubmittedSpot(amountDollars: Int) {
+        scope.launch {
+            val report = _uiState.value.submittedReport ?: return@launch
+            val amountCents = amountDollars * 100
+            if (amountCents < 1000) {
+                _uiState.value = _uiState.value.copy(bountyCreateError = "Minimum bounty amount is $10")
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(
+                isCreatingBounty = true,
+                bountyCreateError = null,
+            )
+
+            try {
+                val bounty = apiClient.createBounty(
+                    CreateBountyRequest(
+                        title = "Cleanup bounty for report #${report.id}",
+                        description = report.description,
+                        amount = amountCents,
+                        locationLat = report.coordinates.lat,
+                        locationLng = report.coordinates.lng,
+                        radiusMeters = report.affectedRadiusMeters,
+                        mediaUrls = report.mediaUrls,
+                        triggerReportId = report.id,
+                        visibility = BountyVisibility.PUBLIC,
+                        isAnonymous = true,
+                    ),
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    createdBounty = bounty,
+                    isCreatingBounty = false,
+                    bountyCreateError = null,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isCreatingBounty = false,
+                    bountyCreateError = e.message ?: "Failed to place bounty",
+                )
+            }
+        }
+    }
+
     fun reset() {
         _uiState.value = SpotUiState()
     }
+
+    private fun SpotUiState.effectiveAffectedRadiusMeters(): Double {
+        if (hasAdjustedAffectedRadius) return affectedRadiusMeters
+
+        val estimatedAreaSqFt = capturedPhotos
+            .mapNotNull { it.depthAnalysis?.estimatedAreaSqFt }
+            .filter { it > 0.0 }
+            .maxOrNull()
+            ?: return affectedRadiusMeters
+
+        val estimatedAreaSqMeters = estimatedAreaSqFt * SQ_FT_TO_SQ_METERS
+        return sqrt(estimatedAreaSqMeters / PI) + SCAN_RADIUS_BUFFER_METERS
+    }
 }
+
+private const val SQ_FT_TO_SQ_METERS = 0.09290304
+private const val SCAN_RADIUS_BUFFER_METERS = 1.0

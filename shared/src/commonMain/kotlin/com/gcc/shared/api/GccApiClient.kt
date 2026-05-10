@@ -226,7 +226,7 @@ class GccApiClient(
     suspend fun getBounty(bountyId: Int): Bounty =
         get("/api/bounties/$bountyId")
 
-    suspend fun createBounty(request: Any): Bounty =
+    suspend fun createBounty(request: CreateBountyRequest): Bounty =
         postJson("/api/bounties", request)
 
     suspend fun acceptBounty(bountyId: Int): Bounty =
@@ -298,11 +298,12 @@ class GccApiClient(
         identityToken: String,
         fullName: String?,
         email: String?,
+        nonce: String?,
     ): AuthResponse {
         val siteUrl = "https://www.globalcommunitycleaners.org"
         val response = siteClient.post("$siteUrl/api/auth/apple") {
             contentType(io.ktor.http.ContentType.Application.Json)
-            setBody(AppleAuthRequest(identityToken = identityToken, fullName = fullName, email = email))
+            setBody(AppleAuthRequest(identityToken = identityToken, fullName = fullName, email = email, nonce = nonce))
         }
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
@@ -323,6 +324,38 @@ class GccApiClient(
         }
         return response.body<ApiResponse<AuthResponse>>().data
     }
+
+    // ── Articles ──────────────────────────────────────────────────────
+
+    /** List published articles (summaries only — no body). */
+    suspend fun getArticles(): List<ArticleSummary> = get("/api/articles")
+
+    /** Fetch a single article including its full markdown body. */
+    suspend fun getArticle(slug: String): Article = get("/api/articles/$slug")
+
+    // ── Admin: points management ──────────────────────────────────────
+
+    /**
+     * Grant or correct community points for a worker. Admin-only.
+     * Caller must already pass `tokenManager.isAdmin()`; the server
+     * re-checks via the JWT role claim and returns 403 otherwise.
+     */
+    suspend fun adminGrantPoints(
+        workerId: Int,
+        amount: Int,
+        reason: String,
+        action: String = "admin_grant",
+    ): AdminGrantPointsResponse = postJson(
+        "/api/admin/workers/$workerId/points",
+        AdminGrantPointsRequest(amount = amount, reason = reason, action = action),
+    )
+
+    /**
+     * Recent points-ledger entries for a worker (most recent first, up
+     * to 50). Surfaced in the admin worker-detail audit panel.
+     */
+    suspend fun getWorkerPointsHistory(workerId: Int): WorkerPointsHistoryResponse =
+        get("/api/admin/workers/$workerId/points")
 
     // ── Public API ────────────────────────────────────────────────────
 

@@ -94,6 +94,7 @@ actual fun GccMap(
     val explorerLabelsJson = remember(bounties) { buildExplorerLabelsGeoJson(bounties) }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
+    val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
     val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
 
     // Area tap state for tooltip overlay
@@ -781,90 +782,117 @@ actual fun GccMap(
             FillLayer(
                 id = "clean-zone-base",
                 source = fullMapGreenSrc,
-                color = const(Color(0xFF16A34A)),  // green-600 — bold, doppler-grade green
+                color = const(MapStyles.CLEAN_BASE_COLOR),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.4f),    // STRONG green at country zoom
-                    9 to const(0.42f),   // state zoom — unmistakably green
-                    10 to const(0.42f),  // explorer — full doppler green
-                    11 to const(0.4f),   // city zoom — bold green, red spots pop hard
-                    12 to const(0.35f),  // service-area — still strong
-                    13 to const(0.28f),  // neighborhood — heatmap detail visible
-                    13.5 to const(0.18f),
-                    14 to const(0.1f),   // thinning as dots take over
-                    14.5 to const(0f),   // gone before street level
+                    8 to const(0.22f),
+                    10 to const(0.24f),
+                    12 to const(0.2f),
+                    13 to const(0.16f),
+                    14 to const(0.08f),
+                    14.5 to const(0f),
                 ),
             )
 
             // Heatmap: visible from widest zoom (z8) through z15.
-            // No far-zoom dots — heatmap covers everything when zoomed out.
-            // Green fringe → yellow → orange → red (only dense clusters).
+            // Green fringe -> yellow caution -> orange/red hotspots.
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                minZoom = 8f,
-                maxZoom = 15f,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = MapStyles.SPOT_HEATMAP_MAX_ZOOM.toFloat(),
                 color = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),   // transparent
-                    0.005 to const(Color(0xFFDCFCE7)), // faintest green
-                    0.02 to const(Color(0xFFBBF7D0)),  // light green
-                    0.04 to const(Color(0xFF86EFAC)),  // medium green
-                    0.07 to const(Color(0xFFFDE047)),  // yellow — VERY early
-                    0.12 to const(Color(0xFFFACC15)),  // golden yellow
-                    0.2 to const(Color(0xFFEAB308)),   // amber
-                    0.3 to const(Color(0xFFF97316)),   // orange
-                    0.45 to const(Color(0xFFF87171)),  // light red
-                    0.65 to const(Color(0xFFEF4444)),  // red (dense clusters only)
-                    1.0 to const(Color(0xFFDC2626)),   // deep red (extreme)
+                    0.0 to const(Color(0x00000000)),
+                    0.015 to const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.65f)),
+                    0.08 to const(MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = 0.86f)),
+                    0.22 to const(MapStyles.SPOT_HEAT_HIGH.copy(alpha = 0.92f)),
+                    0.52 to const(Color(0xFFEF4444)),
+                    1.0 to const(MapStyles.SPOT_HEAT_EXTREME),
                 ),
-                // Intensity: tuned for fractal-like yellow/red clustering
-                // Higher at mid-zoom so overlapping spots create orange/red pockets
-                // within a sea of yellow — natural clustering visualization
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.008f),  // tiny at country zoom
-                    9 to const(0.015f),
-                    10 to const(0.03f),  // halos forming
-                    11 to const(0.05f),  // spots visible
-                    12 to const(0.08f),  // yellow centers, orange where clusters
-                    13 to const(0.1f),   // fractal mix — yellow/orange/red pockets
-                    13.5 to const(0.08f),
-                    14 to const(0.06f),
+                    8 to const(0.012f),
+                    10 to const(0.04f),
+                    12 to const(0.09f),
+                    13 to const(0.13f),
+                    14 to const(0.08f),
                     15 to const(0.03f),
                 ),
-                // Radius: grows enough for spots to slightly overlap at cluster edges
-                // creating the fractal blending of yellow into red
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(3.dp),    // small at country
-                    9 to const(4.dp),
-                    10 to const(6.dp),   // halos touch at clusters
-                    11 to const(8.dp),   // defined spots
-                    12 to const(10.dp),  // slight overlap at edges → fractal mix
-                    13 to const(13.dp),  // green → yellow → orange → red gradient
-                    13.5 to const(10.dp),
-                    14 to const(7.dp),
+                    8 to const(4.dp),
+                    10 to const(7.dp),
+                    12 to const(11.dp),
+                    13 to const(15.dp),
+                    14 to const(9.dp),
                     14.5 to const(5.dp),
                     15 to const(3.dp),
                 ),
-                // Opacity: visible from z8 all the way through
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.5f),    // visible at far zoom
-                    9 to const(0.55f),
-                    10 to const(0.6f),
-                    11 to const(0.65f),
-                    12 to const(0.65f),  // strong
-                    13 to const(0.6f),   // fractal detail
-                    13.5 to const(0.5f),
-                    14 to const(0.35f),  // fading for close dots
-                    14.5 to const(0f),   // gone
+                    8 to const(0.48f),
+                    10 to const(0.58f),
+                    12 to const(0.68f),
+                    13 to const(0.72f),
+                    14 to const(0.34f),
+                    14.5 to const(0f),
+                ),
+            )
+
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_MARKER_HALOS,
+                source = spotSrc,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.16f)),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(10.dp),
+                    15 to const(13.dp),
+                    17 to const(18.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(0f),
+                    14.5 to const(0.8f),
+                    16 to const(1f),
+                ),
+            )
+
+            val bountiedSpotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountiedSpotJson))
+            CircleLayer(
+                id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
+                source = bountiedSpotSrc,
+                minZoom = 13.5f,
+                color = const(Color.Transparent),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(7.dp),
+                    15 to const(12.dp),
+                    17 to const(17.dp),
+                ),
+                strokeColor = const(MapStyles.BOUNTY_DOT_COLOR),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(1.dp),
+                    15 to const(2.dp),
+                    17 to const(3.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    14 to const(0.85f),
+                    17 to const(1f),
                 ),
             )
 
@@ -898,7 +926,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
-                minZoom = 14f,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -908,6 +936,14 @@ actual fun GccMap(
                     16 to const(7.dp),
                     17 to const(8.dp),
                     20 to const(10.dp),
+                ),
+                strokeColor = const(Color.White),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(1.dp),
+                    16 to const(1.6.dp),
+                    18 to const(2.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),

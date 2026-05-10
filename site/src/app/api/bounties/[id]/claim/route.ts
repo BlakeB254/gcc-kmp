@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 export async function POST() {
   return Response.json(
-    { error: 'Bounty claiming not yet available', status: 501 },
+    { data: null, success: false, message: 'Paid bounty claiming is not yet available' },
     { status: 501 }
   )
 }

@@ -47,6 +47,14 @@ Distribute an existing build to TestFlight groups
 
 Submit latest build to App Store Review
 
+### ios screenshots
+
+```sh
+[bundle exec] fastlane ios screenshots
+```
+
+Push screenshots + metadata only (no binary, no review submit)
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

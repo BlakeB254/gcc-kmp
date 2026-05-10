@@ -57,6 +57,7 @@ class VolunteerCleanupViewModel(
         timerJob?.cancel()
         beforeScanData = null
         afterScanData = null
+        trashHeapScanData = null
         _uiState.value = VolunteerCleanupUiState(
             reportId = reportId,
             phase = VolunteerPhase.BEFORE_PHOTOS,
@@ -74,6 +75,12 @@ class VolunteerCleanupViewModel(
     fun addBeforePhoto(url: String) {
         _uiState.value = _uiState.value.copy(
             beforePhotoUrls = _uiState.value.beforePhotoUrls + url,
+        )
+    }
+
+    fun addBeforeCapturedPhoto(photo: CapturedPhoto) {
+        _uiState.value = _uiState.value.copy(
+            capturedBeforePhotos = _uiState.value.capturedBeforePhotos + photo,
         )
     }
 
@@ -209,8 +216,19 @@ class VolunteerCleanupViewModel(
         )
     }
 
+    fun addAfterCapturedPhoto(photo: CapturedPhoto) {
+        _uiState.value = _uiState.value.copy(
+            capturedAfterPhotos = _uiState.value.capturedAfterPhotos + photo,
+        )
+    }
+
     fun setTrashHeapUrl(url: String) {
         _uiState.value = _uiState.value.copy(trashHeapUrl = url)
+    }
+
+    fun setTrashHeapCapturedPhoto(photo: CapturedPhoto) {
+        trashHeapScanData = null
+        _uiState.value = _uiState.value.copy(capturedTrashHeapPhoto = photo)
     }
 
     fun advancePhase() {

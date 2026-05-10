@@ -6,6 +6,7 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.ShareManager
+import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BiometricAuthViewModel
 import com.gcc.app.viewmodel.BountyViewModel
@@ -21,6 +22,7 @@ import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
 import com.gcc.app.viewmodel.ImpactViewModel
 import com.gcc.app.viewmodel.PointsDashboardViewModel
@@ -42,6 +44,7 @@ val offlineAppModule = module {
     single { PushNotificationManager() }
     single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
+    single { detectDeviceCapabilities() }
     single { createOfflineApiClient() }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
@@ -62,6 +65,7 @@ val offlineAppModule = module {
     singleOf(::PointsDashboardViewModel)
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
+    singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get()) }
     factory { RouteTestViewModel(get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }

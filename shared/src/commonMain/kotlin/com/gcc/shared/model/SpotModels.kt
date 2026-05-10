@@ -40,12 +40,19 @@ data class CreateSpotRequest(
     val captureAttestation: CaptureAttestation? = null,
     val onDeviceAiResult: OnDeviceAnalysisResult? = null,
     val duplicateOverrideReason: String? = null,
+    /**
+     * Admin-only: when set, the admin is recording a spot on behalf of
+     * another worker. The created spot is attributed to that worker and
+     * they receive the standard observer reward (10 pts).
+     */
+    val discoveredByWorkerId: Int? = null,
 )
 
 @Serializable
 data class SpotResponse(
     val report: CommunityReport,
     val matchingBounties: List<Bounty> = emptyList(),
+    val pointsAwarded: Int = 0,
 )
 
 @Serializable

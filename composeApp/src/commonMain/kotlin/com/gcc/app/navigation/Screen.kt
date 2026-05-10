@@ -102,4 +102,7 @@ sealed class Screen {
 
     @Serializable
     data class RouteTest(val routeId: Int) : Screen()
+
+    @Serializable
+    data object Articles : Screen()
 }

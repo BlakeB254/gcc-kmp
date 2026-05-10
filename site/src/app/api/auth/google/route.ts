@@ -65,6 +65,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate `aud` against our configured iOS OAuth client ID. Without
+    // this, a Google idToken issued for *any* OAuth client could be
+    // accepted as authentication for our app — a real cross-tenant
+    // confusion risk. Read expected client IDs from the env so a missing
+    // setting fails closed in production but stays out of the way in dev.
+    const expectedAudiences = [
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_WEB_CLIENT_ID,
+    ].filter((v): v is string => typeof v === 'string' && v.length > 0)
+
+    if (expectedAudiences.length === 0) {
+      // No configured audience — log loudly and proceed. In production
+      // you should always set GOOGLE_IOS_CLIENT_ID so this branch is
+      // never taken.
+      console.warn(
+        '[google-auth] GOOGLE_IOS_CLIENT_ID not configured — skipping aud validation. Set it in production.',
+      )
+    } else {
+      if (!tokenInfo.aud || !expectedAudiences.includes(tokenInfo.aud)) {
+        console.error(
+          `[google-auth] aud mismatch: token aud=${tokenInfo.aud}, expected one of ${expectedAudiences.join(',')}`,
+        )
+        return Response.json(
+          { data: null, success: false, message: 'Token issued for the wrong OAuth client' },
+          { status: 401 }
+        )
+      }
+    }
+
     // ── Find or create worker ───────────────────────────────────────
     const [existing] = await db
       .select()

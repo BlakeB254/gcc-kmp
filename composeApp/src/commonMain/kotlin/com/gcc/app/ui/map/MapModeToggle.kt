@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 
@@ -44,7 +45,7 @@ fun MapModeToggle(
                         .clip(RoundedCornerShape(17.dp))
                         .background(if (isSelected) GccGreen else Color.Transparent)
                         .clickable { onModeChange(mode) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -53,6 +54,8 @@ fun MapModeToggle(
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         ),
                         color = if (isSelected) Color.White else TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

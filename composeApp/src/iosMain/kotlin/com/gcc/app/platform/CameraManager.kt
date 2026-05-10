@@ -189,6 +189,8 @@ private class PhotoCaptureDelegate(
     }
 }
 
+private val activePhotoCaptureDelegates = mutableSetOf<PhotoCaptureDelegate>()
+
 /**
  * iOS CameraManager — uses AVCapturePhotoOutput for inline capture from the
  * live preview session, with UIImagePickerController as fallback when the
@@ -239,7 +241,9 @@ actual class CameraManager actual constructor() {
                 }
             } catch (_: Throwable) { /* depth not available on this device */ }
 
-            val delegate = PhotoCaptureDelegate { fileData, depthAnalysis ->
+            var delegate: PhotoCaptureDelegate? = null
+            delegate = PhotoCaptureDelegate { fileData, depthAnalysis ->
+                delegate?.let { activePhotoCaptureDelegates.remove(it) }
                 if (fileData == null || fileData.length.toInt() == 0) {
                     continuation.resume(null)
                     return@PhotoCaptureDelegate
@@ -281,8 +285,13 @@ actual class CameraManager actual constructor() {
                     )
                 )
             }
+            val activeDelegate = delegate ?: return@dispatch_async
+            activePhotoCaptureDelegates.add(activeDelegate)
+            continuation.invokeOnCancellation {
+                delegate?.let { activePhotoCaptureDelegates.remove(it) }
+            }
 
-            photoOutput.capturePhotoWithSettings(settings, delegate = delegate)
+            photoOutput.capturePhotoWithSettings(settings, delegate = activeDelegate)
         }
     }
 
@@ -311,60 +320,54 @@ actual class CameraManager actual constructor() {
                 picker.sourceType =
                     UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypeCamera
 
-                val delegate = object : NSObject(),
-                    UIImagePickerControllerDelegateProtocol,
-                    UINavigationControllerDelegateProtocol {
-
-                    override fun imagePickerController(
-                        picker: UIImagePickerController,
-                        didFinishPickingMediaWithInfo: Map<Any?, *>,
-                    ) {
-                        picker.dismissViewControllerAnimated(true) {
-                            val rawImage = (didFinishPickingMediaWithInfo[UIImagePickerControllerEditedImage]
-                                ?: didFinishPickingMediaWithInfo[UIImagePickerControllerOriginalImage]) as? UIImage
-
-                            if (rawImage == null) {
-                                continuation.resume(null)
-                                return@dismissViewControllerAnimated
-                            }
-
-                            val image = rawImage.resizedToMax(1920.0)
-                            val jpegData: NSData? = UIImageJPEGRepresentation(image, 0.80)
-                            if (jpegData == null || jpegData.length.toInt() == 0) {
-                                continuation.resume(null)
-                                return@dismissViewControllerAnimated
-                            }
-
-                            val bytes = jpegData.bytes?.readBytes(jpegData.length.toInt())
-                            if (bytes == null) {
-                                continuation.resume(null)
-                                return@dismissViewControllerAnimated
-                            }
-
-                            val width = image.size.useContents { width.toInt() }
-                            val height = image.size.useContents { height.toInt() }
-
-                            continuation.resume(
-                                CapturedPhoto(
-                                    bytes = bytes,
-                                    width = width,
-                                    height = height,
-                                )
-                            )
-                        }
+                val delegate = CameraPickerDelegate { rawImage ->
+                    if (rawImage == null) {
+                        continuation.resume(null)
+                        return@CameraPickerDelegate
                     }
 
-                    override fun imagePickerControllerDidCancel(picker: UIImagePickerController) {
-                        picker.dismissViewControllerAnimated(true) {
-                            continuation.resume(null)
-                        }
+                    val image = rawImage.resizedToMax(1920.0)
+                    val jpegData: NSData? = UIImageJPEGRepresentation(image, 0.80)
+                    if (jpegData == null || jpegData.length.toInt() == 0) {
+                        continuation.resume(null)
+                        return@CameraPickerDelegate
                     }
+
+                    val bytes = jpegData.bytes?.readBytes(jpegData.length.toInt())
+                    if (bytes == null) {
+                        continuation.resume(null)
+                        return@CameraPickerDelegate
+                    }
+
+                    val width = image.size.useContents { width.toInt() }
+                    val height = image.size.useContents { height.toInt() }
+
+                    captureCount++
+                    val attestation = CaptureAttestation(
+                        capturedAt = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+                        deviceModel = getDeviceModel(),
+                        osVersion = getOsVersion(),
+                        sessionId = sessionId,
+                        captureIndex = captureCount,
+                        isLiveCapture = true,
+                    )
+
+                    continuation.resume(
+                        CapturedPhoto(
+                            bytes = bytes,
+                            width = width,
+                            height = height,
+                            attestation = attestation,
+                        )
+                    )
                 }
 
+                activeCameraPickerDelegate = delegate
                 picker.delegate = delegate
                 rootVc.presentViewController(picker, animated = true, completion = null)
 
                 continuation.invokeOnCancellation {
+                    activeCameraPickerDelegate = null
                     dispatch_async(dispatch_get_main_queue()) {
                         picker.dismissViewControllerAnimated(false, completion = null)
                     }
@@ -388,6 +391,32 @@ actual class CameraManager actual constructor() {
  * gets collected and callbacks never fire.
  */
 private var activeLibraryDelegate: LibraryPickerDelegate? = null
+
+private var activeCameraPickerDelegate: CameraPickerDelegate? = null
+
+private class CameraPickerDelegate(
+    private val onResult: (UIImage?) -> Unit,
+) : NSObject(), UIImagePickerControllerDelegateProtocol, UINavigationControllerDelegateProtocol {
+
+    override fun imagePickerController(
+        picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo: Map<Any?, *>,
+    ) {
+        val image = (didFinishPickingMediaWithInfo[UIImagePickerControllerEditedImage]
+            ?: didFinishPickingMediaWithInfo[UIImagePickerControllerOriginalImage]) as? UIImage
+        picker.dismissViewControllerAnimated(true) {
+            activeCameraPickerDelegate = null
+            onResult(image)
+        }
+    }
+
+    override fun imagePickerControllerDidCancel(picker: UIImagePickerController) {
+        picker.dismissViewControllerAnimated(true) {
+            activeCameraPickerDelegate = null
+            onResult(null)
+        }
+    }
+}
 
 /**
  * Concrete delegate class for UIImagePickerController.

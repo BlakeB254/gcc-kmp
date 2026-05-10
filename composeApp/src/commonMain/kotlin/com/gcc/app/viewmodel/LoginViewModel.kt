@@ -3,9 +3,10 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.isAppleSignInAvailable
-import com.gcc.app.platform.openUrl
+import com.gcc.app.platform.isGoogleSignInAvailable
 import com.gcc.app.platform.saveToSystemCredentials
 import com.gcc.app.platform.signInWithApple
+import com.gcc.app.platform.signInWithGoogle
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -133,6 +134,7 @@ class LoginViewModel(
                     identityToken = result.identityToken,
                     fullName = result.fullName,
                     email = result.email,
+                    nonce = result.nonce,
                 )
                 tokenManager.saveToken(authData.token!!)
                 _uiState.value = _uiState.value.copy(
@@ -152,23 +154,17 @@ class LoginViewModel(
     }
 
     fun loginWithGoogle() {
-        // Google Sign-In uses web OAuth flow — open browser to website's Google auth page
-        openUrl("https://globalcommunitycleaners.org/auth/google?mobile=true")
-    }
-
-    fun handleGoogleAuthToken(token: String) {
         scope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val authData = apiClient.loginWithGoogle(token)
-                tokenManager.saveToken(authData.token!!)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    isLoggedIn = true,
-                    worker = authData.worker,
-                    isAdmin = tokenManager.isAdmin(),
-                )
-                registerPushToken()
+                val result = signInWithGoogle()
+                if (result == null) {
+                    // User cancelled or the bridge isn't configured. Don't show
+                    // an error for a user-initiated cancel.
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    return@launch
+                }
+                exchangeGoogleIdToken(result.identityToken)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -177,6 +173,39 @@ class LoginViewModel(
             }
         }
     }
+
+    /**
+     * Kept for the universal-link callback path. Native sign-in flows
+     * through [loginWithGoogle] above; this remains so external callers
+     * (e.g. a future web-redirect fallback) can still hand us a token.
+     */
+    fun handleGoogleAuthToken(token: String) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                exchangeGoogleIdToken(token)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Google Sign-In failed",
+                )
+            }
+        }
+    }
+
+    private suspend fun exchangeGoogleIdToken(idToken: String) {
+        val authData = apiClient.loginWithGoogle(idToken)
+        tokenManager.saveToken(authData.token!!)
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            isLoggedIn = true,
+            worker = authData.worker,
+            isAdmin = tokenManager.isAdmin(),
+        )
+        registerPushToken()
+    }
+
+    val canUseGoogleSignIn: Boolean get() = isGoogleSignInAvailable()
 
     val canUseAppleSignIn: Boolean get() = isAppleSignInAvailable()
 

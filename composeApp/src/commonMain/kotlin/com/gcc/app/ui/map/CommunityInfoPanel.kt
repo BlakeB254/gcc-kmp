@@ -12,9 +12,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.theme.*
+
 /**
  * Community info overlay shown on the full-screen map.
  *
@@ -38,7 +41,9 @@ fun CommunityInfoPanel(
         color = GccSurface,
     ) {
         Column(
-            modifier = Modifier.padding(13.dp).widthIn(max = 200.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(13.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Community area badge
@@ -58,6 +63,9 @@ fun CommunityInfoPanel(
                     areaDisplay,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                     color = GccGreenDark,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
             }
 
@@ -72,22 +80,25 @@ fun CommunityInfoPanel(
             // Stats row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 MetricItem(
                     value = "$totalRoutes",
                     label = "Routes",
                     accentColor = GccGreen,
+                    modifier = Modifier.weight(1f),
                 )
                 MetricItem(
                     value = "$registeredRoutes/$totalRoutes",
                     label = "Available",
                     accentColor = GccBlue,
+                    modifier = Modifier.weight(1f),
                 )
                 MetricItem(
                     value = "$jobsCompleted",
                     label = "Jobs",
                     accentColor = GccSky,
+                    modifier = Modifier.weight(1f),
                 )
             }
 
@@ -122,8 +133,10 @@ private fun MetricItem(
     value: String,
     label: String,
     accentColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
 ) {
     Column(
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -133,12 +146,18 @@ private fun MetricItem(
                 fontSize = 16.sp,
             ),
             color = accentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }

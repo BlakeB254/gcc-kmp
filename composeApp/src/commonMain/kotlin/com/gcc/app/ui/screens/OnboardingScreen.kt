@@ -2,10 +2,12 @@ package com.gcc.app.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +52,7 @@ private val onboardingPages = listOf(
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit = {},
+    onBack: () -> Unit = onComplete,
 ) {
     val pagerState = rememberPagerState(pageCount = { onboardingPages.size })
     val coroutineScope = rememberCoroutineScope()
@@ -64,10 +67,13 @@ fun OnboardingScreen(
             ),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             GccLogo(size = 48.dp)
 
@@ -78,37 +84,39 @@ fun OnboardingScreen(
                 modifier = Modifier.weight(1f),
             ) { page ->
                 val pageData = onboardingPages[page]
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        pageData.emoji,
-                        fontSize = 72.sp,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            pageData.emoji,
+                            fontSize = 72.sp,
+                        )
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                        Spacer(modifier = Modifier.height(32.dp))
 
-                    Text(
-                        pageData.title,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                    )
+                        Text(
+                            pageData.title,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                        )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(
-                        pageData.subtitle,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White.copy(alpha = 0.85f),
-                        textAlign = TextAlign.Center,
-                    )
+                        Text(
+                            pageData.subtitle,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.85f),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
 
@@ -164,6 +172,24 @@ fun OnboardingScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(8.dp)
+                .align(Alignment.TopStart),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            }
         }
     }
 }

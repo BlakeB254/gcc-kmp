@@ -92,6 +92,9 @@ export const workers = pgTable('workers', {
   emailVerificationExpires: timestamp('email_verification_expires', { mode: 'string', withTimezone: true }),
   emailVerifiedAt: timestamp('email_verified_at', { mode: 'string', withTimezone: true }),
 
+  // Social auth provider identifiers
+  appleUserId: varchar('apple_user_id').unique(),
+
   // Address
   addressStreet: varchar('address_street').default('').notNull(),
   addressCity: varchar('address_city').default('').notNull(),
@@ -505,6 +508,54 @@ export const transactions = pgTable('transactions', {
 
   // Timestamps
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Bounties are funded progressions of community spot reports. A spot can
+// start as a zero-dollar cleanup opportunity and accumulate pledged bounty
+// value over time.
+export const bounties = pgTable('bounties', {
+  id: serial('id').primaryKey(),
+
+  // Poster (currently mobile workers; sponsor support can reuse this table)
+  posterType: varchar('poster_type', { length: 20 }).default('worker').notNull(),
+  posterId: integer('poster_id'),
+  walletId: integer('wallet_id').default(0).notNull(),
+
+  // Public bounty details
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  amount: numeric('amount').default('0').notNull(), // In cents
+  status: varchar('status', { length: 32 }).default('open').notNull(),
+  visibility: varchar('visibility', { length: 20 }).default('public').notNull(),
+  isAnonymous: boolean('is_anonymous').default(false).notNull(),
+  posterName: varchar('poster_name', { length: 255 }),
+
+  // Location copied from the source spot at pledge time
+  locationLat: doublePrecision('location_lat').notNull(),
+  locationLng: doublePrecision('location_lng').notNull(),
+  radiusMeters: numeric('radius_meters').default('200').notNull(),
+  city: varchar('city', { length: 100 }).default('Chicago').notNull(),
+  communityArea: varchar('community_area'),
+  neighborhood: varchar('neighborhood'),
+
+  // Source spot and optional worker/job linkage
+  triggerReportId: integer('trigger_report_id'),
+  observerId: integer('observer_id'),
+  firstRefusalExpiresAt: timestamp('first_refusal_expires_at', { mode: 'string', withTimezone: true }),
+  claimedBy: integer('claimed_by'),
+  jobId: integer('job_id'),
+
+  // Evidence and derived analysis
+  mediaUrls: jsonb('media_urls'),
+  completionMediaUrls: jsonb('completion_media_urls'),
+  aiAnalysis: jsonb('ai_analysis'),
+  pledgeCount: integer('pledge_count').default(1).notNull(),
+  spotterTipAmount: numeric('spotter_tip_amount'),
+  spotterTipPaidAt: timestamp('spotter_tip_paid_at', { mode: 'string', withTimezone: true }),
+  expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }),
+
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })
@@ -1031,6 +1082,8 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'verification_clean',     // Verified spot is already clean (10 pts)
   'volunteer_cleanup',      // Completed a volunteer cleanup (50 pts)
   'already_clean_report',   // Reported spot was already clean (5 pts)
+  'admin_grant',            // Admin manually granted/corrected points
+  'bug_report',             // Reward for finding a bug in the app/website
 ])
 
 // Spot verifications table (audit trail of each verification event)
@@ -1068,6 +1121,10 @@ export const pointsLedger = pgTable('points_ledger', {
   // Polymorphic reference to what earned the points
   referenceType: varchar('reference_type'),          // 'spot', 'verification', 'cleanup'
   referenceId: integer('reference_id'),              // ID in the referenced table
+
+  // Audit trail for admin-issued grants. NULL on auto-generated rows.
+  reason: text('reason'),
+  grantedByWorkerId: integer('granted_by_worker_id'),
 
   // Timestamp
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -1251,6 +1308,8 @@ export type Job = typeof jobs.$inferSelect
 export type NewJob = typeof jobs.$inferInsert
 export type Transaction = typeof transactions.$inferSelect
 export type NewTransaction = typeof transactions.$inferInsert
+export type BountyRow = typeof bounties.$inferSelect
+export type NewBountyRow = typeof bounties.$inferInsert
 export type SponsorPackage = typeof sponsorPackages.$inferSelect
 export type NewSponsorPackage = typeof sponsorPackages.$inferInsert
 export type SponsorDeliverablePackage = typeof sponsorDeliverablePackages.$inferSelect

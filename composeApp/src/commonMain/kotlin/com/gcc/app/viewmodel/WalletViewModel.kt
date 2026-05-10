@@ -350,6 +350,7 @@ class WalletViewModel(
                     locationLat = spot?.coordinates?.lat ?: 41.8604,
                     locationLng = spot?.coordinates?.lng ?: -87.7228,
                     communityArea = spot?.let { "North Lawndale" },
+                    mediaUrls = spot?.mediaUrls ?: emptyList(),
                     triggerReportId = spot?.id,
                     visibility = state.bountyVisibility,
                     isAnonymous = state.isAnonymous,

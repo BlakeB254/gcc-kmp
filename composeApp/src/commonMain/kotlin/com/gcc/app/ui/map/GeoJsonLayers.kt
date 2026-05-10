@@ -140,6 +140,17 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
 
+/** Spots that have progressed into a bounty, rendered as a distinct halo. */
+fun buildBountiedSpotMarkersGeoJson(spots: List<CommunityReport>): String {
+    val features = spots
+        .filter { it.status != CommunityReportStatus.RESOLVED && it.bountyId != null }
+        .map { s ->
+            """{"type":"Feature","properties":{"id":${s.id},"bountyId":${s.bountyId}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+        }
+        .joinToString(",")
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
 /**
  * Builds a GeoJSON FeatureCollection with a single Polygon feature for the
  * simplified Illinois state boundary from [illinoisOutline].

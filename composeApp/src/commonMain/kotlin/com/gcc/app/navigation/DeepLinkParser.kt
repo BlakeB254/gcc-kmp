@@ -18,6 +18,49 @@ package com.gcc.app.navigation
  */
 object DeepLinkParser {
 
+    /**
+     * If the URI is a Google OAuth callback for the mobile app, return the
+     * exchange token from the `token` query param. Returns null if this is
+     * not an auth callback URL.
+     *
+     * Patterns recognized:
+     * - https://globalcommunitycleaners.org/auth/mobile-callback?token=XXX
+     * - https://www.globalcommunitycleaners.org/auth/mobile-callback?token=XXX
+     * - /auth/mobile-callback?token=XXX
+     * - gcc://auth/callback?token=XXX
+     */
+    fun extractAuthCallbackToken(uri: String): String? {
+        // Path detection — strip scheme+host if present
+        val pathWithQuery = if (uri.contains("://")) {
+            val afterScheme = uri.substringAfter("://")
+            val pathStart = afterScheme.indexOf('/')
+            if (pathStart < 0) return null
+            afterScheme.substring(pathStart)
+        } else uri
+
+        val (path, query) = if (pathWithQuery.contains("?")) {
+            pathWithQuery.substringBefore("?") to pathWithQuery.substringAfter("?")
+        } else {
+            pathWithQuery to ""
+        }
+
+        val cleanPath = path.trimEnd('/').lowercase()
+        val isAuthCallback = cleanPath == "/auth/mobile-callback" ||
+            cleanPath == "/auth/callback" ||
+            cleanPath.endsWith("/auth/mobile-callback") ||
+            cleanPath.endsWith("/auth/callback")
+        if (!isAuthCallback) return null
+
+        // Pull `token` query param
+        return query.split("&")
+            .firstNotNullOfOrNull { kv ->
+                val (k, v) = kv.split("=", limit = 2).let {
+                    if (it.size == 2) it[0] to it[1] else return@firstNotNullOfOrNull null
+                }
+                if (k == "token" && v.isNotBlank()) v else null
+            }
+    }
+
     fun parse(uri: String): Screen? {
         // Extract path from full URL or use as-is if already a path
         val path = if (uri.contains("://")) {

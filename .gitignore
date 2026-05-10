@@ -48,3 +48,12 @@ site/.env.local
 
 # Fastlane secrets
 iosApp/fastlane/api_key.json
+iosApp/*.cer
+iosApp/*.mobileprovision
+iosApp/fastlane/report.xml
+
+# Local verification artifacts
+.playwright-mcp/
+screenshots/sim/
+worker-login-oauth-mobile*.png
+worker-signup-oauth-mobile.png

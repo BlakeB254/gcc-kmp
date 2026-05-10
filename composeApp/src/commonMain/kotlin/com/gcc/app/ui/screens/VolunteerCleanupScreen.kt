@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -78,10 +79,10 @@ fun VolunteerCleanupScreen(
             ) {
                 when (uiState.phase) {
                     VolunteerPhase.BEFORE_PHOTOS -> BeforePhotosPhase(
-                        beforePhotoCount = uiState.capturedBeforePhotos.size,
+                        beforePhotos = uiState.capturedBeforePhotos,
                         isSubmitting = uiState.isSubmitting,
                         error = uiState.error,
-                        onCapture = { viewModel.addBeforePhoto("before_${uiState.capturedBeforePhotos.size + 1}.jpg") },
+                        onCapture = viewModel::addBeforeCapturedPhoto,
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.addBeforeScanPhoto(it) },
                         onConfirmMessStillHere = { viewModel.startCleanup() },
@@ -98,16 +99,16 @@ fun VolunteerCleanupScreen(
                     )
 
                     VolunteerPhase.AFTER_PHOTOS -> AfterPhotosPhase(
-                        afterPhotoCount = uiState.capturedAfterPhotos.size,
-                        onCapture = { viewModel.addAfterPhoto("after_${uiState.capturedAfterPhotos.size + 1}.jpg") },
+                        afterPhotos = uiState.capturedAfterPhotos,
+                        onCapture = viewModel::addAfterCapturedPhoto,
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.addAfterScanPhoto(it) },
                         onNext = { viewModel.advancePhase() },
                     )
 
                     VolunteerPhase.TRASH_HEAP_PHOTO -> TrashHeapPhase(
-                        hasTrashHeap = uiState.capturedTrashHeapPhoto != null,
-                        onCapture = { viewModel.setTrashHeapUrl("trash_heap.jpg") },
+                        trashHeapPhoto = uiState.capturedTrashHeapPhoto,
+                        onCapture = viewModel::setTrashHeapCapturedPhoto,
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.setTrashHeapScanPhoto(it) },
                         onSubmit = { viewModel.advancePhase() },
@@ -178,16 +179,17 @@ fun VolunteerCleanupScreen(
 
 @Composable
 private fun BeforePhotosPhase(
-    beforePhotoCount: Int,
+    beforePhotos: List<CapturedPhoto>,
     isSubmitting: Boolean,
     error: String?,
-    onCapture: () -> Unit,
+    onCapture: (CapturedPhoto) -> Unit,
     spotLocation: Coordinates?,
     onScanCapture: (ScanCapturedPhoto) -> Unit,
     onConfirmMessStillHere: () -> Unit,
     onAlreadyClean: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val beforePhotoCount = beforePhotos.size
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -215,50 +217,13 @@ private fun BeforePhotosPhase(
                 modifier = Modifier.fillMaxWidth().height(300.dp),
             )
         } else {
-            // Fallback placeholder when spot location is not yet loaded
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(GccOnBackground.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "\uD83D\uDCF7",
-                        style = MaterialTheme.typography.displayLarge,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Before Photo",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
-                    if (beforePhotoCount > 0) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "$beforePhotoCount photo${if (beforePhotoCount != 1) "s" else ""} captured",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = GccGreen,
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedButton(
-                onClick = onCapture,
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-            ) {
-                Text(
-                    "\uD83D\uDCF8",
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-            }
+            CameraCapture(
+                capturedPhotos = beforePhotos,
+                onCapture = onCapture,
+                maxPhotos = 3,
+                allowLibraryPick = false,
+                modifier = Modifier.fillMaxWidth().height(300.dp),
+            )
         }
 
         error?.let {
@@ -497,12 +462,13 @@ private fun InProgressPhase(
 
 @Composable
 private fun AfterPhotosPhase(
-    afterPhotoCount: Int,
-    onCapture: () -> Unit,
+    afterPhotos: List<CapturedPhoto>,
+    onCapture: (CapturedPhoto) -> Unit,
     spotLocation: Coordinates?,
     onScanCapture: (ScanCapturedPhoto) -> Unit,
     onNext: () -> Unit,
 ) {
+    val afterPhotoCount = afterPhotos.size
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -529,50 +495,13 @@ private fun AfterPhotosPhase(
                 modifier = Modifier.fillMaxWidth().height(300.dp),
             )
         } else {
-            // Fallback placeholder when spot location is not yet loaded
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(GccOnBackground.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "\uD83D\uDCF7",
-                        style = MaterialTheme.typography.displayLarge,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "After Photo",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
-                    if (afterPhotoCount > 0) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "$afterPhotoCount photo${if (afterPhotoCount != 1) "s" else ""} captured",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = GccGreen,
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedButton(
-                onClick = onCapture,
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-            ) {
-                Text(
-                    "\uD83D\uDCF8",
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-            }
+            CameraCapture(
+                capturedPhotos = afterPhotos,
+                onCapture = onCapture,
+                maxPhotos = 3,
+                allowLibraryPick = false,
+                modifier = Modifier.fillMaxWidth().height(300.dp),
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -590,12 +519,13 @@ private fun AfterPhotosPhase(
 
 @Composable
 private fun TrashHeapPhase(
-    hasTrashHeap: Boolean,
-    onCapture: () -> Unit,
+    trashHeapPhoto: CapturedPhoto?,
+    onCapture: (CapturedPhoto) -> Unit,
     spotLocation: Coordinates?,
     onScanCapture: (ScanCapturedPhoto) -> Unit,
     onSubmit: () -> Unit,
 ) {
+    val hasTrashHeap = trashHeapPhoto != null
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -624,42 +554,13 @@ private fun TrashHeapPhase(
                     modifier = Modifier.fillMaxWidth().height(300.dp),
                 )
             } else {
-                // Fallback placeholder when spot location is not yet loaded
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(GccOnBackground.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "\uD83D\uDDD1\uFE0F",
-                            style = MaterialTheme.typography.displayLarge,
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "Trash Heap",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White.copy(alpha = 0.7f),
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedButton(
-                    onClick = onCapture,
-                    modifier = Modifier.size(72.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccGreen),
-                ) {
-                    Text(
-                        "\uD83D\uDCF8",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
+                CameraCapture(
+                    capturedPhotos = emptyList(),
+                    onCapture = onCapture,
+                    maxPhotos = 1,
+                    allowLibraryPick = false,
+                    modifier = Modifier.fillMaxWidth().height(300.dp),
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))

@@ -6,11 +6,13 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class PointsLedgerEntry(
     val id: Int,
-    val workerId: Int,
+    val workerId: Int = 0,
     val action: PointsAction,
     val points: Int,
     val referenceType: String? = null,
     val referenceId: Int? = null,
+    val reason: String? = null,
+    val grantedByWorkerId: Int? = null,
     val createdAt: Instant,
 )
 
@@ -28,4 +30,6 @@ data class PointsBreakdown(
     val verificationClean: Int = 0,
     val volunteerCleanup: Int = 0,
     val alreadyCleanReport: Int = 0,
+    val adminGrant: Int = 0,
+    val bugReport: Int = 0,
 )

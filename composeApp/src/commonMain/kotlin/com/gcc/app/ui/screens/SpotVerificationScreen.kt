@@ -1,9 +1,11 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -114,28 +116,25 @@ fun SpotVerificationScreen(
                     )
                 }
 
-                // Floating back button (hide on completion)
-                if (uiState.phase != VerificationPhase.COMPLETE) {
-                    TextButton(
-                        onClick = onBack,
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(8.dp)
+                        .align(Alignment.TopStart),
+                ) {
+                    Box(
                         modifier = Modifier
-                            .statusBarsPadding()
-                            .padding(8.dp)
-                            .align(Alignment.TopStart),
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.9f)),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.9f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "\u2190",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = GccGreenDark,
-                            )
-                        }
+                        Text(
+                            "\u2190",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GccGreenDark,
+                        )
                     }
                 }
             }
@@ -154,6 +153,7 @@ private fun CameraPhase(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
             .padding(top = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -175,7 +175,9 @@ private fun CameraPhase(
                 geofenceRadius = 30.0,
                 maxPhotos = 1,
                 onPhotoCaptured = onScanCapture,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 320.dp, max = 560.dp),
             )
         } else {
             CameraCapture(
@@ -192,7 +194,9 @@ private fun CameraPhase(
                     )
                 },
                 maxPhotos = 1,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 320.dp, max = 560.dp),
             )
         }
 
@@ -212,6 +216,7 @@ private fun DecisionPhase(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
             .padding(top = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -230,8 +235,8 @@ private fun DecisionPhase(
         // Photo preview placeholder
         Box(
             modifier = Modifier
-                .weight(1f)
                 .fillMaxWidth()
+                .heightIn(min = 220.dp, max = 360.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(GccOnBackground.copy(alpha = 0.85f)),
             contentAlignment = Alignment.Center,
@@ -318,73 +323,78 @@ private fun CompletePhase(
     spotResolved: Boolean,
     onBack: () -> Unit,
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            if (spotResolved) "\u2728" else "\u2705",
-            style = MaterialTheme.typography.displayMedium,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            when {
-                spotResolved -> "Spot Resolved!"
-                result == SpotVerificationResult.STILL_DIRTY -> "Verification Recorded"
-                else -> "Thank You!"
-            },
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = GccGreen,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            when {
-                spotResolved -> "This spot has been confirmed clean and removed from the active list."
-                result == SpotVerificationResult.STILL_DIRTY -> "The mess is confirmed still there. It will remain on the map for volunteers."
-                else -> "Your verification has been recorded."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextMuted,
-            textAlign = TextAlign.Center,
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                if (spotResolved) "\u2728" else "\u2705",
+                style = MaterialTheme.typography.displayMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                when {
+                    spotResolved -> "Spot Resolved!"
+                    result == SpotVerificationResult.STILL_DIRTY -> "Verification Recorded"
+                    else -> "Thank You!"
+                },
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = GccGreen,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                when {
+                    spotResolved -> "This spot has been confirmed clean and removed from the active list."
+                    result == SpotVerificationResult.STILL_DIRTY -> "The mess is confirmed still there. It will remain on the map for volunteers."
+                    else -> "Your verification has been recorded."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted,
+                textAlign = TextAlign.Center,
+            )
 
-        if (pointsAwarded > 0) {
-            Spacer(modifier = Modifier.height(24.dp))
-            GccCard(accentColor = CardAccentSky) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
+            if (pointsAwarded > 0) {
+                Spacer(modifier = Modifier.height(24.dp))
+                GccCard(accentColor = CardAccentSky) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                "Verification Bonus",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Text(
+                                "Thanks for checking this spot!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
                         Text(
-                            "Verification Bonus",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Text(
-                            "Thanks for checking this spot!",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
+                            "+$pointsAwarded",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            color = GccSky,
                         )
                     }
-                    Text(
-                        "+$pointsAwarded",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = GccSky,
-                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            GccButton(
+                text = "Back to Map",
+                onClick = onBack,
+                variant = GccButtonVariant.PRIMARY,
+            )
         }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        GccButton(
-            text = "Back to Map",
-            onClick = onBack,
-            variant = GccButtonVariant.PRIMARY,
-        )
     }
 }

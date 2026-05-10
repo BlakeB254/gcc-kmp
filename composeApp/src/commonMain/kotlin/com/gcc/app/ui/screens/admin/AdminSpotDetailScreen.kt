@@ -3,6 +3,7 @@ package com.gcc.app.ui.screens.admin
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +24,6 @@ import com.gcc.shared.model.CommunityReportStatus
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminSpotDetailScreen(
     spotId: Int,
@@ -65,37 +65,47 @@ fun AdminSpotDetailScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceMuted),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("Spot Report #$spotId")
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = statusColor.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                report.status.name.lowercase(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = statusColor,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            )
-                        }
+                        Text(
+                            "\u2190",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GccGreenDark,
+                        )
                     }
-                },
-                navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("\u2190 Back", color = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccSkyDark,
-                    titleContentColor = Color.White,
-                ),
-            )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Spot Report #$spotId",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = statusColor.copy(alpha = 0.15f),
+                ) {
+                    Text(
+                        report.status.name.lowercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = statusColor,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
         },
     ) { padding ->
         LazyColumn(

@@ -1,5 +1,6 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.CommunityInfoPanel
 import com.gcc.app.ui.map.GccMap
@@ -35,8 +37,11 @@ import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.CommunityReport
+import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
 import kotlin.math.ln
+import kotlin.math.absoluteValue
+import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
 @Composable
@@ -48,6 +53,7 @@ fun MapFullScreen(
     onSpotVerification: (reportId: Int) -> Unit = {},
     onAdminClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onNavigateToSpot: () -> Unit = {},
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -134,6 +140,9 @@ fun MapFullScreen(
     val centerLat = overrideCenterLat ?: resolved.lat
     val centerLng = overrideCenterLng ?: resolved.lng
     val mapZoom = overrideZoom ?: resolved.zoom
+    val targetPinAlpha = ((mapZoom - 13.0) / 2.0).toFloat().coerceIn(0f, 1f)
+    val pinAlpha by animateFloatAsState(targetValue = targetPinAlpha, label = "mapPinAlpha")
+    val heatmapAlpha = 1f - pinAlpha
 
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
@@ -251,7 +260,7 @@ fun MapFullScreen(
             bounties = visibleBounties,
             spots = visibleSpots,
             mapMode = mapMode,
-            affectedBlocks = affectedState.blocks,
+            affectedBlocks = if (heatmapAlpha > 0.01f) affectedState.blocks else emptyList(),
             onAffectedBlockTap = { blockId ->
                 affectedBlocksVm.selectBlock(blockId)
                 // Zoom in so the polygon fill resolves clearly — same
@@ -302,8 +311,45 @@ fun MapFullScreen(
                 )
             }
 
-            // Spot create FAB (top-right)
-            // (close button removed — bottom nav bar provides navigation)
+            // Spot create FAB (bottom-right, above the location button)
+            // Sized so it doesn't crowd the bottom nav on smaller iPhones.
+            if (selectedSpot == null) {
+                ExtendedFloatingActionButton(
+                    onClick = onNavigateToSpot,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(
+                            end = 16.dp,
+                            // Stack above MyLocationButton (~48dp + spacing)
+                            // and above the route chip overlay if present.
+                            bottom = if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty()) 144.dp else 80.dp,
+                        ),
+                    containerColor = GccGreen,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(28.dp),
+                    icon = {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.18f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "+",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                            )
+                        }
+                    },
+                    text = {
+                        Text(
+                            "Spot",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        )
+                    },
+                )
+            }
 
             // Route chips at the bottom — only in My Area mode, hidden when spot selected
             if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty() && selectedSpot == null) {
@@ -368,6 +414,10 @@ fun MapFullScreen(
                         onSpotVerification(spot.id)
                         selectedSpot = null
                     },
+                    onPlaceBounty = {
+                        onBountyClick(-spot.id)
+                        selectedSpot = null
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
@@ -425,6 +475,9 @@ private fun AffectedBlockInfoCard(
                 Text(
                     block.code ?: "Block #${block.blockId}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -439,6 +492,7 @@ private fun AffectedBlockInfoCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = statusColor,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         )
                     }
@@ -513,6 +567,7 @@ private fun SpotInfoCard(
     onDismiss: () -> Unit,
     onVolunteerCleanup: () -> Unit = {},
     onVerifySpot: () -> Unit = {},
+    onPlaceBounty: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val statusColor = when (spot.status) {
@@ -541,6 +596,9 @@ private fun SpotInfoCard(
                 Text(
                     spot.type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -555,6 +613,7 @@ private fun SpotInfoCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = statusColor,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         )
                     }
@@ -589,6 +648,14 @@ private fun SpotInfoCard(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
             }
+
+            // 24-hour lifecycle chip (fresh / due soon / overdue)
+            LifecycleChip(spot)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4-stage progression: Reported -> Confirmed -> Cleaned -> Bounty
+            SpotProgressionStrip(spot)
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -650,6 +717,18 @@ private fun SpotInfoCard(
                         "This spot needs re-verification",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFFF9800),
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onPlaceBounty,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
+                ) {
+                    Text(
+                        "Fund Spot",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                     )
                 }
             }
@@ -789,4 +868,185 @@ private fun FullScreenImageGallery(
             }
         }
     }
+}
+
+// \u2500\u2500 24-hour lifecycle chip \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+//
+// Each spot expects re-verification within 24h of last verification. This
+// chip surfaces that lifecycle so reporters and verifiers can see at a
+// glance whether a spot is fresh, due soon, or overdue.
+
+private enum class LifecycleState(val label: String, val color: Color) {
+    FRESH("Fresh", GccGreen),
+    DUE_SOON("Due Soon", Color(0xFFFF9800)),
+    OVERDUE("Overdue", Color(0xFFE53935)),
+    UNKNOWN("\u2014", Color(0xFF9E9E9E)),
+}
+
+private fun lifecycleStateFor(spot: CommunityReport): Pair<LifecycleState, String> {
+    val due = spot.nextVerificationDue
+    if (due == null) {
+        return LifecycleState.UNKNOWN to ""
+    }
+    val now = Clock.System.now()
+    val deltaSeconds = (due - now).inWholeSeconds
+    val absHours = (deltaSeconds.absoluteValue / 3600.0)
+    val countdown = when {
+        absHours >= 24 -> "${(absHours / 24).toInt()}d"
+        absHours >= 1 -> "${absHours.toInt()}h"
+        else -> "${(deltaSeconds.absoluteValue / 60).coerceAtLeast(1L)}m"
+    }
+    return when {
+        deltaSeconds <= 0 -> LifecycleState.OVERDUE to "Overdue $countdown"
+        deltaSeconds < 6 * 3600 -> LifecycleState.DUE_SOON to "$countdown left"
+        else -> LifecycleState.FRESH to "$countdown left"
+    }
+}
+
+@Composable
+private fun LifecycleChip(spot: CommunityReport) {
+    val (state, countdown) = lifecycleStateFor(spot)
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = state.color.copy(alpha = 0.12f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(state.color),
+            )
+            Text(
+                state.label,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = state.color,
+            )
+            if (countdown.isNotBlank()) {
+                Text(
+                    "\u00b7 $countdown",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = state.color.copy(alpha = 0.85f),
+                )
+            }
+        }
+    }
+}
+
+// \u2500\u2500 Spot lifecycle progression strip \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+//
+// 4-stage horizontal progression that surfaces the spot's full lifecycle:
+//   Reported -> Confirmed -> Cleaned -> Bounty
+// Each stage either filled (completed), active (the next milestone), or
+// muted (not yet reached). The bounty stage shows a "?" coin until the
+// cleanup completes \u2014 this is the "secret bounty" UX.
+
+private data class ProgressionStage(
+    val label: String,
+    val icon: String,
+    val filled: Boolean,
+    val isCurrent: Boolean,
+)
+
+@Composable
+private fun SpotProgressionStrip(spot: CommunityReport) {
+    val confirmed = spot.verificationCount >= 1 ||
+        spot.status == CommunityReportStatus.VERIFIED ||
+        spot.status == CommunityReportStatus.RESOLVED ||
+        spot.status == CommunityReportStatus.ACKNOWLEDGED
+    val cleaned = spot.status == CommunityReportStatus.RESOLVED || spot.resolvedAt != null
+    val bountyPaid = spot.bountyId != null && cleaned
+    val secretBounty = spot.bountyId != null && !cleaned
+
+    val stages = listOf(
+        ProgressionStage(
+            label = "Reported",
+            icon = "\ud83d\udccd",
+            filled = true,
+            isCurrent = !confirmed,
+        ),
+        ProgressionStage(
+            label = "Confirmed",
+            icon = "\u2714",
+            filled = confirmed,
+            isCurrent = confirmed && !cleaned,
+        ),
+        ProgressionStage(
+            label = "Cleaned",
+            icon = "\ud83e\uddf9",
+            filled = cleaned,
+            isCurrent = cleaned && !bountyPaid && spot.bountyId != null,
+        ),
+        ProgressionStage(
+            label = if (secretBounty) "Bounty?" else "Bounty",
+            icon = if (secretBounty) "?" else "\ud83d\udcb0",
+            filled = bountyPaid,
+            isCurrent = false,
+        ),
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        stages.forEachIndexed { index, stage ->
+            ProgressionNode(stage)
+            if (index < stages.lastIndex) {
+                ProgressionConnector(filled = stages[index + 1].filled || stage.filled && stages[index + 1].isCurrent)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressionNode(stage: ProgressionStage) {
+    val activeColor = when {
+        stage.filled -> GccGreen
+        stage.isCurrent -> Color(0xFFFF9800)
+        else -> Color(0xFF9E9E9E).copy(alpha = 0.4f)
+    }
+    val labelColor = when {
+        stage.filled -> GccGreen
+        stage.isCurrent -> Color(0xFFFF9800)
+        else -> TextSubtle
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(activeColor.copy(alpha = if (stage.filled) 1f else 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                stage.icon,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (stage.filled) Color.White else activeColor,
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            stage.label,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = labelColor,
+        )
+    }
+}
+
+@Composable
+private fun RowScope.ProgressionConnector(filled: Boolean) {
+    Box(
+        modifier = Modifier
+            .height(2.dp)
+            .weight(1f)
+            .padding(horizontal = 6.dp)
+            .background(
+                if (filled) GccGreen.copy(alpha = 0.6f)
+                else Color(0xFF9E9E9E).copy(alpha = 0.25f)
+            ),
+    )
 }

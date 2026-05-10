@@ -13,20 +13,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.DeviceCapabilities
+import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.CapturedPhoto
-import com.gcc.app.platform.detectDeviceType
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
-import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccBlue
 import com.gcc.app.ui.theme.GccError
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
@@ -45,10 +46,10 @@ fun SpotScanCapture(
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
+    val deviceCapabilities = koinInject<DeviceCapabilities>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     val scope = rememberCoroutineScope()
 
-    val deviceType = remember { detectDeviceType() }
     val sessionId = remember { generateSessionId() }
     val analyzer = remember { OnDeviceAnalyzer() }
     var captureIndex by remember { mutableStateOf(0) }
@@ -65,12 +66,19 @@ fun SpotScanCapture(
     val canCapture = !requireGeofence || isWithinGeofence
     val currentCanCapture by rememberUpdatedState(canCapture)
 
-    var gpsWaitStarted by remember { mutableStateOf(Clock.System.now()) }
+    var gpsWaitSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(currentLocation) {
-        if (currentLocation != null) gpsWaitStarted = Clock.System.now()
+        if (currentLocation == null) {
+            gpsWaitSeconds = 0
+            while (true) {
+                delay(1000L)
+                gpsWaitSeconds += 1
+            }
+        } else {
+            gpsWaitSeconds = 0
+        }
     }
-    val gpsTimedOut = currentLocation == null &&
-        (Clock.System.now() - gpsWaitStarted).inWholeSeconds > 10
+    val gpsTimedOut = currentLocation == null && gpsWaitSeconds > 10
 
     Box(modifier = modifier) {
         CameraCapture(
@@ -138,13 +146,12 @@ fun SpotScanCapture(
             )
         }
 
-        if (deviceType == DeviceType.AR) {
-            LidarBadge(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 8.dp, end = 8.dp),
-            )
-        }
+        CaptureModeBadge(
+            deviceClass = deviceCapabilities.deviceClass,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 8.dp),
+        )
     }
 }
 
@@ -188,15 +195,23 @@ private fun GeofenceBadge(
 }
 
 @Composable
-private fun LidarBadge(modifier: Modifier = Modifier) {
+private fun CaptureModeBadge(
+    deviceClass: DeviceClass,
+    modifier: Modifier = Modifier,
+) {
+    val (text, color) = when (deviceClass) {
+        DeviceClass.PRO_SCANNER -> "LiDAR 3D" to GccBlue
+        DeviceClass.SCANNER -> "AR Scan" to GccAvailable
+        DeviceClass.BASIC -> "Camera" to GeofenceYellow
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(GccBlue.copy(alpha = 0.85f))
+            .background(color.copy(alpha = 0.85f))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Text(
-            text = "3D",
+            text = text,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = Color.White,

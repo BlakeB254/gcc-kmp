@@ -95,11 +95,11 @@ The heatmap is a user-facing feature bump. Update both:
 
 ```bash
 # In Xcode: iosApp target → General tab
-#   Version:     1.0.5     (marketing-visible — the one in App Store)
+#   Version:     1.0.6     (marketing-visible — the one in App Store)
 #   Build:       81        (auto-increments, used by TestFlight)
 ```
 
-Or edit directly: `iosApp/iosApp/Info.plist` (`CFBundleShortVersionString` = 1.0.5, `CFBundleVersion` = 81).
+Or edit directly: `iosApp/iosApp/Info.plist` (`CFBundleShortVersionString` = 1.0.6, `CFBundleVersion` = 84).
 
 ### 2. App Store Connect release notes
 
@@ -161,7 +161,7 @@ Push the build to TestFlight internal testing before hitting "Submit for Review"
 ### 6. Submit
 
 In App Store Connect:
-1. App Store tab → select the new version 1.0.5
+1. App Store tab → select the new version 1.0.6
 2. Fill in "What's New" (text above)
 3. Upload screenshots (4–5)
 4. Build section → select the TestFlight build that passed QA

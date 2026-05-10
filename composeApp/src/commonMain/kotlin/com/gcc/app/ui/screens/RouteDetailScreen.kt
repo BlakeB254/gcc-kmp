@@ -1,6 +1,7 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -12,8 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
@@ -22,15 +25,16 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.map.CheckpointMarker
 import com.gcc.app.ui.map.CheckpointThumbnail
 import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
 import com.gcc.shared.model.Coordinates
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import com.gcc.shared.model.Route
+import com.gcc.shared.model.VerificationStatus
+import com.gcc.shared.model.Worker
 import org.koin.compose.koinInject
 
 @Composable
@@ -41,6 +45,7 @@ fun RouteDetailScreen(
     onStartJob: (jobId: Int) -> Unit = {},
     onNavigateToRoute: (routeId: Int) -> Unit = {},
     onStartScan: (routeId: Int) -> Unit = {},
+    onVerificationGate: (actionLabel: String) -> Unit = {},
 ) {
     val viewModel = koinInject<RouteDetailViewModel>()
     val locationProvider = koinInject<LocationProvider>()
@@ -96,6 +101,9 @@ fun RouteDetailScreen(
 
     val payoutString = route.payoutAmount?.let { cents ->
         "$${cents / 100}" + if (cents % 100 != 0) ".${(cents % 100).padTwo()}" else ""
+    }
+    val authorizationState = remember(route, uiState.worker) {
+        routeAuthorizationState(route, uiState.worker)
     }
 
     // Compute route path from checkpoints for polyline rendering
@@ -464,12 +472,18 @@ fun RouteDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val isFunded = false // Blocks not yet funded/available
+                    RouteAuthorizationBanner(
+                        state = authorizationState,
+                        onVerifyClick = { onVerificationGate("claim this route") },
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     GccButton(
-                        text = if (isFunded) "Scout & Clean" else "Not Yet Available",
+                        text = "Scout & Clean",
                         onClick = { onStartScan(routeId) },
                         variant = GccButtonVariant.PRIMARY,
-                        enabled = isFunded,
+                        enabled = authorizationState.canStartRoute,
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
                 }
@@ -477,6 +491,55 @@ fun RouteDetailScreen(
         }
     }
 }
+
+private val RouteAuthState.canStartRoute: Boolean
+    get() = this is RouteAuthState.Authorized || this is RouteAuthState.Unknown
+
+private fun routeAuthorizationState(route: Route, worker: Worker?): RouteAuthState {
+    if (worker?.verification?.status != VerificationStatus.APPROVED) {
+        return RouteAuthState.VerificationRequired
+    }
+
+    val routeArea = routeCommunityAreaName(route) ?: return RouteAuthState.Unknown
+    val workerNeighborhood = worker.address.neighborhood
+    if (worker.address.isNorthLawndale == true && routeArea.normalizedZone() == "north lawndale") {
+        return RouteAuthState.Authorized
+    }
+
+    if (workerNeighborhood.isNullOrBlank()) {
+        return RouteAuthState.Unknown
+    }
+
+    return if (workerNeighborhood.normalizedZone() == routeArea.normalizedZone()) {
+        RouteAuthState.Authorized
+    } else {
+        RouteAuthState.OutsideServiceArea(
+            workerArea = workerNeighborhood,
+            routeArea = routeArea,
+        )
+    }
+}
+
+private fun routeCommunityAreaName(route: Route): String? {
+    val routePoints = route.geometry?.coordinates?.mapNotNull { point ->
+        val lng = point.getOrNull(0)
+        val lat = point.getOrNull(1)
+        if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
+    } ?: route.checkpoints.map { it.coordinates }
+
+    val area = routePoints
+        .asSequence()
+        .mapNotNull { point -> findCommunityAreaForLocation(point.lat, point.lng) }
+        .firstOrNull()
+
+    return area?.displayName?.replace('\n', ' ') ?: area?.name?.replace('_', ' ')
+}
+
+private fun String.normalizedZone(): String =
+    trim()
+        .lowercase()
+        .replace('_', ' ')
+        .replace(Regex("\\s+"), " ")
 
 @Composable
 private fun InfoStat(

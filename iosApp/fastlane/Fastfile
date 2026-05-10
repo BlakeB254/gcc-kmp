@@ -1,3 +1,5 @@
+require "xcodeproj"
+
 default_platform(:ios)
 
 platform :ios do
@@ -22,22 +24,38 @@ platform :ios do
       in_house: false,
     )
 
-    # Ensure distribution cert + profile exist
+    # Ensure distribution cert + profile exist. Set FORCE_PROFILE_RENEWAL=1
+    # after capability changes so Apple regenerates the entitlement payload.
     get_certificates(development: false, force: false, api_key: api_key)
-    profile = get_provisioning_profile(
+    get_provisioning_profile(
       development: false,
+      force: ENV["FORCE_PROFILE_RENEWAL"] == "1",
       app_identifier: "com.globalcommunitycleaners.worker",
       api_key: api_key,
     )
+    profile_name = lane_context[SharedValues::SIGH_NAME]
+    profile_uuid = lane_context[SharedValues::SIGH_UUID]
+
+    xcodeproj_path = File.expand_path("../iosApp.xcodeproj", __dir__)
+    project = Xcodeproj::Project.open(xcodeproj_path)
+    target = project.targets.find { |item| item.name == "iosApp" }
+    release_config = target.build_configurations.find { |item| item.name == "Release" }
+    release_config.build_settings["CODE_SIGN_STYLE"] = "Manual"
+    release_config.build_settings["CODE_SIGN_IDENTITY"] = "Apple Distribution: Blake Bullard (7BBNW25LZM)"
+    release_config.build_settings["PROVISIONING_PROFILE"] = profile_uuid
+    release_config.build_settings.delete("PROVISIONING_PROFILE_SPECIFIER")
+    project.save
 
     # Build the Kotlin framework first (release config for device)
     sh("cd ../.. && ./gradlew :composeApp:compileKotlinIosArm64 --rerun-tasks")
 
-    # Archive — leave automatic signing in place (the project's
-    # CODE_SIGN_STYLE = Automatic). The earlier errSecInternalComponent
-    # was a keychain partition-list issue, not a wrong-cert issue;
-    # unlocking the keychain + opening the partition list (apple-tool,
-    # apple, codesign) above is what actually unblocks codesign.
+    signing_args = [
+      "DEVELOPMENT_TEAM=7BBNW25LZM",
+      'OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/login.keychain-db"',
+    ].join(" ")
+
+    # Archive with distribution signing while leaving dependency targets on
+    # automatic signing; export then applies the regenerated App Store profile.
     build_app(
       project: "iosApp.xcodeproj",
       scheme: "iosApp",
@@ -47,14 +65,13 @@ platform :ios do
       output_directory: "/tmp/gcc-build",
       output_name: "GCC.ipa",
       clean: true,
-      # Explicitly point codesign at the unlocked login keychain — when
-      # xcodebuild runs over SSH the default search-list resolution can
-      # miss the GUI-user's keychain and codesign returns
-      # errSecInternalComponent on embedded frameworks.
-      xcargs: 'OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/login.keychain-db"',
+      xcargs: signing_args,
       export_options: {
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: "7BBNW25LZM",
         provisioningProfiles: {
-          "com.globalcommunitycleaners.worker" => profile["provisioningProfile"]
+          "com.globalcommunitycleaners.worker" => profile_name
         }
       }
     )
@@ -76,7 +93,7 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "81"
+    build = options[:build] || "84"
 
     upload_to_testflight(
       api_key: api_key,
@@ -86,7 +103,7 @@ platform :ios do
       skip_submission: false,
       distribute_external: true,
       groups: ["Beta Testers"],
-      app_version: "1.0.5",
+      app_version: "1.0.6",
       build_number: build,
       changelog: File.read(File.expand_path("metadata/en-US/release_notes.txt", __dir__)),
       notify_external_testers: true,
@@ -104,8 +121,8 @@ platform :ios do
 
     deliver(
       api_key: api_key,
-      app_version: "1.0.5",
-      build_number: "81",
+      app_version: "1.0.6",
+      build_number: "84",
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,
@@ -132,7 +149,7 @@ platform :ios do
     )
     deliver(
       api_key: api_key,
-      app_version: "1.0.5",
+      app_version: "1.0.6",
       submit_for_review: false,
       skip_binary_upload: true,
       skip_metadata: false,

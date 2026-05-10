@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Logo } from '@/components/brand/Logo'
+import { SocialLoginButtons } from '@/components/auth/SocialLoginButtons'
 import { LoadingFallback } from '@/components/shared/LoadingFallback'
 import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
 
@@ -35,6 +36,21 @@ interface LoginErrorState {
   reason?: string
 }
 
+function oauthErrorMessage(code: string | null): string | null {
+  if (!code) return null
+  const messages: Record<string, string> = {
+    google_not_configured: 'Google sign-in is not configured for the website yet.',
+    apple_not_configured: 'Apple sign-in is not configured for the website yet.',
+    google_cancelled: 'Google sign-in was cancelled.',
+    apple_cancelled: 'Apple sign-in was cancelled.',
+    google_failed: 'Google sign-in failed. Please try again or use email.',
+    apple_failed: 'Apple sign-in failed. Please try again or use email.',
+    missing_code: 'The sign-in provider did not return the expected authorization code.',
+    invalid_request: 'That sign-in request was invalid. Please try again.',
+  }
+  return messages[code] || 'Social sign-in failed. Please try again or use email.'
+}
+
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -45,6 +61,8 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<LoginErrorState | null>(null)
+  const oauthError = oauthErrorMessage(searchParams.get('oauthError'))
+  const displayError: LoginErrorState | null = error || (oauthError ? { message: oauthError } : null)
 
   function landingFor(_data: UniversalLoginResponse): string {
     // Honor explicit ?next= (e.g., a deep-link to /admin/routes); otherwise
@@ -96,7 +114,7 @@ function LoginContent() {
   }
 
   const errorTone =
-    error?.code === 'EMAIL_NOT_VERIFIED'
+    displayError?.code === 'EMAIL_NOT_VERIFIED'
       ? 'bg-amber-50 border-amber-200 text-amber-800'
       : 'bg-red-50 border-red-200 text-red-700'
 
@@ -149,18 +167,30 @@ function LoginContent() {
             Enter your email and password to access your dashboard.
           </p>
 
-          {error && (
+          <div className="mb-6">
+            <SocialLoginButtons mode="signin" returnTo={next && next.startsWith('/') ? next : '/member'} />
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-neutral-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-3 text-neutral-500">or sign in with email</span>
+              </div>
+            </div>
+          </div>
+
+          {displayError && (
             <div className={`mb-6 p-4 rounded-xl border text-sm ${errorTone}`}>
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-medium">{error.message}</p>
-                  {error.code === 'EMAIL_NOT_VERIFIED' && (error.workerId || error.sponsorId) && (
+                  <p className="font-medium">{displayError.message}</p>
+                  {displayError.code === 'EMAIL_NOT_VERIFIED' && (displayError.workerId || displayError.sponsorId) && (
                     <Link
                       href={
-                        error.workerId
-                          ? `/worker/verify-email?id=${error.workerId}`
-                          : `/sponsor/verify-email?id=${error.sponsorId}`
+                        displayError.workerId
+                          ? `/worker/verify-email?id=${displayError.workerId}`
+                          : `/sponsor/verify-email?id=${displayError.sponsorId}`
                       }
                       className="inline-flex items-center gap-2 mt-3 px-4 py-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium transition-colors text-sm"
                     >
@@ -168,8 +198,8 @@ function LoginContent() {
                       Verify your email
                     </Link>
                   )}
-                  {error.code === 'VERIFICATION_REJECTED' && error.reason && (
-                    <p className="mt-2 text-xs opacity-90">{error.reason}</p>
+                  {displayError.code === 'VERIFICATION_REJECTED' && displayError.reason && (
+                    <p className="mt-2 text-xs opacity-90">{displayError.reason}</p>
                   )}
                 </div>
               </div>

@@ -1,4 +1,4 @@
-• Dynamic affected-block heatmap — see every funded, scheduled, in-progress, and completed cleaning at a glance, with a 30-second live refresh.
-• Tap-to-inspect — tap any block on the map for an instant readout of status, sponsor count, funding progress, and scheduled cleaning date.
-• Cleaner map visuals — removed the duplicate route-fill overlay; the heatmap now reads as one coherent layer over the green clean-zone baseline.
-• Map polish across the app — same routing, same blocks, fewer visual collisions.
+• Sign in with Apple and Google setup for real-device testing.
+• Spot reports now connect into bounties, so reported messes can become funded cleanup opportunities.
+• Dynamic heatmap visuals with calmer clean-zone tinting, clearer hotspot density, tap-to-inspect details, and bountied-spot rings.
+• Admin audit polish for spot attribution, points history, and safer spot creation.

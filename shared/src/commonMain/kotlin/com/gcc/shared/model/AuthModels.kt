@@ -37,6 +37,7 @@ data class AppleAuthRequest(
     val identityToken: String,
     val fullName: String? = null,
     val email: String? = null,
+    val nonce: String? = null,
 )
 
 @Serializable

@@ -3,6 +3,8 @@ package com.gcc.app.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,6 +54,12 @@ fun LoginScreen(
     var contentVisible by remember { mutableStateOf(false) }
     var biometricAvailable by remember { mutableStateOf(false) }
     var hasCredentials by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    fun dismissKeyboard() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+    }
 
     LaunchedEffect(Unit) {
         viewModel.resetState()
@@ -74,13 +84,18 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White),
+            .background(Color.White)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { dismissKeyboard() },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                .imePadding()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -147,18 +162,20 @@ fun LoginScreen(
                             Spacer(modifier = Modifier.height(10.dp))
                         }
 
-                        OutlinedButton(
-                            onClick = { viewModel.loginWithGoogle() },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            enabled = !uiState.isLoading,
-                            shape = RoundedCornerShape(12.dp),
-                            border = ButtonDefaults.outlinedButtonBorder(enabled = true),
-                        ) {
-                            Text(
-                                "G  Continue with Google",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
+                        if (viewModel.canUseGoogleSignIn) {
+                            OutlinedButton(
+                                onClick = { viewModel.loginWithGoogle() },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                enabled = !uiState.isLoading,
+                                shape = RoundedCornerShape(12.dp),
+                                border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+                            ) {
+                                Text(
+                                    "G  Continue with Google",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                         }
 
                         // Face ID quick sign-in

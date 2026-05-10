@@ -136,11 +136,12 @@ fun PointsDashboardScreen(onBack: () -> Unit = {}) {
                     item {
                         GccCard {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                EarnTip(emoji = "\uD83D\uDCF8", action = "Report a dirty spot", points = "+5 pts")
-                                EarnTip(emoji = "\uD83E\uDDF9", action = "Volunteer cleanup", points = "+20 pts")
-                                EarnTip(emoji = "\uD83D\uDD0D", action = "Verify a spot (dirty)", points = "+3 pts")
-                                EarnTip(emoji = "\u2728", action = "Verify a spot (clean)", points = "+5 pts")
-                                EarnTip(emoji = "\u2705", action = "Report already clean", points = "+2 pts")
+                                EarnTip(emoji = "\uD83D\uDCF8", action = "Report a dirty spot", points = "+10 pts")
+                                EarnTip(emoji = "\uD83E\uDDF9", action = "Volunteer cleanup", points = "+50 pts")
+                                EarnTip(emoji = "\uD83D\uDD0D", action = "Verify a spot (dirty)", points = "+5 pts")
+                                EarnTip(emoji = "\u2728", action = "Verify a spot (clean)", points = "+10 pts")
+                                EarnTip(emoji = "\u2705", action = "Report already clean", points = "+5 pts")
+                                EarnTip(emoji = "\uD83D\uDC1B", action = "Report a confirmed bug", points = "+50 pts")
                             }
                         }
                     }
@@ -285,7 +286,26 @@ private fun BreakdownGrid(breakdown: PointsBreakdown, spacing: GccSpacing) {
                 accentColor = CardAccentGreen,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(modifier = Modifier.weight(1f))
+            StatCard(
+                value = "${breakdown.bugReport}",
+                label = "Bug Reports",
+                accentColor = CardAccentPurple,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (breakdown.adminGrant != 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                StatCard(
+                    value = "${breakdown.adminGrant}",
+                    label = "Admin Grants",
+                    accentColor = CardAccentSky,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -302,6 +322,8 @@ private fun ActivityRow(entry: PointsLedgerEntry, spacing: GccSpacing) {
         PointsAction.VERIFICATION_CLEAN -> "\u2728" to "Verified Clean"
         PointsAction.VOLUNTEER_CLEANUP -> "\uD83E\uDDF9" to "Volunteer Cleanup"
         PointsAction.ALREADY_CLEAN_REPORT -> "\u2705" to "Already Clean"
+        PointsAction.ADMIN_GRANT -> "\uD83C\uDF81" to "Admin Grant"
+        PointsAction.BUG_REPORT -> "\uD83D\uDC1B" to "Bug Report"
     }
 
     val localDate = entry.createdAt.toLocalDateTime(TimeZone.currentSystemDefault())
@@ -330,12 +352,13 @@ private fun ActivityRow(entry: PointsLedgerEntry, spacing: GccSpacing) {
                     color = TextSubtle,
                 )
             }
+            val isPositive = entry.points >= 0
             Text(
-                "+${entry.points}",
+                if (isPositive) "+${entry.points}" else entry.points.toString(),
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                 ),
-                color = GccSky,
+                color = if (isPositive) GccSky else GccError,
             )
         }
     }

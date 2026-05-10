@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -16,7 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
@@ -25,7 +31,9 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.util.padTwo
+import com.gcc.shared.model.BountyVisibility
 import com.gcc.shared.model.BountyStatus
+import com.gcc.shared.model.CreateBountyRequest
 import org.koin.compose.koinInject
 
 @Composable
@@ -33,11 +41,13 @@ fun BountyDetailScreen(
     bountyId: Int = 0,
     onBack: () -> Unit = {},
     onNavigateToActiveJob: (jobId: Int, routeId: Int) -> Unit = { _, _ -> },
+    onVolunteerCleanup: (reportId: Int) -> Unit = {},
 ) {
     val viewModel = koinInject<BountyViewModel>()
     val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    var showPlaceBountyDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         locationProvider.startLocationUpdates()
@@ -79,9 +89,12 @@ fun BountyDetailScreen(
         return
     }
 
+    val hasSourceSpot = bounty.triggerReportId != null
+    val isCleanupOpportunity = bounty.amount <= 0 && hasSourceSpot
     val dollars = bounty.amount / 100
     val cents = bounty.amount % 100
-    val payoutString = "$$dollars.${cents.padTwo()}"
+    val payoutString = if (isCleanupOpportunity) "Volunteer" else "$$dollars.${cents.padTwo()}"
+    val payoutLabel = if (isCleanupOpportunity) "Type" else "Payout"
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -161,7 +174,7 @@ fun BountyDetailScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        BountyInfoStat(value = payoutString, label = "Payout", highlight = true)
+                        BountyInfoStat(value = payoutString, label = payoutLabel, highlight = true)
                         Box(
                             modifier = Modifier.width(1.dp).height(32.dp).background(DividerColor),
                         )
@@ -284,10 +297,19 @@ fun BountyDetailScreen(
                 }
             }
 
-            // Accept Bounty button
+            // Action buttons
             if (bounty.status == BountyStatus.OPEN) {
                 item {
-                    uiState.claimError?.let { error ->
+                    uiState.createError?.let { error ->
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = GccError,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    if (!hasSourceSpot) uiState.claimError?.let { error ->
                         Text(
                             error,
                             style = MaterialTheme.typography.bodySmall,
@@ -298,14 +320,32 @@ fun BountyDetailScreen(
                     }
 
                     GccButton(
-                        text = "Accept Bounty",
-                        onClick = { viewModel.claimBounty(bountyId) },
+                        text = if (hasSourceSpot) "Start Cleanup" else "Accept Bounty",
+                        onClick = {
+                            val reportId = bounty.triggerReportId
+                            if (reportId != null) {
+                                onVolunteerCleanup(reportId)
+                            } else {
+                                viewModel.claimBounty(bountyId)
+                            }
+                        },
                         variant = GccButtonVariant.PRIMARY,
-                        trailingText = payoutString,
+                        trailingText = if (hasSourceSpot && bounty.amount > 0) payoutString else null,
                         enabled = !uiState.isClaimingBounty,
                         isLoading = uiState.isClaimingBounty,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
+                    if (hasSourceSpot) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GccButton(
+                            text = if (bounty.amount > 0) "Add to Bounty" else "Place Bounty",
+                            onClick = { showPlaceBountyDialog = true },
+                            variant = GccButtonVariant.OUTLINED,
+                            enabled = !uiState.isCreating,
+                            isLoading = uiState.isCreating,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
@@ -334,6 +374,106 @@ fun BountyDetailScreen(
             }
         }
     }
+
+    if (showPlaceBountyDialog && hasSourceSpot) {
+        PlaceBountyDialog(
+            isAdding = bounty.amount > 0,
+            isLoading = uiState.isCreating,
+            onDismiss = { showPlaceBountyDialog = false },
+            onConfirm = { dollars ->
+                val reportId = bounty.triggerReportId ?: return@PlaceBountyDialog
+                viewModel.createBounty(
+                    CreateBountyRequest(
+                        title = bounty.title,
+                        description = bounty.description,
+                        amount = dollars * 100,
+                        locationLat = bounty.locationLat,
+                        locationLng = bounty.locationLng,
+                        radiusMeters = bounty.radiusMeters,
+                        communityArea = bounty.communityArea,
+                        neighborhood = bounty.neighborhood,
+                        mediaUrls = bounty.mediaUrls,
+                        triggerReportId = reportId,
+                        visibility = BountyVisibility.PUBLIC,
+                        isAnonymous = true,
+                    ),
+                )
+                showPlaceBountyDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun PlaceBountyDialog(
+    isAdding: Boolean,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (dollars: Int) -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var amountText by remember { mutableStateOf("25") }
+    val amountDollars = amountText.toIntOrNull()
+    val isValid = amountDollars != null && amountDollars >= 10
+    fun dismissKeyboard() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isAdding) "Add to Bounty" else "Place Bounty") },
+        text = {
+            Column(
+                modifier = Modifier.imePadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "Attach a cash reward to this reported spot. Minimum \$10.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() }) amountText = input
+                    },
+                    label = { Text("Amount") },
+                    prefix = { Text("\$ ") },
+                    singleLine = true,
+                    isError = amountText.isNotBlank() && !isValid,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { dismissKeyboard() }),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = isValid && !isLoading,
+                onClick = {
+                    dismissKeyboard()
+                    amountDollars?.let(onConfirm)
+                },
+            ) {
+                Text(if (isAdding) "Add" else "Place")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    dismissKeyboard()
+                    onDismiss()
+                },
+                enabled = !isLoading,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

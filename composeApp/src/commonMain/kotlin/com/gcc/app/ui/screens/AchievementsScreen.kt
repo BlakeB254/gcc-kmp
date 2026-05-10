@@ -1,13 +1,17 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,20 +38,32 @@ fun AchievementsScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            TopAppBar(
-                title = { Text("Achievements") },
-                actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
-                navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("\u2190 Back", color = Color.White)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceMuted),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccGreen,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                ),
-            )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Achievements",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+                GccLogo(size = 56.dp, modifier = Modifier.padding(end = 4.dp))
+            }
         }
     ) { padding ->
         if (uiState.isLoading) {
@@ -58,79 +74,82 @@ fun AchievementsScreen(
                 CircularProgressIndicator(color = GccGreen)
             }
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding),
+            val unlockedCount = uiState.badges.count { it.isUnlocked }
+            val totalCount = uiState.badges.size
+            val progress = if (totalCount > 0) unlockedCount.toFloat() / totalCount else 0f
+            val filteredBadges = if (selectedTabIndex == 0) {
+                uiState.badges
+            } else {
+                val category = BadgeCategory.entries[selectedTabIndex - 1]
+                uiState.badges.filter { it.category == category }
+            }.sortedWith(
+                compareByDescending<com.gcc.shared.model.Badge> { it.isUnlocked }
+                    .thenBy { it.tier.ordinal }
+            )
+
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 100.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // Progress summary card
-                val unlockedCount = uiState.badges.count { it.isUnlocked }
-                val totalCount = uiState.badges.size
-                val progress = if (totalCount > 0) unlockedCount.toFloat() / totalCount else 0f
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceMuted),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "$unlockedCount / $totalCount Badges Earned",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth().height(8.dp),
-                            color = GccGreen,
-                            trackColor = DividerColor,
-                        )
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    // Progress summary card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceMuted),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "$unlockedCount / $totalCount Badges Earned",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                color = GccGreen,
+                                trackColor = DividerColor,
+                            )
+                        }
                     }
                 }
 
-                // Category tabs
-                ScrollableTabRow(
-                    selectedTabIndex = selectedTabIndex,
-                    containerColor = Color.Transparent,
-                    contentColor = GccGreen,
-                    edgePadding = 16.dp,
-                    divider = {},
-                ) {
-                    categoryTabs.forEachIndexed { index, title ->
-                        Tab(
-                            selected = selectedTabIndex == index,
-                            onClick = { selectedTabIndex = index },
-                            text = {
-                                Text(
-                                    title,
-                                    color = if (selectedTabIndex == index) GccGreen else TextMuted,
-                                )
-                            },
-                        )
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    // Category tabs
+                    ScrollableTabRow(
+                        selectedTabIndex = selectedTabIndex,
+                        containerColor = Color.Transparent,
+                        contentColor = GccGreen,
+                        edgePadding = 0.dp,
+                        divider = {},
+                    ) {
+                        categoryTabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTabIndex == index,
+                                onClick = { selectedTabIndex = index },
+                                text = {
+                                    Text(
+                                        title,
+                                        color = if (selectedTabIndex == index) GccGreen else TextMuted,
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
-                // Filtered badge grid
-                val filteredBadges = if (selectedTabIndex == 0) {
-                    uiState.badges
-                } else {
-                    val category = BadgeCategory.entries[selectedTabIndex - 1]
-                    uiState.badges.filter { it.category == category }
-                }.sortedWith(
-                    compareByDescending<com.gcc.shared.model.Badge> { it.isUnlocked }
-                        .thenBy { it.tier.ordinal }
-                )
-
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 100.dp),
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(filteredBadges, key = { it.id }) { badge ->
-                        BadgeCard(badge = badge)
-                    }
+                items(filteredBadges, key = { it.id }) { badge ->
+                    BadgeCard(badge = badge)
                 }
             }
         }

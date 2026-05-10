@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,14 +15,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.components.GccButton
+import com.gcc.app.ui.components.GccButtonVariant
+import com.gcc.app.ui.components.GccTextField
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.shared.model.AdminGrantAction
 import com.gcc.shared.model.DocumentMedia
 import com.gcc.shared.model.DocumentStatus
+import com.gcc.shared.model.PointsAction
+import com.gcc.shared.model.PointsLedgerEntry
 import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.Worker
+import kotlin.math.abs
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,13 +47,17 @@ fun AdminWorkerDetailScreen(
     val documents by viewModel.workerDocuments.collectAsState()
     val isLoading by viewModel.workerActionLoading.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val pointsHistory by viewModel.workerPointsHistory.collectAsState()
+    val pointsHistoryLoading by viewModel.workerPointsHistoryLoading.collectAsState()
 
     var reviewNotes by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    var showGrantPointsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(workerId) {
         viewModel.loadWorkerDetail(workerId)
+        viewModel.loadWorkerPointsHistory(workerId)
     }
 
     // Sync review notes when worker loads
@@ -178,6 +195,65 @@ fun AdminWorkerDetailScreen(
                             maxLines = 6,
                             shape = RoundedCornerShape(8.dp),
                         )
+                    }
+
+                    // Community points + grant action
+                    item {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Text("Community Points", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${w.stats.communityPoints} pts",
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                                color = GccGreen,
+                            )
+                            Button(
+                                onClick = { showGrantPointsDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = GccSky),
+                                enabled = !isLoading,
+                            ) { Text("Grant Points") }
+                        }
+                    }
+
+                    // Recent points activity (audit trail)
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Recent Activity",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextMuted,
+                        )
+                    }
+                    if (pointsHistoryLoading && pointsHistory.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = GccSky,
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                        }
+                    } else if (pointsHistory.isEmpty()) {
+                        item {
+                            Text(
+                                "No points activity yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSubtle,
+                            )
+                        }
+                    } else {
+                        items(pointsHistory.take(10)) { entry ->
+                            PointsHistoryRow(entry)
+                        }
                     }
 
                     // Quick actions
@@ -336,6 +412,139 @@ fun AdminWorkerDetailScreen(
             }
         }
     }
+
+    // Grant Points dialog
+    if (showGrantPointsDialog && worker != null) {
+        GrantPointsDialog(
+            workerName = worker?.name ?: "Worker",
+            isLoading = isLoading,
+            onDismiss = { showGrantPointsDialog = false },
+            onSubmit = { amount, reason, action ->
+                viewModel.grantPointsToWorker(
+                    workerId = workerId,
+                    amount = amount,
+                    reason = reason,
+                    action = action,
+                ) { success, _, _ ->
+                    if (success) {
+                        showGrantPointsDialog = false
+                        // Refresh history so the new entry shows immediately
+                        viewModel.loadWorkerPointsHistory(workerId)
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun GrantPointsDialog(
+    workerName: String,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (amount: Int, reason: String, action: AdminGrantAction) -> Unit,
+) {
+    var amountText by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf("") }
+    var selectedAction by remember { mutableStateOf(AdminGrantAction.ADMIN_GRANT) }
+    var amountWasManuallyEdited by remember { mutableStateOf(false) }
+    var localError by remember { mutableStateOf<String?>(null) }
+
+    val parsedAmount = amountText.trim().toIntOrNull()
+    val canSubmit = !isLoading &&
+        parsedAmount != null && parsedAmount != 0 && kotlin.math.abs(parsedAmount) <= 10_000 &&
+        reason.trim().isNotEmpty() && reason.trim().length <= 280
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Grant Points") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Award or correct points for $workerName. Use a negative amount to subtract.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+
+                // Amount
+                GccTextField(
+                    value = amountText,
+                    onValueChange = { input ->
+                        // Allow leading minus and digits only
+                        if (input.isEmpty() || input == "-" || input.matches(Regex("^-?\\d*$"))) {
+                            amountText = input
+                            amountWasManuallyEdited = true
+                            localError = null
+                        }
+                    },
+                    label = "Amount (e.g. 25 or -10)",
+                    keyboardType = KeyboardType.Number,
+                    singleLine = true,
+                )
+
+                // Reason
+                GccTextField(
+                    value = reason,
+                    onValueChange = { reason = it.take(280) },
+                    label = "Reason (required, ≤ 280 chars)",
+                    singleLine = false,
+                )
+
+                // Action category
+                Text(
+                    "Category",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AdminGrantAction.entries.forEach { action ->
+                        FilterChip(
+                            selected = selectedAction == action,
+                            onClick = {
+                                val previousDefault = selectedAction.defaultAmount?.toString()
+                                selectedAction = action
+                                if (
+                                    !amountWasManuallyEdited ||
+                                    amountText.isBlank() ||
+                                    amountText == previousDefault
+                                ) {
+                                    amountText = action.defaultAmount?.toString().orEmpty()
+                                    amountWasManuallyEdited = false
+                                }
+                            },
+                            label = { Text(action.display) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = GccGreen.copy(alpha = 0.18f),
+                                selectedLabelColor = GccGreenDark,
+                            ),
+                        )
+                    }
+                }
+
+                localError?.let { err ->
+                    Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amt = parsedAmount ?: return@Button
+                    val trimmed = reason.trim()
+                    if (trimmed.isEmpty()) {
+                        localError = "Reason is required"
+                        return@Button
+                    }
+                    onSubmit(amt, trimmed, selectedAction)
+                },
+                enabled = canSubmit,
+                colors = ButtonDefaults.buttonColors(containerColor = GccSky),
+            ) { Text(if (isLoading) "Granting..." else "Grant") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Cancel") }
+        },
+    )
 }
 
 // ─── Helper composables ────────────────────────────────────────────
@@ -385,6 +594,74 @@ private fun InfoRow(label: String, value: String) {
             modifier = Modifier.width(120.dp),
         )
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun PointsHistoryRow(entry: PointsLedgerEntry) {
+    val isPositive = entry.points >= 0
+    val pointsColor = if (isPositive) GccGreen else GccError
+    val actionLabel = when (entry.action) {
+        PointsAction.SPOT_CREATED -> "Spot reported"
+        PointsAction.VERIFICATION_DIRTY -> "Verified — dirty"
+        PointsAction.VERIFICATION_CLEAN -> "Verified — clean"
+        PointsAction.VOLUNTEER_CLEANUP -> "Volunteer cleanup"
+        PointsAction.ALREADY_CLEAN_REPORT -> "Already-clean report"
+        PointsAction.ADMIN_GRANT -> "Admin grant"
+        PointsAction.BUG_REPORT -> "Bug report"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(GccSky.copy(alpha = 0.04f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    actionLabel,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    formatRelativeTime(entry.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSubtle,
+                )
+            }
+            entry.reason?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                    maxLines = 2,
+                )
+            }
+        }
+        Text(
+            text = if (isPositive) "+${entry.points}" else entry.points.toString(),
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            color = pointsColor,
+        )
+    }
+}
+
+private fun formatRelativeTime(then: kotlinx.datetime.Instant): String {
+    val now = Clock.System.now()
+    val deltaSec = (now - then).inWholeSeconds
+    val abs = abs(deltaSec)
+    return when {
+        abs < 60 -> "just now"
+        abs < 3600 -> "${abs / 60}m ago"
+        abs < 86_400 -> "${abs / 3600}h ago"
+        abs < 7 * 86_400 -> "${abs / 86_400}d ago"
+        else -> {
+            val ldt = then.toLocalDateTime(TimeZone.currentSystemDefault())
+            "${ldt.monthNumber}/${ldt.dayOfMonth}"
+        }
     }
 }
 

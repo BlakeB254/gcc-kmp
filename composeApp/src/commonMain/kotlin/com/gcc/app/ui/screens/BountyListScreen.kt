@@ -51,7 +51,7 @@ fun BountyListScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Bounties") },
+                title = { Text("Cleanup Opportunities") },
                 actions = { GccLogo(size = 72.dp, modifier = Modifier.padding(end = 12.dp)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -83,13 +83,13 @@ fun BountyListScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "No bounties available",
+                            "No cleanup opportunities",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextMuted,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Bounties are posted when specific areas need\nextra attention. Check back soon!",
+                            "New reports appear here when areas need\nextra attention. Check back soon!",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSubtle,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -133,6 +133,8 @@ private fun BountyListItem(
 ) {
     val dollars = bounty.amount / 100
     val cents = bounty.amount % 100
+    val isCleanupOpportunity = bounty.amount <= 0 && bounty.triggerReportId != null
+    val amountLabel = if (isCleanupOpportunity) "Volunteer" else "$$dollars.${cents.padTwo()}"
 
     GccCard(
         modifier = modifier,
@@ -164,9 +166,9 @@ private fun BountyListItem(
                 }
             }
             Text(
-                "$$dollars.${cents.padTwo()}",
+                amountLabel,
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = GccGreen,
+                color = if (isCleanupOpportunity) GccSky else GccGreen,
             )
         }
 

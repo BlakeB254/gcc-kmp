@@ -59,6 +59,8 @@ export async function GET(request: NextRequest) {
           verificationClean: breakdownMap['verification_clean'] ?? 0,
           volunteerCleanup: breakdownMap['volunteer_cleanup'] ?? 0,
           alreadyCleanReport: breakdownMap['already_clean_report'] ?? 0,
+          adminGrant: breakdownMap['admin_grant'] ?? 0,
+          bugReport: breakdownMap['bug_report'] ?? 0,
         },
         recentEntries,
       },

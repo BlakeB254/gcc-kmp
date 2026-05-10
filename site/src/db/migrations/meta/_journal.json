@@ -71,6 +71,34 @@
       "when": 1777574959885,
       "tag": "0009_breezy_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778242365870,
+      "tag": "0013_add_admin_grant_points_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778243434371,
+      "tag": "0014_points_ledger_reason_and_granted_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778426309919,
+      "tag": "0015_add_worker_apple_user_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778427600000,
+      "tag": "0016_add_spot_bounties",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,10 @@ import SwiftUI
 import UserNotifications
 import ComposeApp
 
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
+
 @main
 struct iosAppApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -10,12 +14,35 @@ struct iosAppApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    // Handle deep links (Universal Links and custom URL schemes)
+                    // Google Sign-In gets first crack at custom-scheme URLs
+                    // (com.googleusercontent.apps.* redirects). If GIDSignIn
+                    // doesn't claim it, fall through to deep-link routing.
+                    #if canImport(GoogleSignIn)
+                    if GIDSignIn.sharedInstance.handle(url) {
+                        return
+                    }
+                    #endif
                     AppNavigator.shared.handleDeepLink(uri: url.absoluteString)
                 }
         }
     }
 }
+
+// ── Google Sign-In configuration ──────────────────────────────────────
+//
+// To finish wiring native Google Sign-In:
+//   1. Create an iOS OAuth 2.0 Client ID in the Google Cloud Console for
+//      bundle id `com.globalcommunitycleaners.worker` and copy:
+//        - the iOS client ID (e.g. 1234567890-abc.apps.googleusercontent.com)
+//        - the reversed client ID (e.g. com.googleusercontent.apps.1234567890-abc)
+//   2. Replace `GIDClientID` in Info.plist with the iOS client ID.
+//   3. Replace the placeholder CFBundleURLTypes scheme in Info.plist with the
+//      reversed client ID.
+//
+// Until the real IDs are present, `GoogleSignInBridge.isConfigured` stays false
+// and the LoginScreen Google button hides itself.
+
+private let googleIosClientIdPlaceholder = "GOOGLE_IOS_CLIENT_ID_PLACEHOLDER"
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
@@ -35,6 +62,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 UIApplication.shared.unregisterForRemoteNotifications()
             }
         }
+
+        configureGoogleSignIn()
 
         return true
     }
@@ -93,4 +122,68 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         completionHandler()
     }
+
+    // MARK: - Google Sign-In bridge
+
+    private func configureGoogleSignIn() {
+        #if canImport(GoogleSignIn)
+        let googleIosClientId = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
+        guard let googleIosClientId,
+              !googleIosClientId.isEmpty,
+              googleIosClientId != googleIosClientIdPlaceholder else {
+            // Bridge stays unconfigured — Kotlin reports
+            // isGoogleSignInAvailable() == false and the Google button hides.
+            return
+        }
+
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: googleIosClientId)
+        GoogleSignInBridge.shared.isConfigured = true
+        GoogleSignInBridge.shared.signInCallback = { onResult in
+            DispatchQueue.main.async {
+                guard let presenter = topViewController() else {
+                    _ = onResult(nil, nil, nil)
+                    return
+                }
+                GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
+                    if let error = error {
+                        // Silent on user-cancel; log other errors.
+                        let nsErr = error as NSError
+                        if nsErr.code != GIDSignInError.canceled.rawValue {
+                            print("Google Sign-In error: \(error.localizedDescription)")
+                        }
+                        _ = onResult(nil, nil, nil)
+                        return
+                    }
+                    let user = result?.user
+                    let idToken = user?.idToken?.tokenString
+                    let profile = user?.profile
+                    let fullName = profile?.name
+                    let email = profile?.email
+                    _ = onResult(idToken, fullName, email)
+                }
+            }
+        }
+        #endif
+    }
+}
+
+// Walk the key window's view controller stack so we can present GIDSignIn
+// from whatever's currently on screen (Compose root, modal sheet, etc.).
+private func topViewController(base: UIViewController? = nil) -> UIViewController? {
+    let resolvedBase = base ?? UIApplication.shared
+        .connectedScenes
+        .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+        .first?
+        .rootViewController
+
+    if let nav = resolvedBase as? UINavigationController {
+        return topViewController(base: nav.visibleViewController)
+    }
+    if let tab = resolvedBase as? UITabBarController {
+        return topViewController(base: tab.selectedViewController)
+    }
+    if let presented = resolvedBase?.presentedViewController {
+        return topViewController(base: presented)
+    }
+    return resolvedBase
 }

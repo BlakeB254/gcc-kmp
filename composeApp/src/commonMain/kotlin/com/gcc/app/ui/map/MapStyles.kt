@@ -121,23 +121,30 @@ object MapStyles {
 
     // Spot report marker layers
     const val LAYER_SPOT_MARKERS = "spot-markers"
+    const val LAYER_SPOT_MARKER_HALOS = "spot-marker-halos"
+    const val LAYER_BOUNTIED_SPOT_HALOS = "bountied-spot-halos"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
+    val SPOT_HEAT_LOW = Color(0xFF86EFAC)
+    val SPOT_HEAT_MEDIUM = Color(0xFFFDE047)
+    val SPOT_HEAT_HIGH = Color(0xFFF97316)
+    val SPOT_HEAT_EXTREME = Color(0xFFDC2626)
+    val CLEAN_BASE_COLOR = Color(0xFF22C55E)
 
     // Spot heatmap layer (visible only when zoomed into service area)
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
-    const val SPOT_HEATMAP_RADIUS_FAR = 5.0f     // tight at service-area zoom
+    const val SPOT_HEATMAP_RADIUS_FAR = 4.0f     // tight at wide zoom
     const val SPOT_HEATMAP_RADIUS_MID = 12.0f    // grows at neighborhood zoom
-    const val SPOT_HEATMAP_RADIUS_CLOSE = 4.0f   // shrinks before individual dots take over
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.4f
+    const val SPOT_HEATMAP_RADIUS_CLOSE = 6.0f   // shrinks before individual dots take over
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.28f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
-    // Heatmap color: light pink (few spots) → deep red (dense clusters)
-    val SPOT_HEATMAP_COLOR = Color(0xFFDC2626)         // base red (opacity controls density feel)
+    // Heatmap color: green fringe -> yellow caution -> orange/red hotspot.
+    val SPOT_HEATMAP_COLOR = SPOT_HEAT_EXTREME
 
-    // Zoom thresholds — heatmap and dots are mutually exclusive views
-    const val SPOT_HEATMAP_MIN_ZOOM = 12.0   // heatmap starts at service-area zoom
-    const val SPOT_HEATMAP_MAX_ZOOM = 13.5   // heatmap fully gone before dots appear
-    const val SPOT_DOTS_MIN_ZOOM = 13.5      // individual dots take over where heatmap ends
+    // Zoom thresholds — heatmap and dots crossfade at neighborhood/street zoom.
+    const val SPOT_HEATMAP_MIN_ZOOM = 8.0
+    const val SPOT_HEATMAP_MAX_ZOOM = 15.0
+    const val SPOT_DOTS_MIN_ZOOM = 14.0
 }
 
 

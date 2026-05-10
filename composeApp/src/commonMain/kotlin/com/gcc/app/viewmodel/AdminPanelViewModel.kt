@@ -33,6 +33,9 @@ data class AdminPanelUiState(
     val bounties: List<Bounty> = emptyList(),
     val spotReports: List<CommunityReport> = emptyList(),
     val loadedTabs: Set<AdminTab> = emptySet(),
+    val isCreatingSpot: Boolean = false,
+    val spotCreateError: String? = null,
+    val spotCreateSuccessNonce: Int = 0,
 )
 
 class AdminPanelViewModel(
@@ -60,6 +63,33 @@ class AdminPanelViewModel(
 
     fun forceRefreshCurrentTab() {
         loadTabData(isRefresh = true)
+    }
+
+    fun clearSpotCreateError() {
+        _uiState.value = _uiState.value.copy(spotCreateError = null)
+    }
+
+    /**
+     * Ensure the workers list is loaded without changing the selected tab.
+     * Used by the spot-create attribution picker so the admin doesn't have
+     * to visit the Workers tab first before they can pick a discoverer.
+     */
+    fun ensureWorkersLoaded() {
+        if (_uiState.value.workers.isNotEmpty()) return
+        if (AdminTab.WORKERS in _uiState.value.loadedTabs) return
+        scope.launch {
+            try {
+                val workers = apiClient.getAdminWorkers()
+                _uiState.value = _uiState.value.copy(
+                    workers = workers,
+                    loadedTabs = _uiState.value.loadedTabs + AdminTab.WORKERS,
+                )
+            } catch (_: Exception) {
+                // Don't surface a global error — picker UI handles empty/error
+                // state inline; failure here just means the admin sees the
+                // "no workers loaded" message until they retry.
+            }
+        }
     }
 
     private fun invalidateTab(tab: AdminTab) {
@@ -235,6 +265,7 @@ class AdminPanelViewModel(
     fun createSpot(request: CreateSpotRequest, photos: List<CapturedPhoto>) {
         scope.launch {
             try {
+                _uiState.value = _uiState.value.copy(isCreatingSpot = true, spotCreateError = null, error = null)
                 val photoBytes = photos.map { it.bytes }
                 val uploadedUrls = if (photoBytes.isNotEmpty()) apiClient.uploadSpotPhotos(photoBytes) else emptyList()
                 val requestWithPhotos = request.copy(
@@ -242,13 +273,35 @@ class AdminPanelViewModel(
                 )
                 apiClient.createAdminSpot(requestWithPhotos)
                 val updated = apiClient.getAdminSpotReports()
-                _uiState.value = _uiState.value.copy(spotReports = updated)
+                _uiState.value = _uiState.value.copy(
+                    spotReports = updated,
+                    isCreatingSpot = false,
+                    spotCreateError = null,
+                    spotCreateSuccessNonce = _uiState.value.spotCreateSuccessNonce + 1,
+                )
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
+                val message = friendlyAdminCreateError(e.message)
                 _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to create spot report",
+                    isCreatingSpot = false,
+                    spotCreateError = message,
+                    error = message,
                 )
             }
+        }
+    }
+
+    private fun friendlyAdminCreateError(rawMessage: String?): String {
+        val message = rawMessage ?: return "Failed to create spot report"
+        return when {
+            message.contains("401") -> "Your admin session expired. Sign in again."
+            message.contains("403") -> "Admin access is required to create spots."
+            message.contains("429") -> "Spot creation rate limit reached. Try again later."
+            message.contains("lat and lng", ignoreCase = true) -> "Choose a valid location before creating the spot."
+            message.contains("affectedRadiusMeters", ignoreCase = true) -> "Affected area must be between 1m and 500m."
+            message.contains("mediaUrls", ignoreCase = true) || message.contains("photos", ignoreCase = true) ->
+                "Too many photos attached. Remove photos and try again."
+            else -> message
         }
     }
 
@@ -302,6 +355,74 @@ class AdminPanelViewModel(
         }
     }
 
+    /**
+     * Admin manually grants (or subtracts) community points for a worker.
+     * Negative amounts subtract. The reason is captured in the points
+     * ledger for audit. Action distinguishes generic admin grants from
+     * specific reward categories like bug reports.
+     */
+    fun grantPointsToWorker(
+        workerId: Int,
+        amount: Int,
+        reason: String,
+        action: AdminGrantAction = AdminGrantAction.ADMIN_GRANT,
+        onResult: (success: Boolean, newTotal: Int?, error: String?) -> Unit = { _, _, _ -> },
+    ) {
+        // Block re-entry while a grant is in flight — guards against a fast
+        // double-tap on the dialog's submit button creating two ledger rows.
+        if (_workerActionLoading.value) {
+            onResult(false, null, "Another action is in progress")
+            return
+        }
+        scope.launch {
+            _workerActionLoading.value = true
+            try {
+                _uiState.value = _uiState.value.copy(error = null)
+                val response = apiClient.adminGrantPoints(
+                    workerId = workerId,
+                    amount = amount,
+                    reason = reason,
+                    action = action.serverValue,
+                )
+
+                // Reflect new total locally if we have the worker loaded
+                _selectedWorker.value?.let { current ->
+                    if (current.id == workerId) {
+                        _selectedWorker.value = current.copy(
+                            stats = current.stats.copy(
+                                communityPoints = response.newTotal,
+                            ),
+                        )
+                    }
+                }
+
+                // Invalidate workers tab so a refresh fetches the new total
+                invalidateTab(AdminTab.WORKERS)
+
+                onResult(true, response.newTotal, null)
+            } catch (e: Exception) {
+                val msg = friendlyGrantError(e.message)
+                _uiState.value = _uiState.value.copy(error = msg)
+                onResult(false, null, msg)
+            } finally {
+                _workerActionLoading.value = false
+            }
+        }
+    }
+
+    private fun friendlyGrantError(rawMessage: String?): String {
+        val message = rawMessage ?: return "Failed to grant points"
+        return when {
+            message.contains("403") -> "Admin access is required to grant points."
+            message.contains("401") -> "Your admin session expired. Sign in again."
+            message.contains("404") -> "Worker not found."
+            message.contains("|amount|") -> "Amount must be between -10,000 and 10,000."
+            message.contains("reason must") -> "Reason is required (1–280 characters)."
+            message.contains("action must") -> "Invalid action category."
+            else -> message
+        }
+    }
+
     fun updateWorkerInfo(workerId: Int, updates: Map<String, String>) {
         scope.launch {
             try {
@@ -326,6 +447,27 @@ class AdminPanelViewModel(
 
     private val _workerActionLoading = MutableStateFlow(false)
     val workerActionLoading: StateFlow<Boolean> = _workerActionLoading.asStateFlow()
+
+    private val _workerPointsHistory = MutableStateFlow<List<PointsLedgerEntry>>(emptyList())
+    val workerPointsHistory: StateFlow<List<PointsLedgerEntry>> = _workerPointsHistory.asStateFlow()
+
+    private val _workerPointsHistoryLoading = MutableStateFlow(false)
+    val workerPointsHistoryLoading: StateFlow<Boolean> = _workerPointsHistoryLoading.asStateFlow()
+
+    fun loadWorkerPointsHistory(workerId: Int) {
+        scope.launch {
+            _workerPointsHistoryLoading.value = true
+            try {
+                val response = apiClient.getWorkerPointsHistory(workerId)
+                _workerPointsHistory.value = response.entries
+            } catch (_: Exception) {
+                // Best effort — history is auxiliary, don't push a global error
+                _workerPointsHistory.value = emptyList()
+            } finally {
+                _workerPointsHistoryLoading.value = false
+            }
+        }
+    }
 
     fun loadWorkerDetail(workerId: Int) {
         scope.launch {

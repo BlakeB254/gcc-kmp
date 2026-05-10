@@ -2,6 +2,7 @@ package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +53,7 @@ import org.koin.compose.koinInject
 @Composable
 fun FeedScreen(
     onBack: () -> Unit = {},
+    onNavigateToArticles: () -> Unit = {},
 ) {
     val viewModel = koinInject<FeedViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -156,6 +158,51 @@ fun FeedScreen(
                                     maxVisible = 5,
                                     size = 28,
                                 )
+                            }
+                        }
+                    }
+
+                    // Articles entry — present even when the feed is empty,
+                    // so users can read the latest blog post without
+                    // needing the feed to populate first.
+                    item {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 13.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(GccGreen.copy(alpha = 0.06f))
+                                .clickable(onClick = onNavigateToArticles),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(GccGreen.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("📰", style = MaterialTheme.typography.titleMedium)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Articles",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    )
+                                    Text(
+                                        "Read the latest from GCC",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextMuted,
+                                    )
+                                }
+                                Text("›", style = MaterialTheme.typography.titleMedium, color = GccGreen)
                             }
                         }
                     }

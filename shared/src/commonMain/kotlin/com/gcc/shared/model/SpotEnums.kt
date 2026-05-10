@@ -56,7 +56,9 @@ enum class PointsAction {
     @SerialName("verification_dirty") VERIFICATION_DIRTY,
     @SerialName("verification_clean") VERIFICATION_CLEAN,
     @SerialName("volunteer_cleanup") VOLUNTEER_CLEANUP,
-    @SerialName("already_clean_report") ALREADY_CLEAN_REPORT
+    @SerialName("already_clean_report") ALREADY_CLEAN_REPORT,
+    @SerialName("admin_grant") ADMIN_GRANT,
+    @SerialName("bug_report") BUG_REPORT,
 }
 
 @Serializable

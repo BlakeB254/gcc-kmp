@@ -10,7 +10,9 @@ import com.arkivanov.decompose.router.stack.push
 import com.arkivanov.decompose.router.stack.replaceAll
 import com.arkivanov.decompose.router.stack.replaceCurrent
 import com.arkivanov.decompose.value.Value
+import com.gcc.app.viewmodel.LoginViewModel
 import com.gcc.shared.auth.TokenManager
+import org.koin.mp.KoinPlatform
 
 @OptIn(DelicateDecomposeApi::class)
 class RootComponent(
@@ -199,6 +201,10 @@ class RootComponent(
         navigation.push(Screen.RouteTest(routeId))
     }
 
+    fun navigateToArticles() {
+        navigation.push(Screen.Articles)
+    }
+
     fun switchToTab(screen: Screen) {
         navigation.replaceAll(screen)
     }
@@ -216,8 +222,22 @@ class RootComponent(
      * Handle a deep link by navigating to the target screen.
      * If the user is not logged in, the deep link is ignored (they land on Login).
      * Otherwise, pushes the deep link screen on top of Dashboard.
+     *
+     * Auth-callback links (e.g. /auth/mobile-callback?token=...) bypass the
+     * logged-in guard — by definition the user is *becoming* logged in via
+     * that link. They are forwarded to LoginViewModel.handleGoogleAuthToken,
+     * which exchanges the token and transitions the user into the app.
      */
     fun handleDeepLink(uri: String) {
+        // 1) Auth callbacks (Google OAuth return path) — handle before any guard.
+        val authToken = DeepLinkParser.extractAuthCallbackToken(uri)
+        if (authToken != null) {
+            runCatching {
+                KoinPlatform.getKoin().get<LoginViewModel>().handleGoogleAuthToken(authToken)
+            }
+            return
+        }
+
         val tm = tokenManager ?: return
         if (!tm.isLoggedIn() || tm.isTokenExpired()) return
 

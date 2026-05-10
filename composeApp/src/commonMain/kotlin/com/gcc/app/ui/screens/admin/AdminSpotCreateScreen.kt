@@ -1,13 +1,14 @@
 package com.gcc.app.ui.screens.admin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,13 +16,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.CameraCapture
+import com.gcc.app.ui.components.GccButton
+import com.gcc.app.ui.components.GccButtonVariant
+import com.gcc.app.ui.components.GccCard
+import com.gcc.app.ui.components.GccTextField
+import com.gcc.app.ui.components.SectionHeader
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.AreaMode
@@ -30,13 +41,14 @@ import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.CommunityReportType
 import com.gcc.shared.model.CreateSpotRequest
 import com.gcc.shared.model.SpotTag
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import kotlin.math.cos
 import kotlin.math.pow
 
 private enum class SpotCreateStep { CAMERA, MAP, DETAILS }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AdminSpotCreateScreen(
     initialLat: Double,
@@ -44,8 +56,10 @@ fun AdminSpotCreateScreen(
     onBack: () -> Unit,
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
+    val uiState by viewModel.uiState.collectAsState()
     val locationProvider = koinInject<LocationProvider>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    val focusManager = LocalFocusManager.current
     val gpsLat = currentLocation?.lat ?: initialLat
     val gpsLng = currentLocation?.lng ?: initialLng
 
@@ -58,12 +72,35 @@ fun AdminSpotCreateScreen(
     var isSighting by remember { mutableStateOf(true) }
     var description by remember { mutableStateOf("") }
     var selectedTags by remember { mutableStateOf<List<SpotTag>>(emptyList()) }
+    var selectedDiscoveredByWorkerId by remember { mutableStateOf<Int?>(null) }
+    var isDiscoveredBySheetOpen by remember { mutableStateOf(false) }
+    var workerSearchQuery by remember { mutableStateOf("") }
+    var showWorkersNotLoadedMessage by remember { mutableStateOf(false) }
     val defaultLat = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.NORTH_LAWNDALE_CENTER_LAT else initialLat
     val defaultLng = if (initialLat == 0.0 && initialLng == 0.0) MapStyles.NORTH_LAWNDALE_CENTER_LNG else initialLng
     var spotLat by remember { mutableStateOf(defaultLat) }
     var spotLng by remember { mutableStateOf(defaultLng) }
     var hasLockedToGps by remember { mutableStateOf(false) }
     val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
+    val initialSuccessNonce = remember { uiState.spotCreateSuccessNonce }
+    val selectedDiscoveredByWorker = uiState.workers.find { it.id == selectedDiscoveredByWorkerId }
+    val discoveredBySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val filteredWorkers = remember(uiState.workers, workerSearchQuery) {
+        val query = workerSearchQuery.trim().lowercase()
+        if (query.isBlank()) {
+            uiState.workers
+        } else {
+            uiState.workers.filter { worker ->
+                worker.name.lowercase().contains(query) || worker.email.lowercase().contains(query)
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.spotCreateSuccessNonce) {
+        if (uiState.spotCreateSuccessNonce > initialSuccessNonce) {
+            onBack()
+        }
+    }
 
     LaunchedEffect(currentLocation) {
         if (!hasLockedToGps && currentLocation != null) {
@@ -73,45 +110,145 @@ fun AdminSpotCreateScreen(
         }
     }
 
+    LaunchedEffect(uiState.workers.isEmpty()) {
+        if (uiState.workers.isEmpty()) {
+            showWorkersNotLoadedMessage = false
+            delay(700)
+            showWorkersNotLoadedMessage = true
+        } else {
+            showWorkersNotLoadedMessage = false
+        }
+    }
+
     DisposableEffect(Unit) {
+        viewModel.clearSpotCreateError()
         locationProvider.startLocationUpdates()
         onDispose { locationProvider.stopLocationUpdates() }
+    }
+
+    if (isDiscoveredBySheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { isDiscoveredBySheetOpen = false },
+            sheetState = discoveredBySheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
+            ) {
+                Text(
+                    "Discovered by",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                GccTextField(
+                    value = workerSearchQuery,
+                    onValueChange = { workerSearchQuery = it },
+                    label = "Search workers",
+                    capitalization = KeyboardCapitalization.None,
+                    imeAction = ImeAction.Done,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    AttributionPickerRow(
+                        title = "GCC (admin)",
+                        subtitle = "Attribute this spot to the admin account",
+                        selected = selectedDiscoveredByWorkerId == null,
+                        onClick = {
+                            selectedDiscoveredByWorkerId = null
+                            isDiscoveredBySheetOpen = false
+                            workerSearchQuery = ""
+                        },
+                    )
+
+                    if (uiState.workers.isEmpty()) {
+                        Text(
+                            if (showWorkersNotLoadedMessage) {
+                                "No workers loaded - open Workers tab once"
+                            } else {
+                                "Loading workers..."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            modifier = Modifier.padding(vertical = 16.dp),
+                        )
+                    } else if (filteredWorkers.isEmpty()) {
+                        Text(
+                            "No workers match \"$workerSearchQuery\"",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            modifier = Modifier.padding(vertical = 16.dp),
+                        )
+                    } else {
+                        filteredWorkers.forEach { worker ->
+                            AttributionPickerRow(
+                                title = worker.name,
+                                subtitle = worker.email,
+                                selected = worker.id == selectedDiscoveredByWorkerId,
+                                onClick = {
+                                    selectedDiscoveredByWorkerId = worker.id
+                                    isDiscoveredBySheetOpen = false
+                                    workerSearchQuery = ""
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (step) {
-                            SpotCreateStep.CAMERA -> "Take Photo"
-                            SpotCreateStep.MAP -> "Set Affected Area"
-                            SpotCreateStep.DETAILS -> "Add Details"
-                        },
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
                         when (step) {
                             SpotCreateStep.CAMERA -> onBack()
                             SpotCreateStep.MAP -> step = SpotCreateStep.CAMERA
                             SpotCreateStep.DETAILS -> step = SpotCreateStep.MAP
                         }
-                    }) {
-                        Icon(
-                            if (step == SpotCreateStep.CAMERA) Icons.Default.Close
-                            else Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (step == SpotCreateStep.CAMERA) "Cancel" else "Back",
-                            tint = Color.White,
+                    },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceMuted),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "\u2190",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = GccGreenDark,
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GccSkyDark,
-                    titleContentColor = Color.White,
-                ),
-            )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = when (step) {
+                        SpotCreateStep.CAMERA -> "Take Photo"
+                        SpotCreateStep.MAP -> "Set Affected Area"
+                        SpotCreateStep.DETAILS -> "Add Details"
+                    },
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+            }
         },
     ) { padding ->
         Column(
@@ -138,16 +275,35 @@ fun AdminSpotCreateScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Button(
+                    GccButton(
+                        text = if (capturedPhotos.isNotEmpty()) "Next: Set Area" else "Skip Photo",
                         onClick = { step = SpotCreateStep.MAP },
-                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(if (capturedPhotos.isNotEmpty()) "Next: Set Area" else "Skip Photo")
-                    }
+                        variant = GccButtonVariant.PRIMARY,
+                    )
                 }
 
                 SpotCreateStep.MAP -> {
+                    SectionHeader(title = "Location")
+                    GccCard(accentColor = CardAccentSky) {
+                        Text(
+                            "Chosen spot",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "${formatLat(spotLat)}, ${formatLng(spotLng)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = GccSkyDark,
+                        )
+                        Text(
+                            "Drag the crosshair to make small placement adjustments.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     // Area mode toggle
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -253,7 +409,7 @@ fun AdminSpotCreateScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text("Drag to position", style = MaterialTheme.typography.labelSmall, color = GccSkyDark)
-                                Text("${formatCoord(spotLat)}, ${formatCoord(spotLng)}", style = MaterialTheme.typography.bodySmall)
+                                Text("${formatLat(spotLat)}, ${formatLng(spotLng)}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -322,115 +478,280 @@ fun AdminSpotCreateScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Button(
+                    GccButton(
+                        text = "Next: Details",
                         onClick = { step = SpotCreateStep.DETAILS },
-                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Next: Details") }
+                        variant = GccButtonVariant.PRIMARY,
+                    )
                 }
 
                 SpotCreateStep.DETAILS -> {
-                    // Type toggle
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = isSighting,
-                            onClick = { isSighting = true },
-                            label = { Text("Sighting") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = GccGreen.copy(alpha = 0.15f),
-                                selectedLabelColor = GccGreen,
-                            ),
-                        )
-                        FilterChip(
-                            selected = !isSighting,
-                            onClick = { isSighting = false },
-                            label = { Text("Volunteer Cleanup") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = GccGreen.copy(alpha = 0.15f),
-                                selectedLabelColor = GccGreen,
-                            ),
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Tag multiselect
-                    Text("Tags", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
-                    Spacer(modifier = Modifier.height(6.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    val scrollState = rememberScrollState()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { focusManager.clearFocus() },
                     ) {
-                        SpotTag.entries.forEach { tag ->
-                            FilterChip(
-                                selected = tag in selectedTags,
-                                onClick = {
-                                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
-                                },
-                                label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = GccSky.copy(alpha = 0.15f),
-                                    selectedLabelColor = GccSky,
-                                ),
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        "${capturedPhotos.size} photo${if (capturedPhotos.size != 1) "s" else ""} \u2022 ${
-                            when (areaMode) {
-                                AreaMode.CIRCLE -> "${radiusMeters.toInt()}m radius"
-                                AreaMode.RECTANGLE -> "${rectWidth.toInt()}m x ${rectHeight.toInt()}m"
-                            }
-                        } \u2022 ${formatCoord(spotLat)}, ${formatCoord(spotLng)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text("Description") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                    )
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    Button(
-                        onClick = {
-                            val affectedArea: AffectedArea? = when (areaMode) {
-                                AreaMode.CIRCLE -> AffectedArea.Circle(radiusMeters = radiusMeters.toDouble())
-                                AreaMode.RECTANGLE -> AffectedArea.Rectangle(
-                                    widthMeters = rectWidth.toDouble(),
-                                    heightMeters = rectHeight.toDouble(),
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                                .imePadding(),
+                        ) {
+                            // Type toggle
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = isSighting,
+                                    onClick = { isSighting = true },
+                                    label = { Text("Sighting") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                                        selectedLabelColor = GccGreen,
+                                    ),
+                                )
+                                FilterChip(
+                                    selected = !isSighting,
+                                    onClick = { isSighting = false },
+                                    label = { Text("Volunteer Cleanup") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = GccGreen.copy(alpha = 0.15f),
+                                        selectedLabelColor = GccGreen,
+                                    ),
                                 )
                             }
-                            viewModel.createSpot(
-                                CreateSpotRequest(
-                                    type = if (isSighting) CommunityReportType.SIGHTING else CommunityReportType.VOLUNTEER_CLEANUP,
-                                    lat = spotLat,
-                                    lng = spotLng,
-                                    description = description.ifBlank { null },
-                                    affectedRadiusMeters = radiusMeters.toDouble(),
-                                    affectedArea = affectedArea,
-                                    tags = selectedTags,
-                                    reporterName = "GCC",
-                                ),
-                                capturedPhotos,
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            SectionHeader(title = "Tags")
+                            Spacer(modifier = Modifier.height(6.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SpotTag.entries.forEach { tag ->
+                                    FilterChip(
+                                        selected = tag in selectedTags,
+                                        onClick = {
+                                            selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                                        },
+                                        label = { Text(tag.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = GccSky.copy(alpha = 0.15f),
+                                            selectedLabelColor = GccSky,
+                                        ),
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                "${capturedPhotos.size} photo${if (capturedPhotos.size != 1) "s" else ""} \u2022 ${
+                                    when (areaMode) {
+                                        AreaMode.CIRCLE -> "${radiusMeters.toInt()}m radius"
+                                        AreaMode.RECTANGLE -> "${rectWidth.toInt()}m x ${rectHeight.toInt()}m"
+                                    }
+                                } \u2022 ${formatLat(spotLat)}, ${formatLng(spotLng)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            onBack()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = spotLat != 0.0 || spotLng != 0.0,
-                    ) { Text("Create Report") }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            GccTextField(
+                                value = description,
+                                onValueChange = { description = it },
+                                label = "Description",
+                                modifier = Modifier.heightIn(min = 100.dp),
+                                singleLine = false,
+                                imeAction = ImeAction.Done,
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            SectionHeader(title = "Discovered by")
+                            Spacer(modifier = Modifier.height(6.dp))
+                            GccCard(accentColor = CardAccentGreen) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            if (selectedDiscoveredByWorkerId == null) {
+                                                "GCC (admin)"
+                                            } else if (selectedDiscoveredByWorker == null) {
+                                                "Worker #$selectedDiscoveredByWorkerId"
+                                            } else {
+                                                "${selectedDiscoveredByWorker.name} \u00B7 ${selectedDiscoveredByWorker.email}"
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            if (selectedDiscoveredByWorkerId == null) {
+                                                "This spot will be attributed to GCC (admin)."
+                                            } else if (selectedDiscoveredByWorker == null) {
+                                                "This spot will be attributed to the selected worker and they'll get +10 observer pts."
+                                            } else {
+                                                "This spot will be attributed to ${selectedDiscoveredByWorker.name} and they'll get +10 observer pts."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted,
+                                        )
+                                        if (uiState.workers.isEmpty()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                if (showWorkersNotLoadedMessage) {
+                                                    "No workers loaded - open Workers tab once"
+                                                } else {
+                                                    "Loading workers..."
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSubtle,
+                                            )
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            if (selectedDiscoveredByWorkerId == null) {
+                                                // Pull the workers list before opening the
+                                                // sheet so the admin never has to visit the
+                                                // Workers tab manually.
+                                                viewModel.ensureWorkersLoaded()
+                                                isDiscoveredBySheetOpen = true
+                                            } else {
+                                                selectedDiscoveredByWorkerId = null
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    ) {
+                                        Text(if (selectedDiscoveredByWorkerId == null) "Change" else "Clear")
+                                    }
+                                }
+                            }
+
+                            uiState.spotCreateError?.let { error ->
+                                Spacer(modifier = Modifier.height(12.dp))
+                                GccCard(accentColor = CardAccentRed) {
+                                    Text(
+                                        "Could not create spot",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = GccError,
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextMuted,
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            GccButton(
+                                text = "Create Report",
+                                onClick = {
+                                    focusManager.clearFocus()
+                                    val affectedArea: AffectedArea = when (areaMode) {
+                                        AreaMode.CIRCLE -> AffectedArea.Circle(radiusMeters = radiusMeters.toDouble())
+                                        AreaMode.RECTANGLE -> AffectedArea.Rectangle(
+                                            widthMeters = rectWidth.toDouble(),
+                                            heightMeters = rectHeight.toDouble(),
+                                        )
+                                    }
+                                    val request = CreateSpotRequest(
+                                        type = if (isSighting) CommunityReportType.SIGHTING else CommunityReportType.VOLUNTEER_CLEANUP,
+                                        lat = spotLat,
+                                        lng = spotLng,
+                                        description = description.ifBlank { null },
+                                        affectedRadiusMeters = radiusMeters.toDouble(),
+                                        affectedArea = affectedArea,
+                                        tags = selectedTags,
+                                        reporterName = "GCC",
+                                    )
+                                    viewModel.createSpot(
+                                        request.copy(
+                                            discoveredByWorkerId = selectedDiscoveredByWorkerId,
+                                        ),
+                                        capturedPhotos,
+                                    )
+                                },
+                                variant = GccButtonVariant.PRIMARY,
+                                enabled = (spotLat != 0.0 || spotLng != 0.0) && !uiState.isCreatingSpot,
+                                isLoading = uiState.isCreatingSpot,
+                            )
+
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AttributionPickerRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .background(if (selected) GccGreen.copy(alpha = 0.1f) else Color.Transparent)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (selected) {
+            Text(
+                "\u2713",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = GccGreen,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+private fun formatLat(lat: Double): String {
+    val abs = kotlin.math.abs(lat)
+    val intPart = abs.toInt()
+    val fracPart = ((abs - intPart) * 10000).toInt().toString().padStart(4, '0')
+    val dir = if (lat >= 0) "N" else "S"
+    return "$intPart.$fracPart\u00B0$dir"
+}
+
+private fun formatLng(lng: Double): String {
+    val abs = kotlin.math.abs(lng)
+    val intPart = abs.toInt()
+    val fracPart = ((abs - intPart) * 10000).toInt().toString().padStart(4, '0')
+    val dir = if (lng >= 0) "E" else "W"
+    return "$intPart.$fracPart\u00B0$dir"
 }

@@ -90,6 +90,7 @@ fun App(component: RootComponent) {
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
                         onNavigateToRoute = component::replaceRouteDetail,
                         onStartScan = component::navigateToRouteScan,
+                        onVerificationGate = component::navigateToVerificationGate,
                     )
                 }
                 is Screen.ActiveJob -> ActiveJobScreen(
@@ -117,10 +118,12 @@ fun App(component: RootComponent) {
                 is Screen.MapFullScreen -> MapFullScreen(
                     onBack = { component.switchToTab(Screen.Dashboard) },
                     onRouteClick = component::navigateToRouteDetail,
+                    onBountyClick = component::navigateToBountyDetail,
                     onVolunteerCleanup = component::navigateToVolunteerCleanup,
                     onSpotVerification = component::navigateToSpotVerification,
                     onAdminClick = { component.switchToTab(Screen.AdminPanel) },
                     onProfileClick = { component.switchToTab(Screen.Profile) },
+                    onNavigateToSpot = component::navigateToSpot,
                 )
                 is Screen.Settings -> SettingsScreen(
                     onBack = component::navigateBack,
@@ -148,6 +151,7 @@ fun App(component: RootComponent) {
                     bountyId = screen.bountyId,
                     onBack = component::navigateBack,
                     onNavigateToActiveJob = component::navigateToActiveJob,
+                    onVolunteerCleanup = component::navigateToVolunteerCleanup,
                 )
                 is Screen.Wallet -> WalletScreen(
                     onBack = component::navigateBack,
@@ -159,6 +163,7 @@ fun App(component: RootComponent) {
                 )
                 is Screen.Feed -> FeedScreen(
                     onBack = component::navigateBack,
+                    onNavigateToArticles = component::navigateToArticles,
                 )
                 is Screen.BiometricGate -> BiometricGateScreen(
                     onSuccess = component::onBiometricSuccess,
@@ -245,6 +250,9 @@ fun App(component: RootComponent) {
                         onBack = component::navigateBack,
                     )
                 }
+                is Screen.Articles -> ArticlesScreen(
+                    onBack = component::navigateBack,
+                )
             }
         }
     }

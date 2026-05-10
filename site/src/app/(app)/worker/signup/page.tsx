@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useCallback, Suspense } from 'react'
+import { useState, useCallback, Suspense, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { SocialLoginButtons } from '@/components/auth/SocialLoginButtons'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { FormInput } from '@/components/forms/FormInput'
@@ -38,6 +39,22 @@ function WorkerSignupForm() {
     password: '',
     agreeToTerms: false,
   })
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('oauthError')
+    if (!code) return
+    const messages: Record<string, string> = {
+      google_not_configured: 'Google sign-up is not configured for the website yet.',
+      apple_not_configured: 'Apple sign-up is not configured for the website yet.',
+      google_cancelled: 'Google sign-up was cancelled.',
+      apple_cancelled: 'Apple sign-up was cancelled.',
+      google_failed: 'Google sign-up failed. Please try again or use email.',
+      apple_failed: 'Apple sign-up failed. Please try again or use email.',
+      missing_code: 'The sign-up provider did not return the expected authorization code.',
+      invalid_request: 'That sign-up request was invalid. Please try again.',
+    }
+    setError(messages[code] || 'Social sign-up failed. Please try again or use email.')
+  }, [])
 
   const updateForm = useCallback((updates: Partial<FormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -162,6 +179,28 @@ function WorkerSignupForm() {
 
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-lg border border-neutral-200 p-6 sm:p-8 space-y-5">
+          <SocialLoginButtons mode="signup" />
+          <p className="text-center text-xs text-neutral-500">
+            By continuing, you agree to the{' '}
+            <Link href="/terms" className="text-brand-green-700 underline hover:text-brand-green-800">
+              Terms
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-brand-green-700 underline hover:text-brand-green-800">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-neutral-500">or create with email</span>
+            </div>
+          </div>
+
           <FormInput
             label="Full Name"
             id="name"

@@ -2,11 +2,16 @@ package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.*
@@ -14,15 +19,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.DeviceCapabilities
+import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.*
-import com.gcc.app.ui.components.SpotScanCapture
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -93,7 +103,7 @@ fun SpotScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = when (uiState.phase) {
-                        SpotPhase.CAMERA -> "Take Photo"
+                        SpotPhase.CAMERA -> "Scan Spot"
                         SpotPhase.LOCATION -> "Confirm Location"
                         SpotPhase.DESCRIPTION -> "Add Details"
                         SpotPhase.SUBMITTING -> "Submitting..."
@@ -175,8 +185,12 @@ fun SpotScreen(
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
                     matchingBounties = uiState.matchingBounties,
+                    createdBounty = uiState.createdBounty,
+                    isCreatingBounty = uiState.isCreatingBounty,
+                    bountyCreateError = uiState.bountyCreateError,
                     error = uiState.error,
                     onAcceptBounty = { viewModel.acceptBounty(it) },
+                    onPlaceBounty = { dollars -> viewModel.createBountyForSubmittedSpot(dollars) },
                     onVolunteerCleanup = {
                         uiState.submittedReport?.let { report ->
                             onVolunteerCleanup(report.id)
@@ -200,17 +214,30 @@ private fun CameraPhase(
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
+    val deviceCapabilities = koinInject<DeviceCapabilities>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    val isScanMode = deviceCapabilities.deviceClass != DeviceClass.BASIC
+    val scanLocation = spotLocation
+        ?: currentLocation
+        ?: Coordinates(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (spotLocation != null) {
+        ScanModeBadge(
+            deviceClass = deviceCapabilities.deviceClass,
+            modifier = Modifier.align(Alignment.Start),
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (isScanMode) {
             SpotScanCapture(
-                spotLocation = spotLocation,
+                spotLocation = scanLocation,
                 geofenceRadius = 50.0,
                 maxPhotos = 3,
+                requireGeofence = spotLocation != null || currentLocation != null,
                 capturedPhotos = photos,
                 onPhotoCaptured = onScanCapture,
                 onRemovePhoto = onRemovePhoto,
@@ -243,6 +270,31 @@ private fun CameraPhase(
             text = if (photos.isNotEmpty()) "Next: Set Location" else "Skip Photo",
             onClick = onNext,
             variant = if (photos.isNotEmpty()) GccButtonVariant.PRIMARY else GccButtonVariant.OUTLINED,
+        )
+    }
+}
+
+@Composable
+private fun ScanModeBadge(
+    deviceClass: DeviceClass,
+    modifier: Modifier = Modifier,
+) {
+    val (label, color) = when (deviceClass) {
+        DeviceClass.PRO_SCANNER -> "\uD83D\uDD35 LiDAR scan" to GccBlue
+        DeviceClass.SCANNER -> "\uD83D\uDFE2 AR-aware scan" to GccGreen
+        DeviceClass.BASIC -> "\uD83D\uDFE1 Photo capture" to GccClaimed
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = color,
         )
     }
 }
@@ -372,10 +424,10 @@ private fun LocationPhase(
                         drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
                     AreaMode.RECTANGLE -> {
-                        val pxW = metersToPixels(rectWidth, spotLat, mapZoom)
-                        val pxH = metersToPixels(rectHeight, spotLat, mapZoom)
-                        val topLeft = androidx.compose.ui.geometry.Offset(center.x - pxW, center.y - pxH)
-                        val rectSize = androidx.compose.ui.geometry.Size(pxW * 2, pxH * 2)
+                        val halfPxW = metersToPixels(rectWidth, spotLat, mapZoom) / 2f
+                        val halfPxH = metersToPixels(rectHeight, spotLat, mapZoom) / 2f
+                        val topLeft = androidx.compose.ui.geometry.Offset(center.x - halfPxW, center.y - halfPxH)
+                        val rectSize = androidx.compose.ui.geometry.Size(halfPxW * 2, halfPxH * 2)
                         drawRect(color = GccSky.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)
                         drawRect(color = GccSky, topLeft = topLeft, size = rectSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
@@ -539,10 +591,28 @@ private fun DescriptionPhase(
 ) {
     // Duplicate override reason state
     var overrideReason by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollState = rememberScrollState()
+    fun dismissKeyboard() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { dismissKeyboard() },
+    ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .imePadding()
+                .padding(16.dp),
         ) {
             // AI Analysis preview card (when available)
             if (isAnalyzing) {
@@ -622,6 +692,8 @@ private fun DescriptionPhase(
                     focusedBorderColor = GccGreen,
                     cursorColor = GccGreen,
                 ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { dismissKeyboard() }),
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -649,13 +721,18 @@ private fun DescriptionPhase(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(20.dp))
 
             GccButton(
                 text = "Submit Report",
-                onClick = onSubmit,
+                onClick = {
+                    focusManager.clearFocus()
+                    onSubmit()
+                },
                 variant = GccButtonVariant.PRIMARY,
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
 
         // Duplicate detection blocking overlay
@@ -671,6 +748,7 @@ private fun DescriptionPhase(
                     accentColor = CardAccentRed,
                     modifier = Modifier
                         .padding(24.dp)
+                        .imePadding()
                         .fillMaxWidth(),
                 ) {
                     Text(
@@ -709,6 +787,8 @@ private fun DescriptionPhase(
                             cursorColor = GccError,
                         ),
                         minLines = 2,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { dismissKeyboard() }),
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
@@ -809,12 +889,18 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
     matchingBounties: List<Bounty>,
+    createdBounty: Bounty?,
+    isCreatingBounty: Boolean,
+    bountyCreateError: String?,
     error: String?,
     onAcceptBounty: (Int) -> Unit,
+    onPlaceBounty: (Int) -> Unit,
     onVolunteerCleanup: () -> Unit,
     onNewReport: () -> Unit,
     onBack: () -> Unit,
 ) {
+    var showBountyDialog by remember(report?.id) { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -896,6 +982,44 @@ private fun ResultPhase(
             }
         }
 
+        // Bounty progression: every reported spot can become a funded cleanup.
+        item {
+            report?.let {
+                GccCard(accentColor = CardAccentSky) {
+                    Text(
+                        "Fund This Spot",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (createdBounty != null) {
+                        Text(
+                            "Bounty posted at \$${createdBounty.amount / 100}. It now appears in cleanup opportunities.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    } else {
+                        Text(
+                            "Turn this report into a cleanup bounty so a worker can claim the payout after documenting the cleanup.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                    bountyCreateError?.let { message ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(message, style = MaterialTheme.typography.bodySmall, color = GccError)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    GccButton(
+                        text = if (createdBounty != null) "Add More Funding" else "Place Bounty",
+                        onClick = { showBountyDialog = true },
+                        variant = GccButtonVariant.OUTLINED,
+                        enabled = !isCreatingBounty,
+                        isLoading = isCreatingBounty,
+                    )
+                }
+            }
+        }
+
         // Matching bounties
         if (matchingBounties.isNotEmpty()) {
             item {
@@ -958,6 +1082,89 @@ private fun ResultPhase(
 
         item { Spacer(modifier = Modifier.height(8.dp)) }
     }
+
+    if (showBountyDialog && report != null) {
+        SpotBountyDialog(
+            isLoading = isCreatingBounty,
+            onDismiss = { showBountyDialog = false },
+            onConfirm = { dollars ->
+                onPlaceBounty(dollars)
+                showBountyDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun SpotBountyDialog(
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var amountText by remember { mutableStateOf("25") }
+    val amountDollars = amountText.toIntOrNull()
+    val isValid = amountDollars != null && amountDollars >= 10
+
+    fun dismissKeyboard() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Place Bounty") },
+        text = {
+            Column(
+                modifier = Modifier.imePadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "Attach a cash reward to this reported spot. Minimum \$10.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() }) amountText = input
+                    },
+                    label = { Text("Amount") },
+                    prefix = { Text("\$ ") },
+                    singleLine = true,
+                    isError = amountText.isNotBlank() && !isValid,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { dismissKeyboard() }),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = isValid && !isLoading,
+                onClick = {
+                    dismissKeyboard()
+                    amountDollars?.let(onConfirm)
+                },
+            ) {
+                Text("Place")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    dismissKeyboard()
+                    onDismiss()
+                },
+                enabled = !isLoading,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

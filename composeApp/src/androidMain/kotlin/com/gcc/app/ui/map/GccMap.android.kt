@@ -90,6 +90,7 @@ actual fun GccMap(
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
+    val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -554,24 +555,30 @@ actual fun GccMap(
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Heatmap-style large circles — visible at overview zoom (8-12), fades by zoom 13
+            // Heatmap-style large circles — wide-zoom fallback for Android.
+            // iOS uses the native heatmap layer; this keeps the same color
+            // language with soft orange/yellow report halos.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
-                color = const(MapStyles.SPOT_MARKER_COLOR),
+                color = const(MapStyles.SPOT_HEAT_HIGH),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_FAR.dp),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_RADIUS_CLOSE.dp),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(0.dp),
+                    8 to const(4.dp),
+                    10 to const(7.dp),
+                    12 to const(12.dp),
+                    14 to const(8.dp),
+                    15 to const(0.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_FAR),
-                    MapStyles.SPOT_DOTS_MIN_ZOOM.toInt() to const(0.15f),
-                    MapStyles.SPOT_HEATMAP_MAX_ZOOM.toInt() to const(MapStyles.SPOT_HEATMAP_OPACITY_CLOSE),
+                    8 to const(0.22f),
+                    10 to const(0.28f),
+                    12 to const(0.36f),
+                    14 to const(0.16f),
+                    15 to const(0f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val id = (features.firstOrNull()?.properties?.get("id") as? Number)?.toInt()
@@ -582,6 +589,55 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
+            )
+
+            CircleLayer(
+                id = MapStyles.LAYER_SPOT_MARKER_HALOS,
+                source = spotSrc,
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.16f)),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(10.dp),
+                    15 to const(13.dp),
+                    17 to const(18.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(0f),
+                    14.5 to const(0.8f),
+                    16 to const(1f),
+                ),
+            )
+
+            val bountiedSpotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountiedSpotJson))
+            CircleLayer(
+                id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
+                source = bountiedSpotSrc,
+                color = const(Color.Transparent),
+                radius = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(7.dp),
+                    15 to const(12.dp),
+                    17 to const(17.dp),
+                ),
+                strokeColor = const(MapStyles.BOUNTY_DOT_COLOR),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(1.dp),
+                    15 to const(2.dp),
+                    17 to const(3.dp),
+                ),
+                opacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0f),
+                    14 to const(0.85f),
+                    17 to const(1f),
+                ),
             )
 
             // Spot tap target — invisible larger circle for easier tapping at ALL zoom levels
@@ -622,7 +678,13 @@ actual fun GccMap(
                     17 to const(12.dp),
                 ),
                 strokeColor = const(Color.White),
-                strokeWidth = const(1.5.dp),
+                strokeWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(1.dp),
+                    16 to const(1.6.dp),
+                    18 to const(2.dp),
+                ),
                 onClick = if (onSpotTap != null) { features ->
                     val id = (features.firstOrNull()?.properties?.get("id") as? Number)?.toInt()
                     if (id != null) {

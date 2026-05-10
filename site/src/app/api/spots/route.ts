@@ -153,10 +153,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, success: false, message: 'Maximum 3 photos allowed per spot report' }, { status: 400 })
     }
 
-    // Duplicate spot check: reject if another spot exists within 50m
-    // Skip if user provided a duplicate override reason (they acknowledged the duplicate)
+    // Duplicate spot check: reject if another spot exists within ~15m.
+    // Skip if user provided a duplicate override reason (they acknowledged the duplicate).
+    //
+    // 50m was too aggressive — it crossed streets and alleys in dense
+    // urban grids and blocked reports of legitimately separate spots a
+    // few feet across a curb. ~15m matches the default affectedRadiusMeters
+    // for a single dump and corresponds to roughly one residential lot
+    // width at Chicago latitudes (0.000135° ≈ 15m).
+    const DUPLICATE_RADIUS_DEG = 0.000135
     if (!duplicateOverrideReason) {
-      // Single query checks both object-style {lat, lng} and array-style [lng, lat] coordinates
       const duplicateCheck = await db
         .select({ id: communityReports.id })
         .from(communityReports)
@@ -169,13 +175,13 @@ export async function POST(request: NextRequest) {
             or(
               // Object-style coordinates {lat, lng}
               and(
-                sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
-                sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+                sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
+                sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
               ),
               // Array-style coordinates [lng, lat]
               and(
-                sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - 0.00045} AND ${lng + 0.00045}`,
-                sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - 0.00045} AND ${lat + 0.00045}`,
+                sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
+                sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
               ),
             ),
           )
@@ -184,7 +190,7 @@ export async function POST(request: NextRequest) {
 
       if (duplicateCheck.length > 0) {
         return NextResponse.json(
-          { data: null, success: false, message: 'A spot report already exists within 50m of this location', existingSpotId: duplicateCheck[0].id },
+          { data: null, success: false, message: 'A spot report already exists within 15m of this location', existingSpotId: duplicateCheck[0].id },
           { status: 409 }
         )
       }
