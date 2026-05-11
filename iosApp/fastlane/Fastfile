@@ -101,9 +101,32 @@ platform :ios do
     )
 
     build = options[:build] || "89"
+    review_contact_phone = ENV["APP_REVIEW_CONTACT_PHONE"]
+    UI.user_error!("Set APP_REVIEW_CONTACT_PHONE before external TestFlight distribution") if review_contact_phone.to_s.strip.empty?
+    metadata_dir = File.expand_path("metadata/en-US", __dir__)
 
     upload_to_testflight(
       api_key: api_key,
+      app_identifier: "com.globalcommunitycleaners.worker",
+      app_platform: "ios",
+      beta_app_review_info: {
+        contact_email: "blakeb254@icloud.com",
+        contact_first_name: "Blake",
+        contact_last_name: "Bullard",
+        contact_phone: review_contact_phone,
+        demo_account_name: File.read(File.join(metadata_dir, "review_information/demo_user.txt")).strip,
+        demo_account_password: File.read(File.join(metadata_dir, "review_information/demo_password.txt")).strip,
+        demo_account_required: true,
+        notes: File.read(File.join(metadata_dir, "review_information/notes.txt")),
+      },
+      localized_app_info: {
+        "default": {
+          feedback_email: "blakeb254@icloud.com",
+          marketing_url: "https://globalcommunitycleaners.org",
+          privacy_policy_url: File.read(File.join(metadata_dir, "privacy_url.txt")).strip,
+          description: "Global Community Cleaners helps approved GCC workers report trash spots, accept cleaning routes, document before-and-after evidence, and support funded cleanup bounties. This beta is for real-device testing of sign-in, spot reporting, bounty-to-spot flows, map heatmap visuals, camera capture, and GPS-verified cleanup documentation.",
+        },
+      },
       # distribute_only: true tells pilot to distribute an EXISTING build
       # in App Store Connect rather than try to upload a fresh IPA.
       distribute_only: true,
