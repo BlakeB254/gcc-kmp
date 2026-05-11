@@ -24,6 +24,8 @@ interface Bounty {
   status: BountyStatus
   pledgeCount: number
   coordinates: [number, number] // [lng, lat]
+  triggerReportId?: string | number | null
+  mediaUrls?: string[]
 }
 
 interface SpotReport {
@@ -181,6 +183,13 @@ export function BountyMap({
                     {STATUS_LABELS[popupInfo.status]}
                   </span>
                 </div>
+                {(popupInfo.mediaUrls?.length ?? 0) > 0 && (
+                  <img
+                    src={popupInfo.mediaUrls![0]}
+                    alt=""
+                    className="mb-2 h-28 w-full rounded-lg object-cover"
+                  />
+                )}
                 <p className="text-sm text-neutral-600 mb-2 line-clamp-2">
                   {popupInfo.description}
                 </p>

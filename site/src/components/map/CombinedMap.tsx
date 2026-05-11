@@ -300,6 +300,13 @@ export function CombinedMap({
                 {BOUNTY_STATUS_LABELS[b.status]}
               </span>
             </div>
+            {(b.mediaUrls?.length ?? 0) > 0 && (
+              <img
+                src={b.mediaUrls![0]}
+                alt=""
+                className="mb-2 h-32 w-full rounded-lg object-cover"
+              />
+            )}
             <p className="text-sm text-neutral-600 mb-2 line-clamp-2">{b.description}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t">
               <span className="font-semibold text-green-600 text-lg">

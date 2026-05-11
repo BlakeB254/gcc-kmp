@@ -3,7 +3,7 @@ import { db } from '@/db'
 import { bounties, communityReports } from '@/db/schema'
 import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { bountyRowToApiBounty, reportToCleanupOpportunityBounty } from './_derived'
+import { BOUNTY_MINIMUM_CENTS, bountyRowToApiBounty, reportToBountySource } from './_derived'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,50 +17,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [], success: true, message: null })
     }
 
-    const [reports, fundedBounties] = await Promise.all([
-      db
-        .select()
-        .from(communityReports)
-        .where(
-          and(
-            or(eq(communityReports.showOnMap, true), isNull(communityReports.showOnMap)),
-            or(
-              eq(communityReports.status, 'pending'),
-              eq(communityReports.status, 'verified'),
-              eq(communityReports.status, 'acknowledged'),
-            ),
-            or(
-              isNull(communityReports.mapExpiresAt),
-              gt(communityReports.mapExpiresAt, new Date().toISOString()),
-            ),
-          ),
-        )
-        .orderBy(desc(communityReports.createdAt))
-        .limit(Number.isFinite(limit) && limit > 0 ? limit : 50),
-      db
-        .select()
-        .from(bounties)
-        .where(eq(bounties.status, 'open'))
-        .orderBy(desc(bounties.updatedAt))
-        .limit(Number.isFinite(limit) && limit > 0 ? limit : 50),
-    ])
+    const fundedBounties = await db
+      .select()
+      .from(bounties)
+      .where(
+        and(
+          eq(bounties.status, 'open'),
+          eq(bounties.visibility, 'public'),
+          sql`${bounties.triggerReportId} IS NOT NULL`,
+          sql`${bounties.amount}::numeric >= ${BOUNTY_MINIMUM_CENTS}`,
+        ),
+      )
+      .orderBy(desc(bounties.updatedAt))
+      .limit(Number.isFinite(limit) && limit > 0 ? limit : 50)
 
-    const fundedReportIds = new Set(
-      fundedBounties
-        .map((bounty) => bounty.triggerReportId)
-        .filter((id): id is number => id != null),
-    )
+    const funded = fundedBounties
+      .map(bountyRowToApiBounty)
+      .filter((bounty) => (
+        bounty.triggerReportId != null &&
+        bounty.amount >= BOUNTY_MINIMUM_CENTS &&
+        Number.isFinite(bounty.locationLat) &&
+        Number.isFinite(bounty.locationLng)
+      ))
 
-    const opportunities = reports
-      .filter((report) => !fundedReportIds.has(report.id))
-      .map(reportToCleanupOpportunityBounty)
-      .filter((bounty): bounty is NonNullable<typeof bounty> => bounty != null)
-
-    const funded = fundedBounties.map(bountyRowToApiBounty)
-
-    return NextResponse.json({ data: [...funded, ...opportunities], success: true, message: null })
+    return NextResponse.json({ data: funded, success: true, message: null })
   } catch (error) {
-    console.error('Error fetching cleanup opportunities:', error)
+    console.error('Error fetching bounties:', error)
     return NextResponse.json({ data: [], success: true, message: null })
   }
 }
@@ -125,8 +107,8 @@ export async function POST(request: NextRequest) {
       )
       .limit(1)
 
-    const reportBounty = report ? reportToCleanupOpportunityBounty(report) : null
-    if (!report || !reportBounty) {
+    const reportSource = report ? reportToBountySource(report) : null
+    if (!report || !reportSource) {
       return NextResponse.json(
         { data: null, success: false, message: 'Spot report is not available for bounty funding' },
         { status: 404 },
@@ -160,22 +142,22 @@ export async function POST(request: NextRequest) {
         posterId: auth.workerId,
         walletId: 0,
         title,
-        description: description || reportBounty.description || null,
+        description: description || reportSource.description || null,
         amount: String(amount),
         status: 'open',
         visibility,
         isAnonymous,
         posterName: isAnonymous ? null : posterName,
-        locationLat: reportBounty.locationLat,
-        locationLng: reportBounty.locationLng,
-        radiusMeters: String(reportBounty.radiusMeters),
-        city: reportBounty.city,
-        communityArea: reportBounty.communityArea,
-        neighborhood: reportBounty.neighborhood,
+        locationLat: reportSource.locationLat,
+        locationLng: reportSource.locationLng,
+        radiusMeters: String(reportSource.radiusMeters),
+        city: reportSource.city,
+        communityArea: reportSource.communityArea,
+        neighborhood: reportSource.neighborhood,
         triggerReportId,
         observerId: report.reporterId,
-        mediaUrls: reportBounty.mediaUrls.length > 0 ? reportBounty.mediaUrls : null,
-        aiAnalysis: reportBounty.aiAnalysis,
+        mediaUrls: reportSource.mediaUrls.length > 0 ? reportSource.mediaUrls : null,
+        aiAnalysis: reportSource.aiAnalysis,
         expiresAt: report.mapExpiresAt,
       })
       .returning()

@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
-import { MapPin, DollarSign, Trash2, ArrowRight, X, ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react'
+import { MapPin, DollarSign, Trash2, ArrowRight, X, ChevronLeft, ChevronRight, Clock, AlertCircle, Camera } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
-import { SPOT_STATUS_COLORS } from '@/lib/design-tokens'
+import { BOUNTY_MINIMUM_CENTS, SPOT_STATUS_COLORS } from '@/lib/design-tokens'
 
 // Dynamically import CombinedMap to avoid SSR issues with MapLibre
 const CombinedMap = dynamic(
@@ -70,15 +70,20 @@ export default function BountiesPage() {
           .map((b: any) => {
             const lng = b.coordinates?.[0] ?? b.locationLng ?? b.lng
             const lat = b.coordinates?.[1] ?? b.locationLat ?? b.lat
+            const amountCents = Number(b.amountCents ?? b.amount ?? 0)
             if (!Number.isFinite(Number(lng)) || !Number.isFinite(Number(lat))) return null
+            if (!Number.isFinite(amountCents) || amountCents < BOUNTY_MINIMUM_CENTS) return null
+            if (b.triggerReportId == null) return null
             return {
               id: String(b.id),
               title: b.title || 'Cleanup bounty',
               description: b.description || 'Community cleanup opportunity',
-              amountCents: b.amountCents ?? b.amount ?? 0,
+              amountCents,
               status: b.status || 'open',
               pledgeCount: b.pledgeCount ?? 0,
               coordinates: [Number(lng), Number(lat)] as [number, number],
+              triggerReportId: b.triggerReportId,
+              mediaUrls: Array.isArray(b.mediaUrls) ? b.mediaUrls : [],
             }
           })
           .filter(Boolean) as Bounty[])
@@ -277,44 +282,60 @@ export default function BountiesPage() {
             {bounties.length === 0 && !isLoading && (
               <div className="text-center py-12 bg-neutral-50 rounded-xl border border-neutral-200">
                 <MapPin className="w-10 h-10 mx-auto mb-3 text-neutral-300" />
-                <p className="text-neutral-500 mb-2">No active bounties yet</p>
-                <p className="text-sm text-neutral-400">Community sightings will appear here as bounties. Be the first to report an area that needs cleaning!</p>
+                <p className="text-neutral-500 mb-2">No active funded bounties yet</p>
+                <p className="text-sm text-neutral-400">Pick an active spot below and add at least $10 to turn it into a bounty.</p>
               </div>
             )}
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {bounties.map((bounty) => (
                 <div
                   key={bounty.id}
-                  className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow"
+                  className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-semibold text-neutral-900">{bounty.title}</h3>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        bounty.status === 'open'
-                          ? 'bg-red-100 text-red-700'
+                  {(bounty.mediaUrls?.length ?? 0) > 0 ? (
+                    <Image
+                      src={bounty.mediaUrls![0]}
+                      alt={`Bounty spot: ${bounty.title}`}
+                      width={400}
+                      height={176}
+                      className="w-full h-44 object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="h-44 bg-neutral-100 flex items-center justify-center text-neutral-400">
+                      <Camera className="w-8 h-8" />
+                    </div>
+                  )}
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="font-semibold text-neutral-900">{bounty.title}</h3>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          bounty.status === 'open'
+                            ? 'bg-red-100 text-red-700'
+                            : bounty.status === 'in_progress'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {bounty.status === 'open'
+                          ? 'Open'
                           : bounty.status === 'in_progress'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-green-100 text-green-700'
-                      }`}
-                    >
-                      {bounty.status === 'open'
-                        ? 'Open'
-                        : bounty.status === 'in_progress'
-                        ? 'In Progress'
-                        : 'Completed'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-neutral-600 mb-4 line-clamp-2">
-                    {bounty.description}
-                  </p>
-                  <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
-                    <span className="text-lg font-bold text-green-600">
-                      ${(bounty.amountCents / 100).toFixed(0)}
-                    </span>
-                    <span className="text-xs text-neutral-500">
-                      {bounty.pledgeCount} {bounty.pledgeCount === 1 ? 'pledge' : 'pledges'}
-                    </span>
+                          ? 'In Progress'
+                          : 'Completed'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-neutral-600 mb-4 line-clamp-2">
+                      {bounty.description}
+                    </p>
+                    <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
+                      <span className="text-lg font-bold text-green-600">
+                        ${(bounty.amountCents / 100).toFixed(0)}
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        {bounty.pledgeCount} {bounty.pledgeCount === 1 ? 'pledge' : 'pledges'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -336,9 +357,10 @@ export default function BountiesPage() {
                       key={spot.id}
                       className="bg-white rounded-xl border border-neutral-200 overflow-hidden hover:shadow-md transition-shadow"
                     >
-                      {/* Photo area — large hero image or photo strip */}
-                      {allPhotos.length > 0 && (
-                        <div className="relative">
+                      {/* Photo area — large hero image or fallback evidence panel */}
+                      <div className="relative">
+                        {allPhotos.length > 0 ? (
+                          <>
                           <Image
                             src={allPhotos[0]}
                             alt={`Spot report: ${spot.label?.replace(/_/g, ' ') || 'community sighting'}`}
@@ -361,8 +383,14 @@ export default function BountiesPage() {
                               {spot.status}
                             </span>
                           )}
-                        </div>
-                      )}
+                          </>
+                        ) : (
+                          <div className="h-48 bg-neutral-100 flex flex-col items-center justify-center text-neutral-400">
+                            <Camera className="w-8 h-8 mb-2" />
+                            <span className="text-xs font-medium">Photo pending</span>
+                          </div>
+                        )}
+                      </div>
                       <div className="p-4">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
@@ -412,6 +440,21 @@ export default function BountiesPage() {
                               <Clock className="w-3 h-3" />
                               {new Date(spot.createdAt).toLocaleDateString()}
                             </span>
+                          )}
+                        </div>
+                        <div className="mt-3">
+                          {spot.bountyId ? (
+                            <span className="inline-flex w-full items-center justify-center rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">
+                              Bounty funded
+                            </span>
+                          ) : (
+                            <Link
+                              href={`/bounties/post?spotId=${spot.id}`}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                              Add Bounty
+                            </Link>
                           )}
                         </div>
                       </div>

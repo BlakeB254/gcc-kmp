@@ -1,5 +1,7 @@
 import type { BountyRow, CommunityReport } from '@/db/schema'
 
+export const BOUNTY_MINIMUM_CENTS = 1000
+
 type NormalizedCoordinates = {
   lat: number
   lng: number
@@ -41,7 +43,7 @@ function stringArray(raw: unknown): string[] {
     : []
 }
 
-export function reportToCleanupOpportunityBounty(report: CommunityReport) {
+export function reportToBountySource(report: CommunityReport) {
   const coordinates = normalizeCoordinates(report.coordinates)
   if (!coordinates) return null
 
@@ -51,14 +53,8 @@ export function reportToCleanupOpportunityBounty(report: CommunityReport) {
   const tagLabel = tags.length > 0 ? tags.map(titleCase).join(', ') : 'Reported spot'
 
   return {
-    id: -report.id,
-    posterType: 'worker',
-    posterId: report.reporterId ?? 0,
-    walletId: 0,
     title: report.title || `Cleanup opportunity: ${tagLabel}`,
     description: report.description,
-    amount: 0,
-    status: 'open',
     locationLat: coordinates.lat,
     locationLng: coordinates.lng,
     radiusMeters: Number(report.affectedRadiusMeters ?? 30),
@@ -79,11 +75,6 @@ export function reportToCleanupOpportunityBounty(report: CommunityReport) {
       severity: ai.severity != null ? `${ai.severity}/5` : null,
     } : null,
     expiresAt: report.mapExpiresAt,
-    pledgeCount: 0,
-    spotterTipAmount: null,
-    spotterTipPaidAt: null,
-    createdAt: report.createdAt,
-    updatedAt: report.updatedAt,
   }
 }
 
