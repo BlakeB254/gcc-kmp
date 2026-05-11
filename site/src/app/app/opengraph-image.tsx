@@ -160,12 +160,16 @@ export default async function Image() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'white',
-                fontSize: 44,
-                fontWeight: 800,
               }}
             >
-              ●
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: 'white',
+                }}
+              />
             </div>
           </div>
           <div
