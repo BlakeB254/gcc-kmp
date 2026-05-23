@@ -781,9 +781,11 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Spot reports — heatmap at overview zoom (8-14), individual
-                  colored dots at street zoom (14+). Mutually exclusive zoom
-                  ranges so the two layers never render at the same time. */}
+              {/* Spot reports — heatmap density wash at overview + colored
+                  dots layered on top. Dots are always visible (no minzoom)
+                  so the user sees individual spots at any zoom; the heatmap
+                  only kicks in below z14 to add density context. Layering:
+                  basemap → heatmap → routes/blocks → dots. */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
                 <Layer
                   id="homepage-spot-heatmap"
@@ -794,7 +796,6 @@ export function NeighborhoodMapSection() {
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
-                  minzoom={14}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -806,13 +807,14 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      14, 5,
-                      15, 7,
-                      17, 10,
+                      10, 4,
+                      13, 6,
+                      15, 8,
+                      17, 11,
                     ],
                     'circle-stroke-color': '#ffffff',
                     'circle-stroke-width': 1.5,
-                    'circle-opacity': 0.9,
+                    'circle-opacity': 0.95,
                   }}
                 />
                 {/* "Needs Verification" labels — visible at close zoom */}

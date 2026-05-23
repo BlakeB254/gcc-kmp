@@ -599,10 +599,13 @@ export function CombinedMap({
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
-        {/* Spot reports — heatmap at overview zoom (8-14), individual
-            colored dots at street zoom (14+). Mutually exclusive zoom
-            ranges so the layers never render at the same time. Matches
-            the homepage mini-map. */}
+        {/* Spot reports — heatmap as a low-intensity background density wash
+            + colored dots ALWAYS on top. The bounties page is the detail
+            view, so the user expects individual spots to be visible at the
+            default fit zoom (~13). Dots are sized + opacity'd to be clearly
+            the foreground over the subtle heatmap; layering reads as
+            "density tint + each spot" rather than the previous
+            "heatmap-or-dots-fighting-each-other" state. */}
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
             <Layer
@@ -615,7 +618,6 @@ export function CombinedMap({
             <Layer
               id="combined-spot-center"
               type="circle"
-              minzoom={14}
               paint={{
                 'circle-color': [
                   'match', ['get', 'status'],
@@ -627,13 +629,14 @@ export function CombinedMap({
                 ],
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  14, 5,
-                  15, 7,
-                  17, 10,
+                  10, 4,
+                  13, 6,
+                  15, 8,
+                  17, 11,
                 ],
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 1.5,
-                'circle-opacity': 0.9,
+                'circle-opacity': 0.95,
               }}
             />
 
@@ -642,12 +645,12 @@ export function CombinedMap({
               id="combined-spot-verification-ring"
               filter={['==', ['get', 'needsVerification'], true]}
               type="circle"
-              minzoom={14}
               paint={{
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  14, 8,
-                  17, 14,
+                  10, 7,
+                  13, 10,
+                  17, 16,
                 ],
                 'circle-color': 'transparent',
                 'circle-stroke-color': '#FF8C00',
