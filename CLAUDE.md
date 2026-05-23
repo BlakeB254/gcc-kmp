@@ -58,9 +58,13 @@ Symptoms of this divergence:
 - The `drizzle.__drizzle_migrations` tracking table was empty until
   2026-05-23 when 0017/0018/0019 were applied via direct `psql` and
   manually inserted. It still doesn't reflect 0000–0016.
-- The migration filenames have collisions at 0008/0009/0010 (two .sql
-  files share each number) — almost certainly from parallel
-  `drizzle-kit generate` runs that were never reconciled.
+- (Resolved 2026-05-23) The migration filenames previously had
+  collisions at 0008/0009/0010 from parallel `drizzle-kit generate`
+  runs. The journal-canonical files (`0008_noisy_adam_destine.sql`,
+  `0009_breezy_old_lace.sql`) kept their numbers; the orphan-named
+  duplicates were renumbered forward to 0020-0023. Note this leaves
+  no .sql at 0010 (both 0010 files moved forward); the orphan-applied
+  state in prod is unchanged.
 - `meta/_journal.json` references `0007_regular_shotgun` but the .sql
   file is `0007_add_community_reports.sql` (tag/file mismatch).
 - The snapshot chain is coherent only through 0015. Beyond that the
