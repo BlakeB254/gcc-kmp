@@ -66,7 +66,7 @@ export const SPOT_COLORS = {
   // Heatmap: broad green field -> yellow/orange activity -> red/white hot cores.
   HEATMAP_EDGE: '#2EEA52',
   HEATMAP_LOW: '#7CFC2F',
-  CLEAN_ZONE: '#22C55E',
+  CLEAN_ZONE: '#27D94F',
   HEATMAP_MED: '#FDE047',
   HEATMAP_HIGH: '#F97316',
   HEATMAP_EXTREME: '#DC2626',

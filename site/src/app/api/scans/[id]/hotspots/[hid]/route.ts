@@ -1,0 +1,66 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/db'
+import { scanHotspots } from '@/db/schema'
+import { and, eq } from 'drizzle-orm'
+import { requireMobileAuth } from '@/lib/mobile-auth'
+import {
+  canAccessRouteScan,
+  findRouteScan,
+  normalizeHotspotStatus,
+  toMobileScanHotspot,
+} from '@/lib/mobile-route-scan-response'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+type RouteContext = { params: Promise<{ id: string; hid: string }> }
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const auth = await requireMobileAuth(request)
+  if (!auth) {
+    return NextResponse.json({ data: null, success: false, message: 'Not authenticated' }, { status: 401 })
+  }
+
+  try {
+    const { id, hid } = await context.params
+    const scanId = parseInt(id, 10)
+    const hotspotId = parseInt(hid, 10)
+    if (Number.isNaN(scanId) || Number.isNaN(hotspotId)) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid scan or hotspot ID' }, { status: 400 })
+    }
+
+    const scan = await findRouteScan(scanId)
+    if (!scan) {
+      return NextResponse.json({ data: null, success: false, message: 'Scan not found' }, { status: 404 })
+    }
+    if (!canAccessRouteScan(scan, auth)) {
+      return NextResponse.json({ data: null, success: false, message: 'Scan belongs to a different worker' }, { status: 403 })
+    }
+
+    const body = await request.json().catch(() => null)
+    const status = body?.status == null ? undefined : normalizeHotspotStatus(body.status)
+    const cleanedAt = status === 'cleaned' ? new Date().toISOString() : undefined
+
+    const [updated] = await db
+      .update(scanHotspots)
+      .set({
+        afterPhotoUrl: typeof body?.afterPhotoUrl === 'string' ? body.afterPhotoUrl : undefined,
+        verificationScore: Number.isFinite(Number(body?.verificationScore))
+          ? Number(body.verificationScore)
+          : undefined,
+        status,
+        cleanedAt,
+      })
+      .where(and(eq(scanHotspots.id, hotspotId), eq(scanHotspots.scanId, scanId)))
+      .returning()
+
+    if (!updated) {
+      return NextResponse.json({ data: null, success: false, message: 'Hotspot not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ data: toMobileScanHotspot(updated), success: true })
+  } catch (error) {
+    console.error('PATCH /api/scans/[id]/hotspots/[hid] error:', error)
+    return NextResponse.json({ data: null, success: false, message: 'Failed to update hotspot' }, { status: 500 })
+  }
+}

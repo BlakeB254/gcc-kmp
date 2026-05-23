@@ -28,6 +28,7 @@ import com.gcc.app.ui.theme.TextMuted
 
 sealed class RouteAuthState {
     data object Authorized : RouteAuthState()
+    data object RouteUnavailable : RouteAuthState()
     data object VerificationRequired : RouteAuthState()
     data class OutsideServiceArea(val workerArea: String?, val routeArea: String?) : RouteAuthState()
     data object Unknown : RouteAuthState()
@@ -46,6 +47,12 @@ fun RouteAuthorizationBanner(
             backgroundColor = GccGreen.copy(alpha = 0.10f),
             title = "You can work this route",
             body = "Your verification and service area match this block.",
+        )
+        RouteAuthState.RouteUnavailable -> BannerContent(
+            accentColor = amber,
+            backgroundColor = amber.copy(alpha = 0.12f),
+            title = "Not available yet",
+            body = "An admin must publish this route and configure checkpoints before workers can start it.",
         )
         RouteAuthState.VerificationRequired -> BannerContent(
             accentColor = amber,

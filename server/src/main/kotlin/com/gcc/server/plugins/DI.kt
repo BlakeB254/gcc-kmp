@@ -33,6 +33,8 @@ val appModule = module {
     single { PointsService() }
     single { CleanlinessService() }
     single { ScanService() }
+    single { RouteQueueService(routeService = get()) }
+    single { RouteNotificationService() }
 
     // Auth (depends on WorkerService)
     single { AuthService(workerService = get()) }

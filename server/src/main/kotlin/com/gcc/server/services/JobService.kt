@@ -1,10 +1,14 @@
 package com.gcc.server.services
 
 import com.gcc.server.db.DatabaseFactory.dbQuery
+import com.gcc.server.db.tables.Blocks
 import com.gcc.server.db.tables.Jobs
 import com.gcc.shared.model.*
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.jetbrains.exposed.sql.*
 
 class JobService {
@@ -12,22 +16,48 @@ class JobService {
     suspend fun getAll(
         status: JobStatus? = null,
         workerId: Int? = null,
+        routeId: Int? = null,
         limit: Int = 50,
         offset: Long = 0
     ): List<Job> = dbQuery {
+        val routeBlockIds = routeId?.let { id ->
+            Blocks.select(Blocks.id)
+                .where { Blocks.routeId eq id }
+                .map { it[Blocks.id] }
+        }
+        if (routeBlockIds != null && routeBlockIds.isEmpty()) {
+            return@dbQuery emptyList()
+        }
+
         val query = Jobs.selectAll()
         status?.let { query.andWhere { Jobs.status eq it.name.lowercase() } }
         workerId?.let { query.andWhere { Jobs.workerId eq it } }
+        routeBlockIds?.let { ids -> query.andWhere { Jobs.blockId inList ids } }
 
-        query
+        val rows = query
             .orderBy(Jobs.createdAt, SortOrder.DESC)
             .limit(limit).offset(offset)
-            .map { it.toJob() }
+
+        val blockIds = rows.map { it[Jobs.blockId] }.distinct()
+        val routeIdsByBlock = if (blockIds.isEmpty()) {
+            emptyMap()
+        } else {
+            Blocks.select(Blocks.id, Blocks.routeId)
+                .where { Blocks.id inList blockIds }
+                .associate { it[Blocks.id] to it[Blocks.routeId] }
+        }
+
+        rows.map { it.toJob(routeId = routeIdsByBlock[it[Jobs.blockId]]) }
     }
 
     suspend fun getById(id: Int): Job? = dbQuery {
-        Jobs.selectAll().where { Jobs.id eq id }
-            .firstOrNull()?.toJob()
+        val row = Jobs.selectAll().where { Jobs.id eq id }
+            .firstOrNull() ?: return@dbQuery null
+        val routeId = Blocks.select(Blocks.routeId)
+            .where { Blocks.id eq row[Jobs.blockId] }
+            .firstOrNull()
+            ?.get(Blocks.routeId)
+        row.toJob(routeId = routeId)
     }
 
     suspend fun getByWorker(workerId: Int, limit: Int = 20): List<Job> =
@@ -82,10 +112,82 @@ class JobService {
                 put(Jobs.completedAt, Clock.System.now())
                 if (isAdmin) {
                     put(Jobs.payoutAmount, "0")
-                    put(Jobs.payoutStatus, "test_completion")
+                    put(Jobs.payoutStatus, TransactionStatus.COMPLETED.name.lowercase())
                 }
             }
         }
+
+    suspend fun declineJob(jobId: Int, workerId: Int, isAdmin: Boolean = false): Job = dbQuery {
+        val row = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
+            ?: throw IllegalArgumentException("Job not found")
+        val routeId = Blocks.select(Blocks.routeId)
+            .where { Blocks.id eq row[Jobs.blockId] }
+            .firstOrNull()
+            ?.get(Blocks.routeId)
+        val job = row.toJob(routeId = routeId)
+        if (!isAdmin && job.workerId != workerId) {
+            throw IllegalStateException("Job belongs to a different worker")
+        }
+        if (job.status != JobStatus.CLAIMED) {
+            throw IllegalStateException("Only assigned jobs can be declined before start")
+        }
+
+        val now = Clock.System.now()
+        Jobs.update({ Jobs.id eq jobId }) {
+            it[Jobs.workerId] = null
+            it[Jobs.status] = JobStatus.AVAILABLE.name.lowercase()
+            it[Jobs.claimedAt] = null
+            it[Jobs.payoutStatus] = null
+            it[Jobs.updatedAt] = now
+        }
+
+        Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob(routeId = routeId)
+    }
+
+    suspend fun addEvidence(
+        jobId: Int,
+        workerId: Int,
+        isAdmin: Boolean,
+        request: JobEvidenceRequest,
+    ): Job = dbQuery {
+        val row = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
+            ?: throw IllegalArgumentException("Job not found")
+        val job = row.toJob()
+        if (!isAdmin && job.workerId != workerId) {
+            throw IllegalStateException("Job belongs to a different worker")
+        }
+
+        val now = Clock.System.now()
+        val evidence = JsonObject(
+            buildMap {
+                request.checkpointId?.let { put("checkpointId", JsonPrimitive(it)) }
+                put("url", JsonPrimitive(request.beforePhotoUrl))
+                put("capturedAt", JsonPrimitive(now.toString()))
+            }
+        )
+        val afterEvidence = JsonObject(
+            buildMap {
+                request.checkpointId?.let { put("checkpointId", JsonPrimitive(it)) }
+                put("url", JsonPrimitive(request.afterPhotoUrl))
+                put("capturedAt", JsonPrimitive(now.toString()))
+            }
+        )
+        val beforePhotos = appendJsonArray(row[Jobs.beforePhotos] as? JsonArray, evidence)
+        val afterPhotos = appendJsonArray(row[Jobs.afterPhotos] as? JsonArray, afterEvidence)
+
+        Jobs.update({ Jobs.id eq jobId }) {
+            it[Jobs.beforePhotos] = beforePhotos
+            it[Jobs.afterPhotos] = afterPhotos
+            it[updatedAt] = now
+        }
+
+        val refreshed = Jobs.selectAll().where { Jobs.id eq jobId }.first()
+        val routeId = Blocks.select(Blocks.routeId)
+            .where { Blocks.id eq refreshed[Jobs.blockId] }
+            .firstOrNull()
+            ?.get(Blocks.routeId)
+        refreshed.toJob(routeId = routeId)
+    }
 
     /**
      * Shared job transition: validate → update status + extra columns → return refreshed job.
@@ -98,8 +200,13 @@ class JobService {
         isAdmin: Boolean,
         extraColumns: (Job) -> Map<Column<*>, Any?>,
     ): Job = dbQuery {
-        val job = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()?.toJob()
+        val row = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
             ?: throw IllegalArgumentException("Job not found")
+        val routeId = Blocks.select(Blocks.routeId)
+            .where { Blocks.id eq row[Jobs.blockId] }
+            .firstOrNull()
+            ?.get(Blocks.routeId)
+        val job = row.toJob(routeId = routeId)
 
         val extras = extraColumns(job)
         val now = Clock.System.now()
@@ -117,19 +224,22 @@ class JobService {
             }
         }
 
-        Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob()
+        Jobs.selectAll().where { Jobs.id eq jobId }.first().toJob(routeId = routeId)
     }
 }
+
+private fun appendJsonArray(existing: JsonArray?, item: JsonObject): JsonArray =
+    JsonArray((existing?.toMutableList() ?: mutableListOf()).also { it.add(item) })
 
 /**
  * Map a Jobs row to the shared Job model.
  * Several model fields (routeId, fundingSource, bountyId, sponsorId, completionReport)
  * don't exist in the production Drizzle schema and are defaulted to null.
  */
-fun ResultRow.toJob(): Job = Job(
+fun ResultRow.toJob(routeId: Int? = null): Job = Job(
     id = this[Jobs.id],
     blockId = this[Jobs.blockId],
-    routeId = null, // not in production schema
+    routeId = routeId,
     workerId = this[Jobs.workerId],
     status = enumValueOfOrDefault(this[Jobs.status]),
     timing = JobTiming(

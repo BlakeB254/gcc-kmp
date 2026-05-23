@@ -31,9 +31,25 @@ private fun MockRequestHandleScope.respondNotFound() =
         headers = jsonHeaders,
     )
 
+private fun RouteStatus.apiValue(): String = when (this) {
+    RouteStatus.DRAFT -> "draft"
+    RouteStatus.PUBLISHED -> "published"
+    RouteStatus.ARCHIVED -> "archived"
+}
+
+private fun JobStatus.apiValue(): String = when (this) {
+    JobStatus.AVAILABLE -> "available"
+    JobStatus.CLAIMED -> "claimed"
+    JobStatus.IN_PROGRESS -> "in_progress"
+    JobStatus.PENDING_REVIEW -> "pending_review"
+    JobStatus.COMPLETED -> "completed"
+    JobStatus.DISPUTED -> "disputed"
+}
+
 // Regex patterns for parameterized paths
 private val routeIdPattern = Regex("^/api/routes/(\\d+)$")
 private val jobActionPattern = Regex("^/api/jobs/(\\d+)/(claim|start|complete)$")
+private val jobEvidencePattern = Regex("^/api/jobs/(\\d+)/evidence$")
 private val jobIdPattern = Regex("^/api/jobs/(\\d+)$")
 private val bountyClaimPattern = Regex("^/api/bounties/(\\d+)/claim$")
 private val bountyPledgePattern = Regex("^/api/bounties/(\\d+)/pledge$")
@@ -72,9 +88,19 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
         path == "/api/workers/me" ->
             respondApi(json.encodeToString(SeedData.worker))
 
+        path == "/api/workers/me/jobs" ->
+            respondApi(json.encodeToString(listOf(SeedData.activeJob)))
+
         // ── Routes ─────────────────────────────────────────────
-        path == "/api/routes" ->
-            respondApi(json.encodeToString(SeedData.routes))
+        path == "/api/routes" -> {
+            val status = request.url.parameters["status"] ?: "published"
+            val routes = if (status == "all") {
+                SeedData.routes
+            } else {
+                SeedData.routes.filter { it.status.apiValue() == status }
+            }
+            respondApi(json.encodeToString(routes))
+        }
 
         routeIdPattern.matches(path) -> {
             val id = routeIdPattern.find(path)!!.groupValues[1].toInt()
@@ -96,11 +122,21 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
             respondApi(json.encodeToString(job))
         }
 
+        jobEvidencePattern.matches(path) ->
+            respondApi(json.encodeToString(SeedData.activeJob))
+
         jobIdPattern.matches(path) ->
             respondApi(json.encodeToString(SeedData.activeJob))
 
-        path == "/api/jobs" ->
-            respondApi(json.encodeToString(listOf(SeedData.activeJob)))
+        path == "/api/jobs" -> {
+            val routeId = request.url.parameters["route_id"]?.toIntOrNull()
+            val status = request.url.parameters["status"]
+            val jobs = listOf(SeedData.activeJob).filter { job ->
+                (routeId == null || job.routeId == routeId) &&
+                    (status == null || job.status.apiValue() == status)
+            }
+            respondApi(json.encodeToString(jobs))
+        }
 
         // ── Leaderboard ────────────────────────────────────────
         path == "/api/leaderboard" ->

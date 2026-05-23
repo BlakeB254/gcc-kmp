@@ -9,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
@@ -31,7 +30,6 @@ import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.FillLayer
-import org.maplibre.compose.layers.HeatmapLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.GestureOptions
@@ -43,6 +41,9 @@ import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.ClickResult
 import kotlin.time.Duration.Companion.milliseconds
+
+private const val IOS_SPOT_HEAT_FADE_ZOOM = 12.99
+private const val IOS_SPOT_DOTS_MIN_ZOOM = 13.0
 
 /**
  * iOS actual implementation of GccMap — MapLibre Compose with real tile-based maps.
@@ -87,15 +88,23 @@ actual fun GccMap(
     val serviceAreaJson = remember { buildServiceAreaGeoJson() }
     val stateJson = remember { buildStateBoundaryGeoJson() }
     val cityJson = remember { buildCityBoundaryGeoJson() }
+    val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
     val explorerLabelsJson = remember(bounties) { buildExplorerLabelsGeoJson(bounties) }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
+    val hasActiveSpots = remember(spots) { spots.any { it.status != CommunityReportStatus.RESOLVED } }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
+    val spotDensityHeatEdgeJson = remember(spots) { buildSpotDensityHeatEdgeGeoJson(spots) }
+    val spotDensityHeatLowJson = remember(spots) { buildSpotDensityHeatLowGeoJson(spots) }
+    val spotDensityHeatMediumJson = remember(spots) { buildSpotDensityHeatMediumGeoJson(spots) }
+    val spotDensityHeatHighJson = remember(spots) { buildSpotDensityHeatHighGeoJson(spots) }
+    val spotDensityHeatExtremeJson = remember(spots) { buildSpotDensityHeatExtremeGeoJson(spots) }
     val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
     val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
+    val hasHeatActivity = hasActiveSpots
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -168,9 +177,10 @@ actual fun GccMap(
         }
     }
 
-    // Derive zoom separately so panning (which changes lat/lng but not zoom)
-    // does NOT trigger recomposition of the Box — only actual zoom changes do.
-    val scaleBarZoom by remember { derivedStateOf { camera.position.zoom } }
+    // Keep the camera zoom read out of the main map composition. The scale bar
+    // can update independently while MapLibre handles heatmap zoom interpolation
+    // natively, avoiding layer-tree churn during pinch gestures.
+    val scaleBarZoom = remember { derivedStateOf { camera.position.zoom } }
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -197,6 +207,7 @@ actual fun GccMap(
             val citySrc = rememberGeoJsonSource(GeoJsonData.JsonString(cityJson))
             val areaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(communityAreasJson))
             val serviceAreaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(serviceAreaJson))
+            val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
             val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
@@ -351,6 +362,29 @@ actual fun GccMap(
                 textOpacity = const(if (isMyArea) 0f else 1f),
             )
 
+            if (hasHeatActivity) {
+                // Green clean-zone baseline for overview zooms. Spot heat zones
+                // are drawn above this layer, so areas without active spot
+                // reports stay visibly green during overview zooms.
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.CLEAN_BASE_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.36f),
+                        7 to const(0.44f),
+                        10 to const(0.54f),
+                        12 to const(0.58f),
+                        13 to const(0.5f),
+                        13.8 to const(0.36f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0.34f),
+                    ),
+                )
+            }
+
             // ── Route polygon fill — invisible tap target ──
             // Was previously a solid green fill at high opacity, but it
             // overlapped the affected-block heatmap and the clean-zone base
@@ -436,13 +470,10 @@ actual fun GccMap(
                 } else null,
             )
 
-            // ── Checkpoint markers: zoom-adaptive circles ──
-            // Hidden at overview, appear at neighborhood zoom, full size at street level.
-
-            // Waypoint outer ring (white border)
             CircleLayer(
                 id = MapStyles.LAYER_CHECKPOINT_OUTER,
                 source = checkpointsSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.White),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -461,10 +492,10 @@ actual fun GccMap(
                 ),
             )
 
-            // Waypoint inner fill (green)
             CircleLayer(
                 id = MapStyles.LAYER_CHECKPOINT_INNER,
                 source = checkpointsSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(GccGreen),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -491,6 +522,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "photo-star-outer",
                 source = photoStarSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.White),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -504,6 +536,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "photo-star-inner",
                 source = photoStarSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color(0xFF22C55E)),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -562,12 +595,14 @@ actual fun GccMap(
             FillLayer(
                 id = "image-star-fill",
                 source = diamondSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color(0xFFFFB300)),
             )
             // White inner diamond (creates a framed look)
             FillLayer(
                 id = "image-star-inner",
                 source = innerDiamondSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.White),
             )
 
@@ -578,6 +613,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_BOUNTY_RADIUS,
                 source = bountySrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.BOUNTY_RADIUS_FILL),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -591,6 +627,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_BOUNTY_DOTS,
                 source = bountySrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.BOUNTY_DOT_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -619,6 +656,7 @@ actual fun GccMap(
             SymbolLayer(
                 id = MapStyles.LAYER_BOUNTY_LABELS,
                 source = bountySrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 textField = format(span(amountExpr)),
                 textSize = interpolate(
                     type = exponential(1.5f),
@@ -634,13 +672,11 @@ actual fun GccMap(
                 textIgnorePlacement = const(true),
             )
 
-            // ── Affected-block heatmap + polygon fills ──
+            // ── Affected-block polygon fills ──
             //
-            // Mirror of the Android implementation — kept in lockstep so
-            // the two platforms stay feature-identical. At overview zoom
-            // block centers glow as a density heatmap; at street zoom
-            // the per-block polygons fill with status colors and fire
-            // onAffectedBlockTap(blockId) on tap.
+            // These are close-zoom block details only. Overview heat is driven
+            // by spot reports so blocks without a report remain part of the
+            // clean green baseline.
             if (affectedBlocks.isNotEmpty()) {
                 val affectedJson = remember(affectedBlocks) { affectedBlocksToGeoJson(affectedBlocks) }
                 val affectedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(affectedJson))
@@ -648,6 +684,7 @@ actual fun GccMap(
                 FillLayer(
                     id = "affected-block-fill",
                     source = affectedSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                     // Warm amber — reads against the clean-zone green base
                     // wash so active blocks pop as "something is happening
                     // here" rather than blending into the baseline.
@@ -655,10 +692,13 @@ actual fun GccMap(
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        12 to const(0f),
-                        13 to const(0.35f),
-                        15 to const(0.55f),
-                        17 to const(0.7f),
+                        10 to const(0f),
+                        11 to const(0.14f),
+                        12 to const(0.34f),
+                        13 to const(0.46f),
+                        14 to const(0.42f),
+                        15 to const(0.5f),
+                        17 to const(0.62f),
                     ),
                     onClick = if (onAffectedBlockTap != null) { features ->
                         val id = (features.firstOrNull()?.properties?.get("blockId") as? Number)?.toInt()
@@ -671,27 +711,6 @@ actual fun GccMap(
                     } else null,
                 )
 
-                CircleLayer(
-                    id = "affected-block-heatmap",
-                    source = affectedSrc,
-                    color = const(Color(0xFFFF6B35)),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        8 to const(20.dp),
-                        11 to const(28.dp),
-                        13 to const(22.dp),
-                        14 to const(0.dp),
-                    ),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        8 to const(0.3f),
-                        11 to const(0.45f),
-                        13 to const(0.25f),
-                        14 to const(0f),
-                    ),
-                )
             }
 
             // ── User location blue dot ──
@@ -747,6 +766,7 @@ actual fun GccMap(
             FillLayer(
                 id = "spot-rect-fill",
                 source = spotRectSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.15f)),
                 opacity = interpolate(
                     type = exponential(1.5f),
@@ -758,6 +778,7 @@ actual fun GccMap(
             LineLayer(
                 id = "spot-rect-outline",
                 source = spotRectSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.6f)),
                 width = interpolate(
                     type = exponential(1.5f),
@@ -770,94 +791,180 @@ actual fun GccMap(
 
             // ── Spot report markers ──
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
-            val spotHeatWeightExpr = feature["heatWeight"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.FloatValue>
+            val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
+            val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
+            val spotDensityHeatMediumSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatMediumJson))
+            val spotDensityHeatHighSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatHighJson))
+            val spotDensityHeatExtremeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatExtremeJson))
 
-            // ── Clean zone: subtle green tint across entire map ──
-            // Covers the full visible area so ALL clean zones read as green.
-            // Opacity is low enough that streets, community boundaries, and labels
-            // remain fully legible. Red/yellow heatmap spots punch through clearly.
-            val fullMapGreenJson = remember {
-                """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}]}"""
-            }
-            val fullMapGreenSrc = rememberGeoJsonSource(GeoJsonData.JsonString(fullMapGreenJson))
-            FillLayer(
-                id = "clean-zone-base",
-                source = fullMapGreenSrc,
-                color = const(MapStyles.CLEAN_BASE_COLOR),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    7 to const(0.16f),
-                    8 to const(0.24f),
-                    10 to const(0.3f),
-                    12 to const(0.27f),
-                    13 to const(0.2f),
-                    14 to const(0.08f),
-                    14.5 to const(0f),
-                ),
-            )
-
-            // Heatmap: visible from widest zoom (z8) through z15.
-            // Broad green fringe -> yellow/orange activity -> red/white hot cores.
-            HeatmapLayer(
-                id = MapStyles.LAYER_SPOT_HEATMAP,
-                source = spotSrc,
+            // Sampled overview heat over the clean green baseline. These
+            // sources are density field samples, not raw spot points, so the
+            // layers read as one continuous surface at overview zooms.
+            CircleLayer(
+                id = "spot-density-heat-low-fringe",
+                source = spotDensityHeatEdgeSrc,
                 minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = MapStyles.SPOT_HEATMAP_MAX_ZOOM.toFloat(),
-                color = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),
-                    0.02 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.55f)),
-                    0.12 to const(MapStyles.SPOT_HEAT_EDGE),
-                    0.26 to const(MapStyles.SPOT_HEAT_LOW),
-                    0.45 to const(MapStyles.SPOT_HEAT_MEDIUM),
-                    0.62 to const(MapStyles.SPOT_HEAT_HIGH),
-                    0.8 to const(MapStyles.SPOT_HEAT_EXTREME),
-                    0.94 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
-                    1.0 to const(MapStyles.SPOT_HEAT_PEAK),
-                ),
-                weight = spotHeatWeightExpr,
-                intensity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    8 to const(0.08f),
-                    10 to const(0.13f),
-                    12 to const(0.21f),
-                    13 to const(0.26f),
-                    14 to const(0.16f),
-                    14.5 to const(0.05f),
-                    15 to const(0.02f),
-                ),
+                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.72f)),
+                blur = const(1.35f),
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(18.dp),
-                    10 to const(28.dp),
-                    12 to const(42.dp),
-                    13 to const(52.dp),
-                    13.75 to const(34.dp),
-                    14.25 to const(18.dp),
-                    14.5 to const(0.dp),
-                    15 to const(0.dp),
+                    2 to const(2.2.dp),
+                    7 to const(5.2.dp),
+                    9 to const(8.8.dp),
+                    11 to const(13.5.dp),
+                    12.5 to const(18.dp),
+                    13.1 to const(15.dp),
+                    13.8 to const(12.dp),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(10.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.74f),
-                    10 to const(0.82f),
-                    12 to const(0.86f),
-                    13 to const(0.82f),
-                    13.75 to const(0.54f),
-                    14.25 to const(0.22f),
-                    14.5 to const(0f),
+                    2 to const(0.1f),
+                    7 to const(0.18f),
+                    9 to const(0.28f),
+                    11 to const(0.34f),
+                    12.5 to const(0.42f),
+                    13.1 to const(0.3f),
+                    13.8 to const(0.16f),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(0.14f),
+                ),
+            )
+            CircleLayer(
+                id = "spot-density-heat-low-core",
+                source = spotDensityHeatLowSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.82f)),
+                blur = const(1.25f),
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(1.7.dp),
+                    7 to const(4.2.dp),
+                    9 to const(7.2.dp),
+                    11 to const(11.5.dp),
+                    12.5 to const(16.dp),
+                    13.1 to const(13.dp),
+                    13.8 to const(10.5.dp),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(8.4.dp),
+                ),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.12f),
+                    7 to const(0.2f),
+                    9 to const(0.32f),
+                    11 to const(0.44f),
+                    12.5 to const(0.54f),
+                    13.1 to const(0.36f),
+                    13.8 to const(0.2f),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(0.18f),
+                ),
+            )
+            CircleLayer(
+                id = "spot-density-heat-mid",
+                source = spotDensityHeatMediumSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_HEAT_MEDIUM),
+                blur = const(1.1f),
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(1.2.dp),
+                    7 to const(3.3.dp),
+                    9 to const(6.1.dp),
+                    11 to const(10.dp),
+                    12.5 to const(13.8.dp),
+                    13.1 to const(10.8.dp),
+                    13.8 to const(8.8.dp),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(7.dp),
+                ),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.08f),
+                    7 to const(0.18f),
+                    9 to const(0.4f),
+                    11 to const(0.62f),
+                    12.5 to const(0.78f),
+                    13.1 to const(0.48f),
+                    13.8 to const(0.26f),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(0.24f),
+                ),
+            )
+            CircleLayer(
+                id = "spot-density-heat-high",
+                source = spotDensityHeatHighSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_HEAT_HIGH),
+                blur = const(1.05f),
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.8.dp),
+                    7 to const(2.7.dp),
+                    9 to const(5.6.dp),
+                    11 to const(9.2.dp),
+                    12.5 to const(12.8.dp),
+                    13.1 to const(9.4.dp),
+                    13.8 to const(7.6.dp),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(6.dp),
+                ),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.06f),
+                    7 to const(0.16f),
+                    9 to const(0.5f),
+                    11 to const(0.84f),
+                    12.5 to const(0.96f),
+                    13.1 to const(0.62f),
+                    13.8 to const(0.3f),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(0.26f),
+                ),
+            )
+            CircleLayer(
+                id = "spot-density-heat-extreme",
+                source = spotDensityHeatExtremeSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_HEAT_EXTREME),
+                blur = const(1.0f),
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.dp),
+                    7 to const(1.2.dp),
+                    9 to const(2.6.dp),
+                    11 to const(4.4.dp),
+                    12.5 to const(6.dp),
+                    13.1 to const(4.4.dp),
+                    13.8 to const(4.6.dp),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(3.6.dp),
+                ),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0f),
+                    7 to const(0.12f),
+                    9 to const(0.32f),
+                    11 to const(0.62f),
+                    12.5 to const(0.78f),
+                    13.1 to const(0.48f),
+                    13.8 to const(0.18f),
+                    IOS_SPOT_HEAT_FADE_ZOOM to const(0.14f),
                 ),
             )
 
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKER_HALOS,
                 source = spotSrc,
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.16f)),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -879,7 +986,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
                 source = bountiedSpotSrc,
-                minZoom = 13.5f,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -909,7 +1016,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "${MapStyles.LAYER_SPOT_MARKERS}-tap",
                 source = spotSrc,
-                minZoom = 14f,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -931,11 +1038,12 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Visible spot dots — fade in as heatmap fades out (z14-14.5 crossfade)
+            // Visible spot dots — close zoom only. The overview heatmap uses the
+            // same switch zoom as maxZoom, so markers and heat never render together.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -957,8 +1065,8 @@ actual fun GccMap(
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(0f),
-                    14.5 to const(0.8f),
+                    14 to const(0.85f),
+                    14.5 to const(0.95f),
                     15 to const(1f),
                 ),
             )
@@ -978,7 +1086,7 @@ actual fun GccMap(
             CircleLayer(
                 id = "spot-verification-ring",
                 source = verifSrc,
-                minZoom = 15f,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -1002,6 +1110,7 @@ actual fun GccMap(
                     14 to const(1f),
                 ),
             )
+
         }
 
         // Overlay content (composables positioned in the Box)
@@ -1009,37 +1118,34 @@ actual fun GccMap(
 
         // Zoom controls and scale bar — bottom-left stack
         if (showControls) {
-            Column(
+            MapZoomControlOverlay(
+                zoomState = scaleBarZoom,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(bottom = 72.dp),
-            ) {
-                ZoomButtons(
-                    onZoomIn = {
-                        coroutineScope.launch {
-                            camera.animateTo(
-                                finalPosition = camera.position.copy(
-                                    zoom = (camera.position.zoom + 1.0).coerceAtMost(20.0)
-                                ),
-                                duration = 300.milliseconds,
-                            )
-                        }
-                    },
-                    onZoomOut = {
-                        coroutineScope.launch {
-                            camera.animateTo(
-                                finalPosition = camera.position.copy(
-                                    zoom = (camera.position.zoom - 1.0).coerceAtLeast(1.0)
-                                ),
-                                duration = 300.milliseconds,
-                            )
-                        }
-                    },
-                )
-                ScaleBar(
-                    zoom = scaleBarZoom,
-                )
-            }
+                onZoomIn = {
+                    coroutineScope.launch {
+                        val nextZoom = (camera.position.zoom + 1.0).coerceAtMost(20.0)
+                        camera.animateTo(
+                            finalPosition = camera.position.copy(
+                                zoom = nextZoom,
+                            ),
+                            duration = 250.milliseconds,
+                        )
+                    }
+                },
+                onZoomOut = {
+                    coroutineScope.launch {
+                        val nextZoom = (camera.position.zoom - 1.0).coerceAtLeast(1.0)
+                        camera.animateTo(
+                            finalPosition = camera.position.copy(
+                                zoom = nextZoom,
+                            ),
+                            duration = 250.milliseconds,
+                        )
+                    }
+                },
+            )
         }
 
         // Area tooltip overlay
@@ -1067,5 +1173,21 @@ actual fun GccMap(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MapZoomControlOverlay(
+    zoomState: State<Double>,
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        ZoomButtons(
+            onZoomIn = onZoomIn,
+            onZoomOut = onZoomOut,
+        )
+        ScaleBar(zoom = zoomState.value)
     }
 }

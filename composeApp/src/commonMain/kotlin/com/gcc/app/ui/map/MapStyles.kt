@@ -123,32 +123,46 @@ object MapStyles {
     const val LAYER_SPOT_MARKERS = "spot-markers"
     const val LAYER_SPOT_MARKER_HALOS = "spot-marker-halos"
     const val LAYER_BOUNTIED_SPOT_HALOS = "bountied-spot-halos"
+    const val LAYER_SPOT_CLEAN_ZONE_BASE = "spot-clean-zone-base"
+    const val LAYER_SPOT_THERMAL_FIELD = "spot-thermal-field"
+    const val LAYER_SPOT_HEAT_FAR_OUTER = "spot-heat-far-outer"
+    const val LAYER_SPOT_HEAT_FAR_MID = "spot-heat-far-mid"
+    const val LAYER_SPOT_HEAT_FAR_CORE = "spot-heat-far-core"
+    const val LAYER_SPOT_HEAT_ZONE_OUTER = "spot-heat-zone-outer"
+    const val LAYER_SPOT_HEAT_ZONE_MID = "spot-heat-zone-mid"
+    const val LAYER_SPOT_HEAT_ZONE_CORE = "spot-heat-zone-core"
+    const val LAYER_SPOT_OVERVIEW_HEAT_OUTER = "spot-overview-heat-outer"
+    const val LAYER_SPOT_OVERVIEW_HEAT_MID = "spot-overview-heat-mid"
+    const val LAYER_SPOT_OVERVIEW_HEAT_CORE = "spot-overview-heat-core"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange
-    val SPOT_HEAT_EDGE = Color(0xFF2EEA52)
-    val SPOT_HEAT_LOW = Color(0xFF7CFC2F)
-    val SPOT_HEAT_MEDIUM = Color(0xFFFDE047)
-    val SPOT_HEAT_HIGH = Color(0xFFF97316)
-    val SPOT_HEAT_EXTREME = Color(0xFFDC2626)
-    val SPOT_HEAT_NEAR_PEAK = Color(0xFFFFF7AD)
+    val SPOT_HEAT_EDGE = Color(0xFF42C83E)
+    val SPOT_HEAT_LOW = Color(0xFFFFEB3B)
+    val SPOT_HEAT_MEDIUM = Color(0xFFFFB72E)
+    val SPOT_HEAT_HIGH = Color(0xFFFF7A00)
+    val SPOT_HEAT_EXTREME = Color(0xFFD92712)
+    val SPOT_HEAT_CRITICAL = Color(0xFFB91C1C)
+    val SPOT_HEAT_NEAR_PEAK = Color(0xFFFFF2B0)
     val SPOT_HEAT_PEAK = Color.White
-    val CLEAN_BASE_COLOR = Color(0xFF22C55E)
+    val CLEAN_BASE_COLOR = Color(0xFF128F3A)
 
-    // Spot heatmap layer: broad green overview field, then yellow/orange/red/white density.
+    // Spot heatmap layer: clean green baseline, then yellow/orange/red density.
+    // The clean baseline only renders when spot reports exist, so an empty map stays neutral.
     const val LAYER_SPOT_HEATMAP = "spot-heatmap"
     const val SPOT_HEATMAP_RADIUS_FAR = 18.0f
-    const val SPOT_HEATMAP_RADIUS_MID = 52.0f
+    const val SPOT_HEATMAP_RADIUS_MID = 56.0f
     const val SPOT_HEATMAP_RADIUS_CLOSE = 0.0f
-    const val SPOT_HEATMAP_OPACITY_FAR = 0.74f
+    const val SPOT_HEATMAP_OPACITY_FAR = 0.82f
     const val SPOT_HEATMAP_OPACITY_CLOSE = 0.0f  // fully transparent at close zoom
 
     // Heatmap fallback color for non-native renderers.
     val SPOT_HEATMAP_COLOR = SPOT_HEAT_EXTREME
 
-    // Zoom thresholds — heatmap and dots crossfade at neighborhood/street zoom.
-    const val SPOT_HEATMAP_MIN_ZOOM = 8.0
-    const val SPOT_HEATMAP_MAX_ZOOM = 15.0
-    const val SPOT_HEATMAP_FADE_OUT_ZOOM = 14.5
-    const val SPOT_DOTS_MIN_ZOOM = 14.0
+    // Zoom thresholds — heatmap below the switch, spot dots at/above the switch.
+    // Keep the handoff tight so the app never renders dots and heat at the same zoom.
+    const val SPOT_HEATMAP_MIN_ZOOM = 2.0
+    const val SPOT_HEATMAP_MAX_ZOOM = 12.99
+    const val SPOT_HEATMAP_FADE_OUT_ZOOM = 12.99
+    const val SPOT_DOTS_MIN_ZOOM = 13.0
 }
 
 

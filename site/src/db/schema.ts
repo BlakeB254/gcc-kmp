@@ -10,6 +10,8 @@ import {
   jsonb,
   pgEnum,
   doublePrecision,
+  index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 // Enums (matching Payload's generated enums)
@@ -446,6 +448,140 @@ export const jobs = pgTable('jobs', {
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })
+
+// Route release queues turn a set of funded routes into timed offer waves.
+// Workers are eligible by verified proof-of-address residency in the release
+// area's ZIP codes. North Lawndale launches with 60623/60624.
+export const routeReleaseStatusEnum = pgEnum('enum_route_release_batches_status', [
+  'draft',
+  'scheduled',
+  'active',
+  'completed',
+  'cancelled',
+])
+
+export const routeReleaseRouteStatusEnum = pgEnum('enum_route_release_routes_status', [
+  'open',
+  'claimed',
+  'cancelled',
+])
+
+export const routeJobOfferStatusEnum = pgEnum('enum_route_job_offers_status', [
+  'pending',
+  'accepted',
+  'declined',
+  'expired',
+  'cancelled',
+])
+
+export const routeReleaseBatches = pgTable('route_release_batches', {
+  id: serial('id').primaryKey(),
+  serviceAreaId: integer('service_area_id').notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  communityName: varchar('community_name', { length: 255 }).notNull(),
+  eligibleZipCodes: jsonb('eligible_zip_codes').notNull(),
+  status: routeReleaseStatusEnum('status').default('draft').notNull(),
+
+  // Worker offer timing. Cron/admin processing only sends waves inside this
+  // local daytime window.
+  releaseAt: timestamp('release_at', { mode: 'string', withTimezone: true }).notNull(),
+  nextWaveAt: timestamp('next_wave_at', { mode: 'string', withTimezone: true }),
+  offerWindowMinutes: integer('offer_window_minutes').default(240).notNull(),
+  timezone: varchar('timezone', { length: 64 }).default('America/Chicago').notNull(),
+  daytimeWindowStart: varchar('daytime_window_start', { length: 5 }).default('08:00').notNull(),
+  daytimeWindowEnd: varchar('daytime_window_end', { length: 5 }).default('20:00').notNull(),
+
+  // Optional cleanup window shown to workers after they accept.
+  cleanupStartsAt: timestamp('cleanup_starts_at', { mode: 'string', withTimezone: true }),
+  cleanupEndsAt: timestamp('cleanup_ends_at', { mode: 'string', withTimezone: true }),
+
+  targetSlots: integer('target_slots').default(0).notNull(),
+  waveNumber: integer('wave_number').default(0).notNull(),
+  createdById: integer('created_by_id'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  serviceAreaIdx: index('idx_route_release_batches_service_area').on(table.serviceAreaId),
+  statusNextWaveIdx: index('idx_route_release_batches_status_next_wave').on(table.status, table.nextWaveAt),
+}))
+
+export const routeReleaseRoutes = pgTable('route_release_routes', {
+  id: serial('id').primaryKey(),
+  batchId: integer('batch_id').notNull(),
+  routeId: integer('route_id').notNull(),
+  jobId: integer('job_id').notNull(),
+  status: routeReleaseRouteStatusEnum('status').default('open').notNull(),
+  acceptedByWorkerId: integer('accepted_by_worker_id'),
+  acceptedOfferId: integer('accepted_offer_id'),
+  acceptedAt: timestamp('accepted_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  batchRouteUnique: uniqueIndex('idx_route_release_routes_batch_route_unique').on(table.batchId, table.routeId),
+  jobUnique: uniqueIndex('idx_route_release_routes_job_unique').on(table.jobId),
+  batchStatusIdx: index('idx_route_release_routes_batch_status').on(table.batchId, table.status),
+}))
+
+export const routeJobOffers = pgTable('route_job_offers', {
+  id: serial('id').primaryKey(),
+  batchId: integer('batch_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  waveNumber: integer('wave_number').notNull(),
+  status: routeJobOfferStatusEnum('status').default('pending').notNull(),
+  offerToken: varchar('offer_token', { length: 96 }).notNull(),
+  offeredAt: timestamp('offered_at', { mode: 'string', withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }).notNull(),
+  respondedAt: timestamp('responded_at', { mode: 'string', withTimezone: true }),
+  selectedRouteId: integer('selected_route_id'),
+  selectedJobId: integer('selected_job_id'),
+  declineReason: text('decline_reason'),
+  notificationStatus: varchar('notification_status', { length: 32 }).default('pending').notNull(),
+  notificationLastError: text('notification_last_error'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  offerTokenUnique: uniqueIndex('idx_route_job_offers_token_unique').on(table.offerToken),
+  batchWorkerIdx: index('idx_route_job_offers_batch_worker').on(table.batchId, table.workerId),
+  statusExpiryIdx: index('idx_route_job_offers_status_expiry').on(table.status, table.expiresAt),
+}))
+
+export const routeCommunityQueue = pgTable('route_community_queue', {
+  id: serial('id').primaryKey(),
+  serviceAreaId: integer('service_area_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  queueRank: numeric('queue_rank'),
+  lastOpportunityAt: timestamp('last_opportunity_at', { mode: 'string', withTimezone: true }),
+  lastOfferedBatchId: integer('last_offered_batch_id'),
+  lastOfferStatus: routeJobOfferStatusEnum('last_offer_status'),
+  opportunitiesCount: integer('opportunities_count').default(0).notNull(),
+  carryoverReleaseAfter: timestamp('carryover_release_after', { mode: 'string', withTimezone: true }),
+  carryoverAttempts: integer('carryover_attempts').default(0).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  serviceWorkerUnique: uniqueIndex('idx_route_community_queue_service_worker_unique').on(table.serviceAreaId, table.workerId),
+  serviceOpportunityIdx: index('idx_route_community_queue_service_opportunity').on(table.serviceAreaId, table.lastOpportunityAt),
+}))
+
+export const routeOfferNotifications = pgTable('route_offer_notifications', {
+  id: serial('id').primaryKey(),
+  offerId: integer('offer_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  channel: varchar('channel', { length: 20 }).notNull(), // email, push
+  kind: varchar('kind', { length: 32 }).notNull(), // initial, reminder_1h, reminder_5m
+  status: varchar('status', { length: 32 }).default('pending').notNull(),
+  scheduledAt: timestamp('scheduled_at', { mode: 'string', withTimezone: true }).notNull(),
+  sentAt: timestamp('sent_at', { mode: 'string', withTimezone: true }),
+  attempts: integer('attempts').default(0).notNull(),
+  lastError: text('last_error'),
+  payload: jsonb('payload'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  offerChannelKindUnique: uniqueIndex('idx_route_offer_notifications_offer_channel_kind_unique').on(table.offerId, table.channel, table.kind),
+  statusScheduledIdx: index('idx_route_offer_notifications_status_scheduled').on(table.status, table.scheduledAt),
+  workerIdx: index('idx_route_offer_notifications_worker').on(table.workerId),
+}))
 
 // Transaction status enum
 export const transactionStatusEnum = pgEnum('enum_transactions_status', [
@@ -1250,6 +1386,51 @@ export const routeCheckpoints = pgTable('route_checkpoints', {
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })
 
+// Route scan session table (mobile Scout & Clean flow)
+export const routeScans = pgTable('route_scans', {
+  id: serial('id').primaryKey(),
+  routeId: integer('route_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  deviceType: varchar('device_type', { length: 10 }).default('gps').notNull(),
+  phase: varchar('phase', { length: 30 }).default('scouting').notNull(),
+  coveragePercent: doublePrecision('coverage_percent').default(0).notNull(),
+  scoutStartedAt: timestamp('scout_started_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  scoutCompletedAt: timestamp('scout_completed_at', { mode: 'string', withTimezone: true }),
+  cleanStartedAt: timestamp('clean_started_at', { mode: 'string', withTimezone: true }),
+  cleanCompletedAt: timestamp('clean_completed_at', { mode: 'string', withTimezone: true }),
+  startLat: doublePrecision('start_lat').notNull(),
+  startLng: doublePrecision('start_lng').notNull(),
+  scoutPathGeoJson: text('scout_path_geojson'),
+  cleanPathGeoJson: text('clean_path_geojson'),
+  totalTrashVolumeLiters: doublePrecision('total_trash_volume_liters'),
+  totalTrashWeightLbs: doublePrecision('total_trash_weight_lbs'),
+  pointsAwarded: integer('points_awarded').default(0).notNull(),
+  status: varchar('status', { length: 30 }).default('in_progress').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// Hotspots recorded during route scan sessions
+export const scanHotspots = pgTable('scan_hotspots', {
+  id: serial('id').primaryKey(),
+  scanId: integer('scan_id').notNull(),
+  lat: doublePrecision('lat').notNull(),
+  lng: doublePrecision('lng').notNull(),
+  trashTypes: varchar('trash_types', { length: 500 }).default('[]').notNull(),
+  severity: integer('severity').default(1).notNull(),
+  estimatedVolumeLiters: doublePrecision('estimated_volume_liters'),
+  estimatedWeightLbs: doublePrecision('estimated_weight_lbs'),
+  confidence: doublePrecision('confidence').default(0).notNull(),
+  beforePhotoUrl: varchar('before_photo_url', { length: 500 }).notNull(),
+  afterPhotoUrl: varchar('after_photo_url', { length: 500 }),
+  arAnchorData: text('ar_anchor_data'),
+  depthData: text('depth_data'),
+  detectedAt: timestamp('detected_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  cleanedAt: timestamp('cleaned_at', { mode: 'string', withTimezone: true }),
+  verificationScore: doublePrecision('verification_score'),
+  status: varchar('status', { length: 20 }).default('detected').notNull(),
+})
+
 // Material donation inquiry status enum
 export const materialDonationStatusEnum = pgEnum('enum_material_donations_status', [
   'pending',      // New inquiry, needs follow-up
@@ -1336,6 +1517,10 @@ export type Route = typeof routes.$inferSelect
 export type NewRoute = typeof routes.$inferInsert
 export type RouteCheckpoint = typeof routeCheckpoints.$inferSelect
 export type NewRouteCheckpoint = typeof routeCheckpoints.$inferInsert
+export type RouteScanRow = typeof routeScans.$inferSelect
+export type NewRouteScanRow = typeof routeScans.$inferInsert
+export type ScanHotspotRow = typeof scanHotspots.$inferSelect
+export type NewScanHotspotRow = typeof scanHotspots.$inferInsert
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect

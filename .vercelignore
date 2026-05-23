@@ -1,0 +1,13 @@
+.gradle
+build
+composeApp/build
+shared/build
+server/build
+iosApp/build
+iosApp/DerivedData
+iosApp/fastlane/report.xml
+site/node_modules
+site/.next
+site/out
+*.xcarchive
+*.ipa

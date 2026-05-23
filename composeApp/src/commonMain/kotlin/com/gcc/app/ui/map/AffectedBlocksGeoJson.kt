@@ -31,6 +31,13 @@ internal fun affectedBlocksToGeoJson(blocks: List<AffectedBlock>): String {
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
 
+internal fun affectedBlockCentersToGeoJson(blocks: List<AffectedBlock>): String {
+    val features = blocks
+        .filter { it.polygon.size >= 3 && it.status != AffectedBlockStatus.AVAILABLE }
+        .joinToString(separator = ",", transform = ::blockCenterFeature)
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
 private fun blockFeature(block: AffectedBlock): String {
     val coords = block.polygon.joinToString(separator = ",") { it.toCoordPair() }
     val status = block.status.wireName()
@@ -50,6 +57,31 @@ private fun blockFeature(block: AffectedBlock): String {
         """"fundingGoal":${block.fundingGoal},""" +
         """"scheduledCleaningAt":$sched""" +
         """}}"""
+}
+
+private fun blockCenterFeature(block: AffectedBlock): String {
+    val center = block.polygonCenter()
+    val status = block.status.wireName()
+    val code = block.code?.jsonEscape() ?: "null"
+    val name = block.name?.jsonEscape() ?: "null"
+    return """{"type":"Feature",""" +
+        """"geometry":{"type":"Point","coordinates":[${center.lng},${center.lat}]},""" +
+        """"properties":{""" +
+        """"blockId":${block.blockId},""" +
+        """"code":$code,""" +
+        """"name":$name,""" +
+        """"status":"$status",""" +
+        """"intensity":${block.intensity},""" +
+        """"sponsorCount":${block.sponsorCount},""" +
+        """"fundingCurrent":${block.fundingCurrent},""" +
+        """"fundingGoal":${block.fundingGoal}""" +
+        """}}"""
+}
+
+private fun AffectedBlock.polygonCenter(): Coordinates {
+    val lat = polygon.map { it.lat }.average()
+    val lng = polygon.map { it.lng }.average()
+    return Coordinates(lat = lat, lng = lng)
 }
 
 private fun Coordinates.toCoordPair(): String = "[$lng,$lat]"

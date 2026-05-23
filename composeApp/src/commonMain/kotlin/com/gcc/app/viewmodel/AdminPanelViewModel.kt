@@ -28,8 +28,12 @@ data class AdminPanelUiState(
     val stats: AdminStatsResponse? = null,
     val recentActivity: List<AdminActivityItem> = emptyList(),
     val dailyStats: List<AdminDailyStats> = emptyList(),
+    val currentWorker: Worker? = null,
     val workers: List<Worker> = emptyList(),
     val routes: List<Route> = emptyList(),
+    val routeAssignments: Map<Int, List<AdminRouteAssignment>> = emptyMap(),
+    val loadingRouteAssignmentIds: Set<Int> = emptySet(),
+    val cancellingRouteAssignmentJobIds: Set<Int> = emptySet(),
     val bounties: List<Bounty> = emptyList(),
     val spotReports: List<CommunityReport> = emptyList(),
     val loadedTabs: Set<AdminTab> = emptySet(),
@@ -88,6 +92,19 @@ class AdminPanelViewModel(
                 // Don't surface a global error — picker UI handles empty/error
                 // state inline; failure here just means the admin sees the
                 // "no workers loaded" message until they retry.
+            }
+        }
+    }
+
+    fun ensureCurrentWorkerLoaded() {
+        if (_uiState.value.currentWorker != null) return
+        scope.launch {
+            try {
+                val worker = apiClient.getWorkerProfile()
+                _uiState.value = _uiState.value.copy(currentWorker = worker)
+            } catch (_: Exception) {
+                // Admin-only sessions may not carry a worker profile. The
+                // route detail screen falls back to the regular worker picker.
             }
         }
     }
@@ -569,10 +586,54 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 apiClient.adminAssignRoute(routeId, workerId, isTest)
+                loadRouteAssignments(routeId)
                 onResult(true)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = "Assignment failed: ${e.message}")
                 onResult(false)
+            }
+        }
+    }
+
+    fun loadRouteAssignments(routeId: Int) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(
+                loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds + routeId,
+                error = null,
+            )
+            try {
+                val assignments = apiClient.getAdminRouteAssignments(routeId)
+                _uiState.value = _uiState.value.copy(
+                    routeAssignments = _uiState.value.routeAssignments + (routeId to assignments),
+                    loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds - routeId,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds - routeId,
+                    error = "Failed to load assignments: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun cancelRouteAssignment(routeId: Int, jobId: Int) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(
+                cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds + jobId,
+                error = null,
+            )
+            try {
+                apiClient.cancelAdminRouteAssignment(routeId, jobId)
+                val assignments = apiClient.getAdminRouteAssignments(routeId)
+                _uiState.value = _uiState.value.copy(
+                    routeAssignments = _uiState.value.routeAssignments + (routeId to assignments),
+                    cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds - jobId,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds - jobId,
+                    error = "Cancel failed: ${e.message}",
+                )
             }
         }
     }

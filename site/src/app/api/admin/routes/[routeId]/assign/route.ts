@@ -1,0 +1,249 @@
+/**
+ * Admin route assignment API
+ * GET /api/admin/routes/:routeId/assign
+ * POST /api/admin/routes/:routeId/assign
+ * DELETE /api/admin/routes/:routeId/assign?jobId=:jobId
+ */
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/db'
+import { blocks, jobs, routes, workers } from '@/db/schema'
+import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { requireAdmin } from '@/lib/admin-auth'
+import { toMobileJob } from '@/lib/mobile-job-response'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+type RouteContext = { params: Promise<{ routeId: string }> }
+
+const cancellableStatuses = ['claimed', 'in_progress'] as const
+const duplicateAssignmentStatuses = ['claimed', 'in_progress', 'pending_review'] as const
+
+function parseRouteId(routeIdStr: string) {
+  const routeId = parseInt(routeIdStr, 10)
+  return Number.isNaN(routeId) ? null : routeId
+}
+
+function toAssignmentResponse(row: {
+  job: typeof jobs.$inferSelect
+  worker: { id: number | null; name: string | null; email: string | null } | null
+  routeId: number
+}) {
+  const job = toMobileJob(row.job, row.routeId)
+  const payoutAmount = job.payoutAmount ?? 0
+  return {
+    jobId: row.job.id,
+    routeId: row.routeId,
+    workerId: row.job.workerId,
+    workerName: row.worker?.name ?? 'Worker',
+    workerEmail: row.worker?.email ?? '',
+    status: row.job.status ?? 'available',
+    isTest: payoutAmount === 0,
+    payoutAmount,
+    claimedAt: job.timing.claimedAt,
+    startedAt: job.timing.startedAt,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  }
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const { routeId: routeIdStr } = await context.params
+    const routeId = parseRouteId(routeIdStr)
+    if (routeId == null) {
+      return NextResponse.json({ error: 'Invalid route ID', success: false }, { status: 400 })
+    }
+
+    const rows = await db
+      .select({
+        job: jobs,
+        worker: {
+          id: workers.id,
+          name: workers.name,
+          email: workers.email,
+        },
+        routeId: blocks.routeId,
+      })
+      .from(jobs)
+      .innerJoin(blocks, eq(jobs.blockId, blocks.id))
+      .leftJoin(workers, eq(jobs.workerId, workers.id))
+      .where(and(eq(blocks.routeId, routeId), isNotNull(jobs.workerId)))
+      .orderBy(desc(jobs.updatedAt))
+      .limit(50)
+
+    return NextResponse.json({
+      data: rows.map((row) => toAssignmentResponse({ ...row, routeId: routeId })),
+      success: true,
+    })
+  } catch (error) {
+    console.error('GET /api/admin/routes/[routeId]/assign error:', error)
+    return NextResponse.json({ error: 'Failed to load route assignments', success: false }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const { routeId: routeIdStr } = await context.params
+    const routeId = parseRouteId(routeIdStr)
+    if (routeId == null) {
+      return NextResponse.json({ error: 'Invalid route ID', success: false }, { status: 400 })
+    }
+
+    const body = await request.json().catch(() => null)
+    const workerId = Number(body?.workerId)
+    const isTest = body?.isTest === true
+
+    if (!Number.isInteger(workerId) || workerId <= 0) {
+      return NextResponse.json({ error: 'workerId is required', success: false }, { status: 400 })
+    }
+
+    const [route] = await db
+      .select()
+      .from(routes)
+      .where(eq(routes.id, routeId))
+      .limit(1)
+
+    if (!route) {
+      return NextResponse.json({ error: 'Route not found', success: false }, { status: 404 })
+    }
+
+    const routePayout = route.payoutAmount ? Math.round(parseFloat(route.payoutAmount)) : 0
+    const payoutAmount = isTest ? 0 : routePayout
+
+    if (!isTest && payoutAmount <= 0) {
+      return NextResponse.json(
+        { error: 'Paid routes require a positive payout amount', success: false },
+        { status: 400 },
+      )
+    }
+
+    let blockRows = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(eq(blocks.routeId, routeId))
+
+    if (blockRows.length > 0) {
+      const [duplicateAssignment] = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            inArray(jobs.blockId, blockRows.map((block) => block.id)),
+            eq(jobs.workerId, workerId),
+            inArray(jobs.status, duplicateAssignmentStatuses),
+          ),
+        )
+        .limit(1)
+
+      if (duplicateAssignment) {
+        return NextResponse.json(
+          { error: 'Worker already has an active assignment for this route', success: false },
+          { status: 409 },
+        )
+      }
+    }
+
+    if (blockRows.length === 0) {
+      const [block] = await db
+        .insert(blocks)
+        .values({
+          code: null,
+          name: route.displayName,
+          serviceAreaId: route.serviceAreaId,
+          routeId: route.id,
+          status: isTest ? 'available' : 'funded',
+          fundingGoal: String(payoutAmount),
+          fundingCurrent: isTest ? '0' : String(payoutAmount),
+        })
+        .returning({ id: blocks.id })
+      blockRows = [block]
+    }
+
+    const now = new Date().toISOString()
+    const [job] = await db
+      .insert(jobs)
+      .values({
+        blockId: blockRows[0].id,
+        workerId,
+        status: 'claimed',
+        claimedAt: now,
+        payoutAmount: String(payoutAmount),
+        payoutStatus: isTest ? null : 'pending',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+
+    return NextResponse.json(
+      { data: toMobileJob(job, routeId), success: true },
+      { status: 201 },
+    )
+  } catch (error) {
+    console.error('POST /api/admin/routes/[routeId]/assign error:', error)
+    return NextResponse.json({ error: 'Failed to assign route', success: false }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const { routeId: routeIdStr } = await context.params
+    const routeId = parseRouteId(routeIdStr)
+    if (routeId == null) {
+      return NextResponse.json({ error: 'Invalid route ID', success: false }, { status: 400 })
+    }
+
+    const jobId = parseInt(request.nextUrl.searchParams.get('jobId') ?? '', 10)
+    if (Number.isNaN(jobId)) {
+      return NextResponse.json({ error: 'jobId is required', success: false }, { status: 400 })
+    }
+
+    const [existing] = await db
+      .select({ job: jobs, routeId: blocks.routeId })
+      .from(jobs)
+      .innerJoin(blocks, eq(jobs.blockId, blocks.id))
+      .where(and(eq(jobs.id, jobId), eq(blocks.routeId, routeId)))
+      .limit(1)
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Assignment not found', success: false }, { status: 404 })
+    }
+
+    if (!existing.job.status || !cancellableStatuses.includes(existing.job.status as typeof cancellableStatuses[number])) {
+      return NextResponse.json({ error: 'Only claimed or in-progress assignments can be cancelled', success: false }, { status: 409 })
+    }
+
+    const now = new Date().toISOString()
+    const payoutAmount = existing.job.payoutAmount ? Math.round(parseFloat(existing.job.payoutAmount)) : 0
+    const cancelledStatus = payoutAmount > 0 ? 'available' : 'disputed'
+    const [updated] = await db
+      .update(jobs)
+      .set({
+        workerId: null,
+        status: cancelledStatus,
+        claimedAt: null,
+        startedAt: null,
+        payoutStatus: null,
+        updatedAt: now,
+      })
+      .where(eq(jobs.id, jobId))
+      .returning()
+
+    return NextResponse.json({
+      data: toMobileJob(updated, routeId),
+      success: true,
+    })
+  } catch (error) {
+    console.error('DELETE /api/admin/routes/[routeId]/assign error:', error)
+    return NextResponse.json({ error: 'Failed to cancel route assignment', success: false }, { status: 500 })
+  }
+}

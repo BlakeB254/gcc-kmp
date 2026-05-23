@@ -12,6 +12,7 @@ import { generateReferralCode, getEarlyAdopterTier } from '../lib/movement-ranki
 import { getChicagoCommunityArea } from '../lib/chicago-community-areas'
 import { eq } from 'drizzle-orm'
 import { NORTH_LAWNDALE_BLOCKS, MAP_CENTER, MAP_BOUNDS } from '../data/blocks'
+import { generateBlockCheckpointsFromGeometry, MIN_ROUTE_CHECKPOINTS } from '../lib/route-checkpoints'
 
 // North Lawndale service area (for foreign key reference)
 const NORTH_LAWNDALE_SERVICE_AREA = {
@@ -171,7 +172,7 @@ async function seed() {
       code: blockDef.code,
       name: `${blockDef.streetName} - ${blockDef.fromCorner} to ${blockDef.toCorner}`,
       description: `${blockDef.side === 'north' ? 'North' : 'South'} side of Roosevelt Road, ${blockDef.includesAlley ? 'including alley' : 'sidewalk only'}`,
-      status: 'available' as const,
+      status: 'funded' as const,
       serviceAreaId,
       locationNeighborhood: 'North Lawndale',
       locationBoundary: blockDef.geo.polygon,
@@ -181,7 +182,9 @@ async function seed() {
       toCorner: blockDef.toCorner,
       side: blockDef.side,
       includesAlley: blockDef.includesAlley,
-      checkpoints: blockDef.checkpoints,
+      checkpoints: blockDef.checkpoints.length >= MIN_ROUTE_CHECKPOINTS
+        ? blockDef.checkpoints
+        : generateBlockCheckpointsFromGeometry(blockDef.geo.polygon),
       fundingGoal: '10000', // $100 in cents
     }
 

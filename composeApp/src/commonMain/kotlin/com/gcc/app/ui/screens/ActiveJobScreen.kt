@@ -14,6 +14,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.camera.PhotoComparisonSheet
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.ActiveJobOverlay
@@ -24,6 +27,14 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.util.fmt
+import com.gcc.shared.model.Job
+import com.gcc.shared.model.JobStatus
+import com.gcc.shared.model.TEST_ASSIGNMENT_START_WINDOW_MINUTES
+import com.gcc.shared.model.isTestAssignment
+import com.gcc.shared.model.testAssignmentStartDeadlineMillis
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
 @Composable
@@ -31,14 +42,65 @@ fun ActiveJobScreen(
     jobId: Int = 0,
     routeId: Int = 0,
     onBack: () -> Unit = {},
+    onStartScan: (Int) -> Unit = {},
 ) {
     val viewModel = koinInject<ActiveJobViewModel>()
+    val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
-    var hasBeforePhoto by remember { mutableStateOf(false) }
-    var hasAfterPhoto by remember { mutableStateOf(false) }
+    val currentLocation by locationProvider.currentLocation.collectAsState()
+    val cameraManager = remember { CameraManager() }
+    val captureScope = rememberCoroutineScope()
+    var beforePhoto by remember(uiState.currentCheckpointIndex) { mutableStateOf<CapturedPhoto?>(null) }
+    var afterPhoto by remember(uiState.currentCheckpointIndex) { mutableStateOf<CapturedPhoto?>(null) }
+    var photoCaptureError by remember(uiState.currentCheckpointIndex) { mutableStateOf<String?>(null) }
+    var nowMillis by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    var shouldOpenRouteExperience by remember { mutableStateOf(false) }
+
+    fun captureEvidencePhoto(onCaptured: (CapturedPhoto) -> Unit) {
+        captureScope.launch {
+            photoCaptureError = null
+            val photo = try {
+                cameraManager.capturePhoto()
+            } catch (e: Exception) {
+                photoCaptureError = e.message ?: "Photo capture failed"
+                null
+            }
+            if (photo != null) {
+                onCaptured(photo)
+            } else if (photoCaptureError == null) {
+                photoCaptureError = "Camera unavailable. Try again or use a device with camera access."
+            }
+        }
+    }
 
     LaunchedEffect(jobId, routeId) {
         viewModel.loadJob(jobId, routeId)
+    }
+
+    LaunchedEffect(currentLocation) {
+        currentLocation?.let { viewModel.updateLocation(it) }
+    }
+
+    DisposableEffect(Unit) {
+        locationProvider.startLocationUpdates()
+        onDispose {
+            locationProvider.stopLocationUpdates()
+        }
+    }
+
+    LaunchedEffect(uiState.job?.id, uiState.jobStarted) {
+        while (uiState.job?.isTestAssignment() == true && uiState.job?.status == JobStatus.CLAIMED) {
+            nowMillis = Clock.System.now().toEpochMilliseconds()
+            delay(1000L)
+        }
+    }
+
+    LaunchedEffect(shouldOpenRouteExperience, uiState.jobStarted, uiState.route?.id) {
+        val routeIdToOpen = uiState.route?.id
+        if (shouldOpenRouteExperience && uiState.jobStarted && routeIdToOpen != null) {
+            shouldOpenRouteExperience = false
+            onStartScan(routeIdToOpen)
+        }
     }
 
     if (uiState.isLoading) {
@@ -61,10 +123,15 @@ fun ActiveJobScreen(
             Box(modifier = Modifier.weight(0.55f)) {
                 GccMap(
                     modifier = Modifier.fillMaxSize(),
-                    centerLat = uiState.currentLocation?.lat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT,
-                    centerLng = uiState.currentLocation?.lng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG,
+                    centerLat = uiState.currentLocation?.lat
+                        ?: uiState.route?.routeStartCoordinates()?.lat
+                        ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT,
+                    centerLng = uiState.currentLocation?.lng
+                        ?: uiState.route?.routeStartCoordinates()?.lng
+                        ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG,
                     zoom = MapStyles.ZOOM_ACTIVE_JOB,
                     currentLocation = uiState.currentLocation,
+                    routeCoordinates = uiState.route?.let { listOf(it.routePathCoordinates()) } ?: emptyList(),
                 ) {
                     ActiveJobOverlay(
                         checkpoints = uiState.checkpoints,
@@ -99,28 +166,80 @@ fun ActiveJobScreen(
 
                     // Show "Start Route" button if job is claimed but not yet started
                     if (!uiState.jobStarted && !uiState.jobCompleted) {
-                        SectionHeader(title = "Ready to Begin")
-                        Spacer(modifier = Modifier.height(12.dp))
+                        val countdown = testAssignmentCountdownText(uiState.job, nowMillis)
+                        val startWindowExpired = countdown?.isExpired == true
+                        val canStartRoute = uiState.isWithinStartArea && !startWindowExpired
+                        if (startWindowExpired) {
+                            SectionHeader(title = "Assignment Expired")
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "This test assignment is no longer active. It will disappear from the dashboard after refresh; ask an admin to reassign it for a new start window.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            GccButton(
+                                text = "Back to Dashboard",
+                                onClick = onBack,
+                                variant = GccButtonVariant.PRIMARY,
+                            )
+                        } else {
+                            SectionHeader(title = "Ready to Begin")
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                        Text(
-                            "Tap 'Start Route' when you arrive at the first checkpoint.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        uiState.error?.let { error ->
-                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
+                            Text(
+                                "Go to the assigned route boundary to accept and start.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
-                        }
+                            Text(
+                                text = uiState.distanceToRouteMeters?.let { distance ->
+                                    if (uiState.isWithinStartArea) {
+                                        "GPS confirmed you are at the route boundary."
+                                    } else {
+                                        "Route boundary: ${distance.fmt(0)}m away"
+                                    }
+                                } ?: "Waiting for GPS to confirm your distance to the route boundary.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (uiState.isWithinStartArea) GccGreen else TextMuted,
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
 
-                        GccButton(
-                            text = "Start Route",
-                            onClick = { viewModel.startJob() },
-                            variant = GccButtonVariant.PRIMARY,
-                            enabled = !uiState.isStarting,
-                            isLoading = uiState.isStarting,
-                        )
+                            uiState.error?.let { error ->
+                                Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            countdown?.let {
+                                TestAssignmentCountdownCard(
+                                    text = it.text,
+                                    isExpired = false,
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            GccButton(
+                                text = if (uiState.isWithinStartArea) "Start Route" else "Go to Location to Start",
+                                onClick = {
+                                    shouldOpenRouteExperience = true
+                                    viewModel.startJob()
+                                },
+                                variant = GccButtonVariant.PRIMARY,
+                                enabled = !uiState.isStarting && canStartRoute,
+                                isLoading = uiState.isStarting,
+                            )
+                            if (uiState.job?.status == JobStatus.CLAIMED && !uiState.isWithinStartArea) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                GccButton(
+                                    text = if (uiState.isDeclining) "Declining..." else "Decline Assignment",
+                                    onClick = { viewModel.declineJob(onBack) },
+                                    variant = GccButtonVariant.OUTLINED,
+                                    enabled = !uiState.isDeclining,
+                                    isLoading = uiState.isDeclining,
+                                )
+                            }
+                        }
                     } else if (uiState.jobCompleted || allCheckpointsDone) {
                         // Job completed — show success
                         SectionHeader(title = "Route Complete!")
@@ -178,15 +297,24 @@ fun ActiveJobScreen(
                             if (currentCheckpoint.checkpoint.photoRequired && canComplete && !uiState.isAdminMode) {
                                 PhotoComparisonSheet(
                                     checkpointName = currentCheckpoint.checkpoint.name,
-                                    hasBeforePhoto = hasBeforePhoto,
-                                    hasAfterPhoto = hasAfterPhoto,
-                                    onTakeBeforePhoto = { hasBeforePhoto = true },
-                                    onTakeAfterPhoto = { hasAfterPhoto = true },
-                                    onConfirmAndUpload = {
-                                        viewModel.completeCurrentCheckpoint()
-                                        hasBeforePhoto = false
-                                        hasAfterPhoto = false
+                                    hasBeforePhoto = beforePhoto != null,
+                                    hasAfterPhoto = afterPhoto != null,
+                                    onTakeBeforePhoto = {
+                                        captureEvidencePhoto { beforePhoto = it }
                                     },
+                                    onTakeAfterPhoto = {
+                                        captureEvidencePhoto { afterPhoto = it }
+                                    },
+                                    onConfirmAndUpload = {
+                                        val before = beforePhoto ?: return@PhotoComparisonSheet
+                                        val after = afterPhoto ?: return@PhotoComparisonSheet
+                                        viewModel.submitCheckpointEvidence(
+                                            checkpointId = currentCheckpoint.checkpoint.id,
+                                            beforePhotoBytes = before.bytes,
+                                            afterPhotoBytes = after.bytes,
+                                        )
+                                    },
+                                    isUploading = uiState.isUploadingEvidence,
                                 )
                             } else if (canComplete) {
                                 GccButton(
@@ -208,6 +336,10 @@ fun ActiveJobScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
                         }
+                        photoCaptureError?.let { error ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
+                        }
                     }
                 }
             }
@@ -218,6 +350,7 @@ fun ActiveJobScreen(
             GccCard(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .statusBarsPadding()
                     .padding(top = 8.dp, start = 56.dp, end = 16.dp),
                 elevation = 4.dp,
             ) {
@@ -255,6 +388,62 @@ fun ActiveJobScreen(
                 )
             }
         }
+    }
+}
+
+private fun com.gcc.shared.model.Route.routePathCoordinates(): List<com.gcc.shared.model.Coordinates> =
+    geometry?.coordinates
+        ?.mapNotNull { point ->
+            val lng = point.getOrNull(0)
+            val lat = point.getOrNull(1)
+            if (lat != null && lng != null) com.gcc.shared.model.Coordinates(lng = lng, lat = lat) else null
+        }
+        ?.takeIf { it.size >= 2 }
+        ?: checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
+
+private fun com.gcc.shared.model.Route.routeStartCoordinates(): com.gcc.shared.model.Coordinates? =
+    routePathCoordinates().firstOrNull()
+
+private data class TestAssignmentCountdown(
+    val text: String,
+    val isExpired: Boolean,
+)
+
+private fun testAssignmentCountdownText(job: Job?, nowMillis: Long): TestAssignmentCountdown? {
+    if (job?.isTestAssignment() != true || job.status != JobStatus.CLAIMED) return null
+    val deadline = job.testAssignmentStartDeadlineMillis() ?: return null
+    val remainingMillis = deadline - nowMillis
+    if (remainingMillis <= 0) {
+        return TestAssignmentCountdown(
+            text = "Test start window expired. Ask an admin to reassign the route.",
+            isExpired = true,
+        )
+    }
+    val totalSeconds = remainingMillis / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return TestAssignmentCountdown(
+        text = "Start this test route within ${minutes}:${seconds.toString().padStart(2, '0')} (${TEST_ASSIGNMENT_START_WINDOW_MINUTES} min window).",
+        isExpired = false,
+    )
+}
+
+@Composable
+private fun TestAssignmentCountdownCard(
+    text: String,
+    isExpired: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = (if (isExpired) GccError else GccClaimed).copy(alpha = 0.12f),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = if (isExpired) GccError else GccClaimed,
+            modifier = Modifier.padding(12.dp),
+        )
     }
 }
 

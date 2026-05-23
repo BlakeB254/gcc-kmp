@@ -24,7 +24,9 @@ import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.shared.model.AdminRouteAssignment
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.RouteCheckpoint
 import kotlinx.coroutines.launch
@@ -35,7 +37,6 @@ import org.koin.compose.koinInject
 fun AdminRouteDetailScreen(
     routeId: Int,
     onBack: () -> Unit,
-    onTestRoute: (Int) -> Unit = {},
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -57,6 +58,8 @@ fun AdminRouteDetailScreen(
     var savingNameDesc by remember { mutableStateOf(false) }
     // Track imageUrl to detect when upload completes
     var previousImageUrl by remember { mutableStateOf(route?.imageUrl) }
+    val routeAssignments = uiState.routeAssignments[routeId].orEmpty()
+    val isLoadingAssignments = routeId in uiState.loadingRouteAssignmentIds
 
     DisposableEffect(Unit) {
         locationProvider.startLocationUpdates()
@@ -100,6 +103,12 @@ fun AdminRouteDetailScreen(
             kotlinx.coroutines.delay(3000)
             uploadSuccess = false
         }
+    }
+
+    LaunchedEffect(routeId) {
+        viewModel.ensureWorkersLoaded()
+        viewModel.ensureCurrentWorkerLoaded()
+        viewModel.loadRouteAssignments(routeId)
     }
 
     fun uploadAndSetCover(photoBytes: ByteArray) {
@@ -256,20 +265,6 @@ fun AdminRouteDetailScreen(
                 }
             }
 
-            // Test Route button
-            item {
-                OutlinedButton(
-                    onClick = { onTestRoute(routeId) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = GccSky,
-                    ),
-                    border = BorderStroke(1.dp, GccSky),
-                ) {
-                    Text("\uD83E\uDDEA Test Route")
-                }
-            }
-
             // ── Assign Route to Worker ──────────────────────────────────
             item {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -282,12 +277,22 @@ fun AdminRouteDetailScreen(
 
                 // Worker picker
                 val workers = uiState.workers
+                val currentWorker = uiState.currentWorker
                 var selectedWorkerId by remember { mutableStateOf<Int?>(null) }
                 var isTestAssignment by remember { mutableStateOf(false) }
                 var isAssigning by remember { mutableStateOf(false) }
                 var assignSuccess by remember { mutableStateOf<String?>(null) }
+                val pickerWorkers = remember(workers, currentWorker) {
+                    (listOfNotNull(currentWorker) + workers).distinctBy { it.id }
+                }
+                LaunchedEffect(currentWorker?.id) {
+                    if (selectedWorkerId == null && currentWorker != null) {
+                        selectedWorkerId = currentWorker.id
+                        isTestAssignment = true
+                    }
+                }
 
-                if (workers.isEmpty()) {
+                if (pickerWorkers.isEmpty()) {
                     Text(
                         "Loading workers...",
                         style = MaterialTheme.typography.bodySmall,
@@ -296,7 +301,23 @@ fun AdminRouteDetailScreen(
                 } else {
                     // Worker dropdown
                     var expanded by remember { mutableStateOf(false) }
-                    val selectedWorker = workers.find { it.id == selectedWorkerId }
+                    val selectedWorker = pickerWorkers.find { it.id == selectedWorkerId }
+
+                    currentWorker?.let { me ->
+                        OutlinedButton(
+                            onClick = {
+                                selectedWorkerId = me.id
+                                isTestAssignment = true
+                                assignSuccess = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccSky),
+                            border = BorderStroke(1.dp, GccSky),
+                        ) {
+                            Text("Assign test route to me", fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
 
                     ExposedDropdownMenuBox(
                         expanded = expanded,
@@ -317,12 +338,12 @@ fun AdminRouteDetailScreen(
                             expanded = expanded,
                             onDismissRequest = { expanded = false },
                         ) {
-                            workers.forEach { worker ->
+                            pickerWorkers.forEach { worker ->
                                 DropdownMenuItem(
                                     text = {
                                         Column {
                                             Text(
-                                                worker.name,
+                                                if (worker.id == currentWorker?.id) "${worker.name} (me)" else worker.name,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium,
                                             )
@@ -358,7 +379,7 @@ fun AdminRouteDetailScreen(
                                 color = if (isTestAssignment) GccSky else GccGreen,
                             )
                             Text(
-                                if (isTestAssignment) "No payment, no DB records — for TestFlight testing"
+                                if (isTestAssignment) "Zero-payout assigned job for TestFlight testing"
                                 else "Paid route — payout on completion + verification",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSubtle,
@@ -385,7 +406,7 @@ fun AdminRouteDetailScreen(
                             viewModel.assignRouteToWorker(routeId, wid, isTestAssignment) { success ->
                                 isAssigning = false
                                 assignSuccess = if (success) {
-                                    val workerName = workers.find { it.id == wid }?.name ?: "Worker"
+                                    val workerName = pickerWorkers.find { it.id == wid }?.name ?: "Worker"
                                     val mode = if (isTestAssignment) "test" else "real"
                                     "$workerName assigned ($mode)"
                                 } else "Assignment failed"
@@ -420,6 +441,17 @@ fun AdminRouteDetailScreen(
                             color = if (msg.contains("failed")) GccError else GccGreen,
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    AdminRouteAssignmentsPanel(
+                        assignments = routeAssignments,
+                        isLoading = isLoadingAssignments,
+                        cancellingJobIds = uiState.cancellingRouteAssignmentJobIds,
+                        onRefresh = { viewModel.loadRouteAssignments(routeId) },
+                        onCancel = { assignment ->
+                            viewModel.cancelRouteAssignment(routeId, assignment.jobId)
+                        },
+                    )
                 }
             }
 
@@ -818,6 +850,154 @@ fun AdminRouteDetailScreen(
         }
     }
 }
+
+@Composable
+private fun AdminRouteAssignmentsPanel(
+    assignments: List<AdminRouteAssignment>,
+    isLoading: Boolean,
+    cancellingJobIds: Set<Int>,
+    onRefresh: () -> Unit,
+    onCancel: (AdminRouteAssignment) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Current Assignments",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                TextButton(onClick = onRefresh, enabled = !isLoading) {
+                    Text(if (isLoading) "Loading..." else "Refresh", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            if (isLoading && assignments.isEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Loading assignments...", style = MaterialTheme.typography.bodySmall, color = TextSubtle)
+                }
+            } else if (assignments.isEmpty()) {
+                Text(
+                    "No active worker assignment is attached to this route.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                )
+            } else {
+                assignments.forEach { assignment ->
+                    AdminRouteAssignmentRow(
+                        assignment = assignment,
+                        isCancelling = assignment.jobId in cancellingJobIds,
+                        onCancel = { onCancel(assignment) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminRouteAssignmentRow(
+    assignment: AdminRouteAssignment,
+    isCancelling: Boolean,
+    onCancel: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        assignment.workerName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        assignment.workerEmail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSubtle,
+                    )
+                }
+                AssignmentModeChip(assignment)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Job #${assignment.jobId} • ${assignment.status.assignmentStatusLabel()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
+                if (assignment.status == JobStatus.CLAIMED || assignment.status == JobStatus.IN_PROGRESS) {
+                    TextButton(
+                        onClick = onCancel,
+                        enabled = !isCancelling,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            if (isCancelling) "Cancelling..." else "Cancel",
+                            color = GccError,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
+
+            assignment.claimedAt?.let {
+                Text(
+                    "Assigned ${it.toString().replace('T', ' ').substringBefore('.')}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSubtle,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssignmentModeChip(assignment: AdminRouteAssignment) {
+    val color = if (assignment.isTest) GccSky else GccGreen
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = color.copy(alpha = 0.12f),
+    ) {
+        Text(
+            if (assignment.isTest) "Test" else "Paid $${assignment.payoutAmount / 100}",
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+private fun JobStatus.assignmentStatusLabel(): String =
+    name.lowercase().replace('_', ' ')
 
 @Composable
 private fun CameraOverlay(

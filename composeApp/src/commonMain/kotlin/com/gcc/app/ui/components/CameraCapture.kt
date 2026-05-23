@@ -56,6 +56,8 @@ fun CameraCapture(
     var isCapturing by remember { mutableStateOf(false) }
     val photoCount = capturedPhotos.size
     val atLimit = photoCount >= maxPhotos
+    val hasDepthCapture = capturedPhotos.any { it.depthAnalysis?.hasDepth == true }
+    val canCaptureDepth = !allowLibraryPick && capturedPhotos.isEmpty() && hasLiDAR()
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -133,9 +135,9 @@ fun CameraCapture(
                 )
             }
 
-            // LiDAR active indicator
-            if (capturedPhotos.any { it.depthAnalysis?.hasDepth == true } ||
-                (capturedPhotos.isEmpty() && hasLiDAR())) {
+            // LiDAR indicator is only shown for live camera capture. Static
+            // library picks must stay visually distinct from depth-backed scans.
+            if (hasDepthCapture || canCaptureDepth) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -145,7 +147,7 @@ fun CameraCapture(
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                 ) {
                     Text(
-                        "LiDAR",
+                        if (hasDepthCapture) "LiDAR 3D" else "LiDAR Ready",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = Color.White,
                     )

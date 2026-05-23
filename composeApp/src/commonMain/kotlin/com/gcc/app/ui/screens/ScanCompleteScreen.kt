@@ -38,11 +38,12 @@ fun ScanCompleteScreen(
     onDone: () -> Unit,
 ) {
     val cleanedHotspots = uiState.hotspots.filter { it.status == HotspotStatus.CLEANED }
-    val total = uiState.hotspots.size
+    val documentedOnly = uiState.hotspots.count { it.status == HotspotStatus.SKIPPED }
+    val total = uiState.hotspots.count { it.status != HotspotStatus.SKIPPED }
     val cleaned = cleanedHotspots.size
 
-    val totalVolume = uiState.hotspots.sumOf { it.estimatedVolumeLiters ?: 0.0 }
-    val totalWeight = uiState.hotspots.sumOf { it.estimatedWeightLbs ?: 0.0 }
+    val totalVolume = cleanedHotspots.sumOf { it.estimatedVolumeLiters ?: 0.0 }
+    val totalWeight = cleanedHotspots.sumOf { it.estimatedWeightLbs ?: 0.0 }
     val hasVolumeData = totalVolume > 0.0 || totalWeight > 0.0
 
     // Animated points counter: counts from 0 → pointsAwarded over 1.2 s
@@ -150,7 +151,7 @@ fun ScanCompleteScreen(
                 ) {
                     StatCard(
                         value = if (total > 0) "$cleaned / $total" else "—",
-                        label = "Hotspots",
+                        label = "Cleaned",
                         accentColor = GccGreen,
                         modifier = Modifier.weight(1f),
                     )
@@ -166,6 +167,18 @@ fun ScanCompleteScreen(
                         accentColor = GccSky,
                         modifier = Modifier.weight(1f),
                     )
+                }
+            }
+
+            if (documentedOnly > 0) {
+                item {
+                    GccCard(accentColor = CardAccentSky) {
+                        Text(
+                            text = "$documentedOnly observation${if (documentedOnly == 1) "" else "s"} documented only",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextMuted,
+                        )
+                    }
                 }
             }
 

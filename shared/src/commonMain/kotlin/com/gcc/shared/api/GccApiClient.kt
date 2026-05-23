@@ -12,6 +12,10 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import com.gcc.shared.serialization.GccJson
+import kotlinx.datetime.Clock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.*
 
 class GccApiClient(
     val baseUrl: String,
@@ -50,6 +54,33 @@ class GccApiClient(
         }
     }
 
+    private fun httpErrorMessage(statusCode: Int, body: String): String {
+        val trimmed = body.trim()
+        if (trimmed.isBlank()) return "HTTP $statusCode"
+
+        runCatching { json.parseToJsonElement(trimmed).jsonObject }.getOrNull()?.let { obj ->
+            val apiMessage = obj["message"]?.jsonPrimitive?.contentOrNull
+                ?: obj["error"]?.jsonPrimitive?.contentOrNull
+            if (!apiMessage.isNullOrBlank()) return "HTTP $statusCode: $apiMessage"
+        }
+
+        val isHtml = trimmed.startsWith("<!DOCTYPE", ignoreCase = true) ||
+            trimmed.startsWith("<html", ignoreCase = true) ||
+            trimmed.contains("<title>", ignoreCase = true)
+        if (isHtml) {
+            return when (statusCode) {
+                404 -> "HTTP 404: Endpoint not found. The server may need the latest mobile API routes deployed."
+                else -> "HTTP $statusCode: Server returned an HTML error page."
+            }
+        }
+
+        val cleaned = trimmed
+            .replace(Regex("<[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .take(300)
+        return "HTTP $statusCode: $cleaned"
+    }
+
     /** GET [path] and unwrap ApiResponse<T>.data */
     private suspend inline fun <reified T> get(
         path: String,
@@ -59,7 +90,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ApiResponse<T>>().data
     }
@@ -90,7 +121,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ApiResponse<R>>().data
     }
@@ -109,7 +140,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ApiResponse<R>>().data
     }
@@ -141,7 +172,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ApiResponse<R>>().data
     }
@@ -160,7 +191,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ApiResponse<R>>().data
     }
@@ -174,7 +205,7 @@ class GccApiClient(
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
             val errorBody = response.bodyAsText()
-            throw Exception("HTTP ${response.status.value}: $errorBody")
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
     }
 
@@ -182,6 +213,17 @@ class GccApiClient(
 
     suspend fun getRoutes(status: String = "published"): List<Route> =
         get("/api/routes") { parameter("status", status) }
+
+    suspend fun getPublicRoutes(status: String = "published"): List<Route> {
+        val siteUrl = "https://api.globalcommunitycleaners.org"
+        val response = siteClient.get("$siteUrl/api/routes") {
+            parameter("status", status)
+        }
+        if (!response.status.isSuccess()) {
+            throw Exception("Failed to load public routes")
+        }
+        return json.decodeFromString<ApiResponse<List<Route>>>(response.bodyAsText()).data
+    }
 
     suspend fun getRoute(routeId: Int): Route =
         get("/api/routes/$routeId")
@@ -198,6 +240,17 @@ class GccApiClient(
             parameter("limit", limit)
         }
 
+    suspend fun getAvailableRouteJobs(limit: Int = 100): List<Job> =
+        get("/api/jobs") {
+            parameter("status", "available")
+            parameter("limit", limit)
+        }
+
+    suspend fun getMyJobs(limit: Int = 20): List<Job> =
+        get("/api/workers/me/jobs") {
+            parameter("limit", limit)
+        }
+
     suspend fun claimJob(jobId: Int): Job =
         postJson("/api/jobs/$jobId/claim")
 
@@ -209,6 +262,29 @@ class GccApiClient(
 
     suspend fun completeJob(jobId: Int): Job =
         patchJson<Unit?, Job>("/api/jobs/$jobId/complete", null)
+
+    suspend fun declineJob(jobId: Int): Job =
+        patchJson<Unit?, Job>("/api/jobs/$jobId/decline", null)
+
+    suspend fun submitJobEvidence(jobId: Int, request: JobEvidenceRequest): Job =
+        patchJson("/api/jobs/$jobId/evidence", request)
+
+    // ── Route Release Offers ─────────────────────────────────────────
+
+    suspend fun getMyRouteOffers(): List<RouteOffer> =
+        get("/api/workers/me/route-offers")
+
+    suspend fun acceptRouteOffer(offerId: Int, routeId: Int): Job =
+        postJson(
+            "/api/workers/me/route-offers/$offerId/accept",
+            RouteOfferAcceptRequest(routeId = routeId),
+        )
+
+    suspend fun declineRouteOffer(offerId: Int, reason: String? = null): RouteOffer =
+        patchJson(
+            "/api/workers/me/route-offers/$offerId/decline",
+            RouteOfferDeclineRequest(reason = reason),
+        )
 
     // ── Worker Profile ────────────────────────────────────────────────
 
@@ -259,7 +335,7 @@ class GccApiClient(
         }
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
-            throw Exception("Checkout failed: $errorBody")
+            throw Exception("Checkout failed: ${httpErrorMessage(response.status.value, errorBody)}")
         }
         return response.body<CheckoutResponse>()
     }
@@ -307,7 +383,7 @@ class GccApiClient(
         }
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
-            throw Exception("Apple auth failed: $errorBody")
+            throw Exception("Apple auth failed: ${httpErrorMessage(response.status.value, errorBody)}")
         }
         return response.body<ApiResponse<AuthResponse>>().data
     }
@@ -320,7 +396,7 @@ class GccApiClient(
         }
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
-            throw Exception("Google auth failed: $errorBody")
+            throw Exception("Google auth failed: ${httpErrorMessage(response.status.value, errorBody)}")
         }
         return response.body<ApiResponse<AuthResponse>>().data
     }
@@ -433,10 +509,32 @@ class GccApiClient(
     // ── Admin API Methods ─────────────────────────────────────────────
 
     suspend fun adminAssignRoute(routeId: Int, workerId: Int, isTest: Boolean): Job =
-        postJson("/api/admin/routes/$routeId/assign", mapOf(
-            "workerId" to workerId,
-            "isTest" to isTest,
-        ))
+        postJson(
+            "/api/admin/routes/$routeId/assign",
+            AdminRouteAssignmentRequest(workerId = workerId, isTest = isTest),
+        )
+
+    suspend fun getAdminRouteAssignments(routeId: Int): List<AdminRouteAssignment> =
+        get("/api/admin/routes/$routeId/assign")
+
+    suspend fun cancelAdminRouteAssignment(routeId: Int, jobId: Int): Unit =
+        deleteUnit("/api/admin/routes/$routeId/assign") {
+            parameter("jobId", jobId)
+        }
+
+    suspend fun createRouteRelease(request: AdminRouteReleaseRequest): RouteReleaseBatch =
+        postJson("/api/admin/route-releases", request)
+
+    suspend fun getRouteReleases(limit: Int = 50): List<RouteReleaseBatch> =
+        get("/api/admin/route-releases") {
+            parameter("limit", limit)
+        }
+
+    suspend fun processRouteRelease(releaseId: Int): RouteReleaseRunResponse =
+        postJson("/api/admin/route-releases/$releaseId/process")
+
+    suspend fun processRouteReleaseNotifications(): RouteReleaseRunResponse =
+        postJson("/api/admin/route-releases/process-notifications")
 
     suspend fun getAdminStats(): AdminStatsResponse =
         get("/api/admin/analytics/stats")
@@ -536,49 +634,119 @@ class GccApiClient(
 
     suspend fun getAvailableBlocks(): List<Block> {
         val siteUrl = "https://www.globalcommunitycleaners.org"
-        val response = siteClient.get("$siteUrl/api/blocks")
-        if (!response.status.isSuccess()) {
-            throw Exception("Failed to load blocks")
+        val primaryBody = runCatching {
+            val primaryResponse = httpClient.get("$baseUrl/api/blocks") {
+                parameter("limit", 200)
+            }
+            if (primaryResponse.status.isSuccess()) primaryResponse.bodyAsText() else null
+        }.getOrNull()
+        val responseBody = primaryBody ?: run {
+            val fallbackResponse = siteClient.get("$siteUrl/api/blocks") {
+                parameter("limit", 200)
+            }
+            if (!fallbackResponse.status.isSuccess()) {
+                throw Exception("Failed to load blocks")
+            }
+            fallbackResponse.bodyAsText()
         }
-        val body = response.body<kotlinx.serialization.json.JsonObject>()
+        val body = json.decodeFromString<JsonObject>(responseBody)
         val dataArray = body["data"] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
         val now = kotlinx.datetime.Clock.System.now()
 
         // Fetch routes to get display names (e.g., "1500 S. Pulaski Road")
         // Routes are ordered by code, blocks are ordered by code — they align 1:1
-        val routeDisplayNames = try {
+        val routeDisplayNamesByBlockCode = try {
             val routes = getRoutes()
-            routes.sortedBy { it.code }.map { it.displayName }
-        } catch (_: Exception) { emptyList() }
+            routes.associate { route ->
+                route.code.replace("-R", "-") to route.displayName
+            }
+        } catch (_: Exception) { emptyMap() }
 
-        val sortedBlocks = dataArray.mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+        val sortedBlocks = dataArray.mapNotNull { it as? JsonObject }
             .filter { obj ->
                 // Filter out test blocks
-                val name = (obj["name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                val name = (obj["name"] as? JsonPrimitive)?.content ?: ""
                 name.lowercase() != "test" && name.isNotBlank()
             }
-        return sortedBlocks.mapIndexed { index, obj ->
-            fun str(key: String): String? = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        return sortedBlocks.map { obj ->
+            fun str(key: String): String? = (obj[key] as? JsonPrimitive)?.contentOrNull
+            fun objAt(key: String): JsonObject? = obj[key] as? JsonObject
+            fun nestedStr(parent: JsonObject?, key: String): String? =
+                (parent?.get(key) as? JsonPrimitive)?.contentOrNull
+            fun decodePolygon(parent: JsonObject?): GeoJSONPolygon? = parent?.let {
+                runCatching { json.decodeFromJsonElement<GeoJSONPolygon>(it) }.getOrNull()
+            }
+            fun decodePoint(parent: JsonObject?): GeoJSONPoint? = parent?.let {
+                runCatching { json.decodeFromJsonElement<GeoJSONPoint>(it) }.getOrNull()
+            }
+            fun decodeCheckpoints(): List<RouteCheckpoint> {
+                val items = obj["checkpoints"] as? JsonArray ?: return emptyList()
+                return items.mapIndexedNotNull { index, item ->
+                    val checkpoint = item as? JsonObject ?: return@mapIndexedNotNull null
+                    val coordinates = checkpoint["coordinates"] as? JsonArray ?: return@mapIndexedNotNull null
+                    val lng = coordinates.getOrNull(0)?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                    val lat = coordinates.getOrNull(1)?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                    if (lng == null || lat == null) return@mapIndexedNotNull null
+                    val rawType = (checkpoint["type"] as? JsonPrimitive)?.contentOrNull?.lowercase()
+                    val type = when (rawType) {
+                        "corner_start", "route_start", "start" -> CheckpointType.ROUTE_START
+                        "corner_end", "route_end", "end" -> CheckpointType.ROUTE_END
+                        "alley", "alley_entrance" -> CheckpointType.ALLEY_ENTRANCE
+                        else -> CheckpointType.PHOTO_POINT
+                    }
+                    RouteCheckpoint(
+                        name = (checkpoint["name"] as? JsonPrimitive)?.contentOrNull
+                            ?: "Checkpoint ${index + 1}",
+                        sequenceOrder = index + 1,
+                        coordinates = Coordinates(lng = lng, lat = lat),
+                        photoRequired = true,
+                        geofenceRadius = (checkpoint["radius"] as? JsonPrimitive)
+                            ?.contentOrNull
+                            ?.toDoubleOrNull()
+                            ?: 15.0,
+                        type = type,
+                        instructions = (checkpoint["description"] as? JsonPrimitive)?.contentOrNull,
+                    )
+                }
+            }
 
             val blockName = str("name") ?: "Block"
+            val blockCode = str("code") ?: ""
             val fromCorner = str("fromCorner")
-            // Use route display name, or build "1500 S. X Ave" from fromCorner
-            val displayName = routeDisplayNames.getOrNull(index)
+            val location = objAt("location")
+            val funding = objAt("funding")
+            // Use matching route display name, or build "1500 S. X Ave" from fromCorner.
+            val displayName = routeDisplayNamesByBlockCode[blockCode]
                 ?: fromCorner?.let { "1500 $it" }
                 ?: blockName
 
             Block(
                 id = str("id")?.toIntOrNull() ?: 0,
-                code = str("code") ?: "",
+                code = blockCode,
                 name = displayName,
+                serviceAreaId = str("serviceAreaId")?.toIntOrNull(),
                 status = str("status")?.let { s ->
                     try { BlockStatus.valueOf(s.uppercase()) } catch (_: Exception) { BlockStatus.AVAILABLE }
                 } ?: BlockStatus.AVAILABLE,
+                boundary = decodePolygon(location?.get("boundary") as? JsonObject),
+                center = decodePoint(location?.get("center") as? JsonObject),
                 displayImage = str("displayImage"),
+                imageLocationLat = str("imageLocationLat")?.toDoubleOrNull(),
+                imageLocationLng = str("imageLocationLng")?.toDoubleOrNull(),
+                fundingGoal = nestedStr(funding, "goal")?.toDoubleOrNull()?.toInt(),
+                fundingCurrent = nestedStr(funding, "current")?.toDoubleOrNull()?.toInt() ?: 0,
+                sponsorId = str("fundedById")?.toIntOrNull(),
+                checkpoints = decodeCheckpoints(),
                 createdAt = now,
                 updatedAt = now,
             )
-        }
+        }.sortedWith(
+            compareBy<Block>(
+                { it.center?.coordinates?.getOrNull(0) ?: it.boundary.centerLng() ?: Double.MAX_VALUE },
+                { it.center?.coordinates?.getOrNull(1) ?: it.boundary.centerLat() ?: Double.MAX_VALUE },
+                { it.code },
+            ),
+        )
     }
 
     suspend fun sponsorBlock(request: SponsorBlockRequest): Block =
@@ -647,11 +815,25 @@ class GccApiClient(
         lng: Double? = null,
         radiusMeters: Double? = null,
         limit: Int = 50,
-    ): List<CommunityReport> = get("/api/spots") {
-        lat?.let { parameter("lat", it) }
-        lng?.let { parameter("lng", it) }
-        radiusMeters?.let { parameter("radius", it) }
-        parameter("limit", limit)
+    ): List<CommunityReport> {
+        val response = httpClient.get("$baseUrl/api/spots") {
+            lat?.let { parameter("lat", it) }
+            lng?.let { parameter("lng", it) }
+            radiusMeters?.let { parameter("radius", it) }
+            parameter("limit", limit)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+
+        val body = response.bodyAsText()
+        return runCatching {
+            json.decodeFromString<ApiResponse<List<CommunityReport>>>(body).data
+        }.getOrElse {
+            json.decodeFromString<SpotMarkersResponse>(body).spots.mapNotNull { it.toCommunityReport() }
+        }
     }
 
     // Upload spot photos (multipart form data), returns list of public URLs
@@ -676,7 +858,7 @@ class GccApiClient(
         }
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
-            throw Exception("Upload failed (${response.status.value}): $errorBody")
+            throw Exception("Upload failed: ${httpErrorMessage(response.status.value, errorBody)}")
         }
         return response.body<ApiResponse<PhotoUploadResponse>>().data.urls
     }
@@ -797,8 +979,65 @@ class GccApiClient(
         get("/api/workers/me/verification")
 }
 
+private fun GeoJSONPolygon?.centerLng(): Double? =
+    this?.coordinates
+        ?.firstOrNull()
+        ?.mapNotNull { it.getOrNull(0) }
+        ?.takeIf { it.isNotEmpty() }
+        ?.average()
+
+private fun GeoJSONPolygon?.centerLat(): Double? =
+    this?.coordinates
+        ?.firstOrNull()
+        ?.mapNotNull { it.getOrNull(1) }
+        ?.takeIf { it.isNotEmpty() }
+        ?.average()
+
 @kotlinx.serialization.Serializable
 private data class ImageLocationUpdate(
     val imageLocationLat: Double? = null,
     val imageLocationLng: Double? = null,
 )
+
+@Serializable
+private data class SpotMarkersResponse(
+    val spots: List<SpotMarkerDto> = emptyList(),
+)
+
+@Serializable
+private data class SpotMarkerDto(
+    val id: String,
+    val coordinates: List<Double>,
+    val radiusMeters: Double = 15.0,
+    val label: String? = null,
+    val tags: List<SpotTag> = emptyList(),
+    val affectedArea: AffectedArea? = null,
+    val needsVerification: Boolean = false,
+    val photoUrl: String? = null,
+)
+
+private fun SpotMarkerDto.toCommunityReport(): CommunityReport? {
+    val reportId = id.toIntOrNull() ?: return null
+    val lng = coordinates.getOrNull(0) ?: return null
+    val lat = coordinates.getOrNull(1) ?: return null
+    val now = Clock.System.now()
+    val reportType = if (label?.contains("volunteer", ignoreCase = true) == true) {
+        CommunityReportType.VOLUNTEER_CLEANUP
+    } else {
+        CommunityReportType.SIGHTING
+    }
+    return CommunityReport(
+        id = reportId,
+        type = reportType,
+        coordinates = Coordinates(lng = lng, lat = lat),
+        description = label?.takeUnless { it == "Sighting" },
+        status = CommunityReportStatus.PENDING,
+        affectedRadiusMeters = radiusMeters,
+        affectedArea = affectedArea,
+        tags = tags,
+        photoUrl = photoUrl,
+        needsVerification = needsVerification,
+        createdAt = now,
+        updatedAt = now,
+    )
+}

@@ -20,8 +20,10 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.RouteScanSectionStatus
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
@@ -51,9 +53,10 @@ fun CleanScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val cleaned = uiState.hotspots.count { it.status == HotspotStatus.CLEANED }
-    val skipped = uiState.hotspots.count { it.status == HotspotStatus.SKIPPED }
-    val total = uiState.hotspots.size
-    val allDone = total == 0 || uiState.hotspots.none { it.status == HotspotStatus.DETECTED }
+    val documentedOnly = uiState.hotspots.count { it.status == HotspotStatus.SKIPPED }
+    val totalCleanupTargets = uiState.hotspots.count { it.status != HotspotStatus.SKIPPED }
+    val allDone = uiState.hotspots.none { it.status == HotspotStatus.DETECTED }
+    val currentCleanupTarget = uiState.hotspots.firstOrNull { it.status == HotspotStatus.DETECTED }
 
     val nearbyDist = uiState.nearbyDistMeters
 
@@ -62,21 +65,26 @@ fun CleanScreen(
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
     } else null
 
+    val effectiveCheckpoints = remember(uiState.route) {
+        uiState.route
+            ?.let { CheckpointGenerator.generateIfMissing(it) }
+            .orEmpty()
+            .sortedBy { it.sequenceOrder }
+    }
+
     // Route polyline from checkpoint coordinates
-    val routeCoords = remember(uiState.route) {
-        uiState.route?.checkpoints
-            ?.sortedBy { it.sequenceOrder }
-            ?.map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            ?.let { listOf(it) }
-            ?: emptyList()
+    val routeCoords = remember(effectiveCheckpoints) {
+        effectiveCheckpoints
+            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
+            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
     }
 
     // Map centre: user → route start → Chicago default
     val mapCenterLat = currentLocation?.lat
-        ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lat
+        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lat
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
-        ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lng
+        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lng
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     // Hotspot capture sheet state
@@ -176,11 +184,11 @@ fun CleanScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Clean Lap",
+                            text = "Cleanup Targets",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         )
                         Text(
-                            text = "$cleaned / $total cleaned",
+                            text = "$cleaned / $totalCleanupTargets cleaned",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = GccGreen,
                         )
@@ -189,7 +197,11 @@ fun CleanScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     // Progress bar
-                    val progressFraction = if (total > 0) cleaned.toFloat() / total else 0f
+                    val progressFraction = if (totalCleanupTargets > 0) {
+                        cleaned.toFloat() / totalCleanupTargets
+                    } else {
+                        1f
+                    }
                     LinearProgressIndicator(
                         progress = { progressFraction },
                         modifier = Modifier
@@ -200,9 +212,9 @@ fun CleanScreen(
                         trackColor = GccGreen.copy(alpha = 0.15f),
                     )
 
-                    if (skipped > 0) {
+                    if (documentedOnly > 0) {
                         Text(
-                            text = "$skipped skipped",
+                            text = "$documentedOnly documented only",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted,
                         )
@@ -214,6 +226,14 @@ fun CleanScreen(
                     uiState.error?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    CurrentCleanupSectionCard(
+                        uiState = uiState,
+                        currentTarget = currentCleanupTarget,
+                        onRecordAfterScan = { target -> captureHotspot = target },
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -251,7 +271,7 @@ fun CleanScreen(
 
                     // Complete scan button
                     GccButton(
-                        text = if (allDone) "Complete Scan" else "Cleaning\u2026 $cleaned/$total done",
+                        text = if (allDone) "Complete Scan" else "Cleaning\u2026 $cleaned/$totalCleanupTargets done",
                         onClick = { if (allDone) onCompleteScan() },
                         variant = GccButtonVariant.PRIMARY,
                         enabled = allDone,
@@ -274,7 +294,6 @@ fun CleanScreen(
             HotspotCaptureSheet(
                 hotspot = hotspotToCapture,
                 onConfirmed = { afterBytes, score ->
-                    captureHotspot = null
                     captureError = null
                     coroutineScope.launch {
                         try {
@@ -287,16 +306,12 @@ fun CleanScreen(
                             }
 
                             // Delegate to parent callback (RouteScanScreen → ViewModel)
+                            captureHotspot = null
                             onConfirmCleaned?.invoke(hotspotToCapture.id, afterPhotoUrl, score)
                                 ?: onCleanHotspot(hotspotToCapture)
                         } catch (e: Exception) {
+                            captureHotspot = null
                             captureError = "Upload failed: ${e.message}"
-                            // Still mark cleaned with placeholder URL
-                            onConfirmCleaned?.invoke(
-                                hotspotToCapture.id,
-                                "after_${hotspotToCapture.id}.jpg",
-                                score,
-                            ) ?: onCleanHotspot(hotspotToCapture)
                         }
                     }
                 },
@@ -305,6 +320,67 @@ fun CleanScreen(
                     .fillMaxWidth()
                     .wrapContentHeight(),
             )
+        }
+    }
+}
+
+@Composable
+private fun CurrentCleanupSectionCard(
+    uiState: RouteScanUiState,
+    currentTarget: ScanHotspot?,
+    onRecordAfterScan: (ScanHotspot) -> Unit,
+) {
+    val approvedCount = uiState.routeSections.count { it.status == RouteScanSectionStatus.APPROVED }
+    val cleanupTargetCount = uiState.hotspots.count { it.status != HotspotStatus.SKIPPED }
+    val sectionIndex = currentTarget?.arAnchorData
+        ?.substringAfter("section:", missingDelimiterValue = "")
+        ?.takeWhile { it.isDigit() }
+        ?.toIntOrNull()
+    val sectionName = sectionIndex
+        ?.let { uiState.routeSections.getOrNull(it)?.name }
+        ?: "Current cleanup area"
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = GccGreen.copy(alpha = 0.10f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = if (currentTarget == null) "All cleanup targets approved" else sectionName,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = GccGreenDark,
+            )
+            Text(
+                text = uiState.sectionPrompt ?: if (currentTarget == null) {
+                    "Complete the scan to submit the route recording."
+                } else if (uiState.deviceType == com.gcc.shared.model.DeviceType.AR) {
+                    "Run the after scan here. When AI sees the area as clean, this section approves automatically."
+                } else {
+                    "Take the after photo for this section. The app will approve it and move you to the next area."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            Text(
+                text = "$approvedCount / $cleanupTargetCount cleanup sections approved",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = GccGreen,
+            )
+            if (currentTarget != null) {
+                GccButton(
+                    text = if (uiState.deviceType == com.gcc.shared.model.DeviceType.AR) {
+                        "Run After Scan"
+                    } else {
+                        "Capture After Photo"
+                    },
+                    onClick = { onRecordAfterScan(currentTarget) },
+                    variant = GccButtonVariant.SECONDARY,
+                )
+            }
         }
     }
 }
@@ -373,7 +449,7 @@ private fun HotspotListItem(
     val (statusText, statusColor) = when (hotspot.status) {
         HotspotStatus.DETECTED -> if (isNearby) "Nearby" to GccError else "Pending" to GccSky
         HotspotStatus.CLEANED -> "Cleaned" to GccGreen
-        HotspotStatus.SKIPPED -> "Skipped" to TextMuted
+        HotspotStatus.SKIPPED -> "Documented" to TextMuted
     }
 
     Row(

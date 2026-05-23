@@ -30,6 +30,7 @@ fun PhotoComparisonSheet(
     onTakeBeforePhoto: () -> Unit,
     onTakeAfterPhoto: () -> Unit,
     onConfirmAndUpload: () -> Unit,
+    isUploading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -80,7 +81,8 @@ fun PhotoComparisonSheet(
             text = "Confirm & Upload",
             onClick = onConfirmAndUpload,
             variant = GccButtonVariant.PRIMARY,
-            enabled = hasBeforePhoto && hasAfterPhoto,
+            enabled = hasBeforePhoto && hasAfterPhoto && !isUploading,
+            isLoading = isUploading,
         )
     }
 }

@@ -4,9 +4,13 @@ import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.isAdmin
 import com.gcc.server.plugins.workerId
 import com.gcc.server.services.JobService
+import com.gcc.server.services.RouteQueueService
 import com.gcc.shared.model.ApiResponse
+import com.gcc.shared.model.JobEvidenceRequest
 import com.gcc.shared.model.JobStatus
+import com.gcc.shared.model.RouteOfferDeclineRequest
 import io.ktor.http.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import com.gcc.server.plugins.koinGet
@@ -29,10 +33,12 @@ fun Routing.jobRoutes() {
                 try { JobStatus.valueOf(it.uppercase()) } catch (_: Exception) { null }
             }
             val workerId = call.parameters["worker_id"]?.toIntOrNull()
+            val routeId = call.parameters["route_id"]?.toIntOrNull()
 
             val jobs = jobService.getAll(
                 status = status,
                 workerId = workerId,
+                routeId = routeId,
                 limit = limit,
                 offset = offset
             )
@@ -69,12 +75,29 @@ fun Routing.jobRoutes() {
  */
 fun Route.authenticatedJobRoutes() {
     val jobService = application.koinGet<JobService>()
+    val routeQueueService = application.koinGet<RouteQueueService>()
 
     route("/api/jobs") {
         post("/{id}/claim") {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Job ID must be an integer")
-            val job = jobService.claimJob(id, call.workerId(), isAdmin = call.isAdmin())
+            val workerId = call.workerId()
+            val job = routeQueueService.claimReleasedJob(id, workerId, isAdmin = call.isAdmin())
+                ?: jobService.claimJob(id, workerId, isAdmin = call.isAdmin())
+            call.respond(HttpStatusCode.OK, ApiResponse(data = job))
+        }
+
+        patch("/{id}/decline") {
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Job ID must be an integer")
+            val request = runCatching { call.receive<RouteOfferDeclineRequest>() }.getOrNull()
+            val workerId = call.workerId()
+            val job = routeQueueService.declineReleasedJob(
+                jobId = id,
+                workerId = workerId,
+                isAdmin = call.isAdmin(),
+                reason = request?.reason,
+            ) ?: jobService.declineJob(id, workerId, isAdmin = call.isAdmin())
             call.respond(HttpStatusCode.OK, ApiResponse(data = job))
         }
 
@@ -89,6 +112,19 @@ fun Route.authenticatedJobRoutes() {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Job ID must be an integer")
             val job = jobService.completeJob(id, call.workerId(), isAdmin = call.isAdmin())
+            call.respond(HttpStatusCode.OK, ApiResponse(data = job))
+        }
+
+        patch("/{id}/evidence") {
+            val id = call.parameters["id"]?.toIntOrNull()
+                ?: throw IllegalArgumentException("Job ID must be an integer")
+            val request = call.receive<JobEvidenceRequest>()
+            val job = jobService.addEvidence(
+                jobId = id,
+                workerId = call.workerId(),
+                isAdmin = call.isAdmin(),
+                request = request,
+            )
             call.respond(HttpStatusCode.OK, ApiResponse(data = job))
         }
     }

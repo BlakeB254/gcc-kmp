@@ -24,7 +24,6 @@ import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.FeedViewModel
 import com.gcc.app.viewmodel.RouteScanViewModel
-import com.gcc.app.viewmodel.RouteTestViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.app.viewmodel.PointsDashboardViewModel
@@ -93,6 +92,5 @@ val appModule = module {
     singleOf(::AffectedBlocksViewModel)
     singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get()) }
-    factory { RouteTestViewModel(get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }

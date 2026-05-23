@@ -5,15 +5,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routes, routeCheckpoints, serviceAreas } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { blocks, routes, routeCheckpoints } from '@/db/schema'
+import { and, eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: Promise<{ routeId: string }> }
 
-function toRouteResponse(route: any, checkpoints: any[] = []) {
+function toRouteResponse(route: any, checkpoints: any[] = [], checkpointGeometry: unknown = route.geometry) {
   return {
     id: route.id,
     code: route.code,
@@ -26,17 +27,7 @@ function toRouteResponse(route: any, checkpoints: any[] = []) {
       ? Math.round(parseFloat(route.estimatedMinutes))
       : null,
     payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-    checkpoints: checkpoints.map((cp) => ({
-      name: cp.name,
-      sequenceOrder: cp.sequenceOrder,
-      coordinates: {
-        lat: (cp.coordinates as [number, number])?.[1] ?? 0,
-        lng: (cp.coordinates as [number, number])?.[0] ?? 0,
-      },
-      photoRequired: cp.photoRequired ?? true,
-      geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
-      type: cp.type ?? 'photo_point',
-    })),
+    checkpoints: toMobileRouteCheckpoints(checkpoints, checkpointGeometry),
     imageUrl: route.imageUrl || null,
     imageLocationLat: route.imageLocationLat ?? null,
     imageLocationLng: route.imageLocationLng ?? null,
@@ -62,7 +53,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       updatedAt: new Date().toISOString(),
     }
 
-    if (body.status !== undefined) updateData.status = body.status
+    if (body.status !== undefined) {
+      updateData.status = body.status
+      updateData.publishedAt = body.status === 'published' ? new Date().toISOString() : null
+    }
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl
     if (body.displayName !== undefined) updateData.displayName = body.displayName
     if (body.description !== undefined) updateData.description = body.description
@@ -82,6 +76,21 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Route not found' }, { status: 404 })
     }
 
+    if (body.status !== undefined) {
+      await db
+        .update(blocks)
+        .set({
+          status: body.status === 'published' ? 'available' : 'funded',
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(blocks.routeId, routeId),
+            inArray(blocks.status, ['available', 'funded']),
+          ),
+        )
+    }
+
     // Fetch checkpoints for the response
     const checkpoints = await db
       .select()
@@ -89,7 +98,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       .where(eq(routeCheckpoints.routeId, routeId))
       .orderBy(routeCheckpoints.sequenceOrder)
 
-    return NextResponse.json({ data: toRouteResponse(updated, checkpoints) })
+    const [routeBlock] = await db
+      .select({ locationBoundary: blocks.locationBoundary })
+      .from(blocks)
+      .where(eq(blocks.routeId, routeId))
+      .limit(1)
+
+    return NextResponse.json({
+      data: toRouteResponse(updated, checkpoints, routeBlock?.locationBoundary ?? updated.geometry),
+    })
   } catch (error) {
     console.error('PUT /api/admin/routes/[routeId] error:', error)
     return NextResponse.json({ error: 'Failed to update route' }, { status: 500 })

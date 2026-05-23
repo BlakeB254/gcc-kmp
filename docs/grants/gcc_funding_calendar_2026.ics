@@ -1,0 +1,199 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Global Community Cleaners//GCC Funding Calendar 2026//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:GCC Funding
+X-WR-TIMEZONE:America/Chicago
+BEGIN:VEVENT
+UID:gcc-funding-scan-weekly-2026@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Funding Scan: upcoming grants and rolling opportunities
+DTSTART;VALUE=DATE:20260518
+RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20261214
+DESCRIPTION:Check active GCC funding tracker\, rolling portals\, CCT opportunities\, City of Chicago grants\, environmental justice funding\, youth/workforce funding\, and corporate/in-kind opportunities. Update site/docs/gcc-upcoming-funding-opportunities.md and archive missed windows.
+CATEGORIES:GCC Funding,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-iin-seed-deadline-20260521@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Illinois Innovation Network Social Innovation Seed Grant
+DTSTART;VALUE=DATE:20260521
+DESCRIPTION:Due May 21\, 2026. Strong fit with UIC/Illinois partner. Pitch resident-paid block improvement\, app verification\, and measurable environmental justice outcomes.
+CATEGORIES:GCC Funding,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-cdph-rfp-66213-deadline-20260522@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Chicago CDPH Wellness Microgrant RFP #66213
+DTSTART;VALUE=DATE:20260522
+DESCRIPTION:Due May 22\, 2026 at noon CT. GCC likely strongest as a subrecipient or community implementation partner. Frame cleanup as public health\, neighborhood wellness\, and community cohesion.
+CATEGORIES:GCC Funding,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-americorps-nccc-cycle2-20260527@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: AmeriCorps NCCC Project Sponsor Cycle 2
+DTSTART;VALUE=DATE:20260527
+DESCRIPTION:Request an 8-12 person team for cleanup logistics\, outreach\, hotspot mapping\, beautification sprints\, resident support\, and volunteer coordination.
+CATEGORIES:GCC Funding,Capacity,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-nicor-stewardship-deadline-20260531@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Check/Deadline: Nicor Environmental Stewardship Grant
+DTSTART;VALUE=DATE:20260531
+DESCRIPTION:Listed due May 31\, 2026. Verify service territory and current eligibility before investing time. Use for supplies and environmental stewardship if eligible.
+CATEGORIES:GCC Funding,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-nfwf-five-star-deadline-20260604@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: NFWF Five Star Grant Program
+DTSTART;VALUE=DATE:20260604
+DESCRIPTION:Full proposal due June 4\, 2026 at 11:59pm ET. Frame as watershed/public-space stewardship\, trash prevention\, youth outreach\, public open-space restoration\, and partner-backed cleanup metrics.
+CATEGORIES:GCC Funding,Environmental,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-polk-bros-loi-deadline-20260605@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Polk Bros Next Generation Power-Building LOI
+DTSTART;VALUE=DATE:20260605
+DESCRIPTION:LOI due June 5\, 2026. Frame around paid youth block stewards\, resident-led issue mapping\, civic data loops\, third-space connection\, and youth voice in resource allocation.
+CATEGORIES:GCC Funding,Youth,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-illinois-humanities-deadline-20260612@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Illinois Humanities Envisioning Justice
+DTSTART;VALUE=DATE:20260612
+DESCRIPTION:Due June 12\, 2026 at 5pm. Pursue only with a public humanities frame: resident oral histories\, justice-involved youth/returning residents\, community dialogue\, and neighborhood narrative change.
+CATEGORIES:GCC Funding,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-cct-sponsorship-deadline-20260630@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Chicago Community Trust Sponsorships
+DTSTART;VALUE=DATE:20260630
+DESCRIPTION:June 30\, 2026 window for Aug-Oct events. Recommended event: North Lawndale Block Report + Sponsor/Resident Convening.
+CATEGORIES:GCC Funding,Sponsorship,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-schwemm-deadline-20260630@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Schwemm Family Foundation
+DTSTART;VALUE=DATE:20260630
+DESCRIPTION:Closes June 30\, 2026. Apply for cleanup plus native planting\, green-space activation\, community stewardship\, and North Lawndale environmental improvement.
+CATEGORIES:GCC Funding,Environmental,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-illinois-epa-319-watch-20260603@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Watch: Illinois EPA Section 319(h) NOFO
+DTSTART;VALUE=DATE:20260603
+RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=5
+DESCRIPTION:FY2026 NOFO anticipated in June 2026. Prepare GATA\, watershed-plan tie-in\, storm-drain/water-quality narrative\, education/BMP scope\, and partner letters.
+CATEGORIES:GCC Funding,Environmental,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-epa-region5-monthly-review-20260615@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Rolling: EPA Region 5 EJ TCGM proposal review
+DTSTART;VALUE=DATE:20260615
+RRULE:FREQ=MONTHLY;BYMONTHDAY=15;UNTIL=20261115
+DESCRIPTION:Rolling through November 2026. Review Tier 2/Tier 3 proposal for North Lawndale environmental health\, resident workforce\, block data\, supplies\, verification\, and public-health reporting.
+CATEGORIES:GCC Funding,Environmental,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-epa-region5-final-month-20261102@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Final Push: EPA Region 5 EJ TCGM
+DTSTART;VALUE=DATE:20261102
+DESCRIPTION:Final month for rolling EPA Region 5 EJ TCGM window. Confirm current deadline with Midwest EJ Network and submit before the November 2026 close.
+CATEGORIES:GCC Funding,Environmental,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-city-cdg-deadline-20260814@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: City of Chicago Community Development Grant
+DTSTART;VALUE=DATE:20260814
+DESCRIPTION:Small/Medium applications due August 14\, 2026. Use only for capital/buildout\, equipment\, facility\, training/storage hub\, or other reimbursable development costs.
+CATEGORIES:GCC Funding,Capital,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-lumpkin-loi-window-open-20260817@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Window Opens: Lumpkin Land\, Health\, Community-Chicago LOI
+DTSTART;VALUE=DATE:20260817
+DESCRIPTION:LOI window opens August 17\, 2026. Build health\, nature\, youth wellness\, food/land justice\, community gardens\, and outdoor stewardship angle.
+CATEGORIES:GCC Funding,Environmental,Grant Window
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-americorps-nccc-cycle3-20260917@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: AmeriCorps NCCC Project Sponsor Cycle 3
+DTSTART;VALUE=DATE:20260917
+DESCRIPTION:Cycle 3 due September 17\, 2026. If Cycle 2 is missed or not selected\, reuse the cleanup logistics\, outreach\, mapping\, and beautification team proposal.
+CATEGORIES:GCC Funding,Capacity,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-lumpkin-loi-window-close-20260918@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Deadline: Lumpkin Land\, Health\, Community-Chicago LOI
+DTSTART;VALUE=DATE:20260918
+DESCRIPTION:LOI window closes September 18\, 2026. Submit North Lawndale land/health/community stewardship concept if ready.
+CATEGORIES:GCC Funding,Environmental,Grant Deadline
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-awesome-foundation-monthly-20260601@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Monthly Microgrant: Awesome Foundation Chicago
+DTSTART;VALUE=DATE:20260601
+RRULE:FREQ=MONTHLY;BYDAY=1MO;UNTIL=20261207
+DESCRIPTION:Monthly $1\,000 microgrant review cycle. Submit a concrete cleanup/beautification sprint or resident stewardship kit concept.
+CATEGORIES:GCC Funding,Microgrant,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-walmart-spark-good-monthly-20260602@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Rolling: Walmart Spark Good local grants
+DTSTART;VALUE=DATE:20260602
+RRULE:FREQ=MONTHLY;BYMONTHDAY=2;UNTIL=20261202
+DESCRIPTION:Apply to nearby Walmart/Sam's facilities for gloves\, bags\, grabbers\, vests\, water\, signage\, printing\, and kickoff-event supplies. Confirm current cycle before submitting.
+CATEGORIES:GCC Funding,Microgrant,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-chej-monthly-check-20260610@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Rolling: CHEJ Small Grants environmental health check
+DTSTART;VALUE=DATE:20260610
+RRULE:FREQ=MONTHLY;BYMONTHDAY=10;UNTIL=20261210
+DESCRIPTION:Use only if GCC names a concrete environmental health harm: illegal dumping\, vacant-lot debris\, hazardous litter\, toxics exposure\, or polluted public space.
+CATEGORIES:GCC Funding,Environmental,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-vista-monthly-check-20260612@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Rolling: AmeriCorps VISTA concept paper check
+DTSTART;VALUE=DATE:20260612
+RRULE:FREQ=MONTHLY;BYMONTHDAY=12;UNTIL=20261212
+DESCRIPTION:Capacity-building concept: grant systems\, volunteer systems\, data reporting\, sponsor pipeline\, resident outreach infrastructure\, and impact reporting.
+CATEGORIES:GCC Funding,Capacity,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-google-nonprofits-setup-20260520@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Setup: Google for Nonprofits / Ad Grants
+DTSTART;VALUE=DATE:20260520
+DESCRIPTION:Rolling in-kind opportunity. Activate Google for Nonprofits and Ad Grants to recruit sponsors\, donors\, resident workers\, and newsletter subscribers.
+CATEGORIES:GCC Funding,In-Kind,Rolling Opportunity
+END:VEVENT
+BEGIN:VEVENT
+UID:gcc-microsoft-nonprofit-setup-20260520@globalcommunitycleaners.org
+DTSTAMP:20260514T170000Z
+SUMMARY:GCC Setup: Microsoft for Nonprofits Azure Grant
+DTSTART;VALUE=DATE:20260520
+DESCRIPTION:Rolling in-kind opportunity. Activate nonprofit Azure credits for app infrastructure\, data demos\, reporting\, and AI experiments.
+CATEGORIES:GCC Funding,In-Kind,Rolling Opportunity
+END:VEVENT
+END:VCALENDAR

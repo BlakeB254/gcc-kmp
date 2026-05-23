@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routes, routeCheckpoints, serviceAreas } from '@/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { blocks, routes, routeCheckpoints, serviceAreas } from '@/db/schema'
+import { eq, and, inArray } from 'drizzle-orm'
+import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 /**
  * GET /api/routes - Get published routes
@@ -59,50 +60,66 @@ export async function GET(request: Request) {
     const routeIds = routeList.map((r) => r.id)
 
     let checkpointsMap: Map<number, typeof routeCheckpoints.$inferSelect[]> = new Map()
+    const blockBoundaryMap = new Map<number, unknown>()
 
     if (routeIds.length > 0) {
-      const allCheckpoints = await db
-        .select()
-        .from(routeCheckpoints)
-        .orderBy(routeCheckpoints.sequenceOrder)
+      const [allCheckpoints, routeBlocks] = await Promise.all([
+        db
+          .select()
+          .from(routeCheckpoints)
+          .where(inArray(routeCheckpoints.routeId, routeIds))
+          .orderBy(routeCheckpoints.sequenceOrder),
+        db
+          .select({
+            routeId: blocks.routeId,
+            locationBoundary: blocks.locationBoundary,
+          })
+          .from(blocks)
+          .where(inArray(blocks.routeId, routeIds)),
+      ])
 
       // Group by route
       for (const cp of allCheckpoints) {
-        if (routeIds.includes(cp.routeId)) {
-          if (!checkpointsMap.has(cp.routeId)) {
-            checkpointsMap.set(cp.routeId, [])
-          }
-          checkpointsMap.get(cp.routeId)!.push(cp)
+        if (!checkpointsMap.has(cp.routeId)) {
+          checkpointsMap.set(cp.routeId, [])
+        }
+        checkpointsMap.get(cp.routeId)!.push(cp)
+      }
+
+      for (const block of routeBlocks) {
+        if (block.routeId && block.locationBoundary) {
+          blockBoundaryMap.set(block.routeId, block.locationBoundary)
         }
       }
     }
 
     // Combine routes with checkpoints (field names match Kotlin Route model)
-    const result = routeList.map((route) => ({
-      id: route.id,
-      code: route.code,
-      displayName: route.displayName,
-      serviceAreaId: route.serviceAreaId,
-      geometry: route.geometry,
-      status: route.status,
-      distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
-      estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
-      payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-      checkpoints: (checkpointsMap.get(route.id) || []).map((cp) => ({
-        name: cp.name,
-        sequenceOrder: cp.sequenceOrder,
-        coordinates: { lat: (cp.coordinates as [number, number])?.[1] ?? 0, lng: (cp.coordinates as [number, number])?.[0] ?? 0 },
-        photoRequired: cp.photoRequired ?? true,
-        geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
-        type: cp.type ?? 'photo_point',
-      })),
-      imageUrl: route.imageUrl || null,
-      imageLocationLat: route.imageLocationLat ?? null,
-      imageLocationLng: route.imageLocationLng ?? null,
-      description: route.description || null,
-      createdAt: new Date(route.createdAt).toISOString(),
-      updatedAt: new Date(route.updatedAt).toISOString(),
-    }))
+    const result = routeList.flatMap((route) => {
+      const checkpoints = toMobileRouteCheckpoints(
+        checkpointsMap.get(route.id) || [],
+        blockBoundaryMap.get(route.id) ?? route.geometry,
+      )
+      if (checkpoints.length < 2) return []
+
+      return [{
+        id: route.id,
+        code: route.code,
+        displayName: route.displayName,
+        serviceAreaId: route.serviceAreaId,
+        geometry: route.geometry,
+        status: route.status,
+        distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
+        estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
+        payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
+        checkpoints,
+        imageUrl: route.imageUrl || null,
+        imageLocationLat: route.imageLocationLat ?? null,
+        imageLocationLng: route.imageLocationLng ?? null,
+        description: route.description || null,
+        createdAt: new Date(route.createdAt).toISOString(),
+        updatedAt: new Date(route.updatedAt).toISOString(),
+      }]
+    })
 
     return NextResponse.json({ data: result, success: true })
   } catch (error) {

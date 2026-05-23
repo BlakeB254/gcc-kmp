@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.ui.theme.*
@@ -34,7 +35,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ScoutCaptureDialog(
-    onCaptured: (photoBytes: ByteArray, analysisResult: OnDeviceAnalysisResult?) -> Unit,
+    onCaptured: (photo: CapturedPhoto, analysisResult: OnDeviceAnalysisResult?, cleanupTarget: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val cameraManager = remember { CameraManager() }
@@ -43,11 +44,12 @@ fun ScoutCaptureDialog(
 
     var isCapturing by remember { mutableStateOf(false) }
     var isAnalyzing by remember { mutableStateOf(false) }
-    var capturedBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var capturedPhoto by remember { mutableStateOf<CapturedPhoto?>(null) }
     var analysisResult by remember { mutableStateOf<OnDeviceAnalysisResult?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var cleanupTarget by remember { mutableStateOf(true) }
 
-    val hasCaptured = capturedBytes != null
+    val hasCaptured = capturedPhoto != null
 
     // Full-screen dialog
     Box(
@@ -115,7 +117,7 @@ fun ScoutCaptureDialog(
                                 try {
                                     val photo = cameraManager.capturePhoto()
                                     if (photo != null) {
-                                        capturedBytes = photo.bytes
+                                        capturedPhoto = photo
                                         // Run on-device analysis
                                         isAnalyzing = true
                                         if (analyzer.isAvailable()) {
@@ -123,11 +125,16 @@ fun ScoutCaptureDialog(
                                                 imageBytes = photo.bytes,
                                                 depthAnalysis = photo.depthAnalysis,
                                             )
+                                            if (analysisResult?.suggestedTags?.isEmpty() == true &&
+                                                analysisResult?.trashTypes?.isEmpty() == true
+                                            ) {
+                                                cleanupTarget = false
+                                            }
                                         }
                                         isAnalyzing = false
                                     } else {
                                         // Desktop / no camera: emit empty bytes immediately
-                                        capturedBytes = ByteArray(0)
+                                        capturedPhoto = CapturedPhoto(bytes = ByteArray(0), width = 0, height = 0)
                                     }
                                 } catch (e: Exception) {
                                     errorMessage = "Capture failed: ${e.message}"
@@ -189,7 +196,7 @@ fun ScoutCaptureDialog(
                         .background(Color.Black.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (capturedBytes?.isEmpty() != false) {
+                    if (capturedPhoto?.bytes?.isEmpty() != false) {
                         // Desktop placeholder
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -280,6 +287,32 @@ fun ScoutCaptureDialog(
                     }
                 }
 
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(TextSubtle.copy(alpha = 0.08f))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Checkbox(
+                        checked = !cleanupTarget,
+                        onCheckedChange = { checked -> cleanupTarget = !checked },
+                    )
+                    Column {
+                        Text(
+                            text = "Document only",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        )
+                        Text(
+                            text = "Property lot or street lane",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Action buttons
@@ -289,7 +322,7 @@ fun ScoutCaptureDialog(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            capturedBytes = null
+                            capturedPhoto = null
                             analysisResult = null
                             errorMessage = null
                         },
@@ -300,15 +333,15 @@ fun ScoutCaptureDialog(
 
                     Button(
                         onClick = {
-                            val bytes = capturedBytes ?: ByteArray(0)
-                            onCaptured(bytes, analysisResult)
+                            val photo = capturedPhoto ?: CapturedPhoto(bytes = ByteArray(0), width = 0, height = 0)
+                            onCaptured(photo, analysisResult, cleanupTarget)
                         },
                         modifier = Modifier.weight(2f),
                         colors = ButtonDefaults.buttonColors(containerColor = GccError),
                         enabled = !isAnalyzing,
                     ) {
                         Text(
-                            "Add Hotspot",
+                            if (cleanupTarget) "Add Cleanup Target" else "Document Observation",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         )
                     }

@@ -4,7 +4,9 @@ import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
+import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.sqrt
 import kotlin.math.sin
 
 /**
@@ -136,9 +138,334 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
             val rectRotation = (s.affectedArea as? AffectedArea.Rectangle)?.rotationDeg ?: 0.0
             val tagsStr = s.tags.joinToString(",") { "\"${it.name.lowercase()}\"" }
             val heatWeight = spotHeatWeight(s)
-            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"heatWeight":$heatWeight,"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+            val densityWeight = spotDensityWeight(s)
+            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"heatWeight":$heatWeight,"densityWeight":$densityWeight,"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
         }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+fun buildSpotDensityHeatEdgeGeoJson(spots: List<CommunityReport>): String =
+    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 0.08)
+
+fun buildSpotDensityHeatLowGeoJson(spots: List<CommunityReport>): String =
+    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 0.52)
+
+fun buildSpotDensityHeatMediumGeoJson(spots: List<CommunityReport>): String =
+    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 1.35)
+
+fun buildSpotDensityHeatHighGeoJson(spots: List<CommunityReport>): String =
+    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 2.7)
+
+fun buildSpotDensityHeatExtremeGeoJson(spots: List<CommunityReport>): String =
+    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 5.0)
+
+private fun buildSpotDensitySurfaceGeoJson(
+    spots: List<CommunityReport>,
+    minDensityScore: Double,
+): String {
+    val activeSpots = spots.filter { it.status != CommunityReportStatus.RESOLVED }
+    if (activeSpots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+
+    val features = spotDensityClusters(activeSpots)
+        .flatMap { cluster -> spotDensitySurfaceFeatures(cluster, minDensityScore) }
+        .joinToString(",")
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+private const val SPOT_DENSITY_SURFACE_KERNEL_METERS = 280.0
+private const val SPOT_DENSITY_SURFACE_BASE_SPACING_METERS = 44.0
+private const val SPOT_DENSITY_SURFACE_CLUSTER_LINK_METERS = SPOT_DENSITY_SURFACE_KERNEL_METERS * 1.75
+private const val SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES = 1600.0
+
+private fun spotDensityClusters(activeSpots: List<CommunityReport>): List<List<CommunityReport>> {
+    val visited = BooleanArray(activeSpots.size)
+    val clusters = mutableListOf<List<CommunityReport>>()
+
+    activeSpots.indices.forEach { start ->
+        if (visited[start]) return@forEach
+
+        val clusterIndices = mutableListOf<Int>()
+        val queue = ArrayDeque<Int>()
+        visited[start] = true
+        queue.add(start)
+
+        while (queue.isNotEmpty()) {
+            val index = queue.removeFirst()
+            clusterIndices.add(index)
+
+            activeSpots.indices.forEach { candidate ->
+                if (!visited[candidate] &&
+                    distanceMeters(activeSpots[index].coordinates, activeSpots[candidate].coordinates) <=
+                    SPOT_DENSITY_SURFACE_CLUSTER_LINK_METERS
+                ) {
+                    visited[candidate] = true
+                    queue.add(candidate)
+                }
+            }
+        }
+
+        clusters.add(clusterIndices.map { activeSpots[it] })
+    }
+
+    return clusters
+}
+
+private fun spotDensitySurfaceFeatures(
+    cluster: List<CommunityReport>,
+    minDensityScore: Double,
+): List<String> {
+    val centerLat = cluster.map { it.coordinates.lat }.average()
+    val minLat = cluster.minOf { it.coordinates.lat }
+    val maxLat = cluster.maxOf { it.coordinates.lat }
+    val minLng = cluster.minOf { it.coordinates.lng }
+    val maxLng = cluster.maxOf { it.coordinates.lng }
+    val metersPerDegreeLat = 111_320.0
+    val metersPerDegreeLng = (111_320.0 * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
+    val paddingLat = SPOT_DENSITY_SURFACE_KERNEL_METERS / metersPerDegreeLat
+    val paddingLng = SPOT_DENSITY_SURFACE_KERNEL_METERS / metersPerDegreeLng
+
+    val widthMeters = ((maxLng - minLng).coerceAtLeast(0.0) + paddingLng * 2.0) * metersPerDegreeLng
+    val heightMeters = ((maxLat - minLat).coerceAtLeast(0.0) + paddingLat * 2.0) * metersPerDegreeLat
+    val estimatedSamples = (widthMeters / SPOT_DENSITY_SURFACE_BASE_SPACING_METERS).coerceAtLeast(1.0) *
+        (heightMeters / SPOT_DENSITY_SURFACE_BASE_SPACING_METERS).coerceAtLeast(1.0)
+    val spacingMeters = if (estimatedSamples <= SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES) {
+        SPOT_DENSITY_SURFACE_BASE_SPACING_METERS
+    } else {
+        SPOT_DENSITY_SURFACE_BASE_SPACING_METERS *
+            sqrt(estimatedSamples / SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES)
+    }
+    val latStep = spacingMeters / metersPerDegreeLat
+    val lngStep = spacingMeters / metersPerDegreeLng
+    val startLat = minLat - paddingLat
+    val endLat = maxLat + paddingLat
+    val startLng = minLng - paddingLng
+    val endLng = maxLng + paddingLng
+    val features = mutableListOf<String>()
+
+    var lat = startLat
+    var row = 0
+    while (lat <= endLat) {
+        val rowOffset = if (row % 2 == 0) 0.0 else lngStep * 0.5
+        var lng = startLng + rowOffset
+        while (lng <= endLng) {
+            val score = surfaceDensityScore(Coordinates(lng = lng, lat = lat), cluster)
+            if (score >= minDensityScore) {
+                features.add(
+                    """{"type":"Feature","properties":{"densityScore":$score},"geometry":{"type":"Point","coordinates":[$lng,$lat]}}"""
+                )
+            }
+            lng += lngStep
+        }
+        lat += latStep
+        row += 1
+    }
+
+    return features
+}
+
+private fun surfaceDensityScore(point: Coordinates, cluster: List<CommunityReport>): Double {
+    return cluster.fold(0.0) { total, spot ->
+        val distance = distanceMeters(point, spot.coordinates)
+        if (distance > SPOT_DENSITY_SURFACE_KERNEL_METERS) {
+            total
+        } else {
+            val t = 1.0 - distance / SPOT_DENSITY_SURFACE_KERNEL_METERS
+            val smoothKernel = t * t * (3.0 - 2.0 * t)
+            total + smoothKernel * densityStatusScale(spot)
+        }
+    }
+}
+
+private fun densityStatusScale(spot: CommunityReport): Double = when (spot.status) {
+    CommunityReportStatus.VERIFIED -> 1.08
+    CommunityReportStatus.ACKNOWLEDGED -> 1.04
+    CommunityReportStatus.PENDING -> 1.0
+    else -> 0.9
+}
+
+private fun distanceMeters(a: Coordinates, b: Coordinates): Double {
+    val metersPerDegreeLat = 111_320.0
+    val avgLat = (a.lat + b.lat) / 2.0
+    val metersPerDegreeLng = (111_320.0 * cos(avgLat * PI / 180.0)).coerceAtLeast(1.0)
+    val dx = (a.lng - b.lng) * metersPerDegreeLng
+    val dy = (a.lat - b.lat) * metersPerDegreeLat
+    return kotlin.math.sqrt(dx * dx + dy * dy)
+}
+
+fun buildOverviewHeatPointsGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates>,
+): String {
+    val spotFeatures = spots
+        .filter { it.status != CommunityReportStatus.RESOLVED }
+        .map { spot ->
+            heatPointFeature(
+                lat = spot.coordinates.lat,
+                lng = spot.coordinates.lng,
+                heatWeight = spotHeatWeight(spot),
+            )
+        }
+    val activityFeatures = activityCoords
+        .distinctBy { "${it.lat}:${it.lng}" }
+        .map { coord ->
+            heatPointFeature(
+                lat = coord.lat,
+                lng = coord.lng,
+                heatWeight = 0.75,
+            )
+        }
+    return """{"type":"FeatureCollection","features":[${(spotFeatures + activityFeatures).joinToString(",")}]}"""
+}
+
+private fun heatPointFeature(lat: Double, lng: Double, heatWeight: Double): String {
+    return """{"type":"Feature","properties":{"heatWeight":$heatWeight},"geometry":{"type":"Point","coordinates":[$lng,$lat]}}"""
+}
+
+fun buildSpotHeatFarOuterZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 180.0,
+        minRadiusMeters = 10_000.0,
+        maxRadiusMeters = 24_000.0,
+    )
+}
+
+fun buildSpotHeatFarMidZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 90.0,
+        minRadiusMeters = 5_000.0,
+        maxRadiusMeters = 12_000.0,
+    )
+}
+
+fun buildSpotHeatFarCoreZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 42.0,
+        minRadiusMeters = 2_400.0,
+        maxRadiusMeters = 6_000.0,
+    )
+}
+
+fun buildSpotHeatOuterZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 4.0,
+        minRadiusMeters = 160.0,
+        maxRadiusMeters = 700.0,
+    )
+}
+
+fun buildSpotHeatMidZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 2.1,
+        minRadiusMeters = 85.0,
+        maxRadiusMeters = 360.0,
+    )
+}
+
+fun buildSpotHeatCoreZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates> = emptyList(),
+): String {
+    return buildSpotHeatZoneGeoJson(
+        spots = spots,
+        activityCoords = activityCoords,
+        radiusMultiplier = 1.0,
+        minRadiusMeters = 42.0,
+        maxRadiusMeters = 170.0,
+    )
+}
+
+private fun buildSpotHeatZoneGeoJson(
+    spots: List<CommunityReport>,
+    activityCoords: List<Coordinates>,
+    radiusMultiplier: Double,
+    minRadiusMeters: Double,
+    maxRadiusMeters: Double,
+): String {
+    val activeSpots = spots.filter { it.status != CommunityReportStatus.RESOLVED }
+    if (activeSpots.isEmpty() && activityCoords.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+
+    val spotFeatures = activeSpots.map { spot ->
+        val radiusMeters = spotHeatZoneRadiusMeters(
+            spot = spot,
+            radiusMultiplier = radiusMultiplier,
+            minRadiusMeters = minRadiusMeters,
+            maxRadiusMeters = maxRadiusMeters,
+        )
+        val ring = circlePolygonRing(
+            lat = spot.coordinates.lat,
+            lng = spot.coordinates.lng,
+            radiusMeters = radiusMeters,
+        )
+        """{"type":"Feature","properties":{"id":${spot.id},"radiusMeters":$radiusMeters},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+    }
+    val activityRadiusMeters = (minRadiusMeters * 0.72).coerceIn(40.0, maxRadiusMeters)
+    val activityFeatures = activityCoords.distinctBy { "${it.lat}:${it.lng}" }.map { coord ->
+        val ring = circlePolygonRing(
+            lat = coord.lat,
+            lng = coord.lng,
+            radiusMeters = activityRadiusMeters,
+        )
+        """{"type":"Feature","properties":{"id":-1,"radiusMeters":$activityRadiusMeters},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+    }
+    val features = (spotFeatures + activityFeatures).joinToString(",")
+
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+private fun spotHeatZoneRadiusMeters(
+    spot: CommunityReport,
+    radiusMultiplier: Double,
+    minRadiusMeters: Double,
+    maxRadiusMeters: Double,
+): Double {
+    val affectedRadius = spot.affectedRadiusMeters
+        .takeIf { it.isFinite() && it > 0.0 }
+        ?: 35.0
+    val weightScale = (0.9 + (spotHeatWeight(spot) - 1.0) * 0.12).coerceIn(0.86, 1.16)
+    return (affectedRadius.coerceIn(24.0, 180.0) * radiusMultiplier * weightScale)
+        .coerceIn(minRadiusMeters, maxRadiusMeters)
+}
+
+private fun circlePolygonRing(
+    lat: Double,
+    lng: Double,
+    radiusMeters: Double,
+    segments: Int = 32,
+): String {
+    val metersPerDegreeLat = 111_320.0
+    val metersPerDegreeLng = (111_320.0 * cos(lat * PI / 180.0)).coerceAtLeast(1.0)
+    val points = (0 until segments).map { index ->
+        val angle = 2.0 * PI * index / segments
+        val dx = cos(angle) * radiusMeters / metersPerDegreeLng
+        val dy = sin(angle) * radiusMeters / metersPerDegreeLat
+        "[${lng + dx},${lat + dy}]"
+    }
+    return points.joinToString(",") + ",${points.first()}"
 }
 
 private fun spotHeatWeight(spot: CommunityReport): Double {
@@ -153,6 +480,20 @@ private fun spotHeatWeight(spot: CommunityReport): Double {
     val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 100.0
     val radiusBoost = ((spot.affectedRadiusMeters - 20.0) / 180.0).coerceIn(0.0, 0.35)
     return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.65, 2.4)
+}
+
+private fun spotDensityWeight(spot: CommunityReport): Double {
+    val statusWeight = when (spot.status) {
+        CommunityReportStatus.VERIFIED -> 0.34
+        CommunityReportStatus.ACKNOWLEDGED -> 0.3
+        CommunityReportStatus.PENDING -> 0.26
+        else -> 0.22
+    }
+    val bountyBoost = if (spot.bountyId != null) 0.05 else 0.0
+    val verificationBoost = if (spot.needsVerification) 0.04 else 0.0
+    val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 500.0
+    val radiusBoost = ((spot.affectedRadiusMeters - 20.0) / 220.0).coerceIn(0.0, 0.06)
+    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.18, 0.48)
 }
 
 /** Spots that have progressed into a bounty, rendered as a distinct halo. */
@@ -188,6 +529,15 @@ fun buildCityBoundaryGeoJson(): String {
     val first = chicagoCityOutline.first()
     val closed = "$ring,[${first.second},${first.first}]"
     return """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Chicago"},"geometry":{"type":"Polygon","coordinates":[[$closed]]}}]}"""
+}
+
+/**
+ * Builds a world-sized polygon used as the clean green baseline beneath
+ * overview heatmaps. Heatmap density is transparent at zero, so this layer
+ * makes unaffected areas read as clean instead of blank.
+ */
+fun buildSpotCleanZoneBaseGeoJson(): String {
+    return """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}]}"""
 }
 
 /**

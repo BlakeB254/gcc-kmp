@@ -3,17 +3,17 @@ package com.gcc.shared.geo
 import com.gcc.shared.model.*
 
 /**
- * Generates 8 checkpoint waypoints from a route's GeoJSON geometry when the
- * server hasn't provided explicit checkpoints. For rectangular block routes:
- * 4 corners + 2 midpoints along each street length = 8 checkpoints.
+ * Generates 10 checkpoint waypoints from a route's GeoJSON geometry when the
+ * server hasn't provided explicit checkpoints. Rectangular block routes get
+ * points distributed around every side instead of only start/end points.
  */
 object CheckpointGenerator {
 
     private const val MIN_DISTANCE_BETWEEN_CHECKPOINTS_M = 10.0
-    private const val TARGET_CHECKPOINTS = 8
+    private const val TARGET_CHECKPOINTS = 10
 
     fun generateIfMissing(route: Route): List<RouteCheckpoint> {
-        if (route.checkpoints.isNotEmpty()) return route.checkpoints
+        if (route.checkpoints.size >= TARGET_CHECKPOINTS) return route.checkpoints
 
         val geometry = route.geometry ?: return emptyList()
         val allCoords = geometry.toCoordinates()
@@ -47,18 +47,12 @@ object CheckpointGenerator {
             uniquePoints
         }
 
-        // For block routes with 4 corners, add 2 midpoints per segment = 8 total
-        // For other shapes, interpolate to reach TARGET_CHECKPOINTS
-        val checkpointCoords = if (corners.size >= 3) {
-            interpolateToTarget(corners, isLoop)
-        } else {
-            corners
-        }
+        val checkpointCoords = interpolateToTarget(corners, isLoop)
 
         return checkpointCoords.mapIndexed { index, coord ->
             val type = when {
                 index == 0 -> CheckpointType.ROUTE_START
-                index == checkpointCoords.size - 1 && !isLoop -> CheckpointType.ROUTE_END
+                index == checkpointCoords.size - 1 -> CheckpointType.ROUTE_END
                 else -> CheckpointType.PHOTO_POINT
             }
 

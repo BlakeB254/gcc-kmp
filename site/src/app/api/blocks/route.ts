@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { blocks, serviceAreas } from '@/db/schema'
 import { eq, desc, sql, and } from 'drizzle-orm'
+import { generateBlockCheckpointsFromGeometry, MIN_ROUTE_CHECKPOINTS } from '@/lib/route-checkpoints'
 
 export const runtime = 'nodejs'
 
@@ -53,6 +54,8 @@ export async function GET(request: NextRequest) {
       locationBoundary: blocks.locationBoundary,
       locationCenter: blocks.locationCenter,
       displayImage: blocks.displayImage,
+      imageLocationLat: blocks.imageLocationLat,
+      imageLocationLng: blocks.imageLocationLng,
       streetName: blocks.streetName,
       fromCorner: blocks.fromCorner,
       toCorner: blocks.toCorner,
@@ -89,47 +92,56 @@ export async function GET(request: NextRequest) {
   const totalPages = Math.ceil(total / limit)
 
   // Transform to API format with full geometry
-  const formattedBlocks = blockList.map((block) => ({
-    id: String(block.id),
-    code: block.code,
-    name: block.name,
-    description: block.description,
-    status: block.status,
-    serviceAreaId: block.serviceAreaId,
-    serviceAreaName: block.serviceAreaName,
-    // Location with full geometry
-    location: {
-      neighborhood: block.locationNeighborhood,
-      boundary: block.locationBoundary,
-      center: block.locationCenter,
-    },
-    // Display image (Vercel Blob URL)
-    displayImage: block.displayImage || null,
-    // Block metadata
-    streetName: block.streetName,
-    fromCorner: block.fromCorner,
-    toCorner: block.toCorner,
-    side: block.side,
-    includesAlley: block.includesAlley,
-    checkpoints: block.checkpoints,
-    // Funding
-    funding: {
-      goal: Number(block.fundingGoal) || 10000,
-      current: Number(block.fundingCurrent) || 0,
-    },
-    fundedById: block.fundedById,
-    fundedAt: block.fundedAt ? new Date(block.fundedAt).toISOString() : null,
-    // Cleaning schedule (set by sponsor)
-    schedule: {
-      preferredDate: block.preferredCleaningDate ? new Date(block.preferredCleaningDate).toISOString() : null,
-      preferredTimeStart: block.preferredCleaningTimeStart,
-      preferredTimeEnd: block.preferredCleaningTimeEnd,
-    },
-    completedById: block.completedById,
-    completedAt: block.completedAt ? new Date(block.completedAt).toISOString() : null,
-    createdAt: new Date(block.createdAt).toISOString(),
-    updatedAt: new Date(block.updatedAt).toISOString(),
-  }))
+  const formattedBlocks = blockList.map((block) => {
+    const storedCheckpoints = Array.isArray(block.checkpoints) ? block.checkpoints : []
+    const checkpoints = storedCheckpoints.length >= MIN_ROUTE_CHECKPOINTS
+      ? storedCheckpoints
+      : generateBlockCheckpointsFromGeometry(block.locationBoundary)
+
+    return {
+      id: String(block.id),
+      code: block.code,
+      name: block.name,
+      description: block.description,
+      status: block.status,
+      serviceAreaId: block.serviceAreaId,
+      serviceAreaName: block.serviceAreaName,
+      // Location with full geometry
+      location: {
+        neighborhood: block.locationNeighborhood,
+        boundary: block.locationBoundary,
+        center: block.locationCenter,
+      },
+      // Display image (Vercel Blob URL)
+      displayImage: block.displayImage || null,
+      imageLocationLat: block.imageLocationLat ?? null,
+      imageLocationLng: block.imageLocationLng ?? null,
+      // Block metadata
+      streetName: block.streetName,
+      fromCorner: block.fromCorner,
+      toCorner: block.toCorner,
+      side: block.side,
+      includesAlley: block.includesAlley,
+      checkpoints,
+      // Funding
+      funding: {
+        goal: Number(block.fundingGoal) || 10000,
+        current: Number(block.fundingCurrent) || 0,
+      },
+      fundedById: block.fundedById,
+      fundedAt: block.fundedAt ? new Date(block.fundedAt).toISOString() : null,
+      // Cleaning schedule (set by sponsor)
+      schedule: {
+        preferredDate: block.preferredCleaningDate ? new Date(block.preferredCleaningDate).toISOString() : null,
+        preferredTimeStart: block.preferredCleaningTimeStart,
+        preferredTimeEnd: block.preferredCleaningTimeEnd,
+      },
+      completedById: block.completedById,
+      completedAt: block.completedAt ? new Date(block.completedAt).toISOString() : null,
+      createdAt: new Date(block.createdAt).toISOString(),
+      updatedAt: new Date(block.updatedAt).toISOString(),
+    }
+  })
 
   return Response.json({
     data: formattedBlocks,

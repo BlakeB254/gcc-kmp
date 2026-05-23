@@ -15,6 +15,7 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.ui.theme.*
+import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.ScanHotspot
 import kotlinx.coroutines.launch
 
@@ -228,16 +229,23 @@ fun HotspotCaptureSheet(
                                                 val bytes = photo.bytes
                                                 afterPhotoBytes = bytes
 
-                                                // Run AI comparison if available
+                                                // Newer devices use after-scan AI to auto-approve clean sections.
                                                 isAnalyzing = true
-                                                val score = if (analyzer.isAvailable()) {
-                                                    val beforeBytes = hotspot.beforePhotoUrl.encodeToByteArray()
-                                                    analyzer.compareImages(beforeBytes, bytes)
+                                                val analysis = if (analyzer.isAvailable()) {
+                                                    analyzer.analyzePhoto(
+                                                        imageBytes = bytes,
+                                                        depthAnalysis = photo.depthAnalysis,
+                                                    )
                                                 } else null
-                                                verificationScore = score ?: 1.0f
+                                                val score = cleanVerificationScore(analysis)
+                                                verificationScore = score
                                                 isAnalyzing = false
 
-                                                captureState = CaptureState.COMPARING
+                                                if (score > VERIFICATION_THRESHOLD) {
+                                                    onConfirmed(bytes, score)
+                                                } else {
+                                                    captureState = CaptureState.COMPARING
+                                                }
                                             } else {
                                                 // Desktop or capture failed — still allow confirm
                                                 afterPhotoBytes = ByteArray(0)
@@ -424,5 +432,17 @@ fun HotspotCaptureSheet(
                 }
             }
         }
+    }
+}
+
+private fun cleanVerificationScore(analysis: OnDeviceAnalysisResult?): Float {
+    if (analysis == null) return 1.0f
+    val severity = analysis.severity ?: 1
+    val hasTrashSignal = analysis.suggestedTags.isNotEmpty() || analysis.trashTypes.isNotEmpty()
+    return when {
+        !hasTrashSignal -> 1.0f
+        severity <= 1 -> 0.85f
+        severity == 2 && (analysis.confidence ?: 0f) < 0.35f -> 0.70f
+        else -> 0.20f
     }
 }

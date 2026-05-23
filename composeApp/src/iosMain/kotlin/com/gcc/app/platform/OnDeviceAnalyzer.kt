@@ -107,12 +107,6 @@ actual class OnDeviceAnalyzer actual constructor() {
                     }
                 }
 
-                // If no specific trash types detected, default to general
-                if (trashTypes.isEmpty() && observations.isNotEmpty()) {
-                    trashTypes.add("Mixed Debris")
-                    suggestedTags.add(SpotTag.TRASH)
-                }
-
                 // Estimate weight using depth volume if available
                 val estimatedWeight = depthAnalysis?.estimatedVolumeCubicFt?.let { volumeCuFt ->
                     // Average density heuristic: ~8 lbs/cu ft for mixed trash
@@ -233,6 +227,9 @@ actual class OnDeviceAnalyzer actual constructor() {
         depth: DepthAnalysis?,
     ): String {
         val typesStr = trashTypes.distinct().take(3).joinToString(", ")
+        if (typesStr.isEmpty()) {
+            return "No likely trash detected"
+        }
         val parts = mutableListOf<String>()
         if (typesStr.isNotEmpty()) parts.add(typesStr)
         if (weight != null) parts.add("~${weight} lbs estimated")

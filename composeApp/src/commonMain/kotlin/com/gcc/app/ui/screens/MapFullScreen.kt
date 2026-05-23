@@ -1,6 +1,5 @@
 package com.gcc.app.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -14,11 +13,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.CommunityInfoPanel
+import com.gcc.app.ui.map.BlockOverlay
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
@@ -29,6 +31,8 @@ import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.GccBottomNavBar
+import com.gcc.app.ui.components.GccButton
+import com.gcc.app.ui.components.GccButtonVariant
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.components.PhotoStrip
 import com.gcc.app.ui.theme.*
@@ -36,11 +40,19 @@ import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.model.Block
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.Job
+import com.gcc.shared.model.JobStatus
+import com.gcc.shared.model.Route
+import com.gcc.shared.model.isTestAssignment
+import com.gcc.shared.model.testAssignmentStartDeadlineMillis
+import com.gcc.shared.offline.SeedData
 import kotlin.math.ln
 import kotlin.math.absoluteValue
+import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
@@ -51,6 +63,7 @@ fun MapFullScreen(
     onBountyClick: (Int) -> Unit = {},
     onVolunteerCleanup: (reportId: Int) -> Unit = {},
     onSpotVerification: (reportId: Int) -> Unit = {},
+    onActiveJobClick: (jobId: Int, routeId: Int) -> Unit = { _, _ -> },
     onAdminClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNavigateToSpot: () -> Unit = {},
@@ -67,10 +80,11 @@ fun MapFullScreen(
 
     // Wire real GPS location
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    var nowMillis by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
 
     LaunchedEffect(Unit) {
         locationProvider.startLocationUpdates()
-        if (uiState.routes.isEmpty()) viewModel.loadDashboard()
+        viewModel.loadDashboard()
         if (uiState.worker == null) viewModel.loadWorkerProfile()
         if (uiState.serviceAreaName == null) viewModel.loadServiceArea()
         // Always refresh spots (admin may have deleted/updated them)
@@ -89,6 +103,13 @@ fun MapFullScreen(
         }
     }
 
+    LaunchedEffect(uiState.assignedJobs) {
+        while (uiState.assignedJobs.any { it.isTestAssignment() && it.status == JobStatus.CLAIMED }) {
+            nowMillis = Clock.System.now().toEpochMilliseconds()
+            delay(1000L)
+        }
+    }
+
     // Dual-mode state
     var mapMode by remember { mutableStateOf(MapMode.MY_AREA) }
 
@@ -99,6 +120,7 @@ fun MapFullScreen(
     var overrideCenterLat by remember { mutableStateOf<Double?>(null) }
     var overrideCenterLng by remember { mutableStateOf<Double?>(null) }
     var overrideZoom by remember { mutableStateOf<Double?>(null) }
+    var selectedRecordIndex by remember { mutableStateOf<Int?>(null) }
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -111,26 +133,6 @@ fun MapFullScreen(
         selectedRouteForZoom = null
     }
 
-    // Extract route coordinates: prefer server geometry, fall back to checkpoint coords
-    val routeCoordinates: List<List<Coordinates>> = remember(uiState.routes) {
-        uiState.routes.map { route ->
-            route.geometry?.coordinates?.map { point ->
-                Coordinates(lng = point[0], lat = point[1])
-            } ?: route.checkpoints
-                .sortedBy { it.sequenceOrder }
-                .map { it.coordinates }
-        }
-    }
-
-    // Collect image location stars from all routes
-    val imageStars: List<Coordinates> = remember(uiState.routes) {
-        uiState.routes.mapNotNull { route ->
-            val lat = route.imageLocationLat
-            val lng = route.imageLocationLng
-            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
-        }
-    }
-
     val resolved = remember(uiState.serviceArea, currentLocation) {
         resolveMapCenter(
             serviceArea = uiState.serviceArea,
@@ -140,10 +142,6 @@ fun MapFullScreen(
     val centerLat = overrideCenterLat ?: resolved.lat
     val centerLng = overrideCenterLng ?: resolved.lng
     val mapZoom = overrideZoom ?: resolved.zoom
-    val targetPinAlpha = ((mapZoom - 13.0) / 2.0).toFloat().coerceIn(0f, 1f)
-    val pinAlpha by animateFloatAsState(targetValue = targetPinAlpha, label = "mapPinAlpha")
-    val heatmapAlpha = 1f - pinAlpha
-
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
     val currentGpsArea = remember(currentLocation) {
@@ -185,12 +183,125 @@ fun MapFullScreen(
             }
         }
     }
+    val assignedJobRoutePairs = remember(uiState.assignedJobs, uiState.assignedRoutesById) {
+        uiState.assignedJobs.mapNotNull { job ->
+            val route = job.routeId?.let { uiState.assignedRoutesById[it] } ?: return@mapNotNull null
+            job to route
+        }
+    }
+    val primaryAssignedPair = assignedJobRoutePairs.firstOrNull()
 
     // Worker info for the panel
     val areaName = uiState.serviceAreaName ?: "Your Area"
-    val totalRoutes = uiState.routes.size
+    val displayBlocks = remember(uiState.blocks) {
+        (if (uiState.blocks.isNotEmpty()) uiState.blocks else SeedData.blocks)
+            .sortedByMapAlignment()
+    }
+    val availableRoutes = uiState.routes.size
+    val totalRouteRecords = when {
+        displayBlocks.isNotEmpty() -> displayBlocks.size
+        uiState.serviceArea?.totalBlocks ?: 0 > 0 -> uiState.serviceArea?.totalBlocks ?: 0
+        else -> uiState.routes.size
+    }
+    val hasBottomRecords = mapMode == MapMode.MY_AREA &&
+        selectedSpot == null &&
+        (uiState.routes.isNotEmpty() || displayBlocks.isNotEmpty())
     val jobsCompleted = uiState.worker?.stats?.jobsCompleted ?: 0
     val totalEarnings = uiState.worker?.stats?.totalEarnings ?: 0
+
+    // Visual map routes are separate from worker-available routes. When no
+    // route is claimable, block records still draw their route boundary so
+    // the inventory can be reviewed without exposing a start action.
+    val availableRouteCoordinates: List<List<Coordinates>> = remember(uiState.routes) {
+        uiState.routes.map { it.routePathCoordinates() }
+    }
+    val assignedRouteCoordinates: List<List<Coordinates>> = remember(assignedJobRoutePairs, currentLocation) {
+        val assignedRoutes = assignedJobRoutePairs.map { (_, route) -> route.routePathCoordinates() }
+        val location = currentLocation
+        val guidanceLines = if (location != null) {
+            assignedJobRoutePairs.mapNotNull { (_, route) ->
+                route.routePathCoordinates().firstOrNull()?.let { start -> listOf(location, start) }
+            }
+        } else {
+            emptyList()
+        }
+        guidanceLines + assignedRoutes
+    }
+    val blockRecordCoordinates: List<List<Coordinates>> = remember(displayBlocks) {
+        displayBlocks.mapNotNull { block ->
+            block.blockRouteCoordinates().takeIf { it.size >= 2 }
+        }
+    }
+    val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {
+        assignedRouteCoordinates
+    } else if (availableRouteCoordinates.isNotEmpty()) {
+        availableRouteCoordinates
+    } else {
+        blockRecordCoordinates
+    }
+    val selectedRouteCoordinates = selectedRecordIndex
+        ?.let { mapRouteCoordinates.getOrNull(it) }
+        ?.let { listOf(it) }
+        ?: emptyList()
+    val routeRecordCount = mapRouteCoordinates.size
+
+    LaunchedEffect(routeRecordCount) {
+        val selected = selectedRecordIndex
+        if (selected != null && selected !in 0 until routeRecordCount) {
+            selectedRecordIndex = null
+        }
+    }
+
+    val imageStars: List<Coordinates> = remember(uiState.routes, displayBlocks) {
+        uiState.routes.mapNotNull { route ->
+            route.imageLocationCoordinates()
+        }.ifEmpty {
+            displayBlocks.mapNotNull { block -> block.imageLocationCoordinates() }
+        }
+    }
+
+    fun zoomToCoordinates(points: List<Coordinates>, fallback: Coordinates? = null) {
+        if (points.size >= 2) {
+            val minLat = points.minOf { it.lat }
+            val maxLat = points.maxOf { it.lat }
+            val minLng = points.minOf { it.lng }
+            val maxLng = points.maxOf { it.lng }
+            overrideCenterLat = (minLat + maxLat) / 2.0
+            overrideCenterLng = (minLng + maxLng) / 2.0
+            val latSpan = (maxLat - minLat) * 1.35
+            val lngSpan = (maxLng - minLng) * 1.35
+            val latZoom = if (latSpan > 0) ln(360.0 / latSpan) / ln(2.0) else 17.0
+            val lngZoom = if (lngSpan > 0) ln(360.0 / lngSpan) / ln(2.0) else 17.0
+            overrideZoom = minOf(latZoom, lngZoom).coerceIn(12.0, 18.0)
+        } else if (fallback != null) {
+            overrideCenterLat = fallback.lat
+            overrideCenterLng = fallback.lng
+            overrideZoom = MapStyles.ZOOM_ROUTE
+        }
+    }
+
+    fun selectBlockRecord(index: Int) {
+        val block = displayBlocks.getOrNull(index) ?: return
+        selectedRecordIndex = index
+        zoomToCoordinates(
+            points = block.blockRouteCoordinates(),
+            fallback = block.centerCoordinates(),
+        )
+    }
+
+    fun selectAvailableRoute(index: Int, navigateAfterZoom: Boolean) {
+        val route = uiState.routes.getOrNull(index) ?: return
+        selectedRecordIndex = index
+        zoomToCoordinates(route.routePathCoordinates())
+        if (navigateAfterZoom) selectedRouteForZoom = route
+    }
+
+    fun selectVisualRoute(index: Int) {
+        when {
+            uiState.routes.isNotEmpty() -> selectAvailableRoute(index, navigateAfterZoom = false)
+            displayBlocks.isNotEmpty() -> selectBlockRecord(index)
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -219,35 +330,25 @@ fun MapFullScreen(
             enableGestures = true,
             showControls = true,
             statusBarPadding = true,
-            routeCoordinates = if (mapMode == MapMode.MY_AREA) routeCoordinates else emptyList(),
+            routeCoordinates = if (mapMode == MapMode.MY_AREA) {
+                selectedRouteCoordinates.ifEmpty { mapRouteCoordinates }
+            } else emptyList(),
             imageStars = if (mapMode == MapMode.MY_AREA) imageStars else emptyList(),
             onAreaTap = { /* tooltip handled internally by GccMap */ },
             onRouteTap = if (mapMode == MapMode.MY_AREA) { routeIndex ->
-                uiState.routes.getOrNull(routeIndex)?.let { route ->
-                    // Zoom to route bounds first, then navigate
-                    val allPts = route.geometry?.coordinates?.map {
-                        Coordinates(lng = it[0], lat = it[1])
-                    } ?: route.checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
-                    if (allPts.size >= 2) {
-                        val minLat = allPts.minOf { it.lat }
-                        val maxLat = allPts.maxOf { it.lat }
-                        val minLng = allPts.minOf { it.lng }
-                        val maxLng = allPts.maxOf { it.lng }
-                        overrideCenterLat = (minLat + maxLat) / 2.0
-                        overrideCenterLng = (minLng + maxLng) / 2.0
-                        val latSpan = (maxLat - minLat) * 1.3
-                        val lngSpan = (maxLng - minLng) * 1.3
-                        val latZoom = if (latSpan > 0) ln(360.0 / latSpan) / ln(2.0) else 16.0
-                        val lngZoom = if (lngSpan > 0) ln(360.0 / lngSpan) / ln(2.0) else 16.0
-                        overrideZoom = minOf(latZoom, lngZoom).coerceIn(12.0, 17.0)
-                    }
-                    selectedRouteForZoom = route
+                val assigned = primaryAssignedPair
+                if (assigned != null && assignedRouteCoordinates.isNotEmpty()) {
+                    onActiveJobClick(assigned.first.id, assigned.second.id)
+                } else {
+                    val actualIndex = selectedRecordIndex ?: routeIndex
+                    selectVisualRoute(actualIndex)
                 }
             } else null,
             onSpotTap = { spotId ->
                 val spot = (uiState.spots).find { it.id == spotId }
                 if (spot != null) {
                     selectedSpot = spot
+                    selectedRecordIndex = null
                     overrideCenterLat = spot.coordinates.lat
                     overrideCenterLng = spot.coordinates.lng
                     overrideZoom = MapStyles.ZOOM_ROUTE
@@ -260,7 +361,7 @@ fun MapFullScreen(
             bounties = visibleBounties,
             spots = visibleSpots,
             mapMode = mapMode,
-            affectedBlocks = if (heatmapAlpha > 0.01f) affectedState.blocks else emptyList(),
+            affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
                 affectedBlocksVm.selectBlock(blockId)
                 // Zoom in so the polygon fill resolves clearly — same
@@ -288,8 +389,8 @@ fun MapFullScreen(
                 if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
                     CommunityInfoPanel(
                         communityAreaName = areaName,
-                        totalRoutes = totalRoutes,
-                        registeredRoutes = 0,
+                        totalRoutes = totalRouteRecords,
+                        registeredRoutes = availableRoutes,
                         jobsCompleted = jobsCompleted,
                         totalEarnings = totalEarnings,
                         modifier = Modifier.weight(1f),
@@ -307,93 +408,97 @@ fun MapFullScreen(
                         overrideCenterLng = null
                         overrideZoom = null
                         selectedSpot = null
+                        selectedRecordIndex = null
                     },
                 )
             }
 
-            // Spot create FAB (bottom-right, above the location button)
-            // Sized so it doesn't crowd the bottom nav on smaller iPhones.
+            selectedRecordIndex?.let { selectedIndex ->
+                if (
+                    mapMode == MapMode.MY_AREA &&
+                    selectedSpot == null &&
+                    routeRecordCount > 1
+                ) {
+                    RouteNavigationControls(
+                        selectedIndex = selectedIndex,
+                        total = routeRecordCount,
+                        onPrevious = { selectVisualRoute(selectedIndex - 1) },
+                        onNext = { selectVisualRoute(selectedIndex + 1) },
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    )
+                }
+            }
+
+            // Bottom-right map actions: keep Spot and Location peers in one row.
             if (selectedSpot == null) {
-                ExtendedFloatingActionButton(
-                    onClick = onNavigateToSpot,
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(
                             end = 16.dp,
-                            // Stack above MyLocationButton (~48dp + spacing)
-                            // and above the route chip overlay if present.
-                            bottom = if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty()) 144.dp else 80.dp,
+                            bottom = if (hasBottomRecords) 80.dp else 16.dp,
                         ),
-                    containerColor = GccGreen,
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(28.dp),
-                    icon = {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.18f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "+",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                            )
-                        }
-                    },
-                    text = {
-                        Text(
-                            "Spot",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SpotCreateButton(onClick = onNavigateToSpot)
+
+                    if (currentLocation != null) {
+                        MyLocationButton(
+                            onClick = {
+                                overrideCenterLat = currentLocation?.lat
+                                overrideCenterLng = currentLocation?.lng
+                                overrideZoom = MapStyles.ZOOM_ACTIVE_JOB
+                            },
                         )
-                    },
-                )
+                    }
+                }
             }
 
-            // Route chips at the bottom — only in My Area mode, hidden when spot selected
-            if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty() && selectedSpot == null) {
-                RouteOverlay(
-                    routes = uiState.routes,
-                    onRouteClick = { route ->
-                        // Zoom to fit the full route path, then navigate after a brief pause
-                        val allPts = route.geometry?.coordinates?.map {
-                            Coordinates(lng = it[0], lat = it[1])
-                        } ?: route.checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
-                        if (allPts.size >= 2) {
-                            val minLat = allPts.minOf { it.lat }
-                            val maxLat = allPts.maxOf { it.lat }
-                            val minLng = allPts.minOf { it.lng }
-                            val maxLng = allPts.maxOf { it.lng }
-                            overrideCenterLat = (minLat + maxLat) / 2.0
-                            overrideCenterLng = (minLng + maxLng) / 2.0
-                            val latSpan = (maxLat - minLat) * 1.3
-                            val lngSpan = (maxLng - minLng) * 1.3
-                            val latZoom = if (latSpan > 0) ln(360.0 / latSpan) / ln(2.0) else 16.0
-                            val lngZoom = if (lngSpan > 0) ln(360.0 / lngSpan) / ln(2.0) else 16.0
-                            overrideZoom = minOf(latZoom, lngZoom).coerceIn(12.0, 17.0)
-                        }
-                        selectedRouteForZoom = route
-                    },
-                    modifier = Modifier.align(Alignment.BottomStart),
-                )
+            // Inventory chips at the bottom. Published routes are actionable;
+            // block records are review-only until an admin publishes a route.
+            if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
+                when {
+                    uiState.routes.isNotEmpty() -> RouteOverlay(
+                        routes = uiState.routes,
+                        selectedRouteId = selectedRecordIndex?.let { uiState.routes.getOrNull(it)?.id },
+                        onRouteClick = { route ->
+                            // Zoom to fit the full route path, then navigate after a brief pause
+                            val index = uiState.routes.indexOfFirst { it.id == route.id }.coerceAtLeast(0)
+                            selectAvailableRoute(index, navigateAfterZoom = true)
+                        },
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
+                    displayBlocks.isNotEmpty() -> BlockOverlay(
+                        blocks = displayBlocks,
+                        selectedBlockId = selectedRecordIndex?.let { displayBlocks.getOrNull(it)?.id },
+                        onBlockClick = { block ->
+                            val index = displayBlocks.indexOfFirst { it.id == block.id }.coerceAtLeast(0)
+                            selectBlockRecord(index)
+                        },
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
+                }
             }
 
-            // My Location button
-            if (currentLocation != null && selectedSpot == null) {
-                MyLocationButton(
-                    onClick = {
-                        overrideCenterLat = currentLocation?.lat
-                        overrideCenterLng = currentLocation?.lng
-                        overrideZoom = MapStyles.ZOOM_ACTIVE_JOB
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(
-                            end = 16.dp,
-                            bottom = if (mapMode == MapMode.MY_AREA && uiState.routes.isNotEmpty()) 80.dp else 16.dp,
-                        ),
-                )
+            primaryAssignedPair?.let { (job, route) ->
+                if (mapMode == MapMode.MY_AREA && selectedSpot == null) {
+                    AssignedMapRouteBanner(
+                        job = job,
+                        route = route,
+                        nowMillis = nowMillis,
+                        onOpen = { onActiveJobClick(job.id, route.id) },
+                        onDecline = { viewModel.declineAssignedJob(job.id) },
+                        isDeclining = job.id in uiState.decliningAssignedJobIds,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(
+                                start = 12.dp,
+                                end = 12.dp,
+                                bottom = if (hasBottomRecords) 94.dp else 16.dp,
+                            ),
+                    )
+                }
             }
 
             // Spot info card — shown when a spot is tapped
@@ -442,6 +547,261 @@ fun MapFullScreen(
         }
     }
     }
+}
+
+@Composable
+private fun AssignedMapRouteBanner(
+    job: Job,
+    route: Route,
+    nowMillis: Long,
+    onOpen: () -> Unit,
+    onDecline: () -> Unit,
+    isDeclining: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White.copy(alpha = 0.94f),
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (job.status == JobStatus.IN_PROGRESS) "Route in progress" else "Assigned route",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (job.status == JobStatus.IN_PROGRESS) GccGreen else GccClaimed,
+                )
+                Text(
+                    route.displayName,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                assignedCountdownText(job, nowMillis)?.let { text ->
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (job.testAssignmentStartDeadlineMillis()?.let { it <= nowMillis } == true) GccError else TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.width(112.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                GccButton(
+                    text = if (job.status == JobStatus.IN_PROGRESS) "Continue" else "Start",
+                    onClick = onOpen,
+                    variant = GccButtonVariant.SECONDARY,
+                )
+                if (job.status == JobStatus.CLAIMED) {
+                    TextButton(
+                        onClick = onDecline,
+                        enabled = !isDeclining,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (isDeclining) "Declining" else "Decline",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GccError,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpotCreateButton(onClick: () -> Unit) {
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(44.dp)
+            .semantics { contentDescription = "Report spot" },
+        shape = RoundedCornerShape(12.dp),
+        containerColor = GccGreen,
+        contentColor = Color.White,
+        elevation = FloatingActionButtonDefaults.elevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 6.dp,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "+",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RouteNavigationControls(
+    selectedIndex: Int,
+    total: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
+    ) {
+        RouteArrowButton(
+            text = "<",
+            enabled = selectedIndex > 0,
+            onClick = onPrevious,
+            contentDescription = "Previous route",
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
+        RouteArrowButton(
+            text = ">",
+            enabled = selectedIndex < total - 1,
+            onClick = onNext,
+            contentDescription = "Next route",
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
+    }
+}
+
+@Composable
+private fun RouteArrowButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .size(44.dp)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = CircleShape,
+        color = Color.White.copy(alpha = if (enabled) 0.92f else 0.42f),
+        shadowElevation = if (enabled) 4.dp else 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = if (enabled) GccGreenDark else TextSubtle,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+private fun Route.routePathCoordinates(): List<Coordinates> =
+    (geometry?.toCoordinates().orEmpty().withoutClosingDuplicate())
+        .ifEmpty {
+            checkpoints
+                .sortedBy { it.sequenceOrder }
+                .map { it.coordinates }
+                .withoutClosingDuplicate()
+        }
+
+private fun Block.blockRouteCoordinates(): List<Coordinates> =
+    boundary?.coordinates
+        ?.firstOrNull()
+        ?.mapNotNull { point ->
+            val lng = point.getOrNull(0)
+            val lat = point.getOrNull(1)
+            if (lng != null && lat != null) Coordinates(lng = lng, lat = lat) else null
+        }
+        .orEmpty()
+        .withoutClosingDuplicate()
+        .ifEmpty {
+            checkpoints
+                .sortedBy { it.sequenceOrder }
+                .map { it.coordinates }
+                .withoutClosingDuplicate()
+                .ifEmpty { generatedBlockRectangle() }
+        }
+
+private fun Route.imageLocationCoordinates(): Coordinates? {
+    val lat = imageLocationLat
+    val lng = imageLocationLng
+    return if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
+}
+
+private fun Block.imageLocationCoordinates(): Coordinates? {
+    val lat = imageLocationLat
+    val lng = imageLocationLng
+    return if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
+}
+
+private fun Block.centerCoordinates(): Coordinates? {
+    val lng = center?.coordinates?.getOrNull(0)
+    val lat = center?.coordinates?.getOrNull(1)
+    return when {
+        lat != null && lng != null -> Coordinates(lng = lng, lat = lat)
+        else -> imageLocationCoordinates()
+    }
+}
+
+private fun Block.generatedBlockRectangle(): List<Coordinates> {
+    val center = centerCoordinates() ?: return emptyList()
+    val halfLat = 0.00092
+    val halfLng = 0.00042
+    return listOf(
+        Coordinates(lng = center.lng - halfLng, lat = center.lat - halfLat),
+        Coordinates(lng = center.lng - halfLng, lat = center.lat + halfLat),
+        Coordinates(lng = center.lng + halfLng, lat = center.lat + halfLat),
+        Coordinates(lng = center.lng + halfLng, lat = center.lat - halfLat),
+    )
+}
+
+private fun List<Block>.sortedByMapAlignment(): List<Block> =
+    sortedWith(
+        compareBy<Block>(
+            { it.centerCoordinates()?.lng ?: it.blockRouteCoordinates().centerLng() ?: Double.MAX_VALUE },
+            { it.centerCoordinates()?.lat ?: it.blockRouteCoordinates().centerLat() ?: Double.MAX_VALUE },
+            { it.code },
+        ),
+    )
+
+private fun List<Coordinates>.centerLng(): Double? =
+    takeIf { it.isNotEmpty() }?.map { it.lng }?.average()
+
+private fun List<Coordinates>.centerLat(): Double? =
+    takeIf { it.isNotEmpty() }?.map { it.lat }?.average()
+
+private fun List<Coordinates>.withoutClosingDuplicate(): List<Coordinates> {
+    if (size < 2) return this
+    val first = first()
+    val last = last()
+    return if (first.lat == last.lat && first.lng == last.lng) dropLast(1) else this
+}
+
+private fun assignedCountdownText(job: Job, nowMillis: Long): String? {
+    if (!job.isTestAssignment()) return null
+    if (job.status == JobStatus.IN_PROGRESS) return "Session active"
+    if (job.status != JobStatus.CLAIMED) return null
+    val deadline = job.testAssignmentStartDeadlineMillis() ?: return null
+    val remainingMillis = deadline - nowMillis
+    if (remainingMillis <= 0) return "Start window expired"
+    val totalSeconds = remainingMillis / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "Start window ${minutes}:${seconds.toString().padStart(2, '0')}"
 }
 
 @Composable

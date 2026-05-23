@@ -54,6 +54,18 @@ fun SpotScanCapture(
     val analyzer = remember { OnDeviceAnalyzer() }
     var captureIndex by remember { mutableStateOf(0) }
 
+    DisposableEffect(Unit) {
+        val startedLocationHere = !locationProvider.isTracking
+        if (startedLocationHere) {
+            locationProvider.startLocationUpdates()
+        }
+        onDispose {
+            if (startedLocationHere) {
+                locationProvider.stopLocationUpdates()
+            }
+        }
+    }
+
     val distanceToSpot = remember(currentLocation, spotLocation) {
         currentLocation?.let { loc ->
             GeofenceVerification.distanceMeters(

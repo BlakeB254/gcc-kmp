@@ -33,6 +33,7 @@ import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
+import com.gcc.shared.model.RouteStatus
 import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.Worker
 import org.koin.compose.koinInject
@@ -463,9 +464,9 @@ fun RouteDetailScreen(
                 item {
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Queue-based assignment notice
+                    // Admin availability notice
                     Text(
-                        "Blocks are assigned based on your position in the signup queue.",
+                        "Routes are released by admins when cleanup work is ready.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                         modifier = Modifier.padding(horizontal = 20.dp),
@@ -480,7 +481,7 @@ fun RouteDetailScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     GccButton(
-                        text = "Scout & Clean",
+                        text = if (route.isWorkerAvailableRoute()) "Scout & Clean" else "Not Available",
                         onClick = { onStartScan(routeId) },
                         variant = GccButtonVariant.PRIMARY,
                         enabled = authorizationState.canStartRoute,
@@ -496,6 +497,10 @@ private val RouteAuthState.canStartRoute: Boolean
     get() = this is RouteAuthState.Authorized || this is RouteAuthState.Unknown
 
 private fun routeAuthorizationState(route: Route, worker: Worker?): RouteAuthState {
+    if (!route.isWorkerAvailableRoute()) {
+        return RouteAuthState.RouteUnavailable
+    }
+
     if (worker?.verification?.status != VerificationStatus.APPROVED) {
         return RouteAuthState.VerificationRequired
     }
@@ -519,6 +524,9 @@ private fun routeAuthorizationState(route: Route, worker: Worker?): RouteAuthSta
         )
     }
 }
+
+private fun Route.isWorkerAvailableRoute(): Boolean =
+    status == RouteStatus.PUBLISHED && checkpoints.size >= 2
 
 private fun routeCommunityAreaName(route: Route): String? {
     val routePoints = route.geometry?.coordinates?.mapNotNull { point ->
