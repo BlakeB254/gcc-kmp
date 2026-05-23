@@ -23,7 +23,8 @@ data class TwoFactorEntry(
 class AuthService(
     private val workerService: WorkerService
 ) {
-    private val jwtSecret = System.getenv("JWT_SECRET") ?: "dev-secret-change-in-production"
+    private val jwtSecret = System.getenv("JWT_SECRET")
+        ?: error("JWT_SECRET environment variable must be set")
     private val jwtIssuer = System.getenv("JWT_ISSUER") ?: "gcc-api"
     private val jwtAudience = System.getenv("JWT_AUDIENCE") ?: "gcc-app"
     private val tokenLifetimeMs = 7L * 24 * 60 * 60 * 1000 // 7 days

@@ -4,6 +4,8 @@ import { sponsors, blocks } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { stripe, isStripeConfigured, STRIPE_CONFIG } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
+import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
+import { appUrl as getAppUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
@@ -218,7 +220,7 @@ export async function POST(request: NextRequest) {
       sponsorId = newSponsor.id
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:7300'
+    const appUrl = getAppUrl()
 
     // Build product name and description
     let productName: string
@@ -244,6 +246,15 @@ export async function POST(request: NextRequest) {
     if (finalBlockIds.length > 0) {
       successParams.set('blocks', finalBlockIds.join(','))
     }
+
+    const idempotencyKey = stripeIdempotencyKey({
+      endpoint: 'contribute/checkout',
+      sponsorId,
+      allocationType,
+      blockIds: finalBlockIds,
+      totalAmountCents,
+      frequency,
+    })
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -292,7 +303,7 @@ export async function POST(request: NextRequest) {
               },
             }
           : undefined,
-    })
+    }, { idempotencyKey })
 
     return NextResponse.json({
       checkoutUrl: session.url,

@@ -4,6 +4,8 @@ import { sponsors, blocks } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { stripe, isStripeConfigured } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
+import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
+import { appUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
@@ -123,7 +125,15 @@ export async function POST(request: NextRequest) {
       sponsorId = newSponsor.id
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:7300'
+    const baseUrl = appUrl()
+
+    const idempotencyKey = stripeIdempotencyKey({
+      endpoint: 'sponsors/checkout',
+      sponsorId,
+      blockId,
+      sponsorType,
+      preferredCleaningDate,
+    })
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -146,8 +156,8 @@ export async function POST(request: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}/sponsor/success?session_id={CHECKOUT_SESSION_ID}&block=${block.id}`,
-      cancel_url: `${appUrl}/sponsor?canceled=true`,
+      success_url: `${baseUrl}/sponsor/success?session_id={CHECKOUT_SESSION_ID}&block=${block.id}`,
+      cancel_url: `${baseUrl}/sponsor?canceled=true`,
       metadata: {
         blockId: String(blockId),
         sponsorId: String(sponsorId),
@@ -169,7 +179,7 @@ export async function POST(request: NextRequest) {
               },
             }
           : undefined,
-    })
+    }, { idempotencyKey })
 
     return NextResponse.json({
       checkoutUrl: session.url,

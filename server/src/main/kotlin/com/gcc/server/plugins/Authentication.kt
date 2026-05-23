@@ -7,7 +7,8 @@ import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 
 fun Application.configureAuthentication() {
-    val jwtSecret = System.getenv("JWT_SECRET") ?: "dev-secret-change-in-production"
+    val jwtSecret = System.getenv("JWT_SECRET")
+        ?: error("JWT_SECRET environment variable must be set")
     val jwtIssuer = System.getenv("JWT_ISSUER") ?: "gcc-api"
     val jwtAudience = System.getenv("JWT_AUDIENCE") ?: "gcc-app"
 

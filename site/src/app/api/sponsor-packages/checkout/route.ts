@@ -4,6 +4,8 @@ import { sponsors } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { stripe, isStripeConfigured } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
+import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
+import { appUrl as getAppUrl } from '@/lib/env'
 import {
   calculatePackagePrice,
   formatPrice,
@@ -144,7 +146,7 @@ export async function POST(request: NextRequest) {
       sponsorId = newSponsor.id
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:7300'
+    const appUrl = getAppUrl()
 
     // Build product name and description
     const isEnterprise = priceBreakdown.isEnterprise
@@ -256,7 +258,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const session = await stripe.checkout.sessions.create(sessionConfig)
+    const idempotencyKey = stripeIdempotencyKey({
+      endpoint: 'sponsor-packages/checkout',
+      sponsorId,
+      blockCount: config.blockCount,
+      isRecurring: config.isRecurring,
+      recurringFrequency: config.recurringFrequency || '',
+      total: priceBreakdown.total,
+      isEnterprise,
+      enterpriseTier: priceBreakdown.enterpriseTier || '',
+    })
+
+    const session = await stripe.checkout.sessions.create(sessionConfig, { idempotencyKey })
 
     return NextResponse.json({
       checkoutUrl: session.url,

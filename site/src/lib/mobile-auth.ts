@@ -1,9 +1,10 @@
 import crypto from 'crypto'
 import { SignJWT, jwtVerify } from 'jose'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'development-secret-change-in-production'
-)
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable must be set')
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 const JWT_ISSUER = process.env.JWT_ISSUER || 'gcc-api'
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'gcc-app'
 const TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days

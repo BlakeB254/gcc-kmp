@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Source, Layer, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import { BLOCK_STATUS_COLORS, COMMUNITY_AREA_COLORS, ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
+import { tileServerUrl } from '@/lib/env'
 import { BaseMap, MapLegend } from './BaseMap'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 
@@ -24,7 +25,7 @@ import type { FallbackGeoJSONLayer } from './BaseMap'
 // CDX TILE SERVER CONFIGURATION
 // ============================================================================
 
-const TILE_SERVER_URL = process.env.NEXT_PUBLIC_TILE_SERVER_URL || 'http://localhost:7400'
+const TILE_SERVER_URL = tileServerUrl()
 
 /** Build tile URL template for MapLibre */
 function getTileUrlTemplate(layer: string): string {

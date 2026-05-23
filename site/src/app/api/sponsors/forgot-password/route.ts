@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { generateSessionToken } from '@/lib/auth'
 import { sendEmail } from '@/lib/email'
 import { passwordResetEmail } from '@/lib/email/templates/password-reset'
+import { appUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       .where(eq(sponsors.id, sponsor.id))
 
     // Build reset URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:7300'
+    const baseUrl = appUrl()
     const resetUrl = `${baseUrl}/sponsor/reset-password?token=${resetToken}`
 
     // Send email

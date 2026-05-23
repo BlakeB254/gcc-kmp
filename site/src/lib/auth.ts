@@ -1,9 +1,10 @@
 import crypto from 'crypto'
 import { SignJWT, jwtVerify } from 'jose'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'development-secret-change-in-production'
-)
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable must be set')
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 
 /**
  * Hash a password using PBKDF2
