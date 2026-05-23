@@ -109,6 +109,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // ── Complete Cleanup Path ─────────────────────────────────
     if (searchParams.has('complete')) {
+      // Only the worker who started the cleanup can complete it.
+      // Without this check, any authenticated worker could claim the 50-point
+      // bonus + resolve the report after another worker did the actual work.
+      if (report.reviewedById == null || report.reviewedById !== auth.workerId) {
+        return NextResponse.json(
+          { data: null, success: false, message: 'Only the worker who started this cleanup can complete it' },
+          { status: 403 },
+        )
+      }
+
       const { afterMediaUrls, trashHeapMediaUrl, durationMinutes } = body as {
         afterMediaUrls?: string[]
         trashHeapMediaUrl?: string
@@ -176,13 +186,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // ── Start Cleanup Path (default POST) ─────────────────────
+    // If another worker has already started this cleanup, refuse — otherwise
+    // the second caller would overwrite reviewedById and gain the ability to
+    // call ?complete and steal credit. Idempotent for the original starter.
+    if (
+      report.status === 'acknowledged' &&
+      report.reviewedById != null &&
+      report.reviewedById !== auth.workerId
+    ) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'Another worker is already handling this cleanup' },
+        { status: 409 },
+      )
+    }
+    if (report.status === 'resolved') {
+      return NextResponse.json(
+        { data: null, success: false, message: 'This spot has already been resolved' },
+        { status: 409 },
+      )
+    }
+
     const { beforeMediaUrls } = body as { beforeMediaUrls?: string[] }
 
-    // Update report: set status to acknowledged, store before photos
+    // Update report: set status to acknowledged, claim the cleanup for this worker,
+    // and store before photos.
     await db
       .update(communityReports)
       .set({
         status: 'acknowledged',
+        reviewedById: auth.workerId,
         beforePhotos: beforeMediaUrls && beforeMediaUrls.length > 0 ? beforeMediaUrls : null,
         updatedAt: new Date().toISOString(),
       })
