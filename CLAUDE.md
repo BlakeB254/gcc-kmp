@@ -32,10 +32,63 @@ mirror.
 
 There is no automated guard for this yet (planned: a Gradle task that
 introspects `information_schema` and fails if a table is missing from
-`Tables.kt`). Until then, this is a discipline thing. The MacBook WIP
-branch `wip/route-queue-and-scans-20260523` is a good example of doing it
-right — three new tables in migrations 0017/0018 added with matching
-Exposed table objects and a shared `RouteQueue.kt` DTO in the same commit.
+`Tables.kt`). Until then, this is a discipline thing. The route-queue
+subsystem (merged from `wip/route-queue-and-scans-20260523`) is a good
+example of doing it right — three new tables in migrations 0017/0018
+added with matching Exposed table objects and a shared `RouteQueue.kt`
+DTO in the same commit.
+
+`Tables.kt` is being split per-domain for navigability. So far:
+- `IdentityTables.kt` — Workers, Sponsors, WaitlistEntries, MediaTable
+- `Tables.kt` — everything else (still ~1000 LOC; will be split further
+  as `RouteTables.kt`, `FinanceTables.kt`, `EngagementTables.kt`,
+  `ModerationTables.kt`)
+
+### How migrations actually get to production
+
+**`drizzle-kit push` is the canonical deploy mechanism, not
+`drizzle-kit migrate`.** The team has been editing `schema.ts` and
+running `npm run db:push`, which diffs the live schema against
+`schema.ts` and applies the necessary DDL. The migration `.sql` files
+under `site/src/db/migrations/` accumulate as a side-effect of
+`drizzle-kit generate` but have historically not been the deployment
+path.
+
+Symptoms of this divergence:
+- The `drizzle.__drizzle_migrations` tracking table was empty until
+  2026-05-23 when 0017/0018/0019 were applied via direct `psql` and
+  manually inserted. It still doesn't reflect 0000–0016.
+- The migration filenames have collisions at 0008/0009/0010 (two .sql
+  files share each number) — almost certainly from parallel
+  `drizzle-kit generate` runs that were never reconciled.
+- `meta/_journal.json` references `0007_regular_shotgun` but the .sql
+  file is `0007_add_community_reports.sql` (tag/file mismatch).
+- The snapshot chain is coherent only through 0015. Beyond that the
+  cumulative schema state isn't captured anywhere drizzle-kit can read.
+- `drizzle-kit generate` can run after the 2026-05-23 chain fix
+  (0013 prevId re-pointed at 0009 id), but it produces nonsense
+  migrations because it treats everything since 0015 as net-new.
+
+**What you can safely do today:**
+- Edit `schema.ts` freely. `npm run db:push` against the prod DB will
+  reconcile it. Idempotent.
+- Hand-write SQL migration files with `CREATE … IF NOT EXISTS` guards
+  when you need a recorded artifact (e.g., for indexes you want to
+  apply identically across environments).
+- Apply hand-written migrations via `psql` and insert a row into
+  `drizzle.__drizzle_migrations` so the tracking table stays current.
+
+**What needs a dedicated repair session:**
+- Rebuild snapshots 0016–0019 by walking the cumulative schema state
+  through each migration, OR run `drizzle-kit pull` against a known-
+  good DB to regenerate from scratch (will overwrite `schema.ts`;
+  diff carefully first).
+- Resolve the duplicate-numbered .sql files (decide which version is
+  canonical and rename/delete the other).
+- Add journal entries for 0010-0012 and 0017-0019 with correct prevId
+  chaining and matching meta/ snapshots.
+- Until this is done, **don't trust the output of `drizzle-kit
+  generate`** — verify the SQL by hand or fall back to `db:push`.
 
 ## Other conventions
 
