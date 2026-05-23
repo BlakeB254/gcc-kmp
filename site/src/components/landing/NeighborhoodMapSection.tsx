@@ -781,48 +781,15 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Spot reports — heatmap (zoomed out) + dots (zoomed in) */}
-              {spotFeatures.length > 0 && (
-                <Source
-                  id="homepage-clean-zone-base"
-                  type="geojson"
-                  data={{
-                    type: 'FeatureCollection',
-                    features: [{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'Polygon',
-                        coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
-                      },
-                    }],
-                  }}
-                >
-                  <Layer
-                    id="homepage-clean-zone-fill"
-                    type="fill"
-                    beforeId="homepage-route-glow"
-                    paint={SPOT_CLEAN_BASE_PAINT}
-                  />
-                </Source>
-              )}
-
+              {/* Spot reports — simplified to colored dots only.
+                  Previously had a planet-wide green clean-zone fill + a heatmap
+                  + dots; the overlays were partially hiding street labels and
+                  the user couldn't tell what they were looking at. One layer,
+                  always visible, color by status — much easier to read. */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
-                {/* Heatmap — density visualization at overview zoom.
-                    Matches CombinedMap tuning: green→yellow→orange→red/white palette,
-                    fades out by z14.5 to crossfade with individual dots. */}
-                <Layer
-                  id="homepage-spot-heatmap"
-                  type="heatmap"
-                  minzoom={SPOT_ZOOM.HEATMAP_MIN}
-                  maxzoom={SPOT_ZOOM.HEATMAP_MAX}
-                  paint={SPOT_HEATMAP_PAINT}
-                />
-                {/* Individual dots — close zoom only, color by spot status */}
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
-                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -834,22 +801,14 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 4,
-                      14.5, 5,
-                      15, 6, 17, 8,
+                      10, 4,
+                      13, 6,
+                      15, 8,
+                      17, 10,
                     ],
                     'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': [
-                      'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 1,
-                      15, 1.5,
-                    ],
-                    'circle-opacity': [
-                      'interpolate', ['linear'], ['zoom'],
-                      SPOT_ZOOM.DOTS_MIN, 0,
-                      SPOT_ZOOM.HEATMAP_FADE_OUT, 0.8,
-                      15, 1,
-                    ],
+                    'circle-stroke-width': 1.5,
+                    'circle-opacity': 0.9,
                   }}
                 />
                 {/* "Needs Verification" labels — visible at close zoom */}

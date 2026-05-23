@@ -599,90 +599,55 @@ export function CombinedMap({
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
-        {/* Green doppler base — covers entire map at heatmap zoom levels */}
-        {spots.length > 0 && (
-          <Source
-            id="clean-zone-base"
-            type="geojson"
-            data={{
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                properties: {},
-                geometry: {
-                  type: 'Polygon',
-                  coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
-                },
-              }],
-            }}
-          >
-            <Layer
-              id="clean-zone-fill"
-              type="fill"
-              beforeId="combined-route-case-layer"
-              paint={SPOT_CLEAN_BASE_PAINT}
-            />
-          </Source>
-        )}
-
+        {/* Spot reports — simplified to colored dots only, always visible.
+            Previously had a planet-wide green clean-zone fill + heatmap +
+            dots stacked together; the overlays hid the OpenFreeMap base
+            style's streets and labels, and heatmap-plus-dots-at-the-same-
+            zoom looked like duplicated noise. One layer, always visible,
+            color by status — matches the homepage mini-map for consistency. */}
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
-            {/* Heatmap layer — visible from widest zoom all the way to z15.
-                No far-zoom dots — heatmap covers everything when zoomed out.
-                Green fringe → yellow → red per spot. */}
-            <Layer
-              id="combined-spot-heatmap"
-              type="heatmap"
-              minzoom={SPOT_ZOOM.HEATMAP_MIN}
-              maxzoom={SPOT_ZOOM.HEATMAP_MAX}
-              paint={SPOT_HEATMAP_PAINT}
-            />
-
-            {/* Individual spot dots — fade in as heatmap fades out (z14-14.5 crossfade) */}
             <Layer
               id="combined-spot-center"
               type="circle"
-              minzoom={14}
               paint={{
+                'circle-color': [
+                  'match', ['get', 'status'],
+                  'pending',      '#F59E0B',  // amber — awaiting verification
+                  'verified',     '#EF4444',  // red — confirmed dirty
+                  'acknowledged', '#3B82F6',  // blue — worker claimed
+                  'resolved',     '#22C55E',  // green — cleaned
+                  SPOT_COLORS.MARKER,           // orange fallback
+                ],
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  14, 2, 14.5, 3, 16, 5, 17, 7,
+                  10, 4,
+                  13, 6,
+                  15, 8,
+                  17, 10,
                 ],
-                'circle-color': SPOT_COLORS.MARKER,
                 'circle-stroke-color': '#ffffff',
-                'circle-stroke-width': 2,
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  14, 0, 14.5, 0.8, 15, 1,
-                ],
+                'circle-stroke-width': 1.5,
+                'circle-opacity': 0.9,
               }}
             />
 
             {/* Verification indicator — orange ring on spots needing verification */}
             <Layer
               id="combined-spot-verification-ring"
-              type="circle"
-              minzoom={SPOT_ZOOM.DOTS_MIN}
               filter={['==', ['get', 'needsVerification'], true]}
+              type="circle"
               paint={{
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 5,
-                  15, 9,
-                  17, 12,
+                  10, 6,
+                  13, 9,
+                  17, 14,
                 ],
                 'circle-color': 'transparent',
                 'circle-stroke-color': '#FF8C00',
-                'circle-stroke-width': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 1.5,
-                  15, 2.5,
-                ],
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 0,
-                  SPOT_ZOOM.HEATMAP_FADE_OUT, 1,
-                ],
+                'circle-stroke-width': 2,
+                'circle-opacity': 0.7,
               }}
             />
           </Source>
