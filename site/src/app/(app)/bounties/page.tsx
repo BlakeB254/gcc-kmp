@@ -1,26 +1,21 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
 import { MapPin, DollarSign, Trash2, ArrowRight, X, ChevronLeft, ChevronRight, Clock, AlertCircle, Camera } from 'lucide-react'
 import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
 import { BOUNTY_MINIMUM_CENTS, SPOT_STATUS_COLORS } from '@/lib/design-tokens'
+import { CombinedMap } from '@/components/map/CombinedMap'
 
-// Dynamically import CombinedMap to avoid SSR issues with MapLibre
-const CombinedMap = dynamic(
-  () => import('@/components/map/CombinedMap').then(mod => ({ default: mod.CombinedMap })),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[500px] bg-neutral-100 rounded-xl animate-pulse flex items-center justify-center">
-        <span className="text-neutral-400">Loading map...</span>
-      </div>
-    ),
-  }
-)
+// Note: CombinedMap was previously next/dynamic-imported with ssr:false plus
+// a "Loading map..." fallback. The fallback was getting stuck on prod
+// (chunk not finishing or never hydrating) and users saw a perma-pulsing
+// gray box instead of the map. The homepage's NeighborhoodMapSection is a
+// regular `'use client'` import and renders fine, so the dynamic wrapper
+// here was over-cautious — the `'use client'` directive already prevents
+// the maplibre-gl browser-only code from running during SSR.
 
 // ============================================================================
 // STATUS HELPERS
