@@ -447,7 +447,14 @@ export const jobs = pgTable('jobs', {
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Hot-path indexes — added during the M-6 audit pass.
+  // Postgres does NOT auto-index foreign-key columns; these are queried
+  // constantly ("jobs for worker X", "jobs on block Y", filtered by status).
+  workerIdx: index('jobs_worker_id_idx').on(table.workerId),
+  blockIdx: index('jobs_block_id_idx').on(table.blockId),
+  statusIdx: index('jobs_status_idx').on(table.status),
+}))
 
 // Route release queues turn a set of funded routes into timed offer waves.
 // Workers are eligible by verified proof-of-address residency in the release
@@ -646,7 +653,13 @@ export const transactions = pgTable('transactions', {
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Hot-path indexes — "all sponsorships for sponsor X", "all transactions
+  // for block Y", status filters on the sponsor wall.
+  sponsorIdx: index('transactions_sponsor_id_idx').on(table.sponsorId),
+  blockIdx: index('transactions_block_id_idx').on(table.blockId),
+  statusIdx: index('transactions_status_idx').on(table.status),
+}))
 
 // Bounties are funded progressions of community spot reports. A spot can
 // start as a zero-dollar cleanup opportunity and accumulate pledged bounty
@@ -1186,7 +1199,14 @@ export const communityReports = pgTable('community_reports', {
   capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }), // When photo/video was taken
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Hot-path indexes — "reports by worker X", "reports in service area Y",
+  // status filtering for moderation/map display, near-block proximity joins.
+  reporterIdx: index('community_reports_reporter_id_idx').on(table.reporterId),
+  serviceAreaIdx: index('community_reports_service_area_id_idx').on(table.serviceAreaId),
+  nearBlockIdx: index('community_reports_near_block_id_idx').on(table.nearBlockId),
+  statusIdx: index('community_reports_status_idx').on(table.status),
+}))
 
 // Community report thanks table (track who thanked volunteers)
 export const communityReportThanks = pgTable('community_report_thanks', {
@@ -1264,7 +1284,13 @@ export const pointsLedger = pgTable('points_ledger', {
 
   // Timestamp
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Hot-path indexes — leaderboard and worker profile both scan all points
+  // for a worker. The reference (type+id) composite lets us answer "all
+  // points earned for this spot" without scanning the whole ledger.
+  workerIdx: index('points_ledger_worker_id_idx').on(table.workerId),
+  referenceIdx: index('points_ledger_reference_idx').on(table.referenceType, table.referenceId),
+}))
 
 // =====================
 // ROUTES & SERVICE AREAS
