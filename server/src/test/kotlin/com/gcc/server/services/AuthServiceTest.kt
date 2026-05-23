@@ -4,11 +4,15 @@ import com.gcc.shared.model.LoginRequest
 import com.gcc.shared.model.RegisterRequest
 import com.gcc.shared.model.Worker
 import com.gcc.shared.model.WorkerAddress
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * Failure-path unit tests for AuthService. These don't touch the database
@@ -76,6 +80,48 @@ class AuthServiceTest {
         }
         assertEquals("Invalid email or password", ex.message)
     }
+
+    @Test
+    fun `login with correct password issues a 2FA challenge`() = runTest {
+        // Replicate the production hash algorithm so we can seed a valid
+        // (salt, storedHash) pair for a known password. Production:
+        //   PBKDF2WithHmacSHA512, 100_000 iterations, 64-byte output, hex.
+        val salt = "abc123-test-salt"
+        val password = "correct-horse-battery-staple"
+        val storedHash = pbkdf2Hex(password, salt)
+        val worker = stubWorker(id = 42, email = "ok@example.com")
+        val service = makeService(
+            initialWorkers = mapOf("ok@example.com" to worker),
+            initialCreds = mapOf("ok@example.com" to (salt to storedHash)),
+        )
+
+        val response = service.login(LoginRequest(email = "ok@example.com", password = password))
+
+        // Non-demo accounts get a 2FA challenge, not a JWT. The route layer
+        // then redirects the client to enter the code.
+        assertTrue(response.requiresTwoFactor, "expected 2FA challenge")
+        assertNotNull(response.twoFactorToken)
+        assertTrue(
+            response.twoFactorToken!!.isNotBlank(),
+            "twoFactorToken should be a UUID-like string",
+        )
+    }
+
+    @Test
+    fun `verify2FA throws on unknown token`() = runTest {
+        val service = makeService()
+
+        val ex = assertFailsWith<IllegalArgumentException> {
+            service.verify2FA(twoFactorToken = "this-token-was-never-issued", code = "000000")
+        }
+        assertEquals("Invalid or expired verification token", ex.message)
+    }
+}
+
+private fun pbkdf2Hex(password: String, salt: String): String {
+    val spec = PBEKeySpec(password.toCharArray(), salt.toByteArray(), 100_000, 512)
+    val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
+    return factory.generateSecret(spec).encoded.joinToString("") { "%02x".format(it) }
 }
 
 /** Minimal in-memory fake covering the WorkerService methods AuthService calls. */
