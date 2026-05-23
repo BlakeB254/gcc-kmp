@@ -781,15 +781,20 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Spot reports — simplified to colored dots only.
-                  Previously had a planet-wide green clean-zone fill + a heatmap
-                  + dots; the overlays were partially hiding street labels and
-                  the user couldn't tell what they were looking at. One layer,
-                  always visible, color by status — much easier to read. */}
+              {/* Spot reports — heatmap at overview zoom (8-14), individual
+                  colored dots at street zoom (14+). Mutually exclusive zoom
+                  ranges so the two layers never render at the same time. */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
+                <Layer
+                  id="homepage-spot-heatmap"
+                  type="heatmap"
+                  maxzoom={14}
+                  paint={SPOT_HEATMAP_PAINT}
+                />
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
+                  minzoom={14}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -801,9 +806,8 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      10, 4,
-                      13, 6,
-                      15, 8,
+                      14, 5,
+                      15, 7,
                       17, 10,
                     ],
                     'circle-stroke-color': '#ffffff',

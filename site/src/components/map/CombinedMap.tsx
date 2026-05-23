@@ -599,17 +599,23 @@ export function CombinedMap({
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
-        {/* Spot reports — simplified to colored dots only, always visible.
-            Previously had a planet-wide green clean-zone fill + heatmap +
-            dots stacked together; the overlays hid the OpenFreeMap base
-            style's streets and labels, and heatmap-plus-dots-at-the-same-
-            zoom looked like duplicated noise. One layer, always visible,
-            color by status — matches the homepage mini-map for consistency. */}
+        {/* Spot reports — heatmap at overview zoom (8-14), individual
+            colored dots at street zoom (14+). Mutually exclusive zoom
+            ranges so the layers never render at the same time. Matches
+            the homepage mini-map. */}
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
             <Layer
+              id="combined-spot-heatmap"
+              type="heatmap"
+              maxzoom={14}
+              paint={SPOT_HEATMAP_PAINT}
+            />
+
+            <Layer
               id="combined-spot-center"
               type="circle"
+              minzoom={14}
               paint={{
                 'circle-color': [
                   'match', ['get', 'status'],
@@ -621,9 +627,8 @@ export function CombinedMap({
                 ],
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  10, 4,
-                  13, 6,
-                  15, 8,
+                  14, 5,
+                  15, 7,
                   17, 10,
                 ],
                 'circle-stroke-color': '#ffffff',
@@ -637,11 +642,11 @@ export function CombinedMap({
               id="combined-spot-verification-ring"
               filter={['==', ['get', 'needsVerification'], true]}
               type="circle"
+              minzoom={14}
               paint={{
                 'circle-radius': [
                   'interpolate', ['linear'], ['zoom'],
-                  10, 6,
-                  13, 9,
+                  14, 8,
                   17, 14,
                 ],
                 'circle-color': 'transparent',

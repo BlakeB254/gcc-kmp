@@ -7,17 +7,18 @@ import { MAP_STYLE_URL, ZOOM } from '@/lib/design-tokens'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 // ─── WebGL detection ──────────────────────────────────────────────────────────
-
+//
+// Permissive check: succeeds whenever ANY WebGL context can be created. We
+// deliberately do NOT pass `failIfMajorPerformanceCaveat: true` — that flag
+// returned null on browsers/GPUs that COULD render MapLibre just fine, which
+// was sending users on the bounties page to the Leaflet fallback even though
+// the basemap would have worked. Real runtime failures are caught by
+// MapErrorBoundary + the Map's onError callback below.
 function canUseWebGL(): boolean {
   if (typeof window === 'undefined') return true
   try {
     const canvas = document.createElement('canvas')
-    // failIfMajorPerformanceCaveat:true returns null when the GPU is blacklisted
-    // (Chrome's sandbox returns a non-null context without this flag, but fails
-    // later; with it Chrome correctly returns null for blacklisted/no-GPU envs).
-    const gl =
-      canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ||
-      canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true })
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
     return gl !== null
   } catch {
     return false
@@ -138,6 +139,13 @@ export function BaseMap({
           onMove={onMove}
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
+          onError={(e) => {
+            // Real MapLibre runtime failure (style fetch, WebGL context loss,
+            // etc.) — flip to Leaflet. Logged so we can see in browser console
+            // if users start hitting this in volume.
+            console.warn('[BaseMap] MapLibre runtime error → Leaflet fallback', e)
+            setWebGLAvailable(false)
+          }}
           cursor={cursor}
         >
           <NavigationControl position="top-right" />
