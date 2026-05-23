@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.ui.map.BuildingRenderer.drawBuildings
 import com.gcc.app.ui.theme.*
+import com.gcc.shared.model.AffectedBlock
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -67,6 +68,8 @@ actual fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
+    affectedBlocks: List<AffectedBlock>,
+    onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
