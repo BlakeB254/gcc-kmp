@@ -78,7 +78,11 @@ export const SPOT_ZOOM = {
   HEATMAP_MIN: 8,      // broad overview layer starts
   HEATMAP_MAX: 15,     // layer is gone before street detail dominates
   HEATMAP_FADE_OUT: 14.5,
-  DOTS_MIN: 14,        // close-zoom dots appear (crossfade with heatmap)
+  DOTS_MIN: 12,        // close-zoom dots appear (crossfade with heatmap)
+                       // — lowered from 14 on 2026-05-23 so spots are
+                       // visible at the homepage's wider MAP_BOUNDS fit
+                       // zoom (~13.5). At 14 they were invisible at the
+                       // homepage's overview view.
 } as const
 
 export type SpotHeatWeightInput = {
