@@ -10,21 +10,21 @@ import kotlinx.serialization.json.JsonPrimitive
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
-class WorkerService {
+open class WorkerService {
 
-    suspend fun getAll(limit: Int = 50, offset: Long = 0): List<Worker> = dbQuery {
+    open suspend fun getAll(limit: Int = 50, offset: Long = 0): List<Worker> = dbQuery {
         Workers.selectAll()
             .orderBy(Workers.createdAt, SortOrder.DESC)
             .limit(limit).offset(offset)
             .map { it.toWorker() }
     }
 
-    suspend fun getById(id: Int): Worker? = dbQuery {
+    open suspend fun getById(id: Int): Worker? = dbQuery {
         Workers.selectAll().where { Workers.id eq id }
             .firstOrNull()?.toWorker()
     }
 
-    suspend fun getByEmail(email: String): Worker? = dbQuery {
+    open suspend fun getByEmail(email: String): Worker? = dbQuery {
         Workers.selectAll().where { Workers.email eq email }
             .firstOrNull()?.toWorker()
     }
@@ -33,7 +33,7 @@ class WorkerService {
      * Returns the salt and hash for Payload CMS-style authentication.
      * Production DB uses separate `salt` and `hash` columns (SHA-256 based).
      */
-    suspend fun getAuthCredentials(email: String): Pair<String, String>? = dbQuery {
+    open suspend fun getAuthCredentials(email: String): Pair<String, String>? = dbQuery {
         Workers.select(Workers.salt, Workers.hash)
             .where { Workers.email eq email }
             .firstOrNull()?.let { row ->

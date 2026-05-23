@@ -21,14 +21,17 @@ data class TwoFactorEntry(
 )
 
 class AuthService(
-    private val workerService: WorkerService
+    private val workerService: WorkerService,
+    // JWT config has env-var defaults so production wiring is unchanged.
+    // Tests inject known values instead of mutating process environment.
+    private val jwtSecret: String = System.getenv("JWT_SECRET")
+        ?: error("JWT_SECRET environment variable must be set"),
+    private val jwtIssuer: String = System.getenv("JWT_ISSUER") ?: "gcc-api",
+    private val jwtAudience: String = System.getenv("JWT_AUDIENCE") ?: "gcc-app",
+    adminEmailsEnv: String? = System.getenv("ADMIN_EMAILS"),
 ) {
-    private val jwtSecret = System.getenv("JWT_SECRET")
-        ?: error("JWT_SECRET environment variable must be set")
-    private val jwtIssuer = System.getenv("JWT_ISSUER") ?: "gcc-api"
-    private val jwtAudience = System.getenv("JWT_AUDIENCE") ?: "gcc-app"
     private val tokenLifetimeMs = 7L * 24 * 60 * 60 * 1000 // 7 days
-    private val adminEmails = System.getenv("ADMIN_EMAILS")
+    private val adminEmails = adminEmailsEnv
         ?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
 
     private val twoFactorCodes = ConcurrentHashMap<String, TwoFactorEntry>()
