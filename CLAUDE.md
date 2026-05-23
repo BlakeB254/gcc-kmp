@@ -1,0 +1,93 @@
+# GCC (Global Community Cleaners) — repo guide
+
+A community-cleanup marketplace. One repo, multiple targets:
+
+- `site/` — Next.js 16 (App Router) web + admin + Stripe checkout + Drizzle ORM
+- `server/` — Ktor (Netty) JVM backend, port 7310, JWT auth, Exposed over Postgres
+- `shared/` — Kotlin Multiplatform DTOs + API client used by mobile and server
+- `composeApp/` — Compose Multiplatform UI (Android, iOS, Desktop)
+- `iosApp/` — Xcode wrapper; only builds on the MacBook via fastlane / `cdx-mobile`
+
+## Schema ownership policy (read this before changing data models)
+
+**Drizzle is the authoritative source of database schema.** Everything else is a
+mirror.
+
+- `site/src/db/schema.ts` is the only place that declares tables, columns,
+  enums, and relations.
+- `npx drizzle-kit generate` produces SQL migrations under
+  `site/src/db/migrations/`. Those migrations are what actually run against
+  Neon Postgres.
+- `server/src/main/kotlin/com/gcc/server/db/tables/Tables.kt` is a **hand-
+  maintained Kotlin mirror** that Exposed uses to compile SQL queries. It
+  does *not* create the schema. The Ktor server's `DatabaseFactory` opens
+  a connection; it does not migrate.
+- `shared/src/commonMain/kotlin/com/gcc/shared/model/*.kt` data classes are
+  the API DTO mirror. They must align with the columns the Ktor server
+  exposes.
+
+**Rule:** any change to `schema.ts` must, in the same PR, update
+`Tables.kt` (every column the server reads or writes) and any shared
+`@Serializable` model that exposes the changed shape to clients.
+
+There is no automated guard for this yet (planned: a Gradle task that
+introspects `information_schema` and fails if a table is missing from
+`Tables.kt`). Until then, this is a discipline thing. The MacBook WIP
+branch `wip/route-queue-and-scans-20260523` is a good example of doing it
+right — three new tables in migrations 0017/0018 added with matching
+Exposed table objects and a shared `RouteQueue.kt` DTO in the same commit.
+
+## Other conventions
+
+- **JWT_SECRET is required at startup.** Both Ktor and Next.js fail to boot
+  if it's unset. No "dev fallback" — set it in `.env` (root, for the Ktor
+  server) and `site/.env.local` (for Next.js). They must agree because
+  tokens issued by one verify on the other.
+- **Database URL** points at the same Neon database from both backends.
+  Don't introduce a separate DB — see schema-ownership policy.
+- **Stripe checkout endpoints** use deterministic idempotency keys
+  (`lib/stripe-idempotency.ts`). Don't call `stripe.checkout.sessions.create`
+  without a key.
+- **Public env var fallbacks** go through `site/src/lib/env.ts` so missing
+  config fails fast in production instead of silently hitting localhost.
+- **CI runs** the Next.js site (typecheck + build) and Kotlin (`:shared`
+  JVM, `:server` build with tests, `:composeApp` desktop compile) on every
+  PR and main push. Android `assembleDebug` runs only on
+  `workflow_dispatch`. iOS builds happen on the MacBook via `cdx-mobile`,
+  not in GitHub Actions.
+
+## Working across the two machines (DGX + MacBook)
+
+The DGX (this machine, Linux) handles Next.js, Ktor JVM, and shared/
+Kotlin code that compiles on Linux. The MacBook (`ssh macbook`) handles
+iOS builds and the Android side. They share GitHub as the source of
+truth.
+
+- `cdx-mobile status` — sync state across devices
+- `cdx-mobile sync` — DGX → GitHub → MacBook
+- `cdx-mobile build ios|android|both` — build on the MacBook
+- `cdx-mobile fetch` — pull artifacts back
+
+If the MacBook has uncommitted local work and you need to land DGX-side
+changes, snapshot the MacBook work to a `wip/...` branch before pulling.
+
+## Common commands
+
+```bash
+# DGX
+cd site && npm run dev                                # Next.js on :7350
+./gradlew :server:run                                  # Ktor on :7310
+./gradlew :server:test                                 # Ktor tests
+cd site && npx tsc --noEmit                            # typecheck
+
+# MacBook (via SSH)
+cdx-mobile build ios --sync                            # full iOS build
+cdx-mobile build android                               # full Android build
+```
+
+## Where to read for context
+
+- `docs/feature-spec-2026-05.md` — current feature work
+- `docs/plans/` — initiative briefs
+- `docs/superpowers/` — designs in flight
+- The GitHub PR list at `BlakeB254/gcc` — what's actively shipping
