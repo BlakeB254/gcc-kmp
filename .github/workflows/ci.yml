@@ -1,0 +1,139 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'screenshots/**'
+      - 'site/docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'screenshots/**'
+      - 'site/docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+
+# Cancel superseded PR runs; keep main-branch runs running to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  site:
+    name: Next.js — typecheck, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: site
+    env:
+      # Build-time stand-ins for required env vars. Real values live in Vercel
+      # project settings. These satisfy the fail-fast guards in lib/auth.ts,
+      # lib/mobile-auth.ts, and lib/env.ts during `next build`.
+      JWT_SECRET: ci-dummy-secret-not-used-at-runtime
+      NEXT_PUBLIC_APP_URL: http://ci.example
+      NEXT_PUBLIC_TILE_SERVER_URL: http://ci.example
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      RESEND_API_KEY: re_ci_dummy
+      ADMIN_EMAILS: ci@example.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  kotlin:
+    name: Kotlin — shared + server + compose desktop
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      JWT_SECRET: ci-dummy-secret-not-used-at-runtime
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Build shared module
+        run: ./gradlew :shared:build --no-daemon --stacktrace
+
+      - name: Build server
+        run: ./gradlew :server:build --no-daemon --stacktrace
+
+      - name: Compile composeApp (desktop target)
+        # Exercises composeApp/commonMain + desktopMain Kotlin compilation
+        # without needing the Android SDK. Android + iOS builds run on the
+        # MacBook via cdx-mobile, not on CI.
+        run: ./gradlew :composeApp:compileKotlinDesktop --no-daemon --stacktrace
+
+  # Optional Android build, manual trigger only. Slow because it has to
+  # install the Android SDK. Use this to verify pure-Kotlin Android compile
+  # before tagging an iOS-prepped release; the actual APK signing still
+  # happens on the MacBook via fastlane.
+  android-debug:
+    name: Android — assembleDebug (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew :composeApp:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-android-debug
+          path: composeApp/build/outputs/apk/debug/*.apk
+          retention-days: 14
