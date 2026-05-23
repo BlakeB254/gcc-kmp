@@ -53,7 +53,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: site/package-lock.json
 
@@ -63,8 +63,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: Lint
-        run: npm run lint
+      # Lint step intentionally omitted: `next lint` was removed in Next 16
+      # and the project has no eslint.config.mjs (the implicit Next-bundled
+      # config went away with it). Re-enable once a flat ESLint config is
+      # added — likely `npx eslint .` against an eslint.config.mjs that
+      # extends @next/eslint-plugin-next.
 
       - name: Build
         run: npm run build
@@ -91,16 +94,21 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
 
-      - name: Build shared module
-        run: ./gradlew :shared:build --no-daemon --stacktrace
+      # Note: we deliberately avoid `:shared:build` and `:composeApp:build`
+      # because both declare `androidTarget()`, which requires the Android SDK
+      # (not installed on this runner). Instead we drive the JVM + Desktop
+      # targets explicitly, which still compile commonMain end-to-end and
+      # catch the vast majority of regressions. Android + iOS builds run on
+      # the MacBook via cdx-mobile; the optional `android-debug` job below
+      # provisions the SDK for occasional full Android verification.
+
+      - name: Compile + test shared (JVM target)
+        run: ./gradlew :shared:jvmJar :shared:jvmTest --no-daemon --stacktrace
 
       - name: Build server
         run: ./gradlew :server:build --no-daemon --stacktrace
 
       - name: Compile composeApp (desktop target)
-        # Exercises composeApp/commonMain + desktopMain Kotlin compilation
-        # without needing the Android SDK. Android + iOS builds run on the
-        # MacBook via cdx-mobile, not on CI.
         run: ./gradlew :composeApp:compileKotlinDesktop --no-daemon --stacktrace
 
   # Optional Android build, manual trigger only. Slow because it has to
