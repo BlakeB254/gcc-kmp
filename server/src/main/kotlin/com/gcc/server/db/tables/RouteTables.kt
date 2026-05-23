@@ -305,3 +305,57 @@ object RouteOfferNotifications : Table("route_offer_notifications") {
     override val primaryKey = PrimaryKey(id)
 }
 
+
+// RouteScans and ScanHotspots were originally further down in Tables.kt;
+// moved here in the final M-9 pass so all route-subsystem tables live in
+// one place.
+// ===========================================================================
+// Route Scans (Scout & Clean feature)
+// ===========================================================================
+object RouteScans : Table("route_scans") {
+    val id = integer("id").autoIncrement()
+    val routeId = integer("route_id").references(Routes.id)
+    val workerId = integer("worker_id").references(Workers.id)
+    val deviceType = varchar("device_type", 10).default("gps")
+    val phase = varchar("phase", 30).default("scouting")
+    val coveragePercent = double("coverage_percent").default(0.0)
+    val scoutStartedAt = timestamp("scout_started_at")
+    val scoutCompletedAt = timestamp("scout_completed_at").nullable()
+    val cleanStartedAt = timestamp("clean_started_at").nullable()
+    val cleanCompletedAt = timestamp("clean_completed_at").nullable()
+    val startLat = double("start_lat")
+    val startLng = double("start_lng")
+    val scoutPathGeoJson = text("scout_path_geojson").nullable()
+    val cleanPathGeoJson = text("clean_path_geojson").nullable()
+    val totalTrashVolumeLiters = double("total_trash_volume_liters").nullable()
+    val totalTrashWeightLbs = double("total_trash_weight_lbs").nullable()
+    val pointsAwarded = integer("points_awarded").default(0)
+    val status = varchar("status", 30).default("in_progress")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object ScanHotspots : Table("scan_hotspots") {
+    val id = integer("id").autoIncrement()
+    val scanId = integer("scan_id").references(RouteScans.id)
+    val lat = double("lat")
+    val lng = double("lng")
+    val trashTypes = varchar("trash_types", 500).default("[]")
+    val severity = integer("severity").default(1)
+    val estimatedVolumeLiters = double("estimated_volume_liters").nullable()
+    val estimatedWeightLbs = double("estimated_weight_lbs").nullable()
+    val confidence = float("confidence").default(0f)
+    val beforePhotoUrl = varchar("before_photo_url", 500)
+    val afterPhotoUrl = varchar("after_photo_url", 500).nullable()
+    val arAnchorData = text("ar_anchor_data").nullable()
+    val depthData = text("depth_data").nullable()
+    val detectedAt = timestamp("detected_at")
+    val cleanedAt = timestamp("cleaned_at").nullable()
+    val verificationScore = float("verification_score").nullable()
+    val status = varchar("status", 20).default("detected")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
