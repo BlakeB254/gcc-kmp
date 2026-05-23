@@ -1557,3 +1557,88 @@ export type SpotVerification = typeof spotVerifications.$inferSelect
 export type NewSpotVerification = typeof spotVerifications.$inferInsert
 export type PointsLedgerEntry = typeof pointsLedger.$inferSelect
 export type NewPointsLedgerEntry = typeof pointsLedger.$inferInsert
+
+// =====================
+// WALLET, PLEDGES, AND VOLUNTEER CLEANUPS
+// =====================
+// These tables mirror Exposed declarations in
+// server/src/main/kotlin/com/gcc/server/db/tables/ServerOnlyTables.kt.
+// They were declared on the Ktor side from day one but the corresponding
+// CREATE TABLE statements never made it to prod; backfilled by migration
+// 0024 on 2026-05-23 after an audit pass. Amounts stored as integer cents
+// to match the existing Ktor service code (the rest of the schema uses
+// `numeric` for amounts; this is an intentional divergence).
+
+export const sponsorWallets = pgTable('sponsor_wallets', {
+  id: serial('id').primaryKey(),
+  sponsorId: integer('sponsor_id'),
+  workerId: integer('worker_id'),
+  totalBalance: integer('total_balance').default(0).notNull(),
+  generalFundBalance: integer('general_fund_balance').default(0).notNull(),
+  routeFundBalance: integer('route_fund_balance').default(0).notNull(),
+  bountyFundBalance: integer('bounty_fund_balance').default(0).notNull(),
+  totalDeposited: integer('total_deposited').default(0).notNull(),
+  totalSpent: integer('total_spent').default(0).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  sponsorIdx: index('sponsor_wallets_sponsor_id_idx').on(table.sponsorId),
+  workerIdx: index('sponsor_wallets_worker_id_idx').on(table.workerId),
+}))
+
+export const walletTransactions = pgTable('wallet_transactions', {
+  id: serial('id').primaryKey(),
+  walletId: integer('wallet_id').notNull(),
+  type: varchar('type', { length: 50 }).notNull(),
+  fundType: varchar('fund_type', { length: 50 }).notNull(),
+  amount: integer('amount').notNull(),
+  balanceAfter: integer('balance_after').notNull(),
+  referenceId: integer('reference_id'),
+  referenceType: varchar('reference_type', { length: 50 }),
+  description: text('description'),
+  stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  walletIdx: index('wallet_transactions_wallet_id_idx').on(table.walletId),
+}))
+
+export const bountyPledges = pgTable('bounty_pledges', {
+  id: serial('id').primaryKey(),
+  bountyId: integer('bounty_id').notNull(),
+  pledgerType: varchar('pledger_type', { length: 50 }).notNull(),
+  pledgerId: integer('pledger_id').notNull(),
+  walletId: integer('wallet_id').notNull(),
+  amount: integer('amount').notNull(),
+  status: varchar('status', { length: 50 }).default('active').notNull(),
+  renewalCount: integer('renewal_count').default(0).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  bountyIdx: index('bounty_pledges_bounty_id_idx').on(table.bountyId),
+  walletIdx: index('bounty_pledges_wallet_id_idx').on(table.walletId),
+}))
+
+export const volunteerCleanups = pgTable('volunteer_cleanups', {
+  id: serial('id').primaryKey(),
+  reportId: integer('report_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  beforeMediaUrls: jsonb('before_media_urls').notNull(),
+  afterMediaUrls: jsonb('after_media_urls').notNull(),
+  trashHeapMediaUrl: varchar('trash_heap_media_url', { length: 2048 }),
+  aiTrashAnalysis: jsonb('ai_trash_analysis'),
+  locationLat: doublePrecision('location_lat').notNull(),
+  locationLng: doublePrecision('location_lng').notNull(),
+  locationVerified: boolean('location_verified').default(false).notNull(),
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }).notNull(),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  durationMinutes: integer('duration_minutes'),
+  pdfUrl: varchar('pdf_url', { length: 2048 }),
+  status: varchar('status', { length: 50 }).default('in_progress').notNull(),
+  verificationNotes: text('verification_notes'),
+  pointsAwarded: integer('points_awarded').default(0).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  reportIdx: index('volunteer_cleanups_report_id_idx').on(table.reportId),
+  workerIdx: index('volunteer_cleanups_worker_id_idx').on(table.workerId),
+}))
