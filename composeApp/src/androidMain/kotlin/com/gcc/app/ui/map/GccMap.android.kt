@@ -640,17 +640,20 @@ actual fun GccMap(
                     14.1 to const(72.dp),
                     MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(56.dp),
                 ),
+                // Capped peak at ~0.45 so the OpenFreeMap base style's road
+                // lines and street labels remain readable underneath. Previously
+                // peaked at 0.98 which blanketed all street detail.
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    2 to const(0.72f),
-                    4 to const(0.86f),
-                    8 to const(0.98f),
-                    12 to const(0.96f),
-                    13 to const(0.75f),
-                    13.75 to const(0.38f),
-                    14.1 to const(0.32f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.28f),
+                    2 to const(0.32f),
+                    4 to const(0.40f),
+                    8 to const(0.45f),
+                    12 to const(0.45f),
+                    13 to const(0.35f),
+                    13.75 to const(0.20f),
+                    14.1 to const(0.16f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.14f),
                 ),
             )
 
@@ -697,18 +700,21 @@ actual fun GccMap(
                     14.1 to const(30.dp),
                     MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(24.dp),
                 ),
+                // Capped at ~0.55 peak so street lines and labels show through.
+                // Old peak was 0.98 which (stacked with SPOT_THERMAL_FIELD)
+                // hid the entire OpenFreeMap base style at neighborhood zoom.
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    2 to const(0.2f),
-                    5 to const(0.55f),
-                    8 to const(0.9f),
-                    10 to const(0.98f),
-                    12 to const(0.98f),
-                    13 to const(0.78f),
-                    13.75 to const(0.32f),
-                    14.1 to const(0.24f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.2f),
+                    2 to const(0.12f),
+                    5 to const(0.32f),
+                    8 to const(0.50f),
+                    10 to const(0.55f),
+                    12 to const(0.55f),
+                    13 to const(0.44f),
+                    13.75 to const(0.18f),
+                    14.1 to const(0.14f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.12f),
                 ),
             )
 

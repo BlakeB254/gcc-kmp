@@ -371,16 +371,22 @@ actual fun GccMap(
                     source = spotCleanZoneSrc,
                     maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
                     color = const(MapStyles.CLEAN_BASE_COLOR),
+                    // Capped at ~0.30 peak so OpenFreeMap road lines and
+                    // place labels remain readable underneath. Previous
+                    // 0.54-0.58 peak was opaque enough that residential
+                    // streets and names disappeared even in spot-less areas
+                    // (the source is a planet-spanning polygon — this fill
+                    // covers every pixel of the visible map).
                     opacity = interpolate(
                         type = org.maplibre.compose.expressions.dsl.linear(),
                         input = zoom(),
-                        2 to const(0.36f),
-                        7 to const(0.44f),
-                        10 to const(0.54f),
-                        12 to const(0.58f),
-                        13 to const(0.5f),
-                        13.8 to const(0.36f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0.34f),
+                        2 to const(0.14f),
+                        7 to const(0.18f),
+                        10 to const(0.28f),
+                        12 to const(0.30f),
+                        13 to const(0.22f),
+                        13.8 to const(0.12f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0.10f),
                     ),
                 )
             }
