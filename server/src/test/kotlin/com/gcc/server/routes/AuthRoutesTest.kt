@@ -2,9 +2,8 @@ package com.gcc.server.routes
 
 import com.gcc.server.plugins.configureRateLimiting
 import com.gcc.server.services.AuthService
-import com.gcc.server.services.WorkerService
-import com.gcc.shared.model.Worker
-import com.gcc.shared.model.WorkerAddress
+import com.gcc.server.support.makeAuthService
+import com.gcc.server.support.stubWorker
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -17,7 +16,6 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
-import kotlinx.datetime.Clock
 import org.koin.core.context.GlobalContext
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
@@ -48,7 +46,7 @@ class AuthRoutesTest {
 
     @Test
     fun `POST api auth login with unknown email returns 401`() = testApplication {
-        application { testModule(makeAuthService(workers = emptyMap(), creds = emptyMap())) }
+        application { testModule(makeAuthService()) }
 
         val response = client.post("/api/auth/login") {
             contentType(ContentType.Application.Json)
@@ -84,7 +82,7 @@ class AuthRoutesTest {
 
     @Test
     fun `POST api auth verify-2fa with unknown token returns 401`() = testApplication {
-        application { testModule(makeAuthService(workers = emptyMap(), creds = emptyMap())) }
+        application { testModule(makeAuthService()) }
 
         val response = client.post("/api/auth/verify-2fa") {
             contentType(ContentType.Application.Json)
@@ -95,10 +93,6 @@ class AuthRoutesTest {
     }
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Test harness — application wiring + fakes
-// ───────────────────────────────────────────────────────────────────────────
-
 private fun Application.testModule(authService: AuthService) {
     install(Koin) {
         modules(module { single { authService } })
@@ -106,36 +100,4 @@ private fun Application.testModule(authService: AuthService) {
     install(ContentNegotiation) { json() }
     configureRateLimiting()
     routing { authRoutes() }
-}
-
-private fun makeAuthService(
-    workers: Map<String, Worker>,
-    creds: Map<String, Pair<String, String>>,
-): AuthService =
-    AuthService(
-        workerService = FakeWorkerService(workers, creds),
-        jwtSecret = "test-secret-not-prod",
-        jwtIssuer = "gcc-test",
-        jwtAudience = "gcc-test",
-        adminEmailsEnv = null,
-    )
-
-private class FakeWorkerService(
-    private val workersByEmail: Map<String, Worker>,
-    private val credsByEmail: Map<String, Pair<String, String>>,
-) : WorkerService() {
-    override suspend fun getByEmail(email: String): Worker? = workersByEmail[email]
-    override suspend fun getById(id: Int): Worker? =
-        workersByEmail.values.firstOrNull { it.id == id }
-    override suspend fun getAuthCredentials(email: String): Pair<String, String>? =
-        credsByEmail[email]
-}
-
-private fun stubWorker(id: Int, email: String): Worker {
-    val now = Clock.System.now()
-    return Worker(
-        id = id, name = "Test", email = email, phone = "+15555550100",
-        address = WorkerAddress(street = "", zip = ""),
-        createdAt = now, updatedAt = now,
-    )
 }

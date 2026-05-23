@@ -1,13 +1,12 @@
 package com.gcc.server.services
 
+import com.gcc.server.support.makeAuthService
+import com.gcc.server.support.stubWorker
 import com.gcc.shared.model.LoginRequest
 import com.gcc.shared.model.RegisterRequest
-import com.gcc.shared.model.Worker
-import com.gcc.shared.model.WorkerAddress
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -27,20 +26,10 @@ import kotlin.test.assertTrue
  */
 class AuthServiceTest {
 
-    private fun makeService(initialWorkers: Map<String, Worker> = emptyMap(),
-                            initialCreds: Map<String, Pair<String, String>> = emptyMap()) =
-        AuthService(
-            workerService = FakeWorkerService(initialWorkers, initialCreds),
-            jwtSecret = "test-secret-only-used-in-tests",
-            jwtIssuer = "gcc-test",
-            jwtAudience = "gcc-test",
-            adminEmailsEnv = null,
-        )
-
     @Test
     fun `register throws when email is already registered`() = runTest {
         val existing = stubWorker(id = 1, email = "taken@example.com")
-        val service = makeService(initialWorkers = mapOf("taken@example.com" to existing))
+        val service = makeAuthService(workers = mapOf("taken@example.com" to existing))
 
         val ex = assertFailsWith<IllegalArgumentException> {
             service.register(
@@ -57,7 +46,7 @@ class AuthServiceTest {
 
     @Test
     fun `login throws when email is not registered`() = runTest {
-        val service = makeService()  // no credentials registered
+        val service = makeAuthService()  // no credentials registered
 
         val ex = assertFailsWith<IllegalArgumentException> {
             service.login(LoginRequest(email = "nobody@example.com", password = "anything"))
@@ -69,8 +58,8 @@ class AuthServiceTest {
     @Test
     fun `login throws on wrong password`() = runTest {
         // Salt + hash that won't match anything the test submits.
-        val service = makeService(
-            initialCreds = mapOf(
+        val service = makeAuthService(
+            creds = mapOf(
                 "user@example.com" to ("some-salt-value" to "some-stored-hash-that-wont-match"),
             ),
         )
@@ -90,9 +79,9 @@ class AuthServiceTest {
         val password = "correct-horse-battery-staple"
         val storedHash = pbkdf2Hex(password, salt)
         val worker = stubWorker(id = 42, email = "ok@example.com")
-        val service = makeService(
-            initialWorkers = mapOf("ok@example.com" to worker),
-            initialCreds = mapOf("ok@example.com" to (salt to storedHash)),
+        val service = makeAuthService(
+            workers = mapOf("ok@example.com" to worker),
+            creds = mapOf("ok@example.com" to (salt to storedHash)),
         )
 
         val response = service.login(LoginRequest(email = "ok@example.com", password = password))
@@ -109,7 +98,7 @@ class AuthServiceTest {
 
     @Test
     fun `verify2FA throws on unknown token`() = runTest {
-        val service = makeService()
+        val service = makeAuthService()
 
         val ex = assertFailsWith<IllegalArgumentException> {
             service.verify2FA(twoFactorToken = "this-token-was-never-issued", code = "000000")
@@ -122,32 +111,4 @@ private fun pbkdf2Hex(password: String, salt: String): String {
     val spec = PBEKeySpec(password.toCharArray(), salt.toByteArray(), 100_000, 512)
     val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
     return factory.generateSecret(spec).encoded.joinToString("") { "%02x".format(it) }
-}
-
-/** Minimal in-memory fake covering the WorkerService methods AuthService calls. */
-private class FakeWorkerService(
-    private val workersByEmail: Map<String, Worker>,
-    private val credsByEmail: Map<String, Pair<String, String>>,
-) : WorkerService() {
-
-    override suspend fun getByEmail(email: String): Worker? = workersByEmail[email]
-
-    override suspend fun getById(id: Int): Worker? =
-        workersByEmail.values.firstOrNull { it.id == id }
-
-    override suspend fun getAuthCredentials(email: String): Pair<String, String>? =
-        credsByEmail[email]
-}
-
-private fun stubWorker(id: Int, email: String): Worker {
-    val now = Clock.System.now()
-    return Worker(
-        id = id,
-        name = "Test Worker",
-        email = email,
-        phone = "+15555550100",
-        address = WorkerAddress(street = "", zip = ""),
-        createdAt = now,
-        updatedAt = now,
-    )
 }
