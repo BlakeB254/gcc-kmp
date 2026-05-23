@@ -140,11 +140,15 @@ export function BaseMap({
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           onError={(e) => {
-            // Real MapLibre runtime failure (style fetch, WebGL context loss,
-            // etc.) — flip to Leaflet. Logged so we can see in browser console
-            // if users start hitting this in volume.
-            console.warn('[BaseMap] MapLibre runtime error → Leaflet fallback', e)
-            setWebGLAvailable(false)
+            // Log MapLibre runtime events for visibility. Do NOT flip to the
+            // Leaflet fallback here — `onError` fires for many transient
+            // things (a single tile failing to load, sprite fetch retry,
+            // style parse warning), and falling back kills all the
+            // MapLibre Source/Layer overlays (spots/heatmap/routes) the
+            // page actually needs. MapErrorBoundary still catches genuine
+            // React render-time errors, which is the right place to
+            // trigger a fallback.
+            console.warn('[BaseMap] MapLibre runtime event', e)
           }}
           cursor={cursor}
         >
