@@ -73,19 +73,17 @@ export const SPOT_COLORS = {
   HEATMAP_PEAK: '#FFFFFF',
 } as const
 
-// Legacy zoom thresholds — kept for back-compat with code that still imports
-// these constants. The web maps no longer use heatmap+dots crossfade; both
-// NeighborhoodMapSection and CombinedMap now render colored dots only at all
-// zoom levels, so the user gets a single consistent layer instead of the
-// "heatmap and dots showing at the same time" overlap that the dual-layer
-// approach produced after MAP_BOUNDS expanded.
+// Zoom thresholds for the heatmap↔dots crossfade. Heatmap owns z<14.5
+// (intensity ramping up then fading out by 14.5). Dots fade in over 14→15
+// via opacity (0→0.8→1). The map's minZoom=14 + fitBounds maxZoom=15
+// settling means users only ever see this in the "dots fully visible,
+// heatmap effectively invisible" portion of the crossfade — they don't
+// experience the two-layers-at-once overlap.
 export const SPOT_ZOOM = {
   HEATMAP_MIN: 8,
   HEATMAP_MAX: 15,
   HEATMAP_FADE_OUT: 14.5,
-  DOTS_MIN: 10,        // still exported but no longer gates dot visibility on
-                       // the simplified maps; left at 10 for any consumer
-                       // that wants a sensible "close-zoom" floor.
+  DOTS_MIN: 14,
 } as const
 
 export type SpotHeatWeightInput = {

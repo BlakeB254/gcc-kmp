@@ -438,6 +438,11 @@ export function NeighborhoodMapSection() {
         {
           padding: { top: 50, bottom: 50, left: 50, right: 50 },
           duration: 1000,
+          // Cap fit zoom at 15 so the spot/heatmap crossfade settles in
+          // the dots-fully-visible zone. Without this, the wider MAP_BOUNDS
+          // (expanded for Roosevelt Road) makes fitBounds land at ~14.5,
+          // smack in the middle of the crossfade where both layers show.
+          maxZoom: 15,
         }
       )
     }
@@ -468,7 +473,7 @@ export function NeighborhoodMapSection() {
         [MAP_BOUNDS.west - 0.001, MAP_BOUNDS.south - 0.001],
         [MAP_BOUNDS.east + 0.001, MAP_BOUNDS.north + 0.001],
       ],
-      { padding: { top: 50, bottom: 50, left: 50, right: 50 }, duration: 600 }
+      { padding: { top: 50, bottom: 50, left: 50, right: 50 }, duration: 600, maxZoom: 15 }
     )
   }, [])
 
@@ -789,21 +794,23 @@ export function NeighborhoodMapSection() {
                 />
               </Source>
 
-              {/* Spot reports — heatmap density wash at overview + colored
-                  dots layered on top. Dots are always visible (no minzoom)
-                  so the user sees individual spots at any zoom; the heatmap
-                  only kicks in below z14 to add density context. Layering:
-                  basemap → heatmap → routes/blocks → dots. */}
+              {/* Spot reports — heatmap (z<14.5) and dots (z14+) crossfade
+                  via opacity. The map's minZoom=14 + fitBounds maxZoom=15
+                  means users land in the z=15 region where dots are at
+                  opacity 1 and heatmap intensity is ~0.02 — the two layers
+                  exist but only one is visible at any time. */}
               <Source id="homepage-spots" type="geojson" data={spotGeoJson}>
                 <Layer
                   id="homepage-spot-heatmap"
                   type="heatmap"
-                  maxzoom={14}
+                  minzoom={SPOT_ZOOM.HEATMAP_MIN}
+                  maxzoom={SPOT_ZOOM.HEATMAP_MAX}
                   paint={SPOT_HEATMAP_PAINT}
                 />
                 <Layer
                   id="homepage-spot-dots"
                   type="circle"
+                  minzoom={SPOT_ZOOM.DOTS_MIN}
                   paint={{
                     'circle-color': [
                       'match', ['get', 'status'],
@@ -815,14 +822,22 @@ export function NeighborhoodMapSection() {
                     ],
                     'circle-radius': [
                       'interpolate', ['linear'], ['zoom'],
-                      10, 4,
-                      13, 6,
-                      15, 8,
-                      17, 11,
+                      SPOT_ZOOM.DOTS_MIN, 4,
+                      14.5, 5,
+                      15, 6, 17, 8,
                     ],
                     'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': 1.5,
-                    'circle-opacity': 0.95,
+                    'circle-stroke-width': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 1,
+                      15, 1.5,
+                    ],
+                    'circle-opacity': [
+                      'interpolate', ['linear'], ['zoom'],
+                      SPOT_ZOOM.DOTS_MIN, 0,
+                      SPOT_ZOOM.HEATMAP_FADE_OUT, 0.8,
+                      15, 1,
+                    ],
                   }}
                 />
                 {/* "Needs Verification" labels — visible at close zoom */}
