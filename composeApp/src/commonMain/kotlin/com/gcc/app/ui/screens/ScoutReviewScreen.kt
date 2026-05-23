@@ -27,7 +27,9 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.ui.utils.displayLabel
 import com.gcc.app.ui.utils.emoji
 import com.gcc.app.viewmodel.RouteScanUiState
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
 import com.gcc.shared.model.SpotTag
 
@@ -45,13 +47,18 @@ fun ScoutReviewScreen(
     onStartCleaning: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val effectiveCheckpoints = remember(uiState.route) {
+        uiState.route
+            ?.let { CheckpointGenerator.generateIfMissing(it) }
+            .orEmpty()
+            .sortedBy { it.sequenceOrder }
+    }
+
     // Route polyline from checkpoint coordinates
-    val routeCoords = remember(uiState.route) {
-        uiState.route?.checkpoints
-            ?.sortedBy { it.sequenceOrder }
-            ?.map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            ?.let { listOf(it) }
-            ?: emptyList()
+    val routeCoords = remember(effectiveCheckpoints) {
+        effectiveCheckpoints
+            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
+            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
     }
 
     // All hotspot locations as bounty (red) dots
@@ -60,22 +67,26 @@ fun ScoutReviewScreen(
     }
 
     // Map center: midpoint of route checkpoints, otherwise Chicago default
-    val mapCenterLat = remember(uiState.route) {
-        uiState.route?.checkpoints
+    val mapCenterLat = remember(effectiveCheckpoints) {
+        effectiveCheckpoints
+            .takeIf { it.isNotEmpty() }
             ?.map { it.coordinates.lat }
             ?.average()
             ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     }
-    val mapCenterLng = remember(uiState.route) {
-        uiState.route?.checkpoints
+    val mapCenterLng = remember(effectiveCheckpoints) {
+        effectiveCheckpoints
+            .takeIf { it.isNotEmpty() }
             ?.map { it.coordinates.lng }
             ?.average()
             ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
     }
 
     // Derived stats
-    val hotspotCount = uiState.hotspots.size
-    val totalVolumeLiters = uiState.hotspots.sumOf { it.estimatedVolumeLiters ?: 0.0 }
+    val cleanupTargets = uiState.hotspots.filter { it.status != HotspotStatus.SKIPPED }
+    val hotspotCount = cleanupTargets.size
+    val documentedOnly = uiState.hotspots.count { it.status == HotspotStatus.SKIPPED }
+    val totalVolumeLiters = cleanupTargets.sumOf { it.estimatedVolumeLiters ?: 0.0 }
     val estimatedCleanMinutes = hotspotCount * 2  // ~2 min per hotspot heuristic
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -159,7 +170,7 @@ fun ScoutReviewScreen(
                     // Hotspots
                     StatMiniCard(
                         value = "$hotspotCount",
-                        label = if (hotspotCount == 1) "Hotspot" else "Hotspots",
+                        label = if (hotspotCount == 1) "Target" else "Targets",
                         color = if (hotspotCount == 0) TextMuted else GccError,
                         modifier = Modifier.weight(1f),
                     )
@@ -193,7 +204,11 @@ fun ScoutReviewScreen(
                         value = if (estimatedCleanMinutes > 0)
                             "~$estimatedCleanMinutes min"
                         else
-                            "No hotspots",
+                            "No cleanup targets",
+                    )
+                    ScanSummaryRow(
+                        label = "Documented only",
+                        value = "$documentedOnly",
                     )
                     ScanSummaryRow(
                         label = "Loop closed",
@@ -241,7 +256,7 @@ fun ScoutReviewScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 GccButton(
-                    text = "Start Cleaning",
+                    text = if (hotspotCount == 0) "Review Documentation" else "Start Cleaning",
                     onClick = onStartCleaning,
                     variant = GccButtonVariant.PRIMARY,
                     isLoading = uiState.isSubmitting,

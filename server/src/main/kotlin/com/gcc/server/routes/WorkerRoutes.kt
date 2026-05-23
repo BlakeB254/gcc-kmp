@@ -2,9 +2,11 @@ package com.gcc.server.routes
 
 import com.gcc.server.plugins.ErrorResponse
 import com.gcc.server.plugins.workerId
+import com.gcc.server.services.JobService
 import com.gcc.server.services.ServiceAreaService
 import com.gcc.server.services.WorkerService
 import com.gcc.shared.model.ApiResponse
+import com.gcc.shared.model.JobStatus
 import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -51,6 +53,7 @@ fun Routing.workerRoutes() {
  */
 fun Route.authenticatedWorkerRoutes() {
     val workerService = application.koinGet<WorkerService>()
+    val jobService = application.koinGet<JobService>()
 
     route("/api/workers") {
         get("/me") {
@@ -61,6 +64,22 @@ fun Route.authenticatedWorkerRoutes() {
             } else {
                 call.respond(HttpStatusCode.NotFound, ErrorResponse("Worker not found", 404))
             }
+        }
+
+        get("/me/jobs") {
+            val id = call.workerId()
+            val limit = call.parameters["limit"]?.toIntOrNull() ?: 20
+            val offset = call.parameters["offset"]?.toLongOrNull() ?: 0
+            val status = call.parameters["status"]?.let {
+                try { JobStatus.valueOf(it.uppercase()) } catch (_: Exception) { null }
+            }
+            val jobs = jobService.getAll(
+                status = status,
+                workerId = id,
+                limit = limit,
+                offset = offset,
+            )
+            call.respond(HttpStatusCode.OK, ApiResponse(data = jobs))
         }
 
         // POST /api/workers/me/device-token — register push notification token

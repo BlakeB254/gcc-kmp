@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -100,8 +102,8 @@ fun MapControls(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ZoomButton(text = "\u2212", onClick = onZoomOut)  // minus
-                ZoomButton(text = "+", onClick = onZoomIn)
+                ZoomButton(text = "\u2212", contentDescription = "Zoom out", onClick = onZoomOut)
+                ZoomButton(text = "+", contentDescription = "Zoom in", onClick = onZoomIn)
             }
 
             // Right: preset selector (horizontal segmented control)
@@ -135,8 +137,8 @@ fun ZoomButtons(
             modifier = Modifier.padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            ZoomButton(text = "+", onClick = onZoomIn)
-            ZoomButton(text = "\u2212", onClick = onZoomOut) // minus
+            ZoomButton(text = "+", contentDescription = "Zoom in", onClick = onZoomIn)
+            ZoomButton(text = "\u2212", contentDescription = "Zoom out", onClick = onZoomOut)
         }
     }
 }
@@ -147,13 +149,15 @@ fun ZoomButtons(
 @Composable
 internal fun ZoomButton(
     text: String,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(28.dp)
+            .size(38.dp)
             .clip(CircleShape)
             .background(MapControlBg)
+            .semantics { this.contentDescription = contentDescription }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

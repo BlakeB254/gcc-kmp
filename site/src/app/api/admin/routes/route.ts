@@ -5,6 +5,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
 import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
+import { generateRouteCheckpointInserts, toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request)
@@ -32,14 +33,28 @@ export async function GET(request: Request) {
 
     const routeIds = routeList.map((r) => r.id)
     const checkpointsMap = new Map<number, any[]>()
+    const blockBoundaryMap = new Map<number, unknown>()
 
     if (routeIds.length > 0) {
-      const filtered = await db.select().from(routeCheckpoints)
-        .where(inArray(routeCheckpoints.routeId, routeIds))
-        .orderBy(routeCheckpoints.sequenceOrder)
+      const [filtered, routeBlocks] = await Promise.all([
+        db.select().from(routeCheckpoints)
+          .where(inArray(routeCheckpoints.routeId, routeIds))
+          .orderBy(routeCheckpoints.sequenceOrder),
+        db.select({
+          routeId: blocks.routeId,
+          locationBoundary: blocks.locationBoundary,
+        }).from(blocks)
+          .where(inArray(blocks.routeId, routeIds)),
+      ])
+
       for (const cp of filtered) {
         if (!checkpointsMap.has(cp.routeId)) checkpointsMap.set(cp.routeId, [])
         checkpointsMap.get(cp.routeId)!.push(cp)
+      }
+      for (const block of routeBlocks) {
+        if (block.routeId && block.locationBoundary) {
+          blockBoundaryMap.set(block.routeId, block.locationBoundary)
+        }
       }
     }
 
@@ -53,14 +68,10 @@ export async function GET(request: Request) {
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
       payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-      checkpoints: (checkpointsMap.get(route.id) || []).map((cp) => ({
-        name: cp.name,
-        sequenceOrder: cp.sequenceOrder,
-        coordinates: { lat: (cp.coordinates as [number, number])?.[1] ?? 0, lng: (cp.coordinates as [number, number])?.[0] ?? 0 },
-        photoRequired: cp.photoRequired ?? true,
-        geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
-        type: cp.type ?? 'photo_point',
-      })),
+      checkpoints: toMobileRouteCheckpoints(
+        checkpointsMap.get(route.id) || [],
+        blockBoundaryMap.get(route.id) ?? route.geometry,
+      ),
       imageUrl: route.imageUrl || null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
@@ -151,30 +162,14 @@ export async function POST(request: Request) {
       fromCorner: fromCorner || null,
       toCorner: toCorner || null,
       side: side || 'north',
-      status: 'available',
+      status: 'funded',
     }).returning()
 
-    // Create start and end checkpoints
-    const startCoord = coords[0]
-    const endCoord = coords[coords.length - 1]
-    await db.insert(routeCheckpoints).values([
-      {
-        routeId: newRoute.id,
-        name: 'Start',
-        sequenceOrder: 0,
-        coordinates: startCoord,
-        photoRequired: true,
-        type: 'route_start',
-      },
-      {
-        routeId: newRoute.id,
-        name: 'End',
-        sequenceOrder: 1,
-        coordinates: endCoord,
-        photoRequired: true,
-        type: 'route_end',
-      },
-    ])
+    const checkpointValues = generateRouteCheckpointInserts(
+      newRoute.id,
+      { type: 'Polygon', coordinates: blockPolygon },
+    )
+    await db.insert(routeCheckpoints).values(checkpointValues)
 
     // Fetch created checkpoints for the response
     const cps = await db.select().from(routeCheckpoints)
@@ -191,15 +186,7 @@ export async function POST(request: Request) {
         distanceMeters: newRoute.lengthMeters ? parseFloat(newRoute.lengthMeters) : null,
         estimatedDurationMinutes: newRoute.estimatedMinutes ? Math.round(parseFloat(newRoute.estimatedMinutes)) : null,
         payoutAmount: Math.round(parseFloat(newRoute.payoutAmount || '10000')),
-        checkpoints: cps.map((cp) => ({
-          id: cp.id,
-          name: cp.name,
-          sequenceOrder: cp.sequenceOrder,
-          coordinates: { lat: (cp.coordinates as [number, number])?.[1] ?? 0, lng: (cp.coordinates as [number, number])?.[0] ?? 0 },
-          photoRequired: cp.photoRequired ?? true,
-          geofenceRadius: parseFloat(cp.geofenceRadius || '15'),
-          type: cp.type ?? 'photo_point',
-        })),
+        checkpoints: toMobileRouteCheckpoints(cps, { type: 'Polygon', coordinates: blockPolygon }),
         imageUrl: newRoute.imageUrl || null,
         createdAt: new Date(newRoute.createdAt).toISOString(),
         updatedAt: new Date(newRoute.updatedAt).toISOString(),

@@ -32,6 +32,13 @@ fun AdminPanelScreen(
     val uiState by viewModel.uiState.collectAsState()
     val tokenManager = koinInject<TokenManager>()
 
+    LaunchedEffect(uiState.selectedTab) {
+        if (uiState.selectedTab == AdminTab.ROUTES) {
+            viewModel.ensureWorkersLoaded()
+            viewModel.ensureCurrentWorkerLoaded()
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
@@ -119,9 +126,12 @@ fun AdminPanelScreen(
                         )
                         AdminTab.ROUTES -> AdminRoutesTab(
                             routes = uiState.routes,
+                            workers = uiState.workers,
+                            currentWorker = uiState.currentWorker,
                             onRouteClick = onNavigateToRouteDetail,
                             onStatusToggle = { routeId, newStatus -> viewModel.updateRouteStatus(routeId, newStatus) },
                             onCreateRoute = viewModel::createRoute,
+                            onAssignRoute = viewModel::assignRouteToWorker,
                         )
                         AdminTab.BOUNTIES -> AdminBountiesTab(
                             bounties = uiState.bounties,

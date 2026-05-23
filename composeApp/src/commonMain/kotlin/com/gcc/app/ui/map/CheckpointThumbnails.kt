@@ -60,13 +60,18 @@ fun CheckpointThumbnail(
 fun RouteThumbnail(
     route: Route,
     modifier: Modifier = Modifier,
+    decodeWidth: Int = 512,
+    decodeHeight: Int = 512,
 ) {
-    if (route.imageUrl != null) {
+    val imageUrl = route.imageUrl?.takeIf { it.isNotBlank() }
+    if (imageUrl != null) {
         NetworkImage(
-            url = route.imageUrl!!,
+            url = imageUrl,
             contentDescription = route.displayName,
             modifier = modifier.clip(RoundedCornerShape(6.dp)),
             contentScale = ContentScale.Crop,
+            decodeWidth = decodeWidth,
+            decodeHeight = decodeHeight,
         )
     } else {
         val firstCheckpoint = route.checkpoints

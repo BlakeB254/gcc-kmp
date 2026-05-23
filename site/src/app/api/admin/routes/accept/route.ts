@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { routes, blocks, routeCheckpoints } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
+import { generateRouteCheckpointInserts } from '@/lib/route-checkpoints'
 
 interface AcceptedProposal {
   routeCode: string
@@ -51,17 +52,15 @@ export async function POST(request: Request) {
       locationBoundary: { type: 'Polygon', coordinates: p.blockPolygon },
       locationCenter: { type: 'Point', coordinates: [p.center.lng, p.center.lat] },
       side: p.side,
-      status: 'available' as const,
+      status: 'funded' as const,
     }))
 
-    const checkpointValues = proposals.flatMap((p, i) => {
-      const coords = p.geometry.coordinates
-      const routeId = insertedRoutes[i].id
-      return [
-        { routeId, name: 'Start', sequenceOrder: 0, coordinates: coords[0], photoRequired: true, type: 'route_start' as const },
-        { routeId, name: 'End', sequenceOrder: 1, coordinates: coords[coords.length - 1], photoRequired: true, type: 'route_end' as const },
-      ]
-    })
+    const checkpointValues = proposals.flatMap((p, i) =>
+      generateRouteCheckpointInserts(
+        insertedRoutes[i].id,
+        { type: 'Polygon', coordinates: p.blockPolygon },
+      ),
+    )
 
     await Promise.all([
       db.insert(blocks).values(blockValues),

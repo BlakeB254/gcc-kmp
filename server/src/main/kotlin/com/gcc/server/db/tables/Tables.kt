@@ -403,6 +403,104 @@ object Jobs : Table("jobs") {
 }
 
 // ===========================================================================
+// Route release queue
+// ===========================================================================
+object RouteReleaseBatches : Table("route_release_batches") {
+    val id = integer("id").autoIncrement()
+    val serviceAreaId = integer("service_area_id").references(ServiceAreas.id)
+    val name = varchar("name", 255)
+    val communityName = varchar("community_name", 255)
+    val eligibleZipCodes = jsonbCol<List<String>>("eligible_zip_codes")
+    val status = varchar("status", 50).default("draft")
+    val releaseAt = timestamp("release_at")
+    val nextWaveAt = timestamp("next_wave_at").nullable()
+    val offerWindowMinutes = integer("offer_window_minutes").default(240)
+    val timezone = varchar("timezone", 64).default("America/Chicago")
+    val daytimeWindowStart = varchar("daytime_window_start", 5).default("08:00")
+    val daytimeWindowEnd = varchar("daytime_window_end", 5).default("20:00")
+    val cleanupStartsAt = timestamp("cleanup_starts_at").nullable()
+    val cleanupEndsAt = timestamp("cleanup_ends_at").nullable()
+    val targetSlots = integer("target_slots").default(0)
+    val waveNumber = integer("wave_number").default(0)
+    val createdById = integer("created_by_id").nullable()
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RouteReleaseRoutes : Table("route_release_routes") {
+    val id = integer("id").autoIncrement()
+    val batchId = integer("batch_id").references(RouteReleaseBatches.id)
+    val routeId = integer("route_id").references(Routes.id)
+    val jobId = integer("job_id").references(Jobs.id)
+    val status = varchar("status", 50).default("open")
+    val acceptedByWorkerId = integer("accepted_by_worker_id").references(Workers.id).nullable()
+    val acceptedOfferId = integer("accepted_offer_id").nullable()
+    val acceptedAt = timestamp("accepted_at").nullable()
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RouteJobOffers : Table("route_job_offers") {
+    val id = integer("id").autoIncrement()
+    val batchId = integer("batch_id").references(RouteReleaseBatches.id)
+    val workerId = integer("worker_id").references(Workers.id)
+    val waveNumber = integer("wave_number")
+    val status = varchar("status", 50).default("pending")
+    val offerToken = varchar("offer_token", 96)
+    val offeredAt = timestamp("offered_at")
+    val expiresAt = timestamp("expires_at")
+    val respondedAt = timestamp("responded_at").nullable()
+    val selectedRouteId = integer("selected_route_id").references(Routes.id).nullable()
+    val selectedJobId = integer("selected_job_id").references(Jobs.id).nullable()
+    val declineReason = text("decline_reason").nullable()
+    val notificationStatus = varchar("notification_status", 32).default("pending")
+    val notificationLastError = text("notification_last_error").nullable()
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RouteCommunityQueue : Table("route_community_queue") {
+    val id = integer("id").autoIncrement()
+    val serviceAreaId = integer("service_area_id").references(ServiceAreas.id)
+    val workerId = integer("worker_id").references(Workers.id)
+    val queueRank = varchar("queue_rank", 50).nullable()
+    val lastOpportunityAt = timestamp("last_opportunity_at").nullable()
+    val lastOfferedBatchId = integer("last_offered_batch_id").nullable()
+    val lastOfferStatus = varchar("last_offer_status", 50).nullable()
+    val opportunitiesCount = integer("opportunities_count").default(0)
+    val carryoverReleaseAfter = timestamp("carryover_release_after").nullable()
+    val carryoverAttempts = integer("carryover_attempts").default(0)
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RouteOfferNotifications : Table("route_offer_notifications") {
+    val id = integer("id").autoIncrement()
+    val offerId = integer("offer_id").references(RouteJobOffers.id)
+    val workerId = integer("worker_id").references(Workers.id)
+    val channel = varchar("channel", 20)
+    val kind = varchar("kind", 32)
+    val status = varchar("status", 32).default("pending")
+    val scheduledAt = timestamp("scheduled_at")
+    val sentAt = timestamp("sent_at").nullable()
+    val attempts = integer("attempts").default(0)
+    val lastError = text("last_error").nullable()
+    val payload = jsonbCol<kotlinx.serialization.json.JsonElement>("payload").nullable()
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ===========================================================================
 // Transactions
 // ===========================================================================
 object Transactions : Table("transactions") {

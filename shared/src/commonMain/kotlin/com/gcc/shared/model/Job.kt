@@ -4,6 +4,8 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 
+const val TEST_ASSIGNMENT_START_WINDOW_MINUTES: Int = 60
+
 @Serializable
 data class Job(
     val id: Int,
@@ -33,3 +35,21 @@ data class JobTiming(
     val completedAt: Instant? = null,
     val durationMinutes: Int? = null
 )
+
+@Serializable
+data class JobEvidenceRequest(
+    val checkpointId: Int? = null,
+    val beforePhotoUrl: String,
+    val afterPhotoUrl: String,
+)
+
+fun Job.isTestAssignment(): Boolean =
+    payoutAmount == 0
+
+fun Job.testAssignmentStartDeadlineMillis(): Long? =
+    if (isTestAssignment()) {
+        timing.claimedAt?.toEpochMilliseconds()
+            ?.plus(TEST_ASSIGNMENT_START_WINDOW_MINUTES * 60_000L)
+    } else {
+        null
+    }

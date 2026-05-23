@@ -37,6 +37,17 @@ fun resolveMapCenter(
         )
     }
 
+    // The current production service-area endpoint can return "North Lawndale"
+    // without mapCenter/mapZoom. Keep service-area screens anchored to the
+    // community instead of falling back to simulator/device GPS.
+    if (serviceArea?.name?.equals("North Lawndale", ignoreCase = true) == true) {
+        return MapCenter(
+            lat = MapStyles.NORTH_LAWNDALE_CENTER_LAT,
+            lng = MapStyles.NORTH_LAWNDALE_CENTER_LNG,
+            zoom = MapStyles.ZOOM_SERVICE_AREA,
+        )
+    }
+
     // Priority 2: GPS location
     currentLocation?.let { loc ->
         return MapCenter(

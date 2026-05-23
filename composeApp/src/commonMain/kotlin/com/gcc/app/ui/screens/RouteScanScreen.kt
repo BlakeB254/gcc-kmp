@@ -1,13 +1,18 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.runtime.*
+import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.ui.components.ScoutCaptureDialog
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.ScanPhase
-import com.gcc.shared.model.SpotTag
+import com.gcc.shared.serialization.GccJson
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.put
 import org.koin.compose.koinInject
 
 /**
@@ -23,6 +28,7 @@ import org.koin.compose.koinInject
 @Composable
 fun RouteScanScreen(
     route: Route,
+    allowUnpublished: Boolean = false,
     onBack: () -> Unit = {},
     onComplete: () -> Unit = {},
 ) {
@@ -34,8 +40,8 @@ fun RouteScanScreen(
     // Scout-phase: whether the ScoutCaptureDialog is open
     var showScoutCapture by remember { mutableStateOf(false) }
 
-    LaunchedEffect(route.id) {
-        viewModel.initForRoute(route)
+    LaunchedEffect(route.id, allowUnpublished) {
+        viewModel.initForRoute(route, allowUnpublished = allowUnpublished)
     }
 
     DisposableEffect(Unit) {
@@ -45,6 +51,7 @@ fun RouteScanScreen(
     when (uiState.phase) {
         ScanPhase.SCOUTING -> ScoutScreen(
             uiState = uiState,
+            allowUnpublished = allowUnpublished,
             onStartScout = { viewModel.startScout() },
             onCompleteScout = { viewModel.completeScout() },
             onCaptureHotspot = { showScoutCapture = true },
@@ -86,23 +93,36 @@ fun RouteScanScreen(
     // ── ScoutCaptureDialog (F4/F8) ──────────────────────────────────────
     if (showScoutCapture) {
         ScoutCaptureDialog(
-            onCaptured = { photoBytes, analysisResult ->
+            onCaptured = { photo, analysisResult, cleanupTarget ->
                 showScoutCapture = false
                 val state = uiState
+                val effectiveCheckpoints = state.route
+                    ?.let { CheckpointGenerator.generateIfMissing(it) }
+                    .orEmpty()
+                    .sortedBy { it.sequenceOrder }
+                val sectionIndex = state.currentSectionIndex
+                    .takeIf { it in state.routeSections.indices }
+                val activeSection = sectionIndex?.let { state.routeSections[it] }
                 val lat = state.currentLat.takeIf { it != 0.0 }
-                    ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lat
+                    ?: activeSection?.coordinates?.lat
+                    ?: effectiveCheckpoints.getOrNull(sectionIndex ?: 0)?.coordinates?.lat
                     ?: 0.0
                 val lng = state.currentLng.takeIf { it != 0.0 }
-                    ?: state.route?.checkpoints?.firstOrNull()?.coordinates?.lng
+                    ?: activeSection?.coordinates?.lng
+                    ?: effectiveCheckpoints.getOrNull(sectionIndex ?: 0)?.coordinates?.lng
                     ?: 0.0
 
                 coroutineScope.launch {
-                    // Upload photo bytes and get a real URL; fall back gracefully on failure
-                    val beforePhotoUrl = try {
-                        val urls = apiClient.uploadSpotPhotos(listOf(photoBytes))
-                        urls.firstOrNull() ?: "upload_failed"
-                    } catch (_: Exception) {
-                        "upload_failed"
+                    val beforePhotoUrl = if (photo.bytes.isNotEmpty()) {
+                        try {
+                            val urls = apiClient.uploadSpotPhotos(listOf(photo.bytes))
+                            urls.firstOrNull() ?: throw IllegalStateException("No upload URL returned")
+                        } catch (e: Exception) {
+                            viewModel.setError("Photo upload failed: ${e.message}")
+                            return@launch
+                        }
+                    } else {
+                        "manual_before_${sectionIndex ?: 0}.jpg"
                     }
 
                     viewModel.addDetectedHotspot(
@@ -112,12 +132,26 @@ fun RouteScanScreen(
                         severity = analysisResult?.severity ?: 1,
                         beforePhotoUrl = beforePhotoUrl,
                         confidence = analysisResult?.confidence ?: 0f,
-                        estimatedVolumeLiters = null,
+                        estimatedVolumeLiters = photo.depthAnalysis?.estimatedVolumeCubicFt
+                            ?.let { it * CUBIC_FEET_TO_LITERS },
                         estimatedWeightLbs = analysisResult?.estimatedWeightLbs,
+                        depthData = routeScanEvidenceJson(photo),
+                        cleanupTarget = cleanupTarget,
+                        sectionIndex = sectionIndex,
                     )
                 }
             },
             onDismiss = { showScoutCapture = false },
         )
     }
+}
+
+private const val CUBIC_FEET_TO_LITERS = 28.316846592
+
+private fun routeScanEvidenceJson(photo: CapturedPhoto): String? {
+    if (photo.depthAnalysis == null && photo.attestation == null) return null
+    return buildJsonObject {
+        photo.depthAnalysis?.let { put("depthAnalysis", GccJson.encodeToJsonElement(it)) }
+        photo.attestation?.let { put("captureAttestation", GccJson.encodeToJsonElement(it)) }
+    }.toString()
 }

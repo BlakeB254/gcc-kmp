@@ -21,6 +21,20 @@ import kotlinx.coroutines.launch
 
 // ── UI state ─────────────────────────────────────────────────────────
 
+enum class RouteScanSectionStatus {
+    PENDING,
+    RECORDED,
+    DOCUMENTED,
+    APPROVED,
+}
+
+data class RouteScanSectionUiItem(
+    val index: Int,
+    val name: String,
+    val coordinates: Coordinates,
+    val status: RouteScanSectionStatus = RouteScanSectionStatus.PENDING,
+)
+
 data class RouteScanUiState(
     val scanId: Int? = null,
     val routeId: Int = 0,
@@ -42,6 +56,9 @@ data class RouteScanUiState(
     val pointsAwarded: Int = 0,
     val error: String? = null,
     val aiDirectionText: String? = null,
+    val routeSections: List<RouteScanSectionUiItem> = emptyList(),
+    val currentSectionIndex: Int = 0,
+    val sectionPrompt: String? = null,
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────
@@ -64,6 +81,7 @@ class RouteScanViewModel(
     // ≤500 points in buildGeoJsonLineString() before transmission to the server.
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
     private val cleanPath = mutableListOf<Pair<Double, Double>>()
+    private var allowUnpublishedRoute = false
 
     // Coroutine jobs
     private var locationJob: Job? = null
@@ -73,27 +91,51 @@ class RouteScanViewModel(
 
     // ── Initialisation ───────────────────────────────────────────────
 
-    fun initForRoute(route: Route) {
+    fun initForRoute(route: Route, allowUnpublished: Boolean = false) {
+        allowUnpublishedRoute = allowUnpublished
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
         aiDirectionJob?.cancel()
+        arScanner.stopSession()
         scoutPath.clear()
         cleanPath.clear()
 
+        if (!route.isWorkerAvailableRoute(allowUnpublished)) {
+            _uiState.value = RouteScanUiState(
+                routeId = route.id,
+                route = route,
+                error = "This route is not available yet. An admin must publish it and configure checkpoints before scouting can start.",
+            )
+            return
+        }
+
         val deviceType = detectDeviceType()
+        val effectiveCheckpoints = CheckpointGenerator.generateIfMissing(route)
+            .sortedBy { it.sequenceOrder }
+        val sections = effectiveCheckpoints.mapIndexed { index, checkpoint ->
+            RouteScanSectionUiItem(
+                index = index,
+                name = checkpoint.name,
+                coordinates = checkpoint.coordinates,
+            )
+        }
 
         _uiState.value = RouteScanUiState(
             routeId = route.id,
             route = route,
             deviceType = deviceType,
             phase = ScanPhase.SCOUTING,
+            routeSections = sections,
+            sectionPrompt = if (deviceType == DeviceType.AR) {
+                "Start the area scan at section 1."
+            } else {
+                "Start the fallback photo lap at section 1."
+            },
         )
 
         // Initialise coverage grid from route checkpoints (auto-generate if missing)
-        val effectiveCheckpoints = CheckpointGenerator.generateIfMissing(route)
         val waypoints = effectiveCheckpoints
-            .sortedBy { it.sequenceOrder }
             .map { it.coordinates }
         coverageTracker.initFromRoute(waypoints)
 
@@ -118,19 +160,22 @@ class RouteScanViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isSubmitting = true, error = null)
             try {
+                val state = _uiState.value
+                val route = state.route
+                if (route?.isWorkerAvailableRoute(allowUnpublishedRoute) != true) {
+                    throw IllegalStateException(
+                        "This route is not available yet. An admin must publish it and configure checkpoints before scouting can start."
+                    )
+                }
+
                 // Get first GPS fix
                 locationProvider.startLocationUpdates()
-                val location = locationProvider.currentLocation.value
-                    ?: run {
-                        // Wait briefly for first fix
-                        delay(2000)
-                        locationProvider.currentLocation.value
-                    }
+                val location = awaitInitialLocation()
+                    ?: throw IllegalStateException("Location unavailable. Enable Location Services and wait for a GPS fix before starting the scan.")
 
-                val lat = location?.lat ?: 0.0
-                val lng = location?.lng ?: 0.0
+                val lat = location.lat
+                val lng = location.lng
 
-                val state = _uiState.value
                 val scan = apiClient.createScan(
                     CreateScanRequest(
                         routeId = state.routeId,
@@ -150,6 +195,9 @@ class RouteScanViewModel(
                 )
 
                 startLocationTracking()
+                if (state.deviceType == DeviceType.AR) {
+                    arScanner.startSession()
+                }
                 startTimer()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -173,11 +221,14 @@ class RouteScanViewModel(
         estimatedWeightLbs: Double? = null,
         arAnchorData: String? = null,
         depthData: String? = null,
+        cleanupTarget: Boolean = true,
+        sectionIndex: Int? = null,
     ) {
         val scanId = _uiState.value.scanId ?: return
         scope.launch {
             try {
-                val hotspot = apiClient.addScanHotspot(
+                val metadata = sectionIndex?.let { "section:$it" }
+                val createdHotspot = apiClient.addScanHotspot(
                     scanId,
                     CreateHotspotRequest(
                         lat = lat,
@@ -188,12 +239,48 @@ class RouteScanViewModel(
                         estimatedWeightLbs = estimatedWeightLbs,
                         confidence = confidence,
                         beforePhotoUrl = beforePhotoUrl,
-                        arAnchorData = arAnchorData,
+                        arAnchorData = arAnchorData ?: metadata,
                         depthData = depthData,
                     )
                 )
-                _uiState.value = _uiState.value.copy(
-                    hotspots = _uiState.value.hotspots + hotspot,
+                val hotspot = if (cleanupTarget) {
+                    createdHotspot
+                } else {
+                    apiClient.updateScanHotspot(
+                        scanId,
+                        createdHotspot.id,
+                        UpdateHotspotRequest(status = HotspotStatus.SKIPPED),
+                    )
+                }
+                val currentState = _uiState.value
+                val updatedSections = currentState.routeSections.map { section ->
+                    if (section.index == sectionIndex) {
+                        section.copy(
+                            status = if (cleanupTarget) {
+                                RouteScanSectionStatus.RECORDED
+                            } else {
+                                RouteScanSectionStatus.DOCUMENTED
+                            }
+                        )
+                    } else {
+                        section
+                    }
+                }
+                val nextSectionIndex = if (sectionIndex != null) {
+                    (sectionIndex + 1).coerceAtMost(currentState.routeSections.size)
+                } else {
+                    currentState.currentSectionIndex
+                }
+                val prompt = when {
+                    sectionIndex == null -> null
+                    cleanupTarget -> "Section ${sectionIndex + 1} recorded. Continue to the next scan section."
+                    else -> "Section ${sectionIndex + 1} documented only. Continue to the next scan section."
+                }
+                _uiState.value = currentState.copy(
+                    hotspots = currentState.hotspots + hotspot,
+                    routeSections = updatedSections,
+                    currentSectionIndex = nextSectionIndex,
+                    sectionPrompt = prompt,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -245,6 +332,7 @@ class RouteScanViewModel(
                 _uiState.value = _uiState.value.copy(
                     phase = ScanPhase.CLEANING,
                     error = null,
+                    sectionPrompt = "Record the after scan for the first cleanup target.",
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -271,11 +359,23 @@ class RouteScanViewModel(
                         status = HotspotStatus.CLEANED,
                     )
                 )
-                _uiState.value = _uiState.value.copy(
-                    hotspots = _uiState.value.hotspots.map {
+                val currentState = _uiState.value
+                val updatedHotspots = currentState.hotspots.map {
                         if (it.id == hotspotId) updated else it
-                    },
+                    }
+                val sectionIndex = updated.sectionIndex()
+                val updatedSections = currentState.routeSections.map { section ->
+                    if (section.index == sectionIndex) {
+                        section.copy(status = RouteScanSectionStatus.APPROVED)
+                    } else {
+                        section
+                    }
+                }
+                _uiState.value = currentState.copy(
+                    hotspots = updatedHotspots,
+                    routeSections = updatedSections,
                     nearbyHotspot = null,
+                    sectionPrompt = "Area approved clean. Continue to the next section.",
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -294,11 +394,21 @@ class RouteScanViewModel(
                     hotspotId,
                     UpdateHotspotRequest(status = HotspotStatus.SKIPPED)
                 )
-                _uiState.value = _uiState.value.copy(
-                    hotspots = _uiState.value.hotspots.map {
+                val currentState = _uiState.value
+                val sectionIndex = updated.sectionIndex()
+                _uiState.value = currentState.copy(
+                    hotspots = currentState.hotspots.map {
                         if (it.id == hotspotId) updated else it
                     },
+                    routeSections = currentState.routeSections.map { section ->
+                        if (section.index == sectionIndex) {
+                            section.copy(status = RouteScanSectionStatus.DOCUMENTED)
+                        } else {
+                            section
+                        }
+                    },
                     nearbyHotspot = null,
+                    sectionPrompt = "Section documented without cleanup. Continue to the next target.",
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -315,6 +425,7 @@ class RouteScanViewModel(
         timerJob?.cancel()
         locationJob?.cancel()
         locationProvider.stopLocationUpdates()
+        arScanner.stopSession()
 
         scope.launch {
             _uiState.value = state.copy(
@@ -323,9 +434,10 @@ class RouteScanViewModel(
                 error = null,
             )
             try {
-                val totalVolume = state.hotspots.sumOf { it.estimatedVolumeLiters ?: 0.0 }
+                val cleanedHotspots = state.hotspots.filter { it.status == HotspotStatus.CLEANED }
+                val totalVolume = cleanedHotspots.sumOf { it.estimatedVolumeLiters ?: 0.0 }
                     .takeIf { it > 0 }
-                val totalWeight = state.hotspots.sumOf { it.estimatedWeightLbs ?: 0.0 }
+                val totalWeight = cleanedHotspots.sumOf { it.estimatedWeightLbs ?: 0.0 }
                     .takeIf { it > 0 }
 
                 val response = apiClient.completeScan(
@@ -356,11 +468,17 @@ class RouteScanViewModel(
 
     fun canCompleteScout(): Boolean {
         val state = _uiState.value
-        return state.coveragePercent >= 85.0 && state.isLoopClosed
+        val allSectionsRecorded = state.routeSections.isNotEmpty() &&
+            state.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
+        return (state.coveragePercent >= 85.0 && state.isLoopClosed) || allSectionsRecorded
     }
 
     fun allHotspotsDone(): Boolean {
         return _uiState.value.hotspots.none { it.status == HotspotStatus.DETECTED }
+    }
+
+    fun setError(message: String?) {
+        _uiState.value = _uiState.value.copy(error = message)
     }
 
     // ── Internal: location tracking ──────────────────────────────────
@@ -380,7 +498,7 @@ class RouteScanViewModel(
                         scoutPath.add(Pair(lat, lng))
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
-                        val heading = locationProvider.headingDegrees.value
+                        val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
                         if (state.deviceType == DeviceType.AR && heading != null) {
                             coverageTracker.updateWithFrustum(
                                 lat = lat,
@@ -481,5 +599,25 @@ class RouteScanViewModel(
         aiDirectionJob?.cancel()
         aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
+        arScanner.stopSession()
+    }
+
+    private suspend fun awaitInitialLocation(): Coordinates? {
+        locationProvider.currentLocation.value?.let { return it }
+        repeat(10) {
+            delay(1000L)
+            locationProvider.currentLocation.value?.let { return it }
+        }
+        return null
     }
 }
+
+private fun Route.isWorkerAvailableRoute(allowUnpublished: Boolean = false): Boolean =
+    (status == RouteStatus.PUBLISHED || allowUnpublished) &&
+        CheckpointGenerator.generateIfMissing(this).size >= 2
+
+private fun ScanHotspot.sectionIndex(): Int? =
+    arAnchorData
+        ?.substringAfter("section:", missingDelimiterValue = "")
+        ?.takeWhile { it.isDigit() }
+        ?.toIntOrNull()

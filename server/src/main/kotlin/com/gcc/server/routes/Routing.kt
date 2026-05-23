@@ -18,6 +18,7 @@ fun Application.configureRouting() {
 
         // Auth (public — login/register)
         authRoutes()
+        routeQueueCronRoutes()
 
         // Public read-only (higher rate limit)
         rateLimit(RateLimitName("public")) {
@@ -41,6 +42,7 @@ fun Application.configureRouting() {
             rateLimit(RateLimitName("api")) {
                 authenticatedWorkerRoutes()
                 authenticatedJobRoutes()
+                authenticatedRouteQueueRoutes()
                 authenticatedSpotRoutes()
                 authenticatedVerificationRoutes()
                 authenticatedPointsRoutes()
@@ -55,6 +57,7 @@ fun Application.configureRouting() {
                 adminSponsorRoutes()
                 adminJobRoutes()
                 adminRouteRoutes()
+                adminRouteReleaseRoutes()
                 adminBlockRoutes()
                 adminBountyRoutes()
                 adminServiceAreaRoutes()

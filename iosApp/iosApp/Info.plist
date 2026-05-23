@@ -20,19 +20,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.6</string>
-	<key>CFBundleVersion</key>
-	<string>89</string>
-	<!--
-	  Google Sign-In iOS OAuth client ID.
-	  Google Cloud project: global-community-cleaners.
-	  Bundle id: com.globalcommunitycleaners.worker.
-	-->
-	<key>GIDClientID</key>
-	<string>674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g.apps.googleusercontent.com</string>
-	<!--
-	  Google Sign-In OAuth callback URL scheme.
-	  Reversed iOS OAuth client ID from Google Cloud Console.
-	-->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -42,6 +29,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>99</string>
+	<key>GIDClientID</key>
+	<string>674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -55,10 +46,10 @@
 	<string>GCC needs camera access to photograph before and after cleaning evidence at each checkpoint</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>GCC uses Face ID to securely unlock the app</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion, even when the app is in the background</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save your GCC profile card to Photos</string>
 	<key>NSPhotoLibraryUsageDescription</key>

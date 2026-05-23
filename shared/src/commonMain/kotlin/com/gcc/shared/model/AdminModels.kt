@@ -65,6 +65,28 @@ data class AdminRouteRequest(
 )
 
 @Serializable
+data class AdminRouteAssignmentRequest(
+    val workerId: Int,
+    val isTest: Boolean = false,
+)
+
+@Serializable
+data class AdminRouteAssignment(
+    val jobId: Int,
+    val routeId: Int,
+    val workerId: Int? = null,
+    val workerName: String = "Worker",
+    val workerEmail: String = "",
+    val status: JobStatus = JobStatus.AVAILABLE,
+    val isTest: Boolean = false,
+    val payoutAmount: Int = 0,
+    val claimedAt: Instant? = null,
+    val startedAt: Instant? = null,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+@Serializable
 data class AdminCheckpointRequest(
     val name: String,
     val lat: Double,
@@ -229,4 +251,3 @@ data class BountyPosterStats(
     val totalValueCents: Long = 0,
     val completionRate: Double = 0.0,
 )
-

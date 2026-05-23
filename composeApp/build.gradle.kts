@@ -1,5 +1,6 @@
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -16,6 +17,9 @@ val signingProps = Properties().apply {
         signingPropsFile.inputStream().use { load(it) }
     }
 }
+val disableNativeReleaseOptimization = providers.gradleProperty("gcc.disableNativeReleaseOptimization")
+    .map { it.toBoolean() }
+    .orElse(false)
 
 kotlin {
     jvm("desktop")
@@ -32,6 +36,9 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            if (disableNativeReleaseOptimization.get() && buildType == NativeBuildType.RELEASE) {
+                optimized = false
+            }
         }
     }
 

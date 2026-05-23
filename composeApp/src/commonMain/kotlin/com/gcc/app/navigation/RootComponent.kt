@@ -165,8 +165,8 @@ class RootComponent(
         navigation.push(Screen.SpotVerification(reportId))
     }
 
-    fun navigateToRouteScan(routeId: Int) {
-        navigation.push(Screen.RouteScan(routeId))
+    fun navigateToRouteScan(routeId: Int, allowUnpublished: Boolean = false) {
+        navigation.push(Screen.RouteScan(routeId, allowUnpublished))
     }
 
     fun navigateToPoints() {
@@ -195,10 +195,6 @@ class RootComponent(
 
     fun navigateToVerificationGate(actionLabel: String = "claim blocks") {
         navigation.push(Screen.VerificationGate(actionLabel))
-    }
-
-    fun navigateToRouteTest(routeId: Int) {
-        navigation.push(Screen.RouteTest(routeId))
     }
 
     fun navigateToArticles() {

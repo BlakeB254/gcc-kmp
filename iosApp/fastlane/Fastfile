@@ -46,10 +46,10 @@ platform :ios do
     release_config.build_settings.delete("PROVISIONING_PROFILE_SPECIFIER")
     project.save
 
-    # Build the Kotlin framework first (release config for device).
-    # The archive script copies this prebuilt framework into Xcode's search path
+    # Build the Kotlin framework and package-shaped Compose resources first.
+    # The archive script copies these prebuilt outputs into Xcode's app bundle
     # so the archive step does not have to link Kotlin/Native again.
-    sh("cd ../.. && ./gradlew :composeApp:linkReleaseFrameworkIosArm64")
+    sh("cd ../.. && ./gradlew :composeApp:linkReleaseFrameworkIosArm64 :composeApp:iosArm64AggregateResources --console=plain -Pgcc.disableNativeReleaseOptimization=true -Pkotlin.native.isAllowRunningInProcess=false -Dorg.gradle.jvmargs='-Xmx3072m -XX:+UseSerialGC -Dfile.encoding=UTF-8'")
 
     signing_args = [
       "DEVELOPMENT_TEAM=7BBNW25LZM",
@@ -66,11 +66,14 @@ platform :ios do
       output_directory: "/tmp/gcc-build",
       output_name: "GCC.ipa",
       clean: true,
+      skip_package_dependencies_resolution: true,
+      package_authorization_provider: "netrc",
       xcargs: signing_args,
       export_options: {
         method: "app-store",
         signingStyle: "manual",
         teamID: "7BBNW25LZM",
+        manageAppVersionAndBuildNumber: false,
         provisioningProfiles: {
           "com.globalcommunitycleaners.worker" => profile_name
         }

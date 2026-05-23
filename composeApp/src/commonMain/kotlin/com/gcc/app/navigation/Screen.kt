@@ -83,7 +83,7 @@ sealed class Screen {
     data class SpotVerification(val reportId: Int) : Screen()
 
     @Serializable
-    data class RouteScan(val routeId: Int) : Screen()
+    data class RouteScan(val routeId: Int, val allowUnpublished: Boolean = false) : Screen()
 
     @Serializable
     data object PointsDashboard : Screen()
@@ -99,9 +99,6 @@ sealed class Screen {
 
     @Serializable
     data class VerificationGate(val actionLabel: String = "claim blocks") : Screen()
-
-    @Serializable
-    data class RouteTest(val routeId: Int) : Screen()
 
     @Serializable
     data object Articles : Screen()

@@ -3,6 +3,7 @@ package com.gcc.app
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,7 +20,6 @@ import com.gcc.app.ui.screens.admin.AdminPanelScreen
 import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
-import com.gcc.app.ui.screens.admin.RouteTestScreen
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
@@ -61,6 +61,7 @@ fun App(component: RootComponent) {
                 )
                 is Screen.Dashboard -> DashboardScreen(
                     onRouteClick = component::navigateToRouteDetail,
+                    onActiveJobClick = component::navigateToActiveJob,
                     onProfileClick = { component.switchToTab(Screen.Profile) },
                     onMapClick = { component.switchToTab(Screen.MapFullScreen) },
                     onSpotClick = component::navigateToSpot,
@@ -89,7 +90,7 @@ fun App(component: RootComponent) {
                         onBack = component::navigateBack,
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },
                         onNavigateToRoute = component::replaceRouteDetail,
-                        onStartScan = component::navigateToRouteScan,
+                        onStartScan = { routeId -> component.navigateToRouteScan(routeId) },
                         onVerificationGate = component::navigateToVerificationGate,
                     )
                 }
@@ -97,6 +98,7 @@ fun App(component: RootComponent) {
                     jobId = screen.jobId,
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
+                    onStartScan = { routeId -> component.navigateToRouteScan(routeId, allowUnpublished = true) },
                 )
                 is Screen.Profile -> ProfileScreen(
                     onBack = { component.switchToTab(Screen.Dashboard) },
@@ -121,6 +123,7 @@ fun App(component: RootComponent) {
                     onBountyClick = component::navigateToBountyDetail,
                     onVolunteerCleanup = component::navigateToVolunteerCleanup,
                     onSpotVerification = component::navigateToSpotVerification,
+                    onActiveJobClick = component::navigateToActiveJob,
                     onAdminClick = { component.switchToTab(Screen.AdminPanel) },
                     onProfileClick = { component.switchToTab(Screen.Profile) },
                     onNavigateToSpot = component::navigateToSpot,
@@ -196,26 +199,44 @@ fun App(component: RootComponent) {
                 is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
-                    onTestRoute = component::navigateToRouteTest,
-                )
-                is Screen.RouteTest -> RouteTestScreen(
-                    routeId = screen.routeId,
-                    onBack = component::navigateBack,
                 )
                 is Screen.SpotVerification -> SpotVerificationScreen(
                     reportId = screen.reportId,
                     onBack = component::navigateBack,
                 )
                 is Screen.RouteScan -> {
+                    val apiClient = org.koin.compose.koinInject<com.gcc.shared.api.GccApiClient>()
                     val dashVm = org.koin.compose.koinInject<com.gcc.app.viewmodel.DashboardViewModel>()
                     val dashState by dashVm.uiState.collectAsState()
-                    val route = dashState.routes.find { it.id == screen.routeId }
+                    var route by remember(screen.routeId) {
+                        mutableStateOf(dashState.routes.find { it.id == screen.routeId }
+                            ?: dashState.assignedRoutesById[screen.routeId])
+                    }
+                    var loadError by remember(screen.routeId) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(screen.routeId) {
+                        if (route == null) {
+                            route = try {
+                                apiClient.getRoute(screen.routeId)
+                            } catch (e: Exception) {
+                                loadError = e.message ?: "Failed to load route"
+                                null
+                            }
+                        }
+                    }
                     if (route != null) {
                         RouteScanScreen(
-                            route = route,
+                            route = route!!,
+                            allowUnpublished = screen.allowUnpublished,
                             onBack = component::navigateBack,
                             onComplete = component::navigateBack,
                         )
+                    } else if (loadError != null) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(loadError ?: "Failed to load route")
+                        }
                     } else {
                         Box(
                             modifier = Modifier.fillMaxSize(),

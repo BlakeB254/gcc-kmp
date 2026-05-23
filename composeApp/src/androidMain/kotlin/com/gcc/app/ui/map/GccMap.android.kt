@@ -85,6 +85,7 @@ actual fun GccMap(
     val serviceAreaJson = remember { buildServiceAreaGeoJson() }
     val stateJson = remember { buildStateBoundaryGeoJson() }
     val cityJson = remember { buildCityBoundaryGeoJson() }
+    val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
@@ -164,6 +165,7 @@ actual fun GccMap(
             val citySrc = rememberGeoJsonSource(GeoJsonData.JsonString(cityJson))
             val areaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(communityAreasJson))
             val serviceAreaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(serviceAreaJson))
+            val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
             val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
@@ -221,11 +223,19 @@ actual fun GccMap(
                 join = const(LineJoin.Round),
             )
 
-            // Service area fill (green tint) — fades at street zoom
+            // Service area fill — hidden while the global heatmap baseline is active.
             FillLayer(
                 id = "service-area-fill",
                 source = serviceAreaSrc,
                 color = const(MapStyles.GEOFENCE_FILL_COLOR),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    10 to const(0f),
+                    15 to const(0f),
+                    16 to const(0.5f),
+                    17 to const(1f),
+                ),
             )
 
             // Community area outlines — visible at zoom 10-15, fades out above
@@ -282,6 +292,29 @@ actual fun GccMap(
                 textAllowOverlap = const(false),
                 textIgnorePlacement = const(false),
             )
+
+            if (spots.isNotEmpty()) {
+                // Green clean-zone baseline for zero-density heatmap pixels.
+                // Placed below routes and dots so active work remains legible.
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    maxZoom = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM.toFloat(),
+                    color = const(MapStyles.CLEAN_BASE_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.14f),
+                        7 to const(0.16f),
+                        8 to const(0.24f),
+                        10 to const(0.3f),
+                        12 to const(0.27f),
+                        13 to const(0.2f),
+                        14 to const(0.08f),
+                        MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.08f),
+                    ),
+                )
+            }
 
             // ── Route polygon fill — invisible tap target ──
             // Was previously a solid green fill (zoom 10-14 dominant, fading
@@ -375,6 +408,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_CHECKPOINT_OUTER,
                 source = checkpointsSrc,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.White),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -397,6 +431,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_CHECKPOINT_INNER,
                 source = checkpointsSrc,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(GccGreen),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -557,24 +592,65 @@ actual fun GccMap(
             val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
             val spotHeatWeightExpr = feature["heatWeight"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.FloatValue>
 
-            val fullMapGreenJson = remember {
-                """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}]}"""
-            }
-            val fullMapGreenSrc = rememberGeoJsonSource(GeoJsonData.JsonString(fullMapGreenJson))
-            FillLayer(
-                id = "clean-zone-base",
-                source = fullMapGreenSrc,
-                color = const(MapStyles.CLEAN_BASE_COLOR),
+            // Terrain-style field: broad green/yellow density that reads at
+            // overview zoom before hot cores resolve into individual spots.
+            HeatmapLayer(
+                id = MapStyles.LAYER_SPOT_THERMAL_FIELD,
+                source = spotSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM.toFloat(),
+                color = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
+                    0.0 to const(Color(0x00000000)),
+                    0.01 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.62f)),
+                    0.08 to const(MapStyles.SPOT_HEAT_EDGE),
+                    0.18 to const(MapStyles.SPOT_HEAT_LOW),
+                    0.34 to const(MapStyles.SPOT_HEAT_MEDIUM),
+                    0.54 to const(MapStyles.SPOT_HEAT_HIGH),
+                    0.74 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    1.0 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
+                ),
+                weight = spotHeatWeightExpr,
+                intensity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.28f),
+                    4 to const(0.45f),
+                    6 to const(0.7f),
+                    8 to const(1.05f),
+                    10 to const(1.35f),
+                    12 to const(1.55f),
+                    13 to const(1.25f),
+                    13.75 to const(0.65f),
+                    14.1 to const(0.52f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.42f),
+                ),
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(40.dp),
+                    4 to const(70.dp),
+                    6 to const(120.dp),
+                    8 to const(170.dp),
+                    10 to const(220.dp),
+                    12 to const(240.dp),
+                    13 to const(190.dp),
+                    13.75 to const(96.dp),
+                    14.1 to const(72.dp),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(56.dp),
+                ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    7 to const(0.16f),
-                    8 to const(0.24f),
-                    10 to const(0.3f),
-                    12 to const(0.27f),
-                    13 to const(0.2f),
-                    14 to const(0.08f),
-                    14.5 to const(0f),
+                    2 to const(0.72f),
+                    4 to const(0.86f),
+                    8 to const(0.98f),
+                    12 to const(0.96f),
+                    13 to const(0.75f),
+                    13.75 to const(0.38f),
+                    14.1 to const(0.32f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.28f),
                 ),
             )
 
@@ -587,55 +663,59 @@ actual fun GccMap(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
                     0.0 to const(Color(0x00000000)),
-                    0.02 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.55f)),
-                    0.12 to const(MapStyles.SPOT_HEAT_EDGE),
-                    0.26 to const(MapStyles.SPOT_HEAT_LOW),
-                    0.45 to const(MapStyles.SPOT_HEAT_MEDIUM),
-                    0.62 to const(MapStyles.SPOT_HEAT_HIGH),
-                    0.8 to const(MapStyles.SPOT_HEAT_EXTREME),
-                    0.94 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
+                    0.04 to const(Color(0x00000000)),
+                    0.12 to const(MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = 0.78f)),
+                    0.24 to const(MapStyles.SPOT_HEAT_HIGH),
+                    0.4 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    0.62 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
                     1.0 to const(MapStyles.SPOT_HEAT_PEAK),
                 ),
                 weight = spotHeatWeightExpr,
                 intensity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.08f),
-                    10 to const(0.13f),
-                    12 to const(0.21f),
-                    13 to const(0.26f),
-                    14 to const(0.16f),
-                    14.5 to const(0.05f),
-                    15 to const(0.02f),
+                    2 to const(0.06f),
+                    5 to const(0.3f),
+                    8 to const(0.75f),
+                    10 to const(1.15f),
+                    12 to const(1.35f),
+                    13 to const(1.0f),
+                    13.75 to const(0.4f),
+                    14.1 to const(0.32f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.24f),
                 ),
                 radius = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(18.dp),
-                    10 to const(28.dp),
-                    12 to const(42.dp),
-                    13 to const(52.dp),
-                    13.75 to const(34.dp),
-                    14.25 to const(18.dp),
-                    14.5 to const(0.dp),
-                    15 to const(0.dp),
+                    2 to const(12.dp),
+                    5 to const(24.dp),
+                    8 to const(44.dp),
+                    10 to const(70.dp),
+                    12 to const(100.dp),
+                    13 to const(88.dp),
+                    13.75 to const(42.dp),
+                    14.1 to const(30.dp),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(24.dp),
                 ),
                 opacity = interpolate(
                     type = org.maplibre.compose.expressions.dsl.linear(),
                     input = zoom(),
-                    8 to const(0.74f),
-                    10 to const(0.82f),
-                    12 to const(0.86f),
-                    13 to const(0.82f),
-                    13.75 to const(0.54f),
-                    14.25 to const(0.22f),
-                    14.5 to const(0f),
+                    2 to const(0.2f),
+                    5 to const(0.55f),
+                    8 to const(0.9f),
+                    10 to const(0.98f),
+                    12 to const(0.98f),
+                    13 to const(0.78f),
+                    13.75 to const(0.32f),
+                    14.1 to const(0.24f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.2f),
                 ),
             )
 
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKER_HALOS,
                 source = spotSrc,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.16f)),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -657,6 +737,7 @@ actual fun GccMap(
             CircleLayer(
                 id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
                 source = bountiedSpotSrc,
+                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
                 color = const(Color.Transparent),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -767,10 +848,13 @@ actual fun GccMap(
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        12 to const(0f),
-                        13 to const(0.35f),
-                        15 to const(0.55f),
-                        17 to const(0.7f),
+                        10 to const(0f),
+                        11 to const(0.14f),
+                        12 to const(0.34f),
+                        13 to const(0.46f),
+                        14 to const(0.42f),
+                        15 to const(0.5f),
+                        17 to const(0.62f),
                     ),
                     onClick = if (onAffectedBlockTap != null) { features ->
                         val id = (features.firstOrNull()?.properties?.get("blockId") as? Number)?.toInt()
@@ -789,21 +873,27 @@ actual fun GccMap(
                 CircleLayer(
                     id = "affected-block-heatmap",
                     source = affectedSrc,
+                    minZoom = 8f,
+                    maxZoom = 14f,
                     color = const(Color(0xFFFF6B35)), // warm amber accent — reads against both the green baseline map and any polygon fill
                     radius = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        8 to const(20.dp),
-                        11 to const(28.dp),
-                        13 to const(22.dp),
+                        8 to const(4.dp),
+                        10 to const(8.dp),
+                        11 to const(14.dp),
+                        12 to const(22.dp),
+                        13 to const(16.dp),
                         14 to const(0.dp),
                     ),
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        8 to const(0.3f),
-                        11 to const(0.45f),
-                        13 to const(0.25f),
+                        8 to const(0.12f),
+                        10 to const(0.26f),
+                        11 to const(0.36f),
+                        12 to const(0.46f),
+                        13 to const(0.32f),
                         14 to const(0f),
                     ),
                 )

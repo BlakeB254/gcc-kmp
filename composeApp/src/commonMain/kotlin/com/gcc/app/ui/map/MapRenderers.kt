@@ -423,7 +423,7 @@ internal fun DrawScope.drawCityBoundary(
     )
 }
 
-/** Draw spot report markers: orange heatmap wash at far zoom, orange dots at close zoom. */
+/** Draw spot report markers: terrain-style thermal wash at far zoom, orange dots at close zoom. */
 internal fun DrawScope.drawSpotMarkers(
     spots: List<com.gcc.shared.model.CommunityReport>,
     centerLat: Double, centerLng: Double, zoom: Double, w: Float, h: Float,
@@ -432,11 +432,22 @@ internal fun DrawScope.drawSpotMarkers(
     if (spots.isEmpty()) return
 
     val filteredSpots = spots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
-    if (filteredSpots.isNotEmpty() && effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
-        val cleanT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) /
-            (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - MapStyles.SPOT_HEATMAP_MIN_ZOOM)).toFloat().coerceIn(0f, 1f)
-        val cleanOpacity = (0.18f * (1f - cleanT)).coerceAtLeast(0f)
-        drawRect(color = MapStyles.CLEAN_BASE_COLOR.copy(alpha = cleanOpacity))
+    if (filteredSpots.isEmpty()) return
+
+    if (effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
+        val baseAlpha = when {
+            effectiveZoom < 7.0 -> 0.14f
+            effectiveZoom < 8.0 -> 0.16f
+            effectiveZoom < 10.0 -> 0.24f
+            effectiveZoom < 12.0 -> 0.30f
+            effectiveZoom < 13.0 -> 0.27f
+            effectiveZoom < 14.0 -> 0.20f
+            else -> {
+                val fade = ((effectiveZoom - 14.0) / (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - 14.0)).toFloat().coerceIn(0f, 1f)
+                0.08f * (1f - fade)
+            }
+        }
+        drawRect(color = MapStyles.CLEAN_BASE_COLOR.copy(alpha = baseAlpha))
     }
 
     for (spot in filteredSpots) {
@@ -445,20 +456,23 @@ internal fun DrawScope.drawSpotMarkers(
         if (pos.x < -50f || pos.x > w + 50f || pos.y < -50f || pos.y > h + 50f) continue
 
         if (effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
-            val growthT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) / 5.0).toFloat().coerceIn(0f, 1f)
+            val growthT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) / 10.0).toFloat().coerceIn(0f, 1f)
             val fadeT = ((effectiveZoom - 13.0) / (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - 13.0)).toFloat().coerceIn(0f, 1f)
             val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
                 (MapStyles.SPOT_HEATMAP_RADIUS_MID - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * growthT
             val radius = baseRadius * (1f - fadeT)
             val weight = canvasSpotHeatWeight(spot)
-            val opacity = (0.3f + 0.16f * weight) * (1f - fadeT)
+            val opacity = (0.44f + 0.11f * weight) * (1f - fadeT)
             if (opacity > 0f) {
-                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.45f), radius = radius * 1.35f, center = pos)
-                drawCircle(color = MapStyles.SPOT_HEAT_LOW.copy(alpha = opacity * 0.5f), radius = radius * 0.95f, center = pos)
-                drawCircle(color = MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = opacity * 0.55f), radius = radius * 0.55f, center = pos)
-                drawCircle(color = MapStyles.SPOT_HEAT_HIGH.copy(alpha = opacity * 0.5f), radius = radius * 0.32f, center = pos)
-                if (weight > 1.55f) {
-                    drawCircle(color = MapStyles.SPOT_HEAT_PEAK.copy(alpha = opacity * 0.42f), radius = radius * 0.13f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.5f), radius = radius * 1.65f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_LOW.copy(alpha = opacity * 0.66f), radius = radius * 1.16f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = opacity * 0.74f), radius = radius * 0.78f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_HIGH.copy(alpha = opacity * 0.7f), radius = radius * 0.48f, center = pos)
+                if (weight > 1.4f) {
+                    drawCircle(color = MapStyles.SPOT_HEAT_EXTREME.copy(alpha = opacity * 0.66f), radius = radius * 0.3f, center = pos)
+                }
+                if (weight > 2.4f) {
+                    drawCircle(color = MapStyles.SPOT_HEAT_NEAR_PEAK.copy(alpha = opacity * 0.55f), radius = radius * 0.17f, center = pos)
                 }
             }
         }

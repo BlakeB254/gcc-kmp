@@ -18,9 +18,12 @@ import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
+import com.gcc.app.viewmodel.RouteScanSectionStatus
+import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.DeviceType
+import com.gcc.shared.model.RouteStatus
 
 /**
  * Scout lap screen — shown during the SCOUTING phase.
@@ -37,6 +40,7 @@ import com.gcc.shared.model.DeviceType
 @Composable
 fun ScoutScreen(
     uiState: RouteScanUiState,
+    allowUnpublished: Boolean = false,
     onStartScout: () -> Unit,
     onCompleteScout: () -> Unit,
     onCaptureHotspot: () -> Unit,
@@ -47,13 +51,18 @@ fun ScoutScreen(
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
     } else null
 
+    val effectiveCheckpoints = remember(uiState.route) {
+        uiState.route
+            ?.let { CheckpointGenerator.generateIfMissing(it) }
+            .orEmpty()
+            .sortedBy { it.sequenceOrder }
+    }
+
     // Route polyline from checkpoint coordinates
-    val routeCoords = remember(uiState.route) {
-        uiState.route?.checkpoints
-            ?.sortedBy { it.sequenceOrder }
-            ?.map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            ?.let { listOf(it) }
-            ?: emptyList()
+    val routeCoords = remember(effectiveCheckpoints) {
+        effectiveCheckpoints
+            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
+            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
     }
 
     // Hotspot bounty locations for red dot markers
@@ -63,10 +72,10 @@ fun ScoutScreen(
 
     // Map centre: user position if available, otherwise route start, otherwise Chicago default
     val mapCenterLat = currentLocation?.lat
-        ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lat
+        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lat
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
-        ?: uiState.route?.checkpoints?.firstOrNull()?.coordinates?.lng
+        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lng
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -183,6 +192,13 @@ fun ScoutScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            if (uiState.scanId != null) {
+                SectionScanPromptCard(
+                    uiState = uiState,
+                    onCaptureHotspot = onCaptureHotspot,
+                )
+            }
+
             // Loop closure status
             if (uiState.scanId != null) {
                 Row(
@@ -242,10 +258,17 @@ fun ScoutScreen(
                         text = "Start Scout",
                         onClick = onStartScout,
                         variant = GccButtonVariant.PRIMARY,
+                        enabled = uiState.route?.let { route ->
+                            (route.status == RouteStatus.PUBLISHED || allowUnpublished) &&
+                                effectiveCheckpoints.size >= 2
+                        } == true,
                     )
                 }
                 else -> {
-                    val canComplete = uiState.coveragePercent >= 85.0 && uiState.isLoopClosed
+                    val allSectionsRecorded = uiState.routeSections.isNotEmpty() &&
+                        uiState.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
+                    val canComplete = (uiState.coveragePercent >= 85.0 && uiState.isLoopClosed) ||
+                        allSectionsRecorded
                     GccButton(
                         text = if (canComplete) "Complete Scout"
                         else "Scouting\u2026 ${uiState.coveragePercent.toInt()}%",
@@ -258,7 +281,7 @@ fun ScoutScreen(
         }
 
         // ── Capture FAB (bottom-right, above bottom panel) ───────────
-        if (uiState.scanId != null) {
+        if (uiState.scanId != null && uiState.currentSectionIndex < uiState.routeSections.size) {
             FloatingActionButton(
                 onClick = {
                     onCaptureHotspot()
@@ -299,4 +322,57 @@ fun ScoutScreen(
     }
 
     // ScoutCaptureDialog is now managed by RouteScanScreen — no stub needed here.
+}
+
+@Composable
+private fun SectionScanPromptCard(
+    uiState: RouteScanUiState,
+    onCaptureHotspot: () -> Unit,
+) {
+    val currentSection = uiState.routeSections.getOrNull(uiState.currentSectionIndex)
+    val recordedCount = uiState.routeSections.count { it.status != RouteScanSectionStatus.PENDING }
+    val total = uiState.routeSections.size
+    val prompt = when {
+        currentSection == null -> "All sections recorded. Complete the scout lap when coverage is ready."
+        uiState.deviceType == DeviceType.AR -> "Scan area ${currentSection.index + 1} of $total, then capture the AI observation."
+        else -> "Take the before photo for section ${currentSection.index + 1} of $total."
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = GccGreen.copy(alpha = 0.10f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = currentSection?.name ?: "Scout lap recorded",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = GccGreenDark,
+            )
+            Text(
+                text = uiState.sectionPrompt ?: prompt,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            Text(
+                text = "$recordedCount / $total sections recorded",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = GccGreen,
+            )
+            if (currentSection != null) {
+                GccButton(
+                    text = if (uiState.deviceType == DeviceType.AR) {
+                        "Capture Area Scan"
+                    } else {
+                        "Capture Before Photo"
+                    },
+                    onClick = onCaptureHotspot,
+                    variant = GccButtonVariant.SECONDARY,
+                )
+            }
+        }
+    }
 }
