@@ -362,34 +362,13 @@ actual fun GccMap(
                 textOpacity = const(if (isMyArea) 0f else 1f),
             )
 
-            if (hasHeatActivity) {
-                // Green clean-zone baseline for overview zooms. Spot heat zones
-                // are drawn above this layer, so areas without active spot
-                // reports stay visibly green during overview zooms.
-                FillLayer(
-                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                    source = spotCleanZoneSrc,
-                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.CLEAN_BASE_COLOR),
-                    // Capped at ~0.30 peak so OpenFreeMap road lines and
-                    // place labels remain readable underneath. Previous
-                    // 0.54-0.58 peak was opaque enough that residential
-                    // streets and names disappeared even in spot-less areas
-                    // (the source is a planet-spanning polygon — this fill
-                    // covers every pixel of the visible map).
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.14f),
-                        7 to const(0.18f),
-                        10 to const(0.28f),
-                        12 to const(0.30f),
-                        13 to const(0.22f),
-                        13.8 to const(0.12f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0.10f),
-                    ),
-                )
-            }
+            // Note: the planet-spanning clean-zone-base FillLayer that used
+            // to live here has been removed. It painted a green tint over
+            // EVERY pixel of the visible map (the source is a polygon from
+            // [-180,-85] to [180,85]) which obscured OpenFreeMap's road and
+            // label layers underneath. The simplified map keeps just the
+            // basemap + colored spot dots; density is conveyed by how
+            // many dots cluster, not by an overlay wash.
 
             // ── Route polygon fill — invisible tap target ──
             // Was previously a solid green fill at high opacity, but it

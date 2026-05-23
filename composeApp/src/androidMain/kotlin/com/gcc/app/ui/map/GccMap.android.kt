@@ -293,28 +293,12 @@ actual fun GccMap(
                 textIgnorePlacement = const(false),
             )
 
-            if (spots.isNotEmpty()) {
-                // Green clean-zone baseline for zero-density heatmap pixels.
-                // Placed below routes and dots so active work remains legible.
-                FillLayer(
-                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                    source = spotCleanZoneSrc,
-                    maxZoom = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM.toFloat(),
-                    color = const(MapStyles.CLEAN_BASE_COLOR),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.14f),
-                        7 to const(0.16f),
-                        8 to const(0.24f),
-                        10 to const(0.3f),
-                        12 to const(0.27f),
-                        13 to const(0.2f),
-                        14 to const(0.08f),
-                        MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.08f),
-                    ),
-                )
-            }
+            // Note: the planet-spanning clean-zone-base FillLayer that used
+            // to live here has been removed for parity with the simplified
+            // website maps. The source was a polygon covering the entire
+            // earth ([-180,-85] to [180,85]); painting it as a tint hid
+            // OpenFreeMap's road and label layers underneath. Spot density
+            // is now conveyed by dot clustering, not an overlay wash.
 
             // ── Route polygon fill — invisible tap target ──
             // Was previously a solid green fill (zoom 10-14 dominant, fading
