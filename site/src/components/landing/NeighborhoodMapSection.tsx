@@ -623,7 +623,17 @@ export function NeighborhoodMapSection() {
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
               onLoad={() => setMapLoaded(true)}
-              onError={() => setWebglReady(false)}
+              onError={(e) => {
+                // LOG ONLY. Don't call setWebglReady(false) here —
+                // MapLibre fires `error` events for transient issues
+                // (single tile retry, sprite fetch, style warning) and
+                // every one would otherwise hard-flip the homepage to
+                // the Leaflet fallback, killing all MapLibre overlay
+                // layers (spot dots, heatmap, blocks, routes, bounties).
+                // The initial canUseWebGL check still gates the
+                // Leaflet/MapLibre choice for genuinely WebGL-less envs.
+                console.warn('[NeighborhoodMap] MapLibre runtime event', e)
+              }}
               cursor={hoveredBlockId ? 'pointer' : 'grab'}
               maxBounds={[
                 [MAP_BOUNDS.west - 0.004, MAP_BOUNDS.south - 0.004],
