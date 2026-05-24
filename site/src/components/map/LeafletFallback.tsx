@@ -51,7 +51,12 @@ export default function LeafletFallback({
         maxZoom: 19,
       }).addTo(map)
 
-      // Render caller-supplied GeoJSON layers with per-feature styling
+      // Render caller-supplied GeoJSON layers with per-feature styling.
+      //
+      // Points get rendered as circle markers (using the caller's style.color
+      // for fill) instead of Leaflet's default blue pin icon. Lines and
+      // polygons use Leaflet's regular path styling. onEachFeature still
+      // fires so callers can bind popups regardless of geometry type.
       if (layers) {
         for (const { geojson, style, onEachFeature } of layers) {
           L.geoJSON(geojson as any, {
@@ -60,6 +65,16 @@ export default function LeafletFallback({
               opacity: 0.9,
               ...style(feature!),
             }),
+            pointToLayer: (feature, latlng) => {
+              const s = style(feature)
+              return L.circleMarker(latlng, {
+                radius: 7,
+                color: '#ffffff',
+                weight: 1.5,
+                fillColor: s.fillColor ?? s.color ?? '#F97316',
+                fillOpacity: s.fillOpacity ?? 0.9,
+              })
+            },
             onEachFeature,
           }).addTo(map)
         }

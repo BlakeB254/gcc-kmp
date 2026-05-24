@@ -61,6 +61,23 @@ const BOUNTY_STATUS_LABELS: Record<BountyStatus, string> = {
   completed: 'Completed',
 }
 
+// Per-status spot dot colors. Matches the MapLibre `combined-spot-center`
+// circle-color expression so the Leaflet fallback renders the same visual.
+const STATUS_DOT_COLOR: Record<string, string> = {
+  pending: '#F59E0B',       // amber — awaiting verification
+  verified: '#EF4444',      // red — confirmed dirty
+  acknowledged: '#3B82F6',  // blue — worker claimed
+  resolved: '#22C55E',      // green — cleaned
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 const ROUTE_COLORS = {
   published: { fill: ROUTE_STATUS_COLORS.published.line, case: ROUTE_STATUS_COLORS.published.casing },
   claimed: { fill: ROUTE_STATUS_COLORS.claimed.line, case: ROUTE_STATUS_COLORS.claimed.casing },
@@ -473,7 +490,11 @@ export function CombinedMap({
     </div>
   ) : undefined
 
-  // Leaflet canvas fallback layers when WebGL is unavailable
+  // Leaflet canvas fallback layers when WebGL is unavailable.
+  // Spots get status-colored circle markers + a popup with label/status;
+  // routes get colored polylines + a popup with displayName/status.
+  // This makes the Leaflet path visually + functionally close to the
+  // MapLibre path so users who fall back still get the real experience.
   const fallbackLayers = useMemo<FallbackGeoJSONLayer[]>(() => {
     const layers: FallbackGeoJSONLayer[] = []
     if (routes.length > 0) {
@@ -483,12 +504,38 @@ export function CombinedMap({
           const status = (feature?.properties?.status as RouteDisplayStatus) ?? 'published'
           return { color: ROUTE_COLORS[status]?.fill ?? ROUTE_COLORS.published.fill, weight: 4, opacity: 0.9 }
         },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {}
+          const status = (p.status as string) || 'published'
+          const name = (p.displayName as string) || (p.code as string) || 'Route'
+          layer.bindPopup(
+            `<div style="font-family:system-ui;font-size:13px;min-width:160px">
+               <div style="font-weight:600;margin-bottom:4px">${escapeHtml(name)}</div>
+               <div style="color:#666;text-transform:capitalize">${escapeHtml(status)}</div>
+             </div>`,
+          )
+        },
       })
     }
     if (spots.length > 0) {
       layers.push({
         geojson: spotGeoJson,
-        style: () => ({ color: SPOT_COLORS.MARKER, fillColor: SPOT_COLORS.MARKER, fillOpacity: 0.7, weight: 2 }),
+        style: (feature) => {
+          const status = (feature?.properties?.status as string) || 'pending'
+          const color = STATUS_DOT_COLOR[status] || SPOT_COLORS.MARKER
+          return { color, fillColor: color, fillOpacity: 0.9, weight: 2 }
+        },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {}
+          const label = (p.label as string) || 'Spot Report'
+          const status = (p.status as string) || 'pending'
+          layer.bindPopup(
+            `<div style="font-family:system-ui;font-size:13px;min-width:180px">
+               <div style="font-weight:600;margin-bottom:4px;text-transform:capitalize">${escapeHtml(label.replace(/_/g, ' '))}</div>
+               <div style="color:#666;text-transform:capitalize">Status: ${escapeHtml(status)}</div>
+             </div>`,
+          )
+        },
       })
     }
     return layers
