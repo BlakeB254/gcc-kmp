@@ -187,22 +187,22 @@ export const MAP_CENTER = {
 }
 
 /**
- * Map bounds for the homepage mini-map. Sized to cover Roosevelt Road
- * (lat ~41.866) and ~90 % of the actual community-report spots in prod,
- * not just the original 10-block 15th–16th St corridor.
+ * Map bounds for the homepage mini-map — sized so all 10 launch-area
+ * blocks (15th–16th St corridor) fit cleanly in the viewport at the
+ * map's natural fitBounds zoom (~z=15).
  *
- * Source: probe of community_reports.coordinates on 2026-05-23 —
- *   5th–95th percentile of spots was lat 41.8538–41.8619, lng -87.7245–-87.7064.
- *   Roosevelt Road launch area extends north of that to ~41.866.
- *
- * When the launch area expands beyond Roosevelt Road (and most spots fall
- * outside this box), recompute against current spot data and update.
+ * Earlier this session these were expanded to include Roosevelt Road
+ * (lat ~41.866), but that pushed the fitBounds settling zoom down to
+ * ~14.5 which sat in the spot-heatmap/dot crossfade — and crucially
+ * the 10 blocks no longer fit cleanly in the view. Restored to the
+ * tight corridor; Roosevelt Road sits just north of the bounds and
+ * users can pan to it if needed.
  */
 export const MAP_BOUNDS = {
-  north: 41.870,
-  south: 41.852,
-  east: -87.706,
-  west: -87.725,
+  north: 41.8620,
+  south: 41.8575,
+  east: -87.7120,
+  west: -87.7265,
 }
 
 /**

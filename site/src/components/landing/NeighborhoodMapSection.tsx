@@ -438,11 +438,6 @@ export function NeighborhoodMapSection() {
         {
           padding: { top: 50, bottom: 50, left: 50, right: 50 },
           duration: 1000,
-          // Cap fit zoom at 15 so the spot/heatmap crossfade settles in
-          // the dots-fully-visible zone. Without this, the wider MAP_BOUNDS
-          // (expanded for Roosevelt Road) makes fitBounds land at ~14.5,
-          // smack in the middle of the crossfade where both layers show.
-          maxZoom: 15,
         }
       )
     }
@@ -473,7 +468,7 @@ export function NeighborhoodMapSection() {
         [MAP_BOUNDS.west - 0.001, MAP_BOUNDS.south - 0.001],
         [MAP_BOUNDS.east + 0.001, MAP_BOUNDS.north + 0.001],
       ],
-      { padding: { top: 50, bottom: 50, left: 50, right: 50 }, duration: 600, maxZoom: 15 }
+      { padding: { top: 50, bottom: 50, left: 50, right: 50 }, duration: 600 }
     )
   }, [])
 

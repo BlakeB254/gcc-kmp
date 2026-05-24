@@ -154,11 +154,6 @@ export function CombinedMap({
         {
           padding: { top: 40, bottom: 40, left: 40, right: 40 },
           duration: 1000,
-          // Cap fit zoom at 15 so the spot/heatmap crossfade settles in
-          // the dots-fully-visible zone. Without this, the wider
-          // MAP_BOUNDS (expanded for Roosevelt Road) lands at ~14.5,
-          // mid-crossfade where both layers are visible.
-          maxZoom: 15,
         }
       )
     }
