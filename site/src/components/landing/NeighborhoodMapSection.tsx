@@ -623,15 +623,7 @@ export function NeighborhoodMapSection() {
               onMouseMove={onHover}
               onMouseLeave={() => setHoveredBlockId(null)}
               onLoad={() => setMapLoaded(true)}
-              onError={(e) => {
-                // Don't auto-fallback to Leaflet on every MapLibre runtime
-                // event — transient tile/sprite errors fire `error` events
-                // but the canvas keeps working. Flipping to Leaflet kills
-                // all the MapLibre overlays (spot dots, heatmap, blocks,
-                // routes, bounties) that this map's whole purpose is to
-                // display. Log only; let MapLibre self-recover.
-                console.warn('[NeighborhoodMap] MapLibre runtime event', e)
-              }}
+              onError={() => setWebglReady(false)}
               cursor={hoveredBlockId ? 'pointer' : 'grab'}
               maxBounds={[
                 [MAP_BOUNDS.west - 0.004, MAP_BOUNDS.south - 0.004],

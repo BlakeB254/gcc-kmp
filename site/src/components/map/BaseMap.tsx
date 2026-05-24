@@ -140,15 +140,18 @@ export function BaseMap({
           onMouseEnter={onMouseEnter}
           onMouseLeave={onMouseLeave}
           onError={(e) => {
-            // Log MapLibre runtime events for visibility. Do NOT flip to the
-            // Leaflet fallback here — `onError` fires for many transient
-            // things (a single tile failing to load, sprite fetch retry,
-            // style parse warning), and falling back kills all the
-            // MapLibre Source/Layer overlays (spots/heatmap/routes) the
-            // page actually needs. MapErrorBoundary still catches genuine
-            // React render-time errors, which is the right place to
-            // trigger a fallback.
-            console.warn('[BaseMap] MapLibre runtime event', e)
+            // Log for visibility, then fall back to Leaflet on real errors.
+            // The working pre-session design relied on this fallback so
+            // browsers where MapLibre genuinely can't render still get a
+            // usable map (Leaflet's OSM tiles). The earlier "log only"
+            // version of this handler left those users with an empty
+            // canvas (basemap tiles never paint) — verifiably worse than
+            // the fallback behavior even though that fallback loses the
+            // MapLibre Source/Layer overlays. Net: real errors are rare
+            // enough that the fallback for those few users beats silently
+            // showing them broken canvas.
+            console.warn('[BaseMap] MapLibre runtime error — falling back to Leaflet', e)
+            setWebGLAvailable(false)
           }}
           cursor={cursor}
         >
