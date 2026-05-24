@@ -201,11 +201,17 @@ export function NeighborhoodMapSection() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // Permissive WebGL check — must stay in sync with BaseMap.tsx's
+    // canUseWebGL(). The earlier strict variant passed
+    // `failIfMajorPerformanceCaveat: true`, which returned null on many
+    // desktop GPU configurations (software rendering, integrated GPUs
+    // with performance caveats) — so users with otherwise-fine WebGL
+    // were silently routed to the Leaflet fallback and lost the styled
+    // OpenFreeMap basemap + heatmap layer. Mobile WebGL passed the strict
+    // check, which is why phones worked while desktops didn't.
     try {
       const canvas = document.createElement('canvas')
-      const gl =
-        canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ||
-        canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true })
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl')
       setWebglReady(gl !== null)
     } catch {
       setWebglReady(false)
