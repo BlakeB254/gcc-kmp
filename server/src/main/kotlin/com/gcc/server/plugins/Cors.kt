@@ -19,7 +19,7 @@ fun Application.configureCors() {
             ?: listOf(
                 "http://localhost:3000",
                 "http://localhost:3001",
-                "http://localhost:7300",
+                "http://localhost:7350",
                 "https://www.globalcommunitycleaners.org",
                 "https://globalcommunitycleaners.org"
             )
