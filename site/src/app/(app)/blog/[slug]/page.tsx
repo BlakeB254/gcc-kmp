@@ -7,17 +7,18 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // Scheduled-publish gate ----------------------------------------------------
-// A post is hidden (404) until its publishAt moment passes. Issue #2 is set to
-// drop at 8:00 AM Central on 2026-06-01 (-05:00 = CDT). Past-dated posts are
-// always live. In `next dev` (non-production) the gate is bypassed so drafts
-// can be previewed before they go public.
+// A post is hidden until its publishAt moment passes. Issue #2 is set to drop
+// at 8:00 AM Central on 2026-06-01 (-05:00 = CDT). Past-dated posts are always
+// live. Gated purely on the wall clock — no NODE_ENV dependency (an earlier
+// `process.env.NODE_ENV !== 'production'` dev-bypass leaked into the live
+// runtime and published the post early). To preview an unpublished draft
+// locally, temporarily move its SCHEDULE date into the past.
 const SCHEDULE: Record<string, string> = {
   '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
-  if (process.env.NODE_ENV !== 'production') return true // preview drafts in dev
   const at = SCHEDULE[slug]
   if (!at) return false
   return Date.now() >= new Date(at).getTime()
@@ -46,6 +47,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     }
   }
   if (slug === '2026-06-01-issue-02') {
+    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
     return {
       title: 'Reading the map — Global Community Cleaners Issue #2',
       description:

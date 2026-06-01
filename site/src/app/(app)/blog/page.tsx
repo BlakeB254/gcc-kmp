@@ -15,10 +15,9 @@ interface PostCard {
   publishAt: string
 }
 
-// Hidden in production until publishAt passes. Bypassed in `next dev` so drafts
-// are previewable. Mirrors the gate in blog/[slug]/page.tsx.
+// Hidden until publishAt passes. Gated purely on the wall clock — no NODE_ENV
+// dependency (it leaked into the live runtime). Mirrors blog/[slug]/page.tsx.
 function isPublished(publishAt: string): boolean {
-  if (process.env.NODE_ENV !== 'production') return true
   return Date.now() >= new Date(publishAt).getTime()
 }
 
