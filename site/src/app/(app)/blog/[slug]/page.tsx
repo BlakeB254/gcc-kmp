@@ -1,10 +1,29 @@
 import { notFound } from 'next/navigation'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-static'
-export const revalidate = 3600
+// Dynamic so the scheduled-publish gate (see SCHEDULE below) is evaluated live
+// on every request — the post flips from 404 to live exactly at its publishAt
+// moment, with no stale-cache window.
+export const dynamic = 'force-dynamic'
 
-const POSTS = ['2026-05-01-issue-01']
+// Scheduled-publish gate ----------------------------------------------------
+// A post is hidden (404) until its publishAt moment passes. Issue #2 is set to
+// drop at 8:00 AM Central on 2026-06-01 (-05:00 = CDT). Past-dated posts are
+// always live. In `next dev` (non-production) the gate is bypassed so drafts
+// can be previewed before they go public.
+const SCHEDULE: Record<string, string> = {
+  '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
+  '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
+}
+
+function isPublished(slug: string): boolean {
+  if (process.env.NODE_ENV !== 'production') return true // preview drafts in dev
+  const at = SCHEDULE[slug]
+  if (!at) return false
+  return Date.now() >= new Date(at).getTime()
+}
+
+const POSTS = ['2026-05-01-issue-01', '2026-06-01-issue-02']
 
 export async function generateStaticParams() {
   return POSTS.map((slug) => ({ slug }))
@@ -12,19 +31,36 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  if (slug !== '2026-05-01-issue-01') return {}
-  return {
-    title: 'Sixty years and two blocks — Global Community Cleaners Issue #1',
-    description:
-      "GCC's first newsletter. The 60-year throughline from Dr. King's 1966 Hamlin Avenue apartment to GCC's 2026 Harding Avenue office, the 110+ resident-mapped hotspots in our app, the patterns we're noticing, and how the model works.",
-    openGraph: {
-      title: 'Sixty years and two blocks — GCC Issue #1',
-      description: "GCC's first newsletter. Six blocks from Dr. King's 1966 apartment, with 110+ resident-mapped hotspots.",
-      type: 'article',
-      publishedTime: '2026-05-01',
-      images: ['/newsletter/issue-01/heatmap.png'],
-    },
+  if (slug === '2026-05-01-issue-01') {
+    return {
+      title: 'Sixty years and two blocks — Global Community Cleaners Issue #1',
+      description:
+        "GCC's first newsletter. The 60-year throughline from Dr. King's 1966 Hamlin Avenue apartment to GCC's 2026 Harding Avenue office, the 110+ resident-mapped hotspots in our app, the patterns we're noticing, and how the model works.",
+      openGraph: {
+        title: 'Sixty years and two blocks — GCC Issue #1',
+        description: "GCC's first newsletter. Six blocks from Dr. King's 1966 apartment, with 110+ resident-mapped hotspots.",
+        type: 'article',
+        publishedTime: '2026-05-01',
+        images: ['/newsletter/issue-01/heatmap.png'],
+      },
+    }
   }
+  if (slug === '2026-06-01-issue-02') {
+    return {
+      title: 'Reading the map — Global Community Cleaners Issue #2',
+      description:
+        "GCC's Hotspot Report. A month deeper into the field evidence behind 110+ resident-mapped hotspots in North Lawndale: the kinds of blight we keep finding, the corridors we can already name, a shout-out to Fields of Dreams Chicago, and an open invitation to local businesses to back our points economy.",
+      openGraph: {
+        title: 'Reading the map — GCC Issue #2 · The Hotspot Report',
+        description:
+          "What 110+ resident-mapped hotspots tell us, the corridors we can name, and how Fields of Dreams Chicago equipped our first crews.",
+        type: 'article',
+        publishedTime: '2026-06-01',
+        images: ['/newsletter/issue-02/heatmap.png'],
+      },
+    }
+  }
+  return {}
 }
 
 export default async function BlogPostPage({
@@ -33,8 +69,9 @@ export default async function BlogPostPage({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  if (slug !== '2026-05-01-issue-01') notFound()
+  if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
+  if (slug === '2026-06-01-issue-02') return <Issue2 />
   return <Issue1 />
 }
 
@@ -300,6 +337,290 @@ function Issue1() {
         </div>
       </div>
     </article>
+  )
+}
+
+function Issue2() {
+  const media = '/newsletter/issue-02'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #2 · The Hotspot Report
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">June 1, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            Reading the map
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            Last month we told you why we exist. This month we go a layer deeper into the evidence — what 110+ resident-mapped hotspots actually reveal, the blocks we can already name, and the neighbor who equipped our first crews.
+          </p>
+        </header>
+
+        {/* §1 Where we are */}
+        <Section label="§1 · Where we left off">
+          <p>
+            In{' '}
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-05-01-issue-01">
+              Issue #1
+            </a>
+            , we laid out the thesis: Global Community Cleaners isn&rsquo;t a cleaning service &mdash; it&rsquo;s the <strong>field-evidence layer</strong> for community cleanliness in North Lawndale, six blocks from the apartment Dr.&nbsp;King moved into in 1966. We pay the resident on the block to clean it, and we document every inch of it.
+          </p>
+          <p>
+            One month on, the map has kept growing. So this issue is about the part most organizations skip: <strong>actually reading the data</strong> &mdash; and being honest about what it does and doesn&rsquo;t yet tell us.
+          </p>
+          <Pull>You can&rsquo;t fix a block you haven&rsquo;t looked at honestly. So we looked.</Pull>
+        </Section>
+
+        {/* §2 The map one month on */}
+        <Section label="§2 · The map, one month on">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            110+ hotspots, every one photographed, GPS-tagged, and timestamped by a resident.
+          </h2>
+          <p>
+            This is not a survey or an estimate. Every red cluster below is a real location someone in the community walked up to, photographed, and logged in the GCC app. The denser the heat, the more accumulation that stretch has seen.
+          </p>
+          <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">Live heatmap · GCC mobile app</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${media}/heatmap.png`} alt="GCC app heatmap of North Lawndale showing 110+ reported hotspots" className="mx-auto mt-4 max-w-md rounded-lg" />
+            <p className="mt-3 text-center text-xs italic text-neutral-500">
+              The map is open and growing. See it live on the{' '}
+              <a className="text-emerald-700 underline" href="/bounties">bounties map</a>.
+            </p>
+          </div>
+        </Section>
+
+        {/* §3 The four kinds of blight */}
+        <Section label="§3 · Four kinds of blight">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            When you photograph a hundred hotspots, they stop looking random. They sort into types.
+          </h2>
+          <p>
+            Reading the reports back, almost everything residents have logged falls into one of four categories. Naming them matters, because each one has a <em>different</em> long-term fix &mdash; and only one of them is actually solved by a broom.
+          </p>
+          <div className="mt-6 space-y-3">
+            <TypeCard n="01" name="Illegal dumping" desc="Deliberate drop-offs — cardboard, bagged household trash, mattresses — on residential blocks and parkways, usually overnight. The single most reported type." />
+            <TypeCard n="02" name="Construction & demo debris" desc="Bricks, drywall, and rubble left on vacant lots and teardown sites. Heavy, slow to clear, and a magnet for more dumping once it sits." />
+            <TypeCard n="03" name="Wind-driven accumulation" desc="Light litter funneled by wind into fencelines bordering vacant fields and parking lots. Nobody dumped it there — the wind delivered it, and nothing breaks the pattern." />
+            <TypeCard n="04" name="No-receptacle corridors" desc="Pedestrian stretches with no public trash can for blocks at a time. Foot traffic plus nowhere to throw anything equals predictable build-up." />
+          </div>
+          <p className="mt-6 text-sm italic text-neutral-500">
+            A small sample from the field — three of the 110+ photographs residents have logged, all in or around North Lawndale.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              { src: `${media}/condition-1.jpg`, caption: 'Type 01 — dumped cardboard, residential block.' },
+              { src: `${media}/condition-2.jpg`, caption: 'Type 02 — construction debris on vacant land.' },
+              { src: `${media}/condition-3.jpg`, caption: 'Type 03 — wind-driven accumulation along a fenceline.' },
+            ].map((p) => (
+              <figure key={p.src}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.src} alt={p.caption} className="aspect-[3/4] w-full rounded-lg object-cover" />
+                <figcaption className="mt-2 text-xs italic text-neutral-500">{p.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </Section>
+
+        {/* §4 Corridors we can name */}
+        <Section label="§4 · The corridors we can already name">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Two of those four types aren&rsquo;t cleaning problems at all. They&rsquo;re infrastructure problems we can point to on a map.
+          </h2>
+          <Callout label="Pattern 1 · Wind-driven fencelines">
+            <p>
+              Fencelines along vacant fields and parking lots catch disproportionate trash &mdash; not from dumping, but because <strong>wind funnels light debris into them</strong> and nothing stops it. Sweep it today, it&rsquo;s back next windy week.
+            </p>
+            <p className="mt-2 text-neutral-600">
+              <strong>Long-term fix:</strong> simple windbreak plantings or screen fabric on the worst fencelines, plus a cleanup cadence keyed to wind events. A one-time investment, not a forever-loop.
+            </p>
+          </Callout>
+          <Callout label="Pattern 2 · Walkway corridors without receptacles">
+            <p>
+              Several major pedestrian corridors run <strong>blocks at a time with no public trash can</strong>. Hotspot density along them is visibly higher than on comparable stretches that have bins.
+            </p>
+            <p className="mt-2 text-neutral-600">
+              <strong>Long-term fix:</strong> targeted bin placement at high-foot-traffic intersections &mdash; a city ask, a property-owner partnership, or a sponsored-bin program. <strong>We can name the corridors. We have the data.</strong>
+            </p>
+          </Callout>
+          <p className="mt-6 italic text-neutral-700">
+            This is the real differentiator. We clean the block today, and we identify the infrastructure that would stop the next round before it starts.
+          </p>
+        </Section>
+
+        {/* §5 Why this matters — the evidence base */}
+        <Section label="§5 · Why the evidence matters">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            A randomized citywide trial already proved that cleaning blocks changes neighborhoods.
+          </h2>
+          <p>
+            Charles Branas&rsquo;s team at Penn ran a cluster-randomized trial across Philadelphia &mdash; the gold standard &mdash; comparing greened lots, trash-removal-only lots, and untouched controls. Published in <em>PNAS</em> and <em>JAMA Network&nbsp;Open</em>, it found a <strong>29% drop in gun assaults</strong> around treated lots and large reductions in residents&rsquo; reported depression, with the strongest effects for low-income residents.
+          </p>
+          <p>
+            Robert Sampson&rsquo;s Chicago research adds the why: neighborhoods high in <strong>collective efficacy</strong> &mdash; whether neighbors feel any agency over their block &mdash; run roughly <strong>40% lower</strong> crime rates even when income and visible disorder look identical on paper. Our map is collective efficacy made literal: a hundred neighbors deciding their block is worth documenting.
+          </p>
+          <p className="mt-2 font-semibold text-neutral-900">
+            Invest in the people on the block, and the block follows. Our job is to give those people the data, the tools, and the paycheck.
+          </p>
+        </Section>
+
+        {/* §6 Fields of Dreams Chicago shout-out */}
+        <Section label="§6 · The tools in our hands came from a neighbor">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Our first crews will work with shovels, brooms, and gloves donated by{' '}
+            <span className="text-emerald-800">Fields of Dreams Chicago</span>.
+          </h2>
+          <p>
+            On <strong>May 13</strong>, Fields of Dreams Chicago left GCC&rsquo;s <strong>first in-kind donation ever</strong> at the UIC Neighborhood Center: 3 boxes of gloves, 3 shovels, 4 stainless dustpan-and-broom sets, 2 push brooms, and a 30-pack of metal pickup sticks &mdash; roughly <strong>$500</strong> of the exact equipment our crews need to do the work. Founder <strong>James Fields</strong> was deliberate about naming it an in-kind gift and even coached us on building the donor records a young nonprofit lives or dies by. That generosity is a gift on top of the gift.
+          </p>
+
+          <div className="mt-6 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Neighbor spotlight</p>
+            <h3 className="mt-2 font-serif text-2xl font-bold text-neutral-900">Fields of Dreams Chicago</h3>
+            <p className="mt-3 text-sm leading-relaxed text-neutral-700">
+              Founded in 2024 by James Fields, Fields of Dreams is a North Lawndale youth-empowerment nonprofit serving Black and Latinx young people ages <strong>11&ndash;15</strong> through mentorship, wellness, and community service. Its signature <strong>Neighborhood Nurturers</strong> program runs year-round Saturday sessions at North Lawndale College Prep &mdash; a shared meal, team-building, and youth-led service projects &mdash; and its summer <strong>DreamBuilders Camp</strong> centers environmental stewardship. Youth even earn stipends for showing up and leading. They split their members into <em>dream builders</em> (the youth) and <em>vision builders</em> (the mentors), all working toward what they call a beloved community &ldquo;infused with love and joy.&rdquo;
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-neutral-700">
+              In other words: while GCC pays this generation to steward their blocks, Fields of Dreams is raising the <em>next</em> one to do the same. Same neighborhood, same belief &mdash; that the people on the block are the ones to care for it.
+            </p>
+            <a
+              href="https://www.fieldsofdreamschicago.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-block rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+            >
+              Visit Fields of Dreams Chicago →
+            </a>
+          </div>
+
+          <Pull>
+            The first shovel that breaks ground on a GCC block was handed to us by an organization teaching kids that the block is theirs to love. We couldn&rsquo;t have scripted a better way to start.
+          </Pull>
+        </Section>
+
+        {/* §7 The points economy — business invitation */}
+        <Section label="§7 · The points economy — an open invitation">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The map gets stronger every time someone contributes. We want to make contributing worth it.
+          </h2>
+          <p>
+            The GCC app is global. Anyone, anywhere, can <strong>spot</strong> illegal dumping or blight in their neighborhood, photograph it, and add it to the map &mdash; and other users earn points by <strong>verifying</strong> a spot is real, still there, or resolved. The data layer compounds with every contribution.
+          </p>
+          <p>
+            We&rsquo;re building this into a points system worth participating in, and we&rsquo;re lining up local businesses to back the points with rewards our community actually wants:
+          </p>
+          <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-5 py-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-sky-900">Reward types in development</p>
+            <p className="text-sm leading-relaxed text-neutral-900">
+              🏟️ Sports &amp; concert tickets · 🎁 Gift cards from neighborhood businesses · 🍽️ Restaurant credits · 🛍️ Discounts from partner retailers · 💎 Redeemable points across our internal network
+            </p>
+          </div>
+          <div className="mt-5 rounded-xl bg-gradient-to-br from-emerald-900 to-emerald-700 px-7 py-6 text-white shadow-lg">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+              Chicago businesses, this is your invitation
+            </p>
+            <p className="text-base font-semibold leading-snug">
+              If you can put real value behind these points &mdash; tickets, gift cards, table reservations, in-store credits &mdash; we&rsquo;ll put your brand directly in front of the residents already cleaning their own streets.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed opacity-90">
+              It&rsquo;s the cleanest community-affairs ROI in the city: documented impact, photographable proof, and an audience that lives right where you sell. Fields of Dreams Chicago showed what one intentional neighbor can do with a $500 gift. Imagine what your brand could do. Email{' '}
+              <a className="text-amber-300 underline" href="mailto:hello@globalcommunitycleaners.org?subject=Partner%20on%20points">
+                hello@globalcommunitycleaners.org
+              </a>{' '}
+              with the subject line <strong>&ldquo;Partner on points&rdquo;</strong>.
+            </p>
+          </div>
+        </Section>
+
+        {/* §8 The ask */}
+        <Section label="§8 · The ask">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Equipment is in hand. Now we need the blocks funded.
+          </h2>
+          <p>
+            Thanks to Fields of Dreams, our first crews are equipped. A <strong>$100 block sponsorship</strong> puts that equipment in a resident&rsquo;s hands, pays them for the work, and sends a before-and-after photo set to your inbox. 100% of the block fee goes to the person doing the work.
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/sponsor?amount=2000"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              Recognized sponsor — $2,000
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>$2,000</strong> = your name on our public wall, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition.
+          </p>
+        </Section>
+
+        {/* §9 What's next */}
+        <Section label="§9 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            We&rsquo;re closing the funding to put those first crews on the street.
+          </h2>
+          <p>
+            Our goal for the North Lawndale pilot hasn&rsquo;t changed: <strong>100 blocks cleaned, 100 community members paid</strong> on their own streets. The equipment is here. The map is mapped. What stands between today and the first before-and-after report is funded blocks &mdash; and every $100 sponsorship moves one resident from the waitlist to the work.
+          </p>
+          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Goal · North Lawndale pilot</p>
+            <p className="mt-1 text-lg font-bold text-neutral-900">100 blocks cleaned · 100 community members paid</p>
+            <div className="mt-3 flex h-5 overflow-hidden rounded-full border border-emerald-200 bg-white">
+              <div className="flex items-center justify-center bg-emerald-700 text-xs font-bold text-white" style={{ width: '20%' }}>
+                20%
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">First cleanups: equipped and in preparation. Sponsor a block to put one on a resident&rsquo;s street.</p>
+          </div>
+          <p className="mt-6">
+            When those blocks are funded and cleaned, <strong>the next issue is the one we&rsquo;ve been promising</strong>: the first block-by-block before-and-after report, with the residents who claimed them &mdash; names, photos, blocks.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-05-01-issue-01">
+              Read Issue #1
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function TypeCard({ n, name, desc }: { n: string; name: string; desc: string }) {
+  return (
+    <div className="flex gap-4 rounded-lg border border-neutral-200 bg-white px-5 py-4">
+      <span className="font-serif text-2xl font-bold text-emerald-700">{n}</span>
+      <div>
+        <p className="font-bold text-neutral-900">{name}</p>
+        <p className="mt-1 text-sm leading-relaxed text-neutral-600">{desc}</p>
+      </div>
+    </div>
   )
 }
 

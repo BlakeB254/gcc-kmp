@@ -1,7 +1,8 @@
 import Link from 'next/link'
 
-export const dynamic = 'force-static'
-export const revalidate = 3600
+// Dynamic so the scheduled-publish filter is evaluated live on every request —
+// Issue #2's card appears exactly at its publishAt moment.
+export const dynamic = 'force-dynamic'
 
 interface PostCard {
   slug: string
@@ -10,13 +11,33 @@ interface PostCard {
   description: string
   heroImage: string
   badge: string
+  // ISO timestamp (with offset) before which the card is hidden in production.
+  publishAt: string
+}
+
+// Hidden in production until publishAt passes. Bypassed in `next dev` so drafts
+// are previewable. Mirrors the gate in blog/[slug]/page.tsx.
+function isPublished(publishAt: string): boolean {
+  if (process.env.NODE_ENV !== 'production') return true
+  return Date.now() >= new Date(publishAt).getTime()
 }
 
 const POSTS: PostCard[] = [
   {
+    slug: '2026-06-01-issue-02',
+    title: 'Reading the map',
+    date: '2026-06-01',
+    publishAt: '2026-06-01T08:00:00-05:00',
+    description:
+      "Issue #2 — The Hotspot Report. A month deeper into the field evidence: what 110+ resident-mapped hotspots actually tell us, the four kinds of blight we keep finding, the corridors we can already name — and a direct invitation to the Chicago businesses that want to back our points economy.",
+    heroImage: '/newsletter/issue-02/heatmap.png',
+    badge: 'Issue #2 · The Hotspot Report',
+  },
+  {
     slug: '2026-05-01-issue-01',
     title: 'Sixty years and two blocks',
     date: '2026-05-01',
+    publishAt: '2026-05-01T00:00:00-05:00',
     description:
       "Issue #1 — The Founder's Letter. Why GCC exists, the 110+ hotspots residents have already mapped in our app, the patterns we're seeing, the academic data behind the model, and how everyone — local or worldwide — can participate.",
     heroImage: '/newsletter/issue-01/heatmap.png',
@@ -31,7 +52,9 @@ export const metadata = {
 }
 
 export default function BlogIndexPage() {
-  const sorted = [...POSTS].sort((a, b) => b.date.localeCompare(a.date))
+  const sorted = [...POSTS]
+    .filter((post) => isPublished(post.publishAt))
+    .sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-24 pt-16">
