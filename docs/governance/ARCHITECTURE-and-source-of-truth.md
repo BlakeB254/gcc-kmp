@@ -51,17 +51,17 @@ Both `site/` (Drizzle) and `server/` (Exposed) model the same tables, but:
 | Spots/community reports + peer verification | ✅ | ✅ | ✅ |
 | Bounties, feed, leaderboard, gamification, articles | ✅ | ✅ | ✅ |
 | Stripe sponsor checkout + worker payouts (webhooks) | ✅ | partial | n/a |
-| **Queue / batch "next-in-line" release & offers** (`/api/admin/route-releases`, `/api/workers/me/route-offers`) | ❌ **MISSING** | ✅ | ✅ (will 404 in prod) |
-| Cron / wave processing / carryover | ❌ | ✅ | n/a |
+| **Queue / batch "next-in-line" release & offers** (`/api/admin/route-releases`, `/api/workers/me/route-offers`) | ✅ **LIVE (2026-06-24, Option B)** | ✅ | ✅ |
+| Cron / wave processing / carryover | ✅ (`/api/cron/route-releases`, Vercel Cron) | ✅ | n/a |
 | Admin: disputes, role change, bulk-verify, service-area create, some analytics variants | ⚠️ partial/uncertain | ✅ | ✅ (some will 404) |
 
 ### The client↔API parity gap (important governance risk)
-The mobile app was built expecting the **Ktor** surface, so it calls endpoints that **may not exist in the prod Next.js API** (e.g., `/api/workers/me/route-offers`, `/api/admin/route-releases`, `/api/admin/disputes`, `/api/admin/workers/{id}/role`, `bulk-verify`). Those features will **silently fail (404)** on device. Treat the **production API reference (doc #4) as the contract**; anything the app calls that isn't there is a known gap, not a working feature.
+The mobile app was built expecting the **Ktor** surface. As of 2026-06-24 the **queue endpoints (`/api/admin/route-releases`, `/api/workers/me/route-offers`) are now live in prod** (Option B), closing the biggest gap. Remaining app calls that **may still 404 in prod**: `/api/admin/disputes`, `/api/admin/workers/{id}/role`, `bulk-verify`, `service-areas` (POST), and some `analytics/*` variants. Treat the **production API reference (doc #4) as the contract**; anything the app calls that isn't there is a known gap, not a working feature.
 
 ## 5. What this means operationally
 
 - **Cleaning sequence test (now):** ✅ Works against prod — scans + direct assignment exist. (Confirm `/api/scans` live during the on-device test.)
-- **Two 10-block sessions with automated ordered onboarding:** ❌ Not possible on prod today — see [gap-analysis-queue-onboarding.md](gap-analysis-queue-onboarding.md). Options: build queue endpoints in Next.js, deploy the Ktor server, or run sessions via direct/self-claim with manual ordering.
+- **Two 10-block sessions with automated ordered onboarding:** ✅ Now live in prod as of 2026-06-24 (Option B), validated end-to-end (create → wave → ordered offer → accept → claimed job). Caveat: only **5 verified North Lawndale workers currently eligible** vs 10 blocks/session — the engine leaves extra slots open, so onboard more verified workers (or run smaller batches) for a full run. See [gap-analysis-queue-onboarding.md](gap-analysis-queue-onboarding.md).
 - **Decision rule for any new feature:** decide **which backend owns it** (Next.js prod vs. Ktor-future) before building, and keep the app client in lockstep with the **deployed** API. Avoid shipping app calls to endpoints that don't exist in prod.
 
 ## 6. Canonical references

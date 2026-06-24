@@ -31,7 +31,7 @@ Legend: ✅ live in prod · ⚠️ partial/built-but-not-wired-in-prod · ❌ no
 | **Cleaning scan flow** (scout→review→clean→complete) | ✅ | `/api/scans/*`; LiDAR/AR/GPS tiers; before/after hotspots; depth/geojson retained |
 | Clean **pass/fail adjudication** | ⚠️ | capture + community/peer + admin status; an explicit **admin override before payout** should be confirmed (hybrid) |
 | Spots + peer verification, bounties, feed, leaderboard, gamification | ✅ | |
-| **Community queue / "load next in line" batch onboarding** | ❌ | exists in Ktor + app UI only; not in prod. See `gap-analysis-queue-onboarding.md` |
+| **Community queue / "load next in line" batch onboarding** | ✅ | LIVE in prod 2026-06-24 (Option B); endpoints `route-releases` + `route-offers` + Vercel Cron; validated end-to-end |
 | Admin 2FA | ❌ | Face ID re-auth only; branch `feature/spot-map-admin-2fa-faceid` |
 | Wallet (worker) | ⚠️ | stubbed endpoints |
 | Environment data retention (digital twin) | ✅ | depth/pose/geojson/photos/attestation persisted per scan |

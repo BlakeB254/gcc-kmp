@@ -14,7 +14,18 @@ Authed (`/api/workers/me/...`): `device-token`, `handle`, `verification` (GET/PO
 - `POST /api/jobs/submit` — submit completed job w/ before/after photos → `pending_review`.
 - `GET /api/workers/me/jobs` — worker's jobs.
 - `GET|POST|DELETE /api/admin/routes/{routeId}/assign` — **admin direct assign** a worker (`isTest` → unpaid), list, cancel.
-- ❌ Not present: `route-releases`, `workers/me/route-offers`, accept/decline, wave/cron processing.
+
+**Queue / batch "next-in-line" onboarding (LIVE 2026-06-24, Option B):**
+- `POST /api/admin/route-releases` — create a release batch (turns N routes into N offerable slots); body: `{name, serviceAreaId, routeIds[], releaseAt, offerWindowMinutes?, eligibleZipCodes[], communityName?, timezone?, daytimeWindowStart?, daytimeWindowEnd?}`.
+- `GET /api/admin/route-releases?limit=` — list batches.
+- `POST /api/admin/route-releases/{id}/process` — run the next wave (expire stale offers, offer open slots to next eligible workers in order). Returns `RouteReleaseRunResponse`.
+- `POST /api/admin/route-releases/process-notifications` — process all due batches (cron-style).
+- `GET /api/workers/me/route-offers` — worker's open offers (with batch + available routes).
+- `POST /api/workers/me/route-offers/{offerId}/accept` — body `{routeId}`; claims that route's job.
+- `PATCH /api/workers/me/route-offers/{offerId}/decline` — body `{reason?}`; carryover applies.
+- `GET /api/cron/route-releases` — CRON_SECRET-guarded; Vercel Cron advances waves automatically.
+
+Ordering (mirrors the Ktor `RouteQueueService`): eligibility = `verificationStatus=approved` AND `proofOfAddressStatus=approved` AND `addressZip ∈ batch.eligibleZipCodes` AND no active job AND not already offered; sort = carryover → never-offered → signup ranking (neighborhood→city→global) → workerId.
 
 ## Routes & blocks
 `GET|POST /api/admin/routes` · `GET|PUT|DELETE /api/admin/routes/{routeId}` (PUT accepts `status` → publish, `payoutAmount` etc.) · `GET|POST /api/admin/routes/{routeId}/checkpoints` · `POST /api/admin/routes/accept` · `POST /api/admin/routes/generate` (grid generator) · `GET /api/routes`, `GET /api/routes/{id}` (worker-facing) · `GET /api/admin/blocks` · `GET /api/affected-areas` (public GeoJSON heatmap).
@@ -33,7 +44,7 @@ Sponsor auth/profile: `register`, `verify-email`, `forgot/reset-password`, `chec
 
 ## Admin (web + in-app)
 Workers: `GET /api/admin/workers`, `GET|PATCH /api/admin/workers/{id}`, `/verify`, `/documents`, `/points`. Spots/blocks: `/api/admin/spots`, `/api/admin/blocks`. Analytics: `/api/admin/analytics/stats`. Ops utilities: `/api/admin/backfill-verification`, `/api/admin/reprocess-images`, `/api/admin/newsletter/{audience,preview,send}`.
-⚠️ App also calls admin endpoints that may NOT exist in prod (parity gap): `route-releases`, `disputes`, `workers/{id}/role`, `workers/bulk-verify`, `service-areas` (POST), several `analytics/*` variants, `bounties/{id}/close|force-reassign`. Verify before relying on them.
+⚠️ App also calls admin endpoints that may NOT exist in prod (parity gap): `disputes`, `workers/{id}/role`, `workers/bulk-verify`, `service-areas` (POST), several `analytics/*` variants, `bounties/{id}/close|force-reassign`. (`route-releases` is now live — see Queue section above.) Verify before relying on the rest.
 
 ## Public, community, misc
 `/api/public/{stats,impact-stats,contributions,sponsor-wall,support-wall,sponsor/[id],data-export[/stats]}` · `/api/leaderboard` · `/api/gamification/me/badges` · `/api/movement/stats` · `/api/feed` · `/api/forum/*` · `/api/feedback/tickets[...]` · `/api/material-donations` · `/api/waitlist/{join,check-area,profile,update}` · `/api/articles[/{slug}]` · `/api/health` · `/api/unsubscribe` · `/api/analytics/cleanliness[/{area}]`. Wallet (`/api/wallet*`) is stubbed/incomplete.

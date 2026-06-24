@@ -19,7 +19,7 @@ iOS bundle `com.globalcommunitycleaners.worker` (App ID 6760203806). Nav = Decom
 
 ## Assignment/queue (client)
 - **Direct assignment / self-claim (works in prod):** `GET /api/workers/me/jobs`; claim via `POST /api/jobs/{id}/claim`; lifecycle `start`/`complete`/`decline`/`evidence`.
-- **Route offers / queue (client built, ❌ not in prod API):** `GET /api/workers/me/route-offers`, `…/accept`, `…/decline`; admin `POST /api/admin/route-releases`. These will 404 against prod until the queue endpoints are ported (see gap doc).
+- **Route offers / queue (client built, ✅ now LIVE in prod 2026-06-24):** `GET /api/workers/me/route-offers`, `…/accept`, `…/decline`; admin `POST /api/admin/route-releases` + `/process`. Ported to the Next.js API (Option B) and validated end-to-end — the app's offer UI now works against prod.
 
 ## In-app admin capabilities
 Overview (KPIs/activity), Routes (edit, checkpoints, **assign worker `isTest`**, view/cancel assignments; release-batch UI exists but backend missing), Workers (verify, bulk-verify*, grant points, role*, edit, delete), Spots (create/verify/resolve), Bounties (close*/force-reassign*). *Endpoints marked may not exist in prod (parity gap).

@@ -1,6 +1,8 @@
 # Gap Analysis — Community Queue / "Load Next in Line" Onboarding
 
-**Decision owner:** Blake · **Status:** OPEN — blocks automated 10-block sessions · **Audited:** 2026-06-24
+**Decision owner:** Blake · **Status:** ✅ RESOLVED — Option B built & deployed to prod 2026-06-24 · **Audited:** 2026-06-24
+
+> **UPDATE 2026-06-24:** Option B was chosen and **shipped to production**. The queue endpoints are live on `api.globalcommunitycleaners.org`, validated end-to-end (create → wave → ordered offer → accept → claimed job) with full cleanup, and a Vercel Cron advances waves. The analysis below is retained for context. Remaining before a full 10-block run: onboard more verified North Lawndale workers (only **5 eligible** today vs 10 blocks/session — the engine leaves extra slots open) and confirm the admin scan pass/fail override. Signup-ranking backfill is **not** needed (all 5 eligible workers already have rankings).
 
 ## The gap
 
