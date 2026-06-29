@@ -63,13 +63,6 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap: broad green field -> yellow/orange activity -> red/white hot cores.
-  HEATMAP_EDGE: '#2EEA52',
-  HEATMAP_LOW: '#7CFC2F',
-  CLEAN_ZONE: '#27D94F',
-  HEATMAP_MED: '#FDE047',
-  HEATMAP_HIGH: '#F97316',
-  HEATMAP_EXTREME: '#DC2626',
   HEATMAP_PEAK: '#FFFFFF',
 } as const
 
@@ -110,20 +103,6 @@ export function getSpotHeatWeight(spot: SpotHeatWeightInput): number {
   const radiusBoost = Math.min(Math.max((radiusMeters - 20) / 180, 0), 0.35)
 
   return Math.min(Math.max(statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost, 0.65), 2.4)
-}
-
-export const SPOT_CLEAN_BASE_PAINT: any = {
-  'fill-color': SPOT_COLORS.CLEAN_ZONE,
-  'fill-opacity': [
-    'interpolate', ['linear'], ['zoom'],
-    7, 0.16,
-    8, 0.24,
-    10, 0.3,
-    12, 0.27,
-    13, 0.2,
-    14, 0.08,
-    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
-  ],
 }
 
 export const SPOT_HEATMAP_PAINT: any = {

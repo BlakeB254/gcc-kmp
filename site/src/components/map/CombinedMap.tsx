@@ -12,7 +12,7 @@ import {
   SPOT_STATUS_COLORS,
   SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
-  SPOT_CLEAN_BASE_PAINT,
+  SPOT_SCRIM_PAINT,
   SPOT_HEATMAP_PAINT,
   getSpotHeatWeight,
 } from '@/lib/design-tokens'
@@ -645,6 +645,31 @@ export function CombinedMap({
         {/* ============================================================ */}
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
+
+        {/* Neutral scrim — mutes the basemap beneath the precipitation heatmap */}
+        {spots.length > 0 && (
+          <Source
+            id="spot-scrim"
+            type="geojson"
+            data={{
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                },
+              }],
+            }}
+          >
+            <Layer
+              id="spot-scrim-fill"
+              type="fill"
+              paint={SPOT_SCRIM_PAINT}
+            />
+          </Source>
+        )}
 
         {/* Spot reports — heatmap (z<14.5) + dots (z14+) opacity crossfade.
             Same design as the homepage; with fitBounds capped at zoom 15,

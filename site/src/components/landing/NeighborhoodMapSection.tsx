@@ -6,7 +6,7 @@ import Map, { Source, Layer, NavigationControl, ScaleControl } from 'react-map-g
 import type { MapLayerMouseEvent, MapRef } from 'react-map-gl/maplibre'
 import Link from 'next/link'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM, SPOT_CLEAN_BASE_PAINT, SPOT_HEATMAP_PAINT, getSpotHeatWeight } from '@/lib/design-tokens'
+import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM, SPOT_SCRIM_PAINT, SPOT_HEATMAP_PAINT, getSpotHeatWeight } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 import type { FallbackGeoJSONLayer } from '@/components/map/BaseMap'
 
@@ -794,6 +794,29 @@ export function NeighborhoodMapSection() {
                       SPOT_ZOOM.HEATMAP_FADE_OUT, 1,
                     ],
                   }}
+                />
+              </Source>
+
+              {/* Neutral scrim beneath the precipitation heatmap */}
+              <Source
+                id="homepage-spot-scrim"
+                type="geojson"
+                data={{
+                  type: 'FeatureCollection',
+                  features: [{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'Polygon',
+                      coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                    },
+                  }],
+                }}
+              >
+                <Layer
+                  id="homepage-spot-scrim-fill"
+                  type="fill"
+                  paint={SPOT_SCRIM_PAINT}
                 />
               </Source>
 
