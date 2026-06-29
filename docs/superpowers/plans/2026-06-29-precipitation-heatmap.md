@@ -26,44 +26,29 @@
 - Modify: `site/src/lib/design-tokens.ts` (`SPOT_COLORS` ~62-74, `SPOT_HEATMAP_PAINT` ~124-174; add `SPOT_SCRIM_PAINT`)
 
 **Interfaces:**
-- Produces: `SPOT_SCRIM_PAINT` (MapLibre `fill` paint object) consumed by Task 2; `SPOT_HEATMAP_PAINT` (restyled) already consumed by `CombinedMap.tsx`.
+- Produces: `SPOT_SCRIM_PAINT` (MapLibre `fill` paint object) consumed by Task 2; `SPOT_HEATMAP_PAINT` (restyled) already consumed by `CombinedMap.tsx` AND `NeighborhoodMapSection.tsx`.
 
-- [ ] **Step 1: Replace the `SPOT_COLORS` heatmap entries with the weather ramp.** In `site/src/lib/design-tokens.ts`, change the heatmap color block inside `SPOT_COLORS` to:
+> **Integration note:** `SPOT_COLORS.CLEAN_ZONE` and `SPOT_CLEAN_BASE_PAINT` are referenced elsewhere (`SPOT_CLEAN_BASE_PAINT` def + `CombinedMap.tsx` + a dead import in `NeighborhoodMapSection.tsx`). Task 1 therefore **removes no keys** — it inlines the new ramp directly into `SPOT_HEATMAP_PAINT`. The clean-base removal and token retirement happen in Task 2, sequenced so nothing breaks mid-task.
 
-```ts
-  // Precipitation ramp — teal(light) → blue → purple(moderate) → red(heavy) → white(extreme)
-  HEATMAP_LIGHT_TEAL: '#7FE5E0',
-  HEATMAP_LIGHT_BLUE: '#4FB0E8',
-  HEATMAP_BLUE: '#3B7DE0',
-  HEATMAP_INDIGO: '#6C5CE7',
-  HEATMAP_PURPLE: '#9B4FD0',
-  HEATMAP_MAGENTA: '#D24FAF',
-  HEATMAP_REDPINK: '#E84B5A',
-  HEATMAP_YELLOW: '#F5D94F',
-  HEATMAP_PEAK: '#FFFFFF',
-```
-
-(Remove the old `HEATMAP_EDGE/LOW/CLEAN_ZONE/MED/HIGH/EXTREME/PEAK` keys.)
-
-- [ ] **Step 2: Rewrite `SPOT_HEATMAP_PAINT`'s `heatmap-color` ramp and widen `heatmap-radius`.** Replace the `'heatmap-color'` array with:
+- [ ] **Step 1: Rewrite `SPOT_HEATMAP_PAINT`'s `heatmap-color` ramp (inline weather hex — do not touch `SPOT_COLORS`).** In `site/src/lib/design-tokens.ts`, replace the `'heatmap-color'` array with:
 
 ```ts
   'heatmap-color': [
     'interpolate', ['linear'], ['heatmap-density'],
     0,    'rgba(0,0,0,0)',
-    0.05, 'rgba(127,229,224,0.55)',
-    0.15, SPOT_COLORS.HEATMAP_LIGHT_BLUE,
-    0.30, SPOT_COLORS.HEATMAP_BLUE,
-    0.45, SPOT_COLORS.HEATMAP_INDIGO,
-    0.62, SPOT_COLORS.HEATMAP_PURPLE,
-    0.75, SPOT_COLORS.HEATMAP_MAGENTA,
-    0.85, SPOT_COLORS.HEATMAP_REDPINK,
-    0.94, SPOT_COLORS.HEATMAP_YELLOW,
-    1.0,  SPOT_COLORS.HEATMAP_PEAK,
+    0.05, 'rgba(127,229,224,0.55)', // teal #7FE5E0 — Light
+    0.15, '#4FB0E8',                // cyan-blue — Light
+    0.30, '#3B7DE0',                // blue — Light
+    0.45, '#6C5CE7',                // indigo — Moderate
+    0.62, '#9B4FD0',                // purple-magenta — Moderate
+    0.75, '#D24FAF',                // magenta — Heavy
+    0.85, '#E84B5A',                // red-pink — Heavy
+    0.94, '#F5D94F',                // yellow — Extreme
+    1.0,  '#FFFFFF',                // white — Extreme
   ],
 ```
 
-And replace `heatmap-radius` stops with these (~28% wider for feathering):
+- [ ] **Step 2: Widen `heatmap-radius`** for feathering. Replace `heatmap-radius` stops with these (~28% wider):
 
 ```ts
   'heatmap-radius': [
@@ -111,18 +96,20 @@ git commit -m "feat(map-web): precipitation weather palette + scrim paint + feat
 
 ---
 
-### Task 2: Web — drop green clean-base, insert neutral scrim
+### Task 2: Web — drop green clean-base, insert neutral scrim (both web maps), retire dead token
 
 **Files:**
-- Modify: `site/src/components/map/CombinedMap.tsx` (clean-zone source/layer ~603-626; imports ~15-18)
+- Modify: `site/src/components/map/CombinedMap.tsx` (clean-zone source/layer ~603-626; import ~15)
+- Modify: `site/src/components/landing/NeighborhoodMapSection.tsx` (dead `SPOT_CLEAN_BASE_PAINT` import ~9; add scrim before `homepage-spot-heatmap` ~805)
+- Modify: `site/src/lib/design-tokens.ts` (retire `SPOT_CLEAN_BASE_PAINT` + `SPOT_COLORS.CLEAN_ZONE` + unused `HEATMAP_*` keys, once no references remain)
 
 **Interfaces:**
 - Consumes: `SPOT_SCRIM_PAINT` from Task 1.
-- Produces: the `clean-zone-fill` layer id is gone; a `spot-scrim-fill` layer id now sits beneath `combined-spot-heatmap`.
+- Produces: `clean-zone-fill` removed; a `spot-scrim-fill` (CombinedMap) and `homepage-spot-scrim-fill` (landing) layer now sit beneath their heatmaps. `SPOT_CLEAN_BASE_PAINT` and the green/heat `SPOT_COLORS` keys are gone.
 
-- [ ] **Step 1: Swap the import.** In the `@/lib/design-tokens` import block, remove `SPOT_CLEAN_BASE_PAINT` and add `SPOT_SCRIM_PAINT`.
+- [ ] **Step 1: CombinedMap — swap the import.** In `CombinedMap.tsx`'s `@/lib/design-tokens` import block, remove `SPOT_CLEAN_BASE_PAINT` and add `SPOT_SCRIM_PAINT`.
 
-- [ ] **Step 2: Replace the green clean-base `<Source>`/`<Layer>` block** (the `id="clean-zone-base"` source containing `clean-zone-fill`, currently ~603-626) with the scrim layer over the same world polygon:
+- [ ] **Step 2: CombinedMap — replace the green clean-base block** (the `id="clean-zone-base"` source containing `clean-zone-fill`, ~603-626) with the scrim layer over the same world polygon:
 
 ```tsx
         {/* Neutral scrim — mutes the basemap beneath the precipitation heatmap */}
@@ -152,18 +139,53 @@ git commit -m "feat(map-web): precipitation weather palette + scrim paint + feat
         )}
 ```
 
-- [ ] **Step 3: Typecheck + build.**
+- [ ] **Step 3: NeighborhoodMapSection — remove the dead import and add a scrim.** In `NeighborhoodMapSection.tsx`, drop `SPOT_CLEAN_BASE_PAINT` from the `@/lib/design-tokens` import and add `SPOT_SCRIM_PAINT`. Immediately **before** the `<Source id="homepage-spots">` block (~805), add a scrim source/layer inserted beneath the heatmap:
+
+```tsx
+              {/* Neutral scrim beneath the precipitation heatmap */}
+              <Source
+                id="homepage-spot-scrim"
+                type="geojson"
+                data={{
+                  type: 'FeatureCollection',
+                  features: [{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'Polygon',
+                      coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                    },
+                  }],
+                }}
+              >
+                <Layer
+                  id="homepage-spot-scrim-fill"
+                  type="fill"
+                  beforeId="homepage-spot-heatmap"
+                  paint={SPOT_SCRIM_PAINT}
+                />
+              </Source>
+```
+
+(If `beforeId="homepage-spot-heatmap"` causes a MapLibre "layer does not exist" warning due to source ordering, drop the `beforeId` — JSX order already places this Source before the heatmap Source.)
+
+- [ ] **Step 4: Retire the dead token.** Confirm no references remain, then delete from `design-tokens.ts`: the `SPOT_CLEAN_BASE_PAINT` export, the `SPOT_COLORS.CLEAN_ZONE` key, and the now-unused `HEATMAP_EDGE/LOW/MED/HIGH/EXTREME` keys (the paint no longer references them after Task 1). Keep `SPOT_COLORS.MARKER`, `.RADIUS_FILL`, `.RADIUS_STROKE`, `.HEATMAP_PEAK` if still referenced — verify each with grep before deleting.
+
+Run: `git grep -n "SPOT_CLEAN_BASE_PAINT\|SPOT_COLORS.CLEAN_ZONE\|SPOT_COLORS.HEATMAP_EDGE\|SPOT_COLORS.HEATMAP_LOW\|SPOT_COLORS.HEATMAP_MED\|SPOT_COLORS.HEATMAP_HIGH\|SPOT_COLORS.HEATMAP_EXTREME" site/src`
+Expected: no matches before deleting the corresponding declarations.
+
+- [ ] **Step 5: Typecheck.**
 
 Run: `cd site && npx tsc --noEmit`
-Expected: no type errors; no remaining references to `SPOT_CLEAN_BASE_PAINT` (grep `git grep -n SPOT_CLEAN_BASE_PAINT site/src` returns nothing).
+Expected: no type errors; `git grep -n SPOT_CLEAN_BASE_PAINT site/src` returns nothing.
 
-- [ ] **Step 4: Visual check.** Start dev (`cd site && npm run dev` on port 7350), open `http://localhost:7350/bounties`, zoom to overview (z9–z12). Confirm: no green wash; map is muted gray; report clusters bloom teal→blue→purple→red. Compare against reference frames `f_002.jpg`, `f_006.jpg`.
+- [ ] **Step 6: Visual check.** Start dev (`cd site && npm run dev` on port 7350), open `http://localhost:7350/bounties` and the homepage, zoom to overview (z9–z12). Confirm: no green wash; muted gray base; clusters bloom teal→blue→purple→red. Compare against reference frames `f_002.jpg`, `f_006.jpg`.
 
-- [ ] **Step 5: Commit.**
+- [ ] **Step 7: Commit.**
 
 ```bash
-git add site/src/components/map/CombinedMap.tsx
-git commit -m "feat(map-web): replace green clean-base with neutral scrim"
+git add site/src/components/map/CombinedMap.tsx site/src/components/landing/NeighborhoodMapSection.tsx site/src/lib/design-tokens.ts
+git commit -m "feat(map-web): replace green clean-base with neutral scrim across both maps"
 ```
 
 ---
