@@ -21,7 +21,9 @@ Reference: user screen recording of Apple Weather precipitation
 | Decision | Choice |
 |---|---|
 | Color semantics | **Full weather palette, transparent base.** Drop the green "clean-zone" base entirely; empty areas show the (muted) basemap. Density blooms teal→blue→purple→red→white. |
-| Animation | **Static — no motion.** Data is density, not time-series; single-frame look. |
+| Animation | **Timelapse (Phase 2).** Weather-Channel-style playback of report history. Rolling **14-day trailing window** swept across the **last 90 days** in an **~8s autoplay loop**. (The base restyle — Phase 1 — is still static and ships independently.) |
+| Dots correlation | The close-zoom individual-spot **dots layer** is filtered by the **same time cursor** as the heatmap, so a report's dot and its heat bloom appear/fade together. |
+| Heatmap-view UX | A **dedicated full-screen "Report Density" mode** (muted base + weather heatmap + correlated dots + legend + layer toggle + bottom timeline scrubber with play/pause + date readout), entered from a play/layers affordance. Keeps the normal map simple. |
 | Basemap muting | **Translucent neutral scrim** drawn *under* the heatmap only when it is active. No tile-style swap. Reversible, identical across platforms, leaves other map views untouched. |
 | Layer toggle | **Included.** Apple-style top-right stacked-layers button to show/hide the precipitation overlay. |
 | UI elements | Floating intensity legend, soft feathered blobs, muted basemap, layer toggle. |
@@ -117,9 +119,49 @@ Replaces the current bottom-left "Map Legend" *for the heatmap view*.
 
 ## 10. Out of scope
 
-- Animation / time playback (data has no time dimension).
 - Re-theming non-heatmap map views (routes, bounties, street detail).
 - Tile-style replacement (using scrim instead).
+- Server-side time aggregation — the timelapse filters client-side on existing `createdAt`.
+
+## 12. Timelapse mode (Phase 2)
+
+Weather-Channel-style playback of report history. Independent of Phase 1 (restyle);
+builds on top of it.
+
+**Data:** every `CommunityReport` has a required `createdAt: Instant`; the web
+`SpotReport` carries `createdAt?: string`. Each map feature gains a numeric `ts`
+property = `createdAt` epoch-millis. No new API/aggregation — filter client-side.
+
+**Motion model — rolling trailing window:** for a play cursor `t`, a feature is
+visible when `t - WINDOW ≤ ts ≤ t`, with `WINDOW = 14 days`. Blooms fade out as
+they age past the window. Implemented as a MapLibre **filter expression** on both
+the heatmap and dots layers keyed to `cursorMs`:
+`['all', ['<=', ['get','ts'], cursorMs], ['>', ['get','ts'], cursorMs - WINDOW_MS]]`.
+Native MapLibre-Compose uses the same filter; the desktop canvas filters the spot
+list per frame.
+
+**Timeline:** span = **last 90 days** (`now - 90d` → `now`). Playback = **~8s
+loop**, **autoplay** on entering the mode. A `requestAnimationFrame` (web) /
+Compose animation (app) advances `cursorMs` linearly across the span and wraps.
+
+**Dots correlation:** the dots layer uses the identical filter, so individual spot
+dots appear/disappear in lockstep with the heatmap blooms.
+
+**Dedicated full-screen view ("Report Density"):**
+- Muted scrim + weather heatmap + correlated dots + intensity legend (Phase 1 parts).
+- **Bottom timeline scrubber**: a draggable track showing the 90-day span, a moving
+  thumb at `cursorMs`, a **play/pause** button, and a **date readout** of the
+  current cursor (e.g. "Apr 12").
+- Dragging the thumb scrubs (pauses autoplay); play resumes the loop.
+- Entered from a play/layers affordance on the normal map (web `/bounties`; app map
+  screen). Exiting returns to the simple map.
+- **Web:** new `PrecipitationTimelapse.tsx` wrapping the map + scrubber; reuses
+  `CombinedMap` layers with the cursor filter applied.
+- **App:** new full-screen composable (e.g. `ReportDensityTimelapseScreen.kt`)
+  reusing the heat layers with the filter + a Compose scrubber.
+
+**Constants (shared, mirror in both platforms):** `WINDOW_DAYS = 14`,
+`SPAN_DAYS = 90`, `LOOP_MS = 8000`.
 
 ## 11. Risks / verification
 
