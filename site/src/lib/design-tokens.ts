@@ -145,24 +145,25 @@ export const SPOT_HEATMAP_PAINT: any = {
   ],
   'heatmap-color': [
     'interpolate', ['linear'], ['heatmap-density'],
-    0, 'rgba(0,0,0,0)',
-    0.02, 'rgba(46,234,82,0.55)',
-    0.12, SPOT_COLORS.HEATMAP_EDGE,
-    0.26, SPOT_COLORS.HEATMAP_LOW,
-    0.45, SPOT_COLORS.HEATMAP_MED,
-    0.62, SPOT_COLORS.HEATMAP_HIGH,
-    0.8, SPOT_COLORS.HEATMAP_EXTREME,
-    0.94, '#FFF7AD',
-    1.0, SPOT_COLORS.HEATMAP_PEAK,
+    0,    'rgba(0,0,0,0)',
+    0.05, 'rgba(127,229,224,0.55)', // teal #7FE5E0 — Light
+    0.15, '#4FB0E8',                // cyan-blue — Light
+    0.30, '#3B7DE0',                // blue — Light
+    0.45, '#6C5CE7',                // indigo — Moderate
+    0.62, '#9B4FD0',                // purple-magenta — Moderate
+    0.75, '#D24FAF',                // magenta — Heavy
+    0.85, '#E84B5A',                // red-pink — Heavy
+    0.94, '#F5D94F',                // yellow — Extreme
+    1.0,  '#FFFFFF',                // white — Extreme
   ],
   'heatmap-radius': [
     'interpolate', ['linear'], ['zoom'],
-    8, 18,
-    10, 28,
-    12, 42,
-    13, 52,
-    13.75, 34,
-    14.25, 18,
+    8, 23,
+    10, 36,
+    12, 54,
+    13, 67,
+    13.75, 44,
+    14.25, 23,
     SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
     SPOT_ZOOM.HEATMAP_MAX, 0,
   ],
@@ -174,6 +175,18 @@ export const SPOT_HEATMAP_PAINT: any = {
     13, 0.82,
     13.75, 0.54,
     14.25, 0.22,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
+  ],
+}
+
+// Neutral scrim drawn beneath the heatmap so weather colors pop (Apple precipitation feel).
+export const SPOT_SCRIM_PAINT: any = {
+  'fill-color': '#F5F6F8',
+  'fill-opacity': [
+    'interpolate', ['linear'], ['zoom'],
+    8, 0.55,
+    13, 0.5,
+    14, 0.2,
     SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
   ],
 }
