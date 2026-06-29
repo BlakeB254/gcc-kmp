@@ -415,6 +415,16 @@ fun MapFullScreen(
                         selectedRecordIndex = null
                     },
                 )
+
+                // Heatmap layer toggle — sits beside MapModeToggle, inherits Row's statusBarsPadding
+                FilledTonalIconButton(
+                    onClick = { heatmapVisible = !heatmapVisible },
+                ) {
+                    Text(
+                        if (heatmapVisible) "●" else "○",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
 
             // Precipitation intensity legend — visible only when heatmap is active
@@ -423,19 +433,6 @@ fun MapFullScreen(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(12.dp),
-                )
-            }
-
-            // Heatmap layer toggle button (top-end corner)
-            FilledTonalIconButton(
-                onClick = { heatmapVisible = !heatmapVisible },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp),
-            ) {
-                Text(
-                    if (heatmapVisible) "●" else "○",
-                    style = MaterialTheme.typography.labelLarge,
                 )
             }
 
