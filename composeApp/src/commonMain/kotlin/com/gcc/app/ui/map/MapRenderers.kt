@@ -447,7 +447,7 @@ internal fun DrawScope.drawSpotMarkers(
                 0.08f * (1f - fade)
             }
         }
-        drawRect(color = MapStyles.CLEAN_BASE_COLOR.copy(alpha = baseAlpha))
+        drawRect(color = MapStyles.SPOT_SCRIM_COLOR.copy(alpha = (baseAlpha * 1.8f).coerceAtMost(0.55f)))
     }
 
     for (spot in filteredSpots) {
@@ -464,7 +464,7 @@ internal fun DrawScope.drawSpotMarkers(
             val weight = canvasSpotHeatWeight(spot)
             val opacity = (0.44f + 0.11f * weight) * (1f - fadeT)
             if (opacity > 0f) {
-                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.5f), radius = radius * 1.65f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.5f), radius = radius * 2.0f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_LOW.copy(alpha = opacity * 0.66f), radius = radius * 1.16f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = opacity * 0.74f), radius = radius * 0.78f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_HIGH.copy(alpha = opacity * 0.7f), radius = radius * 0.48f, center = pos)

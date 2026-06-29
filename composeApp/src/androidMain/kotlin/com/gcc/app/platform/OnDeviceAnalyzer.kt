@@ -31,11 +31,12 @@ actual class OnDeviceAnalyzer actual constructor() {
 
         val estimatedWeight = depthAnalysis?.estimatedVolumeCubicFt?.let { it * 8.0 }
 
+        val volumeCubicFt = depthAnalysis?.estimatedVolumeCubicFt
         val severity = when {
-            depthAnalysis?.estimatedVolumeCubicFt != null && depthAnalysis.estimatedVolumeCubicFt > 20 -> 5
-            depthAnalysis?.estimatedVolumeCubicFt != null && depthAnalysis.estimatedVolumeCubicFt > 10 -> 4
-            depthAnalysis?.estimatedVolumeCubicFt != null && depthAnalysis.estimatedVolumeCubicFt > 3 -> 3
-            depthAnalysis?.estimatedVolumeCubicFt != null && depthAnalysis.estimatedVolumeCubicFt > 0.5 -> 2
+            volumeCubicFt != null && volumeCubicFt > 20 -> 5
+            volumeCubicFt != null && volumeCubicFt > 10 -> 4
+            volumeCubicFt != null && volumeCubicFt > 3 -> 3
+            volumeCubicFt != null && volumeCubicFt > 0.5 -> 2
             else -> 2 // Default moderate for photo-only reports
         }
 

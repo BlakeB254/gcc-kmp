@@ -641,6 +641,23 @@ actual fun GccMap(
                 ),
             )
 
+            // ── Spot scrim: neutral off-white tint beneath heatmap ──
+            // Planet-spanning fill sourced from the same clean-zone GeoJSON.
+            // Fades from 0.55 opacity at overview zoom to 0 by
+            // SPOT_HEATMAP_FADE_OUT_ZOOM so it doesn't compete with street
+            // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
+            FillLayer(
+                id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                source = spotCleanZoneSrc,
+                color = const(MapStyles.SPOT_SCRIM_COLOR),
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
+                ),
+            )
+
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
                 source = spotSrc,
