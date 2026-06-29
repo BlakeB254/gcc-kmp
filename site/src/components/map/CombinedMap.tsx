@@ -136,6 +136,7 @@ export function CombinedMap({
   const [mapLoaded, setMapLoaded] = useState(false)
   const [popup, setPopup] = useState<PopupTarget | null>(null)
   const [currentZoom, setCurrentZoom] = useState(ZOOM.NEIGHBORHOOD)
+  const [heatmapVisible, setHeatmapVisible] = useState(true)
   const detailZoomOpacity = Math.max(
     0,
     Math.min(
@@ -552,7 +553,28 @@ export function CombinedMap({
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         onMove={(event) => setCurrentZoom(event.viewState.zoom)}
         cursor="pointer"
-        legend={spots.length > 0 ? <PrecipitationLegend /> : legendNode}
+        legend={
+          spots.length > 0 ? (
+            <>
+              {heatmapVisible
+                ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
+                : legendNode}
+              <button
+                data-testid="precip-toggle"
+                onClick={() => setHeatmapVisible((v) => !v)}
+                aria-pressed={heatmapVisible}
+                className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
+                title="Toggle report density"
+              >
+                {/* stacked-layers glyph */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
+                  <polyline points="2 15.5 12 22 22 15.5" />
+                </svg>
+              </button>
+            </>
+          ) : legendNode
+        }
         popup={popupNode}
         mapRef={(ref) => {
           mapRef.current = ref
@@ -668,6 +690,7 @@ export function CombinedMap({
               id="spot-scrim-fill"
               type="fill"
               paint={SPOT_SCRIM_PAINT}
+              layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
             />
           </Source>
         )}
@@ -684,6 +707,7 @@ export function CombinedMap({
               minzoom={SPOT_ZOOM.HEATMAP_MIN}
               maxzoom={SPOT_ZOOM.HEATMAP_MAX}
               paint={SPOT_HEATMAP_PAINT}
+              layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
             />
 
             <Layer
