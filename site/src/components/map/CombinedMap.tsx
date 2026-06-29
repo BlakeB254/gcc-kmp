@@ -18,6 +18,7 @@ import {
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
+import { PrecipitationLegend } from './PrecipitationLegend'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
 import type { Route } from './RouteMap'
@@ -551,7 +552,7 @@ export function CombinedMap({
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         onMove={(event) => setCurrentZoom(event.viewState.zoom)}
         cursor="pointer"
-        legend={legendNode}
+        legend={spots.length > 0 ? <PrecipitationLegend /> : legendNode}
         popup={popupNode}
         mapRef={(ref) => {
           mapRef.current = ref
