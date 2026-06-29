@@ -29,6 +29,7 @@ import {
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
+import { scheduleOfferNotifications } from '@/lib/route-queue-notifications'
 
 const ACTIVE_JOB_STATUSES = ['claimed', 'in_progress', 'pending_review'] as const
 const NORTH_LAWNDALE_ZIPS = ['60623', '60624']
@@ -520,17 +521,30 @@ export async function processBatch(batchId: number, now: string = isoNow()): Pro
   const expiresAt = new Date(nowMs + batch.offerWindowMinutes * 60_000).toISOString()
 
   for (const c of candidates) {
-    await db.insert(routeJobOffers).values({
-      batchId,
-      workerId: c.workerId,
-      waveNumber,
-      status: 'pending',
-      offerToken: randomUUID().replace(/-/g, ''),
-      offeredAt: now,
-      expiresAt,
-      createdAt: now,
-      updatedAt: now,
-    })
+    const [inserted] = await db
+      .insert(routeJobOffers)
+      .values({
+        batchId,
+        workerId: c.workerId,
+        waveNumber,
+        status: 'pending',
+        offerToken: randomUUID().replace(/-/g, ''),
+        offeredAt: now,
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: routeJobOffers.id })
+    // Schedule the outbox rows (email + push initial, push reminders) for this
+    // offer. The cron drains them; see lib/route-queue-notifications.ts.
+    if (inserted) {
+      await scheduleOfferNotifications({
+        offerId: inserted.id,
+        workerId: c.workerId,
+        offeredAt: now,
+        expiresAt,
+      })
+    }
     await db
       .update(routeCommunityQueue)
       .set({
