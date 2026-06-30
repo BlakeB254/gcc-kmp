@@ -457,7 +457,9 @@ internal fun DrawScope.drawSpotMarkers(
 
         if (effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
             val growthT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) / 10.0).toFloat().coerceIn(0f, 1f)
-            val fadeT = ((effectiveZoom - 13.0) / (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - 13.0)).toFloat().coerceIn(0f, 1f)
+            // Fade the heat out over the last zoom unit before dots take over (z[DOTS-1, DOTS)),
+            // so the blooms are full at overview and gone by the dots handoff.
+            val fadeT = ((effectiveZoom - (MapStyles.SPOT_DOTS_MIN_ZOOM - 1.0)) / 1.0).toFloat().coerceIn(0f, 1f)
             val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
                 (MapStyles.SPOT_HEATMAP_RADIUS_MID - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * growthT
             val radius = baseRadius * (1f - fadeT)
