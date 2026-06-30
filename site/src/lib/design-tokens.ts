@@ -114,35 +114,39 @@ export const SPOT_HEATMAP_PAINT: any = {
   ],
   'heatmap-intensity': [
     'interpolate', ['linear'], ['zoom'],
-    8, 0.08,
-    10, 0.13,
-    12, 0.21,
-    13, 0.26,
-    14, 0.16,
-    SPOT_ZOOM.HEATMAP_FADE_OUT, 0.05,
+    8, 0.05,
+    10, 0.08,
+    12, 0.13,
+    13, 0.16,
+    14, 0.10,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0.03,
     SPOT_ZOOM.HEATMAP_MAX, 0.02,
   ],
+  // Doppler-radar ramp — GCC's own colors (green → yellow → orange → red → white).
+  // Apple-precipitation *style* (soft feathered blooms on a muted base), our hues.
   'heatmap-color': [
     'interpolate', ['linear'], ['heatmap-density'],
     0,    'rgba(0,0,0,0)',
-    0.05, 'rgba(127,229,224,0.55)', // teal #7FE5E0 — Light
-    0.15, '#4FB0E8',                // cyan-blue — Light
-    0.30, '#3B7DE0',                // blue — Light
-    0.45, '#6C5CE7',                // indigo — Moderate
-    0.62, '#9B4FD0',                // purple-magenta — Moderate
-    0.75, '#D24FAF',                // magenta — Heavy
-    0.85, '#E84B5A',                // red-pink — Heavy
-    0.94, '#F5D94F',                // yellow — Extreme
-    1.0,  '#FFFFFF',                // white — Extreme
+    0.05, 'rgba(46,234,82,0.5)',    // green — Light
+    0.16, '#2EEA52',                // green — Light
+    0.32, '#7CFC2F',                // lime-green — Light
+    0.46, '#FDE047',                // yellow — Moderate
+    0.60, '#F59E0B',                // amber — Moderate
+    0.72, '#F97316',                // orange — Heavy
+    0.83, '#EF4444',                // red — Heavy
+    0.93, '#DC2626',                // red — Heavy
+    1.0,  '#B91C1C',                // deep-red core — Extreme (no white blowout)
   ],
+  // Smaller radius at low zoom keeps concentrated clusters from melting into a
+  // perfect-circle bullseye; grows with zoom where points spread out on screen.
   'heatmap-radius': [
     'interpolate', ['linear'], ['zoom'],
-    8, 23,
-    10, 36,
-    12, 54,
-    13, 67,
-    13.75, 44,
-    14.25, 23,
+    8, 9,
+    10, 16,
+    12, 34,
+    13, 50,
+    13.75, 40,
+    14.25, 22,
     SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
     SPOT_ZOOM.HEATMAP_MAX, 0,
   ],

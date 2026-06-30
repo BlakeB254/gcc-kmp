@@ -135,14 +135,15 @@ object MapStyles {
     const val LAYER_SPOT_OVERVIEW_HEAT_MID = "spot-overview-heat-mid"
     const val LAYER_SPOT_OVERVIEW_HEAT_CORE = "spot-overview-heat-core"
     val SPOT_MARKER_COLOR = Color(0xFFF97316)    // orange (unchanged — dots)
-    val SPOT_HEAT_EDGE = Color(0xFF7FE5E0)       // teal — Light
-    val SPOT_HEAT_LOW = Color(0xFF4FB0E8)        // cyan-blue — Light
-    val SPOT_HEAT_MEDIUM = Color(0xFF6C5CE7)     // indigo — Moderate
-    val SPOT_HEAT_HIGH = Color(0xFF9B4FD0)       // purple-magenta — Moderate
-    val SPOT_HEAT_EXTREME = Color(0xFFE84B5A)    // red-pink — Heavy
-    val SPOT_HEAT_CRITICAL = Color(0xFFD24FAF)   // magenta — Heavy
-    val SPOT_HEAT_NEAR_PEAK = Color(0xFFF5D94F)  // yellow — Extreme
-    val SPOT_HEAT_PEAK = Color.White             // Extreme peak
+    // Doppler ramp — GCC colors (green → yellow → orange → red → deep-red core, no white blowout)
+    val SPOT_HEAT_EDGE = Color(0xFF2EEA52)       // green — Light
+    val SPOT_HEAT_LOW = Color(0xFF7CFC2F)        // lime-green — Light
+    val SPOT_HEAT_MEDIUM = Color(0xFFFDE047)     // yellow — Moderate
+    val SPOT_HEAT_HIGH = Color(0xFFF97316)       // orange — Heavy
+    val SPOT_HEAT_EXTREME = Color(0xFFEF4444)    // red — Heavy
+    val SPOT_HEAT_CRITICAL = Color(0xFFDC2626)   // red — Heavy
+    val SPOT_HEAT_NEAR_PEAK = Color(0xFFC81E1E)  // deep red — Extreme
+    val SPOT_HEAT_PEAK = Color(0xFFB91C1C)       // deep-red core — Extreme (no white)
     val CLEAN_BASE_COLOR = Color(0xFF128F3A)     // retained but no longer used for heat base
     val SPOT_SCRIM_COLOR = Color(0xFFF5F6F8)     // neutral scrim beneath heatmap
 

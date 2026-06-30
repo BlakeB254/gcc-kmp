@@ -1,9 +1,9 @@
 'use client'
 
-// Vertical intensity scale matching the precipitation weather ramp (bottom = Light, top = Extreme).
+// Vertical intensity scale — doppler ramp (bottom = Light/green, top = Extreme/white).
 const RAMP_BOTTOM_TO_TOP = [
-  '#7FE5E0', '#4FB0E8', '#3B7DE0', '#6C5CE7',
-  '#9B4FD0', '#D24FAF', '#E84B5A', '#F5D94F', '#FFFFFF',
+  '#2EEA52', '#7CFC2F', '#FDE047', '#F59E0B',
+  '#F97316', '#DC2626', '#FFF7AD', '#FFFFFF',
 ]
 
 export function PrecipitationLegend({ onDone }: { onDone?: () => void }) {

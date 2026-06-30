@@ -563,7 +563,7 @@ export function CombinedMap({
                 data-testid="precip-toggle"
                 onClick={() => setHeatmapVisible((v) => !v)}
                 aria-pressed={heatmapVisible}
-                className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
+                className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
                 title="Toggle report density"
               >
                 {/* stacked-layers glyph */}
