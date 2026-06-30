@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.sp
 fun PrecipitationLegend(modifier: Modifier = Modifier) {
     // Top-to-bottom = Extreme → Light, matching the vertical bar.
     val rampTopToBottom = listOf(
-        MapStyles.SPOT_HEAT_PEAK, MapStyles.SPOT_HEAT_NEAR_PEAK, MapStyles.SPOT_HEAT_CRITICAL,
-        MapStyles.SPOT_HEAT_EXTREME, MapStyles.SPOT_HEAT_HIGH, MapStyles.SPOT_HEAT_MEDIUM,
+        MapStyles.SPOT_HEAT_PEAK, MapStyles.SPOT_HEAT_NEAR_PEAK, MapStyles.SPOT_HEAT_EXTREME,
+        MapStyles.SPOT_HEAT_CRITICAL, MapStyles.SPOT_HEAT_HIGH, MapStyles.SPOT_HEAT_MEDIUM,
         MapStyles.SPOT_HEAT_LOW, MapStyles.SPOT_HEAT_EDGE,
     )
     Row(

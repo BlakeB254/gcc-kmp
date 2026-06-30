@@ -646,17 +646,21 @@ actual fun GccMap(
             // Fades from 0.55 opacity at overview zoom to 0 by
             // SPOT_HEATMAP_FADE_OUT_ZOOM so it doesn't compete with street
             // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
-            FillLayer(
-                id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                source = spotCleanZoneSrc,
-                color = const(MapStyles.SPOT_SCRIM_COLOR),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
-                ),
-            )
+            // Gated on spots being present so toggle-off and zero-report areas
+            // don't show a gray wash (mirrors the web version's guard).
+            if (spots.isNotEmpty()) {
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    color = const(MapStyles.SPOT_SCRIM_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
+                        MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
+                    ),
+                )
+            }
 
             HeatmapLayer(
                 id = MapStyles.LAYER_SPOT_HEATMAP,
