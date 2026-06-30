@@ -427,12 +427,13 @@ fun MapFullScreen(
                 }
             }
 
-            // Precipitation intensity legend — visible only when heatmap is active
+            // Precipitation intensity legend — right edge, vertically centered so it
+            // never overlaps the top-left community info panel (routes/jobs/earnings).
             if (heatmapVisible) {
                 PrecipitationLegend(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(12.dp),
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp),
                 )
             }
 
