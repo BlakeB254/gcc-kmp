@@ -55,6 +55,7 @@ data class RouteScanUiState(
     val isComplete: Boolean = false,
     val pointsAwarded: Int = 0,
     val error: String? = null,
+    val submitError: String? = null,
     val aiDirectionText: String? = null,
     val routeSections: List<RouteScanSectionUiItem> = emptyList(),
     val currentSectionIndex: Int = 0,
@@ -459,12 +460,17 @@ class RouteScanViewModel(
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    phase = ScanPhase.CLEANING,
+                    phase = ScanPhase.SUBMITTING,
                     isSubmitting = false,
-                    error = "Failed to submit scan: ${e.message}",
+                    submitError = e.message ?: "Couldn't submit your scan",
                 )
             }
         }
+    }
+
+    fun retrySubmit() {
+        _uiState.value = _uiState.value.copy(submitError = null)
+        completeScan()
     }
 
     // ── State queries ────────────────────────────────────────────────

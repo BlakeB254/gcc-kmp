@@ -98,7 +98,11 @@ fun RouteScanScreen(
                 onBack = onBack,
             )
 
-            ScanPhase.SUBMITTING -> ScanSubmittingScreen()
+            ScanPhase.SUBMITTING -> ScanSubmittingScreen(
+                submitError = uiState.submitError,
+                onRetry = { viewModel.retrySubmit() },
+                onBack = onBack,
+            )
 
             ScanPhase.COMPLETE -> ScanCompleteScreen(
                 uiState = uiState,
