@@ -29,6 +29,7 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.BountySpotMode
 import com.gcc.app.viewmodel.WalletViewModel
 import com.gcc.app.util.padTwo
+import com.gcc.shared.constants.GccConstants
 import com.gcc.shared.model.*
 import org.koin.compose.koinInject
 
@@ -204,7 +205,7 @@ fun WalletScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "$100 flat rate",
+                                "$BLOCK_SPONSORSHIP_RATE_LABEL flat rate",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                 color = GccGreen,
                             )
@@ -231,7 +232,7 @@ fun WalletScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Min \$10, you choose",
+                                "Min $MIN_BOUNTY_RATE_LABEL, you choose",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                 color = GccSky,
                             )
@@ -372,7 +373,7 @@ private fun BlockCleaningSheet(
                 }
             }
             Text(
-                "Choose an available block, pick a date and preferred time. Flat rate: \$100.",
+                "Choose an available block, pick a date and preferred time. Flat rate: $BLOCK_SPONSORSHIP_RATE_LABEL.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
             )
@@ -529,7 +530,7 @@ private fun BlockCleaningSheet(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            "$100.00",
+                            formatCents(GccConstants.BLOCK_SPONSORSHIP_CENTS),
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = GccGreen,
                         )
@@ -1316,6 +1317,10 @@ private fun TransactionListItem(
 
 private val DECIMAL_INPUT_REGEX = Regex("^\\d*\\.?\\d{0,2}$")
 private val WHOLE_INPUT_REGEX = Regex("^\\d{0,5}$")
+
+// Derived display labels — sourced from GccConstants so a price change is one edit
+private val BLOCK_SPONSORSHIP_RATE_LABEL = "\$${GccConstants.BLOCK_SPONSORSHIP_CENTS / 100}"
+private val MIN_BOUNTY_RATE_LABEL = "\$${GccConstants.MIN_BOUNTY_CENTS / 100}"
 
 private fun formatCents(cents: Int): String = com.gcc.shared.util.GccFormatters.formatCents(cents)
 
