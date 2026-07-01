@@ -199,7 +199,9 @@ fun App(component: RootComponent) {
                 is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
-                    onBeginAsUser = { _, _ -> }, // wired in Task 6
+                    onBeginAsUser = { routeId, workerId, workerName ->
+                        component.navigateToRouteScanAsUser(routeId, workerId, workerName)
+                    },
                 )
                 is Screen.SpotVerification -> SpotVerificationScreen(
                     reportId = screen.reportId,
@@ -228,6 +230,8 @@ fun App(component: RootComponent) {
                         RouteScanScreen(
                             route = route!!,
                             allowUnpublished = screen.allowUnpublished,
+                            onBehalfOfWorkerId = screen.onBehalfOfWorkerId,
+                            onBehalfOfWorkerName = screen.onBehalfOfWorkerName,
                             onBack = component::navigateBack,
                             onComplete = component::navigateBack,
                         )

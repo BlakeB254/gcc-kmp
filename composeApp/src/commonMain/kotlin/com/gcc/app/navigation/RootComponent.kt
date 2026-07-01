@@ -169,6 +169,17 @@ class RootComponent(
         navigation.push(Screen.RouteScan(routeId, allowUnpublished))
     }
 
+    fun navigateToRouteScanAsUser(routeId: Int, onBehalfOfWorkerId: Int, workerName: String) {
+        navigation.push(
+            Screen.RouteScan(
+                routeId = routeId,
+                allowUnpublished = true,
+                onBehalfOfWorkerId = onBehalfOfWorkerId,
+                onBehalfOfWorkerName = workerName,
+            )
+        )
+    }
+
     fun navigateToPoints() {
         navigation.push(Screen.PointsDashboard)
     }

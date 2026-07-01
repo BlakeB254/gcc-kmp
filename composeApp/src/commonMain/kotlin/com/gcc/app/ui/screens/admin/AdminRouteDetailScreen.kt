@@ -37,7 +37,7 @@ import org.koin.compose.koinInject
 fun AdminRouteDetailScreen(
     routeId: Int,
     onBack: () -> Unit,
-    onBeginAsUser: (routeId: Int, workerId: Int) -> Unit = { _, _ -> },
+    onBeginAsUser: (routeId: Int, workerId: Int, workerName: String) -> Unit = { _, _, _ -> },
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -529,7 +529,8 @@ fun AdminRouteDetailScreen(
                     Button(
                         onClick = {
                             val wid = selectedProxyWorkerId ?: return@Button
-                            onBeginAsUser(route.id, wid)
+                            val name = selectedProxyWorker?.name ?: ""
+                            onBeginAsUser(route.id, wid, name)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = selectedProxyWorkerId != null,

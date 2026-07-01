@@ -82,6 +82,7 @@ class RouteScanViewModel(
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
     private val cleanPath = mutableListOf<Pair<Double, Double>>()
     private var allowUnpublishedRoute = false
+    private var onBehalfOfWorkerId: Int? = null
 
     // Coroutine jobs
     private var locationJob: Job? = null
@@ -91,8 +92,9 @@ class RouteScanViewModel(
 
     // ── Initialisation ───────────────────────────────────────────────
 
-    fun initForRoute(route: Route, allowUnpublished: Boolean = false) {
+    fun initForRoute(route: Route, allowUnpublished: Boolean = false, onBehalfOfWorkerId: Int? = null) {
         allowUnpublishedRoute = allowUnpublished
+        this.onBehalfOfWorkerId = onBehalfOfWorkerId
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
@@ -182,7 +184,8 @@ class RouteScanViewModel(
                         deviceType = state.deviceType,
                         startLat = lat,
                         startLng = lng,
-                    )
+                    ),
+                    onBehalfOfWorkerId = onBehalfOfWorkerId,
                 )
 
                 _uiState.value = _uiState.value.copy(

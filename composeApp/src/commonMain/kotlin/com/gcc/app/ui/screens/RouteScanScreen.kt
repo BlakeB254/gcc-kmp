@@ -1,8 +1,21 @@
 package com.gcc.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.ui.components.ScoutCaptureDialog
+import com.gcc.app.ui.theme.GccSky
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
@@ -29,6 +42,8 @@ import org.koin.compose.koinInject
 fun RouteScanScreen(
     route: Route,
     allowUnpublished: Boolean = false,
+    onBehalfOfWorkerId: Int? = null,
+    onBehalfOfWorkerName: String? = null,
     onBack: () -> Unit = {},
     onComplete: () -> Unit = {},
 ) {
@@ -41,53 +56,73 @@ fun RouteScanScreen(
     var showScoutCapture by remember { mutableStateOf(false) }
 
     LaunchedEffect(route.id, allowUnpublished) {
-        viewModel.initForRoute(route, allowUnpublished = allowUnpublished)
+        viewModel.initForRoute(route, allowUnpublished = allowUnpublished, onBehalfOfWorkerId = onBehalfOfWorkerId)
     }
 
     DisposableEffect(Unit) {
         onDispose { viewModel.onCleared() }
     }
 
-    when (uiState.phase) {
-        ScanPhase.SCOUTING -> ScoutScreen(
-            uiState = uiState,
-            allowUnpublished = allowUnpublished,
-            onStartScout = { viewModel.startScout() },
-            onCompleteScout = { viewModel.completeScout() },
-            onCaptureHotspot = { showScoutCapture = true },
-            onBack = onBack,
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (uiState.phase) {
+            ScanPhase.SCOUTING -> ScoutScreen(
+                uiState = uiState,
+                allowUnpublished = allowUnpublished,
+                onStartScout = { viewModel.startScout() },
+                onCompleteScout = { viewModel.completeScout() },
+                onCaptureHotspot = { showScoutCapture = true },
+                onBack = onBack,
+            )
 
-        ScanPhase.SCOUT_REVIEW -> ScoutReviewScreen(
-            uiState = uiState,
-            onStartCleaning = { viewModel.startCleaning() },
-            onBack = onBack,
-        )
+            ScanPhase.SCOUT_REVIEW -> ScoutReviewScreen(
+                uiState = uiState,
+                onStartCleaning = { viewModel.startCleaning() },
+                onBack = onBack,
+            )
 
-        ScanPhase.CLEANING -> CleanScreen(
-            uiState = uiState,
-            onCompleteScan = { viewModel.completeScan() },
-            onCleanHotspot = { hotspot ->
-                // Fallback (no capture sheet) — mark cleaned with placeholder
-                viewModel.confirmHotspotCleaned(
-                    hotspot.id,
-                    afterPhotoUrl = "after_${hotspot.id}.jpg",
-                    verificationScore = 1.0f,
+            ScanPhase.CLEANING -> CleanScreen(
+                uiState = uiState,
+                onCompleteScan = { viewModel.completeScan() },
+                onCleanHotspot = { hotspot ->
+                    // Fallback (no capture sheet) — mark cleaned with placeholder
+                    viewModel.confirmHotspotCleaned(
+                        hotspot.id,
+                        afterPhotoUrl = "after_${hotspot.id}.jpg",
+                        verificationScore = 1.0f,
+                    )
+                },
+                onSkipHotspot = { viewModel.skipHotspot(it.id) },
+                onConfirmCleaned = { hotspotId, afterPhotoUrl, score ->
+                    viewModel.confirmHotspotCleaned(hotspotId, afterPhotoUrl, score)
+                },
+                onBack = onBack,
+            )
+
+            ScanPhase.SUBMITTING -> ScanSubmittingScreen()
+
+            ScanPhase.COMPLETE -> ScanCompleteScreen(
+                uiState = uiState,
+                onDone = onComplete,
+            )
+        }
+
+        // Admin proxy banner — shown only when performing on behalf of a verified worker
+        if (onBehalfOfWorkerName != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(GccSky.copy(alpha = 0.93f))
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .align(Alignment.TopCenter),
+            ) {
+                Text(
+                    text = "Performing as $onBehalfOfWorkerName (admin)",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
                 )
-            },
-            onSkipHotspot = { viewModel.skipHotspot(it.id) },
-            onConfirmCleaned = { hotspotId, afterPhotoUrl, score ->
-                viewModel.confirmHotspotCleaned(hotspotId, afterPhotoUrl, score)
-            },
-            onBack = onBack,
-        )
-
-        ScanPhase.SUBMITTING -> ScanSubmittingScreen()
-
-        ScanPhase.COMPLETE -> ScanCompleteScreen(
-            uiState = uiState,
-            onDone = onComplete,
-        )
+            }
+        }
     }
 
     // ── ScoutCaptureDialog (F4/F8) ──────────────────────────────────────
