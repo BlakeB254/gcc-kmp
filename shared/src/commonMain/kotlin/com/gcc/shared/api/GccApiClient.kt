@@ -978,6 +978,32 @@ class GccApiClient(
     /** Get current verification status */
     suspend fun getVerificationStatus(): WorkerVerification =
         get("/api/workers/me/verification")
+
+    // ── Worker Connect (Stripe) ────────────────────────────────────────
+
+    /** POST /api/workers/me/connect/onboard — returns the Stripe-hosted onboarding URL. */
+    suspend fun connectOnboard(): String {
+        val response = httpClient.post("$baseUrl/api/workers/me/connect/onboard")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        val body = response.body<JsonObject>()
+        return body["url"]?.jsonPrimitive?.content
+            ?: throw Exception("No url in onboard response")
+    }
+
+    /** GET /api/workers/me/connect/status — returns Connect account onboarding status. */
+    suspend fun connectStatus(): ConnectStatus {
+        val response = httpClient.get("$baseUrl/api/workers/me/connect/status")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ConnectStatus>()
+    }
 }
 
 private fun GeoJSONPolygon?.centerLng(): Double? =

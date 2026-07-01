@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.PushNotificationManager
+import com.gcc.app.platform.openUrl
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.*
@@ -22,6 +23,10 @@ data class SettingsUiState(
     val isDeletingAccount: Boolean = false,
     val accountDeleted: Boolean = false,
     val error: String? = null,
+    val connectStatus: ConnectStatus? = null,
+    val connectStatusLoading: Boolean = false,
+    val connectOnboardLoading: Boolean = false,
+    val connectError: String? = null,
 )
 
 class SettingsViewModel(
@@ -96,6 +101,40 @@ class SettingsViewModel(
                 _uiState.value = _uiState.value.copy(
                     isDeletingAccount = false,
                     error = e.message ?: "Failed to delete account",
+                )
+            }
+        }
+    }
+
+    fun loadConnectStatus() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(connectStatusLoading = true, connectError = null)
+            try {
+                val status = apiClient.connectStatus()
+                _uiState.value = _uiState.value.copy(
+                    connectStatus = status,
+                    connectStatusLoading = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    connectStatusLoading = false,
+                    connectError = e.message ?: "Failed to load payout status",
+                )
+            }
+        }
+    }
+
+    fun startConnectOnboard() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(connectOnboardLoading = true, connectError = null)
+            try {
+                val url = apiClient.connectOnboard()
+                _uiState.value = _uiState.value.copy(connectOnboardLoading = false)
+                openUrl(url)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    connectOnboardLoading = false,
+                    connectError = e.message ?: "Failed to open payout setup",
                 )
             }
         }

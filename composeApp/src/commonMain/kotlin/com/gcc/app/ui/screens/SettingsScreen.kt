@@ -34,6 +34,7 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) { viewModel.loadSettings() }
     LaunchedEffect(Unit) { profileVm.loadProfile() }
+    LaunchedEffect(Unit) { viewModel.loadConnectStatus() }
 
     LaunchedEffect(uiState.signedOut) {
         if (uiState.signedOut) onSignOut()
@@ -214,6 +215,52 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+
+            // Payouts Section
+            SectionHeader(title = "Payouts")
+            val connectStatus = uiState.connectStatus
+            val payoutsReady = connectStatus?.payoutsReady == true
+            val payoutsLabel = when {
+                payoutsReady -> "Payouts ready ✓"
+                connectStatus != null && connectStatus.onboardingStatus != "not_started" -> "Finish setup"
+                else -> "Set up payouts"
+            }
+            GccCard(
+                onClick = if (!payoutsReady && !uiState.connectOnboardLoading) {
+                    { viewModel.startConnectOnboard() }
+                } else null,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            payoutsLabel,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (payoutsReady) GccGreen else MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (!payoutsReady) {
+                            Text(
+                                "Enable same-day payouts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                    if (uiState.connectStatusLoading || uiState.connectOnboardLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = GccGreen,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
+            }
+            uiState.connectError?.let { error ->
+                Text(error, color = GccError, style = MaterialTheme.typography.bodySmall)
             }
 
             // Legal Section
