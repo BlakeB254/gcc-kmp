@@ -136,6 +136,15 @@ export const notificationTemplates = {
     body: `A GCC worker just finished cleaning ${blockCode}. Check your email for photos!`,
     url: '/sponsor/impact',
   }),
+
+  // Admin notifications
+  payoutNeedsApproval: (workerName: string, jobId: number, amountDollars: string) => ({
+    title: 'Payout Approval Needed 💰',
+    body: `${workerName} submitted job #${jobId} for review — $${amountDollars} pending approval.`,
+    url: '/admin',
+    tag: `payout-approval-${jobId}`,
+    data: { jobId },
+  }),
 }
 
 /**

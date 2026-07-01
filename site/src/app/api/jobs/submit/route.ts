@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/db'
-import { jobs, blocks, media } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { jobs, blocks, media, workers } from '@/db/schema'
+import { eq, inArray } from 'drizzle-orm'
 import { put } from '@vercel/blob'
 import { processImage } from '@/lib/image-utils'
 import { verifyToken } from '@/lib/auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { notificationTemplates, sendPushNotification } from '@/lib/notifications'
 
 export const runtime = 'nodejs'
 
@@ -168,6 +169,19 @@ export async function POST(request: NextRequest) {
         .where(eq(blocks.id, block.id))
     }
 
+    // Best-effort: notify admins that a job needs payout approval.
+    // Wrapped in try/catch — push failure MUST NOT fail the job completion.
+    // Note: only web-push (VAPID) subscriptions are deliverable from this
+    // backend. Mobile FCM/APNs tokens stored via POST /api/workers/me/device-token
+    // require a separate FCM/APNs integration not yet wired here.
+    void notifyAdminsOfPendingReview(
+      workerId,
+      Number(jobId),
+      job.payoutAmount ? parseFloat(job.payoutAmount) : null
+    ).catch((err) =>
+      console.warn('[submit] Admin push notification failed (non-fatal):', err)
+    )
+
     return Response.json({
       success: true,
       job: {
@@ -183,6 +197,70 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * Best-effort push notification to all admin workers that have a web-push
+ * subscription registered. Called after a job transitions to pending_review.
+ * Failures are silently swallowed by the caller — this must never block
+ * the job completion response.
+ */
+async function notifyAdminsOfPendingReview(
+  submitterWorkerId: number,
+  jobId: number,
+  payoutAmount: number | null
+): Promise<void> {
+  const adminEmails = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+
+  if (adminEmails.length === 0) return
+
+  // Fetch submitter name for notification body
+  const [submitter] = await db
+    .select({ name: workers.name })
+    .from(workers)
+    .where(eq(workers.id, submitterWorkerId))
+    .limit(1)
+  const workerName = submitter?.name ?? 'A worker'
+
+  // Fetch admin workers who have push subscriptions and push enabled
+  const adminWorkers = await db
+    .select({
+      notificationsPushEnabled: workers.notificationsPushEnabled,
+      notificationsPushSubscription: workers.notificationsPushSubscription,
+    })
+    .from(workers)
+    .where(inArray(workers.email, adminEmails))
+
+  const amountDollars = payoutAmount
+    ? (payoutAmount / 100).toFixed(2)
+    : '0.00'
+
+  const notification = notificationTemplates.payoutNeedsApproval(workerName, jobId, amountDollars)
+
+  const pushPromises = adminWorkers
+    .filter((w) => w.notificationsPushEnabled && w.notificationsPushSubscription)
+    .map((w) => {
+      const sub = w.notificationsPushSubscription as Record<string, unknown>
+      // Only send via web-push if the stored subscription has the VAPID endpoint shape.
+      // Mobile FCM/APNs tokens ({ token, platform }) are not deliverable via web-push.
+      if (
+        typeof sub.endpoint === 'string' &&
+        sub.keys &&
+        typeof (sub.keys as Record<string, unknown>).p256dh === 'string' &&
+        typeof (sub.keys as Record<string, unknown>).auth === 'string'
+      ) {
+        return sendPushNotification(
+          sub as { endpoint: string; keys: { p256dh: string; auth: string } },
+          notification
+        )
+      }
+      return Promise.resolve(false)
+    })
+
+  await Promise.allSettled(pushPromises)
 }
 
 /**

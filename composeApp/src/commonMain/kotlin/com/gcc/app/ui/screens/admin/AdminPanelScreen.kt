@@ -144,6 +144,13 @@ fun AdminPanelScreen(
                             onCreateClick = { onNavigateToSpotCreate(0.0, 0.0) },
                             onDismissError = { viewModel.clearError() },
                         )
+                        AdminTab.PAYOUTS -> AdminPayoutsTab(
+                            reviews = uiState.pendingReviews,
+                            payoutActionError = uiState.payoutActionError,
+                            onApprove = { jobId, onResult -> viewModel.approveJob(jobId, onResult) },
+                            onDeny = { jobId, reason, onResult -> viewModel.denyJob(jobId, reason, onResult) },
+                            onDismissActionError = { viewModel.clearPayoutActionError() },
+                        )
                     }
                 }
             }

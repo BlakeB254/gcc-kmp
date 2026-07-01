@@ -500,6 +500,33 @@ class GccApiClient(
     suspend fun registerDeviceToken(platform: String, token: String) =
         postUnit("/api/workers/me/device-token", mapOf("platform" to platform, "token" to token))
 
+    // ── Admin: Payout Approvals ────────────────────────────────────────
+
+    suspend fun getPendingPayoutReviews(): List<PendingReview> =
+        get("/api/admin/jobs/pending-review")
+
+    suspend fun approveJob(jobId: Int): ApproveJobResponse {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/approve")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ApproveJobResponse>()
+    }
+
+    suspend fun denyJob(jobId: Int, reason: String) {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/deny") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("reason" to reason))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+    }
+
     suspend fun removeDeviceToken() =
         deleteUnit("/api/workers/me/device-token")
 
@@ -1019,6 +1046,28 @@ private fun GeoJSONPolygon?.centerLat(): Double? =
         ?.mapNotNull { it.getOrNull(1) }
         ?.takeIf { it.isNotEmpty() }
         ?.average()
+
+// ── Payout Approval DTOs ──────────────────────────────────────────────
+
+@Serializable
+data class PendingReview(
+    val jobId: Int,
+    val workerId: Int?,
+    val workerName: String?,
+    val payoutAmount: Double?,
+    val beforePhotos: List<String> = emptyList(),
+    val afterPhotos: List<String> = emptyList(),
+    val hasScan: Boolean = false,
+    val scanDepthAvailable: Boolean = false,
+    val completedAt: String?,
+)
+
+@Serializable
+data class ApproveJobResponse(
+    val ok: Boolean,
+    val payoutMethod: String? = null,
+    val transferId: String? = null,
+)
 
 @kotlinx.serialization.Serializable
 private data class ImageLocationUpdate(

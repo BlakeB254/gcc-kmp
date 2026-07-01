@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { and, eq, isNull, notInArray } from 'drizzle-orm'
+import { and, eq, isNull, ne, notInArray } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
@@ -117,6 +117,7 @@ export async function POST(request: Request, context: RouteContext) {
       reviewStatus: 'approved',
       approvedByAdminId: auth.workerId,
       reviewedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       payoutStatus: 'processing',
     })
     .where(
@@ -124,6 +125,8 @@ export async function POST(request: Request, context: RouteContext) {
         eq(jobs.id, jobId),
         notInArray(jobs.payoutStatus, ['completed', 'processing']),
         isNull(jobs.payoutStripeTransferId),
+        // Atomic denied-guard: a concurrent deny cannot be overwritten/paid.
+        ne(jobs.reviewStatus, 'denied'),
       )
     )
     .returning({ id: jobs.id })
