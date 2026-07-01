@@ -4,6 +4,25 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Celebration
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Engineering
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Handshake
+import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -11,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,25 +58,25 @@ internal fun AdminOverviewTab(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { SectionHeader("Platform") }
-        item { AdminStatCard("Total Workers", stats.totalWorkers.toString(), "\uD83D\uDC77", onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
-        item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), "\u2705", GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
-        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), "\u23F3", GccSky, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Total Workers", stats.totalWorkers.toString(), Icons.Default.Engineering, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), Icons.Default.CheckCircle, GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
+        item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), Icons.Default.HourglassEmpty, GccSky, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { SectionHeader("Operations") }
         // "Jobs in Progress" = workers actively cleaning right now (status = 'in_progress').
-        item { AdminStatCard("Jobs in Progress", stats.activeJobs.toString(), "\u26A1", GccGreen) }
+        item { AdminStatCard("Jobs in Progress", stats.activeJobs.toString(), Icons.Default.Bolt, GccGreen) }
         // Backlog — jobs that exist but haven't been started yet.
-        item { AdminStatCard("Open Jobs", stats.availableJobs.toString(), "\uD83D\uDCCB") }
-        item { AdminStatCard("Claimed (Not Started)", stats.claimedJobs.toString(), "\u23F1\uFE0F") }
-        item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), "\u2705") }
-        item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), "\uD83D\uDDFA", onClick = { onNavigateToTab(AdminTab.ROUTES) }) }
+        item { AdminStatCard("Open Jobs", stats.availableJobs.toString(), Icons.AutoMirrored.Filled.Assignment) }
+        item { AdminStatCard("Claimed (Not Started)", stats.claimedJobs.toString(), Icons.Default.Timer) }
+        item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), Icons.Default.CheckCircle) }
+        item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), Icons.Default.Map, onClick = { onNavigateToTab(AdminTab.ROUTES) }) }
         item { SectionHeader("Spots") }
-        item { AdminStatCard("Active Spots", stats.activeSpots.toString(), "\uD83D\uDCCD", GccGreen, onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
-        item { AdminStatCard("Total Spots", stats.totalSpots.toString(), "\uD83D\uDDFA", onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
+        item { AdminStatCard("Active Spots", stats.activeSpots.toString(), Icons.Default.LocationOn, GccGreen, onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
+        item { AdminStatCard("Total Spots", stats.totalSpots.toString(), Icons.Default.Map, onClick = { onNavigateToTab(AdminTab.SPOTS) }) }
         item { SectionHeader("Bounties") }
-        item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), "\uD83C\uDFAF", GccGreen, onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
-        item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), "\uD83D\uDCB0", onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
+        item { AdminStatCard("Active Bounties", stats.activeBounties.toString(), Icons.Default.GpsFixed, GccGreen, onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
+        item { AdminStatCard("Total Bounties", stats.totalBounties.toString(), Icons.Default.Paid, onClick = { onNavigateToTab(AdminTab.BOUNTIES) }) }
         item { SectionHeader("Issues") }
-        item { AdminStatCard("Open Disputes", stats.openDisputes.toString(), "\u26A0\uFE0F", if (stats.openDisputes > 0) GccError else GccSky) }
+        item { AdminStatCard("Open Disputes", stats.openDisputes.toString(), Icons.Default.Warning, if (stats.openDisputes > 0) GccError else GccSky) }
 
         // ─── Cleanliness ────────────────────────────────────────────
         item { SectionHeader("Cleanliness") }
@@ -74,7 +94,7 @@ internal fun AdminOverviewTab(
         if (dailyStats.isNotEmpty()) {
             item { SectionHeader("Last 7 Days") }
             items(dailyStats) { day ->
-                AdminStatCard(day.date.takeLast(5), "${day.jobsCompleted} jobs, ${day.newWorkers} new", "\uD83D\uDCC5")
+                AdminStatCard(day.date.takeLast(5), "${day.jobsCompleted} jobs, ${day.newWorkers} new", Icons.Default.CalendarToday)
             }
         }
 
@@ -82,20 +102,20 @@ internal fun AdminOverviewTab(
         if (recentActivity.isNotEmpty()) {
             item { SectionHeader("Recent Activity") }
             items(recentActivity) { item ->
-                val emoji = when (item.type) {
-                    AdminActivityType.WORKER_VERIFIED -> "\u2705"
-                    AdminActivityType.WORKER_REGISTERED -> "\uD83D\uDC77"
-                    AdminActivityType.JOB_COMPLETED -> "\uD83C\uDFC1"
-                    AdminActivityType.BOUNTY_POSTED -> "\uD83C\uDFAF"
-                    AdminActivityType.BOUNTY_CLAIMED -> "\uD83D\uDCB0"
-                    AdminActivityType.BOUNTY_COMPLETED -> "\uD83C\uDF89"
-                    AdminActivityType.BLOCK_FUNDED -> "\uD83D\uDC9A"
-                    AdminActivityType.SPONSOR_REGISTERED -> "\uD83E\uDD1D"
-                    AdminActivityType.ROUTE_PUBLISHED -> "\uD83D\uDDFA"
-                    AdminActivityType.DISPUTE_OPENED -> "\u26A0\uFE0F"
-                    AdminActivityType.DISPUTE_RESOLVED -> "\u2705"
+                val icon: ImageVector = when (item.type) {
+                    AdminActivityType.WORKER_VERIFIED -> Icons.Default.CheckCircle
+                    AdminActivityType.WORKER_REGISTERED -> Icons.Default.Engineering
+                    AdminActivityType.JOB_COMPLETED -> Icons.Default.Flag
+                    AdminActivityType.BOUNTY_POSTED -> Icons.Default.GpsFixed
+                    AdminActivityType.BOUNTY_CLAIMED -> Icons.Default.Paid
+                    AdminActivityType.BOUNTY_COMPLETED -> Icons.Default.EmojiEvents
+                    AdminActivityType.BLOCK_FUNDED -> Icons.Default.MonetizationOn
+                    AdminActivityType.SPONSOR_REGISTERED -> Icons.Default.Handshake
+                    AdminActivityType.ROUTE_PUBLISHED -> Icons.Default.Map
+                    AdminActivityType.DISPUTE_OPENED -> Icons.Default.Warning
+                    AdminActivityType.DISPUTE_RESOLVED -> Icons.Default.CheckCircle
                 }
-                AdminStatCard(item.description, item.actorName ?: "", emoji)
+                AdminStatCard(item.description, item.actorName ?: "", icon)
             }
         }
     }
@@ -105,7 +125,7 @@ internal fun AdminOverviewTab(
 private fun AdminStatCard(
     label: String,
     value: String,
-    icon: String,
+    icon: ImageVector,
     color: Color = GccSky,
     onClick: (() -> Unit)? = null,
 ) {
@@ -121,14 +141,14 @@ private fun AdminStatCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(icon, fontSize = 28.sp)
+            Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(28.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(value, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = color)
                 Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (onClick != null) {
                 Text(
-                    "\u203A",
+                    "›",
                     fontSize = 24.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 )
