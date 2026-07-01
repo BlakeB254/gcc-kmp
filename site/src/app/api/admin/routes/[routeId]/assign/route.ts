@@ -7,9 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { blocks, jobs, routes, workers } from '@/db/schema'
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { toMobileJob } from '@/lib/mobile-job-response'
+import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -17,7 +18,6 @@ export const runtime = 'nodejs'
 type RouteContext = { params: Promise<{ routeId: string }> }
 
 const cancellableStatuses = ['claimed', 'in_progress'] as const
-const duplicateAssignmentStatuses = ['claimed', 'in_progress', 'pending_review'] as const
 
 function parseRouteId(routeIdStr: string) {
   const routeId = parseInt(routeIdStr, 10)
@@ -124,65 +124,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
-    let blockRows = await db
-      .select({ id: blocks.id })
-      .from(blocks)
-      .where(eq(blocks.routeId, routeId))
+    const result = await ensureJobForRouteWorker(routeId, workerId, { isTest, jobStatus: 'claimed' })
 
-    if (blockRows.length > 0) {
-      const [duplicateAssignment] = await db
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(
-          and(
-            inArray(jobs.blockId, blockRows.map((block) => block.id)),
-            eq(jobs.workerId, workerId),
-            inArray(jobs.status, duplicateAssignmentStatuses),
-          ),
-        )
-        .limit(1)
-
-      if (duplicateAssignment) {
-        return NextResponse.json(
-          { error: 'Worker already has an active assignment for this route', success: false },
-          { status: 409 },
-        )
-      }
+    if (!result.created) {
+      return NextResponse.json(
+        { error: 'Worker already has an active assignment for this route', success: false },
+        { status: 409 },
+      )
     }
-
-    if (blockRows.length === 0) {
-      const [block] = await db
-        .insert(blocks)
-        .values({
-          code: null,
-          name: route.displayName,
-          serviceAreaId: route.serviceAreaId,
-          routeId: route.id,
-          status: isTest ? 'available' : 'funded',
-          fundingGoal: String(payoutAmount),
-          fundingCurrent: isTest ? '0' : String(payoutAmount),
-        })
-        .returning({ id: blocks.id })
-      blockRows = [block]
-    }
-
-    const now = new Date().toISOString()
-    const [job] = await db
-      .insert(jobs)
-      .values({
-        blockId: blockRows[0].id,
-        workerId,
-        status: 'claimed',
-        claimedAt: now,
-        payoutAmount: String(payoutAmount),
-        payoutStatus: isTest ? null : 'pending',
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
 
     return NextResponse.json(
-      { data: toMobileJob(job, routeId), success: true },
+      { data: toMobileJob(result.job, routeId), success: true },
       { status: 201 },
     )
   } catch (error) {

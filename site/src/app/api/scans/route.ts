@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routeScans, routes } from '@/db/schema'
+import { routeScans, routes, workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { normalizeDeviceType, toMobileRouteScan } from '@/lib/mobile-route-scan-response'
+import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -27,6 +28,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, success: false, message: 'startLat and startLng are required' }, { status: 400 })
     }
 
+    // Admin proxy: resolve effective worker + audit id
+    const onBehalfOfWorkerId = typeof body?.onBehalfOfWorkerId === 'number' ? body.onBehalfOfWorkerId : null
+    let effectiveWorkerId = auth.workerId
+    let performedByAdminId: number | null = null
+    if (onBehalfOfWorkerId != null) {
+      if (auth.role !== 'admin') {
+        return NextResponse.json({ error: 'Only admins can scan on behalf of a worker' }, { status: 403 })
+      }
+      const [target] = await db.select().from(workers).where(eq(workers.id, onBehalfOfWorkerId)).limit(1)
+      if (!target || target.verificationStatus !== 'approved') {
+        return NextResponse.json({ error: 'Target worker is not a verified user' }, { status: 422 })
+      }
+      effectiveWorkerId = onBehalfOfWorkerId
+      performedByAdminId = auth.workerId
+    }
+
     const [route] = await db
       .select({ id: routes.id })
       .from(routes)
@@ -37,12 +54,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, success: false, message: 'Route not found' }, { status: 404 })
     }
 
+    // Ensure a Job exists for (route, effectiveWorker) when acting on behalf
+    if (onBehalfOfWorkerId != null) {
+      await ensureJobForRouteWorker(routeId, effectiveWorkerId, { performedByAdminId })
+    }
+
     const now = new Date().toISOString()
     const [scan] = await db
       .insert(routeScans)
       .values({
         routeId,
-        workerId: auth.workerId,
+        workerId: effectiveWorkerId,
         deviceType: normalizeDeviceType(body?.deviceType),
         phase: 'scouting',
         coveragePercent: 0,
@@ -51,6 +73,7 @@ export async function POST(request: NextRequest) {
         startLng,
         status: 'in_progress',
         pointsAwarded: 0,
+        performedByAdminId,
         createdAt: now,
         updatedAt: now,
       })

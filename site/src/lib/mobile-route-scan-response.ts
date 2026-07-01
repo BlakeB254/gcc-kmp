@@ -114,6 +114,7 @@ export function toMobileRouteScan(row: RouteScanRow, hotspots: ScanHotspotRow[] 
     totalTrashWeightLbs: row.totalTrashWeightLbs,
     pointsAwarded: row.pointsAwarded,
     status: row.status,
+    performedByAdminId: row.performedByAdminId ?? null,
     hotspots: hotspots.map(toMobileScanHotspot),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
