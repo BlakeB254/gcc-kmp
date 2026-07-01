@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.platform.ShareManager
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.gamification.AchievementPopup
 import com.gcc.app.ui.gamification.AnimatedRating
@@ -43,6 +44,7 @@ fun ProfileScreen(
     val tokenManager = koinInject<TokenManager>()
     val isAdmin = remember { tokenManager.isAdmin() }
     val uiState by viewModel.uiState.collectAsState()
+    val shareManager = remember { ShareManager() }
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
 
@@ -50,7 +52,12 @@ fun ProfileScreen(
     uiState.newlyUnlockedBadge?.let { badge ->
         AchievementPopup(
             badge = badge,
-            onShare = {},
+            onShare = {
+                shareManager.shareText(
+                    text = "I just unlocked the \"${badge.name}\" badge on GCC! ${badge.description} #GCC #CleanCity",
+                    subject = "GCC Achievement Unlocked",
+                )
+            },
             onDismiss = { viewModel.dismissUnlockedBadge() },
         )
     }
