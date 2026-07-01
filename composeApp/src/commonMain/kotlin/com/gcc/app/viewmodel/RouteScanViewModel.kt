@@ -8,6 +8,7 @@ import com.gcc.app.platform.detectDeviceType
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +73,15 @@ class RouteScanViewModel(
     private val _uiState = MutableStateFlow(RouteScanUiState())
     val uiState: StateFlow<RouteScanUiState> = _uiState.asStateFlow()
 
+    // Whether the worker's current GPS position is outside the route's assigned
+    // block boundary. Consumed by the AR overlay (boundary-crossing warning).
+    private val _isOutsideBoundary = MutableStateFlow(false)
+    val isOutsideBoundary: StateFlow<Boolean> = _isOutsideBoundary.asStateFlow()
+
+    // Block boundary polygon as (lat, lng) pairs, matching PolygonContainment's
+    // pointInPolygon convention. Empty when no boundary is loaded for the route.
+    private var boundaryPolygon: List<Pair<Double, Double>> = emptyList()
+
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
     private val arScanner = ArScanner()
@@ -100,6 +110,7 @@ class RouteScanViewModel(
         arScanner.stopSession()
         scoutPath.clear()
         cleanPath.clear()
+        setBoundary(route.blockBoundary)
 
         if (!route.isWorkerAvailableRoute(allowUnpublished)) {
             _uiState.value = RouteScanUiState(
@@ -496,6 +507,7 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         scoutPath.add(Pair(lat, lng))
+                        updateBoundaryStatus(lat, lng)
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
@@ -575,6 +587,26 @@ class RouteScanViewModel(
                 )
             }
         }
+    }
+
+    // ── Boundary containment ─────────────────────────────────────────
+
+    private fun setBoundary(polygon: GeoJSONPolygon?) {
+        val ring = polygon?.coordinates?.firstOrNull()
+        boundaryPolygon = ring?.mapNotNull { point ->
+            val lng = point.getOrNull(0) ?: return@mapNotNull null
+            val lat = point.getOrNull(1) ?: return@mapNotNull null
+            lat to lng
+        } ?: emptyList()
+        _isOutsideBoundary.value = false
+    }
+
+    private fun updateBoundaryStatus(lat: Double, lng: Double) {
+        if (boundaryPolygon.size < 3) {
+            _isOutsideBoundary.value = false // no boundary loaded — fail open, don't block the worker
+            return
+        }
+        _isOutsideBoundary.value = !pointInPolygon(lat, lng, boundaryPolygon)
     }
 
     // ── GeoJSON helper ───────────────────────────────────────────────

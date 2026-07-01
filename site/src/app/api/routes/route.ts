@@ -107,6 +107,7 @@ export async function GET(request: Request) {
         displayName: route.displayName,
         serviceAreaId: route.serviceAreaId,
         geometry: route.geometry,
+        blockBoundary: blockBoundaryMap.get(route.id) ?? null,
         status: route.status,
         distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
         estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,

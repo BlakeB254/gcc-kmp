@@ -10,6 +10,7 @@ data class Route(
     val displayName: String,
     val serviceAreaId: Int,
     val geometry: GeoJSONLineString? = null,
+    val blockBoundary: GeoJSONPolygon? = null,
     val status: RouteStatus = RouteStatus.DRAFT,
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,

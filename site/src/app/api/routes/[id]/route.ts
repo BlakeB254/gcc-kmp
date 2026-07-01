@@ -155,6 +155,7 @@ export async function GET(
       displayName: route.displayName,
       serviceAreaId: route.serviceAreaId,
       geometry: route.geometry,
+      blockBoundary: routeBlock?.locationBoundary ?? null,
       status: route.status,
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes
