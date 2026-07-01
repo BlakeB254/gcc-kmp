@@ -1,6 +1,8 @@
 package com.gcc.app.ui.screens.admin
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -45,6 +47,11 @@ fun AdminPanelScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Admin Panel") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
                     TextButton(onClick = {
                         tokenManager.logout()
@@ -56,6 +63,7 @@ fun AdminPanelScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = GccSkyDark,
                     titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
                 ),
             )
         },
