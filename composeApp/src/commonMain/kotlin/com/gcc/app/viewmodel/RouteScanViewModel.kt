@@ -55,6 +55,7 @@ data class RouteScanUiState(
     val isSubmitting: Boolean = false,
     val isComplete: Boolean = false,
     val pointsAwarded: Int = 0,
+    val showArRoute: Boolean = false,
     val error: String? = null,
     val aiDirectionText: String? = null,
     val routeSections: List<RouteScanSectionUiItem> = emptyList(),
@@ -85,6 +86,21 @@ class RouteScanViewModel(
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
     private val arScanner = ArScanner()
+
+    // ── Read-only projections for the AR route overlay (Task 16) ─────────
+    // Exposed as read-only accessors rather than the mutable CoverageTracker /
+    // LocationProvider instances, so ArRouteScreen can drive the overlay without
+    // being able to mutate scan/coverage internals.
+
+    /** Set of scanned coverage-grid cells (row, col). */
+    val scannedCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.scannedCells
+
+    /** Real-world (lat, lng) center of a coverage-grid cell. */
+    fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =
+        coverageTracker.cellCenterLatLng(row, col)
+
+    /** Device compass heading in degrees, or null when unavailable. */
+    val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
 
     // GPS breadcrumb paths for GeoJSON.
     // These grow at ~1 Hz; a 30-min scan produces ~1800 entries. Downsampled to
@@ -299,6 +315,27 @@ class RouteScanViewModel(
                 )
             }
         }
+    }
+
+    // ── AR route overlay (Task 16) ───────────────────────────────────
+
+    /**
+     * Enter the full-screen AR route guidance overlay during SCOUTING.
+     * Gated: only when an active scan exists and the worker's last GPS fix is
+     * confirmed inside the assigned block boundary — we never launch AR guidance
+     * for a worker who is already outside their route polygon.
+     */
+    fun beginRoute() {
+        val state = _uiState.value
+        if (state.phase != ScanPhase.SCOUTING) return
+        if (state.scanId == null) return
+        if (_isOutsideBoundary.value) return
+        _uiState.value = state.copy(showArRoute = true)
+    }
+
+    /** Leave the AR route overlay and return to the scout map. */
+    fun exitArRoute() {
+        _uiState.value = _uiState.value.copy(showArRoute = false)
     }
 
     // ── Phase transitions ────────────────────────────────────────────

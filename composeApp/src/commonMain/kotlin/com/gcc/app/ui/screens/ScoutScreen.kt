@@ -41,9 +41,11 @@ import com.gcc.shared.model.RouteStatus
 fun ScoutScreen(
     uiState: RouteScanUiState,
     allowUnpublished: Boolean = false,
+    isOutsideBoundary: Boolean = false,
     onStartScout: () -> Unit,
     onCompleteScout: () -> Unit,
     onCaptureHotspot: () -> Unit,
+    onBeginRoute: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     // Build Coordinates from flat lat/lng in uiState
@@ -277,6 +279,19 @@ fun ScoutScreen(
                         enabled = canComplete,
                     )
                 }
+            }
+
+            // Begin Route: enter the full-screen AR guidance overlay. AR-tier only
+            // (Android/desktop have no on-screen AR), and disabled while the worker
+            // is outside their assigned block boundary.
+            if (uiState.scanId != null && uiState.deviceType == DeviceType.AR) {
+                GccButton(
+                    text = if (isOutsideBoundary) "Return to boundary to begin route"
+                    else "Begin Route",
+                    onClick = onBeginRoute,
+                    variant = GccButtonVariant.SECONDARY,
+                    enabled = !isOutsideBoundary,
+                )
             }
         }
 

@@ -1,5 +1,10 @@
 package com.gcc.app.platform
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
 /**
  * Android ArRouteOverlay stub.
  * On-screen AR route rendering (ARCore/Sceneform) is deferred; the "Begin
@@ -11,4 +16,10 @@ actual class ArRouteOverlay actual constructor() {
     actual fun updateHeading(degrees: Float) {}
     actual fun start() {}
     actual fun stop() {}
+}
+
+/** Android stub — no on-screen AR view; renders an empty box. */
+@Composable
+actual fun ArRouteOverlayView(overlay: ArRouteOverlay, modifier: Modifier) {
+    Box(modifier = modifier.fillMaxSize())
 }

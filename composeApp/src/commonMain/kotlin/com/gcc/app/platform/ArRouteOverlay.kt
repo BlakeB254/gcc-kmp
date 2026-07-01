@@ -1,5 +1,8 @@
 package com.gcc.app.platform
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
 /**
  * Full-screen AR overlay for the "Begin Route" experience: directional
  * guidance toward the nearest unscanned frontier, a translucent boundary
@@ -17,3 +20,13 @@ expect class ArRouteOverlay() {
     fun start()
     fun stop()
 }
+
+/**
+ * Hosts the platform AR view that [ArRouteOverlay] renders into.
+ *
+ * iOS: a Compose `UIKitView` wrapping an `ARSCNView`, bound to [overlay] so
+ * fog/boundary/heading updates land on live SceneKit nodes.
+ * Android/Desktop: an empty placeholder — on-screen AR is iOS-only for v1.
+ */
+@Composable
+expect fun ArRouteOverlayView(overlay: ArRouteOverlay, modifier: Modifier)

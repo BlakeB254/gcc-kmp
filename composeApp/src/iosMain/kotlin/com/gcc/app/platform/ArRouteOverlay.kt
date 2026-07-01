@@ -1,5 +1,8 @@
 package com.gcc.app.platform
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.interop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.ARKit.ARSCNView
 import platform.ARKit.ARWorldTrackingConfiguration
@@ -92,4 +95,29 @@ actual class ArRouteOverlay actual constructor() {
         // node during on-device iteration, where the arrow's actual mesh/asset
         // is added and the rotation can be verified against a live session.
     }
+}
+
+/**
+ * iOS host for [ArRouteOverlay]: a Compose `UIKitView` wrapping an `ARSCNView`.
+ *
+ * Mirrors the `UIKitView` factory pattern established by `CameraManager`'s
+ * `CameraPreviewWithAVCapture`. The factory creates the `ARSCNView`, hands it to
+ * [ArRouteOverlay.bind] (which starts the ARSession), and pauses the session on
+ * release. `overlay.stop()` on release keeps the ARSession from running once the
+ * view leaves the composition.
+ */
+@OptIn(ExperimentalForeignApi::class)
+@Composable
+actual fun ArRouteOverlayView(overlay: ArRouteOverlay, modifier: Modifier) {
+    UIKitView(
+        factory = {
+            val view = ARSCNView()
+            overlay.bind(view)
+            view
+        },
+        modifier = modifier,
+        onRelease = {
+            overlay.stop()
+        },
+    )
 }

@@ -35,6 +35,7 @@ fun RouteScanScreen(
     val viewModel = koinInject<RouteScanViewModel>()
     val apiClient = koinInject<GccApiClient>()
     val uiState by viewModel.uiState.collectAsState()
+    val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     // Scout-phase: whether the ScoutCaptureDialog is open
@@ -49,14 +50,27 @@ fun RouteScanScreen(
     }
 
     when (uiState.phase) {
-        ScanPhase.SCOUTING -> ScoutScreen(
-            uiState = uiState,
-            allowUnpublished = allowUnpublished,
-            onStartScout = { viewModel.startScout() },
-            onCompleteScout = { viewModel.completeScout() },
-            onCaptureHotspot = { showScoutCapture = true },
-            onBack = onBack,
-        )
+        ScanPhase.SCOUTING -> {
+            // During SCOUTING the worker can tap "Begin Route" to enter the
+            // full-screen AR guidance overlay, which fully replaces the scout map.
+            if (uiState.showArRoute) {
+                ArRouteScreen(
+                    viewModel = viewModel,
+                    onExit = { viewModel.exitArRoute() },
+                )
+            } else {
+                ScoutScreen(
+                    uiState = uiState,
+                    allowUnpublished = allowUnpublished,
+                    isOutsideBoundary = isOutsideBoundary,
+                    onStartScout = { viewModel.startScout() },
+                    onCompleteScout = { viewModel.completeScout() },
+                    onCaptureHotspot = { showScoutCapture = true },
+                    onBeginRoute = { viewModel.beginRoute() },
+                    onBack = onBack,
+                )
+            }
+        }
 
         ScanPhase.SCOUT_REVIEW -> ScoutReviewScreen(
             uiState = uiState,
