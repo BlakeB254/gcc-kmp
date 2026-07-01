@@ -24,6 +24,7 @@ fun AdminPanelScreen(
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
     onNavigateToRouteDetail: (routeId: Int) -> Unit = {},
     onNavigateToWorkerDetail: (workerId: Int) -> Unit = {},
+    onNavigateToBountyDetail: (bountyId: Int) -> Unit = {},
     onNavigateToDashboard: () -> Unit = {},
     onNavigateToMap: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
@@ -135,7 +136,7 @@ fun AdminPanelScreen(
                         )
                         AdminTab.BOUNTIES -> AdminBountiesTab(
                             bounties = uiState.bounties,
-                            onBountyClick = { /* TODO: navigate to bounty detail */ },
+                            onBountyClick = onNavigateToBountyDetail,
                         )
                         AdminTab.SPOTS -> AdminSpotsTab(
                             spotReports = uiState.spotReports,

@@ -161,6 +161,10 @@ class RootComponent(
         navigation.push(Screen.AdminRouteDetail(routeId))
     }
 
+    fun navigateToAdminBountyDetail(bountyId: Int) {
+        navigation.push(Screen.AdminBountyDetail(bountyId))
+    }
+
     fun navigateToSpotVerification(reportId: Int) {
         navigation.push(Screen.SpotVerification(reportId))
     }
