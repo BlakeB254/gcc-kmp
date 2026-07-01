@@ -27,3 +27,15 @@ object PlatformUrlOpener {
 actual fun saveToSystemCredentials(email: String, password: String) {
     // No-op on Android (credentials stored in app Keychain only)
 }
+
+actual fun appVersion(): String {
+    val ctx = PlatformUrlOpener.appContext ?: return "Unknown"
+    return try {
+        val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+        @Suppress("DEPRECATION")
+        val code = info.versionCode
+        "${info.versionName} ($code)"
+    } catch (e: Exception) {
+        "Unknown"
+    }
+}

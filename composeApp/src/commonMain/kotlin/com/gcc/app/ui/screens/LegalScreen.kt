@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.appVersion
 import com.gcc.app.ui.theme.*
 
 enum class LegalScreenType(val title: String) {
@@ -148,7 +149,7 @@ private fun AboutContent() {
     )
     Spacer(modifier = Modifier.height(16.dp))
     LegalSection("Location", "Chicago, Illinois")
-    LegalSection("App Version", "1.0.0 (Build 1)")
+    LegalSection("App Version", appVersion())
     LegalSection("Website", "globalcommunitycleaners.org")
     LegalSection("Contact", "info@globalcommunitycleaners.org")
 }

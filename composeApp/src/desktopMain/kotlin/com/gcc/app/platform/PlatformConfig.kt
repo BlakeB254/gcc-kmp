@@ -11,3 +11,5 @@ actual fun openUrl(url: String) {
 actual fun saveToSystemCredentials(email: String, password: String) {
     // No-op on desktop
 }
+
+actual fun appVersion(): String = "1.0.1 (2)"
