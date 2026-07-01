@@ -555,10 +555,11 @@ class GccApiClient(
         get("/api/admin/analytics/sponsor-metrics") { parameter("limit", limit) }
 
     // Workers
-    suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20): List<Worker> =
+    suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20, verificationStatus: String? = null): List<Worker> =
         get("/api/admin/workers") {
             search?.let { parameter("search", it) }
             status?.let { parameter("status", it) }
+            verificationStatus?.let { parameter("verificationStatus", it) }
             parameter("page", page)
             parameter("limit", limit)
         }
@@ -932,8 +933,8 @@ class GccApiClient(
 
     // ── Scout & Clean Route Scan API ──────────────────────────────
 
-    suspend fun createScan(req: CreateScanRequest): RouteScan =
-        postJson("/api/scans", req)
+    suspend fun createScan(req: CreateScanRequest, onBehalfOfWorkerId: Int? = null): RouteScan =
+        postJson("/api/scans", if (onBehalfOfWorkerId != null) req.copy(onBehalfOfWorkerId = onBehalfOfWorkerId) else req)
 
     suspend fun getScan(id: Int): RouteScan =
         get("/api/scans/$id")

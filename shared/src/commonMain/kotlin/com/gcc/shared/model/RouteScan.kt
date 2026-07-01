@@ -1,6 +1,8 @@
 package com.gcc.shared.model
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -52,12 +54,15 @@ data class ScanHotspot(
 
 // Request/Response types:
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class CreateScanRequest(
     val routeId: Int,
     val deviceType: DeviceType,
     val startLat: Double,
     val startLng: Double,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val onBehalfOfWorkerId: Int? = null,
 )
 
 @Serializable
