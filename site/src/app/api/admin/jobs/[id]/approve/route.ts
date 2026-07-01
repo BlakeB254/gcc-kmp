@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { and, eq, isNull, ne, notInArray } from 'drizzle-orm'
+import { and, eq, isNull, ne, notInArray, or } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
@@ -125,8 +125,9 @@ export async function POST(request: Request, context: RouteContext) {
         eq(jobs.id, jobId),
         notInArray(jobs.payoutStatus, ['completed', 'processing']),
         isNull(jobs.payoutStripeTransferId),
-        // Atomic denied-guard: a concurrent deny cannot be overwritten/paid.
-        ne(jobs.reviewStatus, 'denied'),
+        // Atomic denied-guard (NULL reviewStatus counts as not-denied): a
+        // concurrent deny cannot be overwritten and paid.
+        or(isNull(jobs.reviewStatus), ne(jobs.reviewStatus, 'denied')),
       )
     )
     .returning({ id: jobs.id })
