@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { workers } from '@/db/schema'
+import { workers, verificationStatusEnum } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 
 export async function GET(request: Request) {
@@ -10,8 +11,12 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const verificationStatusParam = searchParams.get('verificationStatus')
+    const verificationStatus = verificationStatusParam as (typeof verificationStatusEnum.enumValues)[number] | null
 
-    const workerList = await db.select().from(workers).limit(limit)
+    const workerList = verificationStatus
+      ? await db.select().from(workers).where(eq(workers.verificationStatus, verificationStatus)).limit(limit)
+      : await db.select().from(workers).limit(limit)
 
     const result = workerList.map((w) => ({
       id: w.id,
