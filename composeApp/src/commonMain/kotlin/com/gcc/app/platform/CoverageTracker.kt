@@ -99,6 +99,20 @@ class CoverageTracker {
         _coveragePercent.value = 0.0
     }
 
+    // ── Grid coordinate projection ───────────────────────────────────
+
+    /**
+     * Inverse of the grid projection used throughout this class (see
+     * [updatePosition], [updateWithFrustum], [getUnscannedCenters]) —
+     * returns the real-world lat/lng center of a given grid cell, for
+     * AR-space anchoring of the fog-of-war overlay (Task 15).
+     */
+    fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> {
+        val lat = originLat + (row + 0.5) * cellSizeMeters * latPerMeter
+        val lng = originLng + (col + 0.5) * cellSizeMeters * lngPerMeter
+        return lat to lng
+    }
+
     // ── Position update ──────────────────────────────────────────────
 
     /**
