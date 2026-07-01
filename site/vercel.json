@@ -54,5 +54,11 @@
       "destination": "/",
       "permanent": true
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/route-releases",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }
