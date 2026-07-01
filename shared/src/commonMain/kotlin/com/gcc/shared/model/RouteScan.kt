@@ -26,6 +26,7 @@ data class RouteScan(
     val hotspots: List<ScanHotspot> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant,
+    val performedByAdminId: Int? = null,
 )
 
 @Serializable
