@@ -199,6 +199,7 @@ fun App(component: RootComponent) {
                 is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
+                    onBeginAsUser = { _, _ -> }, // wired in Task 6
                 )
                 is Screen.SpotVerification -> SpotVerificationScreen(
                     reportId = screen.reportId,

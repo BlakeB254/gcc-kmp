@@ -40,6 +40,8 @@ data class AdminPanelUiState(
     val isCreatingSpot: Boolean = false,
     val spotCreateError: String? = null,
     val spotCreateSuccessNonce: Int = 0,
+    val verifiedWorkers: List<Worker> = emptyList(),
+    val selectedProxyWorkerId: Int? = null,
 )
 
 class AdminPanelViewModel(
@@ -94,6 +96,26 @@ class AdminPanelViewModel(
                 // "no workers loaded" message until they retry.
             }
         }
+    }
+
+    /**
+     * Ensure verified (approved) workers are loaded for the proxy-execution
+     * dropdown. Mirrors [ensureWorkersLoaded] but filters by verificationStatus.
+     */
+    fun ensureVerifiedWorkersLoaded() {
+        if (_uiState.value.verifiedWorkers.isNotEmpty()) return
+        scope.launch {
+            try {
+                val workers = apiClient.getAdminWorkers(verificationStatus = "approved")
+                _uiState.value = _uiState.value.copy(verifiedWorkers = workers)
+            } catch (_: Exception) {
+                // Don't surface a global error — dropdown handles empty state inline
+            }
+        }
+    }
+
+    fun setSelectedProxyWorkerId(id: Int?) {
+        _uiState.value = _uiState.value.copy(selectedProxyWorkerId = id)
     }
 
     fun ensureCurrentWorkerLoaded() {
