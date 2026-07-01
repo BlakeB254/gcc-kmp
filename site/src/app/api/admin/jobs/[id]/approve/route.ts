@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull, notInArray } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
@@ -15,23 +15,28 @@ type RouteContext = { params: Promise<{ id: string }> }
  *
  * Approve a pending_review job and trigger a Stripe payout to the worker.
  *
- * Guards (all checked BEFORE any state change or Stripe call):
- *  1. Job exists and status === 'pending_review'  → 404 / 409
- *  2. payoutStatus not 'completed' or 'processing' → 409 (double-pay guard)
- *  3. Worker has stripeAccountId + stripeOnboardingStatus === 'completed' → 409
+ * Read-only guards (checked BEFORE any state change or Stripe call):
+ *  1. Job exists and status === 'pending_review'            → 404 / 409
+ *  2. reviewStatus !== 'denied' (denied is terminal)        → 409
+ *  3. Worker has stripeAccountId + onboardingStatus=done    → 409
+ *  4. amountCents is finite and > 0                         → 409
  *
- * On pass:
- *  - Sets jobs.status='completed', reviewStatus='approved',
- *    approvedByAdminId, reviewedAt, payoutStatus='processing'
+ * Atomic claim (TOCTOU-safe):
+ *  - Single conditional UPDATE with .returning():
+ *    payoutStatus NOT IN ('completed','processing') AND payoutStripeTransferId IS NULL
+ *  - claimed.length === 0 → 409 (already being paid or paid)
+ *
+ * On successful claim:
  *  - Calls processJobPayout (transfer + payout)
- *  - Persists payoutStripeTransferId + returns { ok, payoutMethod }
+ *  - Persists payoutStripeTransferId; returns { ok, payoutMethod, transferId }
  *
- * NOTE: processJobPayout does not accept a Stripe idempotency key parameter.
- * The payoutStatus guard ('completed'|'processing' → 409) is the primary
- * double-pay defence. The Stripe transfer also carries jobId in metadata so
- * manual reconciliation is possible.
+ * On Stripe failure:
+ *  - Does NOT roll back payoutStatus — leaves 'processing' to block retries
+ *  - Returns 502; admin must reconcile manually
  *
- * The payout.paid webhook later flips payoutStatus → 'completed'.
+ * On persist failure:
+ *  - Money already moved; returns 200 with transferId so caller has it
+ *  - Logs CRITICAL; webhook reconciles payoutStatus → 'completed'
  */
 export async function POST(request: Request, context: RouteContext) {
   const auth = await requireAdmin(request)
@@ -49,6 +54,7 @@ export async function POST(request: Request, context: RouteContext) {
       // job fields
       jobId: jobs.id,
       jobStatus: jobs.status,
+      reviewStatus: jobs.reviewStatus,
       payoutStatus: jobs.payoutStatus,
       payoutAmount: jobs.payoutAmount,
       workerId: jobs.workerId,
@@ -73,12 +79,9 @@ export async function POST(request: Request, context: RouteContext) {
     )
   }
 
-  // ── Guard 2: double-pay prevention ────────────────────────────────────────
-  if (row.payoutStatus === 'completed' || row.payoutStatus === 'processing') {
-    return NextResponse.json(
-      { error: `Payout already in state '${row.payoutStatus}' — refusing to re-trigger` },
-      { status: 409 }
-    )
+  // ── Guard 2: denied is terminal for payment ───────────────────────────────
+  if (row.reviewStatus === 'denied') {
+    return NextResponse.json({ error: 'Job was denied' }, { status: 409 })
   }
 
   // ── Guard 3: worker must be payouts-ready ─────────────────────────────────
@@ -92,40 +95,47 @@ export async function POST(request: Request, context: RouteContext) {
     )
   }
 
-  // ── All guards passed — determine payout amount ──────────────────────────
+  // ── Guard 4: payout amount must be finite and positive ────────────────────
   // payoutAmount is stored in cents as a numeric string (e.g. '10000' = $100)
   const amountCents = row.payoutAmount ? Math.round(parseFloat(row.payoutAmount)) : 0
-  if (amountCents <= 0) {
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
     return NextResponse.json(
       { error: 'Job has no payout amount configured' },
       { status: 409 }
     )
   }
 
-  const now = new Date().toISOString()
   const useInstant = row.stripeInstantPayoutsEnabled ?? false
 
-  // ── State change: mark as processing BEFORE calling Stripe ───────────────
-  // This narrow window (between DB write and Stripe call) is safe: if the
-  // Stripe call fails we set payoutStatus='failed' and the job stays approved
-  // but un-paid, allowing a manual retry without triggering the double-pay guard.
-  await db
+  // ── Atomic claim: single conditional UPDATE to prevent TOCTOU race ────────
+  // Only succeeds if payoutStatus is not already 'completed'/'processing' AND
+  // no transfer ID exists yet. Concurrent approve calls will see claimed.length === 0.
+  const claimed = await db
     .update(jobs)
     .set({
       status: 'completed',
       reviewStatus: 'approved',
       approvedByAdminId: auth.workerId,
-      reviewedAt: now,
+      reviewedAt: new Date().toISOString(),
       payoutStatus: 'processing',
-      updatedAt: now,
     })
-    .where(eq(jobs.id, jobId))
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        notInArray(jobs.payoutStatus, ['completed', 'processing']),
+        isNull(jobs.payoutStripeTransferId),
+      )
+    )
+    .returning({ id: jobs.id })
+
+  if (claimed.length === 0) {
+    return NextResponse.json(
+      { error: 'Job already being paid or paid' },
+      { status: 409 }
+    )
+  }
 
   // ── Stripe payout (transfer + payout to bank) ────────────────────────────
-  // NOTE: idempotency key 'job-payout-{jobId}' is NOT passed here because
-  // processJobPayout issues two separate Stripe calls (transfer + payout) with
-  // no idempotency key support in its current signature. The payoutStatus guard
-  // above is the primary double-pay defence.
   let transferId: string
   let payoutMethod: string
   try {
@@ -137,24 +147,36 @@ export async function POST(request: Request, context: RouteContext) {
     )
     transferId = result.transfer.id
     payoutMethod = result.payout.method ?? (useInstant ? 'instant' : 'standard')
-  } catch (stripeError) {
-    // Stripe failed — roll payoutStatus back to failed so this can be retried
-    await db
-      .update(jobs)
-      .set({ payoutStatus: 'failed', updatedAt: new Date().toISOString() })
-      .where(eq(jobs.id, jobId))
-    console.error('[approve] Stripe payout failed for job', jobId, stripeError)
+  } catch (err) {
+    // CRITICAL: Do NOT roll back payoutStatus to 'failed' — the transfer may have
+    // partially completed. Leave payoutStatus='processing' to block auto-retries.
+    // The atomic claim's notInArray + isNull conditions prevent double transfers.
+    console.error(
+      '[approve] CRITICAL: payout failed for job ' + jobId +
+      ' — transfer may have partially completed; manual reconciliation required',
+      err
+    )
     return NextResponse.json(
-      { error: 'Stripe payout failed — job approved but not paid. Retry via this endpoint.' },
+      { error: 'Stripe payout failed — job approved but payout status unknown. Do NOT retry; manual reconciliation required.' },
       { status: 502 }
     )
   }
 
   // ── Persist transfer ID ───────────────────────────────────────────────────
-  await db
-    .update(jobs)
-    .set({ payoutStripeTransferId: transferId, updatedAt: new Date().toISOString() })
-    .where(eq(jobs.id, jobId))
+  // Money has already moved. If persist fails, return 200 with transferId so
+  // the caller has it. Leave payoutStatus='processing'; webhook reconciles.
+  try {
+    await db
+      .update(jobs)
+      .set({ payoutStripeTransferId: transferId, updatedAt: new Date().toISOString() })
+      .where(eq(jobs.id, jobId))
+  } catch (e) {
+    console.error(
+      '[approve] CRITICAL: transfer ' + transferId + ' created but failed to persist for job ' + jobId,
+      e
+    )
+    return NextResponse.json({ ok: true, payoutMethod, transferId, persistFailed: true })
+  }
 
   return NextResponse.json({ ok: true, payoutMethod, transferId })
 }

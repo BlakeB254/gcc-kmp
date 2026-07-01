@@ -53,6 +53,14 @@ export async function POST(request: Request, context: RouteContext) {
     )
   }
 
+  // ── Guard: cannot deny a job with an in-flight or completed payout ─────────
+  if (job.payoutStatus === 'processing' || job.payoutStatus === 'completed') {
+    return NextResponse.json(
+      { error: 'Cannot deny a job with an in-flight or completed payout' },
+      { status: 409 }
+    )
+  }
+
   // ── Apply denial fields — no payout, no payoutStatus change ──────────────
   const now = new Date().toISOString()
   await db
