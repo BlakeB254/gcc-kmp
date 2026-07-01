@@ -22,6 +22,7 @@ actual fun appVersion(): String {
     return "$version ($build)"
 }
 
+@OptIn(ExperimentalForeignApi::class)
 actual fun saveToSystemCredentials(email: String, password: String) {
     @Suppress("UNCHECKED_CAST")
     val domain = CFBridgingRetain("globalcommunitycleaners.org" as NSString) as platform.CoreFoundation.CFStringRef?

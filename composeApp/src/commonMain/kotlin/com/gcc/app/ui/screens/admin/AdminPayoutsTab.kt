@@ -153,7 +153,7 @@ private fun PayoutReviewCard(
                     )
                 }
                 val amountText = review.payoutAmount
-                    ?.let { "$%.2f".format(it / 100.0) }
+                    ?.let { com.gcc.shared.util.GccFormatters.formatCents(it.toInt()) }
                     ?: "N/A"
                 Text(
                     text = amountText,
