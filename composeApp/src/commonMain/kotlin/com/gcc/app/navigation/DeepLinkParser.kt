@@ -4,6 +4,7 @@ package com.gcc.app.navigation
  * Parses deep link URIs into navigation [Screen] instances.
  *
  * Supported URI patterns:
+ * - `/dashboard` → Dashboard (where route offers surface)
  * - `/routes/{id}` → RouteDetail
  * - `/bounties/{id}` → BountyDetail
  * - `/jobs/{jobId}` → ActiveJob
@@ -93,6 +94,7 @@ object DeepLinkParser {
                 val routeId = segments.getOrNull(2)?.toIntOrNull() ?: 0
                 Screen.ActiveJob(jobId = jobId, routeId = routeId)
             }
+            segments.size == 1 && segments[0] == "dashboard" -> Screen.Dashboard
             segments.size == 1 && segments[0] == "wallet" -> Screen.Wallet
             segments.size == 1 && segments[0] == "leaderboard" -> Screen.Leaderboard
             segments.size == 1 && segments[0] == "feed" -> Screen.Feed

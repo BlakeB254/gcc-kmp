@@ -205,6 +205,7 @@ export function CombinedMap({
           hasBounty: spot.bountyId != null,
           needsVerification: spot.needsVerification ?? false,
           tags: JSON.stringify(spot.tags ?? []),
+          itemType: spot.itemType ?? 'general_litter',
         },
         geometry: {
           type: 'Point' as const,
@@ -725,6 +726,39 @@ export function CombinedMap({
                 'circle-opacity': [
                   'interpolate', ['linear'], ['zoom'],
                   14, 0, 14.5, 0.8, 15, 1,
+                ],
+              }}
+            />
+
+            {/* Per-item-type icons — close-zoom enhancement layered on top of the
+                dots, one zoom level past where dots are already fully opaque.
+                Does NOT touch combined-spot-heatmap/combined-spot-center paint.
+                NOTE: icon-image references ['get', 'itemType'] which requires
+                matching image IDs (tire/couch/branch/etc. sprites) to be loaded
+                into the map style — that's a separate design-asset task. Until
+                then MapLibre renders nothing for unmatched icon-image IDs; the
+                text-field label still renders, so this degrades gracefully. */}
+            <Layer
+              id="combined-spot-icons"
+              type="symbol"
+              minzoom={SPOT_ZOOM.DOTS_MIN + 1}
+              layout={{
+                'icon-image': ['get', 'itemType'],
+                'icon-size': 0.6,
+                'icon-allow-overlap': true,
+                'text-field': ['get', 'itemType'],
+                'text-size': 9,
+                'text-offset': [0, 1.2],
+                'text-anchor': 'top',
+              }}
+              paint={{
+                'icon-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN + 1, 0, SPOT_ZOOM.DOTS_MIN + 1.5, 1,
+                ],
+                'text-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  SPOT_ZOOM.DOTS_MIN + 1, 0, SPOT_ZOOM.DOTS_MIN + 1.5, 1,
                 ],
               }}
             />

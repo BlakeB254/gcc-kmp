@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     return NextResponse.json({
-      data: toMobileRouteScan(scan, await hotspotsForScan(scanId)),
+      data: toMobileRouteScan(scan, await hotspotsForScan(scanId, scan.phase)),
       success: true,
     })
   } catch (error) {

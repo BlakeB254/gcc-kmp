@@ -58,7 +58,7 @@
   "crons": [
     {
       "path": "/api/cron/route-releases",
-      "schedule": "0 13 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

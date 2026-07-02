@@ -49,12 +49,13 @@ export default function BountiesPage() {
   // Fetch data from API endpoints
   useEffect(() => {
     async function fetchData() {
-      // Fetch bounties, spots, routes, and blocks in parallel
-      const [bountiesResult, spotsResult, routesResult, blocksResult] = await Promise.allSettled([
+      // Fetch bounties, spots, routes, blocks, and unified world-observations in parallel
+      const [bountiesResult, spotsResult, routesResult, blocksResult, observationsResult] = await Promise.allSettled([
         fetch('/api/bounties?limit=50').then(res => res.ok ? res.json() : null),
         fetch('/api/spots?limit=100').then(res => res.ok ? res.json() : null),
         fetch('/api/routes?status=all').then(res => res.ok ? res.json() : null),
         fetch('/api/blocks?limit=50').then(res => res.ok ? res.json() : null),
+        fetch('/api/map/observations').then(res => res.ok ? res.json() : null),
       ])
 
       // Process bounties (from community reports/sightings)
@@ -85,13 +86,14 @@ export default function BountiesPage() {
       }
 
       // Process spots — merge map markers with full report data for descriptions/photos
+      let enrichedSpots: SpotReport[] = []
       if (spotsResult.status === 'fulfilled' && spotsResult.value) {
         const data = spotsResult.value
         const mapSpots = data.spots || []
         const fullReports = data.data || []
         if (mapSpots.length > 0) {
           // Enrich map spots with description, photos, status from full reports
-          const enriched = mapSpots.map((s: any) => {
+          enrichedSpots = mapSpots.map((s: any) => {
             const full = fullReports.find((r: any) => String(r.id) === String(s.id))
             return {
               ...s,
@@ -108,8 +110,51 @@ export default function BountiesPage() {
               nextVerificationDue: full?.nextVerificationDue || null,
             }
           })
-          setSpots(enriched)
         }
+      }
+
+      // Fold in the unified world-observations feed (Task 7/8): match each
+      // observation to a nearby community-report-backed spot by proximity so
+      // it picks up an `itemType` (for the map's new per-item icon layer)
+      // without losing the rich fields (photos/description/status/etc.) that
+      // the "Active Spot Reports" cards and the map's own spot popup depend
+      // on. Observations with no nearby community report — e.g. route-scan
+      // hotspots that were never reported by a person — become lightweight,
+      // map-only spots so they still show up on the heatmap/dots.
+      if (observationsResult.status === 'fulfilled' && observationsResult.value) {
+        const observations = observationsResult.value.observations || []
+        // ~15m at Chicago latitude — matches the server-side duplicate-spot
+        // radius used in /api/spots so "same real-world item" lines up.
+        const PROXIMITY_DEG = 0.000135
+        const usedObservationIds = new Set<number>()
+
+        const spotsWithItemType: SpotReport[] = enrichedSpots.map((s) => {
+          const [lng, lat] = s.coordinates
+          const match = observations.find((o: any) =>
+            !usedObservationIds.has(o.id) &&
+            Math.abs(o.lng - lng) <= PROXIMITY_DEG &&
+            Math.abs(o.lat - lat) <= PROXIMITY_DEG
+          )
+          if (!match) return s
+          usedObservationIds.add(match.id)
+          return { ...s, itemType: match.itemType ?? undefined }
+        })
+
+        const scanOnlySpots: SpotReport[] = observations
+          .filter((o: any) => !usedObservationIds.has(o.id))
+          .map((o: any) => ({
+            id: `obs-${o.id}`,
+            coordinates: [o.lng, o.lat] as [number, number],
+            radiusMeters: 15,
+            label: o.itemType ?? 'Reported',
+            tags: o.itemType ? [o.itemType] : [],
+            itemType: o.itemType ?? undefined,
+            needsVerification: false,
+          }))
+
+        setSpots([...spotsWithItemType, ...scanOnlySpots])
+      } else if (enrichedSpots.length > 0) {
+        setSpots(enrichedSpots)
       }
 
       // Process routes - transform API response to match Route type

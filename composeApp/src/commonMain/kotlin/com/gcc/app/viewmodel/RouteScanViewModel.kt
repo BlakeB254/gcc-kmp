@@ -8,6 +8,7 @@ import com.gcc.app.platform.detectDeviceType
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,7 @@ data class RouteScanUiState(
     val isSubmitting: Boolean = false,
     val isComplete: Boolean = false,
     val pointsAwarded: Int = 0,
+    val showArRoute: Boolean = false,
     val error: String? = null,
     val submitError: String? = null,
     val aiDirectionText: String? = null,
@@ -73,9 +75,33 @@ class RouteScanViewModel(
     private val _uiState = MutableStateFlow(RouteScanUiState())
     val uiState: StateFlow<RouteScanUiState> = _uiState.asStateFlow()
 
+    // Whether the worker's current GPS position is outside the route's assigned
+    // block boundary. Consumed by the AR overlay (boundary-crossing warning).
+    private val _isOutsideBoundary = MutableStateFlow(false)
+    val isOutsideBoundary: StateFlow<Boolean> = _isOutsideBoundary.asStateFlow()
+
+    // Block boundary polygon as (lat, lng) pairs, matching PolygonContainment's
+    // pointInPolygon convention. Empty when no boundary is loaded for the route.
+    private var boundaryPolygon: List<Pair<Double, Double>> = emptyList()
+
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
     private val arScanner = ArScanner()
+
+    // ── Read-only projections for the AR route overlay (Task 16) ─────────
+    // Exposed as read-only accessors rather than the mutable CoverageTracker /
+    // LocationProvider instances, so ArRouteScreen can drive the overlay without
+    // being able to mutate scan/coverage internals.
+
+    /** Set of scanned coverage-grid cells (row, col). */
+    val scannedCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.scannedCells
+
+    /** Real-world (lat, lng) center of a coverage-grid cell. */
+    fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =
+        coverageTracker.cellCenterLatLng(row, col)
+
+    /** Device compass heading in degrees, or null when unavailable. */
+    val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
 
     // GPS breadcrumb paths for GeoJSON.
     // These grow at ~1 Hz; a 30-min scan produces ~1800 entries. Downsampled to
@@ -103,6 +129,7 @@ class RouteScanViewModel(
         arScanner.stopSession()
         scoutPath.clear()
         cleanPath.clear()
+        setBoundary(route.blockBoundary)
 
         if (!route.isWorkerAvailableRoute(allowUnpublished)) {
             _uiState.value = RouteScanUiState(
@@ -292,6 +319,27 @@ class RouteScanViewModel(
                 )
             }
         }
+    }
+
+    // ── AR route overlay (Task 16) ───────────────────────────────────
+
+    /**
+     * Enter the full-screen AR route guidance overlay during SCOUTING.
+     * Gated: only when an active scan exists and the worker's last GPS fix is
+     * confirmed inside the assigned block boundary — we never launch AR guidance
+     * for a worker who is already outside their route polygon.
+     */
+    fun beginRoute() {
+        val state = _uiState.value
+        if (state.phase != ScanPhase.SCOUTING) return
+        if (state.scanId == null) return
+        if (_isOutsideBoundary.value) return
+        _uiState.value = state.copy(showArRoute = true)
+    }
+
+    /** Leave the AR route overlay and return to the scout map. */
+    fun exitArRoute() {
+        _uiState.value = _uiState.value.copy(showArRoute = false)
     }
 
     // ── Phase transitions ────────────────────────────────────────────
@@ -505,6 +553,7 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         scoutPath.add(Pair(lat, lng))
+                        updateBoundaryStatus(lat, lng)
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
@@ -584,6 +633,26 @@ class RouteScanViewModel(
                 )
             }
         }
+    }
+
+    // ── Boundary containment ─────────────────────────────────────────
+
+    private fun setBoundary(polygon: GeoJSONPolygon?) {
+        val ring = polygon?.coordinates?.firstOrNull()
+        boundaryPolygon = ring?.mapNotNull { point ->
+            val lng = point.getOrNull(0) ?: return@mapNotNull null
+            val lat = point.getOrNull(1) ?: return@mapNotNull null
+            lat to lng
+        } ?: emptyList()
+        _isOutsideBoundary.value = false
+    }
+
+    private fun updateBoundaryStatus(lat: Double, lng: Double) {
+        if (boundaryPolygon.size < 3) {
+            _isOutsideBoundary.value = false // no boundary loaded — fail open, don't block the worker
+            return
+        }
+        _isOutsideBoundary.value = !pointInPolygon(lat, lng, boundaryPolygon)
     }
 
     // ── GeoJSON helper ───────────────────────────────────────────────

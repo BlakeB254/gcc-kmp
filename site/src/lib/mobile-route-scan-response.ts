@@ -1,6 +1,6 @@
-import { routeScans, scanHotspots, type RouteScanRow, type ScanHotspotRow } from '@/db/schema'
+import { routeScans, scanHotspots, worldObservations, type RouteScanRow, type ScanHotspotRow } from '@/db/schema'
 import { db } from '@/db'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 
 const validTags = new Set([
   'trash',
@@ -51,12 +51,41 @@ function parseStoredTags(value: string | null): string[] {
   }
 }
 
-export async function hotspotsForScan(scanId: number): Promise<ScanHotspotRow[]> {
-  return db
+/**
+ * Hotspots for a scan. During the CLEANING-phase (and the phases that
+ * follow it — 'cleaning', 'submitting', 'complete'), any hotspot flagged
+ * private property (via a `worldObservations` row with
+ * `excludedPrivateProperty = true`) is filtered out, so excluded hotspots
+ * never surface as lap-2 clean instructions. During 'scouting' and
+ * 'scout_review' (or any other/unrecognized phase), hotspots are returned
+ * unfiltered — a worker's in-progress scouting view should never silently
+ * drop something they just scouted.
+ */
+export async function hotspotsForScan(scanId: number, phase: string): Promise<ScanHotspotRow[]> {
+  const hotspots = await db
     .select()
     .from(scanHotspots)
     .where(eq(scanHotspots.scanId, scanId))
     .orderBy(asc(scanHotspots.detectedAt))
+
+  if (hotspots.length === 0) return hotspots
+
+  const shouldFilterExcluded = phase === 'cleaning' || phase === 'submitting' || phase === 'complete'
+  if (!shouldFilterExcluded) return hotspots
+
+  const hotspotIds = hotspots.map((h) => h.id)
+  const excludedRows = await db
+    .select({ scanHotspotId: worldObservations.scanHotspotId })
+    .from(worldObservations)
+    .where(and(
+      inArray(worldObservations.scanHotspotId, hotspotIds),
+      eq(worldObservations.excludedPrivateProperty, true)
+    ))
+
+  if (excludedRows.length === 0) return hotspots
+
+  const excludedIds = new Set(excludedRows.map((r) => r.scanHotspotId))
+  return hotspots.filter((h) => !excludedIds.has(h.id))
 }
 
 export async function findRouteScan(scanId: number): Promise<RouteScanRow | null> {

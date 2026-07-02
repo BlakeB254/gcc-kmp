@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .returning()
 
     return NextResponse.json({
-      data: toMobileRouteScan(updated, await hotspotsForScan(scanId)),
+      data: toMobileRouteScan(updated, await hotspotsForScan(scanId, updated.phase)),
       success: true,
     })
   } catch (error) {
