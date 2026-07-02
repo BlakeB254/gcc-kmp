@@ -106,4 +106,22 @@ class CoverageEventQueueTest {
         assertTrue(firstResult, "the flush that acquired the single-flight guard should still succeed")
         assertFalse(secondResult, "a flush already in progress should be rejected, not silently duplicate-submitted")
     }
+
+    @Test
+    fun oversizedBacklogDrainsInServerSizedChunks() = runTest {
+        // The live endpoint 400s any batch over MAX_BATCH_SIZE, so a backlog
+        // accumulated offline must drain in capped slices within one flush().
+        val batchSizes = mutableListOf<Int>()
+        val fakeSubmit: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse = { events ->
+            batchSizes.add(events.size)
+            ScanCoverageSubmitResponse(inserted = events.size, success = true)
+        }
+        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        repeat(CoverageEventQueue.MAX_BATCH_SIZE + 250) { queue.enqueue(sampleEvent("evt$it")) }
+
+        val result = queue.flush()
+
+        assertTrue(result)
+        assertEquals(listOf(CoverageEventQueue.MAX_BATCH_SIZE, 250), batchSizes)
+    }
 }

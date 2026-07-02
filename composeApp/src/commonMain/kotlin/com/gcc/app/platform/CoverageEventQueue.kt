@@ -46,12 +46,16 @@ class CoverageEventQueue(
         if (!acquiredFlush) return false
 
         try {
-            val batch = mutex.withLock { pending.toList() }
-            if (batch.isEmpty()) return true
+            // Chunked: the coverage endpoint rejects batches over MAX_BATCH_SIZE
+            // with a 400, so a backlog built up offline must drain in slices —
+            // one oversized POST would fail forever and the queue would only grow.
+            while (true) {
+                val batch = mutex.withLock { pending.take(MAX_BATCH_SIZE) }
+                if (batch.isEmpty()) return true
 
-            return try {
-                val response = submitFn(batch)
-                if (response.success) {
+                try {
+                    val response = submitFn(batch)
+                    if (!response.success) return false
                     // Position-based removal, not removeAll(batch): ScanCoverageEventRequest
                     // is a plain data class with no id field, so structural equality could
                     // match a distinct event enqueued mid-flight and drop that one instead of
@@ -62,15 +66,17 @@ class CoverageEventQueue(
                     mutex.withLock {
                         repeat(batch.size) { pending.removeAt(0) }
                     }
-                    true
-                } else {
-                    false
+                } catch (e: Exception) {
+                    return false
                 }
-            } catch (e: Exception) {
-                false
             }
         } finally {
             mutex.withLock { flushInProgress = false }
         }
+    }
+
+    companion object {
+        /** Server-side cap on POST /api/scans/coverage batch size. */
+        const val MAX_BATCH_SIZE = 500
     }
 }

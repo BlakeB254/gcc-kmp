@@ -2,9 +2,14 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.ArScanner
+import com.gcc.app.platform.CoverageDeviceId
+import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.coverageTier
+import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
+import com.gcc.app.platform.getPlatformName
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
@@ -19,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 // ── UI state ─────────────────────────────────────────────────────────
 
@@ -87,6 +93,15 @@ class RouteScanViewModel(
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
     private val arScanner = ArScanner()
+
+    // Coverage-ledger event batching (design spec §1.6): route-mode scan
+    // coverage events queue locally and flush every 30s + on session end.
+    private val coverageEventQueue = CoverageEventQueue(
+        submitFn = { apiClient.submitCoverageEvents(it) },
+    )
+    private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
+    private var lastCoverageFix: Pair<Double, Double>? = null
+    private var coverageFlushJob: Job? = null
 
     // ── Read-only projections for the AR route overlay (Task 16) ─────────
     // Exposed as read-only accessors rather than the mutable CoverageTracker /
@@ -479,8 +494,14 @@ class RouteScanViewModel(
 
         timerJob?.cancel()
         locationJob?.cancel()
+        coverageFlushJob?.cancel()
         locationProvider.stopLocationUpdates()
         arScanner.stopSession()
+
+        // Final coverage-ledger flush for the session — independent of the
+        // scan-completion request below, and non-fatal if it fails (events
+        // stay queued for a future session's flush).
+        scope.launch { coverageEventQueue.flush() }
 
         scope.launch {
             _uiState.value = state.copy(
@@ -544,6 +565,14 @@ class RouteScanViewModel(
     // ── Internal: location tracking ──────────────────────────────────
 
     private fun startLocationTracking() {
+        lastCoverageFix = null
+        coverageFlushJob?.cancel()
+        coverageFlushJob = scope.launch {
+            while (true) {
+                delay(30_000L)
+                coverageEventQueue.flush() // failed flushes keep events queued
+            }
+        }
         locationJob?.cancel()
         locationJob = scope.launch {
             locationProvider.locationFlow.collect { location ->
@@ -557,6 +586,25 @@ class RouteScanViewModel(
                     ScanPhase.SCOUTING -> {
                         scoutPath.add(Pair(lat, lng))
                         updateBoundaryStatus(lat, lng)
+
+                        // Coverage-ledger event: distance walked since the last fix.
+                        val prevFix = lastCoverageFix
+                        lastCoverageFix = Pair(lat, lng)
+                        val segmentMeters = prevFix?.let { (prevLat, prevLng) ->
+                            GeofenceVerification.distanceMeters(prevLat, prevLng, lat, lng)
+                        } ?: 0.0
+                        coverageEventQueue.enqueue(
+                            ScanCoverageEventRequest(
+                                deviceId = CoverageDeviceId.value,
+                                platform = getPlatformName(),
+                                lat = lat,
+                                lng = lng,
+                                distanceMeters = segmentMeters,
+                                scanMode = "route",
+                                deviceTier = coverageDeviceTier,
+                                capturedAt = Clock.System.now().toString(),
+                            )
+                        )
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
@@ -677,6 +725,8 @@ class RouteScanViewModel(
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
+        coverageFlushJob?.cancel()
+        scope.launch { coverageEventQueue.flush() }
         aiDirectionJob?.cancel()
         aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
