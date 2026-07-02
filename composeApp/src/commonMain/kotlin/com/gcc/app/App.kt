@@ -21,6 +21,7 @@ import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
 import com.gcc.app.ui.theme.GccGreen
+import com.gcc.app.ui.screens.admin.AdminBountyDetailScreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
 
@@ -179,6 +180,7 @@ fun App(component: RootComponent) {
                     onNavigateToSpotDetail = component::navigateToAdminSpotDetail,
                     onNavigateToRouteDetail = component::navigateToAdminRouteDetail,
                     onNavigateToWorkerDetail = component::navigateToAdminWorkerDetail,
+                    onNavigateToBountyDetail = component::navigateToAdminBountyDetail,
                     onNavigateToDashboard = { component.switchToTab(Screen.Dashboard) },
                     onNavigateToMap = { component.switchToTab(Screen.MapFullScreen) },
                     onNavigateToProfile = { component.switchToTab(Screen.Profile) },
@@ -198,6 +200,13 @@ fun App(component: RootComponent) {
                 )
                 is Screen.AdminRouteDetail -> AdminRouteDetailScreen(
                     routeId = screen.routeId,
+                    onBack = component::navigateBack,
+                    onBeginAsUser = { routeId, workerId, workerName ->
+                        component.navigateToRouteScanAsUser(routeId, workerId, workerName)
+                    },
+                )
+                is Screen.AdminBountyDetail -> AdminBountyDetailScreen(
+                    bountyId = screen.bountyId,
                     onBack = component::navigateBack,
                 )
                 is Screen.SpotVerification -> SpotVerificationScreen(
@@ -227,6 +236,8 @@ fun App(component: RootComponent) {
                         RouteScanScreen(
                             route = route!!,
                             allowUnpublished = screen.allowUnpublished,
+                            onBehalfOfWorkerId = screen.onBehalfOfWorkerId,
+                            onBehalfOfWorkerName = screen.onBehalfOfWorkerName,
                             onBack = component::navigateBack,
                             onComplete = component::navigateBack,
                         )

@@ -26,6 +26,7 @@ import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.MyLocationButton
+import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.ui.map.resolveMapCenter
@@ -121,6 +122,9 @@ fun MapFullScreen(
     var overrideCenterLng by remember { mutableStateOf<Double?>(null) }
     var overrideZoom by remember { mutableStateOf<Double?>(null) }
     var selectedRecordIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Precipitation overlay visibility (legend + heat + scrim + dots)
+    var heatmapVisible by remember { mutableStateOf(true) }
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -359,7 +363,7 @@ fun MapFullScreen(
             },
             cameraBounds = null,
             bounties = visibleBounties,
-            spots = visibleSpots,
+            spots = if (heatmapVisible) visibleSpots else emptyList(),
             mapMode = mapMode,
             affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
@@ -410,6 +414,26 @@ fun MapFullScreen(
                         selectedSpot = null
                         selectedRecordIndex = null
                     },
+                )
+
+                // Heatmap layer toggle — sits beside MapModeToggle, inherits Row's statusBarsPadding
+                FilledTonalIconButton(
+                    onClick = { heatmapVisible = !heatmapVisible },
+                ) {
+                    Text(
+                        if (heatmapVisible) "●" else "○",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
+
+            // Precipitation intensity legend — right edge, vertically centered so it
+            // never overlaps the top-left community info panel (routes/jobs/earnings).
+            if (heatmapVisible) {
+                PrecipitationLegend(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp),
                 )
             }
 

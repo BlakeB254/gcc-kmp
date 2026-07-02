@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,33 +40,16 @@ fun AchievementsScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceMuted),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            TopAppBar(
+                title = { Text("Achievements", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Achievements",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.weight(1f),
-                )
-                GccLogo(size = 56.dp, modifier = Modifier.padding(end = 4.dp))
-            }
-        }
+                },
+                actions = { GccLogo(size = 56.dp, modifier = Modifier.padding(end = 4.dp)) },
+            )
+        },
     ) { padding ->
         if (uiState.isLoading) {
             Box(

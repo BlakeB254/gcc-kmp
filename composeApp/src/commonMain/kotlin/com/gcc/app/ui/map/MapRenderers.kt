@@ -447,7 +447,7 @@ internal fun DrawScope.drawSpotMarkers(
                 0.08f * (1f - fade)
             }
         }
-        drawRect(color = MapStyles.CLEAN_BASE_COLOR.copy(alpha = baseAlpha))
+        drawRect(color = MapStyles.SPOT_SCRIM_COLOR.copy(alpha = (baseAlpha * 1.8f).coerceAtMost(0.55f)))
     }
 
     for (spot in filteredSpots) {
@@ -457,14 +457,16 @@ internal fun DrawScope.drawSpotMarkers(
 
         if (effectiveZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM) {
             val growthT = ((effectiveZoom - MapStyles.SPOT_HEATMAP_MIN_ZOOM) / 10.0).toFloat().coerceIn(0f, 1f)
-            val fadeT = ((effectiveZoom - 13.0) / (MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM - 13.0)).toFloat().coerceIn(0f, 1f)
+            // Fade the heat out over the last zoom unit before dots take over (z[DOTS-1, DOTS)),
+            // so the blooms are full at overview and gone by the dots handoff.
+            val fadeT = ((effectiveZoom - (MapStyles.SPOT_DOTS_MIN_ZOOM - 1.0)) / 1.0).toFloat().coerceIn(0f, 1f)
             val baseRadius = MapStyles.SPOT_HEATMAP_RADIUS_FAR +
                 (MapStyles.SPOT_HEATMAP_RADIUS_MID - MapStyles.SPOT_HEATMAP_RADIUS_FAR) * growthT
             val radius = baseRadius * (1f - fadeT)
             val weight = canvasSpotHeatWeight(spot)
             val opacity = (0.44f + 0.11f * weight) * (1f - fadeT)
             if (opacity > 0f) {
-                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.5f), radius = radius * 1.65f, center = pos)
+                drawCircle(color = MapStyles.SPOT_HEAT_EDGE.copy(alpha = opacity * 0.5f), radius = radius * 2.0f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_LOW.copy(alpha = opacity * 0.66f), radius = radius * 1.16f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = opacity * 0.74f), radius = radius * 0.78f, center = pos)
                 drawCircle(color = MapStyles.SPOT_HEAT_HIGH.copy(alpha = opacity * 0.7f), radius = radius * 0.48f, center = pos)

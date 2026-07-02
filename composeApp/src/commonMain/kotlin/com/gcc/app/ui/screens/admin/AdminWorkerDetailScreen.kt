@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,13 +73,14 @@ fun AdminWorkerDetailScreen(
             TopAppBar(
                 title = { Text(worker?.name ?: "Worker #$workerId") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("\u2190 Back", color = Color.White)
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = GccSkyDark,
                     titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
                 ),
             )
         },

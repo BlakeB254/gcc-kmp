@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.api.PendingReview
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ enum class AdminTab(val label: String, val icon: String) {
     ROUTES("Routes", "\uD83D\uDDFA"),
     BOUNTIES("Bounties", "\uD83C\uDFAF"),
     SPOTS("Spots", "\uD83D\uDCCD"),
+    PAYOUTS("Payouts", "\uD83D\uDCB0"),
 }
 
 data class AdminPanelUiState(
@@ -40,6 +42,10 @@ data class AdminPanelUiState(
     val isCreatingSpot: Boolean = false,
     val spotCreateError: String? = null,
     val spotCreateSuccessNonce: Int = 0,
+    val verifiedWorkers: List<Worker> = emptyList(),
+    val selectedProxyWorkerId: Int? = null,
+    val pendingReviews: List<PendingReview> = emptyList(),
+    val payoutActionError: String? = null,
 )
 
 class AdminPanelViewModel(
@@ -96,6 +102,26 @@ class AdminPanelViewModel(
         }
     }
 
+    /**
+     * Ensure verified (approved) workers are loaded for the proxy-execution
+     * dropdown. Mirrors [ensureWorkersLoaded] but filters by verificationStatus.
+     */
+    fun ensureVerifiedWorkersLoaded() {
+        if (_uiState.value.verifiedWorkers.isNotEmpty()) return
+        scope.launch {
+            try {
+                val workers = apiClient.getAdminWorkers(verificationStatus = "approved")
+                _uiState.value = _uiState.value.copy(verifiedWorkers = workers)
+            } catch (_: Exception) {
+                // Don't surface a global error — dropdown handles empty state inline
+            }
+        }
+    }
+
+    fun setSelectedProxyWorkerId(id: Int?) {
+        _uiState.value = _uiState.value.copy(selectedProxyWorkerId = id)
+    }
+
     fun ensureCurrentWorkerLoaded() {
         if (_uiState.value.currentWorker != null) return
         scope.launch {
@@ -148,6 +174,10 @@ class AdminPanelViewModel(
                     AdminTab.SPOTS -> {
                         val spots = apiClient.getAdminSpotReports()
                         _uiState.value = _uiState.value.copy(spotReports = spots)
+                    }
+                    AdminTab.PAYOUTS -> {
+                        val reviews = apiClient.getPendingPayoutReviews()
+                        _uiState.value = _uiState.value.copy(pendingReviews = reviews)
                     }
                 }
                 _uiState.value = _uiState.value.copy(
@@ -640,5 +670,48 @@ class AdminPanelViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    // ── Payout Approval Actions ────────────────────────────────────────
+
+    fun approveJob(jobId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            try {
+                apiClient.approveJob(jobId)
+                // Remove the approved job from the local list immediately
+                _uiState.value = _uiState.value.copy(
+                    pendingReviews = _uiState.value.pendingReviews.filter { it.jobId != jobId },
+                )
+                invalidateTab(AdminTab.PAYOUTS)
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to approve job"
+                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun denyJob(jobId: Int, reason: String, onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            try {
+                apiClient.denyJob(jobId, reason)
+                _uiState.value = _uiState.value.copy(
+                    pendingReviews = _uiState.value.pendingReviews.filter { it.jobId != jobId },
+                )
+                invalidateTab(AdminTab.PAYOUTS)
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to deny job"
+                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun clearPayoutActionError() {
+        _uiState.value = _uiState.value.copy(payoutActionError = null)
     }
 }

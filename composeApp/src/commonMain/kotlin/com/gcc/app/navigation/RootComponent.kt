@@ -161,12 +161,27 @@ class RootComponent(
         navigation.push(Screen.AdminRouteDetail(routeId))
     }
 
+    fun navigateToAdminBountyDetail(bountyId: Int) {
+        navigation.push(Screen.AdminBountyDetail(bountyId))
+    }
+
     fun navigateToSpotVerification(reportId: Int) {
         navigation.push(Screen.SpotVerification(reportId))
     }
 
     fun navigateToRouteScan(routeId: Int, allowUnpublished: Boolean = false) {
         navigation.push(Screen.RouteScan(routeId, allowUnpublished))
+    }
+
+    fun navigateToRouteScanAsUser(routeId: Int, onBehalfOfWorkerId: Int, workerName: String) {
+        navigation.push(
+            Screen.RouteScan(
+                routeId = routeId,
+                allowUnpublished = true,
+                onBehalfOfWorkerId = onBehalfOfWorkerId,
+                onBehalfOfWorkerName = workerName,
+            )
+        )
     }
 
     fun navigateToPoints() {

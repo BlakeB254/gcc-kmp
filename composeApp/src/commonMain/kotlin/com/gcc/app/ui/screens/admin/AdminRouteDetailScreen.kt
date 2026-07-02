@@ -37,6 +37,7 @@ import org.koin.compose.koinInject
 fun AdminRouteDetailScreen(
     routeId: Int,
     onBack: () -> Unit,
+    onBeginAsUser: (routeId: Int, workerId: Int, workerName: String) -> Unit = { _, _, _ -> },
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -108,6 +109,7 @@ fun AdminRouteDetailScreen(
     LaunchedEffect(routeId) {
         viewModel.ensureWorkersLoaded()
         viewModel.ensureCurrentWorkerLoaded()
+        viewModel.ensureVerifiedWorkersLoaded()
         viewModel.loadRouteAssignments(routeId)
     }
 
@@ -452,6 +454,93 @@ fun AdminRouteDetailScreen(
                             viewModel.cancelRouteAssignment(routeId, assignment.jobId)
                         },
                     )
+                }
+            }
+
+            // ── Perform as User ──────────────────────────────────────────
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    "🎭 Perform as User",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val verifiedWorkers = uiState.verifiedWorkers
+                val selectedProxyWorkerId = uiState.selectedProxyWorkerId
+
+                if (verifiedWorkers.isEmpty()) {
+                    Text(
+                        "Loading verified workers...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSubtle,
+                    )
+                } else {
+                    var proxyExpanded by remember { mutableStateOf(false) }
+                    val selectedProxyWorker = verifiedWorkers.find { it.id == selectedProxyWorkerId }
+
+                    ExposedDropdownMenuBox(
+                        expanded = proxyExpanded,
+                        onExpandedChange = { proxyExpanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = selectedProxyWorker?.name ?: "Select verified worker",
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(proxyExpanded) },
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GccSky,
+                            ),
+                        )
+                        ExposedDropdownMenu(
+                            expanded = proxyExpanded,
+                            onDismissRequest = { proxyExpanded = false },
+                        ) {
+                            verifiedWorkers.forEach { worker ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                worker.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                            Text(
+                                                worker.email,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSubtle,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setSelectedProxyWorkerId(worker.id)
+                                        proxyExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            val wid = selectedProxyWorkerId ?: return@Button
+                            val name = selectedProxyWorker?.name ?: ""
+                            onBeginAsUser(route.id, wid, name)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedProxyWorkerId != null,
+                        colors = ButtonDefaults.buttonColors(containerColor = GccSky),
+                    ) {
+                        Text(
+                            "Begin as ${selectedProxyWorker?.name?.split(" ")?.firstOrNull() ?: "User"}",
+                            color = Color.White,
+                        )
+                    }
                 }
             }
 

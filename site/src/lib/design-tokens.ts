@@ -63,13 +63,6 @@ export const SPOT_COLORS = {
   MARKER: '#F97316',
   RADIUS_FILL: 'rgba(249, 115, 22, 0.15)',
   RADIUS_STROKE: '#F97316',
-  // Heatmap: broad green field -> yellow/orange activity -> red/white hot cores.
-  HEATMAP_EDGE: '#2EEA52',
-  HEATMAP_LOW: '#7CFC2F',
-  CLEAN_ZONE: '#27D94F',
-  HEATMAP_MED: '#FDE047',
-  HEATMAP_HIGH: '#F97316',
-  HEATMAP_EXTREME: '#DC2626',
   HEATMAP_PEAK: '#FFFFFF',
 } as const
 
@@ -112,20 +105,6 @@ export function getSpotHeatWeight(spot: SpotHeatWeightInput): number {
   return Math.min(Math.max(statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost, 0.65), 2.4)
 }
 
-export const SPOT_CLEAN_BASE_PAINT: any = {
-  'fill-color': SPOT_COLORS.CLEAN_ZONE,
-  'fill-opacity': [
-    'interpolate', ['linear'], ['zoom'],
-    7, 0.16,
-    8, 0.24,
-    10, 0.3,
-    12, 0.27,
-    13, 0.2,
-    14, 0.08,
-    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
-  ],
-}
-
 export const SPOT_HEATMAP_PAINT: any = {
   'heatmap-weight': [
     'interpolate', ['linear'], ['to-number', ['coalesce', ['get', 'heatWeight'], 1]],
@@ -135,34 +114,39 @@ export const SPOT_HEATMAP_PAINT: any = {
   ],
   'heatmap-intensity': [
     'interpolate', ['linear'], ['zoom'],
-    8, 0.08,
-    10, 0.13,
-    12, 0.21,
-    13, 0.26,
-    14, 0.16,
-    SPOT_ZOOM.HEATMAP_FADE_OUT, 0.05,
+    8, 0.05,
+    10, 0.08,
+    12, 0.13,
+    13, 0.16,
+    14, 0.10,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0.03,
     SPOT_ZOOM.HEATMAP_MAX, 0.02,
   ],
+  // Doppler-radar ramp — GCC's own colors (green → yellow → orange → red → white).
+  // Apple-precipitation *style* (soft feathered blooms on a muted base), our hues.
   'heatmap-color': [
     'interpolate', ['linear'], ['heatmap-density'],
-    0, 'rgba(0,0,0,0)',
-    0.02, 'rgba(46,234,82,0.55)',
-    0.12, SPOT_COLORS.HEATMAP_EDGE,
-    0.26, SPOT_COLORS.HEATMAP_LOW,
-    0.45, SPOT_COLORS.HEATMAP_MED,
-    0.62, SPOT_COLORS.HEATMAP_HIGH,
-    0.8, SPOT_COLORS.HEATMAP_EXTREME,
-    0.94, '#FFF7AD',
-    1.0, SPOT_COLORS.HEATMAP_PEAK,
+    0,    'rgba(0,0,0,0)',
+    0.05, 'rgba(46,234,82,0.5)',    // green — Light
+    0.16, '#2EEA52',                // green — Light
+    0.32, '#7CFC2F',                // lime-green — Light
+    0.46, '#FDE047',                // yellow — Moderate
+    0.60, '#F59E0B',                // amber — Moderate
+    0.72, '#F97316',                // orange — Heavy
+    0.83, '#EF4444',                // red — Heavy
+    0.93, '#DC2626',                // red — Heavy
+    1.0,  '#B91C1C',                // deep-red core — Extreme (no white blowout)
   ],
+  // Smaller radius at low zoom keeps concentrated clusters from melting into a
+  // perfect-circle bullseye; grows with zoom where points spread out on screen.
   'heatmap-radius': [
     'interpolate', ['linear'], ['zoom'],
-    8, 18,
-    10, 28,
-    12, 42,
-    13, 52,
-    13.75, 34,
-    14.25, 18,
+    8, 9,
+    10, 16,
+    12, 34,
+    13, 50,
+    13.75, 40,
+    14.25, 22,
     SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
     SPOT_ZOOM.HEATMAP_MAX, 0,
   ],
@@ -174,6 +158,18 @@ export const SPOT_HEATMAP_PAINT: any = {
     13, 0.82,
     13.75, 0.54,
     14.25, 0.22,
+    SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
+  ],
+}
+
+// Neutral scrim drawn beneath the heatmap so weather colors pop (Apple precipitation feel).
+export const SPOT_SCRIM_PAINT: any = {
+  'fill-color': '#F5F6F8',
+  'fill-opacity': [
+    'interpolate', ['linear'], ['zoom'],
+    8, 0.55,
+    13, 0.5,
+    14, 0.2,
     SPOT_ZOOM.HEATMAP_FADE_OUT, 0,
   ],
 }

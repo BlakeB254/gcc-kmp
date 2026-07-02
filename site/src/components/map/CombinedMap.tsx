@@ -12,12 +12,13 @@ import {
   SPOT_STATUS_COLORS,
   SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
-  SPOT_CLEAN_BASE_PAINT,
+  SPOT_SCRIM_PAINT,
   SPOT_HEATMAP_PAINT,
   getSpotHeatWeight,
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
+import { PrecipitationLegend } from './PrecipitationLegend'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
 import type { Route } from './RouteMap'
@@ -135,6 +136,7 @@ export function CombinedMap({
   const [mapLoaded, setMapLoaded] = useState(false)
   const [popup, setPopup] = useState<PopupTarget | null>(null)
   const [currentZoom, setCurrentZoom] = useState(ZOOM.NEIGHBORHOOD)
+  const [heatmapVisible, setHeatmapVisible] = useState(true)
   const detailZoomOpacity = Math.max(
     0,
     Math.min(
@@ -552,7 +554,28 @@ export function CombinedMap({
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
         onMove={(event) => setCurrentZoom(event.viewState.zoom)}
         cursor="pointer"
-        legend={legendNode}
+        legend={
+          spots.length > 0 ? (
+            <>
+              {heatmapVisible
+                ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
+                : legendNode}
+              <button
+                data-testid="precip-toggle"
+                onClick={() => setHeatmapVisible((v) => !v)}
+                aria-pressed={heatmapVisible}
+                className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
+                title="Toggle report density"
+              >
+                {/* stacked-layers glyph */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
+                  <polyline points="2 15.5 12 22 22 15.5" />
+                </svg>
+              </button>
+            </>
+          ) : legendNode
+        }
         popup={popupNode}
         mapRef={(ref) => {
           mapRef.current = ref
@@ -647,6 +670,32 @@ export function CombinedMap({
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}
         {/* ============================================================ */}
 
+        {/* Neutral scrim — mutes the basemap beneath the precipitation heatmap */}
+        {spots.length > 0 && (
+          <Source
+            id="spot-scrim"
+            type="geojson"
+            data={{
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
+                },
+              }],
+            }}
+          >
+            <Layer
+              id="spot-scrim-fill"
+              type="fill"
+              paint={SPOT_SCRIM_PAINT}
+              layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
+            />
+          </Source>
+        )}
+
         {/* Spot reports — heatmap (z<14.5) + dots (z14+) opacity crossfade.
             Same design as the homepage; with fitBounds capped at zoom 15,
             users land in the dots-fully-visible / heatmap-invisible
@@ -659,6 +708,7 @@ export function CombinedMap({
               minzoom={SPOT_ZOOM.HEATMAP_MIN}
               maxzoom={SPOT_ZOOM.HEATMAP_MAX}
               paint={SPOT_HEATMAP_PAINT}
+              layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
             />
 
             <Layer

@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +36,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticlesScreen(
     onBack: () -> Unit = {},
@@ -60,32 +63,15 @@ fun ArticlesScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceMuted),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("←", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            TopAppBar(
+                title = { Text("Articles", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Articles",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.weight(1f),
-                )
-                GccLogo(size = 56.dp, modifier = Modifier.padding(end = 4.dp))
-            }
+                },
+                actions = { GccLogo(size = 56.dp, modifier = Modifier.padding(end = 4.dp)) },
+            )
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -229,6 +215,7 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
 
 // ── Reader ───────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleReaderScreen(
     article: Article,
@@ -237,36 +224,21 @@ fun ArticleReaderScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceMuted),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("←", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            TopAppBar(
+                title = { Text("Article", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Article",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    modifier = Modifier.weight(1f),
-                )
-                article.webUrl?.let { url ->
-                    TextButton(onClick = { openUrl(url) }) {
-                        Text("Open on web", color = GccGreen, style = MaterialTheme.typography.labelMedium)
+                },
+                actions = {
+                    article.webUrl?.let { url ->
+                        TextButton(onClick = { openUrl(url) }) {
+                            Text("Open on web", color = GccGreen, style = MaterialTheme.typography.labelMedium)
+                        }
                     }
-                }
-            }
+                },
+            )
         },
     ) { padding ->
         Column(

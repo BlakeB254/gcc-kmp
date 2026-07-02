@@ -459,6 +459,16 @@ export const jobs = pgTable('jobs', {
   rating: numeric('rating'),
   ratingNotes: text('rating_notes'),
 
+  // Admin proxy execution audit
+  performedByAdminId: integer('performed_by_admin_id').references(() => workers.id),
+
+  // Review / approval (Feature C — same-day payout flow)
+  reviewStatus: varchar('review_status', { length: 20 }),
+  approvedByAdminId: integer('approved_by_admin_id').references(() => workers.id),
+  deniedByAdminId: integer('denied_by_admin_id').references(() => workers.id),
+  denyReason: text('deny_reason'),
+  reviewedAt: timestamp('reviewed_at', { mode: 'string', withTimezone: true }),
+
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -1447,6 +1457,10 @@ export const routeScans = pgTable('route_scans', {
   totalTrashWeightLbs: doublePrecision('total_trash_weight_lbs'),
   pointsAwarded: integer('points_awarded').default(0).notNull(),
   status: varchar('status', { length: 30 }).default('in_progress').notNull(),
+
+  // Admin proxy execution audit
+  performedByAdminId: integer('performed_by_admin_id').references(() => workers.id),
+
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })

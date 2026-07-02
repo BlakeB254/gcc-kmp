@@ -57,6 +57,7 @@ data class RouteScanUiState(
     val pointsAwarded: Int = 0,
     val showArRoute: Boolean = false,
     val error: String? = null,
+    val submitError: String? = null,
     val aiDirectionText: String? = null,
     val routeSections: List<RouteScanSectionUiItem> = emptyList(),
     val currentSectionIndex: Int = 0,
@@ -108,6 +109,7 @@ class RouteScanViewModel(
     private val scoutPath = mutableListOf<Pair<Double, Double>>()
     private val cleanPath = mutableListOf<Pair<Double, Double>>()
     private var allowUnpublishedRoute = false
+    private var onBehalfOfWorkerId: Int? = null
 
     // Coroutine jobs
     private var locationJob: Job? = null
@@ -117,8 +119,9 @@ class RouteScanViewModel(
 
     // ── Initialisation ───────────────────────────────────────────────
 
-    fun initForRoute(route: Route, allowUnpublished: Boolean = false) {
+    fun initForRoute(route: Route, allowUnpublished: Boolean = false, onBehalfOfWorkerId: Int? = null) {
         allowUnpublishedRoute = allowUnpublished
+        this.onBehalfOfWorkerId = onBehalfOfWorkerId
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
@@ -209,7 +212,8 @@ class RouteScanViewModel(
                         deviceType = state.deviceType,
                         startLat = lat,
                         startLng = lng,
-                    )
+                    ),
+                    onBehalfOfWorkerId = onBehalfOfWorkerId,
                 )
 
                 _uiState.value = _uiState.value.copy(
@@ -504,12 +508,17 @@ class RouteScanViewModel(
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    phase = ScanPhase.CLEANING,
+                    phase = ScanPhase.SUBMITTING,
                     isSubmitting = false,
-                    error = "Failed to submit scan: ${e.message}",
+                    submitError = e.message ?: "Couldn't submit your scan",
                 )
             }
         }
+    }
+
+    fun retrySubmit() {
+        _uiState.value = _uiState.value.copy(submitError = null)
+        completeScan()
     }
 
     // ── State queries ────────────────────────────────────────────────

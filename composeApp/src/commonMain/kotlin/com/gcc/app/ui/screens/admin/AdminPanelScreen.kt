@@ -1,6 +1,8 @@
 package com.gcc.app.ui.screens.admin
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -24,6 +26,7 @@ fun AdminPanelScreen(
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
     onNavigateToRouteDetail: (routeId: Int) -> Unit = {},
     onNavigateToWorkerDetail: (workerId: Int) -> Unit = {},
+    onNavigateToBountyDetail: (bountyId: Int) -> Unit = {},
     onNavigateToDashboard: () -> Unit = {},
     onNavigateToMap: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
@@ -44,6 +47,11 @@ fun AdminPanelScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Admin Panel") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
                     TextButton(onClick = {
                         tokenManager.logout()
@@ -55,6 +63,7 @@ fun AdminPanelScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = GccSkyDark,
                     titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
                 ),
             )
         },
@@ -135,7 +144,7 @@ fun AdminPanelScreen(
                         )
                         AdminTab.BOUNTIES -> AdminBountiesTab(
                             bounties = uiState.bounties,
-                            onBountyClick = { /* TODO: navigate to bounty detail */ },
+                            onBountyClick = onNavigateToBountyDetail,
                         )
                         AdminTab.SPOTS -> AdminSpotsTab(
                             spotReports = uiState.spotReports,
@@ -143,6 +152,13 @@ fun AdminPanelScreen(
                             onSpotClick = onNavigateToSpotDetail,
                             onCreateClick = { onNavigateToSpotCreate(0.0, 0.0) },
                             onDismissError = { viewModel.clearError() },
+                        )
+                        AdminTab.PAYOUTS -> AdminPayoutsTab(
+                            reviews = uiState.pendingReviews,
+                            payoutActionError = uiState.payoutActionError,
+                            onApprove = { jobId, onResult -> viewModel.approveJob(jobId, onResult) },
+                            onDeny = { jobId, reason, onResult -> viewModel.denyJob(jobId, reason, onResult) },
+                            onDismissActionError = { viewModel.clearPayoutActionError() },
                         )
                     }
                 }

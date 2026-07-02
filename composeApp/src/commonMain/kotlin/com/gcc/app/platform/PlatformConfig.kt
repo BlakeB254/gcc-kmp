@@ -22,3 +22,6 @@ expect fun saveToSystemCredentials(email: String, password: String)
 
 /** Open a URL in the system browser (Safari on iOS, Chrome on Android). */
 expect fun openUrl(url: String)
+
+/** Returns the app version string, e.g. "1.0.1 (2)". Never throws. */
+expect fun appVersion(): String

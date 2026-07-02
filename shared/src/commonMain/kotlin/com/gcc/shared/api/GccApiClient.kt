@@ -500,6 +500,33 @@ class GccApiClient(
     suspend fun registerDeviceToken(platform: String, token: String) =
         postUnit("/api/workers/me/device-token", mapOf("platform" to platform, "token" to token))
 
+    // ── Admin: Payout Approvals ────────────────────────────────────────
+
+    suspend fun getPendingPayoutReviews(): List<PendingReview> =
+        get("/api/admin/jobs/pending-review")
+
+    suspend fun approveJob(jobId: Int): ApproveJobResponse {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/approve")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ApproveJobResponse>()
+    }
+
+    suspend fun denyJob(jobId: Int, reason: String) {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/deny") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("reason" to reason))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+    }
+
     suspend fun removeDeviceToken() =
         deleteUnit("/api/workers/me/device-token")
 
@@ -555,10 +582,11 @@ class GccApiClient(
         get("/api/admin/analytics/sponsor-metrics") { parameter("limit", limit) }
 
     // Workers
-    suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20): List<Worker> =
+    suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20, verificationStatus: String? = null): List<Worker> =
         get("/api/admin/workers") {
             search?.let { parameter("search", it) }
             status?.let { parameter("status", it) }
+            verificationStatus?.let { parameter("verificationStatus", it) }
             parameter("page", page)
             parameter("limit", limit)
         }
@@ -932,8 +960,8 @@ class GccApiClient(
 
     // ── Scout & Clean Route Scan API ──────────────────────────────
 
-    suspend fun createScan(req: CreateScanRequest): RouteScan =
-        postJson("/api/scans", req)
+    suspend fun createScan(req: CreateScanRequest, onBehalfOfWorkerId: Int? = null): RouteScan =
+        postJson("/api/scans", if (onBehalfOfWorkerId != null) req.copy(onBehalfOfWorkerId = onBehalfOfWorkerId) else req)
 
     suspend fun getScan(id: Int): RouteScan =
         get("/api/scans/$id")
@@ -977,6 +1005,32 @@ class GccApiClient(
     /** Get current verification status */
     suspend fun getVerificationStatus(): WorkerVerification =
         get("/api/workers/me/verification")
+
+    // ── Worker Connect (Stripe) ────────────────────────────────────────
+
+    /** POST /api/workers/me/connect/onboard — returns the Stripe-hosted onboarding URL. */
+    suspend fun connectOnboard(): String {
+        val response = httpClient.post("$baseUrl/api/workers/me/connect/onboard")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        val body = response.body<JsonObject>()
+        return body["url"]?.jsonPrimitive?.content
+            ?: throw Exception("No url in onboard response")
+    }
+
+    /** GET /api/workers/me/connect/status — returns Connect account onboarding status. */
+    suspend fun connectStatus(): ConnectStatus {
+        val response = httpClient.get("$baseUrl/api/workers/me/connect/status")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ConnectStatus>()
+    }
 }
 
 private fun GeoJSONPolygon?.centerLng(): Double? =
@@ -992,6 +1046,28 @@ private fun GeoJSONPolygon?.centerLat(): Double? =
         ?.mapNotNull { it.getOrNull(1) }
         ?.takeIf { it.isNotEmpty() }
         ?.average()
+
+// ── Payout Approval DTOs ──────────────────────────────────────────────
+
+@Serializable
+data class PendingReview(
+    val jobId: Int,
+    val workerId: Int?,
+    val workerName: String?,
+    val payoutAmount: Double?,
+    val beforePhotos: List<String> = emptyList(),
+    val afterPhotos: List<String> = emptyList(),
+    val hasScan: Boolean = false,
+    val scanDepthAvailable: Boolean = false,
+    val completedAt: String?,
+)
+
+@Serializable
+data class ApproveJobResponse(
+    val ok: Boolean,
+    val payoutMethod: String? = null,
+    val transferId: String? = null,
+)
 
 @kotlinx.serialization.Serializable
 private data class ImageLocationUpdate(

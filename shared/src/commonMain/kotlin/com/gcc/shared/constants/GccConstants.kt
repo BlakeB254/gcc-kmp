@@ -3,6 +3,10 @@ package com.gcc.shared.constants
 import com.gcc.shared.model.Coordinates
 
 object GccConstants {
+    // Pricing (cents)
+    const val BLOCK_SPONSORSHIP_CENTS = 10_000   // $100 flat rate for block cleaning
+    const val MIN_BOUNTY_CENTS = 1_000            // $10 minimum bounty reward
+
     // Geofence config
     const val CHECKPOINT_RADIUS_METERS = 15.0
     const val GPS_ACCURACY_THRESHOLD_METERS = 20.0

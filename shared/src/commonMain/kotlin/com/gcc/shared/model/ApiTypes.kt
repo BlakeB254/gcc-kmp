@@ -31,3 +31,10 @@ data class AuthRefreshResponse(
     val token: String,
     val exp: Long,
 )
+
+@Serializable
+data class ConnectStatus(
+    val onboardingStatus: String,
+    val instantPayoutsEnabled: Boolean,
+    val payoutsReady: Boolean,
+)

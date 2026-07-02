@@ -15,6 +15,14 @@ actual fun openUrl(url: String) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
+actual fun appVersion(): String {
+    val dict = platform.Foundation.NSBundle.mainBundle.infoDictionary
+    val version = dict?.get("CFBundleShortVersionString") as? String ?: "Unknown"
+    val build = dict?.get("CFBundleVersion") as? String ?: "0"
+    return "$version ($build)"
+}
+
+@OptIn(ExperimentalForeignApi::class)
 actual fun saveToSystemCredentials(email: String, password: String) {
     @Suppress("UNCHECKED_CAST")
     val domain = CFBridgingRetain("globalcommunitycleaners.org" as NSString) as platform.CoreFoundation.CFStringRef?
