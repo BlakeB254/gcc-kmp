@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { cellCoverageSummary } from '@/db/schema'
-import { and, between } from 'drizzle-orm'
 import { cellCenter } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
