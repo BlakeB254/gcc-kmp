@@ -1585,6 +1585,7 @@ export const worldObservations = pgTable('world_observations', {
   scanHotspotId: integer('scan_hotspot_id'),
   communityReportId: integer('community_report_id'),
   sourceType: varchar('source_type', { length: 20 }).notNull(), // 'route_scan' | 'spot_report'
+  domain: varchar('domain', { length: 20 }).default('litter').notNull(), // 'litter' | 'vegetation' | 'construction' | 'land_use'
   lat: doublePrecision('lat').notNull(),
   lng: doublePrecision('lng').notNull(),
   locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
@@ -1605,6 +1606,38 @@ export const worldObservations = pgTable('world_observations', {
 
 export type WorldObservationRow = typeof worldObservations.$inferSelect
 export type NewWorldObservationRow = typeof worldObservations.$inferInsert
+
+export const scanCoverageEvents = pgTable('scan_coverage_events', {
+  id: serial('id').primaryKey(),
+  deviceId: varchar('device_id', { length: 64 }).notNull(),
+  platform: varchar('platform', { length: 16 }).notNull(), // 'ios' | 'android'
+  workerId: integer('worker_id'),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  lat: doublePrecision('lat').notNull(),
+  lng: doublePrecision('lng').notNull(),
+  distanceMeters: doublePrecision('distance_meters').notNull(),
+  scanMode: varchar('scan_mode', { length: 10 }).notNull(), // 'route' | 'spot'
+  deviceTier: varchar('device_tier', { length: 16 }).notNull(), // 'basic' | 'scanner' | 'pro_scanner'
+  capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  cellCapturedIdx: index('scan_coverage_events_cell_captured_idx').on(table.locationCellId, table.capturedAt),
+}))
+
+export type ScanCoverageEventRow = typeof scanCoverageEvents.$inferSelect
+export type NewScanCoverageEventRow = typeof scanCoverageEvents.$inferInsert
+
+export const cellCoverageSummary = pgTable('cell_coverage_summary', {
+  locationCellId: varchar('location_cell_id', { length: 32 }).primaryKey(),
+  firstScannedAt: timestamp('first_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
+  lastScannedAt: timestamp('last_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
+  totalDistanceMeters: doublePrecision('total_distance_meters').default(0).notNull(),
+  scanCount: integer('scan_count').default(0).notNull(),
+})
+
+export type CellCoverageSummaryRow = typeof cellCoverageSummary.$inferSelect
+export type NewCellCoverageSummaryRow = typeof cellCoverageSummary.$inferInsert
+
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
