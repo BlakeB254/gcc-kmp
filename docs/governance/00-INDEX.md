@@ -10,6 +10,7 @@ This folder is the **source-of-truth documentation set** the GCC project is held
 | 4 | [API-reference-production.md](API-reference-production.md) | Every production endpoint (Next.js on Vercel), grouped, with auth. |
 | 5 | [sitemap-website.md](sitemap-website.md) | Every website page route and audience. |
 | 6 | [app-map-mobile.md](app-map-mobile.md) | Every mobile screen, the scan flow, and the endpoints the app calls. |
+| 7 | [production-readiness-and-scaling.md](production-readiness-and-scaling.md) | Where compute actually happens (on-device vs. Vercel vs. DGX), what auto-scales, what doesn't (DGX splat processing, Stripe admin-approval throughput), and Cloudflare R2 setup steps for canonical scan storage. |
 
 Companion docs already in `docs/` (feature-level, still valid):
 - `feature-spec-2026-05.md` — the canon (§A) and methods (§B). The bedrock.
