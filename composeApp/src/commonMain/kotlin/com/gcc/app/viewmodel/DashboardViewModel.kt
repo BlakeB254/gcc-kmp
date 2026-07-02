@@ -147,7 +147,10 @@ class DashboardViewModel(
         val reports = apiClient.getSpots(limit = 100)
         val scanPins = try {
             apiClient.getMapObservations()
-                .filter { it.communityReportId == null && it.state == "dirty" }
+                // sourceType (not communityReportId) is the dedupe key: spot-report
+                // observations are already pinned via /api/spots, and sourceType is
+                // present in every deployed version of the observations response.
+                .filter { it.sourceType == "route_scan" && it.state == "dirty" }
                 .map { it.toScanMapPin() }
         } catch (_: Exception) {
             emptyList() // observation layer is additive; never block report pins
