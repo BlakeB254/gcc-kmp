@@ -981,6 +981,37 @@ class GccApiClient(
     suspend fun completeScan(scanId: Int, req: CompleteScanRequest): CompleteScanResponse =
         postJson("/api/scans/$scanId/complete", req)
 
+    // ── Scan Coverage Ledger API ───────────────────────────────────
+    // NOTE: these two endpoints return their payload as flat JSON (e.g.
+    // {"inserted":1,"success":true}), not wrapped in the {"data":...,"success":...}
+    // ApiResponse<T> envelope that postJson/get assume — so they use the raw
+    // httpClient pattern (see connectStatus/createCheckoutSession above) instead.
+
+    suspend fun submitCoverageEvents(events: List<ScanCoverageEventRequest>): ScanCoverageSubmitResponse {
+        val response = httpClient.post("$baseUrl/api/scans/coverage") {
+            contentType(ContentType.Application.Json)
+            setBody(ScanCoverageSubmitRequest(events))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ScanCoverageSubmitResponse>()
+    }
+
+    suspend fun getMapCoverage(bbox: String): MapCoverageResponse {
+        val response = httpClient.get("$baseUrl/api/map/coverage") {
+            parameter("bbox", bbox)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<MapCoverageResponse>()
+    }
+
     // ── Cleanliness Analytics ─────────────────────────────────────
 
     suspend fun getCityCleanlinessOverview(): CityCleanlinessOverview =
