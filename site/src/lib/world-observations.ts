@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { worldObservations, blockExclusionZones } from '@/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { pointInPolygon, METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
 
 const CELL_SIZE_METERS = 10
@@ -64,12 +64,18 @@ export async function recordWorldObservation(input: RecordObservationInput) {
     // A new dirty observation of the same itemType in the same cell supersedes
     // only the prior observation of that itemType (a couch and glass 1m apart
     // in the same cell are both allowed to be concurrently "current").
+    // itemType may legitimately be NULL, and NULL = '' never matches in SQL,
+    // so branch to IS NULL rather than coercing null to an empty string.
+    const itemTypeCondition = input.itemType === null
+      ? isNull(worldObservations.itemType)
+      : eq(worldObservations.itemType, input.itemType)
+
     await db
       .update(worldObservations)
       .set({ isCurrent: false })
       .where(and(
         eq(worldObservations.locationCellId, cellId),
-        eq(worldObservations.itemType, input.itemType ?? ''),
+        itemTypeCondition,
         eq(worldObservations.isCurrent, true)
       ))
   }
