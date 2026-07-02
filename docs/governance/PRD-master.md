@@ -2,7 +2,7 @@
 
 **Product:** Global Community Cleaners (GCC) · 501(c)(3) · Pilot: North Lawndale, Chicago
 **Surfaces:** Website (Next.js/Vercel) · Worker mobile app (Compose Multiplatform; iOS App ID 6760203806) · Admin (web + in-app)
-**Audited/owned:** 2026-06-24 · Supersedes feature-scoped PRDs for cross-cutting decisions; defers to `feature-spec-2026-05.md` for canon.
+**Audited/owned:** 2026-06-24, updated 2026-07-02 · Supersedes feature-scoped PRDs for cross-cutting decisions; defers to `feature-spec-2026-05.md` for canon.
 
 ## 1. Vision & canon (load-bearing — from feature-spec §A)
 GCC is the **field-evidence layer for community cleanliness** — not a cleaning service. It makes neighborhood cleanliness measurable, fundable, and accountable block-by-block.
@@ -35,6 +35,11 @@ Legend: ✅ live in prod · ⚠️ partial/built-but-not-wired-in-prod · ❌ no
 | Admin 2FA | ❌ | Face ID re-auth only; branch `feature/spot-map-admin-2fa-faceid` |
 | Wallet (worker) | ⚠️ | stubbed endpoints |
 | Environment data retention (digital twin) | ✅ | depth/pose/geojson/photos/attestation persisted per scan |
+| **Unified world-observation model** (`worldObservations`) | ✅ | live 2026-07-01 (PR #6) — dirty/clean supersession, chronological history per ~10m cell; map repointed to it |
+| **Private-property exclusion zones** | ✅ | live 2026-07-01 (PR #6) — admin-drawn polygons filter both map + lap-2 clean instructions |
+| **Immersive AR route overlay** (fog-of-war, boundary wall) | ⚠️ | scaffolded 2026-07-01, live on TestFlight build 100/101 — directional-arrow rendering + fog cell-add math still `DEFERRED` in code (Task 17 of the unified-scan-ecosystem plan), needs a MacBook/Xcode session, not yet done |
+| **Scan coverage ledger** (`scanCoverageEvents`/`cellCoverageSummary`) | ⚠️ | backend live 2026-07-02 (PR #7) — answers "was this cell ever scanned / when" (`worldObservations` alone can't); no mobile producer wired yet, so it has zero real data flowing in yet |
+| **Spot-mode AR guidance foundation** (`ObjectCoverageTracker`, `CoverageEventQueue`) | ⚠️ | pure-Kotlin logic live 2026-07-02 (PR #7), TDD-verified; iOS rendering (`SpotArOverlay`, `ArSessionHealth`) not yet authored — needs the same MacBook session as the AR route overlay's Task 17 |
 
 ## 5. Requirements that govern all surfaces
 1. **Eligibility:** only `verificationStatus=approved` + `proofOfAddressStatus=approved` + in-zone workers may be assigned/claim paid blocks.
@@ -48,7 +53,9 @@ Legend: ✅ live in prod · ⚠️ partial/built-but-not-wired-in-prod · ❌ no
 
 ## 6. Roadmap (priority order)
 - **P0 (now):** Run the two North Lawndale 10-block sessions via **direct ordered assignment** (Option A in the gap doc); finish/confirm the **admin override** for scan pass/fail; remove the test route; backfill rankings.
+- **P0.5 (MacBook-blocked, tracked in `docs/superpowers/plans/2026-07-01-unified-scan-ecosystem.md` Task 17 and `docs/superpowers/plans/2026-07-02-phase1-spot-guidance-and-event-emission.md` Tasks 4-6):** finish the AR route-overlay directional arrow, author + verify `SpotArOverlay`/`ArSessionHealth` on-device, wire spot-mode guidance into the capture flow, and get a new TestFlight build out — this is the single biggest gap between "the world-observation/coverage-ledger backend exists" and "the app actually produces AR-guided scan data at scale."
 - **P1:** Port **queue/batch release** endpoints into the Next.js API (Option B) to make "load next in line" a real automated button driving the app's existing offer UI; server-side ML "after has less debris" check; admin 2FA.
+- **P1.5:** See `docs/superpowers/specs/2026-07-02-scan-guidance-world-model-and-rewards-design.md` for the full follow-on vision once P0.5 lands — canonical scan storage (DGX + R2), crowdsourced 3D reconstruction (splat fusion, Niantic-VPS-informed pipeline), map tile freshness + realistic litter rendering, distance-tracked points, and reward-feedback UX.
 - **P2:** Offline capture/sync for dead zones; digital-twin / game data export pipeline; multi-community scaling; decide long-term backend (keep Next.js vs. migrate to Ktor).
 
 ## 7. Success metrics
@@ -58,5 +65,5 @@ Legend: ✅ live in prod · ⚠️ partial/built-but-not-wired-in-prod · ❌ no
 - Queue path (A/B/C) — see gap doc.
 - Long-term backend (Next.js-only vs. Ktor migration).
 - Scan adjudication threshold + who overrides.
-- Data consent/retention + bystander privacy policy.
+- **Data consent/retention + bystander privacy policy — no longer a someday item.** Research into Niantic's crowdsourced scan-collection model (2026-07-02, see the scan-guidance-world-model spec §7.1) surfaced a live, current precedent: Niantic's player scan data reportedly training military drone navigation under consent language that never disclosed that use, drawing real public backlash. GCC's scans will more frequently and identifiably capture private property/bystanders than casual game photos. **Must resolve before Phase 2 (raw scan storage) or Phase 4 (public photo-billboard map rendering) ship** — narrow, explicit ToS purpose-limitation language, not a general policy someday.
 - "2-lap perimeter" vs. the implemented scout→hotspot→clean model (confirm after on-device test).
