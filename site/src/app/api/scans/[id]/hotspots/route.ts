@@ -8,6 +8,7 @@ import {
   normalizeTags,
   toMobileScanHotspot,
 } from '@/lib/mobile-route-scan-response'
+import { recordWorldObservation } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -68,6 +69,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: 'detected',
       })
       .returning()
+
+    const trashTypesArr = normalizeTags(body?.trashTypes)
+    await recordWorldObservation({
+      sourceType: 'route_scan',
+      scanHotspotId: hotspot.id,
+      lat,
+      lng,
+      itemType: trashTypesArr[0] ?? 'general_litter',
+      state: 'dirty',
+      severity: hotspot.severity,
+      estimatedVolumeLiters: hotspot.estimatedVolumeLiters ?? undefined,
+      estimatedWeightLbs: hotspot.estimatedWeightLbs ?? undefined,
+      confidence: hotspot.confidence,
+      mediaUrl: hotspot.beforePhotoUrl,
+      depthData: hotspot.depthData ?? undefined,
+      arAnchorData: hotspot.arAnchorData ?? undefined,
+      capturedAt: hotspot.detectedAt,
+      // No blockId: routeScans/routes carry no block_id column (verified in schema.ts) —
+      // exclusion-zone checks return false for route-scan observations until block
+      // linkage is added to the schema (tracked as a known gap, not this task's scope).
+    })
 
     return NextResponse.json({ data: toMobileScanHotspot(hotspot), success: true }, { status: 201 })
   } catch (error) {

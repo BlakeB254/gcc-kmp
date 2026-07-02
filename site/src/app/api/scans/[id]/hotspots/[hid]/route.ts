@@ -9,6 +9,7 @@ import {
   normalizeHotspotStatus,
   toMobileScanHotspot,
 } from '@/lib/mobile-route-scan-response'
+import { recordWorldObservation } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -56,6 +57,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (!updated) {
       return NextResponse.json({ data: null, success: false, message: 'Hotspot not found' }, { status: 404 })
+    }
+
+    if (status === 'cleaned') {
+      await recordWorldObservation({
+        sourceType: 'route_scan',
+        scanHotspotId: updated.id,
+        lat: updated.lat,
+        lng: updated.lng,
+        itemType: null,
+        state: 'clean',
+        mediaUrl: updated.afterPhotoUrl ?? undefined,
+        capturedAt: updated.cleanedAt ?? new Date().toISOString(),
+      })
     }
 
     return NextResponse.json({ data: toMobileScanHotspot(updated), success: true })
