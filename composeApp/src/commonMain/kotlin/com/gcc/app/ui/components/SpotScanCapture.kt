@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
@@ -48,10 +49,12 @@ fun SpotScanCapture(
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    val gpsHeading by locationProvider.headingDegrees.collectAsState()
     val scope = rememberCoroutineScope()
 
     val sessionId = remember { generateSessionId() }
     val analyzer = remember { OnDeviceAnalyzer() }
+    val cameraManager = remember { CameraManager() }
     var captureIndex by remember { mutableStateOf(0) }
 
     DisposableEffect(Unit) {
@@ -92,58 +95,79 @@ fun SpotScanCapture(
     }
     val gpsTimedOut = currentLocation == null && gpsWaitSeconds > 10
 
+    // Shared by tap-capture and the automatic first scan below.
+    fun handleCapture(photo: CapturedPhoto) {
+        if (!currentCanCapture) return
+
+        val idx = captureIndex
+        captureIndex = captureIndex + 1
+        val location = currentLocation
+
+        // Prefer attestation from CameraManager when available
+        val attestation = photo.attestation ?: CaptureAttestation(
+            capturedAt = Clock.System.now().toEpochMilliseconds(),
+            capturedLat = location?.lat,
+            capturedLng = location?.lng,
+            deviceModel = getDeviceModel(),
+            osVersion = getOsVersion(),
+            sessionId = sessionId,
+            captureIndex = idx,
+            isLiveCapture = true,
+        )
+
+        val scanPhoto = ScanCapturedPhoto(
+            photoBytes = photo.bytes,
+            photoWidth = photo.width,
+            photoHeight = photo.height,
+            depthAnalysis = photo.depthAnalysis,
+            captureLocation = location,
+            attestation = attestation,
+            distanceFromSpot = distanceToSpot,
+        )
+
+        if (idx == 0) {
+            scope.launch {
+                try {
+                    val analysis = analyzer.analyzePhoto(
+                        imageBytes = photo.bytes,
+                        depthAnalysis = photo.depthAnalysis,
+                    )
+                    onPhotoCaptured(scanPhoto.copy(aiAnalysis = analysis))
+                } catch (_: Exception) {
+                    onPhotoCaptured(scanPhoto)
+                }
+            }
+        } else {
+            onPhotoCaptured(scanPhoto)
+        }
+    }
+
+    // The scan is active the moment the screen opens: once the camera session
+    // is live and the geofence allows capture, automatically take the first
+    // environment scan (with depth + on-device AI) without any user action.
+    // Additional items are captured by tapping them on the preview.
+    var autoScanFired by remember { mutableStateOf(false) }
+    LaunchedEffect(canCapture, capturedPhotos.isEmpty()) {
+        if (autoScanFired || !canCapture || capturedPhotos.isNotEmpty()) return@LaunchedEffect
+        delay(2500L) // let the camera session + GPS settle
+        if (!currentCanCapture) return@LaunchedEffect
+        val photo = cameraManager.capturePhoto()
+        if (photo != null) {
+            autoScanFired = true
+            handleCapture(photo)
+        }
+    }
+
     Box(modifier = modifier) {
         CameraCapture(
             capturedPhotos = capturedPhotos,
-            onCapture = { photo ->
-                if (!currentCanCapture) return@CameraCapture
-
-                val idx = captureIndex
-                captureIndex = captureIndex + 1
-                val location = currentLocation
-
-                // Prefer attestation from CameraManager when available
-                val attestation = photo.attestation ?: CaptureAttestation(
-                    capturedAt = Clock.System.now().toEpochMilliseconds(),
-                    capturedLat = location?.lat,
-                    capturedLng = location?.lng,
-                    deviceModel = getDeviceModel(),
-                    osVersion = getOsVersion(),
-                    sessionId = sessionId,
-                    captureIndex = idx,
-                    isLiveCapture = true,
-                )
-
-                val scanPhoto = ScanCapturedPhoto(
-                    photoBytes = photo.bytes,
-                    photoWidth = photo.width,
-                    photoHeight = photo.height,
-                    depthAnalysis = photo.depthAnalysis,
-                    captureLocation = location,
-                    attestation = attestation,
-                    distanceFromSpot = distanceToSpot,
-                )
-
-                if (idx == 0) {
-                    scope.launch {
-                        try {
-                            val analysis = analyzer.analyzePhoto(
-                                imageBytes = photo.bytes,
-                                depthAnalysis = photo.depthAnalysis,
-                            )
-                            onPhotoCaptured(scanPhoto.copy(aiAnalysis = analysis))
-                        } catch (_: Exception) {
-                            onPhotoCaptured(scanPhoto)
-                        }
-                    }
-                } else {
-                    onPhotoCaptured(scanPhoto)
-                }
-            },
+            onCapture = { handleCapture(it) },
             onRemovePhoto = onRemovePhoto,
             maxPhotos = maxPhotos,
             showMiniMap = true,
             currentLocation = currentLocation,
+            gpsHeading = gpsHeading,
+            cameraManager = cameraManager,
             modifier = Modifier.fillMaxSize(),
         )
 

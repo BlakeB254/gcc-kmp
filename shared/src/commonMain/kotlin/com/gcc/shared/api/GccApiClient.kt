@@ -864,6 +864,23 @@ class GccApiClient(
         }
     }
 
+    /**
+     * Fetch the unified world-observation layer for the map — current
+     * (non-superseded, non-excluded) observations from both route scans and
+     * spot reports. Optional [bbox] is "minLng,minLat,maxLng,maxLat".
+     */
+    suspend fun getMapObservations(bbox: String? = null): List<WorldObservation> {
+        val response = httpClient.get("$baseUrl/api/map/observations") {
+            bbox?.let { parameter("bbox", it) }
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return json.decodeFromString<WorldObservationsResponse>(response.bodyAsText()).observations
+    }
+
     // Upload spot photos (multipart form data), returns list of public URLs
     suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> {
         if (photos.isEmpty()) return emptyList()
