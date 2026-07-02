@@ -17,6 +17,22 @@ export function gridCell(lat: number, lng: number, cellSizeMeters = CELL_SIZE_ME
   return `${latIdx}:${lngIdx}`
 }
 
+/**
+ * Inverse of gridCell: approximate lat/lng center of a cell, given its key.
+ * Used by map-facing reads that need real coordinates back, not just a cell id.
+ */
+export function cellCenter(cellId: string, cellSizeMeters = CELL_SIZE_METERS): { lat: number; lng: number } {
+  const [latIdxStr, lngIdxStr] = cellId.split(':')
+  const latIdx = Number(latIdxStr)
+  const lngIdx = Number(lngIdxStr)
+  const latStep = cellSizeMeters / METERS_PER_DEG_LAT
+  const lngStep = cellSizeMeters / METERS_PER_DEG_LNG
+  return {
+    lat: (latIdx + 0.5) * latStep,
+    lng: (lngIdx + 0.5) * lngStep,
+  }
+}
+
 export interface RecordObservationInput {
   sourceType: 'route_scan' | 'spot_report'
   scanHotspotId?: number
