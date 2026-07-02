@@ -9,6 +9,7 @@ import { db } from '@/db'
 import { communityReports, pointsLedger, workers } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { recordWorldObservation } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,6 +155,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
           statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${cleanupBonusPoints}`,
         })
         .where(eq(workers.id, auth.workerId))
+
+      // Record a 'clean' world observation now that the spot has been cleaned up.
+      // This supersedes any 'dirty' observations at this grid cell (see
+      // recordWorldObservation in world-observations.ts). Coordinates are usually
+      // stored as GeoJSON [lng, lat] (the format spots/route.ts writes at spot
+      // creation), but older/admin-created rows may store {lat, lng} objects —
+      // handle both shapes, matching the normalization spots/route.ts already
+      // does for map markers.
+      const rawCoords = report.coordinates as any
+      const obsLat = Array.isArray(rawCoords) ? rawCoords[1] : (rawCoords?.lat ?? null)
+      const obsLng = Array.isArray(rawCoords) ? rawCoords[0] : (rawCoords?.lng ?? rawCoords?.lon ?? null)
+      if (typeof obsLat === 'number' && typeof obsLng === 'number') {
+        await recordWorldObservation({
+          sourceType: 'spot_report',
+          communityReportId: spotId,
+          lat: obsLat,
+          lng: obsLng,
+          itemType: null,
+          state: 'clean',
+          mediaUrl: trashHeapMediaUrl || (afterMediaUrls && afterMediaUrls[0]) || undefined,
+          capturedAt: new Date().toISOString(),
+        })
+      }
 
       // Fetch coordinates from original report
       const coords = report.coordinates as [number, number] | null

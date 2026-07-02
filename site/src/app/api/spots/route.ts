@@ -10,6 +10,7 @@ import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { autoTagFromDescription, resolveSpotTags, toCommunityReport } from '@/lib/spot-utils'
 import { reverseGeocode } from '@/lib/geo-lookup'
+import { recordWorldObservation } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 
@@ -243,6 +244,34 @@ export async function POST(request: NextRequest) {
         source: 'user', // User-submitted spots (vs 'admin' for GCC base data)
       })
       .returning()
+
+    // Explode on-device AI detections into per-item world observations; fall
+    // back to a single observation from the first tag (or 'general_litter')
+    // when no structured AI result is present.
+    const detectedItems: { itemType: string; severity?: number; confidence?: number }[] =
+      Array.isArray(onDeviceAiResult?.items) && onDeviceAiResult.items.length > 0
+        ? onDeviceAiResult.items.map((it: any) => ({
+            itemType: it.type ?? it.itemType ?? 'general_litter',
+            severity: Number.isFinite(Number(it.severity)) ? Number(it.severity) : undefined,
+            confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
+          }))
+        : [{ itemType: (effectiveTags?.[0] as string) ?? 'general_litter' }]
+
+    for (const item of detectedItems) {
+      await recordWorldObservation({
+        sourceType: 'spot_report',
+        communityReportId: newReport.id,
+        lat,
+        lng,
+        itemType: item.itemType,
+        state: 'dirty',
+        severity: item.severity,
+        confidence: item.confidence,
+        mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
+        depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
+        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+      })
+    }
 
     // Reverse geocode to populate geographic categorization (best-effort, non-blocking)
     reverseGeocode(lat, lng).then(async (geo) => {
