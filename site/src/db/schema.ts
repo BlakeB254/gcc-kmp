@@ -1547,6 +1547,35 @@ export type RouteScanRow = typeof routeScans.$inferSelect
 export type NewRouteScanRow = typeof routeScans.$inferInsert
 export type ScanHotspotRow = typeof scanHotspots.$inferSelect
 export type NewScanHotspotRow = typeof scanHotspots.$inferInsert
+
+// World observation model — the unified map/digital-twin layer fed by both
+// route-scan hotspots and spot reports. See docs/superpowers/specs/2026-07-01-
+// unified-scan-ecosystem-and-immersive-route-design.md §2.
+export const worldObservations = pgTable('world_observations', {
+  id: serial('id').primaryKey(),
+  scanHotspotId: integer('scan_hotspot_id'),
+  communityReportId: integer('community_report_id'),
+  sourceType: varchar('source_type', { length: 20 }).notNull(), // 'route_scan' | 'spot_report'
+  lat: doublePrecision('lat').notNull(),
+  lng: doublePrecision('lng').notNull(),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  itemType: varchar('item_type', { length: 50 }), // null when state='clean' (nothing dirty found)
+  state: varchar('state', { length: 10 }).notNull(), // 'dirty' | 'clean'
+  severity: integer('severity'),
+  estimatedVolumeLiters: doublePrecision('estimated_volume_liters'),
+  estimatedWeightLbs: doublePrecision('estimated_weight_lbs'),
+  confidence: doublePrecision('confidence'),
+  mediaUrl: varchar('media_url', { length: 500 }),
+  depthData: text('depth_data'),
+  arAnchorData: text('ar_anchor_data'),
+  capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }).notNull(),
+  isCurrent: boolean('is_current').default(true).notNull(),
+  excludedPrivateProperty: boolean('excluded_private_property').default(false).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type WorldObservationRow = typeof worldObservations.$inferSelect
+export type NewWorldObservationRow = typeof worldObservations.$inferInsert
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
