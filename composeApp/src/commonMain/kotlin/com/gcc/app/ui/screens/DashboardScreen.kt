@@ -189,7 +189,10 @@ fun DashboardScreen(
                 onClick = onSpotClick,
                 containerColor = GccGreen,
             ) {
-                Text("\uD83D\uDCF8", style = MaterialTheme.typography.headlineMedium)
+                EnvironmentScanIcon(
+                    beamColor = Color.White,
+                    natureColor = Color.White.copy(alpha = 0.92f),
+                )
             }
         },
         bottomBar = {
