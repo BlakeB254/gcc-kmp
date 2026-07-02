@@ -40,6 +40,11 @@ export async function GET(request: NextRequest) {
       mediaUrl: r.mediaUrl,
       sourceType: r.sourceType,
       capturedAt: r.capturedAt,
+      // Source-record links so clients can resolve the backing report/hotspot
+      // (the mobile map uses communityReportId to avoid double-pinning spots
+      // it already renders from /api/spots).
+      scanHotspotId: r.scanHotspotId,
+      communityReportId: r.communityReportId,
     }))
 
     return NextResponse.json({ observations, success: true })

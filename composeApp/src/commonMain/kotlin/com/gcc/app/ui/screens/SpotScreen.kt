@@ -216,6 +216,7 @@ private fun CameraPhase(
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+    val gpsHeading by locationProvider.headingDegrees.collectAsState()
     val isScanMode = deviceCapabilities.deviceClass != DeviceClass.BASIC
     val scanLocation = spotLocation
         ?: currentLocation
@@ -261,6 +262,7 @@ private fun CameraPhase(
                 modifier = Modifier.weight(1f),
                 showMiniMap = true,
                 currentLocation = currentLocation,
+                gpsHeading = gpsHeading,
             )
         }
 

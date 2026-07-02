@@ -128,12 +128,34 @@ class DashboardViewModel(
     fun loadSpots() {
         scope.launch {
             try {
-                val spots = apiClient.getSpots(limit = 100)
+                val spots = loadUnifiedSpots()
                 _uiState.value = _uiState.value.copy(spots = spots)
             } catch (_: Exception) {
                 // Spot loading is non-critical; silently fail
             }
         }
+    }
+
+    /**
+     * Community reports plus scan-sourced pins from the unified
+     * world-observation layer. Reports stay the source of record for their
+     * own pins (tap-through to details keeps working); observations
+     * contribute the route-scan hotspots that have no backing report, which
+     * previously never appeared on the mobile map at all.
+     */
+    private suspend fun loadUnifiedSpots(): List<CommunityReport> {
+        val reports = apiClient.getSpots(limit = 100)
+        val scanPins = try {
+            apiClient.getMapObservations()
+                // sourceType (not communityReportId) is the dedupe key: spot-report
+                // observations are already pinned via /api/spots, and sourceType is
+                // present in every deployed version of the observations response.
+                .filter { it.sourceType == "route_scan" && it.state == "dirty" }
+                .map { it.toScanMapPin() }
+        } catch (_: Exception) {
+            emptyList() // observation layer is additive; never block report pins
+        }
+        return reports + scanPins
     }
 
     fun declineAssignedJob(jobId: Int) {
@@ -187,7 +209,7 @@ class DashboardViewModel(
                         try { apiClient.getMyServiceArea() } catch (_: Exception) { null }
                     }
                     val spotsDeferred = async {
-                        try { apiClient.getSpots(limit = 100) } catch (_: Exception) { null }
+                        try { loadUnifiedSpots() } catch (_: Exception) { null }
                     }
 
                     val routeRecords = routeRecordsDeferred.await()

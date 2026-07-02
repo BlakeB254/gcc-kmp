@@ -705,19 +705,33 @@ actual fun GccMap(
                 }
                 val userLocationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(userLocationJson))
 
-                // Accuracy halo — semi-transparent blue circle
-                CircleLayer(
-                    id = "user-location-halo",
-                    source = userLocationSrc,
-                    color = const(Color(0xFF007AFF).copy(alpha = 0.12f)),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        10 to const(8.dp),
-                        14 to const(24.dp),
-                        17 to const(48.dp),
-                    ),
-                )
+                // Directional cone showing which way the user is facing.
+                // Replaces the accuracy halo whenever a compass heading exists.
+                if (gpsHeading != null) {
+                    val headingConeJson = remember(currentLocation, gpsHeading) {
+                        headingConeGeoJson(currentLocation.lat, currentLocation.lng, gpsHeading)
+                    }
+                    val headingConeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(headingConeJson))
+                    FillLayer(
+                        id = "user-location-heading-cone",
+                        source = headingConeSrc,
+                        color = const(Color(0xFF007AFF).copy(alpha = 0.30f)),
+                    )
+                } else {
+                    // Accuracy halo — semi-transparent blue circle
+                    CircleLayer(
+                        id = "user-location-halo",
+                        source = userLocationSrc,
+                        color = const(Color(0xFF007AFF).copy(alpha = 0.12f)),
+                        radius = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(8.dp),
+                            14 to const(24.dp),
+                            17 to const(48.dp),
+                        ),
+                    )
+                }
                 // White border ring
                 CircleLayer(
                     id = "user-location-border",

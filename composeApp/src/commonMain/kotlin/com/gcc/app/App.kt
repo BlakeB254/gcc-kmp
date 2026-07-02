@@ -168,6 +168,8 @@ fun App(component: RootComponent) {
                 is Screen.Feed -> FeedScreen(
                     onBack = component::navigateBack,
                     onNavigateToArticles = component::navigateToArticles,
+                    onImpactClick = component::navigateToImpact,
+                    onSponsorWallClick = component::navigateToSponsorWall,
                 )
                 is Screen.BiometricGate -> BiometricGateScreen(
                     onSuccess = component::onBiometricSuccess,

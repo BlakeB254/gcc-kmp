@@ -659,19 +659,11 @@ private fun SpotCreateButton(onClick: () -> Unit) {
             pressedElevation = 6.dp,
         ),
     ) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "+",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
-            )
-        }
+        com.gcc.app.ui.components.EnvironmentScanIcon(
+            beamColor = Color.White,
+            natureColor = Color.White.copy(alpha = 0.92f),
+            modifier = Modifier.size(26.dp),
+        )
     }
 }
 

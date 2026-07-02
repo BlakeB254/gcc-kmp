@@ -189,7 +189,10 @@ fun DashboardScreen(
                 onClick = onSpotClick,
                 containerColor = GccGreen,
             ) {
-                Text("\uD83D\uDCF8", style = MaterialTheme.typography.headlineMedium)
+                EnvironmentScanIcon(
+                    beamColor = Color.White,
+                    natureColor = Color.White.copy(alpha = 0.92f),
+                )
             }
         },
         bottomBar = {
@@ -349,47 +352,43 @@ fun DashboardScreen(
                         .padding(horizontal = 13.dp),
                     horizontalArrangement = Arrangement.spacedBy(13.dp),
                 ) {
+                    // Consolidated to five: Impact and the Sponsor Wall now live
+                    // inside Community (Feed) as entry cards, and points/awards
+                    // are already tabs within Rankings.
                     QuickActionButton(
                         emoji = "\uD83D\uDCF8",
-                        label = "Spot\nReport",
-                        bgColor = CardAccentRed,
+                        label = "Scan\nSpot",
+                        bgColor = GccBlue,
                         onClick = onSpotClick,
+                        icon = { EnvironmentScanIcon(beamColor = GccBlue, natureColor = GccGreen) },
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC6",
                         label = "Bounties",
                         bgColor = CardAccentSky,
                         onClick = onBountyListClick,
+                        icon = { BountyTargetIcon(color = CardAccentSky) },
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDCB0",
                         label = "Wallet",
                         bgColor = CardAccentBlue,
                         onClick = onWalletClick,
+                        icon = { WalletCardIcon(color = CardAccentBlue) },
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC5",
                         label = "Rankings",
                         bgColor = CardAccentPurple,
                         onClick = onLeaderboardClick,
+                        icon = { RankingsPodiumIcon(color = CardAccentPurple) },
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDCF0",
-                        label = "Feed",
+                        label = "Community",
                         bgColor = GccGreen,
                         onClick = onFeedClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\uD83D\uDCCA",
-                        label = "Impact",
-                        bgColor = CardAccentGreen,
-                        onClick = onImpactClick,
-                    )
-                    QuickActionButton(
-                        emoji = "\uD83E\uDD1D",
-                        label = "Sponsors",
-                        bgColor = CardAccentBlue,
-                        onClick = onSponsorWallClick,
+                        icon = { CommunityNetworkIcon(color = GccGreen) },
                     )
                 }
             }
@@ -510,6 +509,7 @@ private fun QuickActionButton(
     bgColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -533,10 +533,14 @@ private fun QuickActionButton(
                     .background(bgColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    emoji,
-                    fontSize = 24.sp,
-                )
+                if (icon != null) {
+                    icon()
+                } else {
+                    Text(
+                        emoji,
+                        fontSize = 24.sp,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(5.dp))

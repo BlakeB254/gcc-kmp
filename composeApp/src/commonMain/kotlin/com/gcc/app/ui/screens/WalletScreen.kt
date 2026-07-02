@@ -44,6 +44,7 @@ fun WalletScreen(
     LaunchedEffect(Unit) {
         viewModel.loadWallet()
         viewModel.loadTransactions()
+        viewModel.loadConnectStatus()
     }
 
     // Block Cleaning bottom sheet
@@ -106,6 +107,70 @@ fun WalletScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             ) {
+                // ── Earnings & payouts (worker) — how the money reaches you.
+                // Payouts are automatic on job approval via Stripe Connect, so
+                // the "cash out" story is payout readiness, front and center.
+                item {
+                    SectionHeader(title = "Your Earnings")
+                }
+                item {
+                    val connectStatus = uiState.connectStatus
+                    val payoutsReady = connectStatus?.payoutsReady == true
+                    GccCard(
+                        accentColor = if (payoutsReady) CardAccentGreen else CardAccentSky,
+                        elevation = 4.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (payoutsReady) "Payouts active ✓" else "Get paid for your work",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (payoutsReady) GccGreen else MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    if (payoutsReady) {
+                                        "Route and bounty earnings are deposited to your bank automatically as soon as your work is approved."
+                                    } else {
+                                        "Connect your bank once — after that, every approved route or bounty pays out to you automatically. No cash-out step."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                )
+                            }
+                            if (uiState.connectStatusLoading || uiState.connectOnboardLoading) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = GccGreen,
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                        }
+                        if (!payoutsReady && !uiState.connectStatusLoading) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            GccButton(
+                                text = if (connectStatus != null && connectStatus.onboardingStatus != "not_started") {
+                                    "Finish payout setup"
+                                } else {
+                                    "Set up payouts"
+                                },
+                                onClick = { viewModel.startConnectOnboard() },
+                                enabled = !uiState.connectOnboardLoading,
+                            )
+                        }
+                        uiState.connectError?.let { err ->
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+
+                // ── Sponsor funds ──
                 // Total balance
                 if (wallet != null) {
                     item {
@@ -113,7 +178,7 @@ fun WalletScreen(
                         val totalCents = wallet.totalBalance % 100
                         GccCard(accentColor = CardAccentGreen, elevation = 4.dp) {
                             Text(
-                                "Total Balance",
+                                "Sponsor Balance",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextMuted,
                             )
@@ -128,7 +193,7 @@ fun WalletScreen(
 
                     // Fund breakdown
                     item {
-                        SectionHeader(title = "Fund Breakdown")
+                        SectionHeader(title = "Sponsor Funds")
                     }
 
                     item {

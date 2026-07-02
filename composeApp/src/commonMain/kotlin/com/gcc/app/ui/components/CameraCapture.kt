@@ -2,7 +2,9 @@ package com.gcc.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,13 +34,21 @@ import kotlinx.coroutines.launch
 /**
  * Reusable full-screen camera composable for capturing photos.
  *
+ * The viewfinder is live and capture-ready as soon as it opens — there is no
+ * shutter button. Tapping anywhere on the preview captures a photo of what
+ * the user is pointing at (Measure-app style: the scan is always active).
+ *
  * Shows a live camera preview with:
- * - Photo count badge (top-left)
- * - Circular capture button + library button (bottom)
- * - Optional mini-map overlay (bottom-end)
+ * - Photo count badge (bottom-left)
+ * - Tap-to-capture hint chip (bottom-center)
+ * - Optional mini-map overlay with heading cone (bottom-end)
  * - Thumbnail strip of captured photos
  *
  * Used by both SpotScreen camera phase and admin spot creation.
+ *
+ * @param cameraManager pass a shared instance when the caller also drives
+ *   captures itself (e.g. SpotScanCapture's automatic first scan); when null
+ *   a private instance is created.
  */
 @Composable
 fun CameraCapture(
@@ -49,9 +59,11 @@ fun CameraCapture(
     maxPhotos: Int = 3,
     showMiniMap: Boolean = false,
     currentLocation: Coordinates? = null,
+    gpsHeading: Float? = null,
     allowLibraryPick: Boolean = false,
+    cameraManager: CameraManager? = null,
 ) {
-    val cameraManager = remember { CameraManager() }
+    val manager = cameraManager ?: remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
     var isCapturing by remember { mutableStateOf(false) }
     val photoCount = capturedPhotos.size
@@ -63,14 +75,56 @@ fun CameraCapture(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Live camera preview with overlays
+        // Live camera preview with overlays — tap anywhere to capture
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp)),
+                .clip(RoundedCornerShape(16.dp))
+                .pointerInput(atLimit) {
+                    detectTapGestures {
+                        if (!isCapturing && !atLimit) {
+                            isCapturing = true
+                            coroutineScope.launch {
+                                val photo = manager.capturePhoto()
+                                if (photo != null) onCapture(photo)
+                                isCapturing = false
+                            }
+                        }
+                    }
+                },
         ) {
             CameraPreview(modifier = Modifier.fillMaxSize())
+
+            // Capture-in-progress indicator
+            if (isCapturing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center).size(40.dp),
+                    color = GccGreen,
+                    strokeWidth = 3.dp,
+                )
+            }
+
+            // Tap-to-capture hint (bottom-center, above the badges)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 44.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = when {
+                        atLimit -> "Max $maxPhotos photos captured"
+                        isCapturing -> "Capturing..."
+                        else -> "Tap an item to capture it"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                )
+            }
 
             // Mini-map overlay (bottom-end)
             if (showMiniMap && currentLocation != null) {
@@ -88,6 +142,7 @@ fun CameraCapture(
                         centerLng = currentLocation.lng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         currentLocation = currentLocation,
+                        gpsHeading = gpsHeading,
                     )
                     Box(
                         modifier = Modifier
@@ -228,43 +283,12 @@ fun CameraCapture(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Capture + Library buttons
+        // Library button only \u2014 regular capture is tap-on-preview, no shutter button.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Capture button
-            OutlinedButton(
-                onClick = {
-                    if (!isCapturing && !atLimit) {
-                        isCapturing = true
-                        coroutineScope.launch {
-                            val photo = cameraManager.capturePhoto()
-                            if (photo != null) onCapture(photo)
-                            isCapturing = false
-                        }
-                    }
-                },
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (atLimit) Color.Gray else GccGreen),
-                enabled = !isCapturing && !atLimit,
-            ) {
-                if (isCapturing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = GccGreen,
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(
-                        "\uD83D\uDCF8",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
-            }
-
             // Library button — only visible for admins (anti-fraud: users must use live capture)
             if (allowLibraryPick) {
                 OutlinedButton(
