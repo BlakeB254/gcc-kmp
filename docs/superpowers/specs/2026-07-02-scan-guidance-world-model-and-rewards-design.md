@@ -274,6 +274,70 @@ convention for Phase 3's outputs — not a new phase. Both are cheap to build no
 reconstruction pipeline exists, precisely because retrofitting open-format-and-provenance
 onto an already-running proprietary pipeline later would be real, avoidable rework.
 
+### 2.5 DGX as working-set load point; admin navigable-environment viewer
+
+**Explicit direction from this session:** R2 stays the full canonical store (§2.1 —
+durability, all areas, all history), but the DGX should be the place admin/data-viz tooling
+actually *works with* data — pulling down and holding one area's cumulative scan data at a
+time, not the whole world, so it can examine a normalized, navigable 3D environment built
+from everything scanned there over time.
+
+**Working-set fetch, not a second durable copy.** A new admin-scoped endpoint
+(`POST /api/admin/reconstructions/load-area`, `{ locationCellIds: string[] }` or a bbox)
+triggers the DGX to pull the current `reconstructionAssets` rows for those cells plus their
+underlying raw scans from R2 into local scratch storage — explicitly a **cache with a TTL**,
+not a new source of truth. If the DGX disk fills or the process dies, nothing is lost;
+R2 is re-fetched. This keeps §2.1's "DGX is compute, not durable storage" principle intact
+while giving admin tooling the fast local access it needs to actually browse an area.
+
+**The navigable-environment viewer: real research on this, not assumption.** The
+specific technology the "walkable environment from a Gaussian splat" request pointed at —
+NVIDIA's Lyra 2.0 — was researched directly this session and turns out to be the wrong
+tool, on three independent grounds, not just one:
+
+1. **It's generative, not reconstructive.** Lyra 2.0 takes a single photo, generates an
+   imagined video walkthrough via a video diffusion model, then reconstructs *that
+   invented video* into 3DGS. It does not take existing real capture data and make it
+   navigable — architecturally the opposite of "browse our actual cumulative scan data."
+2. **Hardware mismatch.** Its video backbone is a 14B-parameter diffusion transformer
+   (Wan 2.1-14B), benchmarked on a single H100 at several minutes per short walkthrough.
+   GB10 has roughly 1/85th an H100's BF16 throughput and 1/12th its memory bandwidth —
+   this would very plausibly take hours per scene here, before even accounting for the
+   Blackwell sm_120 kernel-compatibility traps this device already has documented history
+   with (`cdx-dgx-spark` skill).
+3. **License bars commercial use outright**, independent of the other two: Lyra's model
+   weights ship under NVIDIA's "Internal Scientific Research and Development Model
+   License," which explicitly prohibits production use and "generating works for sale."
+   This alone rules it out for GCC regardless of fit or hardware.
+
+**What actually solves this, available today, already in this project's toolkit:**
+**SuperSplat's Walk Mode** (open source, PlayCanvas, MIT-style license, browser/WebGL —
+already referenced in this project's `cdx-splat-pipeline` skill for splat viewing). It
+ships exactly the missing capability: first-person click-to-walk/WASD navigation through
+a *real* Gaussian splat, via a voxel-based collision system — `splat-transform` voxelizes
+the splat and flood-fills the navigable interior from a seed point into a watertight
+collision mesh, with one-click Indoor/Outdoor/Object collision presets. This is
+non-generative by design, which is actually the correct property here: an admin wants to
+walk through *what was actually scanned*, not a plausible-looking hallucination filling
+gaps in coverage. It's WebGL rendering with no heavy model inference, so it runs
+comfortably on GB10 (or, honestly, on any machine — the DGX's role here is serving the
+data, not doing GPU-bound rendering work for this specific feature).
+
+**Concrete shape:** the working-set loader (above) stages a cell's `splat.ply` locally;
+a thin admin-only web view (could live in the existing Next.js admin console, or as a
+DGX-hosted local tool per this project's existing pattern of admin/data-viz surfaces)
+embeds SuperSplat's viewer against that staged file with Walk Mode + collision enabled.
+"The system knowing what to expect" — surfacing where the reconstruction is stale, where
+`worldObservations` disagrees with what's rendered, where activation-threshold coverage
+(§3.1) hasn't been met yet for a sub-area — is a real, valuable extension of this viewer
+once it exists, but is scoped as a later addition to this feature, not required for the
+first working version.
+
+**If true generative gap-filling is wanted later** (imagining plausible detail for areas
+genuinely never scanned, distinct from browsing what was scanned), that's a legitimately
+separate, harder research bet — track it as its own future exploration, not a blocker on
+shipping the real-data walkthrough viewer now.
+
 ---
 
 ## 3. Phase 3 — 3D reconstruction / splat pipeline
