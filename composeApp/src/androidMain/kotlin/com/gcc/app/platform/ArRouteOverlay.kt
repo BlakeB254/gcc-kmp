@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Android ArRouteOverlay stub.
@@ -11,9 +13,10 @@ import androidx.compose.ui.Modifier
  * Route" screen falls back to the 2D map + GPS coverage on Android.
  */
 actual class ArRouteOverlay actual constructor() {
-    actual fun updateFog(scannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>) {}
+    actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
+    actual fun updateGeoReference(lat: Double, lng: Double) {}
+    actual fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>) {}
     actual fun updateBoundaryStatus(isOutside: Boolean) {}
-    actual fun updateHeading(degrees: Float) {}
     actual fun start() {}
     actual fun stop() {}
 }

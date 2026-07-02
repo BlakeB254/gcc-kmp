@@ -100,6 +100,9 @@ class RouteScanViewModel(
     fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =
         coverageTracker.cellCenterLatLng(row, col)
 
+    /** Corridor cells (row, col) not yet scanned — the AR fog overlay's node set. */
+    fun unscannedCells(): Set<Pair<Int, Int>> = coverageTracker.getUnscannedCells()
+
     /** Device compass heading in degrees, or null when unavailable. */
     val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
 

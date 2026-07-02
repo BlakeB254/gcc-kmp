@@ -239,6 +239,10 @@ class CoverageTracker {
         return unscanned
     }
 
+    /** Corridor cells (row, col) not yet scanned — drives ArRouteOverlay's fog node set. */
+    fun getUnscannedCells(): Set<Pair<Int, Int>> =
+        corridorCells - _scannedCells.value
+
     // ── Reset ────────────────────────────────────────────────────────
 
     fun reset() {

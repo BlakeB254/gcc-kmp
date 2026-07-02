@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.TrackingState
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
@@ -35,9 +36,10 @@ import com.gcc.app.viewmodel.RouteScanViewModel
  * scout map with the live AR camera view for the duration.
  *
  * Drives [ArRouteOverlay] from the ViewModel's read-only state projections:
- *  - [RouteScanViewModel.isOutsideBoundary] → boundary-crossing wall
- *  - [RouteScanViewModel.scannedCells] + cellCenterLatLng → fog-of-war reveal
- *  - [RouteScanViewModel.headingDegrees] → directional arrow
+ *  - GPS fixes (uiState.currentLat/Lng) → [ArRouteOverlay.updateGeoReference]
+ *  - [RouteScanViewModel.isOutsideBoundary] → boundary-crossing veil
+ *  - [RouteScanViewModel.unscannedCells] + cellCenterLatLng → fog-of-war
+ *  - [ArRouteOverlay.trackingState] → "hold steady" recovery prompt
  *
  * On Android/Desktop [ArRouteOverlayView] is an empty box and the overlay
  * methods are no-ops, so this screen degrades gracefully to just the exit chrome.
@@ -48,9 +50,10 @@ fun ArRouteScreen(
     onExit: () -> Unit = {},
 ) {
     val overlay = remember { ArRouteOverlay() }
+    val ui by viewModel.uiState.collectAsState()
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
-    val heading by viewModel.headingDegrees.collectAsState()
+    val trackingState by overlay.trackingState.collectAsState()
 
     // Overlay lifecycle: start when entering the AR screen, stop on the way out.
     // (iOS also pauses the ARSession from the UIKitView's onRelease.)
@@ -59,16 +62,24 @@ fun ArRouteScreen(
         onDispose { overlay.stop() }
     }
 
-    // Push each StateFlow into the overlay via keyed LaunchedEffect, matching the
-    // effect-per-flow convention used by neighboring screens.
+    // Pair every GPS fix with the AR camera position, then refresh the fog so
+    // it appears as soon as the first pairing exists (fog placement is a no-op
+    // until then — see ArRouteOverlay's geo-reference contract).
+    LaunchedEffect(ui.currentLat, ui.currentLng) {
+        if (ui.currentLat != 0.0 || ui.currentLng != 0.0) {
+            overlay.updateGeoReference(ui.currentLat, ui.currentLng)
+            overlay.updateFog(viewModel.unscannedCells()) { row, col ->
+                viewModel.cellCenterLatLng(row, col)
+            }
+        }
+    }
     LaunchedEffect(isOutsideBoundary) {
         overlay.updateBoundaryStatus(isOutsideBoundary)
     }
     LaunchedEffect(scannedCells) {
-        overlay.updateFog(scannedCells) { row, col -> viewModel.cellCenterLatLng(row, col) }
-    }
-    LaunchedEffect(heading) {
-        heading?.let { overlay.updateHeading(it) }
+        overlay.updateFog(viewModel.unscannedCells()) { row, col ->
+            viewModel.cellCenterLatLng(row, col)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -88,6 +99,27 @@ fun ArRouteScreen(
             ) {
                 Text(
                     text = "You've left the route boundary — head back inside.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+            }
+        }
+
+        // Tracking-health recovery prompt (bottom) — only for degraded tracking.
+        // NOT_AVAILABLE means no AR at all (stub targets, session warming up), so
+        // no prompt; NORMAL needs none.
+        if (trackingState == TrackingState.LIMITED) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Hold steady — improving AR tracking. Move slowly and keep the area lit.",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                 )
