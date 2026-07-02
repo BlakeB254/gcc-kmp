@@ -1,0 +1,428 @@
+# Environment Scan Guidance, World Model & Reward Economy — Design
+
+**Date:** 2026-07-02 · **Author:** Blake (with Claude) · **Status:** Design — pending approval
+
+**Relationship to canon:** builds directly on `docs/superpowers/specs/2026-07-01-unified-scan-ecosystem-and-immersive-route-design.md`
+(shipped to `main` via PR #6, 2026-07-01, now confirmed present in this checkout).
+Specifically:
+
+- Finishes that spec's Initiative 4 "open implementation question." AR rendering is
+  already resolved in shipped code — `ArRouteOverlay.kt` (iosMain, 123 lines) is a
+  SceneKit/ARKit `ARSCNView` implementation rendering fog-of-war and a boundary wall.
+  But the **directional-arrow guidance is explicitly stubbed** — the arrow-node creation
+  and lat/lng→AR-local-space coordinate transform are marked `DEFERRED` in code, not
+  built. This spec finishes that.
+- Extends that spec's Initiative 2 (`worldObservations` unified model) from a
+  litter-only observation log into a multi-domain, multi-device digital-twin spine,
+  and adds the missing "was this area physically scanned" coverage ledger that
+  `worldObservations` does not provide (it only records litter-item state, not
+  scan-coverage state).
+- Extends `docs/superpowers/specs/2026-06-30-same-day-payouts-design.md`'s payout
+  state machine (`pending_review` → admin approve/deny → Stripe transfer → webhook)
+  with reward-feedback UX at each real transition, including wiring the two
+  currently-unused push templates (`jobApproved`, `payoutSent`) that spec left dead.
+
+This spec covers seven phases. They are being planned together because they share one
+architectural spine (the chronological, multi-device world-event model in Phase 0) even
+though they ship and get implemented incrementally — see §10 for sequencing.
+
+---
+
+## 0. Phase 0 — Multi-device chronological world-event model
+
+### 0.1 What's missing today
+
+`worldObservations` (schema.ts, shipped 2026-07-01) already does one thing very well:
+an append-only, never-mutated log of **litter-item state** per ~10m grid cell, with
+correct dirty→clean supersession. It is explicitly described in its own design doc as
+"the digital twin's observational spine." But it answers only one question: *is there
+known litter here, and what kind?* It cannot answer *was this location ever physically
+scanned*, or *when was it last scanned*, independent of whether litter was found. A
+patch of clean sidewalk that's never been visited and a patch of clean sidewalk that was
+scanned yesterday and confirmed clean look identical in `worldObservations` — both have
+zero current rows. That ambiguity is exactly what surfaced as a real user complaint in
+this session ("an area shows as clean on the map that's dirty in real life") and blocks
+never-scanned / stale-scan indication (Phase 4), distance-tracked points (Phase 5), and
+real-time in-camera coverage guidance beyond the current session (Phase 1).
+
+### 0.2 New table: `scanCoverageEvents`
+
+Companion to `worldObservations`, not a replacement. Append-only, same architectural
+pattern (event log, current-state derived by folding, nothing mutated in place):
+
+```
+scanCoverageEvents
+  id                 serial PK
+  deviceId           varchar(64)     -- stable per-install identifier
+  platform           varchar(16)     -- 'ios' | 'android'
+  workerId           integer NULL FK -- who, when authenticated
+  locationCellId     varchar(32)     -- same 10m grid as worldObservations — indexed
+  lat                doublePrecision
+  lng                doublePrecision
+  distanceMeters      doublePrecision  -- new corridor/area distance covered by this event
+  scanMode           varchar(10)     -- 'route' | 'spot'
+  deviceTier         varchar(16)     -- 'basic' | 'scanner' | 'pro_scanner'
+  capturedAt         timestamp
+  createdAt          timestamp defaultNow
+```
+
+Index: `(locationCellId, capturedAt)` — this is the query that answers "when was this
+cell last scanned" and "has this cell ever been scanned" by folding max/min over
+`capturedAt` per cell. A separate low-cardinality summary table
+(`cellCoverageSummary`: `locationCellId` PK, `firstScannedAt`, `lastScannedAt`,
+`totalDistanceMeters`, `scanCount`) is maintained as a materialized rollup, upserted on
+every `scanCoverageEvents` insert, so reads (map tile coloring, points calculation, AR
+guidance queries) never have to fold the full event log — only writes touch it, and
+writes are cheap (single upsert).
+
+**Multi-device requirement (explicit, per this session's direction):** every field on
+`scanCoverageEvents` is platform-agnostic by design. iOS is the only *producer* built in
+this spec (via the AR overlays in Phase 1), but the schema, the write endpoint, and the
+summary-rollup logic carry no iOS-specific assumption anywhere. When Galaxy/Android AR
+scan guidance is built (its own future spec, ARCore-based), it becomes a second producer
+of the same event shape — the backend, map, and points system require no changes to
+accept it.
+
+### 0.3 `worldObservations` domain extension
+
+Add `domain varchar(20) default 'litter'` to `worldObservations`, values
+`'litter' | 'vegetation' | 'construction' | 'land_use'`. This is a schema-only change in
+this spec — existing rows backfill to `'litter'`, existing write paths
+(`recordWorldObservation`) are unchanged in behavior, and no new on-device or
+server-side detection model is built for the three new domains here. The goal is
+narrowly to stop the schema from foreclosing the "track construction progress / grass
+cut or not / trees removed / lots repurposed" ambition described this session, following
+the same pattern the shipped spec already used elsewhere (e.g. the
+`observation-history` endpoint built "not for a UI now, just so the data model doesn't
+foreclose it"). Each new domain's actual detection logic is its own future increment —
+scoping four new CV/classification pipelines into this spec would be a different, much
+larger project.
+
+### 0.4 New endpoints
+
+- `POST /api/scans/coverage` — batched `scanCoverageEvents` insert (client buffers and
+  flushes periodically, same pattern as any offline-tolerant mobile write path).
+- `GET /api/map/coverage?bbox=...` — per-cell summary (`neverScanned` / `fresh` /
+  `stale`, `lastScannedAt`, `totalDistanceMeters`) for the map (Phase 4) and, once wired,
+  the AR guidance engine (Phase 1 fast-follow).
+
+---
+
+## 1. Phase 1 — iOS AR scan-guidance overlay
+
+### 1.1 Route mode: finish `ArRouteOverlay`, don't rebuild it
+
+`ArRouteOverlay.kt` already renders fog-of-war (translucent SceneKit planes per
+unscanned `CoverageTracker` cell, removed as cells clear) and a boundary wall (turns red
+when the camera looks outside the route polygon). This spec implements the deferred
+piece: a directional arrow node, computed from `AiDirectionEngine.bearingTo()` plus
+`CoverageTracker.getUnscannedCenters()`, transformed from lat/lng into the AR session's
+local coordinate space (the transform itself is the specific piece marked `DEFERRED` in
+the current code and is this spec's concrete implementation task).
+
+`AiDirectionBanner.kt`'s text-prompt UI is retired for AR-capable tiers once the arrow
+ships — it remains the **only** guidance UI for `BASIC` tier devices (no ARKit), using
+`AiDirectionEngine`'s existing GPS-tier positional prompts, unchanged.
+
+### 1.2 Spot mode: new guidance, no existing scaffold
+
+Object-relative "circle coverage" guidance for framing a single litter item from
+multiple angles — no equivalent exists today (`SpotScanCapture.kt` is a flat capture UI
+with no coverage/guidance layer). New `ObjectCoverageTracker.kt` (commonMain): angular
+coverage analog to `CoverageTracker` — instead of grid cells along a corridor, it tracks
+which angular sectors around a fixed point have been captured, at which distances, and
+exposes the same shape of "uncovered centers" the arrow-rendering logic already
+consumes. New `SpotArOverlay.kt` (iOS-first, Android/desktop stub — consistent with
+existing `ArScanner`/`ArRouteOverlay` platform precedent) renders it through the same
+arrow+text visual language as route mode.
+
+Both modes share one `ScanMode` (`ROUTE` | `SPOT`) parameter on a common overlay
+composable rather than two independently-built UIs — same rendering, animation, and AR
+session plumbing; different guidance engine underneath.
+
+### 1.3 Device tiering
+
+- `PRO_SCANNER` (LiDAR): full depth-based fog-of-war + boundary + arrow, as already
+  built for route mode, extended to spot mode.
+- `SCANNER` (ARKit, no LiDAR): same overlay, coverage computed via
+  `CoverageTracker.updateWithFrustum` (heading + FOV cone, no depth mesh required —
+  already implemented, just not yet wired to a spot-mode consumer).
+- `BASIC`: unchanged — `AiDirectionBanner` text prompts, no camera overlay.
+
+### 1.4 Tracking-loss handling
+
+New `ArSessionHealth.kt` (expect/actual), wrapping ARKit's `ARCamera.TrackingState`
+callback. On degraded/limited/lost tracking, both overlays show a blocking recovery
+prompt ("hold steady" / "find a well-lit area") and suspend arrow/fog updates until
+tracking recovers — production scanning happens in real-world lighting and motion
+conditions, not demo conditions, and silently showing stale guidance during a tracking
+failure would produce bad data without the user knowing.
+
+### 1.5 Expected-litter markers and rectification credit
+
+On `ROUTE` mode start, fetch current (`isCurrent=true`, `state='dirty'`)
+`worldObservations` for the route's corridor once via the existing
+`GET /api/map/observations` endpoint, and render an `ExpectedItemMarker` in the overlay
+at each location. This is the "the app shows where it expects trash while you're
+walking" behavior requested this session.
+
+**Rectification is explicit-confirm, not passive auto-detect:** the user must aim the
+camera at the marker and tap confirm. Passive auto-crediting on "walked within range,
+AI saw nothing" was considered and rejected — it can't reliably guarantee the camera
+actually covered the spot, and false-positive credit for money/points-adjacent actions
+is a real risk given this app's payout economics. Confirming triggers a new
+`POST /api/scans/[id]/rectify` endpoint that calls `recordWorldObservation` with
+`state='clean'` (using the existing supersession logic — no new write-path logic needed
+there) and emits a `rectification_credit` event that Phase 5's points calculation and
+Phase 6's reward UX both consume.
+
+### 1.6 Client emission contract
+
+Both overlays batch and flush `scanCoverageEvent` records (§0.2) as the user moves
+through a session — this is the primary producer path for the Phase 0 coverage ledger.
+If the coverage-write endpoint is unreachable, events queue locally and retry; the
+overlay's live fog-of-war (session-local, in-memory `CoverageTracker`) is unaffected
+either way, since it doesn't depend on the network round-trip.
+
+### 1.7 Non-goals for this phase
+
+Android/Desktop AR-overlay UI (out of scope, consistent with existing
+`ArScanner`/`ArRouteOverlay` stubs — a future ARCore-based spec, sharing this phase's
+event schema per §0.2); wiring `GET /api/map/coverage` into the live guidance engine for
+cross-session never-scanned/stale indication in-camera (fast-follow once Phase 0 ships
+the backend ledger — this phase's guidance stays session-local coverage in the meantime).
+
+---
+
+## 2. Phase 2 — Backend canonical storage (DGX + Cloudflare R2)
+
+### 2.1 Storage split
+
+- **Cloudflare R2** — raw sensor blobs (LiDAR depth frames, capture video, point
+  clouds). S3-compatible, zero egress fees — material here because DGX repeatedly
+  re-pulls this data for Phase 3 processing, and egress-metered storage would make that
+  expensive at any real scale.
+- **Neon Postgres** (existing) — event-log metadata only: `scanCoverageEvents`,
+  `worldObservations`, R2 object keys, device/quality-tier info. Never holds raw blobs.
+- **DGX Spark** — the processing tier, not the durable store. A scheduled/triggered
+  worker pulls new raw blobs per geo-cell from R2 once enough coverage accumulates for
+  Phase 3 reconstruction, and writes processed outputs (splat assets) back to R2. A
+  single physical device should not be the only copy of canonical global scan data —
+  durability lives in R2 + Postgres; DGX's role is compute, which is exactly what "build
+  cleaned-up splat and 3D environment data" requires from it.
+
+### 2.2 Ingestion path
+
+Mobile app uploads raw capture blobs directly to R2 (presigned upload URLs, issued by a
+new `POST /api/scans/[id]/upload-url` endpoint) alongside the existing
+`scanCoverageEvents`/`worldObservations` metadata writes — the metadata write and the
+blob upload are independent (metadata lands even if the blob upload is still in flight
+or retrying on a bad connection).
+
+### 2.3 Non-goals for this phase
+
+Real-time/streaming ingestion (batched upload is sufficient — nothing in this system
+needs sub-second raw-data availability); any DGX high-availability/redundancy work
+(explicitly out of scope — DGX processes, it does not need to be highly available for
+the durable data to be safe, since R2 holds the canonical raw copies).
+
+---
+
+## 3. Phase 3 — 3D reconstruction / splat pipeline
+
+**This is flagged as research-risk, not a standard build task.** It is a different
+problem in kind from the existing `cdx-splat-pipeline` (which turns one generated image
+into a splat via synthetic multi-axis video generation). This phase needs to **fuse many
+independent people's real-world LiDAR captures of the same physical area**, taken at
+different times, lighting, and devices, into one coherent reconstruction — closer to
+crowdsourced SLAM/photogrammetry registration (Niantic Scaniverse/Wayfarer-class
+problem) than to generative splat creation.
+
+Proposed pipeline shape, pending a research spike before a firm implementation plan:
+
+1. Per-session mesh/point-cloud registration — align each individual capture to a
+   shared coordinate frame (ICP or learned registration against previously-accumulated
+   data for that cell).
+2. Accumulation into a merged point cloud per geo-cell as new sessions register
+   successfully.
+3. Gaussian-splat training from the merged cloud on DGX's Blackwell GPU, triggered once
+   a cell has enough accumulated, well-registered coverage (exact threshold TBD by the
+   spike).
+4. Processed splat assets written to R2, served via CDN for the future viewer surface
+   (out of scope for this spec — no viewer UI is being designed here).
+
+### 3.1 Non-goals for this phase
+
+Any commitment to a specific registration algorithm, training cadence, or quality
+threshold — those are the research spike's job, not this design's. No splat-viewer UI.
+
+---
+
+## 4. Phase 4 — Map visualization
+
+### 4.1 Litter rendering: photo-derived billboard sprites
+
+At close zoom, crop the litter item out of its capture photo (reusing the on-device
+segmentation already needed for AI detection — `onDeviceAiResult`), alpha-matte it, and
+render as a size/rotation-scaled image billboard anchored at the real map location.
+Crossfades to the existing heatmap layer at the existing zoom-14 threshold
+(`SPOT_ZOOM.DOTS_MIN`/`HEATMAP_MIN/MAX/FADE_OUT` in `design-tokens.ts`) — reusing the
+crossfade mechanism already built and tuned, not inventing a new one.
+
+### 4.2 Tile freshness overlay — explicit lesson applied
+
+Grid-cell overlay (same cells as `scanCoverageEvents`/`cellCoverageSummary`), **not** a
+recolor of the base MapLibre style (OpenFreeMap tiles are third-party; the base style
+can't be repainted). Grey fill = never scanned, transparent = scanned within 24h (base
+heatmap/billboard layer shows through normally), amber hatched = stale (>24h).
+
+This team has already tried and reverted a full-earth uniform tint overlay
+(`SPOT_CLEAN_ZONE_BASE`, commits `608ea99`/`86cb757`) for painting the entire map with
+zero data-driven variation, hiding roads and labels, and reading as "can't tell what's
+on the map." This design differs in kind — cell coloring is per-location and
+data-driven, carries real information — but the risk of visual dominance is still real
+in the early rollout period when most of a city is genuinely unscanned. Mitigations,
+both required, not optional:
+
+- Restrict the overlay to close zoom only (same threshold the dot/heatmap crossfade
+  already uses) — never render it as a city-wide wash at low zoom.
+- Make it a toggleable layer ("show scan coverage"), off by default until there's
+  enough real coverage data for it to look like signal rather than a grey city.
+
+### 4.3 New endpoint
+
+`GET /api/map/coverage?bbox=...` (from §0.4) backs this layer directly.
+
+---
+
+## 5. Phase 5 — Points economy overhaul
+
+Computed from `cellCoverageSummary`/`scanCoverageEvents`, distance-tracked as directed
+this session — four distinct categories, weights admin-tunable config rather than
+hardcoded:
+
+1. **New area** (cell never scanned before) — highest points-per-meter.
+2. **Stale re-scan** (cell last scanned >24h ago) — meaningful points-per-meter, less
+   than new-area.
+3. **Fresh re-scan** (cell scanned within 24h) — near-zero, to remove incentive to farm
+   the same block repeatedly in one sitting.
+4. **Rectification** (confirmed-clean at a previously-expected-dirty spot, §1.5) — flat
+   bonus on top of any distance points earned in the same pass, since this is a rarer,
+   higher-effort, higher-value action than routine coverage.
+
+### 5.1 Non-goals for this phase
+
+Exact numeric point values (config, tunable post-launch, not an architecture decision);
+unifying the mobile-side `routeScans.pointsAwarded`/`ScanService.calculatePoints` path
+with the web `points_ledger`/`pointsActionEnum` model — these are two separate systems
+today per this session's earlier investigation, and merging them is real but separable
+work; flagged here so it isn't silently forgotten, not solved in this spec.
+
+---
+
+## 6. Phase 6 — Reward feedback UX
+
+Every beat below maps to a real, already-existing (or Phase-0-5-introduced) backend
+state transition. None of them invent a reward for something the backend hasn't
+actually committed to — this app moves real civic labor and real money, and celebrating
+a payout that isn't guaranteed yet (jobs are admin-gated, no auto-payout) would be a
+dark pattern, not good UX.
+
+| Trigger (real state transition) | Feedback |
+|---|---|
+| Coverage cell clears during a live scan (`CoverageTracker`/`ObjectCoverageTracker` state change) | Haptic tick + fog-dissolve micro-animation, continuous during the activity |
+| Hotspot logged (`POST /api/scans/[id]/hotspots`) | Celebratory beat + running point counter increment |
+| Scan session complete | Animated count-up of session points, with new-area/stale/rectification bonuses called out individually (specific reasons, not an opaque total) |
+| Job submitted (`pending_review`) | Honest "pending admin review" state — no celebration yet, since no money is guaranteed |
+| Job **approved** (admin action, existing `jobApproved` push template — currently unused) | Real celebration beat — money is now guaranteed even though it hasn't landed |
+| Payout **landed** (`payout.paid` Stripe webhook, existing `payoutSent` push template — currently unused) | Second distinct beat — "$X is in your account" |
+| Rectification confirmed (§1.5) | Distinct "you fixed something" framing, separate from routine scan-coverage feedback |
+
+### 6.1 Implementation notes
+
+Wires the two dead push templates identified in the same-day-payouts spec
+(`site/src/lib/notifications`, `jobApproved`/`payoutSent`) to their real trigger points —
+this closes a gap that spec explicitly left open ("push half-built... never called"),
+rather than building new notification infrastructure.
+
+### 6.2 Non-goals for this phase
+
+Streak/momentum mechanics (consecutive-day scanning, weekly goals) — genuinely optional
+engagement-layer work, not tied to a real economic/civic event the way every row above
+is, and lower priority within this phase; can be added later as a thin aggregation over
+existing data without changing anything else in this spec.
+
+---
+
+## 7. Cross-cutting risk carried forward: bystander privacy / consent
+
+The shipped 2026-07-01 spec flagged this as open and unresolved, noting it "becomes more
+relevant as scanning becomes more visible/gamified." This spec makes it *more* relevant
+still: photo-billboard litter rendering (§4.1) puts real captured photos on a public map
+surface, and the broadened world-observation domains (§0.3) — construction, land use —
+inherently point cameras at more than litter, including private property and
+potentially bystanders. Private-property *no-scan* exclusion zones already exist
+(2026-07-01 spec, Initiative 3), but that's a different guarantee than *no public
+display of a photo that happens to capture a person or a house number*. This spec does
+not resolve that policy question — it is flagged again, explicitly, so it isn't lost a
+second time before Phase 4 ships photo billboards to a public map.
+
+---
+
+## 8. Open decisions carried forward, not resolved by this design
+
+- Bystander privacy/consent policy (§7) — still unresolved, now higher-stakes.
+- Exact `itemType`/new-domain taxonomy values — reuses whatever vocabulary
+  `trashTypes`/`onDeviceAiResult` already produces for litter; new-domain taxonomies
+  (vegetation/construction/land_use) are undefined until their detection work is
+  scoped.
+- Splat pipeline registration algorithm and quality thresholds (§3) — research spike,
+  not this document.
+- Mobile-side vs. web-side points-system unification (§5.1) — flagged, not solved.
+- Streak/momentum mechanics scope (§6.2) — deferred, optional.
+
+---
+
+## 9. Phasing / sequencing
+
+- **Phase 0** (backend, DGX+web): `scanCoverageEvents` table, `cellCoverageSummary`
+  rollup, `worldObservations.domain` column, two new endpoints. No mobile dependency —
+  can start immediately, ships independently.
+- **Phase 1** (iOS, DGX+MacBook loop): builds on Phase 0's emission contract but its
+  session-local guidance works without Phase 0 being live — coverage events can start
+  as a stub sink and get wired to the real endpoint once Phase 0 ships. Highest
+  iteration cost (native AR rendering, MacBook-dependent testing).
+  - Route-mode arrow: shovel-ready, extends existing scaffolded code.
+  - Spot-mode guidance: net-new, larger.
+  - Expected-litter markers/rectification: depends on Phase 0's coverage data existing
+    for the "was this ever scanned" distinction to be meaningful, though the marker
+    fetch itself only needs the already-live `worldObservations` endpoint.
+- **Phase 2** (backend infra): R2 provisioning, DGX processing worker skeleton, upload
+  path. Depends on Phase 0's metadata schema; the R2/DGX plumbing itself has no mobile
+  dependency.
+- **Phase 3** (research spike first, DGX): depends on Phase 2's raw-data ingestion
+  existing to have real data to register against. Highest uncertainty — timeline is
+  genuinely unknown until the spike concludes.
+- **Phase 4** (web map): depends on Phase 0's `cellCoverageSummary` for tile freshness;
+  litter-billboard rendering only depends on already-live `worldObservations` data and
+  can ship independently of the freshness overlay.
+- **Phase 5** (backend + mobile points): depends on Phase 0's coverage ledger existing
+  as the source of distance-tracked calculation.
+- **Phase 6** (mobile + backend, cross-cutting): the job/payout reward beats depend only
+  on the already-shipped payout state machine and can start immediately, independent of
+  every other phase. The scan-coverage reward beats depend on Phase 1's guidance overlay
+  existing to hang haptics/animations on.
+
+## 10. Success metrics
+
+- A worker inside `ArRouteOverlay` sees a live directional arrow toward the nearest
+  uncovered area, not just fog-of-war and a boundary — closing the specific gap this
+  spec targets first.
+- The map can distinguish, per cell, "never scanned" / "scanned, fresh" / "scanned,
+  stale" — not just "has a dirty observation or doesn't."
+- A rectification (expected-dirty, confirmed-clean) flow produces a real credited event
+  end-to-end, from camera confirm to points ledger.
+- Every completed job produces two distinct, real push-notification moments (approved,
+  paid) instead of zero.
+- No feature in this spec celebrates money or points before the backend has actually
+  committed to them.
