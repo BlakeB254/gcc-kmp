@@ -17,8 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -354,6 +356,7 @@ fun DashboardScreen(
                         label = "Spot\nReport",
                         bgColor = CardAccentRed,
                         onClick = onSpotClick,
+                        icon = { ScanCubeIcon(color = CardAccentRed) },
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC6",
@@ -510,6 +513,7 @@ private fun QuickActionButton(
     bgColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -533,10 +537,14 @@ private fun QuickActionButton(
                     .background(bgColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    emoji,
-                    fontSize = 24.sp,
-                )
+                if (icon != null) {
+                    icon()
+                } else {
+                    Text(
+                        emoji,
+                        fontSize = 24.sp,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(5.dp))
@@ -549,6 +557,58 @@ private fun QuickActionButton(
             overflow = TextOverflow.Ellipsis,
             lineHeight = 12.sp,
         )
+    }
+}
+
+/**
+ * A wireframe isometric cube with vertex nodes and a scan sweep line —
+ * conveys the 3D vector/LiDAR environment scan behind Spot Report, rather
+ * than a flat photo (the capture flow scans by default; photos are the
+ * fallback).
+ */
+@Composable
+private fun ScanCubeIcon(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier.size(28.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 1.6.dp.toPx()
+        val nodeR = 1.7.dp.toPx()
+
+        // Isometric cube vertices (front-facing hexagonal projection)
+        val top = Offset(w * 0.50f, h * 0.06f)
+        val left = Offset(w * 0.10f, h * 0.28f)
+        val right = Offset(w * 0.90f, h * 0.28f)
+        val center = Offset(w * 0.50f, h * 0.50f)
+        val bottomLeft = Offset(w * 0.10f, h * 0.72f)
+        val bottomRight = Offset(w * 0.90f, h * 0.72f)
+        val bottomCenter = Offset(w * 0.50f, h * 0.94f)
+
+        val edges = listOf(
+            top to left, top to right,          // top face rear edges
+            left to center, right to center,    // top face front edges
+            left to bottomLeft, right to bottomRight, center to bottomCenter, // verticals
+            bottomLeft to bottomCenter, bottomRight to bottomCenter,          // bottom front
+        )
+        edges.forEach { (a, b) ->
+            drawLine(color = color, start = a, end = b, strokeWidth = stroke)
+        }
+
+        // Scan sweep — dashed horizontal line through the cube's midsection
+        drawLine(
+            color = color.copy(alpha = 0.75f),
+            start = Offset(w * 0.02f, h * 0.50f),
+            end = Offset(w * 0.98f, h * 0.50f),
+            strokeWidth = stroke * 0.8f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx())),
+        )
+
+        // Vertex nodes — the "vector points" of the scan
+        listOf(top, left, right, center, bottomLeft, bottomRight, bottomCenter).forEach {
+            drawCircle(color = color, radius = nodeR, center = it)
+        }
     }
 }
 
