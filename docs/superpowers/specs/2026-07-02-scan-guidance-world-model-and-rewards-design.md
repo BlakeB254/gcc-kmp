@@ -226,6 +226,54 @@ needs sub-second raw-data availability); any DGX high-availability/redundancy wo
 (explicitly out of scope — DGX processes, it does not need to be highly available for
 the durable data to be safe, since R2 holds the canonical raw copies).
 
+### 2.4 Data lake design: open formats + explicit provenance, both at once
+
+**Explicit direction from this session:** the digital-twin/world-model data should be
+**both** explicitly linked back to the scans that produced it **and** independently usable
+as a standalone data lake — extendable for other purposes (SuperSplat, Blender, or any
+future tool), not locked into a GCC-only format that requires going through this app's API
+to make sense of. These aren't in tension; they're two different layers of the same
+storage design:
+
+- **The files themselves are the standalone layer.** Store processed 3D outputs in
+  industry-standard, open formats, not a proprietary GCC schema: point clouds as `.ply`
+  (or `.laz` for large-scale lidar sets), meshes as `.glb`/`.gltf`, and Gaussian splats as
+  `.ply` — the de facto standard splat format SuperSplat, PlayCanvas, and most viewers
+  already read natively. This means a signed/public R2 object URL can be opened directly
+  in Blender or SuperSplat with **zero GCC-specific tooling** — the asset is self-contained
+  by construction, not by a custom export step someone has to build and maintain later.
+- **R2 bucket layout is the browsable, documented backbone**, not an opaque blob dump:
+  ```
+  raw/{locationCellId}/{deviceId}/{capturedAt}.{ext}      -- per-session captures
+  reconstructed/{locationCellId}/{version}/pointcloud.ply -- merged, per §3's pipeline
+  reconstructed/{locationCellId}/{version}/splat.ply       -- trained Gaussian splat
+  reconstructed/{locationCellId}/{version}/mesh.glb        -- optional mesh export
+  ```
+  This layout is deliberately meaningful on its own — `locationCellId` is the same grid key
+  `worldObservations`/`scanCoverageEvents` already use (§0), so the connection between "a
+  file in the data lake" and "a place in the world model" is legible from the path alone,
+  without a database lookup.
+- **The Postgres-side link is the explicit-provenance layer.** New table
+  `reconstructionAssets` (`locationCellId`, `assetType` ['pointcloud'|'splat'|'mesh'],
+  `format`, `r2Key`, `version`, `sourceScanCoverageEventIds` [jsonb array — which specific
+  events fed this reconstruction], `activatedAt`, `createdAt`) — this is what makes "this
+  splat came from these specific scans, by these specific devices/workers, on these
+  specific dates" a real, queryable fact, not just an inference from folder structure.
+  Every asset Phase 3's pipeline produces gets a row here at write time; nothing is
+  reconstructed without a provenance record.
+- **Net effect:** internal tooling (the map, the app, future analytics) queries
+  `reconstructionAssets` joined against `worldObservations`/`scanCoverageEvents` for the
+  "this is GCC's data, connected to GCC's world model" view. External/creative tooling
+  (Blender for authoring, SuperSplat for viewing/sharing, any future pipeline) just needs
+  the R2 URL — the open format and documented path structure make it usable standalone,
+  with zero coupling to GCC's own database or API existing at all. Same underlying files,
+  two legitimate ways to consume them.
+
+This is a schema addition to Phase 2 (the `reconstructionAssets` table) and a format/path
+convention for Phase 3's outputs — not a new phase. Both are cheap to build now, before any
+reconstruction pipeline exists, precisely because retrofitting open-format-and-provenance
+onto an already-running proprietary pipeline later would be real, avoidable rework.
+
 ---
 
 ## 3. Phase 3 — 3D reconstruction / splat pipeline
@@ -279,8 +327,12 @@ directly from Niantic's own documented approach rather than invented from scratc
    job — Niantic's own public materials don't give a number either, so this isn't a gap
    unique to us).
 4. Gaussian-splat training from the merged, activated cloud on DGX's Blackwell GPU.
-5. Processed splat assets written to R2, served via CDN for the future viewer surface
-   (out of scope for this spec — no viewer UI is being designed here).
+5. Processed splat assets written to R2 as standard `.ply` Gaussian-splat files at the
+   documented `reconstructed/{locationCellId}/{version}/` path (§2.4), with a matching
+   `reconstructionAssets` row recorded at write time — served via CDN for the future viewer
+   surface (out of scope for this spec — no viewer UI is being designed here), and directly
+   openable in SuperSplat/Blender without any GCC-specific tooling, per §2.4's data-lake
+   design.
 
 ### 3.2 Trust-scored review, borrowed from Wayfarer
 
