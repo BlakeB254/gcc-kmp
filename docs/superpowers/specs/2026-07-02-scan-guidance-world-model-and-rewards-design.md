@@ -235,26 +235,72 @@ problem in kind from the existing `cdx-splat-pipeline` (which turns one generate
 into a splat via synthetic multi-axis video generation). This phase needs to **fuse many
 independent people's real-world LiDAR captures of the same physical area**, taken at
 different times, lighting, and devices, into one coherent reconstruction — closer to
-crowdsourced SLAM/photogrammetry registration (Niantic Scaniverse/Wayfarer-class
-problem) than to generative splat creation.
+crowdsourced SLAM/photogrammetry registration than to generative splat creation.
 
-Proposed pipeline shape, pending a research spike before a firm implementation plan:
+### 3.1 Pipeline shape, informed by Niantic's documented VPS approach
 
-1. Per-session mesh/point-cloud registration — align each individual capture to a
-   shared coordinate frame (ICP or learned registration against previously-accumulated
-   data for that cell).
-2. Accumulation into a merged point cloud per geo-cell as new sessions register
-   successfully.
-3. Gaussian-splat training from the merged cloud on DGX's Blackwell GPU, triggered once
-   a cell has enough accumulated, well-registered coverage (exact threshold TBD by the
-   spike).
-4. Processed splat assets written to R2, served via CDN for the future viewer surface
+Niantic (Pokémon GO/Ingress/Scaniverse) solved exactly this problem — fusing millions of
+independently-submitted consumer LiDAR/camera scans of the same real-world locations into
+one persistent, centimeter-accurate 3D model (their Visual Positioning System). Their
+publicly-documented pipeline is a strong, validated template, not a from-scratch guess:
+
+1. **Per-scan segmentation** — split/clean each individual capture (their docs mention
+   auto-splitting scans over 60s) and correct GPS drift before anything gets compared
+   across sessions.
+2. **Conversion to a localization-map representation** — a specialized intermediate
+   format built for precise spatial matching, not the raw mesh itself.
+3. **Spatial-relationship solving** — GPS narrows the candidate search space for "which
+   prior scans overlap this one," then global bundle adjustment aligns overlapping scans
+   into one coherent frame and rejects outliers that don't register cleanly. This maps
+   directly onto our earlier "ICP or learned registration" idea, but scoped as GPS-gated
+   (cell-scoped) rather than open-ended, which is a meaningfully cheaper search space.
+4. **Dense reconstruction with redundancy filtering** — merge the aligned scans into one
+   textured/point-cloud representation per location, rather than keeping N separate
+   meshes.
+5. **Activation threshold** — critically, **a single scan is never trusted alone.** A
+   location doesn't "activate" into the canonical model until enough independent,
+   well-registered scans accumulate. The model is continuously updated as further scans
+   arrive, not frozen after first coverage. This directly answers the spike's open
+   question about a "quality threshold" — the answer is a minimum-independent-scan-count
+   gate before promoting a location's reconstruction to canonical, not a single-scan
+   quality score.
+
+For GCC, the Gaussian-splat training step (§ below) is the same as originally proposed —
+this addendum only sharpens steps 1-3 (segment → GPS-gated align → bundle-adjust) and
+adds the explicit activation-threshold gate as a first-class pipeline stage, both pulled
+directly from Niantic's own documented approach rather than invented from scratch:
+
+1. Per-session mesh/point-cloud segmentation + GPS-gated registration against
+   previously-accumulated scans for that cell (bundle adjustment, outlier rejection).
+2. Accumulation into a merged point cloud per geo-cell, redundancy-filtered as new
+   sessions register successfully.
+3. **Activation gate**: a cell's reconstruction is not promoted to "canonical" until a
+   minimum independent-scan-count threshold is met (exact number is the research spike's
+   job — Niantic's own public materials don't give a number either, so this isn't a gap
+   unique to us).
+4. Gaussian-splat training from the merged, activated cloud on DGX's Blackwell GPU.
+5. Processed splat assets written to R2, served via CDN for the future viewer surface
    (out of scope for this spec — no viewer UI is being designed here).
 
-### 3.1 Non-goals for this phase
+### 3.2 Trust-scored review, borrowed from Wayfarer
 
-Any commitment to a specific registration algorithm, training cadence, or quality
-threshold — those are the research spike's job, not this design's. No splat-viewer UI.
+Niantic's Wayfarer program gates *review influence* (not just submission) by a dynamic
+per-reviewer "agreement score" — how often a reviewer's vote matches the eventual
+majority — rather than a fixed rank. Applied here: once GCC has enough scan volume for
+disputes to matter (a scan someone flags as wrong/stale/fraudulent), weight dispute
+resolution by each flagging worker's historical agreement rate rather than first-flag-wins
+or pure staff review. Not required for Phase 0-3, but the `scanCoverageEvents`/
+`worldObservations` event-sourced design (§0) already doesn't preclude adding this later —
+flagging it here so a future moderation-tooling spec doesn't have to redesign the data
+model to support it.
+
+### 3.3 Non-goals for this phase
+
+Any commitment to a specific registration algorithm, training cadence, or exact
+activation-threshold number — those are the research spike's job, not this design's
+(Niantic's own public materials don't disclose their exact threshold either). No
+splat-viewer UI. No trust-scored review tooling (§3.2 is a data-model compatibility note,
+not a feature being built now).
 
 ---
 
@@ -366,6 +412,32 @@ potentially bystanders. Private-property *no-scan* exclusion zones already exist
 display of a photo that happens to capture a person or a house number*. This spec does
 not resolve that policy question — it is flagged again, explicitly, so it isn't lost a
 second time before Phase 4 ships photo billboards to a public map.
+
+### 7.1 Concrete precedent: why this can't stay indefinitely deferred
+
+This session's research into Niantic's crowdsourced world-model approach (§3) surfaced a
+direct, current cautionary example, not a hypothetical. Niantic collected roughly 30
+billion scans since 2021 via Pokémon GO and Scaniverse to build its VPS/"Large Geospatial
+Model." As of December 2025, the retained entity (Niantic Spatial, after the games
+business was sold to Scopely) partnered with a defense contractor to fuse that
+ground-level scan data with military drone navigation for GPS-denied operations. Niantic's
+public position is that game-player data itself wasn't part of the deal, but the company
+has acknowledged the underlying navigation model was trained on player scan data —
+collected under consent language that never mentioned defense/military use as a possible
+downstream application. This produced real public backlash specifically because the
+original purpose-limitation was vague enough to permit a use contributors never agreed to.
+
+**The direct lesson for GCC:** scan data here will more frequently and more
+identifiably capture private property, addresses, and bystanders than a casual Pokéstop
+photo does (this app's whole purpose is scanning specific real-world locations at
+job-relevant resolution, not gamified point-of-interest discovery). Before Phase 2 (raw
+scan storage) or Phase 4 (public photo-billboard rendering) ship, the ToS/consent
+language covering scan collection needs to be **narrow and explicit** about permitted
+uses (job verification, before/after proof, aggregate 3D reconstruction for the
+platform's own map) and should explicitly exclude undisclosed secondary uses. This is
+still a policy decision this spec doesn't make unilaterally — but "flag it and move on"
+is no longer sufficient framing given a live, current example of exactly this failure
+mode; it should be resolved before those two phases ship, not whenever is convenient.
 
 ---
 
