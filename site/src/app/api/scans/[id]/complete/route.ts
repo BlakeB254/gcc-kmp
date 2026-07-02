@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json().catch(() => null)
-    const hotspots = await hotspotsForScan(scanId)
+    const hotspots = await hotspotsForScan(scanId, 'complete')
     const pointsAwarded = calculatePoints(hotspots)
     const now = new Date().toISOString()
 

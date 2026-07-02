@@ -52,13 +52,16 @@ function parseStoredTags(value: string | null): string[] {
 }
 
 /**
- * Hotspots for a scan, with any hotspot that has been flagged private
- * property (via a `worldObservations` row with `excludedPrivateProperty =
- * true`) filtered out. This is the single source the mobile app reads for
- * every phase — scouting, scout_review, and cleaning — so excluded hotspots
- * never surface as lap-2 clean instructions.
+ * Hotspots for a scan. During the CLEANING-phase (and the phases that
+ * follow it — 'cleaning', 'submitting', 'complete'), any hotspot flagged
+ * private property (via a `worldObservations` row with
+ * `excludedPrivateProperty = true`) is filtered out, so excluded hotspots
+ * never surface as lap-2 clean instructions. During 'scouting' and
+ * 'scout_review' (or any other/unrecognized phase), hotspots are returned
+ * unfiltered — a worker's in-progress scouting view should never silently
+ * drop something they just scouted.
  */
-export async function hotspotsForScan(scanId: number): Promise<ScanHotspotRow[]> {
+export async function hotspotsForScan(scanId: number, phase: string): Promise<ScanHotspotRow[]> {
   const hotspots = await db
     .select()
     .from(scanHotspots)
@@ -66,6 +69,9 @@ export async function hotspotsForScan(scanId: number): Promise<ScanHotspotRow[]>
     .orderBy(asc(scanHotspots.detectedAt))
 
   if (hotspots.length === 0) return hotspots
+
+  const shouldFilterExcluded = phase === 'cleaning' || phase === 'submitting' || phase === 'complete'
+  if (!shouldFilterExcluded) return hotspots
 
   const hotspotIds = hotspots.map((h) => h.id)
   const excludedRows = await db
