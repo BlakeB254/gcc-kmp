@@ -11,6 +11,7 @@ import {
 } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import Stripe from 'stripe'
+import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { sendEmail } from '@/lib/email'
 import { sponsorConfirmationEmail } from '@/lib/email/templates/sponsor-confirmation'
 import { donationConfirmationEmail } from '@/lib/email/templates/donation-confirmation'
@@ -424,6 +425,28 @@ export async function POST(request: NextRequest) {
                   updatedAt: new Date().toISOString(),
                 })
                 .where(eq(workers.id, Number(workerId)))
+
+              // ── Notify worker: payout landed ────────────────────────────
+              // Same fire-and-forget-with-logging pattern as the approve
+              // route: the payout is already confirmed by Stripe at this
+              // point (this IS the payout.paid webhook) — a notification
+              // failure must not affect webhook processing or ack status.
+              try {
+                const amountDollars = (Number(job.payoutAmount || 10000) / 100).toFixed(2)
+                await notifyWorker(
+                  {
+                    phone: worker.phone ?? undefined,
+                    pushSubscription: (worker.notificationsPushSubscription as any) ?? undefined,
+                    preferences: {
+                      pushEnabled: worker.notificationsPushEnabled ?? undefined,
+                      smsEnabled: worker.notificationsSmsEnabled ?? undefined,
+                    },
+                  },
+                  notificationTemplates.payoutSent(`$${amountDollars}`)
+                )
+              } catch (notifyErr) {
+                console.error('[webhook] Failed to send payoutSent notification for worker ' + workerId, notifyErr)
+              }
             }
           }
         }

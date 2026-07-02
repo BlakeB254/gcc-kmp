@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { and, eq, isNull, ne, notInArray, or } from 'drizzle-orm'
 import { db } from '@/db'
-import { jobs, workers } from '@/db/schema'
+import { jobs, workers, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { processJobPayout } from '@/lib/stripe/connect'
+import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,9 +63,16 @@ export async function POST(request: Request, context: RouteContext) {
       stripeAccountId: workers.stripeAccountId,
       stripeOnboardingStatus: workers.stripeOnboardingStatus,
       stripeInstantPayoutsEnabled: workers.stripeInstantPayoutsEnabled,
+      workerPhone: workers.phone,
+      workerNotificationsPushEnabled: workers.notificationsPushEnabled,
+      workerNotificationsPushSubscription: workers.notificationsPushSubscription,
+      workerNotificationsSmsEnabled: workers.notificationsSmsEnabled,
+      // block field
+      blockCode: blocks.code,
     })
     .from(jobs)
     .leftJoin(workers, eq(jobs.workerId, workers.id))
+    .leftJoin(blocks, eq(jobs.blockId, blocks.id))
     .where(eq(jobs.id, jobId))
     .limit(1)
 
@@ -164,6 +172,25 @@ export async function POST(request: Request, context: RouteContext) {
       { error: 'Stripe payout failed — job approved but payout status unknown. Do NOT retry; manual reconciliation required.' },
       { status: 502 }
     )
+  }
+
+  // ── Notify worker: job approved, payout processing ──────────────────────
+  // Fire-and-forget-with-logging: the payout already succeeded above: a
+  // notification failure must never mask that success or block the response.
+  try {
+    await notifyWorker(
+      {
+        phone: row.workerPhone ?? undefined,
+        pushSubscription: (row.workerNotificationsPushSubscription as any) ?? undefined,
+        preferences: {
+          pushEnabled: row.workerNotificationsPushEnabled ?? undefined,
+          smsEnabled: row.workerNotificationsSmsEnabled ?? undefined,
+        },
+      },
+      notificationTemplates.jobApproved(row.blockCode ?? `job #${jobId}`)
+    )
+  } catch (notifyErr) {
+    console.error('[approve] Failed to send jobApproved notification for job ' + jobId, notifyErr)
   }
 
   // ── Persist transfer ID ───────────────────────────────────────────────────
