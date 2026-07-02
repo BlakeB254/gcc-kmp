@@ -226,6 +226,118 @@ needs sub-second raw-data availability); any DGX high-availability/redundancy wo
 (explicitly out of scope — DGX processes, it does not need to be highly available for
 the durable data to be safe, since R2 holds the canonical raw copies).
 
+### 2.4 Data lake design: open formats + explicit provenance, both at once
+
+**Explicit direction from this session:** the digital-twin/world-model data should be
+**both** explicitly linked back to the scans that produced it **and** independently usable
+as a standalone data lake — extendable for other purposes (SuperSplat, Blender, or any
+future tool), not locked into a GCC-only format that requires going through this app's API
+to make sense of. These aren't in tension; they're two different layers of the same
+storage design:
+
+- **The files themselves are the standalone layer.** Store processed 3D outputs in
+  industry-standard, open formats, not a proprietary GCC schema: point clouds as `.ply`
+  (or `.laz` for large-scale lidar sets), meshes as `.glb`/`.gltf`, and Gaussian splats as
+  `.ply` — the de facto standard splat format SuperSplat, PlayCanvas, and most viewers
+  already read natively. This means a signed/public R2 object URL can be opened directly
+  in Blender or SuperSplat with **zero GCC-specific tooling** — the asset is self-contained
+  by construction, not by a custom export step someone has to build and maintain later.
+- **R2 bucket layout is the browsable, documented backbone**, not an opaque blob dump:
+  ```
+  raw/{locationCellId}/{deviceId}/{capturedAt}.{ext}      -- per-session captures
+  reconstructed/{locationCellId}/{version}/pointcloud.ply -- merged, per §3's pipeline
+  reconstructed/{locationCellId}/{version}/splat.ply       -- trained Gaussian splat
+  reconstructed/{locationCellId}/{version}/mesh.glb        -- optional mesh export
+  ```
+  This layout is deliberately meaningful on its own — `locationCellId` is the same grid key
+  `worldObservations`/`scanCoverageEvents` already use (§0), so the connection between "a
+  file in the data lake" and "a place in the world model" is legible from the path alone,
+  without a database lookup.
+- **The Postgres-side link is the explicit-provenance layer.** New table
+  `reconstructionAssets` (`locationCellId`, `assetType` ['pointcloud'|'splat'|'mesh'],
+  `format`, `r2Key`, `version`, `sourceScanCoverageEventIds` [jsonb array — which specific
+  events fed this reconstruction], `activatedAt`, `createdAt`) — this is what makes "this
+  splat came from these specific scans, by these specific devices/workers, on these
+  specific dates" a real, queryable fact, not just an inference from folder structure.
+  Every asset Phase 3's pipeline produces gets a row here at write time; nothing is
+  reconstructed without a provenance record.
+- **Net effect:** internal tooling (the map, the app, future analytics) queries
+  `reconstructionAssets` joined against `worldObservations`/`scanCoverageEvents` for the
+  "this is GCC's data, connected to GCC's world model" view. External/creative tooling
+  (Blender for authoring, SuperSplat for viewing/sharing, any future pipeline) just needs
+  the R2 URL — the open format and documented path structure make it usable standalone,
+  with zero coupling to GCC's own database or API existing at all. Same underlying files,
+  two legitimate ways to consume them.
+
+This is a schema addition to Phase 2 (the `reconstructionAssets` table) and a format/path
+convention for Phase 3's outputs — not a new phase. Both are cheap to build now, before any
+reconstruction pipeline exists, precisely because retrofitting open-format-and-provenance
+onto an already-running proprietary pipeline later would be real, avoidable rework.
+
+### 2.5 DGX as working-set load point; admin navigable-environment viewer
+
+**Explicit direction from this session:** R2 stays the full canonical store (§2.1 —
+durability, all areas, all history), but the DGX should be the place admin/data-viz tooling
+actually *works with* data — pulling down and holding one area's cumulative scan data at a
+time, not the whole world, so it can examine a normalized, navigable 3D environment built
+from everything scanned there over time.
+
+**Working-set fetch, not a second durable copy.** A new admin-scoped endpoint
+(`POST /api/admin/reconstructions/load-area`, `{ locationCellIds: string[] }` or a bbox)
+triggers the DGX to pull the current `reconstructionAssets` rows for those cells plus their
+underlying raw scans from R2 into local scratch storage — explicitly a **cache with a TTL**,
+not a new source of truth. If the DGX disk fills or the process dies, nothing is lost;
+R2 is re-fetched. This keeps §2.1's "DGX is compute, not durable storage" principle intact
+while giving admin tooling the fast local access it needs to actually browse an area.
+
+**The navigable-environment viewer: real research on this, not assumption.** The
+specific technology the "walkable environment from a Gaussian splat" request pointed at —
+NVIDIA's Lyra 2.0 — was researched directly this session and turns out to be the wrong
+tool, on three independent grounds, not just one:
+
+1. **It's generative, not reconstructive.** Lyra 2.0 takes a single photo, generates an
+   imagined video walkthrough via a video diffusion model, then reconstructs *that
+   invented video* into 3DGS. It does not take existing real capture data and make it
+   navigable — architecturally the opposite of "browse our actual cumulative scan data."
+2. **Hardware mismatch.** Its video backbone is a 14B-parameter diffusion transformer
+   (Wan 2.1-14B), benchmarked on a single H100 at several minutes per short walkthrough.
+   GB10 has roughly 1/85th an H100's BF16 throughput and 1/12th its memory bandwidth —
+   this would very plausibly take hours per scene here, before even accounting for the
+   Blackwell sm_120 kernel-compatibility traps this device already has documented history
+   with (`cdx-dgx-spark` skill).
+3. **License bars commercial use outright**, independent of the other two: Lyra's model
+   weights ship under NVIDIA's "Internal Scientific Research and Development Model
+   License," which explicitly prohibits production use and "generating works for sale."
+   This alone rules it out for GCC regardless of fit or hardware.
+
+**What actually solves this, available today, already in this project's toolkit:**
+**SuperSplat's Walk Mode** (open source, PlayCanvas, MIT-style license, browser/WebGL —
+already referenced in this project's `cdx-splat-pipeline` skill for splat viewing). It
+ships exactly the missing capability: first-person click-to-walk/WASD navigation through
+a *real* Gaussian splat, via a voxel-based collision system — `splat-transform` voxelizes
+the splat and flood-fills the navigable interior from a seed point into a watertight
+collision mesh, with one-click Indoor/Outdoor/Object collision presets. This is
+non-generative by design, which is actually the correct property here: an admin wants to
+walk through *what was actually scanned*, not a plausible-looking hallucination filling
+gaps in coverage. It's WebGL rendering with no heavy model inference, so it runs
+comfortably on GB10 (or, honestly, on any machine — the DGX's role here is serving the
+data, not doing GPU-bound rendering work for this specific feature).
+
+**Concrete shape:** the working-set loader (above) stages a cell's `splat.ply` locally;
+a thin admin-only web view (could live in the existing Next.js admin console, or as a
+DGX-hosted local tool per this project's existing pattern of admin/data-viz surfaces)
+embeds SuperSplat's viewer against that staged file with Walk Mode + collision enabled.
+"The system knowing what to expect" — surfacing where the reconstruction is stale, where
+`worldObservations` disagrees with what's rendered, where activation-threshold coverage
+(§3.1) hasn't been met yet for a sub-area — is a real, valuable extension of this viewer
+once it exists, but is scoped as a later addition to this feature, not required for the
+first working version.
+
+**If true generative gap-filling is wanted later** (imagining plausible detail for areas
+genuinely never scanned, distinct from browsing what was scanned), that's a legitimately
+separate, harder research bet — track it as its own future exploration, not a blocker on
+shipping the real-data walkthrough viewer now.
+
 ---
 
 ## 3. Phase 3 — 3D reconstruction / splat pipeline
@@ -279,8 +391,12 @@ directly from Niantic's own documented approach rather than invented from scratc
    job — Niantic's own public materials don't give a number either, so this isn't a gap
    unique to us).
 4. Gaussian-splat training from the merged, activated cloud on DGX's Blackwell GPU.
-5. Processed splat assets written to R2, served via CDN for the future viewer surface
-   (out of scope for this spec — no viewer UI is being designed here).
+5. Processed splat assets written to R2 as standard `.ply` Gaussian-splat files at the
+   documented `reconstructed/{locationCellId}/{version}/` path (§2.4), with a matching
+   `reconstructionAssets` row recorded at write time — served via CDN for the future viewer
+   surface (out of scope for this spec — no viewer UI is being designed here), and directly
+   openable in SuperSplat/Blender without any GCC-specific tooling, per §2.4's data-lake
+   design.
 
 ### 3.2 Trust-scored review, borrowed from Wayfarer
 
