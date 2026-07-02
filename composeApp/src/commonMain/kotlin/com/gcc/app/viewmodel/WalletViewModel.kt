@@ -16,6 +16,11 @@ data class WalletUiState(
     val transactions: List<WalletTransaction> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
+    // Worker earnings / Stripe Connect payout status
+    val connectStatus: ConnectStatus? = null,
+    val connectStatusLoading: Boolean = false,
+    val connectOnboardLoading: Boolean = false,
+    val connectError: String? = null,
     val depositAmount: String = "",
     val isDepositing: Boolean = false,
     val depositError: String? = null,
@@ -58,6 +63,39 @@ class WalletViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(WalletUiState())
     val uiState: StateFlow<WalletUiState> = _uiState.asStateFlow()
+
+    /** Worker payout readiness (Stripe Connect) for the Earnings section. */
+    fun loadConnectStatus() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(connectStatusLoading = true, connectError = null)
+            try {
+                val status = apiClient.connectStatus()
+                _uiState.value = _uiState.value.copy(
+                    connectStatus = status,
+                    connectStatusLoading = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(connectStatusLoading = false)
+            }
+        }
+    }
+
+    /** Launch Stripe Connect onboarding in the browser so payouts can flow. */
+    fun startConnectOnboard() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(connectOnboardLoading = true, connectError = null)
+            try {
+                val url = apiClient.connectOnboard()
+                openUrl(url)
+                _uiState.value = _uiState.value.copy(connectOnboardLoading = false)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    connectOnboardLoading = false,
+                    connectError = e.message ?: "Could not start payout setup",
+                )
+            }
+        }
+    }
 
     fun loadWallet(silent: Boolean = false) {
         scope.launch {

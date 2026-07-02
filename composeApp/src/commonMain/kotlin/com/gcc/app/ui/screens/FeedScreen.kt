@@ -54,6 +54,8 @@ import org.koin.compose.koinInject
 fun FeedScreen(
     onBack: () -> Unit = {},
     onNavigateToArticles: () -> Unit = {},
+    onImpactClick: () -> Unit = {},
+    onSponsorWallClick: () -> Unit = {},
 ) {
     val viewModel = koinInject<FeedViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -204,6 +206,35 @@ fun FeedScreen(
                                 }
                                 Text("›", style = MaterialTheme.typography.titleMedium, color = GccGreen)
                             }
+                        }
+                    }
+
+                    // Community hub entries — Impact and the Sponsor Wall moved
+                    // here from the dashboard quick-action row (consolidation:
+                    // Community is the single home for community-facing surfaces).
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 13.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CommunityHubCard(
+                                emoji = "📊",
+                                title = "Impact",
+                                subtitle = "Neighborhood stats",
+                                tint = CardAccentGreen,
+                                onClick = onImpactClick,
+                                modifier = Modifier.weight(1f),
+                            )
+                            CommunityHubCard(
+                                emoji = "🤝",
+                                title = "Sponsor Wall",
+                                subtitle = "Who funds cleanups",
+                                tint = CardAccentBlue,
+                                onClick = onSponsorWallClick,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
 
@@ -1312,6 +1343,55 @@ private fun ArticleCard(
                     if (item.commentCount > 0) "${item.commentCount}" else "Comment",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommunityHubCard(
+    emoji: String,
+    title: String,
+    subtitle: String,
+    tint: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(tint.copy(alpha = 0.06f))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(tint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(emoji, style = MaterialTheme.typography.titleSmall)
+            }
+            Spacer(modifier = Modifier.width(9.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    maxLines = 1,
                 )
             }
         }
