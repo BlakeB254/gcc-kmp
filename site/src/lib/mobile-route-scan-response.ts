@@ -1,6 +1,6 @@
-import { routeScans, scanHotspots, type RouteScanRow, type ScanHotspotRow } from '@/db/schema'
+import { routeScans, scanHotspots, worldObservations, type RouteScanRow, type ScanHotspotRow } from '@/db/schema'
 import { db } from '@/db'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 
 const validTags = new Set([
   'trash',
@@ -51,12 +51,35 @@ function parseStoredTags(value: string | null): string[] {
   }
 }
 
+/**
+ * Hotspots for a scan, with any hotspot that has been flagged private
+ * property (via a `worldObservations` row with `excludedPrivateProperty =
+ * true`) filtered out. This is the single source the mobile app reads for
+ * every phase — scouting, scout_review, and cleaning — so excluded hotspots
+ * never surface as lap-2 clean instructions.
+ */
 export async function hotspotsForScan(scanId: number): Promise<ScanHotspotRow[]> {
-  return db
+  const hotspots = await db
     .select()
     .from(scanHotspots)
     .where(eq(scanHotspots.scanId, scanId))
     .orderBy(asc(scanHotspots.detectedAt))
+
+  if (hotspots.length === 0) return hotspots
+
+  const hotspotIds = hotspots.map((h) => h.id)
+  const excludedRows = await db
+    .select({ scanHotspotId: worldObservations.scanHotspotId })
+    .from(worldObservations)
+    .where(and(
+      inArray(worldObservations.scanHotspotId, hotspotIds),
+      eq(worldObservations.excludedPrivateProperty, true)
+    ))
+
+  if (excludedRows.length === 0) return hotspots
+
+  const excludedIds = new Set(excludedRows.map((r) => r.scanHotspotId))
+  return hotspots.filter((h) => !excludedIds.has(h.id))
 }
 
 export async function findRouteScan(scanId: number): Promise<RouteScanRow | null> {
