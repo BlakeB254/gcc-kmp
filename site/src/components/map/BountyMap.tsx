@@ -43,6 +43,7 @@ interface SpotReport {
   needsVerification?: boolean
   bountyId?: string | number | null
   observerRewardPoints?: number
+  itemType?: string | null
 }
 
 interface BountyMapProps {
