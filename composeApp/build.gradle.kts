@@ -103,6 +103,9 @@ kotlin {
             implementation(compose.desktop.currentOs)
             // Desktop uses canvas map fallback — no MapLibre/Compass needed
         }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
     }
 }
 
