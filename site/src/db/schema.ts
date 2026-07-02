@@ -407,6 +407,21 @@ export const blocks = pgTable('blocks', {
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })
 
+// Block exclusion zones — polygons marking private property or otherwise
+// off-limits areas within a block, used to flag world observations that
+// fall inside them (see isWithinExclusionZone in lib/world-observations.ts)
+export const blockExclusionZones = pgTable('block_exclusion_zones', {
+  id: serial('id').primaryKey(),
+  blockId: integer('block_id').notNull(),
+  polygon: jsonb('polygon').notNull(), // GeoJSON Polygon: { type: 'Polygon', coordinates: [[[lng,lat],...]] }
+  label: varchar('label', { length: 255 }),
+  createdByAdminId: integer('created_by_admin_id'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type BlockExclusionZoneRow = typeof blockExclusionZones.$inferSelect
+export type NewBlockExclusionZoneRow = typeof blockExclusionZones.$inferInsert
+
 // Job status enum
 export const jobStatusEnum = pgEnum('enum_jobs_status', [
   'available',
