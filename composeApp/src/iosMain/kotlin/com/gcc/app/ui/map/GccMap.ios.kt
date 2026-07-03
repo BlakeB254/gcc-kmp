@@ -477,11 +477,19 @@ actual fun GccMap(
                 val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.first))
                 val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.second))
                 val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.third))
+                // Zoom-gated: at overview zooms the bounded fog patch would
+                // read as a broken partial grid — fade it in at street level
+                // where its bounded radius covers the whole viewport.
                 FillLayer(
                     id = "coverage-fog",
                     source = fogSrc,
                     color = const(Color(0xFF6B7280)),
-                    opacity = const(0.26f),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0f),
+                        14.5 to const(0.24f),
+                    ),
                 )
                 FillLayer(
                     id = "coverage-clean",

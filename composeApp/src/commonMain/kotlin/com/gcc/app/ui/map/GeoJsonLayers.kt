@@ -820,8 +820,10 @@ fun buildCoverageStateGeoJsons(
     activeSpots: List<com.gcc.shared.model.CommunityReport>,
     centerLat: Double,
     centerLng: Double,
-    fogRadiusMeters: Double = 320.0,
+    fogRadiusMeters: Double = 700.0,
     cellSizeMeters: Double = 10.0,
+    /** Fog enumerates its own (coarser) grid so a wide radius stays cheap. */
+    fogCellSizeMeters: Double = 20.0,
 ): Triple<String, String, String> {
     val empty = """{"type":"FeatureCollection","features":[]}"""
     val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
@@ -855,13 +857,15 @@ fun buildCoverageStateGeoJsons(
     // Never-scanned fog: bounded grid around center minus covered cells.
     val fogFeatures = StringBuilder()
     var fogCount = 0
-    val steps = (fogRadiusMeters / cellSizeMeters).toInt()
+    val fogLatStep = fogCellSizeMeters / 111_320.0
+    val fogLngStep = fogCellSizeMeters / (111_320.0 * lngScale)
+    val steps = (fogRadiusMeters / fogCellSizeMeters).toInt()
     outer@ for (dr in -steps..steps) {
         for (dc in -steps..steps) {
             if (dr * dr + dc * dc > steps * steps) continue
-            if (fogCount >= 2500) break@outer
-            val lat = centerLat + dr * latStep
-            val lng = centerLng + dc * lngStep
+            if (fogCount >= 4500) break@outer
+            val lat = centerLat + dr * fogLatStep
+            val lng = centerLng + dc * fogLngStep
             val covered = coverageCells.any { cell ->
                 val dLatM = (cell.lat - lat) * 111_320.0
                 val dLngM = (cell.lng - lng) * 111_320.0 * lngScale
@@ -869,7 +873,12 @@ fun buildCoverageStateGeoJsons(
             }
             if (covered) continue
             if (fogFeatures.isNotEmpty()) fogFeatures.append(',')
-            fogFeatures.append(feature(lat, lng))
+            // Fog quads at the fog grid size (coarser than ledger cells).
+            val hLat = fogLatStep / 2
+            val hLng = fogLngStep / 2
+            fogFeatures.append(
+                """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}],[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]]}}"""
+            )
             fogCount++
         }
     }

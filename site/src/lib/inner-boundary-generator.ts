@@ -6,15 +6,17 @@
  * app renders. Extracted as a pure function (ring in, MultiPolygon out) —
  * no DB access — so callers own their own lookup and persistence.
  *
- * Algorithm: samples the outer ring every ~2m, ray-casts inward against real
- * OSM building footprints, and places the cutoff just street-side of the
- * first frontage hit (clamped 4m..setbackMeters). Where nothing is built,
- * falls back to a parallel setback — unfenced vacant lots stay scannable.
+ * Algorithm (multi-island, product direction 2026-07-03): samples the outer
+ * ring every ~2m and ray-casts inward against real OSM building footprints.
+ * Each CONTIGUOUS built-up stretch becomes its own exclusion island — a strip
+ * from just street-side of the frontage line back to lot depth. Open
+ * stretches (unfenced vacant lots) get NO island and stay fully scannable,
+ * so a typical block in our current communities yields MULTIPLE islands.
  */
 
 export interface InnerBoundaryResult {
   multiPolygon: { type: 'MultiPolygon'; coordinates: number[][][][] }
-  stats: { samples: number; simplifiedTo: number; buildingSegments: number }
+  stats: { samples: number; simplifiedTo: number; buildingSegments: number; islands: number }
 }
 
 export async function generateInnerBoundaryFromRing(
@@ -27,7 +29,13 @@ export async function generateInnerBoundaryFromRing(
 
   const defaultSetback = clamp(options?.setbackMeters || 8, 4, 20)
   const frontageMargin = 1.5
-  const minSetback = 4
+  // Follow real frontage depth (storefront ~3m .. deep residential ~15m).
+  const minSetback = 3
+  const maxSetback = 15
+  const frontageRange = 25 // a hit farther than this = effectively open
+  const backDepth = 30 // exclusion strip depth behind the frontage line
+  const minRunSamples = 3 // built stretches under ~6m are noise
+  const gapMergeSamples = 2 // open gaps under ~4m get absorbed into a run
 
   // Meter-space conversion around the ring centroid.
   const cLat = ring.reduce((a, p) => a + p[1], 0) / ring.length
@@ -74,8 +82,9 @@ export async function generateInnerBoundaryFromRing(
   }
   const inward = area2 > 0 ? 1 : -1
 
-  // Sample every ~2m; ray-cast inward for the nearest frontage.
-  const inner: Array<readonly [number, number]> = []
+  // Sample every ~2m; ray-cast inward, remembering per-sample frontage hits.
+  type Sample = { x: number; y: number; nx: number; ny: number; hit: number | null }
+  const samples: Sample[] = []
   for (let i = 0; i < pts.length; i++) {
     const [x1, y1] = pts[i]
     const [x2, y2] = pts[(i + 1) % pts.length]
@@ -95,33 +104,95 @@ export async function generateInnerBoundaryFromRing(
         const d = raySegment(sx, sy, nx, ny, ax, ay, bx, by)
         if (d !== null && d < hit) hit = d
       }
-      const setback = Number.isFinite(hit) ? clamp(hit - frontageMargin, minSetback, defaultSetback) : defaultSetback
-      inner.push([sx + nx * setback, sy + ny * setback])
+      samples.push({ x: sx, y: sy, nx, ny, hit: hit <= frontageRange ? hit : null })
     }
   }
-  if (inner.length < 4) {
+  if (samples.length < 4) {
     throw new Error('Boundary too small to inset')
   }
 
-  // Light simplification: drop near-collinear points (<0.3m deviation).
-  const simplified: Array<readonly [number, number]> = []
-  for (let i = 0; i < inner.length; i++) {
-    const prev = simplified[simplified.length - 1] ?? inner[(i - 1 + inner.length) % inner.length]
-    const next = inner[(i + 1) % inner.length]
-    const cur = inner[i]
-    const devi =
-      Math.abs((next[0] - prev[0]) * (prev[1] - cur[1]) - (prev[0] - cur[0]) * (next[1] - prev[1])) /
-      (Math.hypot(next[0] - prev[0], next[1] - prev[1]) || 1)
-    if (devi > 0.3 || simplified.length === 0) simplified.push(cur)
+  // Built/open classification with small-gap absorption (circular).
+  const built = samples.map((s) => s.hit !== null)
+  const n = samples.length
+  for (let i = 0; i < n; i++) {
+    if (built[i]) continue
+    // Absorb an open gap shorter than gapMergeSamples between built samples.
+    let gapLen = 0
+    let j = i
+    while (gapLen <= gapMergeSamples && !built[j % n]) { gapLen++; j++ }
+    if (gapLen <= gapMergeSamples && built[(i - 1 + n) % n] && built[j % n]) {
+      for (let k = i; k < i + gapLen; k++) built[k % n] = true
+    }
   }
-  const closed = [...simplified, simplified[0]]
+
+  // Contiguous built runs (circular), each ≥ minRunSamples.
+  const runs: number[][] = []
+  const start = built.findIndex((b) => !b)
+  if (start === -1) {
+    runs.push(samples.map((_, i) => i)) // fully built block: one island
+  } else {
+    let run: number[] = []
+    for (let k = 1; k <= n; k++) {
+      const idx = (start + k) % n
+      if (built[idx]) {
+        run.push(idx)
+      } else if (run.length > 0) {
+        if (run.length >= minRunSamples) runs.push(run)
+        run = []
+      }
+    }
+    if (run.length >= minRunSamples) runs.push(run)
+  }
+
+  // One exclusion island per built run: frontage-following strip from the
+  // cutoff line back to lot depth.
+  const simplify = (line: Array<readonly [number, number]>) => {
+    const out: Array<readonly [number, number]> = []
+    for (let i = 0; i < line.length; i++) {
+      const prev = out[out.length - 1] ?? line[Math.max(0, i - 1)]
+      const next = line[Math.min(line.length - 1, i + 1)]
+      const cur = line[i]
+      const devi =
+        Math.abs((next[0] - prev[0]) * (prev[1] - cur[1]) - (prev[0] - cur[0]) * (next[1] - prev[1])) /
+        (Math.hypot(next[0] - prev[0], next[1] - prev[1]) || 1)
+      if (devi > 0.3 || out.length === 0 || i === line.length - 1) out.push(cur)
+    }
+    return out
+  }
+
+  const islands: number[][][][] = []
+  let totalSimplified = 0
+  for (const run of runs) {
+    let lastSetback = defaultSetback
+    const front: Array<readonly [number, number]> = []
+    const back: Array<readonly [number, number]> = []
+    for (const idx of run) {
+      const smp = samples[idx]
+      const setback = smp.hit !== null ? clamp(smp.hit - frontageMargin, minSetback, maxSetback) : lastSetback
+      lastSetback = setback
+      front.push([smp.x + smp.nx * setback, smp.y + smp.ny * setback])
+      back.push([smp.x + smp.nx * backDepth, smp.y + smp.ny * backDepth])
+    }
+    const frontS = simplify(front)
+    const backS = simplify(back)
+    if (frontS.length + backS.length < 4) continue
+    const ring2 = [...frontS, ...backS.reverse()]
+    ring2.push(ring2[0])
+    totalSimplified += ring2.length
+    islands.push([ring2.map(([x, y]) => [...toLL(x, y)])])
+  }
 
   return {
     multiPolygon: {
       type: 'MultiPolygon',
-      coordinates: [[closed.map(([x, y]) => [...toLL(x, y)])]],
+      coordinates: islands,
     },
-    stats: { samples: inner.length, simplifiedTo: simplified.length, buildingSegments: buildingSegments.length },
+    stats: {
+      samples: samples.length,
+      simplifiedTo: totalSimplified,
+      buildingSegments: buildingSegments.length,
+      islands: islands.length,
+    },
   }
 }
 
