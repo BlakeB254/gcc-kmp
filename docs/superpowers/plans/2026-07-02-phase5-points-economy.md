@@ -315,13 +315,16 @@ git commit -m "feat(points): distance-tracked scan coverage points (new-area/sta
 
 - [ ] **Step 1: Write the route**
 
+**Security note (found by automated review after this plan was first written — fixed here, not deferred):** the original version of this endpoint had no check that anything was actually dirty at the supplied lat/lng before awarding points, and no check that the `[id]` scan belonged to the caller. That's a real points-farming vector — an authenticated worker could call this endpoint with arbitrary made-up coordinates and farm unlimited points regardless of whether anything real was ever there to rectify. The version below fixes both: it reads the cell's prior `worldObservations` state (same "read before mutate" pattern Task 1's categorization logic already established) and only awards points if a real prior `dirty` observation existed there, and it verifies the scan belongs to the authenticated worker before proceeding. This also closes the "repeat-farm the same real spot" case for free: once a cell is rectified, it has no dirty observation left, so a second call to the same location finds nothing to supersede and awards zero points.
+
 ```typescript
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { recordWorldObservation } from '@/lib/world-observations'
+import { recordWorldObservation, gridCell } from '@/lib/world-observations'
 import { db } from '@/db'
-import { pointsLedger } from '@/db/schema'
+import { pointsLedger, routeScans, worldObservations } from '@/db/schema'
 import { RECTIFICATION_BONUS_POINTS } from '@/lib/points-config'
+import { and, eq } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 
@@ -334,8 +337,9 @@ type RouteContext = { params: Promise<{ id: string }> }
  * previously-expected-dirty spot and confirmed it's actually clean now.
  * Records the clean observation (superseding the prior dirty one via
  * recordWorldObservation's existing logic) and awards a flat rectification
- * bonus — a distinct, higher-value credit than routine coverage scanning,
- * since this is a rarer, higher-effort confirmation action.
+ * bonus — but ONLY if there was a real prior 'dirty' observation in this
+ * cell to rectify (see security note above) and the scan belongs to the
+ * authenticated worker.
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = await requireMobileAuth(request)
@@ -349,14 +353,44 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ success: false, error: 'Invalid scan ID' }, { status: 400 })
   }
 
+  // Ownership check: the scan must exist and belong to the authenticated worker.
+  const [scan] = await db
+    .select({ workerId: routeScans.workerId })
+    .from(routeScans)
+    .where(eq(routeScans.id, scanId))
+    .limit(1)
+  if (!scan) {
+    return NextResponse.json({ success: false, error: 'Scan not found' }, { status: 404 })
+  }
+  if (scan.workerId !== auth.workerId) {
+    return NextResponse.json({ success: false, error: 'Scan does not belong to this worker' }, { status: 403 })
+  }
+
   const body = await request.json().catch(() => null)
   const lat = Number(body?.lat)
   const lng = Number(body?.lng)
-  const capturedAt = typeof body?.capturedAt === 'string' ? body.capturedAt : new Date().toISOString()
-
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ success: false, error: 'lat and lng are required' }, { status: 400 })
   }
+
+  // Server-side timestamp — not client-supplied. The ledger's createdAt for a
+  // points-awarding event should reflect when the server actually processed
+  // it, not a client-controllable value.
+  const capturedAt = new Date().toISOString()
+
+  // Anti-farming check: only award points if a real prior 'dirty' observation
+  // exists in this cell. Read BEFORE recordWorldObservation's write, since
+  // that call would otherwise supersede the very row we need to check for.
+  const cellId = gridCell(lat, lng)
+  const [priorDirty] = await db
+    .select({ id: worldObservations.id })
+    .from(worldObservations)
+    .where(and(
+      eq(worldObservations.locationCellId, cellId),
+      eq(worldObservations.state, 'dirty'),
+      eq(worldObservations.isCurrent, true),
+    ))
+    .limit(1)
 
   const observation = await recordWorldObservation({
     sourceType: 'route_scan',
@@ -367,18 +401,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
     capturedAt,
   })
 
-  await db.insert(pointsLedger).values({
-    workerId: auth.workerId,
-    action: 'scan_coverage_rectification',
-    points: RECTIFICATION_BONUS_POINTS,
-    referenceType: 'world_observation',
-    referenceId: observation.id,
-    createdAt: capturedAt,
-  })
+  if (priorDirty) {
+    await db.insert(pointsLedger).values({
+      workerId: auth.workerId,
+      action: 'scan_coverage_rectification',
+      points: RECTIFICATION_BONUS_POINTS,
+      referenceType: 'world_observation',
+      referenceId: observation.id,
+      createdAt: capturedAt,
+    })
+  }
 
-  return NextResponse.json({ success: true, observationId: observation.id, pointsAwarded: RECTIFICATION_BONUS_POINTS })
+  return NextResponse.json({
+    success: true,
+    observationId: observation.id,
+    pointsAwarded: priorDirty ? RECTIFICATION_BONUS_POINTS : 0,
+    wasRectification: Boolean(priorDirty),
+  })
 }
 ```
+
+`gridCell` must be exported from `site/src/lib/world-observations.ts` — it already is (confirmed earlier this session: `export function gridCell(lat: number, lng: number, cellSizeMeters = CELL_SIZE_METERS): string`).
 
 - [ ] **Step 2: Typecheck**
 
@@ -386,17 +429,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 cd site && npx tsc --noEmit
 ```
 
-- [ ] **Step 3: Manual verification against the dev server — register a disposable test worker, verify, then delete everything the test created**
+- [ ] **Step 3: Manual verification against the dev server — seed real fixtures, exercise all 4 code paths, then delete everything the test created**
 
-**This writes real rows into the live `world_observations` and `points_ledger` tables (no separate dev database exists in this repo).** To avoid touching any existing real worker's data at all, register a fresh, disposable test worker via `/api/auth/register` (same approach used successfully in this session's earlier Phase 0 auth-fix work — check `.superpowers/sdd/final-review-fixes-report.md` if you want that precedent) rather than reusing an existing account's token. After verifying the endpoint works, delete every row this test created: the `world_observations` row, the `points_ledger` row, and the disposable test worker row itself, so nothing lingers in the live database.
+**This writes real rows into the live `route_scans`, `world_observations`, and `points_ledger` tables (no separate dev database exists in this repo).** To avoid touching any existing real worker's data, register a fresh, disposable test worker via `/api/auth/register` (same approach used successfully in this session's earlier Phase 0 auth-fix work — check `.superpowers/sdd/final-review-fixes-report.md` if you want that precedent). The security fix above means this endpoint now needs real fixtures to test meaningfully: a `route_scans` row owned by the test worker (for the ownership check), and a real prior-`dirty` `world_observations` row at the test coordinates (to prove the anti-farming check actually gates the points award). Exercise all 4 outcomes: 401 (no auth), 403 (scan owned by someone else), success-with-points (real prior-dirty row exists), and 0-points (calling it again on the same now-clean spot). Delete every row the test creates before finishing.
 
 ```bash
 cd site && npm run dev &
 sleep 3
 
-# Register a disposable test worker. Confirmed real request/response shape
-# from site/src/app/api/auth/register/route.ts: requires name, email,
-# password; responds { data: { token, worker: { id, ... }, exp, ... }, success }.
+# Register a disposable test worker.
 REGISTER_RESPONSE=$(curl -s -X POST http://localhost:7350/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"name":"Rectify Test Worker","email":"rectify-test-verification-only@example.invalid","password":"test-rectify-verification-only-throwaway"}')
@@ -405,37 +446,85 @@ TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.data.token')
 WORKER_ID=$(echo "$REGISTER_RESPONSE" | jq -r '.data.worker.id')
 echo "test worker id: $WORKER_ID"
 
-RECTIFY_RESPONSE=$(curl -s -X POST http://localhost:7350/api/scans/999/rectify \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"lat":42.002,"lng":-87.002,"capturedAt":"2026-07-02T12:00:00Z"}')
+# Seed fixtures: a route_scans row owned by this worker, a second route_scans
+# row owned by a DIFFERENT existing worker (to test the 403 case), and a
+# prior-dirty world_observations row at the test coordinates.
+FIXTURES=$(npx tsx --env-file=.env.local -e "
+import { db } from './src/db'
+import { routeScans, worldObservations, workers } from './src/db/schema'
+import { gridCell } from './src/lib/world-observations'
+import { ne } from 'drizzle-orm'
+async function main() {
+  const workerId = $WORKER_ID
+  const lat = 42.002, lng = -87.002
+  const [ownScan] = await db.insert(routeScans).values({
+    routeId: 1, workerId, startLat: lat, startLng: lng,
+  }).returning({ id: routeScans.id })
+  const [otherWorker] = await db.select({ id: workers.id }).from(workers).where(ne(workers.id, workerId)).limit(1)
+  let otherScanId = null
+  if (otherWorker) {
+    const [otherScan] = await db.insert(routeScans).values({
+      routeId: 1, workerId: otherWorker.id, startLat: lat, startLng: lng,
+    }).returning({ id: routeScans.id })
+    otherScanId = otherScan.id
+  }
+  const [dirtyObs] = await db.insert(worldObservations).values({
+    sourceType: 'route_scan', lat, lng, locationCellId: gridCell(lat, lng), itemType: 'general_litter',
+    state: 'dirty', capturedAt: new Date().toISOString(), isCurrent: true,
+  }).returning({ id: worldObservations.id })
+  console.log(JSON.stringify({ ownScanId: ownScan.id, otherScanId, dirtyObsId: dirtyObs.id }))
+  process.exit(0)
+}
+main()
+")
+echo "$FIXTURES"
+OWN_SCAN_ID=$(echo "$FIXTURES" | jq -r '.ownScanId')
+OTHER_SCAN_ID=$(echo "$FIXTURES" | jq -r '.otherScanId')
+
+# Case 1: no auth → 401
+curl -s -i -X POST http://localhost:7350/api/scans/$OWN_SCAN_ID/rectify \
+  -H "Content-Type: application/json" -d '{"lat":42.002,"lng":-87.002}' | head -1
+
+# Case 2: scan owned by someone else → 403 (only if a second worker existed)
+if [ "$OTHER_SCAN_ID" != "null" ]; then
+  curl -s -i -X POST http://localhost:7350/api/scans/$OTHER_SCAN_ID/rectify \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+    -d '{"lat":42.002,"lng":-87.002}' | head -1
+fi
+
+# Case 3: own scan, real prior-dirty observation exists → success, 25 points
+RECTIFY_RESPONSE=$(curl -s -X POST http://localhost:7350/api/scans/$OWN_SCAN_ID/rectify \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"lat":42.002,"lng":-87.002}')
 echo "$RECTIFY_RESPONSE"
-OBSERVATION_ID=$(echo "$RECTIFY_RESPONSE" | jq -r '.observationId')
+OBSERVATION_ID_1=$(echo "$RECTIFY_RESPONSE" | jq -r '.observationId')
+
+# Case 4: same spot again — nothing dirty left → success, 0 points (this IS the anti-farming proof)
+RECTIFY_RESPONSE_2=$(curl -s -X POST http://localhost:7350/api/scans/$OWN_SCAN_ID/rectify \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"lat":42.002,"lng":-87.002}')
+echo "$RECTIFY_RESPONSE_2"
+OBSERVATION_ID_2=$(echo "$RECTIFY_RESPONSE_2" | jq -r '.observationId')
 
 # ── Cleanup: delete everything this test created ──
 npx tsx --env-file=.env.local -e "
 import { db } from './src/db'
-import { worldObservations, pointsLedger, workers } from './src/db/schema'
-import { eq } from 'drizzle-orm'
+import { worldObservations, pointsLedger, workers, routeScans } from './src/db/schema'
+import { eq, inArray } from 'drizzle-orm'
 async function main() {
   const workerId = $WORKER_ID
-  const observationId = $OBSERVATION_ID
   await db.delete(pointsLedger).where(eq(pointsLedger.workerId, workerId))
-  await db.delete(worldObservations).where(eq(worldObservations.id, observationId))
+  await db.delete(worldObservations).where(inArray(worldObservations.id, [$OBSERVATION_ID_1, $OBSERVATION_ID_2]))
+  await db.delete(routeScans).where(inArray(routeScans.id, [$OWN_SCAN_ID, $OTHER_SCAN_ID].filter(x => x !== null && x !== 'null')))
   await db.delete(workers).where(eq(workers.id, workerId))
-  console.log('cleanup complete for test worker', workerId, 'and observation', observationId)
+  console.log('cleanup complete')
   process.exit(0)
 }
 main().catch(e => { console.error('CLEANUP FAILED — manually verify no test data remains', e); process.exit(1) })
 "
 ```
-Expected: the rectify response is `{"success":true,"observationId":<some id>,"pointsAwarded":25}`, and the cleanup script confirms deletion. If `jq` isn't available, parse the JSON some other way — the point is capturing `TOKEN`/`WORKER_ID`/`OBSERVATION_ID` precisely enough to clean up afterward, not the specific parsing tool. Then confirm the 401 path (no test data created by this second call, since it fails before any write):
-```bash
-curl -s -i -X POST http://localhost:7350/api/scans/999/rectify \
-  -H "Content-Type: application/json" \
-  -d '{"lat":42.002,"lng":-87.002}'
-```
-Expected: HTTP 401.
+
+Expected: Case 1 → `HTTP/1.1 401`. Case 2 (if run) → `HTTP/1.1 403`. Case 3 → `{"success":true,"observationId":<id>,"pointsAwarded":25,"wasRectification":true}`. **Case 4 is the critical anti-farming proof** → `{"success":true,"observationId":<id>,"pointsAwarded":0,"wasRectification":false}` — if Case 4 shows `pointsAwarded:25` instead, the security fix did not work and this task is not done.
 
 Stop the dev server when done.
 
