@@ -374,10 +374,12 @@ class SpotViewModel(
                 }
                 if (response.status.value == 409) {
                     DiagnosticsLog.error("spot-submit", "server 409: duplicate spot within 15m")
+                    // World-scan model: failures land back on the camera, not
+                    // the legacy manual-details forms.
                     _uiState.value = _uiState.value.copy(
                         isSubmitting = false,
-                        phase = SpotPhase.DESCRIPTION,
-                        error = "A spot report already exists within 15m of this location",
+                        phase = SpotPhase.CAMERA,
+                        error = "A report already exists within 15m — area already logged",
                     )
                     return@launch
                 }
@@ -402,10 +404,12 @@ class SpotViewModel(
                 )
             } catch (e: Exception) {
                 DiagnosticsLog.error("spot-submit", "report submission failed", e)
+                // Back to the camera with the error surfaced as a popup —
+                // Complete Scan can simply be tapped again.
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
-                    phase = SpotPhase.DESCRIPTION,
-                    error = e.message ?: "Failed to submit report",
+                    phase = SpotPhase.CAMERA,
+                    error = e.message ?: "Submission failed — tap Complete Scan to retry",
                 )
             }
         }

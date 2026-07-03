@@ -1035,6 +1035,24 @@ class GccApiClient(
         return response.body<RectifyResponse>()
     }
 
+    /**
+     * Environment-scan clean confirmation (no route scan in progress):
+     * supersedes a prior dirty observation at this location and awards the
+     * rectification bonus when one existed.
+     */
+    suspend fun rectifyObservationAtLocation(lat: Double, lng: Double): RectifyResponse {
+        val response = httpClient.post("$baseUrl/api/observations/rectify") {
+            contentType(ContentType.Application.Json)
+            setBody(RectifyRequest(lat = lat, lng = lng))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<RectifyResponse>()
+    }
+
     suspend fun getMapCoverage(bbox: String): MapCoverageResponse {
         val response = httpClient.get("$baseUrl/api/map/coverage") {
             parameter("bbox", bbox)

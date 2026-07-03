@@ -34,8 +34,12 @@ import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.CameraDetectionBus
 import com.gcc.app.platform.CameraSceneVoteBus
+import com.gcc.app.platform.CoverageDeviceId
+import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.coverageTier
+import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.ui.components.*
@@ -52,8 +56,15 @@ import com.gcc.app.viewmodel.DuplicateMatch
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
+import com.gcc.shared.model.ScanCoverageEventRequest
+import com.gcc.shared.model.WorldObservation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
@@ -145,6 +156,7 @@ fun SpotScreen(
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
+                    submitError = uiState.error,
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -234,6 +246,7 @@ private fun CameraPhase(
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
+    submitError: String? = null,
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -272,6 +285,36 @@ private fun CameraPhase(
     var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
 
+    // Ledger emission: environment scans register real coverage (never-scanned
+    // completions + 24h recency updates) exactly like the AR modes do.
+    val coverageQueue = remember(apiClient) {
+        CoverageEventQueue(submitFn = { events ->
+            try {
+                apiClient.submitCoverageEvents(events)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("coverage-flush", "env-scan flush of ${events.size} events failed (kept queued)", e)
+                throw e
+            }
+        })
+    }
+    val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    DisposableEffect(Unit) {
+        onDispose { flushScope.launch { coverageQueue.flush() } }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            coverageQueue.flush()
+        }
+    }
+
+    // "Previously littered, now clean" flow: nearby expected-dirty
+    // observations from the world model; within range a confirm sheet offers
+    // Still there / Already clean (rectification bonus).
+    var expectedDirty by remember { mutableStateOf(listOf<WorldObservation>()) }
+    val resolvedObservationIds = remember { mutableSetOf<Int>() }
+    var nearbyDirty by remember { mutableStateOf<WorldObservation?>(null) }
+
     // Initialise the scan grid at the first real fix (single-point "route"
     // gives a ~15m-corridor zone around the spot).
     LaunchedEffect(currentLocation, spotLocation) {
@@ -297,19 +340,63 @@ private fun CameraPhase(
         } catch (e: Exception) {
             DiagnosticsLog.error("env-scan", "coverage freshness fetch failed (minimap stays plain)", e)
         }
+        try {
+            val pad = 0.0012
+            val bbox = listOf(
+                anchor.lng - pad, anchor.lat - pad,
+                anchor.lng + pad, anchor.lat + pad,
+            ).joinToString(",")
+            expectedDirty = apiClient.getMapObservations(bbox).filter { it.state == "dirty" }
+            DiagnosticsLog.info("env-scan", "${expectedDirty.size} expected-dirty observations nearby")
+        } catch (e: Exception) {
+            DiagnosticsLog.error("env-scan", "observations fetch failed — no clean-confirm prompts", e)
+        }
     }
 
     // Credit zones while outdoors: camera frustum sweep when heading exists.
     LaunchedEffect(trackerReady) {
         if (!trackerReady) return@LaunchedEffect
+        var lastLat: Double? = null
+        var lastLng: Double? = null
         locationProvider.locationFlow.collect { loc ->
-            if (gate.state.value == OutdoorState.INDOOR) return@collect
+            if (gate.state.value == OutdoorState.INDOOR) {
+                lastLat = null; lastLng = null
+                return@collect
+            }
             val heading = locationProvider.headingDegrees.value
             if (heading != null) {
                 tracker.updateWithFrustum(lat = loc.lat, lng = loc.lng, headingDegrees = heading)
             } else {
                 tracker.updatePosition(loc.lat, loc.lng)
             }
+
+            // Ledger event (spot mode): distance since the previous fix.
+            val segmentMeters = lastLat?.let { prevLat ->
+                GeofenceVerification.distanceMeters(prevLat, lastLng!!, loc.lat, loc.lng)
+            } ?: 0.0
+            lastLat = loc.lat
+            lastLng = loc.lng
+            if (getPlatformName() != "desktop") coverageQueue.enqueue(
+                ScanCoverageEventRequest(
+                    deviceId = CoverageDeviceId.value,
+                    platform = getPlatformName(),
+                    lat = loc.lat,
+                    lng = loc.lng,
+                    distanceMeters = segmentMeters,
+                    scanMode = "spot",
+                    deviceTier = deviceCapabilities.deviceClass.coverageTier(),
+                    capturedAt = Clock.System.now().toString(),
+                )
+            )
+
+            // Clean-confirm proximity (5m, unresolved only).
+            nearbyDirty = expectedDirty
+                .asSequence()
+                .filter { it.id !in resolvedObservationIds }
+                .map { it to GeofenceVerification.distanceMeters(loc.lat, loc.lng, it.lat, it.lng) }
+                .filter { (_, dist) -> dist <= 5.0 }
+                .minByOrNull { (_, dist) -> dist }
+                ?.first
         }
     }
     val scannedCells by tracker.scannedCells.collectAsState()
@@ -330,6 +417,10 @@ private fun CameraPhase(
             toast = "Trash tagged on the map ✓"
         }
     }
+    LaunchedEffect(submitError) {
+        if (submitError != null) toast = "⚠ $submitError"
+    }
+    val rectifyScope = rememberCoroutineScope()
     val creditTick = scannedCells.size + observedItems.size * 10
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
@@ -384,6 +475,74 @@ private fun CameraPhase(
             )
         }
 
+        // "Previously littered — is it clean now?" confirm sheet.
+        nearbyDirty?.let { obs ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 84.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Trash was reported here — is it still there?",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .clickable {
+                                resolvedObservationIds.add(obs.id)
+                                nearbyDirty = null
+                            }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text("Still there", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(GccGreen)
+                            .clickable {
+                                resolvedObservationIds.add(obs.id)
+                                expectedDirty = expectedDirty.filterNot { it.id == obs.id }
+                                nearbyDirty = null
+                                rectifyScope.launch {
+                                    try {
+                                        val result = apiClient.rectifyObservationAtLocation(obs.lat, obs.lng)
+                                        toast = if (result.pointsAwarded > 0) {
+                                            "Area marked clean · +${result.pointsAwarded} pts ✓"
+                                        } else {
+                                            "Area marked clean ✓"
+                                        }
+                                    } catch (e: Exception) {
+                                        DiagnosticsLog.error("rectify", "env-scan rectify failed", e)
+                                        toast = "⚠ Couldn't record the clean update"
+                                        resolvedObservationIds.remove(obs.id)
+                                        expectedDirty = expectedDirty + obs
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            "Already clean",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+
         // Scanning feedback: sweep + registration pulse, live trash reticle,
         // transient popups — the "data is registering" layer.
         EnvironmentScanEffects(active = !isIndoor, creditTick = creditTick)
@@ -409,22 +568,6 @@ private fun CameraPhase(
             ) {
                 Text("✕", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
             }
-        }
-
-        // Manual path (bottom-left): the old location/details phases.
-        TextButton(
-            onClick = onNext,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 12.dp, bottom = 16.dp),
-        ) {
-            Text(
-                text = "Add details",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-            )
         }
 
         // One-tap completion (bottom-right corner).
