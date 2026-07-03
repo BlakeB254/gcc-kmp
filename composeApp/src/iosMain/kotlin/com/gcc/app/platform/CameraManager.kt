@@ -17,8 +17,17 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.AVFoundation.AVCaptureConnection
 import platform.AVFoundation.AVCaptureDevice
 import platform.AVFoundation.AVCaptureDeviceInput
+import platform.AVFoundation.AVCaptureOutput
+import platform.AVFoundation.AVCaptureVideoDataOutput
+import platform.AVFoundation.AVCaptureVideoDataOutputSampleBufferDelegateProtocol
+import platform.CoreMedia.CMSampleBufferGetImageBuffer
+import platform.CoreMedia.CMSampleBufferRef
+import platform.Foundation.NSDate
+import platform.Foundation.timeIntervalSince1970
+import platform.darwin.dispatch_queue_create
 import platform.AVFoundation.AVCapturePhoto
 import platform.AVFoundation.AVCapturePhotoOutput
 import platform.AVFoundation.AVCapturePhotoSettings
@@ -378,6 +387,8 @@ actual class CameraManager actual constructor() {
     companion object {
         internal var activePhotoOutput: AVCapturePhotoOutput? = null
         internal var activeSession: AVCaptureSession? = null
+        /** Strong ref — AVCaptureVideoDataOutput holds its delegate weakly. */
+        internal var activeSceneDelegate: Any? = null
         internal var hasDepthCapability: Boolean = false
         internal var sessionId: String = platform.Foundation.NSUUID().UUIDString()
         internal var captureCount: Int = 0
@@ -587,7 +598,21 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
         supported
     } catch (_: Throwable) { false }
 
+    // Scene-vote tap: classify one frame every ~2s and feed the OutdoorGate
+    // via CameraSceneVoteBus (the plain viewfinder has no AR pipeline).
+    val sceneDelegate = SceneSampleDelegate()
+    val videoOutput = AVCaptureVideoDataOutput()
+    videoOutput.alwaysDiscardsLateVideoFrames = true
+    videoOutput.setSampleBufferDelegate(
+        sceneDelegate,
+        queue = dispatch_queue_create("gcc.scene.sampling", null),
+    )
+    if (captureSession.canAddOutput(videoOutput)) {
+        captureSession.addOutput(videoOutput)
+    }
+
     // Store refs so capturePhoto() can use the live session
+    CameraManager.activeSceneDelegate = sceneDelegate
     CameraManager.activePhotoOutput = photoOutput
     CameraManager.activeSession = captureSession
     CameraManager.hasDepthCapability = depthCapable
@@ -620,12 +645,52 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
         onRelease = {
             CameraManager.activePhotoOutput = null
             CameraManager.activeSession = null
+            CameraManager.activeSceneDelegate = null
             CameraManager.hasDepthCapability = false
             dispatch_async(dispatch_get_main_queue()) {
                 captureSession.stopRunning()
             }
         },
     )
+}
+
+/**
+ * Samples the live viewfinder stream for indoor/outdoor evidence: at most one
+ * Vision pass every [SAMPLE_INTERVAL_MS]; non-NONE votes go to
+ * [CameraSceneVoteBus] on the main queue. Frames outside the sampling window
+ * return immediately (the delegate rides the 30fps video queue).
+ */
+private const val SCENE_SAMPLE_INTERVAL_MS = 2_000L
+
+@OptIn(ExperimentalForeignApi::class)
+private class SceneSampleDelegate :
+    platform.darwin.NSObject(),
+    AVCaptureVideoDataOutputSampleBufferDelegateProtocol {
+
+    private var lastSampleAtMs = 0L
+
+    override fun captureOutput(
+        output: AVCaptureOutput,
+        didOutputSampleBuffer: CMSampleBufferRef?,
+        fromConnection: AVCaptureConnection,
+    ) {
+        val nowMs = (NSDate().timeIntervalSince1970 * 1000).toLong()
+        if (nowMs - lastSampleAtMs < SCENE_SAMPLE_INTERVAL_MS) return
+        lastSampleAtMs = nowMs
+
+        val pixelBuffer = CMSampleBufferGetImageBuffer(didOutputSampleBuffer)
+            ?: return
+        val vote = try {
+            SceneVoteVision.classify(pixelBuffer)
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("scene-vote", "viewfinder classification failed", e)
+            return
+        }
+        if (vote == SceneVote.NONE) return
+        dispatch_async(dispatch_get_main_queue()) {
+            CameraSceneVoteBus.emit(vote)
+        }
+    }
 }
 
 @Composable

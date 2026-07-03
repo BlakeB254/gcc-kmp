@@ -64,22 +64,10 @@ internal class ArFrameFeedback(
         private const val TICK_MS = 1_000L
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
-        private const val SCENE_CONFIDENCE = 0.4f
         private const val TRASH_CONFIDENCE = 0.35f
         private const val PERSIST_DISTANCE_METERS = 2.0
         private const val PERSIST_STREAK_TICKS = 2
         private const val MARKER_DEDUPE_METERS = 3.0
-
-        private val INDOOR_KEYWORDS = setOf(
-            "indoor", "room", "ceiling", "wall", "kitchen", "bathroom", "bedroom",
-            "office", "hallway", "furniture", "sofa", "couch", "desk", "carpet",
-            "curtain", "shelf", "stairs", "interior",
-        )
-        private val OUTDOOR_KEYWORDS = setOf(
-            "outdoor", "street", "road", "sidewalk", "sky", "tree", "grass",
-            "park", "building", "asphalt", "pavement", "cloud", "field",
-            "vehicle", "car", "house", "fence", "yard",
-        )
 
         /** Token → reticle label. Tokens match `_`/space-split Vision identifiers. */
         private val TRASH_TOKENS = mapOf(
@@ -214,19 +202,7 @@ internal class ArFrameFeedback(
     }
 
     private fun emitSceneVote(observations: List<VNClassificationObservation>) {
-        var indoorHits = 0
-        var outdoorHits = 0
-        for (obs in observations) {
-            if (obs.confidence < SCENE_CONFIDENCE) continue
-            val tokens = tokensOf(obs.identifier)
-            if (tokens.any { it in INDOOR_KEYWORDS }) indoorHits += 1
-            if (tokens.any { it in OUTDOOR_KEYWORDS }) outdoorHits += 1
-        }
-        val vote = when {
-            indoorHits > outdoorHits && indoorHits > 0 -> SceneVote.INDOOR
-            outdoorHits > indoorHits && outdoorHits > 0 -> SceneVote.OUTDOOR
-            else -> SceneVote.NONE
-        }
+        val vote = SceneVoteVision.voteFrom(observations)
         if (vote == SceneVote.NONE) return
         val listener = sceneVoteListener ?: return
         dispatch_async(dispatch_get_main_queue()) { listener(vote) }

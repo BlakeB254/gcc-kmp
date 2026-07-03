@@ -32,6 +32,8 @@ import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.CameraSceneVoteBus
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.ui.components.*
@@ -242,6 +244,16 @@ private fun CameraPhase(
         locationProvider.horizontalAccuracyMeters.collect { accuracy ->
             gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
         }
+    }
+    // The viewfinder itself votes indoor/outdoor (Vision pass every ~2s on
+    // the AVCapture stream) — same camera evidence AR mode gets.
+    LaunchedEffect(Unit) {
+        CameraSceneVoteBus.votes.collect { vote ->
+            gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+        }
+    }
+    LaunchedEffect(outdoorState) {
+        DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
     }
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
