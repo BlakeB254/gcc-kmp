@@ -189,6 +189,22 @@ class SpotViewModel(
         _uiState.value = _uiState.value.copy(selectedTags = current)
     }
 
+    /**
+     * One-tap completion from the camera phase ("Complete Scan"): auto-apply
+     * the on-device AI description (tags were pre-filled by [addPhoto]) and
+     * submit directly with the GPS position (spotLat/spotLng stay null →
+     * [submitReport] falls back to currentLat/currentLng). The manual
+     * LOCATION/DESCRIPTION phases remain reachable via "Add details"; a
+     * submit failure lands there with the error shown, so nothing is lost.
+     */
+    fun completeScan() {
+        val state = _uiState.value
+        if (state.phase != SpotPhase.CAMERA) return
+        if (state.capturedPhotos.isEmpty()) return
+        applyAiDescription()
+        submitReport()
+    }
+
     fun nextPhase() {
         val current = _uiState.value.phase
         val next = when (current) {

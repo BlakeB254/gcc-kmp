@@ -46,6 +46,8 @@ fun SpotScanCapture(
     onPhotoCaptured: (ScanCapturedPhoto) -> Unit,
     onRemovePhoto: ((Int) -> Unit)? = null,
     capturedPhotos: List<CapturedPhoto> = emptyList(),
+    /** Externally blocked (e.g. OutdoorGate INDOOR): stops tap + auto capture. */
+    captureBlocked: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -93,7 +95,7 @@ fun SpotScanCapture(
         }
     }
     val isWithinGeofence = distanceToSpot?.let { it <= geofenceRadius } ?: false
-    val canCapture = !requireGeofence || isWithinGeofence
+    val canCapture = (!requireGeofence || isWithinGeofence) && !captureBlocked
     val currentCanCapture by rememberUpdatedState(canCapture)
 
     var gpsWaitSeconds by remember { mutableStateOf(0L) }
@@ -204,12 +206,14 @@ fun SpotScanCapture(
                 .padding(top = 8.dp, end = 8.dp),
         )
 
-        // AR walk-around guidance entry — AR-capable devices only.
+        // AR walk-around guidance entry — AR-capable devices only. Raised
+        // above the bottom corners, which belong to the host screen's
+        // "Add details" / "Complete Scan" chrome.
         if (deviceCapabilities.deviceClass != DeviceClass.BASIC) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 16.dp, end = 8.dp)
+                    .padding(bottom = 96.dp, end = 8.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(GccBlue.copy(alpha = 0.9f))
                     .clickable { showArGuide = true }

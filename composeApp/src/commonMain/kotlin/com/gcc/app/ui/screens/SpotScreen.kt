@@ -32,7 +32,10 @@ import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.OutdoorGate
+import com.gcc.app.platform.OutdoorState
 import com.gcc.app.ui.components.*
+import kotlinx.datetime.Clock
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -78,7 +81,9 @@ fun SpotScreen(
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Row(
+            // The camera phase is a full-bleed viewfinder with floating chrome
+            // only — the header (back / title / logo) belongs to the other phases.
+            if (uiState.phase != SpotPhase.CAMERA) Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
@@ -127,6 +132,8 @@ fun SpotScreen(
                     onCapture = { photo -> viewModel.addPhoto(photo) },
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
+                    onCompleteScan = { viewModel.completeScan() },
+                    onBack = onBack,
                     spotLocation = currentLocation,
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                 )
@@ -210,6 +217,8 @@ private fun CameraPhase(
     onCapture: (CapturedPhoto) -> Unit,
     onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
+    onCompleteScan: () -> Unit,
+    onBack: () -> Unit,
     spotLocation: Coordinates? = null,
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
 ) {
@@ -222,17 +231,19 @@ private fun CameraPhase(
         ?: currentLocation
         ?: Coordinates(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        ScanModeBadge(
-            deviceClass = deviceCapabilities.deviceClass,
-            modifier = Modifier.align(Alignment.Start),
-        )
+    // "Go outside" gate — GPS-accuracy evidence only here (the AVCapture
+    // viewfinder has no frame stream to classify; AR mode adds camera votes).
+    val gate = remember { OutdoorGate() }
+    val outdoorState by gate.state.collectAsState()
+    val isIndoor = outdoorState == OutdoorState.INDOOR
+    LaunchedEffect(Unit) {
+        locationProvider.horizontalAccuracyMeters.collect { accuracy ->
+            gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+        }
+    }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
+    // Full-bleed viewfinder; everything else floats over it, inset-aware.
+    Box(modifier = Modifier.fillMaxSize()) {
         if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
@@ -242,7 +253,8 @@ private fun CameraPhase(
                 capturedPhotos = photos,
                 onPhotoCaptured = onScanCapture,
                 onRemovePhoto = onRemovePhoto,
-                modifier = Modifier.weight(1f),
+                captureBlocked = isIndoor,
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
             CameraCapture(
@@ -259,20 +271,69 @@ private fun CameraPhase(
                     )
                 },
                 onRemovePhoto = onRemovePhoto,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 showMiniMap = true,
                 currentLocation = currentLocation,
                 gpsHeading = gpsHeading,
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        GoOutsideOverlay(visible = isIndoor)
 
-        GccButton(
-            text = if (photos.isNotEmpty()) "Next: Set Location" else "Skip Photo",
+        // Exit (top-left) — the camera phase has no header bar.
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✕", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            }
+        }
+
+        // Manual path (bottom-left): the old location/details phases.
+        TextButton(
             onClick = onNext,
-            variant = if (photos.isNotEmpty()) GccButtonVariant.PRIMARY else GccButtonVariant.OUTLINED,
-        )
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 12.dp, bottom = 16.dp),
+        ) {
+            Text(
+                text = "Add details",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+            )
+        }
+
+        // One-tap completion (bottom-right corner).
+        val canComplete = photos.isNotEmpty() && !isIndoor
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 16.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
+                .clickable(enabled = canComplete) { onCompleteScan() }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = "Complete Scan ✓",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+        }
     }
 }
 
