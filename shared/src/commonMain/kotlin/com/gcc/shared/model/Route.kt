@@ -16,6 +16,13 @@ data class Route(
     val serviceAreaId: Int,
     val geometry: GeoJSONLineString? = null,
     val blockBoundary: GeoJSONPolygon? = null,
+    /**
+     * Route-v2 inner boundaries (private-property cutoffs) — MULTIPLE islands
+     * supported: unfenced vacant lots between built-up stretches remain part
+     * of the scannable corridor. Between blockBoundary and these rings =
+     * the required scan area. Null → clients fall back to a parallel inset.
+     */
+    val innerBoundary: GeoJSONMultiPolygon? = null,
     val status: RouteStatus = RouteStatus.DRAFT,
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,

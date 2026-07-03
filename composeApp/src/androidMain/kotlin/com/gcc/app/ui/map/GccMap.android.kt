@@ -75,6 +75,7 @@ actual fun GccMap(
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
+    innerBoundaryRings: List<List<Coordinates>>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,

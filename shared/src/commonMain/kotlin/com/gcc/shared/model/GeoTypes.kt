@@ -44,6 +44,12 @@ object CoordinatesSerializer : KSerializer<Coordinates> {
 data class Coordinates(val lng: Double, val lat: Double)
 
 @Serializable
+data class GeoJSONMultiPolygon(
+    val type: String = "MultiPolygon",
+    val coordinates: List<List<List<Point>>>,
+)
+
+@Serializable
 data class GeoJSONPolygon(
     val type: String = "Polygon",
     val coordinates: List<List<Point>>
