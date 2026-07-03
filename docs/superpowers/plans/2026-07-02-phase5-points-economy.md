@@ -240,42 +240,60 @@ db.execute(sql\`SELECT enumlabel FROM pg_enum WHERE enumtypid = 'enum_points_led
 ```
 Expected: all 10 values present (7 original + 3 new), in the order they were added.
 
-- [ ] **Step 6: Manual verification — confirm categorization + points award end-to-end**
+- [ ] **Step 6: Manual verification — confirm categorization + points award end-to-end, then clean up completely**
+
+**This writes into the live `pointsLedger` against a real worker row — this repo has no separate dev database (documented team practice throughout this session), and there is no dedicated test-worker account.** The script below is written to be fully self-cleaning: it captures every row id it creates (events, summary, ledger entries) and deletes all of them at the end, so the worker's real points balance and stats are back to exactly their pre-test state when the script exits. Do not skip the cleanup block, and do not modify this script to remove it. If any step after the writes fails, manually verify and clean up before considering this step done — do not leave test data or test points in a real worker's ledger.
 
 ```bash
 cd site && npx tsx --env-file=.env.local -e "
 import { recordCoverageEvent } from './src/lib/scan-coverage'
 import { db } from './src/db'
-import { pointsLedger } from './src/db/schema'
-import { eq } from 'drizzle-orm'
+import { pointsLedger, scanCoverageEvents, cellCoverageSummary } from './src/db/schema'
+import { eq, or, inArray } from 'drizzle-orm'
+import { gridCell } from './src/lib/world-observations'
 
 async function main() {
-  const lat = 42.001, lng = -87.001 // arbitrary, unlikely to collide with real data
-  // First scan: should categorize as new_area, award 10 * distance points
+  const [anyWorker] = await db.select({ id: (await import('./src/db/schema')).workers.id })
+    .from((await import('./src/db/schema')).workers).limit(1)
+  if (!anyWorker) { console.error('no worker rows exist to test against'); process.exit(1) }
+  const workerId = anyWorker.id
+  console.log('testing against real workerId:', workerId, '— will fully clean up afterward')
+
+  const lat = 42.001, lng = -87.001 // arbitrary, unlikely to collide with real scanned data
+  const cellId = gridCell(lat, lng)
+
   const r1 = await recordCoverageEvent({
-    deviceId: 'points-test', platform: 'ios', workerId: 1, lat, lng,
+    deviceId: 'points-test', platform: 'ios', workerId, lat, lng,
     distanceMeters: 10, scanMode: 'route', deviceTier: 'pro_scanner',
     capturedAt: new Date().toISOString(),
   })
   console.log('event 1 (expect new_area, 100 pts):', r1.id)
 
-  // Second scan seconds later: should categorize as fresh_rescan, award 0 points (no ledger row)
   const r2 = await recordCoverageEvent({
-    deviceId: 'points-test', platform: 'ios', workerId: 1, lat, lng,
+    deviceId: 'points-test', platform: 'ios', workerId, lat, lng,
     distanceMeters: 10, scanMode: 'route', deviceTier: 'pro_scanner',
     capturedAt: new Date().toISOString(),
   })
   console.log('event 2 (expect fresh_rescan, 0 pts, no ledger row):', r2.id)
 
-  const ledgerRows = await db.select().from(pointsLedger).where(eq(pointsLedger.workerId, 1))
-  const thisTestRows = ledgerRows.filter(r => r.referenceId === r1.id || r.referenceId === r2.id)
-  console.log('ledger rows for this test:', JSON.stringify(thisTestRows))
+  const ledgerRows = await db.select().from(pointsLedger).where(eq(pointsLedger.workerId, workerId))
+  const thisTestLedgerRows = ledgerRows.filter(r => r.referenceId === r1.id || r.referenceId === r2.id)
+  console.log('ledger rows for this test (expect exactly 1, for event 1):', JSON.stringify(thisTestLedgerRows))
+
+  // ── Cleanup: delete every row this test created, in dependency order ──
+  if (thisTestLedgerRows.length > 0) {
+    await db.delete(pointsLedger).where(inArray(pointsLedger.id, thisTestLedgerRows.map(r => r.id)))
+  }
+  await db.delete(scanCoverageEvents).where(inArray(scanCoverageEvents.id, [r1.id, r2.id]))
+  await db.delete(cellCoverageSummary).where(eq(cellCoverageSummary.locationCellId, cellId))
+  console.log('cleanup complete: deleted', thisTestLedgerRows.length, 'ledger row(s), 2 event rows, 1 summary row')
+
   process.exit(0)
 }
-main()
+main().catch(e => { console.error('FAILED — verify no test data/points remain for worker', e); process.exit(1) })
 "
 ```
-Expected: exactly one ledger row (for `r1`, `action: 'scan_coverage_new_area'`, `points: 100`), none for `r2`. If a real worker id 1 doesn't exist and the insert fails on a foreign-key-like constraint, check `workers` for a real id to substitute (`SELECT id FROM workers LIMIT 1`) — `workerId` on `pointsLedger` isn't declared as a DB-level foreign key in the schema shown, but use a real id anyway to keep the test meaningful.
+Expected: exactly one ledger row created for `r1` (`action: 'scan_coverage_new_area'`, `points: 100`), none for `r2`, and the final cleanup log confirms all test rows were deleted. Re-run the `pointsLedger` query manually afterward if you want extra confidence nothing lingers: `SELECT * FROM points_ledger WHERE reference_type = 'scan_coverage_event' AND reference_id IN (<r1.id>, <r2.id>)` should return zero rows post-cleanup.
 
 - [ ] **Step 7: Commit**
 
