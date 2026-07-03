@@ -1,11 +1,14 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -29,6 +32,7 @@ import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.theme.GccError
+import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
 
@@ -106,7 +110,8 @@ fun ArRouteScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(top = 48.dp, start = 16.dp, end = 16.dp)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp, start = 16.dp, end = 16.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(GccError.copy(alpha = 0.9f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -127,7 +132,8 @@ fun ArRouteScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 96.dp, start = 16.dp, end = 16.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.Black.copy(alpha = 0.65f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -141,6 +147,25 @@ fun ArRouteScreen(
             }
         }
 
+        // Back to the scout map (bottom-right) — coverage keeps accruing there.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 16.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(GccGreen)
+                .clickable { onExit() }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = "Back to Map",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+        }
+
         // "Go outside" scrim — sits under the exit button so leaving AR always works.
         GoOutsideOverlay(visible = isIndoor)
 
@@ -148,7 +173,8 @@ fun ArRouteScreen(
         TextButton(
             onClick = onExit,
             modifier = Modifier
-                .padding(8.dp)
+                .statusBarsPadding()
+                .padding(4.dp)
                 .align(Alignment.TopStart),
         ) {
             Box(
