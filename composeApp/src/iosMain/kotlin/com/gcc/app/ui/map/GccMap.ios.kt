@@ -93,6 +93,7 @@ actual fun GccMap(
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
     val routeInnerJson = remember(routeCoordinates) { buildRouteInnerBoundariesGeoJson(routeCoordinates) }
+    val routeCorridorJson = remember(routeCoordinates) { buildRouteCorridorGeoJson(routeCoordinates) }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
         else buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng)
@@ -217,6 +218,7 @@ actual fun GccMap(
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
             val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
             val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
+            val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
 
             // --- Layers (bottom to top) ---
@@ -490,21 +492,45 @@ actual fun GccMap(
                 )
             }
 
-            // ── Inner route boundary (double-lined routes, route-v2) ──
-            // Amber cutoff line inset from the block outline: between the
-            // green outer line and this one is the public scan corridor;
-            // inside it is private-property side — excluded from recording.
+            // ── Scan corridor + inner boundary (double-lined routes) ──
+            // The band BETWEEN the two boundaries is the assignment: tinted
+            // so "scan here" is explicit. Inside the inner ring (private
+            // property) and outside the outer ring are excluded.
+            FillLayer(
+                id = "route-corridor-band",
+                source = routeCorridorSrc,
+                color = const(GccGreen),
+                opacity = const(0.12f),
+            )
+            // Inner boundary: the outer line's visual twin (same casing +
+            // core stack, same widths) so the pair reads as one system —
+            // exactly parallel, never touching (8m parallel-edge inset).
             LineLayer(
-                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
+                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-casing",
                 source = routeInnerSrc,
-                color = const(Color(0xFFF59E0B)),
+                color = const(MapStyles.ROUTE_CASING_COLOR),
                 width = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    10 to const(0.4.dp),
-                    13 to const(1.dp),
-                    15 to const(2.dp),
-                    17 to const(3.dp),
+                    10 to const(0.5.dp),
+                    13 to const(2.dp),
+                    15 to const(5.dp),
+                    17 to const(8.dp),
+                ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
+            )
+            LineLayer(
+                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
+                source = routeInnerSrc,
+                color = const(GccGreen),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0.5.dp),
+                    13 to const(1.5.dp),
+                    15 to const(3.dp),
+                    17 to const(5.dp),
                 ),
                 cap = const(LineCap.Round),
                 join = const(LineJoin.Round),
