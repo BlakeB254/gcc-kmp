@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 
 // ── UI state ─────────────────────────────────────────────────────────
 
@@ -118,6 +121,67 @@ class RouteScanViewModel(
         outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
     }
 
+    // Prior coverage state per client grid cell ("fresh" | "stale"), from the
+    // production ledger. Cells absent from the map were never scanned.
+    // Consumed by the live points estimator; "fresh" cells also start revealed.
+    private var cellPriorStates: Map<Pair<Int, Int>, String> = emptyMap()
+
+    /**
+     * Bring the digital twin into the AR fog: fetch `/api/map/coverage` for
+     * the route's bounding box and (a) pre-reveal cells the ledger marks
+     * fresh, (b) remember fresh/stale priors for live points estimation.
+     * Server cells are 10m; each maps onto the 3m client cells inside its
+     * footprint. Fetch failures degrade silently to session-local fog.
+     */
+    private fun seedFogFromServerCoverage(waypoints: List<Coordinates>) {
+        cellPriorStates = emptyMap()
+        if (waypoints.isEmpty()) return
+        scope.launch {
+            try {
+                val pad = 0.0005 // ~50m of slack around the route bbox
+                val bbox = listOf(
+                    waypoints.minOf { it.lng } - pad,
+                    waypoints.minOf { it.lat } - pad,
+                    waypoints.maxOf { it.lng } + pad,
+                    waypoints.maxOf { it.lat } + pad,
+                ).joinToString(",")
+                val serverCells = apiClient.getMapCoverage(bbox).cells
+
+                val priors = mutableMapOf<Pair<Int, Int>, String>()
+                val fresh = mutableSetOf<Pair<Int, Int>>()
+                for (serverCell in serverCells) {
+                    for (cell in clientCellsForServerCell(serverCell.lat, serverCell.lng)) {
+                        priors[cell] = serverCell.state
+                        if (serverCell.state == "fresh") fresh.add(cell)
+                    }
+                }
+                cellPriorStates = priors
+                if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
+            } catch (_: Exception) {
+                // Non-fatal: fog stays session-local, estimator treats all as new.
+            }
+        }
+    }
+
+    /** Client 3m grid cells whose centers fall inside a 10m server cell. */
+    private fun clientCellsForServerCell(centerLat: Double, centerLng: Double): Set<Pair<Int, Int>> {
+        val center = coverageTracker.cellForLatLng(centerLat, centerLng) ?: return emptySet()
+        val halfLat = 5.0 / 111_320.0
+        val halfLng = 5.0 / (111_320.0 * cos(centerLat * PI / 180.0))
+        val out = mutableSetOf<Pair<Int, Int>>()
+        for (dr in -2..2) {
+            for (dc in -2..2) {
+                val row = center.first + dr
+                val col = center.second + dc
+                val (lat, lng) = coverageTracker.cellCenterLatLng(row, col)
+                if (abs(lat - centerLat) <= halfLat && abs(lng - centerLng) <= halfLng) {
+                    out.add(row to col)
+                }
+            }
+        }
+        return out
+    }
+
     // ── Read-only projections for the AR route overlay (Task 16) ─────────
     // Exposed as read-only accessors rather than the mutable CoverageTracker /
     // LocationProvider instances, so ArRouteScreen can drive the overlay without
@@ -201,6 +265,7 @@ class RouteScanViewModel(
         val waypoints = effectiveCheckpoints
             .map { it.coordinates }
         coverageTracker.initFromRoute(waypoints)
+        seedFogFromServerCoverage(waypoints)
 
         // Observe coverage changes
         coverageJob = scope.launch {
