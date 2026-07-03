@@ -18,7 +18,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,12 +34,16 @@ import com.gcc.app.platform.ObjectCoverageTracker
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.SpotArOverlay
 import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.ui.components.GoOutsideOverlay
+import com.gcc.app.ui.components.PointsPip
+import com.gcc.app.ui.components.PointsPipOverlay
+import com.gcc.app.ui.components.SessionPointsPill
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.shared.api.GccApiClient
@@ -84,6 +90,13 @@ fun SpotArScreen(
 
     val coveragePercent by tracker.coveragePercent.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+
+    // Live points HUD: spot mode has no session grid or prior fetch, so the
+    // estimate uses the server-equivalent 10m cells and treats them as new.
+    val estimator = remember { SessionPointsEstimator() }
+    var sessionPoints by remember { mutableStateOf(0) }
+    var pips by remember { mutableStateOf(listOf<PointsPip>()) }
+    var nextPipId by remember { mutableStateOf(0L) }
 
     // "Go outside" gate: GPS accuracy + camera scene votes; INDOOR suppresses
     // coverage accrual and shows the scrim.
@@ -149,6 +162,14 @@ fun SpotArScreen(
             lastLat = location.lat
             lastLng = location.lng
 
+            // Live points HUD estimate for this segment.
+            val cell10m = SessionPointsEstimator.gridCell10m(location.lat, location.lng)
+            val pointsDelta = estimator.onSegment(cell10m, priorState = null, meters = segmentMeters)
+            if (pointsDelta > 0) {
+                sessionPoints = estimator.total
+                pips = pips + PointsPip(id = nextPipId++, amount = pointsDelta)
+            }
+
             // Desktop is dev-only and the endpoint rejects its platform value —
             // skip so the queue can't fill with unsendable events.
             if (getPlatformName() != "desktop") queue.enqueue(
@@ -176,6 +197,20 @@ fun SpotArScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         SpotArOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
+
+        // Live points HUD (top-right) + floating reward pips.
+        SessionPointsPill(
+            points = sessionPoints,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 8.dp, end = 12.dp),
+        )
+        PointsPipOverlay(
+            pips = pips,
+            onExpired = { id -> pips = pips.filterNot { it.id == id } },
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // Coverage progress (top-center).
         Box(

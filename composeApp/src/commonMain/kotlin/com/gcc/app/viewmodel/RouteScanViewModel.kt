@@ -9,6 +9,7 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.SceneVote
+import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
@@ -23,7 +24,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -120,6 +123,14 @@ class RouteScanViewModel(
     fun onSceneVote(vote: SceneVote) {
         outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
     }
+
+    // Live points HUD: client-side estimate + one-shot "+N pts" pip events.
+    // Display-only; the server ledger total lands on the completion screen.
+    private val pointsEstimator = SessionPointsEstimator()
+    private val _sessionPointsEstimate = MutableStateFlow(0)
+    val sessionPointsEstimate: StateFlow<Int> = _sessionPointsEstimate.asStateFlow()
+    private val _pointsPips = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    val pointsPips: SharedFlow<Int> = _pointsPips
 
     // Prior coverage state per client grid cell ("fresh" | "stale"), from the
     // production ledger. Cells absent from the map were never scanned.
@@ -701,6 +712,16 @@ class RouteScanViewModel(
                                 capturedAt = Clock.System.now().toString(),
                             )
                         )
+
+                        // Live points HUD: estimate what this segment earned.
+                        val gridCell = coverageTracker.cellForLatLng(lat, lng)
+                        val pointsDelta = pointsEstimator.onSegment(
+                            gridCell, cellPriorStates[gridCell], segmentMeters,
+                        )
+                        if (pointsDelta > 0) {
+                            _sessionPointsEstimate.value = pointsEstimator.total
+                            _pointsPips.tryEmit(pointsDelta)
+                        }
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value

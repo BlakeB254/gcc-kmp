@@ -20,7 +20,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +33,9 @@ import com.gcc.app.platform.ArRouteOverlayView
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.ui.components.GoOutsideOverlay
+import com.gcc.app.ui.components.PointsPip
+import com.gcc.app.ui.components.PointsPipOverlay
+import com.gcc.app.ui.components.SessionPointsPill
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
@@ -62,6 +67,16 @@ fun ArRouteScreen(
     val trackingState by overlay.trackingState.collectAsState()
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
+    val sessionPoints by viewModel.sessionPointsEstimate.collectAsState()
+
+    // Floating "+N pts" pips, fed by the ViewModel's one-shot pip events.
+    var pips by remember { mutableStateOf(listOf<PointsPip>()) }
+    var nextPipId by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        viewModel.pointsPips.collect { amount ->
+            pips = pips + PointsPip(id = nextPipId++, amount = amount)
+        }
+    }
 
     // Overlay lifecycle: start when entering the AR screen, stop on the way out.
     // (iOS also pauses the ARSession from the UIKitView's onRelease.)
@@ -103,6 +118,20 @@ fun ArRouteScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         ArRouteOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
+
+        // Live points HUD (top-right) + floating reward pips.
+        SessionPointsPill(
+            points = sessionPoints,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 8.dp, end = 12.dp),
+        )
+        PointsPipOverlay(
+            pips = pips,
+            onExpired = { id -> pips = pips.filterNot { it.id == id } },
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // Boundary-crossing warning banner (top).
         if (isOutsideBoundary) {
