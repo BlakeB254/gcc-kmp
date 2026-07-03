@@ -195,3 +195,14 @@ val northLawndaleBuildings = listOf(
         height = 3,
     ),
 )
+
+
+/**
+ * True when (lat, lng) falls inside any mapped building footprint — the same
+ * rectangles the map renders, so "my dot is in the middle of a building" and
+ * the OutdoorGate's map evidence can never disagree.
+ */
+fun isInsideMappedBuilding(lat: Double, lng: Double): Boolean =
+    northLawndaleBuildings.any { b ->
+        lat <= b.north && lat >= b.south && lng <= b.east && lng >= b.west
+    }

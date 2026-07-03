@@ -127,12 +127,13 @@ fun CameraCapture(
                 )
             }
 
-            // Tap-to-capture hint (bottom-center, above the badges)
+            // Scan status / instructions (top-center, under the status bar,
+            // clear of the corner chrome).
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 140.dp)
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -149,13 +150,14 @@ fun CameraCapture(
                 )
             }
 
-            // Mini-map overlay (bottom-end)
+            // Mini-map: lower-right corner over the feed (Pokémon-GO layout;
+            // the primary action lives bottom-center).
             if (showMiniMap && currentLocation != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 10.dp, bottom = 176.dp)
+                        .padding(end = 12.dp, bottom = 20.dp)
                         .size(width = miniMapWidth, height = miniMapHeight)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),

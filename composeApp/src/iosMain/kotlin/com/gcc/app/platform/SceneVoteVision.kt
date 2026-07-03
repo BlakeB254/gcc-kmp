@@ -27,7 +27,9 @@ internal object SceneVoteVision {
         "curtain", "shelf", "stairs", "interior", "chair", "table",
         "television", "lamp", "bed", "cabinet", "refrigerator", "laptop",
         "monitor", "screen", "keyboard", "bookcase", "book", "rug", "pillow",
-        "blanket", "sink", "counter", "cupboard", "appliance",
+        "blanket", "sink", "counter", "cupboard", "appliance", "tile",
+        "computer", "floor", "flooring", "hardwood", "printer", "document",
+        "paper", "drawer", "wardrobe", "closet", "mug", "houseplant",
     )
     val OUTDOOR_KEYWORDS = setOf(
         "outdoor", "street", "road", "sidewalk", "sky", "tree", "grass",
@@ -61,8 +63,10 @@ internal object SceneVoteVision {
             if (tokens.any { it in OUTDOOR_KEYWORDS }) outdoorHits += 1
         }
         return when {
-            indoorHits > outdoorHits && indoorHits > 0 -> SceneVote.INDOOR
-            outdoorHits > indoorHits && outdoorHits > 0 -> SceneVote.OUTDOOR
+            // Enclosed spaces show NO outdoor cues — any indoor hit with zero
+            // outdoor hits is decisive (walls/door/ceiling, no sky).
+            indoorHits > 0 && outdoorHits == 0 -> SceneVote.INDOOR
+            outdoorHits > 0 && outdoorHits >= indoorHits -> SceneVote.OUTDOOR
             else -> SceneVote.NONE
         }
     }

@@ -114,7 +114,7 @@ fun ScanToast(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 196.dp)
+                .padding(bottom = 110.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color.Black.copy(alpha = 0.75f))
                 .padding(horizontal = 16.dp, vertical = 10.dp),
