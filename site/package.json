@@ -37,6 +37,8 @@
     "@radix-ui/react-toast": "^1.2.15",
     "@remotion/bundler": "^4.0.407",
     "@remotion/cli": "^4.0.407",
+    "@aws-sdk/client-s3": "^3.716.0",
+    "@aws-sdk/s3-request-presigner": "^3.716.0",
     "@remotion/google-fonts": "^4.0.407",
     "@stripe/stripe-js": "^8.6.0",
     "@types/leaflet": "^1.9.21",

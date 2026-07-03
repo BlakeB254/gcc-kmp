@@ -1583,6 +1583,17 @@ export type NewScanHotspotRow = typeof scanHotspots.$inferInsert
 // World observation model — the unified map/digital-twin layer fed by both
 // route-scan hotspots and spot reports. See docs/superpowers/specs/2026-07-01-
 // unified-scan-ecosystem-and-immersive-route-design.md §2.
+//
+// Field shape is split deliberately: `itemType`/`state`/`confidence`/media/
+// capture-provenance fields stay as real columns because they're universal
+// across every domain (litter, vegetation, construction, land_use, and
+// whatever's added later) AND `itemType` specifically is queried directly in
+// the supersession logic (recordWorldObservation), so it needs to stay a real
+// indexable column, not buried in JSON. `attributes` holds whatever numeric/
+// descriptive payload is specific to a given domain — litter's severity and
+// volume/weight estimates today, a future vegetation domain's health grade,
+// a future construction domain's progress percent — without requiring a
+// schema migration (or a new named column) every time a new domain is added.
 export const worldObservations = pgTable('world_observations', {
   id: serial('id').primaryKey(),
   scanHotspotId: integer('scan_hotspot_id'),
@@ -1594,9 +1605,7 @@ export const worldObservations = pgTable('world_observations', {
   locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
   itemType: varchar('item_type', { length: 50 }), // null when state='clean' (nothing dirty found)
   state: varchar('state', { length: 10 }).notNull(), // 'dirty' | 'clean'
-  severity: integer('severity'),
-  estimatedVolumeLiters: doublePrecision('estimated_volume_liters'),
-  estimatedWeightLbs: doublePrecision('estimated_weight_lbs'),
+  attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedVolumeLiters, estimatedWeightLbs}
   confidence: doublePrecision('confidence'),
   mediaUrl: varchar('media_url', { length: 500 }),
   depthData: text('depth_data'),
@@ -1640,6 +1649,28 @@ export const cellCoverageSummary = pgTable('cell_coverage_summary', {
 
 export type CellCoverageSummaryRow = typeof cellCoverageSummary.$inferSelect
 export type NewCellCoverageSummaryRow = typeof cellCoverageSummary.$inferInsert
+
+// Processed 3D reconstruction outputs (Phase 2/3 of the scan-guidance/world-model
+// design, docs/superpowers/specs/2026-07-02-scan-guidance-world-model-and-rewards-
+// design.md §2.4). Files themselves live in R2 as open formats (.ply/.glb) at
+// `reconstructed/{locationCellId}/{version}/{assetType}.{format}` — this table is
+// the explicit-provenance link back to the scan-coverage events that produced them.
+export const reconstructionAssets = pgTable('reconstruction_assets', {
+  id: serial('id').primaryKey(),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  assetType: varchar('asset_type', { length: 20 }).notNull(), // 'pointcloud' | 'splat' | 'mesh'
+  format: varchar('format', { length: 10 }).notNull(), // 'ply' | 'glb' | 'gltf' | 'laz'
+  r2Key: varchar('r2_key', { length: 500 }).notNull(),
+  version: integer('version').notNull(),
+  sourceScanCoverageEventIds: jsonb('source_scan_coverage_event_ids').notNull(), // number[]
+  activatedAt: timestamp('activated_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  cellVersionIdx: index('reconstruction_assets_cell_version_idx').on(table.locationCellId, table.version),
+}))
+
+export type ReconstructionAssetRow = typeof reconstructionAssets.$inferSelect
+export type NewReconstructionAssetRow = typeof reconstructionAssets.$inferInsert
 
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert

@@ -563,11 +563,37 @@ mode; it should be resolved before those two phases ship, not whenever is conven
 - Exact `itemType`/new-domain taxonomy values — reuses whatever vocabulary
   `trashTypes`/`onDeviceAiResult` already produces for litter; new-domain taxonomies
   (vegetation/construction/land_use) are undefined until their detection work is
-  scoped.
+  scoped. **Partially resolved 2026-07-03, see §8.1.**
 - Splat pipeline registration algorithm and quality thresholds (§3) — research spike,
   not this document.
 - Mobile-side vs. web-side points-system unification (§5.1) — flagged, not solved.
 - Streak/momentum mechanics scope (§6.2) — deferred, optional.
+
+### 8.1 Addendum (2026-07-03): live-scan scope is litter-only; infrastructure domains are background-only
+
+Direct product decision, resolving part of the open item above: the live,
+on-device scan experience (on-device detection, AR guidance, points economy) is
+scoped **strictly to litter, rubble, and anything "out of place" that would be
+considered trash or correctable by most people** — not sidewalks, potholes, or
+street condition. Map rendering for these litter issues uses lightweight derived
+still images cropped from the capture (§4.1's photo-billboard approach), not
+heavier 3D assets.
+
+Sidewalk repair needs, potholes, and street-condition issues (the
+`domain='construction'`/`'land_use'` extension from §0.3) are explicitly **not**
+part of the live capture pipeline. They're a separate, deferred feature: examined
+in the background or after-the-fact from the raw scan blobs already landing in
+R2 per Phase 2 (§2), once that detection work is scoped — not live on a phone
+during a scan session. This keeps the live capture UX fast and
+battery/thermal-friendly while still letting the same raw scan data serve a
+second, heavier-compute purpose later, without requiring a second user capture
+pass.
+
+This doesn't fully resolve the taxonomy question (exact detection models/vocab
+for the infrastructure domains are still unscoped), but it does resolve *where*
+that detection happens — background/R2-based, never live on-device — which
+directly shapes how any future infrastructure-domain detection work should be
+designed.
 
 ---
 
