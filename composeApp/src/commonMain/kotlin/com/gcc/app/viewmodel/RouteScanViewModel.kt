@@ -11,6 +11,7 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.classifyFogAndStale
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
@@ -143,7 +144,25 @@ class RouteScanViewModel(
     // Prior coverage state per client grid cell ("fresh" | "stale"), from the
     // production ledger. Cells absent from the map were never scanned.
     // Consumed by the live points estimator; "fresh" cells also start revealed.
-    private var cellPriorStates: Map<Pair<Int, Int>, String> = emptyMap()
+    private val _cellPriorStates = MutableStateFlow<Map<Pair<Int, Int>, String>>(emptyMap())
+    private var cellPriorStates: Map<Pair<Int, Int>, String>
+        get() = _cellPriorStates.value
+        set(value) { _cellPriorStates.value = value }
+
+    // Minimap projections (route-scan AR screen): fog = never scanned by
+    // anyone; stale = scanned before, ledger says re-visit. Both recompute
+    // whenever either the server priors arrive or a cell gets scanned this
+    // session (see the coverageJob collector in initForRoute).
+    private val _fogCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val fogCellCenters: StateFlow<List<Pair<Double, Double>>> = _fogCellCenters.asStateFlow()
+    private val _staleCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val staleCellCenters: StateFlow<List<Pair<Double, Double>>> = _staleCellCenters.asStateFlow()
+
+    private fun refreshFogAndStaleCenters() {
+        val classification = classifyFogAndStale(coverageTracker.getUnscannedCells(), cellPriorStates)
+        _fogCellCenters.value = classification.fogCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+        _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+    }
 
     // ── Expected-observation (rectify) flow ──────────────────────────
     // Dirty world observations near the route, rendered as expected-trash AR
@@ -217,6 +236,7 @@ class RouteScanViewModel(
                     }
                 }
                 cellPriorStates = priors
+                refreshFogAndStaleCenters()
                 if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
                 DiagnosticsLog.info("fog-seed", "seeded ${fresh.size} fresh cells, ${priors.size} priors from ${serverCells.size} server cells")
             } catch (e: Exception) {
@@ -352,6 +372,9 @@ class RouteScanViewModel(
             coverageTracker.coveragePercent.collect { pct ->
                 _uiState.value = _uiState.value.copy(coveragePercent = pct)
             }
+        }
+        scope.launch {
+            coverageTracker.scannedCells.collect { refreshFogAndStaleCenters() }
         }
 
         // Collect AI direction text into UI state
