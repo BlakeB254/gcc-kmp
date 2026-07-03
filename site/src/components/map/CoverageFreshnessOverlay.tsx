@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Source, Layer } from 'react-map-gl/maplibre'
 import { enumerateCellsInBounds, cellCenter } from '@/lib/grid-cell-client'
 import { METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
+import { SPOT_ZOOM } from '@/lib/design-tokens'
 
 const STALE_COLOR = '#d97706' // amber-600
 const NEVER_SCANNED_COLOR = '#9ca3af' // grey-400
-const MIN_ZOOM_TO_SHOW = 14 // matches SPOT_ZOOM.DOTS_MIN — close zoom only, never a wide-area wash
+const FETCH_DEBOUNCE_MS = 400
 
 interface Bounds {
   west: number
@@ -31,7 +32,7 @@ interface CoverageCell {
 
 /**
  * Renders never-scanned (grey) and stale (amber) cells as small filled
- * squares over the map, restricted to close zoom (>= MIN_ZOOM_TO_SHOW) and
+ * squares over the map, restricted to close zoom (>= SPOT_ZOOM.DOTS_MIN) and
  * gated by the `visible` toggle — deliberately never a wide-zoom wash, per
  * design spec §4.2's explicit lesson from this team's reverted full-earth
  * tint regression. Fresh cells and areas outside any coverage data render
@@ -39,22 +40,35 @@ interface CoverageCell {
  */
 export function CoverageFreshnessOverlay({ bounds, zoom, visible }: CoverageFreshnessOverlayProps) {
   const [scannedCells, setScannedCells] = useState<CoverageCell[]>([])
-  const shouldRender = visible && zoom >= MIN_ZOOM_TO_SHOW
+  const shouldRender = visible && zoom >= SPOT_ZOOM.DOTS_MIN
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!shouldRender) return
-    const bboxParam = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`
     let cancelled = false
-    fetch(`/api/map/coverage?bbox=${bboxParam}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data.success) setScannedCells(data.cells)
-      })
-      .catch(() => {
-        if (!cancelled) setScannedCells([])
-      })
+
+    // Debounce: bounds changes on every onMove frame during drag/pan, so
+    // only fetch once bounds have been stable for FETCH_DEBOUNCE_MS —
+    // otherwise a single pan gesture floods /api/map/coverage (and the
+    // Neon query behind it) with dozens of requests per second.
+    debounceTimerRef.current = setTimeout(() => {
+      const bboxParam = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`
+      fetch(`/api/map/coverage?bbox=${bboxParam}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data.success) setScannedCells(data.cells)
+        })
+        .catch(() => {
+          if (!cancelled) setScannedCells([])
+        })
+    }, FETCH_DEBOUNCE_MS)
+
     return () => {
       cancelled = true
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
+      }
     }
   }, [shouldRender, bounds.west, bounds.south, bounds.east, bounds.north])
 
