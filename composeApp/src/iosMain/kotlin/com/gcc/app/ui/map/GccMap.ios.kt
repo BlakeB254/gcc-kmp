@@ -99,9 +99,23 @@ actual fun GccMap(
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
     }
-    val coverageStateJsons = remember(coverageCells, spots) {
+    val coverageStateJsons = remember(coverageCells, spots, routeCoordinates) {
         if (coverageCells.isEmpty()) null
-        else buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng)
+        else {
+            // Fog anchors to the route cluster's geography (+~250m margin),
+            // not the camera — no floating disc at any zoom.
+            val loopPoints = routeCoordinates.flatten()
+            val fogBounds = if (loopPoints.size >= 3) {
+                val margin = 0.0023 // ~250m
+                doubleArrayOf(
+                    loopPoints.minOf { it.lat } - margin,
+                    loopPoints.minOf { it.lng } - margin,
+                    loopPoints.maxOf { it.lat } + margin,
+                    loopPoints.maxOf { it.lng } + margin,
+                )
+            } else null
+            buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng, fogBounds = fogBounds)
+        }
     }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }

@@ -820,10 +820,15 @@ fun buildCoverageStateGeoJsons(
     activeSpots: List<com.gcc.shared.model.CommunityReport>,
     centerLat: Double,
     centerLng: Double,
-    fogRadiusMeters: Double = 700.0,
+    /**
+     * Geographic bounds for the never-scanned fog (minLat, minLng, maxLat,
+     * maxLng) — typically the route cluster's bbox + margin. Anchoring fog
+     * to GEOGRAPHY (not a disc around the camera) is what stops it reading
+     * as a floating circular patch at intermediate zooms (field report
+     * 2026-07-03, user screenshots). Null → no fog layer at all.
+     */
+    fogBounds: DoubleArray? = null,
     cellSizeMeters: Double = 10.0,
-    /** Fog enumerates its own (coarser) grid so a wide radius stays cheap. */
-    fogCellSizeMeters: Double = 20.0,
 ): Triple<String, String, String> {
     val empty = """{"type":"FeatureCollection","features":[]}"""
     val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
@@ -854,32 +859,38 @@ fun buildCoverageStateGeoJsons(
         .filter { it.state == "stale" }
         .joinToString(",") { feature(it.lat, it.lng) }
 
-    // Never-scanned fog: bounded grid around center minus covered cells.
+    // Never-scanned fog: covers the WHOLE bounded area (route cluster bbox)
+    // minus covered cells; cell size adapts to keep the count under the cap.
     val fogFeatures = StringBuilder()
     var fogCount = 0
-    val fogLatStep = fogCellSizeMeters / 111_320.0
-    val fogLngStep = fogCellSizeMeters / (111_320.0 * lngScale)
-    val steps = (fogRadiusMeters / fogCellSizeMeters).toInt()
-    outer@ for (dr in -steps..steps) {
-        for (dc in -steps..steps) {
-            if (dr * dr + dc * dc > steps * steps) continue
-            if (fogCount >= 4500) break@outer
-            val lat = centerLat + dr * fogLatStep
-            val lng = centerLng + dc * fogLngStep
-            val covered = coverageCells.any { cell ->
-                val dLatM = (cell.lat - lat) * 111_320.0
-                val dLngM = (cell.lng - lng) * 111_320.0 * lngScale
-                dLatM * dLatM + dLngM * dLngM < 7.0 * 7.0
+    if (fogBounds != null && fogBounds.size == 4) {
+        val (minLat, minLng, maxLat, maxLng) = listOf(fogBounds[0], fogBounds[1], fogBounds[2], fogBounds[3])
+        val heightM = (maxLat - minLat) * 111_320.0
+        val widthM = (maxLng - minLng) * 111_320.0 * lngScale
+        val fogCell = kotlin.math.sqrt((heightM * widthM) / 4000.0).coerceAtLeast(15.0)
+        val fogLatStep = fogCell / 111_320.0
+        val fogLngStep = fogCell / (111_320.0 * lngScale)
+        val rows = ((maxLat - minLat) / fogLatStep).toInt() + 1
+        val cols = ((maxLng - minLng) / fogLngStep).toInt() + 1
+        outer@ for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                if (fogCount >= 4500) break@outer
+                val lat = minLat + (r + 0.5) * fogLatStep
+                val lng = minLng + (c + 0.5) * fogLngStep
+                val covered = coverageCells.any { cell ->
+                    val dLatM = (cell.lat - lat) * 111_320.0
+                    val dLngM = (cell.lng - lng) * 111_320.0 * lngScale
+                    dLatM * dLatM + dLngM * dLngM < (fogCell * 0.7) * (fogCell * 0.7)
+                }
+                if (covered) continue
+                if (fogFeatures.isNotEmpty()) fogFeatures.append(',')
+                val hLat = fogLatStep / 2
+                val hLng = fogLngStep / 2
+                fogFeatures.append(
+                    """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}],[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]]}}"""
+                )
+                fogCount++
             }
-            if (covered) continue
-            if (fogFeatures.isNotEmpty()) fogFeatures.append(',')
-            // Fog quads at the fog grid size (coarser than ledger cells).
-            val hLat = fogLatStep / 2
-            val hLng = fogLngStep / 2
-            fogFeatures.append(
-                """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}],[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]]}}"""
-            )
-            fogCount++
         }
     }
 
