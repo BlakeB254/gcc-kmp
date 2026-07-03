@@ -98,7 +98,7 @@ export async function GET(
       .orderBy(routeCheckpoints.sequenceOrder)
 
     const [routeBlock] = await db
-      .select({ locationBoundary: blocks.locationBoundary })
+      .select({ locationBoundary: blocks.locationBoundary, innerBoundary: blocks.innerBoundary })
       .from(blocks)
       .where(eq(blocks.routeId, routeId))
       .limit(1)
