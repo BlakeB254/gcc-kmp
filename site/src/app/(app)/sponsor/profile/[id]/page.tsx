@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Image from 'next/image'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -18,6 +19,7 @@ import {
   Loader2,
   Lock,
   MapPin,
+  Camera,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -26,12 +28,18 @@ import { cn, formatCurrency, formatRelativeTime } from '@/lib/utils'
 
 type SponsorTier = 'bronze' | 'silver' | 'gold' | 'platinum'
 
+// A sponsor's total (in dollars) at or above this line gets the extra
+// full-page "Impact Story" section — the top rung of the recognition
+// ladder (card -> on-page section -> full blog-style page).
+const FOUNDING_PARTNER_THRESHOLD = 10000
+
 interface SponsorProfile {
   id: number
   displayName: string
   akas: string[]
   type: string
   tier: SponsorTier
+  logoUrl: string | null
   tagline: string | null
   bio: string | null
   website: string | null
@@ -194,11 +202,23 @@ export default function SponsorProfilePage() {
           </Link>
 
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-            <Avatar className="h-24 w-24 border-4 border-white shadow-lg">
-              <AvatarFallback className="text-3xl font-bold bg-white text-neutral-800">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            {sponsor.logoUrl ? (
+              <div className="h-24 w-24 rounded-full border-4 border-white bg-white shadow-lg overflow-hidden flex items-center justify-center">
+                <Image
+                  src={sponsor.logoUrl}
+                  alt={sponsor.displayName}
+                  width={96}
+                  height={96}
+                  className="h-full w-full object-contain p-2"
+                />
+              </div>
+            ) : (
+              <Avatar className="h-24 w-24 border-4 border-white shadow-lg">
+                <AvatarFallback className="text-3xl font-bold bg-white text-neutral-800">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            )}
 
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap mb-2">
@@ -266,6 +286,29 @@ export default function SponsorProfilePage() {
               <div className="bg-white rounded-xl p-6 shadow-sm border">
                 <h2 className="font-semibold text-lg mb-4">About</h2>
                 <p className="text-neutral-600 whitespace-pre-wrap">{sponsor.bio}</p>
+              </div>
+            )}
+
+            {/* Impact Story — reserved for our top recognition tier ($10,000+):
+                a full, blog-style feature on what this partnership funds,
+                with before/after documentation as the blocks it supports
+                are completed. This is the top rung of card -> on-page
+                section -> full-page story. */}
+            {sponsor.stats.totalContributed / 100 >= FOUNDING_PARTNER_THRESHOLD && (
+              <div className={cn('rounded-xl p-8 text-white shadow-sm', `bg-gradient-to-br ${config.gradientFrom} ${config.gradientTo}`)}>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/70 mb-2">Founding Partner Spotlight</p>
+                <h2 className="font-serif text-2xl font-bold mb-4">
+                  What {sponsor.displayName}&rsquo;s support builds
+                </h2>
+                <p className="text-white/90 leading-relaxed mb-6">
+                  {sponsor.bio || `${sponsor.displayName}'s partnership funds real blocks, real paychecks, and real before-and-after documentation — the kind of transformation that only happens when a community has the resources to act on what it already knows.`}
+                </p>
+                <div className="rounded-lg bg-white/10 border border-white/20 p-6 flex items-start gap-3">
+                  <Camera className="w-5 h-5 flex-shrink-0 mt-0.5 text-white/70" />
+                  <p className="text-sm text-white/80">
+                    Before-and-after photos from the blocks {sponsor.displayName} funds will appear here as cleanups are completed and verified — the same GPS-tagged, timestamped documentation every sponsor receives, featured in full.
+                  </p>
+                </div>
               </div>
             )}
 

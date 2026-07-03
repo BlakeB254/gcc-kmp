@@ -319,6 +319,76 @@ export function ImpactSupportersContent() {
         </div>
       </section>
 
+      {/* Partner Spotlight — UIC's Office of Community Collaboration */}
+      <section className="bg-neutral-50 py-16">
+        <div className="section-container">
+          <div className="mx-auto max-w-3xl">
+            <p className="mb-6 text-center text-xs font-bold uppercase tracking-widest text-brand-green-700">
+              Partner Spotlight
+            </p>
+            <div className="rounded-2xl border border-neutral-200 bg-white p-8 sm:p-10 shadow-sm">
+              <div className="relative mb-8 h-16 w-full sm:w-72">
+                <Image
+                  src="/images/optimized/uic-community-collaboration-logo.webp"
+                  alt="UIC Office of Community Collaboration"
+                  fill
+                  className="object-contain object-left"
+                  sizes="288px"
+                />
+              </div>
+
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold leading-tight text-neutral-900 mb-4">
+                A partner rooted in the same block.
+              </h2>
+
+              <div className="space-y-4 text-neutral-700 leading-relaxed">
+                <p>
+                  The University of Illinois Chicago&rsquo;s{' '}
+                  <a href="https://communitycollaboration.uic.edu/" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-green-700 underline">
+                    Office of Community Collaboration
+                  </a>{' '}
+                  describes its mission simply: to be &ldquo;a catalyst for place-based investment,&rdquo; directing university resources and expertise toward shared prosperity on Chicago&rsquo;s South and West Sides. Of every neighborhood in the city, OCC has chosen to focus its work on exactly two — Auburn Gresham, and <strong>North Lawndale</strong>.
+                </p>
+                <p>
+                  That&rsquo;s not incidental to us. It&rsquo;s the same six blocks from Dr. King&rsquo;s 1966 apartment that GCC calls home.
+                </p>
+                <p>
+                  In 2026, OCC backed GCC&rsquo;s 100-block pilot goal with a <strong>$2,000 gift</strong> — real money, allocated toward the goal the same way every GCC sponsorship works: before the first shovel touches a block it funds, with before-and-after documentation to follow as that work is completed.
+                </p>
+                <p>
+                  OCC&rsquo;s own programs read like a partner list for exactly the kind of work GCC does:{' '}
+                  <a href="https://communitycollaboration.uic.edu/neighborhood-centers/" target="_blank" rel="noopener noreferrer" className="text-brand-green-700 underline">Neighborhood Centers</a>{' '}
+                  puts physical community space directly in the blocks it serves;{' '}
+                  <a href="https://communitycollaboration.uic.edu/participatory-research/" target="_blank" rel="noopener noreferrer" className="text-brand-green-700 underline">Participatory Research</a>{' '}
+                  insists that residents — not just researchers — drive the questions being asked; and{' '}
+                  <a href="https://communitycollaboration.uic.edu/dualenrollment/" target="_blank" rel="noopener noreferrer" className="text-brand-green-700 underline">Dual Enrollment</a>{' '}
+                  opens a college pathway for local students.
+                </p>
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a
+                  href="https://communitycollaboration.uic.edu/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-green-800 transition-colors"
+                >
+                  Visit communitycollaboration.uic.edu
+                </a>
+                <a
+                  href="https://communitycollaboration.uic.edu/partners/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 transition-colors"
+                >
+                  See their community partners
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Recent / Leaderboard */}
       <section className="section-container py-16">
         <div className="max-w-4xl mx-auto">

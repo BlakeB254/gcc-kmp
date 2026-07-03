@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { sponsors, transactions } from '@/db/schema'
+import { sponsors, transactions, media } from '@/db/schema'
 import { eq, desc, sum, count, sql } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 export const revalidate = 60
 
-// Tier thresholds in cents
+// Tier thresholds in cents — kept in sync with /api/public/support-wall
+// and src/lib/sponsor-tiers.ts
 const TIER_THRESHOLDS = {
-  platinum: 1000000, // $10,000+
-  gold: 250000,      // $2,500+
+  platinum: 500000,  // $5,000+
+  gold: 200000,       // $2,000+
   silver: 50000,     // $500+
   bronze: 0,         // < $500
 }
@@ -47,6 +48,16 @@ export async function GET(
     // Check if profile is public
     if (sponsor.preferencesIsAnonymous || sponsor.profileIsPublic === false) {
       return NextResponse.json({ error: 'This profile is private' }, { status: 403 })
+    }
+
+    let logoUrl: string | null = null
+    if (sponsor.businessLogoId) {
+      const [logo] = await db
+        .select({ url: media.url })
+        .from(media)
+        .where(eq(media.id, sponsor.businessLogoId))
+        .limit(1)
+      logoUrl = logo?.url || null
     }
 
     // Get transaction stats and display names
@@ -102,6 +113,7 @@ export async function GET(
         akas,
         type: sponsor.type,
         tier: getTier(totalContributed),
+        logoUrl,
         // Profile info
         tagline: sponsor.profileTagline,
         bio: sponsor.profileBio,
