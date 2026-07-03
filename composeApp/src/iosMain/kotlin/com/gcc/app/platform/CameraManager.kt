@@ -707,7 +707,7 @@ private class CameraPreviewContainerView(
     }
 }
 
-private const val SCENE_SAMPLE_INTERVAL_MS = 2_000L
+private const val SCENE_SAMPLE_INTERVAL_MS = 1_500L
 
 @OptIn(ExperimentalForeignApi::class)
 private class SceneSampleDelegate :

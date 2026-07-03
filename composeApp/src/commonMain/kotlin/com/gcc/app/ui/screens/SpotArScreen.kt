@@ -141,6 +141,21 @@ fun SpotArScreen(
             gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
         }
     }
+    // Map containment: pre-emptive at open + every fix (1 hit flips).
+    LaunchedEffect(Unit) {
+        locationProvider.currentLocation.value?.let { loc ->
+            gate.onMapEvidence(
+                insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
+                timestampMs = Clock.System.now().toEpochMilliseconds(),
+            )
+        }
+        locationProvider.locationFlow.collect { loc ->
+            gate.onMapEvidence(
+                insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
+                timestampMs = Clock.System.now().toEpochMilliseconds(),
+            )
+        }
+    }
 
     // Indoors: pause frame analysis (battery); GPS accuracy drives recovery.
     LaunchedEffect(isIndoor) {

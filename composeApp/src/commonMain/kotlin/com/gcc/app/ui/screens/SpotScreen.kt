@@ -271,8 +271,17 @@ private fun CameraPhase(
     }
     // Map evidence: GPS fix inside a mapped building footprint — the same
     // rectangles the minimap draws, so "my dot is inside a building" always
-    // agrees with the gate.
+    // agrees with the gate. PRE-EMPTIVE: the last known position is checked
+    // the instant the scan opens (one containment hit flips the gate), so a
+    // user opening the scan at home sees "go outside" immediately instead of
+    // after evidence accumulates.
     LaunchedEffect(Unit) {
+        locationProvider.currentLocation.value?.let { loc ->
+            gate.onMapEvidence(
+                insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
+                timestampMs = Clock.System.now().toEpochMilliseconds(),
+            )
+        }
         locationProvider.locationFlow.collect { loc ->
             gate.onMapEvidence(
                 insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),

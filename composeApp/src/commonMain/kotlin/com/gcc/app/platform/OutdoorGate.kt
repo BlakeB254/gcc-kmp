@@ -37,11 +37,13 @@ class OutdoorGate {
         /** Consecutive camera INDOOR votes that flip when GPS agrees (no
          *  outdoor-grade fixes) — object words alone never gate. */
         const val SCENE_STREAK_TO_FLIP = 2
-        /** GPS fixes inside a mapped building footprint needed to flip alone. */
-        const val MAP_STREAK_TO_FLIP = 2
+        /** GPS fixes inside a mapped building footprint needed to flip alone.
+         *  ONE: the map literally shows the dot inside a residence — flip
+         *  immediately, including pre-emptively at scan open. */
+        const val MAP_STREAK_TO_FLIP = 1
         /** Camera samples with zero outdoor cues (sky/street/vegetation) that
          *  flip INDOOR when GPS also shows no outdoor-grade evidence. */
-        const val NO_OUTDOOR_CUES_TO_FLIP = 5
+        const val NO_OUTDOOR_CUES_TO_FLIP = 4
         /** Horizontal accuracy better than this is outdoor evidence. */
         const val OUTDOOR_ACCURACY_METERS = 10.0
         /** Scene votes see the room directly — they outweigh single GPS fixes. */
