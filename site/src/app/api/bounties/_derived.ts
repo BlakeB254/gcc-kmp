@@ -78,6 +78,14 @@ export function reportToBountySource(report: CommunityReport) {
   }
 }
 
+/** Postgres timestamp values arrive as "2026-07-03 15:35:28.218012+00" —
+ *  the mobile client parses kotlinx Instant, which requires ISO-8601. */
+function toIso(value: unknown): string | null {
+  if (value == null) return null
+  const d = new Date(String(value))
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
 export function bountyRowToApiBounty(row: BountyRow) {
   return {
     id: row.id,
@@ -96,17 +104,17 @@ export function bountyRowToApiBounty(row: BountyRow) {
     neighborhood: row.neighborhood,
     triggerReportId: row.triggerReportId,
     observerId: row.observerId,
-    firstRefusalExpiresAt: row.firstRefusalExpiresAt,
+    firstRefusalExpiresAt: toIso(row.firstRefusalExpiresAt),
     claimedBy: row.claimedBy,
     jobId: row.jobId,
     mediaUrls: stringArray(row.mediaUrls),
     completionMediaUrls: stringArray(row.completionMediaUrls),
     aiAnalysis: row.aiAnalysis,
-    expiresAt: row.expiresAt,
+    expiresAt: toIso(row.expiresAt),
     pledgeCount: row.pledgeCount ?? 1,
     spotterTipAmount: row.spotterTipAmount != null ? Number(row.spotterTipAmount) : null,
-    spotterTipPaidAt: row.spotterTipPaidAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    spotterTipPaidAt: toIso(row.spotterTipPaidAt),
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
   }
 }

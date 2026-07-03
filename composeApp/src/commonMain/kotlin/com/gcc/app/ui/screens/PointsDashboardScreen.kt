@@ -136,12 +136,16 @@ fun PointsDashboardScreen(onBack: () -> Unit = {}) {
                     item {
                         GccCard {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                EarnTip(emoji = "\uD83D\uDCE1", action = "Scan new ground (environment/route)", points = "+10 pts/m")
+                                EarnTip(emoji = "\uD83D\uDD52", action = "Re-scan an area gone stale (24h+)", points = "+5 pts/m")
+                                EarnTip(emoji = "\uD83C\uDF31", action = "Confirm a littered area is clean", points = "+25 pts")
                                 EarnTip(emoji = "\uD83D\uDCF8", action = "Report a dirty spot", points = "+10 pts")
-                                EarnTip(emoji = "\uD83E\uDDF9", action = "Volunteer cleanup", points = "+50 pts")
-                                EarnTip(emoji = "\uD83D\uDD0D", action = "Verify a spot (dirty)", points = "+5 pts")
+                                EarnTip(emoji = "\uD83E\uDDF9", action = "Volunteer (unpaid) cleanup", points = "+50 pts")
+                                EarnTip(emoji = "\uD83D\uDD0D", action = "Verify a spot (still dirty)", points = "+5 pts")
                                 EarnTip(emoji = "\u2728", action = "Verify a spot (clean)", points = "+10 pts")
                                 EarnTip(emoji = "\u2705", action = "Report already clean", points = "+5 pts")
                                 EarnTip(emoji = "\uD83D\uDC1B", action = "Report a confirmed bug", points = "+50 pts")
+                                EarnTip(emoji = "\uD83D\uDCB5", action = "Paid cleanups & bounties", points = "cash \u2192 wallet")
                             }
                         }
                     }

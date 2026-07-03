@@ -73,6 +73,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url })
   } catch (error) {
     console.error('Worker Connect onboard error:', error)
-    return NextResponse.json({ error: 'Failed to create onboarding link' }, { status: 500 })
+    // Stripe Connect not enabled on the platform account yet — an account
+    // owner action at dashboard.stripe.com/connect, not an app failure.
+    const message = error instanceof Error && error.message.includes('signed up for Connect')
+      ? 'Payouts are almost ready — our payment platform is completing its Stripe Connect setup. Check back soon.'
+      : 'Failed to create onboarding link'
+    return NextResponse.json({ error: message }, { status: 503 })
   }
 }
