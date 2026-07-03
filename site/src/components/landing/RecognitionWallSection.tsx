@@ -8,8 +8,9 @@ export function RecognitionWallSection() {
       <div className="section-container">
         <SupporterRecognitionWall
           limit={8}
+          minAmount={2000}
           title="Our Honor Wall"
-          description="Major sponsors putting real money behind cleaner streets in North Lawndale."
+          description="Major sponsors ($2,000+) putting real money behind cleaner streets in North Lawndale."
         />
 
         <div className="text-center mt-10">

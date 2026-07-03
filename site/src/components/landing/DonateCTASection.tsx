@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { DonateCard } from '@/components/shared/DonateCard'
 
 export function DonateCTASection() {
@@ -22,8 +23,20 @@ export function DonateCTASection() {
   }, [])
 
   return (
-    <section id="donate" className="py-28 lg:py-32 bg-brand-green-900 text-white">
-      <div className="section-container">
+    <section id="donate" className="relative py-28 lg:py-32 bg-brand-green-900 text-white overflow-hidden">
+      {/* Subtle background photo — ties the ask back to the people it funds without competing with the donation form */}
+      <div className="absolute inset-0">
+        <Image
+          src="/images/optimized/photo-community-celebration.webp"
+          alt=""
+          fill
+          className="object-cover opacity-[0.12]"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-brand-green-900 via-brand-green-900/95 to-brand-green-900" />
+      </div>
+
+      <div className="section-container relative">
         <div className="max-w-3xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 rounded-full bg-brand-green-800 px-4 py-2 mb-6">
@@ -51,6 +64,17 @@ export function DonateCTASection() {
               </span>
             </div>
           )}
+
+          {/* Where the $100 goes — real GCC brand graphic, not a generated one */}
+          <div className="mx-auto mb-8 max-w-xs">
+            <Image
+              src="/images/optimized/money-breakdown.webp"
+              alt="Where the $100 goes: sponsor pays $100, neighbor earns $100, 0% overhead taken from the cleaning fee"
+              width={1080}
+              height={1080}
+              className="w-full rounded-xl"
+            />
+          </div>
 
           {/* Reusable DonateCard */}
           <DonateCard presets={[5, 25, 50, 100]} showCustom showFrequency={false} />
