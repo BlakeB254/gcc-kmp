@@ -386,19 +386,50 @@ export async function POST(request: NextRequest, context: RouteContext) {
 cd site && npx tsc --noEmit
 ```
 
-- [ ] **Step 3: Manual verification against the dev server**
+- [ ] **Step 3: Manual verification against the dev server — register a disposable test worker, verify, then delete everything the test created**
 
-Requires a valid Bearer token — check `.superpowers/sdd/final-review-fixes-report.md` from this session's earlier Phase 0 auth-fix work for how a test token was obtained (likely via `/api/auth/register` or similar), or check `site/src/lib/mobile-auth.ts`/an existing auth test route for the registration flow. Once you have a token:
+**This writes real rows into the live `world_observations` and `points_ledger` tables (no separate dev database exists in this repo).** To avoid touching any existing real worker's data at all, register a fresh, disposable test worker via `/api/auth/register` (same approach used successfully in this session's earlier Phase 0 auth-fix work — check `.superpowers/sdd/final-review-fixes-report.md` if you want that precedent) rather than reusing an existing account's token. After verifying the endpoint works, delete every row this test created: the `world_observations` row, the `points_ledger` row, and the disposable test worker row itself, so nothing lingers in the live database.
 
 ```bash
 cd site && npm run dev &
 sleep 3
-curl -s -X POST http://localhost:7350/api/scans/999/rectify \
+
+# Register a disposable test worker (adjust body shape to match the real
+# /api/auth/register endpoint's actual requirements — check its route.ts
+# first if the fields below don't match)
+REGISTER_RESPONSE=$(curl -s -X POST http://localhost:7350/api/auth/register \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <TOKEN>" \
-  -d '{"lat":42.002,"lng":-87.002,"capturedAt":"2026-07-02T12:00:00Z"}'
+  -d '{"phone":"+15555550100","password":"test-rectify-verification-only","displayName":"Rectify Test Worker"}')
+echo "$REGISTER_RESPONSE"
+TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.token // .data.token')
+WORKER_ID=$(echo "$REGISTER_RESPONSE" | jq -r '.workerId // .data.workerId // .data.worker.id')
+echo "test worker id: $WORKER_ID"
+
+RECTIFY_RESPONSE=$(curl -s -X POST http://localhost:7350/api/scans/999/rectify \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"lat":42.002,"lng":-87.002,"capturedAt":"2026-07-02T12:00:00Z"}')
+echo "$RECTIFY_RESPONSE"
+OBSERVATION_ID=$(echo "$RECTIFY_RESPONSE" | jq -r '.observationId')
+
+# ── Cleanup: delete everything this test created ──
+npx tsx --env-file=.env.local -e "
+import { db } from './src/db'
+import { worldObservations, pointsLedger, workers } from './src/db/schema'
+import { eq } from 'drizzle-orm'
+async function main() {
+  const workerId = $WORKER_ID
+  const observationId = $OBSERVATION_ID
+  await db.delete(pointsLedger).where(eq(pointsLedger.workerId, workerId))
+  await db.delete(worldObservations).where(eq(worldObservations.id, observationId))
+  await db.delete(workers).where(eq(workers.id, workerId))
+  console.log('cleanup complete for test worker', workerId, 'and observation', observationId)
+  process.exit(0)
+}
+main().catch(e => { console.error('CLEANUP FAILED — manually verify no test data remains', e); process.exit(1) })
+"
 ```
-Expected: `{"success":true,"observationId":<some id>,"pointsAwarded":25}`. Then confirm the 401 path:
+Expected: the rectify response is `{"success":true,"observationId":<some id>,"pointsAwarded":25}`, and the cleanup script confirms deletion. If `jq` isn't available, parse the JSON some other way — the point is capturing `TOKEN`/`WORKER_ID`/`OBSERVATION_ID` precisely enough to clean up afterward, not the specific parsing tool. Then confirm the 401 path (no test data created by this second call, since it fails before any write):
 ```bash
 curl -s -i -X POST http://localhost:7350/api/scans/999/rectify \
   -H "Content-Type: application/json" \
