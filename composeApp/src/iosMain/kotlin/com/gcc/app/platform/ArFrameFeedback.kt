@@ -69,14 +69,6 @@ internal class ArFrameFeedback(
         private const val PERSIST_STREAK_TICKS = 2
         private const val MARKER_DEDUPE_METERS = 3.0
 
-        /** Token → reticle label. Tokens match `_`/space-split Vision identifiers. */
-        private val TRASH_TOKENS = mapOf(
-            "garbage" to "Trash", "trash" to "Trash", "waste" to "Trash",
-            "litter" to "Litter", "rubbish" to "Trash", "debris" to "Debris",
-            "bottle" to "Bottle", "can" to "Can", "cup" to "Cup", "bag" to "Bag",
-            "plastic" to "Plastic", "wrapper" to "Wrapper", "carton" to "Carton",
-            "tire" to "Tire", "mattress" to "Mattress",
-        )
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -147,7 +139,7 @@ internal class ArFrameFeedback(
 
         val trashLabel = observations.firstNotNullOfOrNull { obs ->
             if (obs.confidence < TRASH_CONFIDENCE) return@firstNotNullOfOrNull null
-            tokensOf(obs.identifier).firstNotNullOfOrNull { TRASH_TOKENS[it] }
+            tokensOf(obs.identifier).firstNotNullOfOrNull { SceneVoteVision.TRASH_TOKENS[it] }
         }
         if (trashLabel == null) {
             closeStreak = 0

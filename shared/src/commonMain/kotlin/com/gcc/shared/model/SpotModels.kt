@@ -26,10 +26,25 @@ data class OnDeviceAnalysisResult(
 )
 
 @Serializable
+data class ObservedSpotItem(
+    val lat: Double,
+    val lng: Double,
+    val itemType: String,
+    val severity: Int? = null,
+    val confidence: Float? = null,
+)
+
+@kotlinx.serialization.Serializable
 data class CreateSpotRequest(
     val type: CommunityReportType = CommunityReportType.SIGHTING,
     val lat: Double,
     val lng: Double,
+    /**
+     * Per-item positions observed during the environment scan (heading-projected
+     * from the capture point). The server records one world observation per
+     * item at its own coordinates, feeding the map/heatmap layers accurately.
+     */
+    val observedItems: List<ObservedSpotItem>? = null,
     val description: String? = null,
     val mediaUrls: List<String>? = null,
     val affectedRadiusMeters: Double = 15.0,

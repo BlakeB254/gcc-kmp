@@ -680,15 +680,15 @@ private class SceneSampleDelegate :
 
         val pixelBuffer = CMSampleBufferGetImageBuffer(didOutputSampleBuffer)
             ?: return
-        val vote = try {
-            SceneVoteVision.classify(pixelBuffer)
+        val result = try {
+            SceneVoteVision.analyzeViewfinderFrame(pixelBuffer)
         } catch (e: Throwable) {
-            DiagnosticsLog.error("scene-vote", "viewfinder classification failed", e)
+            DiagnosticsLog.error("scene-vote", "viewfinder frame analysis failed", e)
             return
         }
-        if (vote == SceneVote.NONE) return
         dispatch_async(dispatch_get_main_queue()) {
-            CameraSceneVoteBus.emit(vote)
+            if (result.vote != SceneVote.NONE) CameraSceneVoteBus.emit(result.vote)
+            CameraDetectionBus.update(listOfNotNull(result.detection))
         }
     }
 }

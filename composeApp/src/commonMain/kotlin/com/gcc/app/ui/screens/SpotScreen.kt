@@ -32,7 +32,9 @@ import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.CameraDetectionBus
 import com.gcc.app.platform.CameraSceneVoteBus
+import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
@@ -49,6 +51,9 @@ import com.gcc.app.viewmodel.AreaMode
 import com.gcc.app.viewmodel.DuplicateMatch
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
+import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.model.MapCoverageCell
+import com.gcc.shared.model.ObservedSpotItem
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.Bounty
 import com.gcc.shared.model.Coordinates
@@ -138,6 +143,8 @@ fun SpotScreen(
                     onBack = onBack,
                     spotLocation = currentLocation,
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
+                    observedItems = uiState.observedItems,
+                    onTrashObserved = { item -> viewModel.addObservedItem(item) },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -225,6 +232,8 @@ private fun CameraPhase(
     onBack: () -> Unit,
     spotLocation: Coordinates? = null,
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
+    observedItems: List<ObservedSpotItem> = emptyList(),
+    onTrashObserved: (ObservedSpotItem) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -256,8 +265,80 @@ private fun CameraPhase(
         DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
     }
 
+    // ── Environment-scan session: coverage credit + minimap layers ──
+    val apiClient = koinInject<GccApiClient>()
+    val tracker = remember { CoverageTracker() }
+    var trackerReady by remember { mutableStateOf(false) }
+    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+
+    // Initialise the scan grid at the first real fix (single-point "route"
+    // gives a ~15m-corridor zone around the spot).
+    LaunchedEffect(currentLocation, spotLocation) {
+        if (trackerReady) return@LaunchedEffect
+        val anchor = spotLocation ?: currentLocation ?: return@LaunchedEffect
+        tracker.initFromRoute(listOf(anchor))
+        trackerReady = true
+
+        // Ledger freshness around the scan site (display-only; failures fine).
+        try {
+            val pad = 0.0012 // ~130m
+            val bbox = listOf(
+                anchor.lng - pad, anchor.lat - pad,
+                anchor.lng + pad, anchor.lat + pad,
+            ).joinToString(",")
+            val serverCells = apiClient.getMapCoverage(bbox).cells
+            staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
+            fogCells = neverScannedGrid(anchor, serverCells)
+            DiagnosticsLog.info(
+                "env-scan",
+                "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
+            )
+        } catch (e: Exception) {
+            DiagnosticsLog.error("env-scan", "coverage freshness fetch failed (minimap stays plain)", e)
+        }
+    }
+
+    // Credit zones while outdoors: camera frustum sweep when heading exists.
+    LaunchedEffect(trackerReady) {
+        if (!trackerReady) return@LaunchedEffect
+        locationProvider.locationFlow.collect { loc ->
+            if (gate.state.value == OutdoorState.INDOOR) return@collect
+            val heading = locationProvider.headingDegrees.value
+            if (heading != null) {
+                tracker.updateWithFrustum(lat = loc.lat, lng = loc.lng, headingDegrees = heading)
+            } else {
+                tracker.updatePosition(loc.lat, loc.lng)
+            }
+        }
+    }
+    val scannedCells by tracker.scannedCells.collectAsState()
+    val scanCellCenters = remember(scannedCells) {
+        scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+    }
+    val trashItems = remember(observedItems) {
+        observedItems.map { Coordinates(lat = it.lat, lng = it.lng) }
+    }
+
+    // Live viewfinder trash reticle (frame tap on the AVCapture stream).
+    val liveDetections by CameraDetectionBus.detections.collectAsState()
+
+    // Registration feedback: toast on tags, pulse on any credit.
+    var toast by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(observedItems.size) {
+        if (observedItems.isNotEmpty()) {
+            toast = "Trash tagged on the map ✓"
+        }
+    }
+    val creditTick = scannedCells.size + observedItems.size * 10
+
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
+        val scanStatus = when {
+            liveDetections.isNotEmpty() -> "Trash spotted — move closer and tap to tag it"
+            scannedCells.isNotEmpty() -> "Scanning environment — ${scannedCells.size} zones mapped"
+            else -> "Environment scan active — sweep the camera slowly"
+        }
         if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
@@ -268,6 +349,11 @@ private fun CameraPhase(
                 onPhotoCaptured = onScanCapture,
                 onRemovePhoto = onRemovePhoto,
                 captureBlocked = isIndoor,
+                onTrashObserved = onTrashObserved,
+                scanCellCenters = scanCellCenters,
+                trashItems = trashItems,
+                environmentScanMode = true,
+                statusText = scanStatus,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -289,8 +375,20 @@ private fun CameraPhase(
                 showMiniMap = true,
                 currentLocation = currentLocation,
                 gpsHeading = gpsHeading,
+                scanCellCenters = scanCellCenters,
+                trashItems = trashItems,
+                fogCellCenters = fogCells,
+                staleCellCenters = staleCells,
+                environmentScanMode = true,
+                statusText = scanStatus,
             )
         }
+
+        // Scanning feedback: sweep + registration pulse, live trash reticle,
+        // transient popups — the "data is registering" layer.
+        EnvironmentScanEffects(active = !isIndoor, creditTick = creditTick)
+        DetectionReticleOverlay(detections = liveDetections)
+        ScanToast(message = toast)
 
         GoOutsideOverlay(visible = isIndoor)
 
@@ -1395,4 +1493,32 @@ private fun BountyMatchCard(
             }
         }
     }
+}
+
+
+/**
+ * Display-only "never scanned" fog for the minimap: 10m grid points within
+ * ~75m of the anchor that have no ledger cell (fresh OR stale) within 7m.
+ */
+private fun neverScannedGrid(
+    anchor: Coordinates,
+    serverCells: List<MapCoverageCell>,
+): List<Pair<Double, Double>> {
+    val latStep = 10.0 / 111_320.0
+    val lngStep = 10.0 / (111_320.0 * cos(anchor.lat * kotlin.math.PI / 180.0))
+    val out = mutableListOf<Pair<Double, Double>>()
+    for (dr in -7..7) {
+        for (dc in -7..7) {
+            if (dr * dr + dc * dc > 7 * 7) continue
+            val lat = anchor.lat + dr * latStep
+            val lng = anchor.lng + dc * lngStep
+            val covered = serverCells.any { cell ->
+                val dLatM = (cell.lat - lat) * 111_320.0
+                val dLngM = (cell.lng - lng) * 111_320.0 * cos(anchor.lat * kotlin.math.PI / 180.0)
+                dLatM * dLatM + dLngM * dLngM < 7.0 * 7.0
+            }
+            if (!covered) out.add(lat to lng)
+        }
+    }
+    return out
 }

@@ -1,7 +1,10 @@
 package com.gcc.app.platform
 
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Bridge for indoor/outdoor scene votes sampled from the plain AVCapture
@@ -19,5 +22,19 @@ object CameraSceneVoteBus {
 
     fun emit(vote: SceneVote) {
         _votes.tryEmit(vote)
+    }
+}
+
+
+/**
+ * Live trash detections from the plain AVCapture viewfinder (same shape the
+ * AR overlays expose) — drives the circle reticle on the spot camera phase.
+ */
+object CameraDetectionBus {
+    private val _detections = MutableStateFlow<List<LiveDetection>>(emptyList())
+    val detections: StateFlow<List<LiveDetection>> = _detections.asStateFlow()
+
+    fun update(detections: List<LiveDetection>) {
+        _detections.value = detections
     }
 }

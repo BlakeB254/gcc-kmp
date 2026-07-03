@@ -62,6 +62,17 @@ fun CameraCapture(
     gpsHeading: Float? = null,
     allowLibraryPick: Boolean = false,
     cameraManager: CameraManager? = null,
+    /** Zones the environment scan has credited — minimap green highlight. */
+    scanCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Geo-tagged trash items — minimap orange dots. */
+    trashItems: List<Coordinates> = emptyList(),
+    /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber). */
+    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
+    staleCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Environment-scan presentation: hides the photo-count/thumbnail chrome
+     *  (captures are backend raw material, not a user-facing slideshow). */
+    environmentScanMode: Boolean = false,
+    statusText: String? = null,
 ) {
     val manager = cameraManager ?: remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
@@ -116,7 +127,7 @@ fun CameraCapture(
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = when {
+                    text = statusText ?: when {
                         atLimit -> "Max $maxPhotos photos captured"
                         isCapturing -> "Capturing..."
                         else -> "Tap an item to capture it"
@@ -146,6 +157,18 @@ fun CameraCapture(
                         currentLocation = currentLocation,
                         gpsHeading = gpsHeading,
                     )
+                    // Scan coverage + trash + ledger freshness, projected over
+                    // the fixed-zoom minimap.
+                    ScanMinimapOverlay(
+                        centerLat = currentLocation.lat,
+                        centerLng = currentLocation.lng,
+                        zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                        scanCellCenters = scanCellCenters,
+                        cellSizeMeters = 3.0,
+                        trashItems = trashItems,
+                        fogCellCenters = fogCellCenters,
+                        staleCellCenters = staleCellCenters,
+                    )
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -174,8 +197,9 @@ fun CameraCapture(
                 }
             }
 
-            // Photo count badge (bottom-start, raised above Add details)
-            Box(
+            // Photo count badge (bottom-start, raised above Add details) —
+            // hidden in environment-scan mode (captures are backend inputs).
+            if (!environmentScanMode) Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
@@ -214,8 +238,9 @@ fun CameraCapture(
         }
 
         // Thumbnail strip — floats above the bottom chrome instead of
-        // reserving layout space below the preview.
-        if (capturedPhotos.isNotEmpty()) {
+        // reserving layout space below the preview. Hidden in environment-scan
+        // mode: derived imagery is processed after the fact on the backend.
+        if (capturedPhotos.isNotEmpty() && !environmentScanMode) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier

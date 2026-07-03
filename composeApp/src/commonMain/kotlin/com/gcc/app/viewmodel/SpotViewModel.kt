@@ -60,6 +60,8 @@ data class SpotUiState(
     // Duplicate detection
     val duplicateMatch: DuplicateMatch? = null,
     val duplicateOverrideReason: String? = null,
+    /** Trash items geo-tagged during the environment scan (minimap + submission). */
+    val observedItems: List<ObservedSpotItem> = emptyList(),
 )
 
 data class DuplicateMatch(
@@ -95,6 +97,17 @@ class SpotViewModel(
                 try {
                     val result = analyzer.analyzePhoto(photo.bytes, photo.depthAnalysis)
                     if (result != null) {
+                        if (result.trashTypes.isNotEmpty()) {
+                            addObservedItem(
+                                ObservedSpotItem(
+                                    lat = _uiState.value.currentLat,
+                                    lng = _uiState.value.currentLng,
+                                    itemType = result.trashTypes.first(),
+                                    severity = result.severity,
+                                    confidence = result.confidence,
+                                )
+                            )
+                        }
                         _uiState.value = _uiState.value.copy(
                             aiAnalysis = result,
                             isAnalyzing = false,
@@ -125,6 +138,23 @@ class SpotViewModel(
         if (scanPhoto.aiAnalysis != null) {
             _uiState.value = _uiState.value.copy(aiAnalysis = scanPhoto.aiAnalysis)
         }
+    }
+
+    /**
+     * Register a trash item observed during the environment scan. Deduped
+     * against existing items of the same type within ~4m (the scanner path
+     * projects along heading, the analyzer fallback tags the user position —
+     * both can fire for the same pile).
+     */
+    fun addObservedItem(item: ObservedSpotItem) {
+        val existing = _uiState.value.observedItems
+        val duplicate = existing.any { prior ->
+            prior.itemType == item.itemType &&
+                GeofenceVerification.distanceMeters(prior.lat, prior.lng, item.lat, item.lng) < 4.0
+        }
+        if (duplicate) return
+        _uiState.value = _uiState.value.copy(observedItems = existing + item)
+        DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
     }
 
     fun removePhoto(index: Int) {
@@ -336,6 +366,7 @@ class SpotViewModel(
                     captureAttestation = captureAttestation,
                     onDeviceAiResult = onDeviceAiResult,
                     duplicateOverrideReason = state.duplicateOverrideReason,
+                    observedItems = state.observedItems.ifEmpty { null },
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)

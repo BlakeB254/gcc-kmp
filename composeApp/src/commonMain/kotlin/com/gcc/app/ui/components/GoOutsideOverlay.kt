@@ -46,7 +46,7 @@ fun GoOutsideOverlay(
         Text(text = "🏠 → 🌳", style = MaterialTheme.typography.displaySmall)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Go outside to scan",
+            text = "Go outside to scan the environment",
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             color = Color.White,
             textAlign = TextAlign.Center,

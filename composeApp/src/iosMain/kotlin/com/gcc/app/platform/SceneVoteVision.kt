@@ -1,10 +1,14 @@
 package com.gcc.app.platform
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
 import platform.CoreVideo.CVPixelBufferRef
 import platform.Vision.VNClassificationObservation
 import platform.Vision.VNClassifyImageRequest
+import platform.Vision.VNGenerateObjectnessBasedSaliencyImageRequest
 import platform.Vision.VNImageRequestHandler
+import platform.Vision.VNRectangleObservation
+import platform.Vision.VNSaliencyImageObservation
 
 /**
  * Indoor/outdoor scene voting from Vision classifications — shared by the AR
@@ -27,6 +31,16 @@ internal object SceneVoteVision {
         "park", "building", "asphalt", "pavement", "cloud", "field",
         "vehicle", "car", "house", "fence", "yard",
     )
+
+    /** Token → reticle label; matches `_`/space-split Vision identifiers. */
+    val TRASH_TOKENS = mapOf(
+        "garbage" to "Trash", "trash" to "Trash", "waste" to "Trash",
+        "litter" to "Litter", "rubbish" to "Trash", "debris" to "Debris",
+        "bottle" to "Bottle", "can" to "Can", "cup" to "Cup", "bag" to "Bag",
+        "plastic" to "Plastic", "wrapper" to "Wrapper", "carton" to "Carton",
+        "tire" to "Tire", "mattress" to "Mattress",
+    )
+    private const val TRASH_CONFIDENCE = 0.35f
 
     fun tokensOf(identifier: String): List<String> =
         identifier.lowercase().split('_', ' ', ',').filter { it.isNotBlank() }
@@ -63,4 +77,63 @@ internal object SceneVoteVision {
             ?: return SceneVote.NONE
         return voteFrom(observations)
     }
+}
+
+
+/** One-pass frame analysis for the AVCapture viewfinder: scene vote + trash reticle. */
+internal data class ViewfinderFrameResult(
+    val vote: SceneVote,
+    val detection: LiveDetection?,
+)
+
+@OptIn(ExperimentalForeignApi::class)
+internal fun SceneVoteVision.analyzeViewfinderFrame(pixelBuffer: CVPixelBufferRef): ViewfinderFrameResult {
+    val classifyRequest = VNClassifyImageRequest()
+    val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
+    val handler = VNImageRequestHandler(
+        cVPixelBuffer = pixelBuffer,
+        options = emptyMap<Any?, Any>(),
+    )
+    handler.performRequests(listOf(classifyRequest, saliencyRequest), error = null)
+
+    val observations = classifyRequest.results
+        ?.filterIsInstance<VNClassificationObservation>()
+        ?.sortedByDescending { it.confidence }
+        ?.take(15)
+        ?: return ViewfinderFrameResult(SceneVote.NONE, null)
+
+    val vote = voteFrom(observations)
+
+    val trashLabel = observations.firstNotNullOfOrNull { obs ->
+        if (obs.confidence < 0.35f) return@firstNotNullOfOrNull null
+        tokensOf(obs.identifier).firstNotNullOfOrNull { SceneVoteVision.TRASH_TOKENS[it] }
+    } ?: return ViewfinderFrameResult(vote, null)
+
+    // Salient region → reticle position; fall back to frame center.
+    var visionX = 0.5
+    var visionY = 0.5
+    var radius = 0.12f
+    saliencyRequest.results
+        ?.filterIsInstance<VNSaliencyImageObservation>()
+        ?.firstOrNull()
+        ?.salientObjects
+        ?.filterIsInstance<VNRectangleObservation>()
+        ?.firstOrNull()
+        ?.boundingBox
+        ?.useContents {
+            visionX = origin.x + size.width / 2.0
+            visionY = origin.y + size.height / 2.0
+            radius = (maxOf(size.width, size.height) / 2.0).toFloat().coerceIn(0.06f, 0.35f)
+        }
+
+    // Landscape sensor image → portrait view (same mapping as the AR pipeline).
+    val imageY = 1.0 - visionY
+    val detection = LiveDetection(
+        cx = (1.0 - imageY).toFloat(),
+        cy = visionX.toFloat(),
+        r = radius,
+        label = trashLabel,
+        distanceMeters = null,
+    )
+    return ViewfinderFrameResult(vote, detection)
 }

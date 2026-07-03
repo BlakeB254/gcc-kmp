@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
       captureAttestation,
       onDeviceAiResult,
       duplicateOverrideReason,
+      observedItems,
     } = body
 
     // Validate coordinates
@@ -245,9 +246,47 @@ export async function POST(request: NextRequest) {
       })
       .returning()
 
-    // Explode on-device AI detections into per-item world observations; fall
-    // back to a single observation from the first tag (or 'general_litter')
-    // when no structured AI result is present.
+    // Preferred: client-supplied per-item positions from the environment scan
+    // (heading-projected at capture time). Each becomes a world observation at
+    // its own coordinates so the map/heatmap layers place items accurately.
+    // Sanity-gated to 150m of the report location to keep junk out of the twin.
+    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number }[] =
+      Array.isArray(observedItems)
+        ? observedItems
+            .filter((it: any) =>
+              Number.isFinite(Number(it?.lat)) &&
+              Number.isFinite(Number(it?.lng)) &&
+              typeof it?.itemType === 'string' &&
+              Math.abs(Number(it.lat) - lat) < 0.0015 &&
+              Math.abs(Number(it.lng) - lng) < 0.002)
+            .slice(0, 25)
+            .map((it: any) => ({
+              lat: Number(it.lat),
+              lng: Number(it.lng),
+              itemType: String(it.itemType).slice(0, 64),
+              severity: Number.isFinite(Number(it.severity)) ? Number(it.severity) : undefined,
+              confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
+            }))
+        : []
+
+    for (const item of clientItems) {
+      await recordWorldObservation({
+        sourceType: 'spot_report',
+        communityReportId: newReport.id,
+        lat: item.lat,
+        lng: item.lng,
+        itemType: item.itemType,
+        state: 'dirty',
+        attributes: item.severity !== undefined ? { severity: item.severity } : undefined,
+        confidence: item.confidence,
+        mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
+        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+      })
+    }
+
+    // Fallback: explode on-device AI detections into per-item world observations
+    // at the report location; single observation from the first tag (or
+    // 'general_litter') when no structured AI result is present.
     const detectedItems: { itemType: string; severity?: number; confidence?: number }[] =
       Array.isArray(onDeviceAiResult?.items) && onDeviceAiResult.items.length > 0
         ? onDeviceAiResult.items.map((it: any) => ({
@@ -257,7 +296,7 @@ export async function POST(request: NextRequest) {
           }))
         : [{ itemType: (effectiveTags?.[0] as string) ?? 'general_litter' }]
 
-    for (const item of detectedItems) {
+    for (const item of clientItems.length > 0 ? [] : detectedItems) {
       await recordWorldObservation({
         sourceType: 'spot_report',
         communityReportId: newReport.id,
