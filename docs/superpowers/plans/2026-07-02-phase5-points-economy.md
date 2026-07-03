@@ -394,15 +394,15 @@ cd site && npx tsc --noEmit
 cd site && npm run dev &
 sleep 3
 
-# Register a disposable test worker (adjust body shape to match the real
-# /api/auth/register endpoint's actual requirements — check its route.ts
-# first if the fields below don't match)
+# Register a disposable test worker. Confirmed real request/response shape
+# from site/src/app/api/auth/register/route.ts: requires name, email,
+# password; responds { data: { token, worker: { id, ... }, exp, ... }, success }.
 REGISTER_RESPONSE=$(curl -s -X POST http://localhost:7350/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"phone":"+15555550100","password":"test-rectify-verification-only","displayName":"Rectify Test Worker"}')
+  -d '{"name":"Rectify Test Worker","email":"rectify-test-verification-only@example.invalid","password":"test-rectify-verification-only-throwaway"}')
 echo "$REGISTER_RESPONSE"
-TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.token // .data.token')
-WORKER_ID=$(echo "$REGISTER_RESPONSE" | jq -r '.workerId // .data.workerId // .data.worker.id')
+TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.data.token')
+WORKER_ID=$(echo "$REGISTER_RESPONSE" | jq -r '.data.worker.id')
 echo "test worker id: $WORKER_ID"
 
 RECTIFY_RESPONSE=$(curl -s -X POST http://localhost:7350/api/scans/999/rectify \
