@@ -91,12 +91,11 @@ class OutdoorGateSceneStreakTest {
     private val t0 = 1_000_000L
 
     @kotlin.test.Test
-    fun threeConsecutiveCameraIndoorVotesFlipAlone() {
+    fun twoConsecutiveCameraIndoorVotesFlipAlone() {
         val gate = OutdoorGate()
         gate.onSceneVote(SceneVote.INDOOR, t0)
-        gate.onSceneVote(SceneVote.INDOOR, t0 + 2000)
         kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
-        gate.onSceneVote(SceneVote.INDOOR, t0 + 4000)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 2000)
         kotlin.test.assertEquals(OutdoorState.INDOOR, gate.state.value)
     }
 
@@ -106,10 +105,35 @@ class OutdoorGateSceneStreakTest {
         // this isolates the consecutive-streak rule specifically.
         val gate = OutdoorGate()
         gate.onSceneVote(SceneVote.INDOOR, t0)
-        gate.onSceneVote(SceneVote.INDOOR, t0 + 1000)
-        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 2000)
-        gate.onSceneVote(SceneVote.INDOOR, t0 + 3000)
-        gate.onSceneVote(SceneVote.INDOOR, t0 + 4000)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 1000)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 2000)
         kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
+    }
+}
+
+
+class OutdoorGateMapEvidenceTest {
+    private val t0 = 1_000_000L
+
+    @kotlin.test.Test
+    fun twoFixesInsideMappedBuildingFlipIndoor() {
+        val gate = OutdoorGate()
+        gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
+        kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
+        gate.onMapEvidence(insideBuilding = true, timestampMs = t0 + 1000)
+        kotlin.test.assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @kotlin.test.Test
+    fun leavingTheBuildingAllowsRecovery() {
+        val gate = OutdoorGate()
+        gate.onMapEvidence(true, t0)
+        gate.onMapEvidence(true, t0 + 1000)
+        kotlin.test.assertEquals(OutdoorState.INDOOR, gate.state.value)
+        // Walk outside: containment ends, clean outdoor GPS for 6s.
+        val t1 = t0 + 20_000L
+        gate.onMapEvidence(false, t1)
+        for (i in 0..6) gate.onAccuracySample(5.0, t1 + i * 1000L)
+        kotlin.test.assertEquals(OutdoorState.OUTDOOR, gate.state.value)
     }
 }

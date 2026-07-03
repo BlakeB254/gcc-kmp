@@ -34,8 +34,14 @@ class OutdoorGate {
         const val DECISION_SPAN_MS = 5_000L
         /** Horizontal accuracy worse than this is indoor evidence. */
         const val INDOOR_ACCURACY_METERS = 20.0
-        /** This many consecutive camera INDOOR votes flip the gate alone. */
-        const val SCENE_STREAK_TO_FLIP = 3
+        /** Consecutive camera INDOOR votes that flip when GPS agrees (no
+         *  outdoor-grade fixes) — object words alone never gate. */
+        const val SCENE_STREAK_TO_FLIP = 2
+        /** GPS fixes inside a mapped building footprint needed to flip alone. */
+        const val MAP_STREAK_TO_FLIP = 2
+        /** Camera samples with zero outdoor cues (sky/street/vegetation) that
+         *  flip INDOOR when GPS also shows no outdoor-grade evidence. */
+        const val NO_OUTDOOR_CUES_TO_FLIP = 5
         /** Horizontal accuracy better than this is outdoor evidence. */
         const val OUTDOOR_ACCURACY_METERS = 10.0
         /** Scene votes see the room directly — they outweigh single GPS fixes. */
@@ -46,6 +52,8 @@ class OutdoorGate {
     private val outdoorTs = ArrayDeque<Long>()
     private var lastSceneIndoorTs: Long? = null
     private var sceneIndoorStreak = 0
+    private var noOutdoorCueStreak = 0
+    private var insideBuildingStreak = 0
     private var lastIndoorAccuracyTs: Long? = null
 
     private val _state = MutableStateFlow(OutdoorState.UNCERTAIN)
@@ -80,20 +88,60 @@ class OutdoorGate {
                 repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
                 lastSceneIndoorTs = timestampMs
                 sceneIndoorStreak += 1
+                noOutdoorCueStreak += 1
             }
             SceneVote.OUTDOOR -> {
                 repeat(SCENE_VOTE_WEIGHT) { outdoorTs.addLast(timestampMs) }
                 sceneIndoorStreak = 0
+                noOutdoorCueStreak = 0
             }
-            SceneVote.NONE -> Unit
+            SceneVote.NONE -> {
+                // Not conclusive alone — but enclosed spaces never show
+                // outdoor cues, so the absence accumulates.
+                noOutdoorCueStreak += 1
+            }
         }
-        // The camera seeing a room repeatedly is decisive on its own — GPS
-        // accuracy indoors often sits in the neutral band (WiFi-assisted
-        // 10-20m fixes), which starved the flip in field testing.
-        if (sceneIndoorStreak >= SCENE_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
-            DiagnosticsLog.info("outdoor-gate", "INDOOR ($sceneIndoorStreak consecutive camera votes)")
-            _state.value = OutdoorState.INDOOR
-            return
+        // Fusion rules (a computer on a park bench must NOT gate): camera
+        // evidence only flips when GPS agrees by omission — zero
+        // outdoor-grade fixes in the window.
+        val gpsShowsNoOutdoor = outdoorTs.isEmpty()
+        if (gpsShowsNoOutdoor && _state.value != OutdoorState.INDOOR) {
+            if (sceneIndoorStreak >= SCENE_STREAK_TO_FLIP) {
+                DiagnosticsLog.info(
+                    "outdoor-gate",
+                    "INDOOR (camera indoor ×$sceneIndoorStreak + no outdoor-grade GPS)",
+                )
+                _state.value = OutdoorState.INDOOR
+                return
+            }
+            if (noOutdoorCueStreak >= NO_OUTDOOR_CUES_TO_FLIP) {
+                DiagnosticsLog.info(
+                    "outdoor-gate",
+                    "INDOOR (no outdoor cues in $noOutdoorCueStreak samples + no outdoor-grade GPS)",
+                )
+                _state.value = OutdoorState.INDOOR
+                return
+            }
+        }
+        evaluate(timestampMs)
+    }
+
+    /**
+     * Map evidence: the latest GPS fix is inside a mapped building footprint.
+     * The most decisive signal — the map literally shows the dot inside a
+     * residence; no camera vocabulary required.
+     */
+    fun onMapEvidence(insideBuilding: Boolean, timestampMs: Long) {
+        if (insideBuilding) {
+            insideBuildingStreak += 1
+            repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
+            if (insideBuildingStreak >= MAP_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
+                DiagnosticsLog.info("outdoor-gate", "INDOOR (GPS inside mapped building ×$insideBuildingStreak)")
+                _state.value = OutdoorState.INDOOR
+                return
+            }
+        } else {
+            insideBuildingStreak = 0
         }
         evaluate(timestampMs)
     }
@@ -118,8 +166,9 @@ class OutdoorGate {
             indoorTs.none { it >= outdoorTs.first() }
 
         val newState = when (_state.value) {
-            OutdoorState.INDOOR -> if (outdoorFlip) {
+            OutdoorState.INDOOR -> if (outdoorFlip && insideBuildingStreak == 0) {
                 sceneIndoorStreak = 0
+                noOutdoorCueStreak = 0
                 OutdoorState.OUTDOOR
             } else OutdoorState.INDOOR
             else -> when {

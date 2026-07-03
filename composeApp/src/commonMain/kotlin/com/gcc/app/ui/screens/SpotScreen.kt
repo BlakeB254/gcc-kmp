@@ -267,6 +267,17 @@ private fun CameraPhase(
             gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
         }
     }
+    // Map evidence: GPS fix inside a mapped building footprint — the same
+    // rectangles the minimap draws, so "my dot is inside a building" always
+    // agrees with the gate.
+    LaunchedEffect(Unit) {
+        locationProvider.locationFlow.collect { loc ->
+            gate.onMapEvidence(
+                insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
+                timestampMs = Clock.System.now().toEpochMilliseconds(),
+            )
+        }
+    }
     // The viewfinder itself votes indoor/outdoor (Vision pass every ~2s on
     // the AVCapture stream) — same camera evidence AR mode gets.
     LaunchedEffect(Unit) {
@@ -435,7 +446,9 @@ private fun CameraPhase(
                 spotLocation = scanLocation,
                 geofenceRadius = 50.0,
                 maxPhotos = 3,
-                requireGeofence = spotLocation != null || currentLocation != null,
+                // World-scan model: no target-spot geofence — the scan IS the
+                // location source ("0m from spot" badge was legacy noise).
+                requireGeofence = false,
                 capturedPhotos = photos,
                 onPhotoCaptured = onScanCapture,
                 onRemovePhoto = onRemovePhoto,
@@ -481,7 +494,7 @@ private fun CameraPhase(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 84.dp, start = 16.dp, end = 16.dp)
+                    .padding(bottom = 104.dp, start = 16.dp, end = 16.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(Color.Black.copy(alpha = 0.8f))
                     .padding(16.dp),
@@ -549,7 +562,9 @@ private fun CameraPhase(
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
-        GoOutsideOverlay(visible = isIndoor)
+        // Indoors in a residence: nothing scans, nothing submits (capture,
+        // coverage, tagging all gate-suppressed) — offer Close Scan instead.
+        GoOutsideOverlay(visible = isIndoor, onCloseScan = onBack)
 
         // Exit (top-left) — the camera phase has no header bar.
         TextButton(
@@ -570,21 +585,21 @@ private fun CameraPhase(
             }
         }
 
-        // One-tap completion (bottom-right corner).
+        // Primary action: Complete Scan, bottom-center (the Pokéball spot).
         val canComplete = photos.isNotEmpty() && !isIndoor
         Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
+                .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = 16.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .padding(bottom = 24.dp)
+                .clip(RoundedCornerShape(28.dp))
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
                 .clickable(enabled = canComplete) { onCompleteScan() }
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
             Text(
                 text = "Complete Scan ✓",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
             )

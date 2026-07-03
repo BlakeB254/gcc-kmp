@@ -755,7 +755,9 @@ private class SceneSampleDelegate :
             DiagnosticsLog.info("scene-vote", "vote=${result.vote} sees: ${result.topLabels}")
         }
         dispatch_async(dispatch_get_main_queue()) {
-            if (result.vote != SceneVote.NONE) CameraSceneVoteBus.emit(result.vote)
+            // NONE votes flow too: "no outdoor cues at all, repeatedly" is
+            // itself indoor evidence (counted by the gate).
+            CameraSceneVoteBus.emit(result.vote)
             CameraDetectionBus.update(listOfNotNull(result.detection))
         }
     }

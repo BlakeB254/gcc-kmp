@@ -70,19 +70,6 @@ fun SpotScanCapture(
     val analyzer = remember { OnDeviceAnalyzer() }
     val cameraManager = remember { CameraManager() }
     var captureIndex by remember { mutableStateOf(0) }
-    // AR spot guidance fully replaces the capture UI while active: an
-    // ARSession and the AVCapture camera session cannot share the camera,
-    // so the CameraCapture subtree must leave the composition.
-    var showArGuide by remember { mutableStateOf(false) }
-
-    if (showArGuide) {
-        SpotArScreen(
-            spotLocation = spotLocation,
-            onExit = { showArGuide = false },
-            modifier = modifier,
-        )
-        return
-    }
 
     DisposableEffect(Unit) {
         val startedLocationHere = !locationProvider.isTracking
@@ -237,27 +224,7 @@ fun SpotScanCapture(
                 .padding(top = 8.dp, end = 8.dp),
         )
 
-        // AR walk-around guidance entry — AR-capable devices only. Raised
-        // above the bottom corners, which belong to the host screen's
-        // "Add details" / "Complete Scan" chrome.
-        if (deviceCapabilities.deviceClass != DeviceClass.BASIC) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 96.dp, end = 8.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(GccBlue.copy(alpha = 0.9f))
-                    .clickable { showArGuide = true }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = "AR guide",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                )
-            }
-        }
+    var captureIndex by remember { mutableStateOf(0) }
     }
 }
 

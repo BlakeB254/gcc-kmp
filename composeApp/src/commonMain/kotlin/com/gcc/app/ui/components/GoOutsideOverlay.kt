@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +29,8 @@ import androidx.compose.ui.unit.dp
 fun GoOutsideOverlay(
     visible: Boolean,
     modifier: Modifier = Modifier,
+    /** When set, shows a "Close Scan" button that exits the scan entirely. */
+    onCloseScan: (() -> Unit)? = null,
 ) {
     if (!visible) return
     Column(
@@ -59,5 +62,18 @@ fun GoOutsideOverlay(
             color = Color.White.copy(alpha = 0.85f),
             textAlign = TextAlign.Center,
         )
+        if (onCloseScan != null) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "Close Scan",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                modifier = Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                    .background(Color.White.copy(alpha = 0.18f))
+                    .clickable(onClick = onCloseScan)
+                    .padding(horizontal = 28.dp, vertical = 12.dp),
+            )
+        }
     }
 }

@@ -195,8 +195,8 @@ internal class ArFrameFeedback(
 
     private fun emitSceneVote(observations: List<VNClassificationObservation>) {
         val vote = SceneVoteVision.voteFrom(observations)
-        if (vote == SceneVote.NONE) return
         val listener = sceneVoteListener ?: return
+        // NONE flows too — repeated absence of outdoor cues is evidence.
         dispatch_async(dispatch_get_main_queue()) { listener(vote) }
     }
 
