@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-type RouteContext = { params: Promise<{ id: string }> }
+type RouteContext = { params: Promise<{ routeId: string }> }
 
 /**
  * Regenerates a route's inner boundary (private-property cutoff) so it
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const admin = await requireAdmin(request)
   if (admin instanceof NextResponse) return admin
 
-  const { id } = await context.params
-  const routeId = parseInt(id, 10)
+  const { routeId: routeIdParam } = await context.params
+  const routeId = parseInt(routeIdParam, 10)
   if (Number.isNaN(routeId)) {
     return NextResponse.json({ success: false, error: 'Invalid route ID' }, { status: 400 })
   }
