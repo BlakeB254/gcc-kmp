@@ -38,7 +38,7 @@ import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.components.PhotoStrip
 import com.gcc.app.ui.components.QuickActionGlyph
 import com.gcc.app.ui.theme.*
-import gcc_kmp.composeapp.generated.resources.Res
+import gcc_kmp.composeapp.generated.resources.*
 import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel

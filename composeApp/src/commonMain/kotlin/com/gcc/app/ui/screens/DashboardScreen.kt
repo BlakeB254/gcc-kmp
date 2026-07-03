@@ -45,7 +45,7 @@ import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.isTestAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
 import com.gcc.app.util.padTwo
-import gcc_kmp.composeapp.generated.resources.Res
+import gcc_kmp.composeapp.generated.resources.*
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
