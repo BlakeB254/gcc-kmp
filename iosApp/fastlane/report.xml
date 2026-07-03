@@ -5,47 +5,47 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000154">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000187">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.00193">
+      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.002768">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: get_certificates" time="1.507865">
+      <testcase classname="fastlane.lanes" name="2: get_certificates" time="1.608081">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="3: get_provisioning_profile" time="0.94385">
+      <testcase classname="fastlane.lanes" name="3: get_provisioning_profile" time="1.323188">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="4: cd ../.. &amp;&amp; ./gradlew :composeApp:linkReleaseFrameworkIosArm64 :composeApp:iosArm64AggregateResources --console=plain -Pgcc.disableNativeReleaseOptimization=true -Pkotlin.native.isAllowRunningInProcess=false -Dorg.gradle.jvmargs=&apos;-Xmx3072m -XX:+UseSerialGC -Dfile.encoding=UTF-8&apos;" time="1.095764">
+      <testcase classname="fastlane.lanes" name="4: cd ../.. &amp;&amp; ./gradlew :composeApp:linkReleaseFrameworkIosArm64 :composeApp:iosArm64AggregateResources --console=plain -Pgcc.disableNativeReleaseOptimization=true -Pkotlin.native.isAllowRunningInProcess=false -Dorg.gradle.jvmargs=&apos;-Xmx3072m -XX:+UseSerialGC -Dfile.encoding=UTF-8&apos;" time="431.612134">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="5: build_app" time="47.094762">
+      <testcase classname="fastlane.lanes" name="5: build_app" time="56.320677">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="6: unzip -l /tmp/gcc-build/GCC.ipa | grep -q &apos;Payload/Global Community Cleaners.app/compose-resources/composeResources/gcc_kmp.composeapp.generated.resources/files/spinning_globe.json&apos;" time="0.010835">
+      <testcase classname="fastlane.lanes" name="6: unzip -l /tmp/gcc-build/GCC.ipa | grep -q &apos;Payload/Global Community Cleaners.app/compose-resources/composeResources/gcc_kmp.composeapp.generated.resources/files/spinning_globe.json&apos;" time="0.010694">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="7: unzip -l /tmp/gcc-build/GCC.ipa | grep -q &apos;Payload/Global Community Cleaners.app/compose-resources/composeResources/gcc_kmp.composeapp.generated.resources/drawable/gcc_logo.png&apos;" time="0.007971">
+      <testcase classname="fastlane.lanes" name="7: unzip -l /tmp/gcc-build/GCC.ipa | grep -q &apos;Payload/Global Community Cleaners.app/compose-resources/composeResources/gcc_kmp.composeapp.generated.resources/drawable/gcc_logo.png&apos;" time="0.007399">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="8: upload_to_testflight" time="75.329725">
+      <testcase classname="fastlane.lanes" name="8: upload_to_testflight" time="82.282325">
         
       </testcase>
     

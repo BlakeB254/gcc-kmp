@@ -25,17 +25,21 @@ import platform.AVFoundation.AVCaptureVideoDataOutput
 import platform.AVFoundation.AVCaptureVideoDataOutputSampleBufferDelegateProtocol
 import platform.CoreMedia.CMSampleBufferGetImageBuffer
 import platform.CoreMedia.CMSampleBufferRef
-import platform.CoreImage.CIContext
-import platform.CoreImage.CIImage
+import platform.CoreGraphics.CGImageRefVar
+import platform.CoreGraphics.CGImageRelease
 import platform.CoreVideo.CVPixelBufferGetHeight
 import platform.CoreVideo.CVPixelBufferGetWidth
 import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970
 import platform.QuartzCore.CATransaction
-import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIImageOrientation
+import platform.VideoToolbox.VTCreateCGImageFromCVPixelBuffer
 import platform.darwin.dispatch_queue_create
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.AVFoundation.AVCapturePhoto
@@ -758,16 +762,20 @@ private class SceneSampleDelegate :
     /** CVPixelBuffer → portrait JPEG CapturedPhoto (no depth; silent path). */
     private fun pixelBufferToPhoto(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): CapturedPhoto? {
         return try {
-            val ciImage = CIImage.imageWithCVPixelBuffer(pixelBuffer)
-            val cgImage = CIContext().createCGImage(ciImage, fromRect = ciImage.extent) ?: return null
+            val cgImage = memScoped {
+                val out = alloc<CGImageRefVar>()
+                val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
+                if (status != 0) null else out.value
+            } ?: return null
             // Sensor frames are landscape-right; rotate for the portrait UI.
             val image = UIImage.imageWithCGImage(
                 cgImage,
                 scale = 1.0,
                 orientation = UIImageOrientation.UIImageOrientationRight,
             )
-            val jpeg = UIImageJPEGRepresentation(image, 0.85) ?: return null
-            val bytes = jpeg.bytes?.readBytes(jpeg.length.toInt()) ?: return null
+            val jpeg = UIImageJPEGRepresentation(image, 0.85)
+            CGImageRelease(cgImage)
+            val bytes = jpeg?.bytes?.readBytes(jpeg.length.toInt()) ?: return null
             CapturedPhoto(
                 bytes = bytes,
                 width = CVPixelBufferGetHeight(pixelBuffer).toInt(),
