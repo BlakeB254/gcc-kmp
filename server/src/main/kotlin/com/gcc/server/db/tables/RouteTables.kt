@@ -377,9 +377,11 @@ object WorldObservations : Table("world_observations") {
     val locationCellId = varchar("location_cell_id", 32)
     val itemType = varchar("item_type", 50).nullable()
     val state = varchar("state", 10)
-    val severity = integer("severity").nullable()
-    val estimatedVolumeLiters = double("estimated_volume_liters").nullable()
-    val estimatedWeightLbs = double("estimated_weight_lbs").nullable()
+    // Domain-specific payload (litter: severity/estimatedVolumeLiters/
+    // estimatedWeightLbs; future domains: whatever they need) — see the
+    // matching comment on schema.ts's worldObservations for why this isn't
+    // a set of named columns.
+    val attributes = jsonbCol<kotlinx.serialization.json.JsonElement>("attributes").nullable()
     val confidence = double("confidence").nullable()
     val mediaUrl = varchar("media_url", 500).nullable()
     val depthData = text("depth_data").nullable()

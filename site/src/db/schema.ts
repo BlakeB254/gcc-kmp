@@ -1583,6 +1583,17 @@ export type NewScanHotspotRow = typeof scanHotspots.$inferInsert
 // World observation model — the unified map/digital-twin layer fed by both
 // route-scan hotspots and spot reports. See docs/superpowers/specs/2026-07-01-
 // unified-scan-ecosystem-and-immersive-route-design.md §2.
+//
+// Field shape is split deliberately: `itemType`/`state`/`confidence`/media/
+// capture-provenance fields stay as real columns because they're universal
+// across every domain (litter, vegetation, construction, land_use, and
+// whatever's added later) AND `itemType` specifically is queried directly in
+// the supersession logic (recordWorldObservation), so it needs to stay a real
+// indexable column, not buried in JSON. `attributes` holds whatever numeric/
+// descriptive payload is specific to a given domain — litter's severity and
+// volume/weight estimates today, a future vegetation domain's health grade,
+// a future construction domain's progress percent — without requiring a
+// schema migration (or a new named column) every time a new domain is added.
 export const worldObservations = pgTable('world_observations', {
   id: serial('id').primaryKey(),
   scanHotspotId: integer('scan_hotspot_id'),
@@ -1594,9 +1605,7 @@ export const worldObservations = pgTable('world_observations', {
   locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
   itemType: varchar('item_type', { length: 50 }), // null when state='clean' (nothing dirty found)
   state: varchar('state', { length: 10 }).notNull(), // 'dirty' | 'clean'
-  severity: integer('severity'),
-  estimatedVolumeLiters: doublePrecision('estimated_volume_liters'),
-  estimatedWeightLbs: doublePrecision('estimated_weight_lbs'),
+  attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedVolumeLiters, estimatedWeightLbs}
   confidence: doublePrecision('confidence'),
   mediaUrl: varchar('media_url', { length: 500 }),
   depthData: text('depth_data'),

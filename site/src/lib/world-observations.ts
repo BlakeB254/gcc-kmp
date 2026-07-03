@@ -41,9 +41,9 @@ export interface RecordObservationInput {
   lng: number
   itemType: string | null
   state: 'dirty' | 'clean'
-  severity?: number
-  estimatedVolumeLiters?: number
-  estimatedWeightLbs?: number
+  // Domain-specific descriptive payload — litter's severity/volume/weight
+  // today, whatever a future domain needs tomorrow, without a schema change.
+  attributes?: Record<string, unknown>
   confidence?: number
   mediaUrl?: string
   depthData?: string
@@ -107,9 +107,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       locationCellId: cellId,
       itemType: input.itemType,
       state: input.state,
-      severity: input.severity ?? null,
-      estimatedVolumeLiters: input.estimatedVolumeLiters ?? null,
-      estimatedWeightLbs: input.estimatedWeightLbs ?? null,
+      attributes: input.attributes ?? null,
       confidence: input.confidence ?? null,
       mediaUrl: input.mediaUrl ?? null,
       depthData: input.depthData ?? null,

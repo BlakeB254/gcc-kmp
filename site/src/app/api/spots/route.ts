@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
         lng,
         itemType: item.itemType,
         state: 'dirty',
-        severity: item.severity,
+        attributes: item.severity !== undefined ? { severity: item.severity } : undefined,
         confidence: item.confidence,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
         depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
