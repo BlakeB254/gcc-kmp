@@ -1,0 +1,15 @@
+/**
+ * Point weights for the distance-tracked scan coverage economy (design spec
+ * §5). Deliberately plain exported constants, not a DB-driven config table —
+ * tunable post-launch by editing this file, per the spec's own explicit
+ * non-goal ("exact numeric point values... not an architecture decision").
+ */
+export const POINTS_PER_METER = {
+  NEW_AREA: 10,
+  STALE_RESCAN: 5,
+  FRESH_RESCAN: 0, // no incentive to farm the same block repeatedly in one sitting
+} as const
+
+export const RECTIFICATION_BONUS_POINTS = 25
+
+export const STALE_AFTER_MS = 24 * 60 * 60 * 1000
