@@ -20,6 +20,7 @@ enum class AdminTab(val label: String, val icon: String) {
     BOUNTIES("Bounties", "\uD83C\uDFAF"),
     SPOTS("Spots", "\uD83D\uDCCD"),
     PAYOUTS("Payouts", "\uD83D\uDCB0"),
+    BLOCK_PROPOSALS("Block Proposals", "\uD83E\uDDF1"),
 }
 
 data class AdminPanelUiState(
@@ -46,6 +47,8 @@ data class AdminPanelUiState(
     val selectedProxyWorkerId: Int? = null,
     val pendingReviews: List<PendingReview> = emptyList(),
     val payoutActionError: String? = null,
+    val blockProposals: List<BlockProposal> = emptyList(),
+    val blockProposalActionError: String? = null,
 )
 
 class AdminPanelViewModel(
@@ -178,6 +181,10 @@ class AdminPanelViewModel(
                     AdminTab.PAYOUTS -> {
                         val reviews = apiClient.getPendingPayoutReviews()
                         _uiState.value = _uiState.value.copy(pendingReviews = reviews)
+                    }
+                    AdminTab.BLOCK_PROPOSALS -> {
+                        val proposals = apiClient.getAdminBlockProposals(status = BlockProposalStatus.PENDING)
+                        _uiState.value = _uiState.value.copy(blockProposals = proposals)
                     }
                 }
                 _uiState.value = _uiState.value.copy(
@@ -713,5 +720,50 @@ class AdminPanelViewModel(
 
     fun clearPayoutActionError() {
         _uiState.value = _uiState.value.copy(payoutActionError = null)
+    }
+
+    // ── Block Proposal Review Actions ────────────────────────────────────
+    // Approving inserts a real Block (+ its exclusion zones and, best
+    // effort, an inner boundary) on the server — nothing here is live
+    // until this call succeeds. See site/src/app/api/admin/block-proposals.
+
+    fun approveBlockProposal(proposalId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(blockProposalActionError = null)
+            try {
+                apiClient.approveBlockProposal(proposalId)
+                _uiState.value = _uiState.value.copy(
+                    blockProposals = _uiState.value.blockProposals.filter { it.id != proposalId },
+                )
+                invalidateTab(AdminTab.BLOCK_PROPOSALS)
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to approve block proposal"
+                _uiState.value = _uiState.value.copy(blockProposalActionError = msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun rejectBlockProposal(proposalId: Int, reason: String?, onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(blockProposalActionError = null)
+            try {
+                apiClient.rejectBlockProposal(proposalId, reason)
+                _uiState.value = _uiState.value.copy(
+                    blockProposals = _uiState.value.blockProposals.filter { it.id != proposalId },
+                )
+                invalidateTab(AdminTab.BLOCK_PROPOSALS)
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to reject block proposal"
+                _uiState.value = _uiState.value.copy(blockProposalActionError = msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun clearBlockProposalActionError() {
+        _uiState.value = _uiState.value.copy(blockProposalActionError = null)
     }
 }

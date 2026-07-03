@@ -527,6 +527,42 @@ class GccApiClient(
         }
     }
 
+    // ── Admin: Block Proposals ──────────────────────────────────────────
+    // AI-generated block candidates staged for review — see
+    // site/src/app/api/admin/block-proposals/*. Nothing here is live/public
+    // until approved, which inserts a real Block row on the server.
+
+    suspend fun getAdminBlockProposals(status: BlockProposalStatus? = null): List<BlockProposal> {
+        val path = if (status != null) {
+            "/api/admin/block-proposals?status=${status.name.lowercase()}"
+        } else {
+            "/api/admin/block-proposals"
+        }
+        return get(path)
+    }
+
+    suspend fun approveBlockProposal(proposalId: Int): ApproveBlockProposalResponse {
+        val response = httpClient.post("$baseUrl/api/admin/block-proposals/$proposalId/approve")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ApproveBlockProposalResponse>()
+    }
+
+    suspend fun rejectBlockProposal(proposalId: Int, reason: String? = null) {
+        val response = httpClient.post("$baseUrl/api/admin/block-proposals/$proposalId/reject") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("reason" to reason))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+    }
+
     suspend fun removeDeviceToken() =
         deleteUnit("/api/workers/me/device-token")
 
@@ -1179,6 +1215,13 @@ data class ApproveJobResponse(
     val ok: Boolean,
     val payoutMethod: String? = null,
     val transferId: String? = null,
+)
+
+@Serializable
+data class ApproveBlockProposalResponse(
+    val blockId: Int,
+    val exclusionZonesCreated: Int = 0,
+    val innerBoundaryGenerated: Boolean = false,
 )
 
 @kotlinx.serialization.Serializable

@@ -160,6 +160,13 @@ fun AdminPanelScreen(
                             onDeny = { jobId, reason, onResult -> viewModel.denyJob(jobId, reason, onResult) },
                             onDismissActionError = { viewModel.clearPayoutActionError() },
                         )
+                        AdminTab.BLOCK_PROPOSALS -> AdminBlockProposalsTab(
+                            proposals = uiState.blockProposals,
+                            actionError = uiState.blockProposalActionError,
+                            onApprove = { proposalId, onResult -> viewModel.approveBlockProposal(proposalId, onResult) },
+                            onReject = { proposalId, reason, onResult -> viewModel.rejectBlockProposal(proposalId, reason, onResult) },
+                            onDismissActionError = { viewModel.clearBlockProposalActionError() },
+                        )
                     }
                 }
             }
