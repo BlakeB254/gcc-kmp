@@ -118,7 +118,7 @@ fun buildRouteInnerBoundariesGeoJson(
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
-        val ring = insetRingRadially(closeLoop(coords), setbackMeters)
+        val ring = insetRingByEdgeOffset(closeLoop(coords), setbackMeters)
             ?: return@mapIndexedNotNull null
         val ringJson = ring.joinToString(",") { "[${it.lng},${it.lat}]" }
         """{"type":"Feature","properties":{"routeIndex":$index,"kind":"inner"},"geometry":{"type":"Polygon","coordinates":[[$ringJson]]}}"""
@@ -126,23 +126,116 @@ fun buildRouteInnerBoundariesGeoJson(
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
 
-/** Shrink a closed ring toward its centroid by [insetMeters]; null if degenerate. */
-private fun insetRingRadially(ring: List<Coordinates>, insetMeters: Double): List<Coordinates>? {
-    if (ring.size < 4) return null
-    val cLat = ring.dropLast(1).map { it.lat }.average()
-    val cLng = ring.dropLast(1).map { it.lng }.average()
+/**
+ * The required-scan corridor: outer block ring with the inner boundary as a
+ * hole. The band between the two lines IS the assignment — inside the inner
+ * ring (private property) and outside the outer ring are excluded.
+ */
+fun buildRouteCorridorGeoJson(
+    routeCoordinates: List<List<Coordinates>>,
+    setbackMeters: Double = 8.0,
+): String {
+    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    val features = routeCoordinates.mapIndexedNotNull { index, coords ->
+        if (coords.size < 3) return@mapIndexedNotNull null
+        val outer = closeLoop(coords)
+        val inner = insetRingByEdgeOffset(outer, setbackMeters) ?: return@mapIndexedNotNull null
+        val outerJson = outer.joinToString(",") { "[${it.lng},${it.lat}]" }
+        val innerJson = inner.joinToString(",") { "[${it.lng},${it.lat}]" }
+        """{"type":"Feature","properties":{"routeIndex":$index},"geometry":{"type":"Polygon","coordinates":[[$outerJson],[$innerJson]]}}"""
+    }.joinToString(",")
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
+ * True parallel inset: every edge moves inward by [insetMeters] along its
+ * normal and vertices are rebuilt from adjacent offset-edge intersections —
+ * a uniformly concentric inner ring on any convex block shape (the radial
+ * centroid-shrink it replaces hugged the outer line on elongated blocks).
+ * Returns null when the loop is too small/degenerate to inset cleanly.
+ */
+internal fun insetRingByEdgeOffset(ring: List<Coordinates>, insetMeters: Double): List<Coordinates>? {
+    // Drop the closing duplicate + consecutive near-duplicates.
+    val open = ring.dropLast(1).let { pts ->
+        pts.filterIndexed { i, p ->
+            val prev = pts[(i - 1 + pts.size) % pts.size]
+            kotlin.math.abs(p.lat - prev.lat) > 1e-9 || kotlin.math.abs(p.lng - prev.lng) > 1e-9
+        }
+    }
+    if (open.size < 3) return null
+
+    val cLat = open.map { it.lat }.average()
     val lngScale = kotlin.math.cos(cLat * kotlin.math.PI / 180.0)
-    return ring.map { v ->
-        val northM = (v.lat - cLat) * 111_320.0
-        val eastM = (v.lng - cLng) * 111_320.0 * lngScale
-        val dist = kotlin.math.sqrt(northM * northM + eastM * eastM)
-        if (dist <= insetMeters * 1.5) return null // loop too small to inset
-        val f = (dist - insetMeters) / dist
-        Coordinates(
-            lat = cLat + northM * f / 111_320.0,
-            lng = cLng + eastM * f / (111_320.0 * lngScale),
+    // Meter-space points relative to the first vertex.
+    val pts = open.map { v ->
+        Pair(
+            (v.lng - open[0].lng) * 111_320.0 * lngScale, // east
+            (v.lat - open[0].lat) * 111_320.0,            // north
         )
     }
+
+    // Signed area → winding; interior is left of each edge when CCW.
+    var area2 = 0.0
+    for (i in pts.indices) {
+        val (x1, y1) = pts[i]
+        val (x2, y2) = pts[(i + 1) % pts.size]
+        area2 += x1 * y2 - x2 * y1
+    }
+    if (kotlin.math.abs(area2) < 1.0) return null
+    val inwardSign = if (area2 > 0) 1.0 else -1.0
+
+    // Offset each edge inward: point on line + direction.
+    data class Line(val px: Double, val py: Double, val dx: Double, val dy: Double)
+    val lines = pts.indices.map { i ->
+        val (x1, y1) = pts[i]
+        val (x2, y2) = pts[(i + 1) % pts.size]
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val len = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (len < 0.5) return null
+        // Left normal of (dx,dy) is (-dy,dx); inward for CCW.
+        val nx = -dy / len * inwardSign
+        val ny = dx / len * inwardSign
+        Line(x1 + nx * insetMeters, y1 + ny * insetMeters, dx, dy)
+    }
+
+    // New vertex i = intersection of offset edge (i-1) and offset edge i.
+    val inner = pts.indices.map { i ->
+        val a = lines[(i - 1 + lines.size) % lines.size]
+        val b = lines[i]
+        val cross = a.dx * b.dy - a.dy * b.dx
+        if (kotlin.math.abs(cross) < 1e-9) {
+            // Collinear edges: just use b's offset start point.
+            Pair(b.px, b.py)
+        } else {
+            val t = ((b.px - a.px) * b.dy - (b.py - a.py) * b.dx) / cross
+            Pair(a.px + a.dx * t, a.py + a.dy * t)
+        }
+    }
+
+    // Validity: every inner vertex must sit at least [insetMeters] inside
+    // EVERY original edge's half-plane. Over-inset loops (e.g. a 10m square
+    // with an 8m setback) produce mirrored-but-still-wound rings that pure
+    // area/winding checks miss — the half-plane test catches them exactly.
+    for ((vx, vy) in inner) {
+        for (i in pts.indices) {
+            val (x1, y1) = pts[i]
+            val (x2, y2) = pts[(i + 1) % pts.size]
+            val dx = x2 - x1
+            val dy = y2 - y1
+            val len = kotlin.math.sqrt(dx * dx + dy * dy)
+            val inwardDist = ((vx - x1) * (-dy) + (vy - y1) * dx) / len * inwardSign
+            if (inwardDist < insetMeters - 0.05) return null
+        }
+    }
+
+    val result = inner.map { (east, north) ->
+        Coordinates(
+            lat = open[0].lat + north / 111_320.0,
+            lng = open[0].lng + east / (111_320.0 * lngScale),
+        )
+    }
+    return result + result.first() // close the loop
 }
 
 /**
