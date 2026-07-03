@@ -70,6 +70,7 @@ actual fun GccMap(
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
+    explorerAreaStates: Map<String, String>,
     affectedBlocks: List<AffectedBlock>,
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,

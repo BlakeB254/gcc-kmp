@@ -79,6 +79,7 @@ actual fun GccMap(
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
+    explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
@@ -302,6 +303,38 @@ actual fun GccMap(
                     17 to const(1f),
                 ),
             )
+
+            // Explorer scan-state color coding: area fills bucketed by scan
+            // state — grey = unscanned (the whole city today), green = clean,
+            // heat-red = dirty, faded amber = stale. My Area mode skips them.
+            if (mapMode != MapMode.MY_AREA) {
+                val stateJsons = remember(explorerAreaStates) {
+                    buildExplorerAreaStateGeoJsons(explorerAreaStates)
+                }
+                val stateStyles = listOf(
+                    Triple("unscanned", Color(0xFF6B7280), 0.22f),
+                    Triple("clean", Color(0xFF22C55E), 0.20f),
+                    Triple("dirty", Color(0xFFEF4444), 0.24f),
+                    Triple("stale", Color(0xFFF59E0B), 0.14f),
+                )
+                for ((state, color, alpha) in stateStyles) {
+                    val src = rememberGeoJsonSource(
+                        GeoJsonData.JsonString(stateJsons[state] ?: continue)
+                    )
+                    FillLayer(
+                        id = "explorer-scanstate-$state",
+                        source = src,
+                        color = const(color),
+                        opacity = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            9 to const(alpha),
+                            13 to const(alpha * 0.7f),
+                            15 to const(0f),
+                        ),
+                    )
+                }
+            }
 
             // Community area outlines — visible at zoom 10-15, fades out above
             LineLayer(
