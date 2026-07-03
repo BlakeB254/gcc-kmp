@@ -308,32 +308,29 @@ actual fun GccMap(
             // state — grey = unscanned (the whole city today), green = clean,
             // heat-red = dirty, faded amber = stale. My Area mode skips them.
             if (mapMode != MapMode.MY_AREA) {
-                val stateJsons = remember(explorerAreaStates) {
-                    buildExplorerAreaStateGeoJsons(explorerAreaStates)
-                }
-                val stateStyles = listOf(
-                    Triple("unscanned", Color(0xFF6B7280), 0.22f),
-                    Triple("clean", Color(0xFF22C55E), 0.20f),
-                    Triple("dirty", Color(0xFFEF4444), 0.24f),
-                    Triple("stale", Color(0xFFF59E0B), 0.14f),
+                // Unscanned baseline covers ALL landmass worldwide (deep
+                // grey), not just Chicago's boundary — the scan economy's
+                // frontier is planetary. Colored area states paint over it.
+                val worldUnscannedSrc = rememberGeoJsonSource(
+                    GeoJsonData.JsonString(
+                        """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-180,-85],[180,-85],[180,85],[-180,85],[-180,-85]]]}}]}"""
+                    )
                 )
-                for ((state, color, alpha) in stateStyles) {
-                    val src = rememberGeoJsonSource(
-                        GeoJsonData.JsonString(stateJsons[state] ?: continue)
-                    )
-                    FillLayer(
-                        id = "explorer-scanstate-$state",
-                        source = src,
-                        color = const(color),
-                        opacity = interpolate(
-                            type = exponential(1.5f),
-                            input = zoom(),
-                            9 to const(alpha),
-                            13 to const(alpha * 0.7f),
-                            15 to const(0f),
-                        ),
-                    )
-                }
+                FillLayer(
+                    id = "explorer-scanstate-unscanned",
+                    source = worldUnscannedSrc,
+                    color = const(Color(0xFF4B5563)),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        9 to const(0.34f),
+                        13 to const(0.24f),
+                        15 to const(0f),
+                    ),
+                )
+                // Scan intensity stays HEATMAP-style (the same spot-density
+                // gradient layers My Area uses render over this baseline) —
+                // no flat single-color area fills, per product direction.
             }
 
             // Community area outlines — visible at zoom 10-15, fades out above
@@ -525,7 +522,7 @@ actual fun GccMap(
                 FillLayer(
                     id = "coverage-fog",
                     source = fogSrc,
-                    color = const(Color(0xFF6B7280)),
+                    color = const(Color(0xFF4B5563)),
                     // Gentle at overview, present at street level — the
                     // world-veil must never bury basemap labels.
                     opacity = interpolate(
