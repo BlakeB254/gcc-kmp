@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { transactions, sponsors, blocks } from '@/db/schema'
+import { transactions, sponsors, blocks, media } from '@/db/schema'
 import { eq, desc, isNotNull, sql, and, sum, count } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
@@ -41,6 +41,8 @@ interface LeaderboardEntry {
   tier: 'platinum' | 'gold' | 'silver' | 'bronze'
   contributionCount: number
   blocksSponsored: number
+  logoUrl: string | null
+  tagline: string | null
 }
 
 interface RecentContribution {
@@ -110,15 +112,22 @@ export async function GET(request: NextRequest) {
           displayName: sponsors.name,
           businessName: sponsors.businessName,
           isAnonymous: sponsors.preferencesIsAnonymous,
+          profileIsPublic: sponsors.profileIsPublic,
+          tagline: sponsors.profileTagline,
+          logoUrl: media.url,
         })
         .from(transactions)
         .leftJoin(sponsors, eq(transactions.sponsorId, sponsors.id))
+        .leftJoin(media, eq(sponsors.businessLogoId, media.id))
         .where(eq(transactions.status, 'completed'))
         .groupBy(
           transactions.sponsorId,
           sponsors.name,
           sponsors.businessName,
-          sponsors.preferencesIsAnonymous
+          sponsors.preferencesIsAnonymous,
+          sponsors.profileIsPublic,
+          sponsors.profileTagline,
+          media.url
         )
         .orderBy(desc(sum(transactions.amount)))
         .limit(limit)
@@ -126,6 +135,8 @@ export async function GET(request: NextRequest) {
       const leaderboard: LeaderboardEntry[] = leaderboardResults.map((row, index) => {
         const totalAmountCents = Number(row.totalAmount || 0)
         const isAnonymous = row.isAnonymous ?? false
+        const isPublic = row.profileIsPublic ?? true
+        const showProfileDetails = !isAnonymous && isPublic
 
         return {
           rank: index + 1,
@@ -137,6 +148,8 @@ export async function GET(request: NextRequest) {
           tier: getTier(totalAmountCents),
           contributionCount: Number(row.contributionCount),
           blocksSponsored: Number(row.blocksSponsored),
+          logoUrl: showProfileDetails ? row.logoUrl || null : null,
+          tagline: showProfileDetails ? row.tagline || null : null,
         }
       })
 

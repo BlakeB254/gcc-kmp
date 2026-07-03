@@ -4,6 +4,7 @@ import { DonateCTASection } from '@/components/landing/DonateCTASection'
 import { NeighborhoodMapSection } from '@/components/landing/NeighborhoodMapSection'
 import { BountyCTASection } from '@/components/landing/BountyCTASection'
 import { ImpactCounterSection } from '@/components/landing/ImpactCounterSection'
+import { RecognitionWallSection } from '@/components/landing/RecognitionWallSection'
 import { FAQSection } from '@/components/landing/FAQSection'
 import { FooterSection } from '@/components/landing/FooterSection'
 import { Header } from '@/components/landing/Header'
@@ -36,6 +37,9 @@ export default function HomePage() {
 
       {/* === IMPACT & TRANSPARENCY === */}
       <ImpactCounterSection />
+
+      {/* === SUPPORTER RECOGNITION === */}
+      <RecognitionWallSection />
 
       {/* === FAQ (Top 4) === */}
       <FAQSection limit={4} />

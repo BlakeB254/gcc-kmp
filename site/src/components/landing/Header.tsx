@@ -71,12 +71,11 @@ export function Header() {
   }, [])
 
   const navLinks = [
-    { label: 'Workers', href: '/worker/benefits' },
-    { label: 'Sponsors', href: '/sponsor/benefits' },
+    { label: 'About Us', href: '/about' },
+    { label: 'How It Works', href: '/how-it-works' },
     { label: 'Bounties', href: '/bounties' },
-    { label: 'Impact', href: '/impact' },
+    { label: 'Impact & Supporters', href: '/impact-supporters' },
     { label: 'Blog', href: '/blog' },
-    { label: 'Supporters', href: '/supporters' },
     { label: 'FAQ', href: '/faq' },
   ]
 

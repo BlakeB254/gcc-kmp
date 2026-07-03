@@ -24,6 +24,105 @@ export type ArticleSummary = Omit<Article, 'bodyMarkdown' | 'webUrl'>
 
 const ARTICLES: Article[] = [
   {
+    slug: '2026-07-03-issue-03',
+    title: 'Boots on the ground',
+    excerpt:
+      "Issue #3 — a cleaner site, a live iOS scanning feature (Android coming soon), a $2,000 gift from the University of Illinois Chicago toward our 100-block goal, the first North Lawndale cleanups landing July 5-6, a scan-powered heatmap getting sharper, and the next layer of our points economy.",
+    author: 'The team at Global Community Cleaners NFP',
+    publishedAt: '2026-07-03T15:00:00Z',
+    coverImageUrl: null,
+    tags: ['Newsletter', 'Issue 3', 'North Lawndale', 'UIC', 'Gamification'],
+    webUrl: 'https://globalcommunitycleaners.org/blog/2026-07-03-issue-03',
+    bodyMarkdown: `# Boots on the ground
+
+_Global Community Cleaners — Issue #3 · July 3, 2026_
+
+A cleaner front door, a gift from a university that studies this exact problem, and a date on the calendar: our first crews hit North Lawndale streets this week.
+
+## §1 · Where we left off
+
+In [Issue #2](https://globalcommunitycleaners.org/blog/2026-06-01-issue-02), the map had 110+ hotspots, the equipment was in hand thanks to Fields of Dreams Chicago, and we were closing the funding to put the first crews on the street. Three things changed since: the site got a real front door, the app grew a new set of eyes, and a university put real money behind the goal.
+
+> Equipment was never the hard part. Funded blocks and a first date were. We have both now.
+
+## §2 · A cleaner front door
+
+### The site got easier to read. The app got a new way to see the block.
+
+We rebuilt the homepage and navigation so the site says what we do in the first five seconds instead of the first scroll. Same organization, same mission — just less digging to find the part you came for.
+
+On the app side: the GCC scanning feature is live on iOS today, letting you walk a block and capture its condition as you go rather than logging one spot at a time. **Android is coming soon** to Google Play — we know a large share of North Lawndale carries Android, and closing that gap is one of our top priorities this summer.
+
+## §3 · A university backs the goal
+
+### The University of Illinois Chicago gave $2,000 toward our 100-block pilot.
+
+This is the headline of this issue. **UIC has donated $2,000** toward Global Community Cleaners' pilot goal of cleaning 100 blocks and creating paid work for local residents in North Lawndale. UIC's own Great Cities Institute is one of the sources we cite when we talk about the conditions here — a university that studies this neighborhood's data is now funding blocks in it.
+
+To be precise about what this gift is and isn't: it's money allocated toward the 100-block goal, today, before the first shovel touches ground on the blocks it funds. We'll report back with the before-and-after photos and the names of the residents it puts to work, the same way we do for every sponsor — once that work is actually done.
+
+- Goal: 100 blocks cleaned, 100 community members paid.
+- 20 blocks funded toward that goal so far, UIC's gift among them.
+
+## §4 · The first cleanups land this week
+
+### July 5 and 6, right after the holiday, our first crews work North Lawndale blocks.
+
+These are our **alpha cleanups** — the first time real residents run the full app-guided route-fulfillment process on real blocks, start to finish. We're treating both days as a structured test, not just a launch: watching where the app flow is smooth, where it's clunky, and listening hard to what the residents doing the work tell us about their experience.
+
+That feedback is the point. We are not rolling the **$100-per-block** route mechanism out to more communities until we've tightened it against what we learn from these two days.
+
+> If you worked one of the first two blocks and have thoughts on what to fix, we want to hear all of it — the app, the payout, the instructions, anything.
+
+## §5 · The map gets sharper
+
+### The heatmap now runs on real scan data, and it's about to look a lot more accurate.
+
+Every scan a user logs — whether it's a full block walk or a single spot report — feeds a live cleanliness heatmap of North Lawndale. Zoomed out, you see the neighborhood-level picture: where conditions cluster, where they don't.
+
+Zoomed in is where we're upgrading. We're migrating close-zoom rendering away from generic dots toward a visual that actually represents what a block looks like — density and severity of reported conditions, not just a pin count. This is the part of GCC that isn't a cleaning service at all: it's the data infrastructure for knowing what "clean" and "not clean" actually look like, block by block, backed by photos a neighbor took.
+
+## §6 · Building an economy worth participating in
+
+### The next reward layer is about the areas nobody has looked at yet.
+
+We're adding scans of **never-before-scanned areas**, and areas that haven't been scanned in the **last 24 hours**, into the points system — rewarding the "observe and report" side of the app the same way we already reward cleanup work. We're still working out the exact numbers, and we're still looking for the right sponsors to back this specific mechanic. And if you're a user: tell us what rewards would actually make you want to go scan a block nobody's looked at yet. We're building this for you, so we want your answer before we lock it in.
+
+A few other pieces of the economy, already live or in progress:
+
+- **Self-initiated cleanups earn points.** Spot something, clean it yourself, log it — that's the core loop, and we want to keep incentivizing it.
+- **Anyone can post a paid bounty** on a mess they want gone, and a worker can claim it for cash.
+- **Bounty pay and points aren't double-dipped the same way.** If you complete a paid bounty, you still earn some points for the work — just less than you'd earn cleaning the same mess for free. Free cleanups are the highest-points path on purpose.
+- **A full-lifecycle bonus is in the works** — extra points for observing a mess, recording it, cleaning it, and verifying the clean result, all in one session. The idea is that closing the whole loop yourself should pay out more than the sum of the individual steps, not just add them up. We're still finalizing the numbers and will publish them once they're set.
+
+### Sponsors, this ask is specific
+
+We're looking for a sponsor to back the scan-and-discover side of the points economy — rewarding residents for mapping blocks nobody's looked at yet. If your brand wants to be the name behind that incentive, or you just have thoughts on what a good reward looks like, email [hello@globalcommunitycleaners.org](mailto:hello@globalcommunitycleaners.org?subject=Partner%20on%20points) with the subject line **"Partner on points"**. And users — reply to any of our channels and tell us what would make this worth doing for you.
+
+## §7 · The ask
+
+### UIC funded 20 blocks worth of the goal. Here's how the next 80 get funded.
+
+[Sponsor a block — $100](https://globalcommunitycleaners.org/sponsor) · [Recognized sponsor — $2,000](https://globalcommunitycleaners.org/sponsor?amount=2000)
+
+**$100** = one cleanup, one paid resident, one before-and-after photo set in your inbox.
+
+**$2,000** = your name on our public wall, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition — the same recognition UIC is receiving in this issue.
+
+## §8 · What's next
+
+### Next issue, we tell you how the first two days actually went.
+
+The next report is the one we've been building toward since Issue #1: names, photos, blocks — the residents who worked the first cleanups, what the app got right, and what we're fixing before the next community gets the $100 block mechanism.
+
+Dr. King's apartment is six blocks away. The work continues.
+
+— The team at Global Community Cleaners NFP
+
+[Sponsor a block →](https://globalcommunitycleaners.org/sponsor)
+`,
+  },
+  {
     slug: '2026-05-01-issue-01',
     title: 'Sixty years and two blocks',
     excerpt:

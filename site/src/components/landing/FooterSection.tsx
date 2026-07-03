@@ -3,7 +3,7 @@ import { Logo } from '@/components/brand/Logo'
 
 export function FooterSection() {
   const workerLinks = [
-    { href: '/worker/benefits', label: 'How It Works' },
+    { href: '/how-it-works?tab=workers', label: 'How It Works' },
     { href: '/worker/signup', label: 'Sign Up to Earn' },
     { href: '/login', label: 'Sign In' },
     { href: '/worker/leaderboard', label: 'Leaderboard' },
@@ -11,17 +11,17 @@ export function FooterSection() {
   ]
 
   const sponsorLinks = [
-    { href: '/sponsor/benefits', label: 'How It Works' },
+    { href: '/how-it-works?tab=sponsors', label: 'How It Works' },
     { href: '/sponsor', label: 'Sponsor a Block' },
     { href: '/sponsor/calculator', label: 'Custom Package' },
     { href: '/sponsor/enterprise', label: 'Enterprise' },
     { href: '/login', label: 'Sign In' },
-    { href: '/supporters', label: 'Our Supporters' },
+    { href: '/impact-supporters', label: 'Our Supporters' },
   ]
 
   const aboutLinks = [
-    { href: '/impact', label: 'Our Impact' },
-    { href: '/supporters', label: 'Our Supporters' },
+    { href: '/about', label: 'About Us' },
+    { href: '/impact-supporters', label: 'Impact & Supporters' },
     { href: '/bounties', label: 'Community Bounties' },
     { href: '/join', label: 'Join Movement' },
     { href: '/faq', label: 'FAQ' },

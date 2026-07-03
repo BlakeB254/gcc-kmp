@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic'
 const SCHEDULE: Record<string, string> = {
   '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
+  '2026-07-03-issue-03': '2026-07-03T10:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
@@ -24,7 +25,7 @@ function isPublished(slug: string): boolean {
   return Date.now() >= new Date(at).getTime()
 }
 
-const POSTS = ['2026-05-01-issue-01', '2026-06-01-issue-02']
+const POSTS = ['2026-05-01-issue-01', '2026-06-01-issue-02', '2026-07-03-issue-03']
 
 export async function generateStaticParams() {
   return POSTS.map((slug) => ({ slug }))
@@ -62,6 +63,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       },
     }
   }
+  if (slug === '2026-07-03-issue-03') {
+    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
+    return {
+      title: 'Boots on the ground — Global Community Cleaners Issue #3',
+      description:
+        "GCC's third newsletter. A redesigned site, a live iOS scanning feature, a $2,000 gift from UIC toward our 100-block pilot goal, the first North Lawndale cleanups happening July 5-6, a real scan-powered heatmap, and a look at the points economy taking shape.",
+      openGraph: {
+        title: 'Boots on the ground — GCC Issue #3',
+        description:
+          "UIC backs our pilot goal, the first North Lawndale cleanups land July 5-6, and the map starts running on real scan data.",
+        type: 'article',
+        publishedTime: '2026-07-03',
+        images: ['/newsletter/issue-02/heatmap.png'],
+      },
+    }
+  }
   return {}
 }
 
@@ -73,6 +90,7 @@ export default async function BlogPostPage({
   const { slug } = await params
   if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
+  if (slug === '2026-07-03-issue-03') return <Issue3 />
   if (slug === '2026-06-01-issue-02') return <Issue2 />
   return <Issue1 />
 }
@@ -598,6 +616,198 @@ function Issue2() {
             {' · '}
             <a className="text-emerald-700 underline" href="/blog/2026-05-01-issue-01">
               Read Issue #1
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Issue3() {
+  const media = '/newsletter/issue-02'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #3 · Boots on the Ground
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">July 3, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            Boots on the ground
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            A cleaner front door, a gift from a university that studies this exact problem, and a date on the calendar: our first crews hit North Lawndale streets this week.
+          </p>
+        </header>
+
+        {/* §1 Where we left off */}
+        <Section label="§1 · Where we left off">
+          <p>
+            In{' '}
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-06-01-issue-02">
+              Issue #2
+            </a>
+            , the map had 110+ hotspots, the equipment was in hand thanks to Fields of Dreams Chicago, and we were closing the funding to put the first crews on the street. Three things changed since: the site got a real front door, the app grew a new set of eyes, and a university put real money behind the goal.
+          </p>
+          <Pull>Equipment was never the hard part. Funded blocks and a first date were. We have both now.</Pull>
+        </Section>
+
+        {/* §2 Site + app */}
+        <Section label="§2 · A cleaner front door">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The site got easier to read. The app got a new way to see the block.
+          </h2>
+          <p>
+            We rebuilt the homepage and navigation so the site says what we do in the first five seconds instead of the first scroll. Same organization, same mission — just less digging to find the part you came for.
+          </p>
+          <p>
+            On the app side: the GCC scanning feature is live on iOS today, letting you walk a block and capture its condition as you go rather than logging one spot at a time. <strong>Android is coming soon</strong> to Google Play — we know a large share of North Lawndale carries Android, and closing that gap is one of our top priorities this summer.
+          </p>
+        </Section>
+
+        {/* §3 The UIC gift */}
+        <Section label="§3 · A university backs the goal">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The University of Illinois Chicago gave $2,000 toward our 100-block pilot.
+          </h2>
+          <p>
+            This is the headline of this issue. <strong>UIC has donated $2,000</strong> toward Global Community Cleaners&rsquo; pilot goal of cleaning 100 blocks and creating paid work for local residents in North Lawndale. UIC&rsquo;s own Great Cities Institute is one of the sources we cite when we talk about the conditions here &mdash; a university that studies this neighborhood&rsquo;s data is now funding blocks in it.
+          </p>
+          <p>
+            To be precise about what this gift is and isn&rsquo;t: it&rsquo;s money allocated toward the 100-block goal, today, before the first shovel touches ground on the blocks it funds. We&rsquo;ll report back with the before-and-after photos and the names of the residents it puts to work, the same way we do for every sponsor &mdash; once that work is actually done.
+          </p>
+          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Goal · North Lawndale pilot</p>
+            <p className="mt-1 text-lg font-bold text-neutral-900">100 blocks cleaned · 100 community members paid</p>
+            <div className="mt-3 flex h-5 overflow-hidden rounded-full border border-emerald-200 bg-white">
+              <div className="flex items-center justify-center bg-emerald-700 text-xs font-bold text-white" style={{ width: '20%' }}>
+                20%
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">20 blocks funded toward the 100-block goal, UIC&rsquo;s gift among them.</p>
+          </div>
+        </Section>
+
+        {/* §4 North Lawndale cleanups */}
+        <Section label="§4 · The first cleanups land this week">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            July 5 and 6, right after the holiday, our first crews work North Lawndale blocks.
+          </h2>
+          <p>
+            These are our <strong>alpha cleanups</strong> &mdash; the first time real residents run the full app-guided route-fulfillment process on real blocks, start to finish. We&rsquo;re treating both days as a structured test, not just a launch: watching where the app flow is smooth, where it&rsquo;s clunky, and listening hard to what the residents doing the work tell us about their experience.
+          </p>
+          <p>
+            That feedback is the point. We are not rolling the <strong>$100-per-block</strong> route mechanism out to more communities until we&rsquo;ve tightened it against what we learn from these two days.
+          </p>
+          <Pull>If you worked one of the first two blocks and have thoughts on what to fix, we want to hear all of it &mdash; the app, the payout, the instructions, anything.</Pull>
+        </Section>
+
+        {/* §5 The map gets sharper */}
+        <Section label="§5 · The map gets sharper">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The heatmap now runs on real scan data, and it&rsquo;s about to look a lot more accurate.
+          </h2>
+          <p>
+            Every scan a user logs &mdash; whether it&rsquo;s a full block walk or a single spot report &mdash; feeds a live cleanliness heatmap of North Lawndale. Zoomed out, you see the neighborhood-level picture: where conditions cluster, where they don&rsquo;t.
+          </p>
+          <p>
+            Zoomed in is where we&rsquo;re upgrading. We&rsquo;re migrating close-zoom rendering away from generic dots toward a visual that actually represents what a block looks like &mdash; density and severity of reported conditions, not just a pin count. This is the part of GCC that isn&rsquo;t a cleaning service at all: it&rsquo;s the data infrastructure for knowing what &ldquo;clean&rdquo; and &ldquo;not clean&rdquo; actually look like, block by block, backed by photos a neighbor took.
+          </p>
+        </Section>
+
+        {/* §6 Gamification roadmap */}
+        <Section label="§6 · Building an economy worth participating in">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The next reward layer is about the areas nobody has looked at yet.
+          </h2>
+          <p>
+            We&rsquo;re adding scans of <strong>never-before-scanned areas</strong>, and areas that haven&rsquo;t been scanned in the <strong>last 24 hours</strong>, into the points system &mdash; rewarding the &ldquo;observe and report&rdquo; side of the app the same way we already reward cleanup work. We&rsquo;re still working out the exact numbers, and we&rsquo;re still looking for the right sponsors to back this specific mechanic &mdash; if that&rsquo;s you, see the invitation below. And if you&rsquo;re a user: tell us what rewards would actually make you want to go scan a block nobody&rsquo;s looked at yet. We&rsquo;re building this for you, so we want your answer before we lock it in.
+          </p>
+          <p>
+            A few other pieces of the economy, already live or in progress:
+          </p>
+          <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-5 py-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-sky-900">How points work today &mdash; and where they&rsquo;re headed</p>
+            <ul className="space-y-2 text-sm leading-relaxed text-neutral-900">
+              <li><strong>Self-initiated cleanups earn points.</strong> Spot something, clean it yourself, log it &mdash; that&rsquo;s the core loop, and we want to keep incentivizing it.</li>
+              <li><strong>Anyone can post a paid bounty</strong> on a mess they want gone, and a worker can claim it for cash.</li>
+              <li><strong>Bounty pay and points aren&rsquo;t double-dipped the same way.</strong> If you complete a paid bounty, you still earn some points for the work &mdash; just less than you&rsquo;d earn cleaning the same mess for free. Free cleanups are the highest-points path on purpose.</li>
+              <li><strong>A full-lifecycle bonus is in the works</strong> &mdash; extra points for observing a mess, recording it, cleaning it, and verifying the clean result, all in one session. The idea is that closing the whole loop yourself should pay out more than the sum of the individual steps, not just add them up. We&rsquo;re still finalizing the numbers and will publish them once they&rsquo;re set.</li>
+            </ul>
+          </div>
+          <div className="mt-5 rounded-xl bg-gradient-to-br from-emerald-900 to-emerald-700 px-7 py-6 text-white shadow-lg">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
+              Sponsors, this ask is specific
+            </p>
+            <p className="text-base font-semibold leading-snug">
+              We&rsquo;re looking for a sponsor to back the scan-and-discover side of the points economy &mdash; rewarding residents for mapping blocks nobody&rsquo;s looked at yet.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed opacity-90">
+              If your brand wants to be the name behind that incentive, or you just have thoughts on what a good reward looks like, email{' '}
+              <a className="text-amber-300 underline" href="mailto:hello@globalcommunitycleaners.org?subject=Partner%20on%20points">
+                hello@globalcommunitycleaners.org
+              </a>{' '}
+              with the subject line <strong>&ldquo;Partner on points&rdquo;</strong>. And users &mdash; reply to any of our channels and tell us what would make this worth doing for you.
+            </p>
+          </div>
+        </Section>
+
+        {/* §7 The ask */}
+        <Section label="§7 · The ask">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            UIC funded 20 blocks worth of the goal. Here&rsquo;s how the next 80 get funded.
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/sponsor?amount=2000"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              Recognized sponsor — $2,000
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>$2,000</strong> = your name on our public wall, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition &mdash; the same recognition UIC is receiving in this issue.
+          </p>
+        </Section>
+
+        {/* §8 What's next */}
+        <Section label="§8 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Next issue, we tell you how the first two days actually went.
+          </h2>
+          <p>
+            The next report is the one we&rsquo;ve been building toward since Issue #1: names, photos, blocks &mdash; the residents who worked the first cleanups, what the app got right, and what we&rsquo;re fixing before the next community gets the $100 block mechanism.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-06-01-issue-02">
+              Read Issue #2
             </a>
             {' · '}
             <a className="text-emerald-700 underline" href="/">
