@@ -62,6 +62,17 @@ fun CameraCapture(
     gpsHeading: Float? = null,
     allowLibraryPick: Boolean = false,
     cameraManager: CameraManager? = null,
+    /** Zones the environment scan has credited — minimap green highlight. */
+    scanCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Geo-tagged trash items — minimap orange dots. */
+    trashItems: List<Coordinates> = emptyList(),
+    /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber). */
+    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
+    staleCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Environment-scan presentation: hides the photo-count/thumbnail chrome
+     *  (captures are backend raw material, not a user-facing slideshow). */
+    environmentScanMode: Boolean = false,
+    statusText: String? = null,
 ) {
     val manager = cameraManager ?: remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
@@ -71,16 +82,16 @@ fun CameraCapture(
     val hasDepthCapture = capturedPhotos.any { it.depthAnalysis?.hasDepth == true }
     val canCaptureDepth = !allowLibraryPick && capturedPhotos.isEmpty() && hasLiDAR()
 
-    Column(
+    // Full-bleed viewfinder: the preview IS the screen; every control floats
+    // above it (no rounded clip, no reserved strips — see build-107 field
+    // report: the old Column letterboxed the camera).
+    Box(
         modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // Live camera preview with overlays — tap anywhere to capture
         Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .fillMaxSize()
                 .pointerInput(atLimit) {
                     detectTapGestures {
                         if (!isCapturing && !atLimit) {
@@ -109,13 +120,14 @@ fun CameraCapture(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 44.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 140.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = when {
+                    text = statusText ?: when {
                         atLimit -> "Max $maxPhotos photos captured"
                         isCapturing -> "Capturing..."
                         else -> "Tap an item to capture it"
@@ -131,7 +143,8 @@ fun CameraCapture(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(10.dp)
+                        .navigationBarsPadding()
+                        .padding(end = 10.dp, bottom = 176.dp)
                         .size(width = 140.dp, height = 110.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),
@@ -143,6 +156,18 @@ fun CameraCapture(
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         currentLocation = currentLocation,
                         gpsHeading = gpsHeading,
+                    )
+                    // Scan coverage + trash + ledger freshness, projected over
+                    // the fixed-zoom minimap.
+                    ScanMinimapOverlay(
+                        centerLat = currentLocation.lat,
+                        centerLng = currentLocation.lng,
+                        zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                        scanCellCenters = scanCellCenters,
+                        cellSizeMeters = 3.0,
+                        trashItems = trashItems,
+                        fogCellCenters = fogCellCenters,
+                        staleCellCenters = staleCellCenters,
                     )
                     Box(
                         modifier = Modifier
@@ -172,11 +197,13 @@ fun CameraCapture(
                 }
             }
 
-            // Photo count badge (bottom-start) with limit indicator
-            Box(
+            // Photo count badge (bottom-start, raised above Add details) —
+            // hidden in environment-scan mode (captures are backend inputs).
+            if (!environmentScanMode) Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(10.dp)
+                    .navigationBarsPadding()
+                    .padding(start = 10.dp, bottom = 88.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.6f))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -210,12 +237,16 @@ fun CameraCapture(
             }
         }
 
-        // Thumbnail strip of captured photos
-        if (capturedPhotos.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
+        // Thumbnail strip — floats above the bottom chrome instead of
+        // reserving layout space below the preview. Hidden in environment-scan
+        // mode: derived imagery is processed after the fact on the backend.
+        if (capturedPhotos.isNotEmpty() && !environmentScanMode) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 10.dp, bottom = 124.dp),
             ) {
                 items(capturedPhotos.size) { index ->
                     val photo = capturedPhotos[index]
@@ -281,11 +312,13 @@ fun CameraCapture(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Library button only \u2014 regular capture is tap-on-preview, no shutter button.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {

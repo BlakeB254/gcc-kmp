@@ -13,6 +13,7 @@ import platform.CoreLocation.CLHeading
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
+import platform.CoreLocation.kCLDistanceFilterNone
 import platform.CoreLocation.kCLLocationAccuracyBest
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
@@ -87,7 +88,11 @@ actual class LocationProvider actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.delegate = flowDelegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
-            locationManager.distanceFilter = 10.0 // Only update when moved 10+ meters
+            // Continuous updates (no distance filter): the OutdoorGate needs a steady
+            // stream of accuracy samples even when the worker is standing still —
+            // with the old 10m filter an indoor (stationary) user produced one fix
+            // and then silence, so the gate could never accumulate evidence.
+            locationManager.distanceFilter = kCLDistanceFilterNone
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
         }
@@ -148,7 +153,11 @@ actual class LocationProvider actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.delegate = delegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
-            locationManager.distanceFilter = 10.0 // Only update when moved 10+ meters
+            // Continuous updates (no distance filter): the OutdoorGate needs a steady
+            // stream of accuracy samples even when the worker is standing still —
+            // with the old 10m filter an indoor (stationary) user produced one fix
+            // and then silence, so the gate could never accumulate evidence.
+            locationManager.distanceFilter = kCLDistanceFilterNone
             locationManager.headingFilter = 5.0   // Update every 5 degrees of change
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()

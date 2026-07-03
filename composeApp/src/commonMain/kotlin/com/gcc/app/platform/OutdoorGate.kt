@@ -48,7 +48,18 @@ class OutdoorGate {
     private val _state = MutableStateFlow(OutdoorState.UNCERTAIN)
     val state: StateFlow<OutdoorState> = _state.asStateFlow()
 
+    private var sampleCount = 0
+
     fun onAccuracySample(horizontalAccuracyMeters: Double?, timestampMs: Long) {
+        sampleCount += 1
+        if (sampleCount % 15 == 1) {
+            DiagnosticsLog.info(
+                "outdoor-gate",
+                "accuracy sample #$sampleCount: " +
+                    (horizontalAccuracyMeters?.let { "${(it * 10).toInt() / 10.0}m" } ?: "null") +
+                    " (indoor=${indoorTs.size} outdoor=${outdoorTs.size} state=${_state.value})",
+            )
+        }
         when {
             horizontalAccuracyMeters == null -> Unit
             horizontalAccuracyMeters > INDOOR_ACCURACY_METERS -> {
@@ -79,6 +90,9 @@ class OutdoorGate {
         val sceneSaysIndoor = lastSceneIndoorTs?.let { nowMs - it <= EVIDENCE_WINDOW_MS } == true
         val gpsSaysIndoor = lastIndoorAccuracyTs?.let { nowMs - it <= EVIDENCE_WINDOW_MS } == true
         if (sceneSaysIndoor && gpsSaysIndoor) {
+            if (_state.value != OutdoorState.INDOOR) {
+                DiagnosticsLog.info("outdoor-gate", "INDOOR (scene vote + degraded GPS agree)")
+            }
             _state.value = OutdoorState.INDOOR
             return
         }
@@ -88,7 +102,7 @@ class OutdoorGate {
         val outdoorFlip = span(outdoorTs) >= DECISION_SPAN_MS &&
             indoorTs.none { it >= outdoorTs.first() }
 
-        _state.value = when (_state.value) {
+        val newState = when (_state.value) {
             OutdoorState.INDOOR -> if (outdoorFlip) OutdoorState.OUTDOOR else OutdoorState.INDOOR
             else -> when {
                 indoorFlip -> OutdoorState.INDOOR
@@ -96,6 +110,14 @@ class OutdoorGate {
                 else -> _state.value
             }
         }
+        if (newState != _state.value) {
+            DiagnosticsLog.info(
+                "outdoor-gate",
+                "$newState (indoor=${indoorTs.size} outdoor=${outdoorTs.size} " +
+                    "indoorSpan=${span(indoorTs)}ms outdoorSpan=${span(outdoorTs)}ms)",
+            )
+        }
+        _state.value = newState
     }
 
     private fun prune(nowMs: Long) {

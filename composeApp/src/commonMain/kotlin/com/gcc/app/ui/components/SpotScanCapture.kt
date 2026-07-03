@@ -26,6 +26,7 @@ import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.ObservedSpotItem
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.screens.SpotArScreen
 import com.gcc.app.ui.theme.GccAvailable
@@ -49,6 +50,14 @@ fun SpotScanCapture(
     capturedPhotos: List<CapturedPhoto> = emptyList(),
     /** Externally blocked (e.g. OutdoorGate INDOOR): stops tap + auto capture. */
     captureBlocked: Boolean = false,
+    /** Called when on-device AI identifies trash — position projected ~2.5m along heading. */
+    onTrashObserved: (ObservedSpotItem) -> Unit = {},
+    /** Zones the environment scan has credited (highlighted on the minimap). */
+    scanCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Pass-through minimap trash markers. */
+    trashItems: List<Coordinates> = emptyList(),
+    environmentScanMode: Boolean = false,
+    statusText: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -150,6 +159,18 @@ fun SpotScanCapture(
                         imageBytes = photo.bytes,
                         depthAnalysis = photo.depthAnalysis,
                     )
+                    if (analysis != null && analysis.trashTypes.isNotEmpty() && location != null) {
+                        val itemPos = projectForward(location, gpsHeading, 2.5)
+                        onTrashObserved(
+                            ObservedSpotItem(
+                                lat = itemPos.lat,
+                                lng = itemPos.lng,
+                                itemType = analysis.trashTypes.first(),
+                                severity = analysis.severity,
+                                confidence = analysis.confidence,
+                            )
+                        )
+                    }
                     onPhotoCaptured(scanPhoto.copy(aiAnalysis = analysis))
                 } catch (e: Exception) {
                     DiagnosticsLog.error("vision-analyze", "first-capture analysis failed — photo kept without AI", e)
@@ -189,6 +210,10 @@ fun SpotScanCapture(
             currentLocation = currentLocation,
             gpsHeading = gpsHeading,
             cameraManager = cameraManager,
+            scanCellCenters = scanCellCenters,
+            trashItems = trashItems,
+            environmentScanMode = environmentScanMode,
+            statusText = statusText,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -299,3 +324,12 @@ private fun CaptureModeBadge(
 }
 
 expect fun generateSessionId(): String
+
+/** Project [distanceMeters] forward from [from] along [bearingDeg] (null bearing → stay put). */
+internal fun projectForward(from: Coordinates, bearingDeg: Float?, distanceMeters: Double): Coordinates {
+    if (bearingDeg == null) return from
+    val rad = bearingDeg * kotlin.math.PI / 180.0
+    val dLat = distanceMeters * kotlin.math.cos(rad) / 111_320.0
+    val dLng = distanceMeters * kotlin.math.sin(rad) / (111_320.0 * kotlin.math.cos(from.lat * kotlin.math.PI / 180.0))
+    return Coordinates(lat = from.lat + dLat, lng = from.lng + dLng)
+}
