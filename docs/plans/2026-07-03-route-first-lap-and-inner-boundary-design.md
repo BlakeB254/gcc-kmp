@@ -43,10 +43,23 @@ from a report whose capture went through the environment/route scan system
 (has a session manifest / capture attestation). Enforce at POST /api/bounties
 (reject reports without attestation), and the admin UI mirrors it.
 
+## Admin portal requirements
+
+Both boundaries are first-class admin-editable objects (site admin portal):
+- Route editor gains an **outer boundary** and **inner boundary** layer with
+  vertex drag/add/delete on the map (same interaction pattern as the existing
+  block/exclusion-zone tooling), plus "regenerate inner from setback" with a
+  per-route setback-meters input.
+- Changes version the route (`boundaryVersion`) so in-flight scans keep the
+  corridor they started with; new scans pick up the edit.
+- Exclusion behavior preview: the editor shades the excluded (inside-inner)
+  area so admins see exactly what won't record before saving.
+
 ## Build sequence (suggested)
 
-1. Server: `innerBoundary` column + inset-generation script + exclusion in
-   recordWorldObservation/coverage classification.
+1. Server: `innerBoundary` column (+ `boundaryVersion`) + inset-generation
+   script + exclusion in recordWorldObservation/coverage classification +
+   admin CRUD endpoints for both boundaries.
 2. Client geometry: corridor-between-lines in CoverageTracker; map render of
    the double line (GccMap route layers).
 3. Guided first lap: waypoint sequencing over the corridor (AiDirectionEngine
@@ -54,4 +67,5 @@ from a report whose capture went through the environment/route scan system
    scout completion.
 4. AR cutoff curtain + route-mode minimap overlay.
 5. Clean-lap flow: per-cell rectification sweep + lapKind=clean session.
-6. Bounty verified-scan gate.
+6. Admin portal boundary editor (outer + inner, setback regenerate, preview).
+7. Bounty verified-scan gate.
