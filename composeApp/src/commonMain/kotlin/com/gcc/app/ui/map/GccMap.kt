@@ -88,6 +88,8 @@ expect fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>> = emptyList(),
     imageStars: List<Coordinates> = emptyList(),
     routePolygons: List<Pair<Int, List<Coordinates>>> = emptyList(),
+    /** Ledger coverage cells for the foundational clean/stale/fog tiles. */
+    coverageCells: List<com.gcc.shared.model.MapCoverageCell> = emptyList(),
     affectedBlocks: List<AffectedBlock> = emptyList(),
     onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},

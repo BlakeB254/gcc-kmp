@@ -68,6 +68,7 @@ actual fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
+    coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     affectedBlocks: List<AffectedBlock>,
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,

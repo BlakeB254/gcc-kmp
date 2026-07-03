@@ -77,6 +77,7 @@ actual fun GccMap(
     checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
+    coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
@@ -91,6 +92,11 @@ actual fun GccMap(
     val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
+    val routeInnerJson = remember(routeCoordinates) { buildRouteInnerBoundariesGeoJson(routeCoordinates) }
+    val coverageStateJsons = remember(coverageCells, spots) {
+        if (coverageCells.isEmpty()) null
+        else buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng)
+    }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
     val explorerLabelsJson = remember(bounties) { buildExplorerLabelsGeoJson(bounties) }
@@ -210,6 +216,7 @@ actual fun GccMap(
             val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
             val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
+            val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
             val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
 
             // --- Layers (bottom to top) ---
@@ -453,6 +460,54 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
+            )
+
+            // ── Foundational coverage-state tiles (under heat + markers) ──
+            // fog = never scanned (attention), green = scanned clean,
+            // faded amber = stale (>24h) — dirty grading stays with the
+            // spot-density heat layers above.
+            if (coverageStateJsons != null) {
+                val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.first))
+                val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.second))
+                val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.third))
+                FillLayer(
+                    id = "coverage-fog",
+                    source = fogSrc,
+                    color = const(Color(0xFF6B7280)),
+                    opacity = const(0.26f),
+                )
+                FillLayer(
+                    id = "coverage-clean",
+                    source = cleanSrc,
+                    color = const(Color(0xFF22C55E)),
+                    opacity = const(0.18f),
+                )
+                FillLayer(
+                    id = "coverage-stale",
+                    source = staleSrc,
+                    color = const(Color(0xFFF59E0B)),
+                    opacity = const(0.10f),
+                )
+            }
+
+            // ── Inner route boundary (double-lined routes, route-v2) ──
+            // Amber cutoff line inset from the block outline: between the
+            // green outer line and this one is the public scan corridor;
+            // inside it is private-property side — excluded from recording.
+            LineLayer(
+                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
+                source = routeInnerSrc,
+                color = const(Color(0xFFF59E0B)),
+                width = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    10 to const(0.4.dp),
+                    13 to const(1.dp),
+                    15 to const(2.dp),
+                    17 to const(3.dp),
+                ),
+                cap = const(LineCap.Round),
+                join = const(LineJoin.Round),
             )
 
             CircleLayer(

@@ -448,7 +448,6 @@ private fun CameraPhase(
     Box(modifier = Modifier.fillMaxSize()) {
         val scanStatus = when {
             liveDetections.isNotEmpty() -> "Trash spotted — move closer and tap to tag it"
-            scannedCells.isNotEmpty() -> "Scanning environment — ${scannedCells.size} zones mapped"
             else -> "Environment scan active — sweep the camera slowly"
         }
         if (isScanMode) {
@@ -566,8 +565,15 @@ private fun CameraPhase(
             }
         }
 
-        // Scanning feedback: sweep + registration pulse, live trash reticle,
-        // transient popups — the "data is registering" layer.
+        // Scanning feedback: credited zones painted onto the ground ahead
+        // (spatial replacement for the old zone counter), sweep + pulse,
+        // live trash reticle, transient popups.
+        ZoneOutlineOverlay(
+            userLat = currentLocation?.lat,
+            userLng = currentLocation?.lng,
+            headingDegrees = gpsHeading,
+            cellCenters = scanCellCenters,
+        )
         EnvironmentScanEffects(active = !isIndoor, creditTick = creditTick)
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
