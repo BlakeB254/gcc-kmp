@@ -1053,6 +1053,34 @@ class GccApiClient(
         return response.body<RectifyResponse>()
     }
 
+    /** Presigned R2 upload ticket for an environment-scan session artifact. */
+    suspend fun createCaptureUploadUrl(request: CaptureUploadUrlRequest): CaptureUploadTicket {
+        val response = httpClient.post("$baseUrl/api/captures/upload-url") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (response.status.value == 501) {
+            throw CaptureStorageNotConfiguredException()
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ApiResponse<CaptureUploadTicket>>().data
+    }
+
+    /** PUT a blob straight to a presigned URL (no auth header — it's in the signature). */
+    suspend fun uploadToPresignedUrl(url: String, bytes: ByteArray, contentType: String) {
+        val response = httpClient.put(url) {
+            contentType(ContentType.parse(contentType))
+            setBody(bytes)
+        }
+        if (!response.status.isSuccess()) {
+            throw Exception("presigned upload failed: ${response.status.value}")
+        }
+    }
+
     suspend fun getMapCoverage(bbox: String): MapCoverageResponse {
         val response = httpClient.get("$baseUrl/api/map/coverage") {
             parameter("bbox", bbox)
@@ -1201,3 +1229,7 @@ private fun SpotMarkerDto.toCommunityReport(): CommunityReport? {
         updatedAt = now,
     )
 }
+
+
+/** R2 storage isn't provisioned yet (501) — expected until env vars land. */
+class CaptureStorageNotConfiguredException : Exception("capture storage not configured")

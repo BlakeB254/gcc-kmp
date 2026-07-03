@@ -38,6 +38,8 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.EnvScanSessionDraft
+import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
@@ -150,7 +152,7 @@ fun SpotScreen(
                     onCapture = { photo -> viewModel.addPhoto(photo) },
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
-                    onCompleteScan = { viewModel.completeScan() },
+                    onCompleteScan = { draft -> viewModel.completeScan(draft) },
                     onBack = onBack,
                     spotLocation = currentLocation,
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
@@ -240,7 +242,7 @@ private fun CameraPhase(
     onCapture: (CapturedPhoto) -> Unit,
     onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
-    onCompleteScan: () -> Unit,
+    onCompleteScan: (EnvScanSessionDraft) -> Unit,
     onBack: () -> Unit,
     spotLocation: Coordinates? = null,
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
@@ -292,6 +294,8 @@ private fun CameraPhase(
     // ── Environment-scan session: coverage credit + minimap layers ──
     val apiClient = koinInject<GccApiClient>()
     val tracker = remember { CoverageTracker() }
+    // One session = one capture: this recorder's snapshot rides with submit.
+    val sessionRecorder = remember { EnvScanSessionRecorder() }
     var trackerReady by remember { mutableStateOf(false) }
     var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
@@ -380,6 +384,12 @@ private fun CameraPhase(
             } else {
                 tracker.updatePosition(loc.lat, loc.lng)
             }
+            sessionRecorder.addSample(
+                lat = loc.lat,
+                lng = loc.lng,
+                headingDegrees = heading,
+                accuracyMeters = locationProvider.horizontalAccuracyMeters.value,
+            )
 
             // Ledger event (spot mode): distance since the previous fix.
             val segmentMeters = lastLat?.let { prevLat ->
@@ -594,7 +604,7 @@ private fun CameraPhase(
                 .padding(bottom = 24.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
-                .clickable(enabled = canComplete) { onCompleteScan() }
+                .clickable(enabled = canComplete) { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
             Text(

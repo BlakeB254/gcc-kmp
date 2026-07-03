@@ -1,11 +1,20 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.EnvScanSessionDraft
+import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.getDeviceModel
+import com.gcc.app.platform.getOsVersion
+import com.gcc.shared.serialization.GccJson
+import kotlinx.datetime.Clock
+import kotlinx.serialization.encodeToString
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.embedGpsExif
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.shared.api.CaptureStorageNotConfiguredException
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
@@ -229,13 +238,88 @@ class SpotViewModel(
      * LOCATION/DESCRIPTION phases remain reachable via "Add details"; a
      * submit failure lands there with the error shown, so nothing is lost.
      */
-    fun completeScan() {
+    /** The session snapshot travelling with the next successful submission. */
+    private var pendingSessionDraft: EnvScanSessionDraft? = null
+
+    fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
         if (state.capturedPhotos.isEmpty()) return
+        pendingSessionDraft = sessionDraft
         DiagnosticsLog.info("spot-submit", "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s)")
         applyAiDescription()
         submitReport()
+    }
+
+    /**
+     * Archive the whole scan session to R2 as ONE capture: every photo plus a
+     * manifest carrying the GPS/facing track, timing, scanned-area cells, and
+     * tagged items. Fire-and-forget after the report submits — a 501 means R2
+     * env vars aren't provisioned yet, which is expected and only logged.
+     */
+    private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int) {
+        val state = _uiState.value
+        scope.launch {
+            try {
+                val anchorLat = state.spotLat ?: state.currentLat
+                val anchorLng = state.spotLng ?: state.currentLng
+                val cell = SessionPointsEstimator.gridCell10m(anchorLat, anchorLng)
+                val cellId = "${cell.first}:${cell.second}"
+                val deviceId = CoverageDeviceId.value
+                val stamp = "${draft.sessionId}"
+
+                val photoKeys = mutableListOf<String>()
+                state.capturedPhotos.forEachIndexed { index, photo ->
+                    val ticket = apiClient.createCaptureUploadUrl(
+                        CaptureUploadUrlRequest(
+                            locationCellId = cellId,
+                            deviceId = deviceId,
+                            capturedAt = "$stamp-photo$index",
+                            ext = "jpg",
+                        )
+                    )
+                    apiClient.uploadToPresignedUrl(ticket.uploadUrl, photo.bytes, "image/jpeg")
+                    photoKeys.add(ticket.r2Key)
+                }
+
+                val manifest = EnvScanManifest(
+                    sessionId = draft.sessionId,
+                    deviceId = deviceId,
+                    deviceModel = com.gcc.app.platform.getDeviceModel(),
+                    osVersion = com.gcc.app.platform.getOsVersion(),
+                    startedAtMs = draft.startedAtMs,
+                    completedAtMs = Clock.System.now().toEpochMilliseconds(),
+                    path = draft.path,
+                    scannedCells = draft.scannedCells,
+                    scannedCellSizeMeters = 3.0,
+                    observedItems = state.observedItems,
+                    photoKeys = photoKeys,
+                    communityReportId = reportId,
+                )
+                val manifestTicket = apiClient.createCaptureUploadUrl(
+                    CaptureUploadUrlRequest(
+                        locationCellId = cellId,
+                        deviceId = deviceId,
+                        capturedAt = "$stamp-manifest",
+                        ext = "json",
+                    )
+                )
+                apiClient.uploadToPresignedUrl(
+                    manifestTicket.uploadUrl,
+                    GccJson.encodeToString(manifest).encodeToByteArray(),
+                    "application/json",
+                )
+                DiagnosticsLog.info(
+                    "env-capture",
+                    "session ${draft.sessionId} archived to R2: ${photoKeys.size} photo(s) + manifest " +
+                        "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
+                )
+            } catch (_: CaptureStorageNotConfiguredException) {
+                DiagnosticsLog.info("env-capture", "R2 storage not provisioned yet — session bundle skipped")
+            } catch (e: Exception) {
+                DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
+            }
+        }
     }
 
     fun nextPhase() {
@@ -402,6 +486,12 @@ class SpotViewModel(
                     submittedReport = rewardedReport,
                     matchingBounties = spotResponse.data.matchingBounties,
                 )
+
+                // One session = one capture: archive the full bundle to R2.
+                pendingSessionDraft?.let { draft ->
+                    pendingSessionDraft = null
+                    uploadEnvScanSession(draft, rewardedReport.id)
+                }
             } catch (e: Exception) {
                 DiagnosticsLog.error("spot-submit", "report submission failed", e)
                 // Back to the camera with the error surfaced as a popup —
