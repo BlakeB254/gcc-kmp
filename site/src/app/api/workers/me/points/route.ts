@@ -61,8 +61,15 @@ export async function GET(request: NextRequest) {
           alreadyCleanReport: breakdownMap['already_clean_report'] ?? 0,
           adminGrant: breakdownMap['admin_grant'] ?? 0,
           bugReport: breakdownMap['bug_report'] ?? 0,
+          scanCoverageNewArea: breakdownMap['scan_coverage_new_area'] ?? 0,
+          scanCoverageStale: breakdownMap['scan_coverage_stale'] ?? 0,
+          scanCoverageRectification: breakdownMap['scan_coverage_rectification'] ?? 0,
         },
-        recentEntries,
+        // ISO-8601 timestamps — raw pg strings crash the mobile Instant parser.
+        recentEntries: recentEntries.map((row) => ({
+          ...row,
+          createdAt: row.createdAt ? new Date(String(row.createdAt)).toISOString() : null,
+        })),
       },
     })
   } catch (error) {

@@ -1,4 +1,9 @@
+@file:UseSerializers(LenientInstantSerializer::class)
+
 package com.gcc.shared.model
+
+import com.gcc.shared.serialization.LenientInstantSerializer
+import kotlinx.serialization.UseSerializers
 
 import kotlinx.datetime.Instant
 import kotlinx.serialization.EncodeDefault
