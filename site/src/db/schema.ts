@@ -425,6 +425,56 @@ export const blockExclusionZones = pgTable('block_exclusion_zones', {
 export type BlockExclusionZoneRow = typeof blockExclusionZones.$inferSelect
 export type NewBlockExclusionZoneRow = typeof blockExclusionZones.$inferInsert
 
+// Block proposal review status — staging area for auto-generated block
+// candidates. Nothing here is live/public; a row only becomes a real
+// `blocks` row once an admin approves it (see /api/admin/block-proposals).
+export const blockProposalStatusEnum = pgEnum('enum_block_proposals_status', [
+  'pending',
+  'approved',
+  'rejected',
+])
+
+// Auto-generated block candidates awaiting admin review — e.g. blocks
+// derived from real OpenStreetMap street/building data when expanding
+// coverage beyond the hand-traced pilot blocks. Never read by the public
+// site or the mobile app; purely an admin staging table, so (per the repo's
+// schema-ownership policy) it has no Kotlin/Exposed mirror — same
+// precedent as block_exclusion_zones, which the Ktor server also never
+// queries.
+export const blockProposals = pgTable('block_proposals', {
+  id: serial('id').primaryKey(),
+  status: blockProposalStatusEnum('status').default('pending').notNull(),
+
+  // Same shape as the live `blocks` fields this will become on approval
+  codeHint: varchar('code_hint', { length: 20 }),
+  name: varchar('name').notNull(),
+  locationNeighborhood: varchar('location_neighborhood'),
+  locationBoundary: jsonb('location_boundary').notNull(), // GeoJSON polygon
+  locationCenter: jsonb('location_center').notNull(), // GeoJSON point
+  streetName: varchar('street_name'),
+  fromCorner: varchar('from_corner'),
+  toCorner: varchar('to_corner'),
+  side: varchar('side', { length: 10 }),
+  exclusionZones: jsonb('exclusion_zones'), // Array of { polygon, label } — becomes block_exclusion_zones rows on approval
+
+  // Provenance
+  source: varchar('source', { length: 40 }).default('osm_auto_generated').notNull(),
+  generationBatch: varchar('generation_batch', { length: 100 }), // e.g. "north-lawndale-2026-07-03"
+  sourceRefs: jsonb('source_refs'), // OSM way/node ids used, for traceability
+
+  // Review
+  reviewedByAdminId: integer('reviewed_by_admin_id'),
+  reviewedAt: timestamp('reviewed_at', { mode: 'string', withTimezone: true }),
+  rejectionReason: text('rejection_reason'),
+  publishedBlockId: integer('published_block_id'), // set once approved and inserted into `blocks`
+
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type BlockProposalRow = typeof blockProposals.$inferSelect
+export type NewBlockProposalRow = typeof blockProposals.$inferInsert
+
 // Job status enum
 export const jobStatusEnum = pgEnum('enum_jobs_status', [
   'available',
