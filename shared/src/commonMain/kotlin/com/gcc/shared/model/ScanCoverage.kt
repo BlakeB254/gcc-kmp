@@ -21,6 +21,21 @@ data class ScanCoverageSubmitRequest(
 )
 
 @Serializable
+data class RectifyRequest(
+    val lat: Double,
+    val lng: Double,
+)
+
+/** Flat JSON response of POST /api/scans/{id}/rectify (no ApiResponse envelope). */
+@Serializable
+data class RectifyResponse(
+    val success: Boolean,
+    val observationId: Int? = null,
+    val pointsAwarded: Int = 0,
+    val wasRectification: Boolean = false,
+)
+
+@Serializable
 data class ScanCoverageSubmitResponse(
     val inserted: Int,
     val success: Boolean,

@@ -40,6 +40,7 @@ import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.ui.components.DetectionReticleOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
@@ -90,6 +91,7 @@ fun SpotArScreen(
 
     val coveragePercent by tracker.coveragePercent.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+    val liveDetections by overlay.liveDetections.collectAsState()
 
     // Live points HUD: spot mode has no session grid or prior fetch, so the
     // estimate uses the server-equivalent 10m cells and treats them as new.
@@ -197,6 +199,12 @@ fun SpotArScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         SpotArOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
+
+        // Live trash-detection reticles over the camera feed.
+        DetectionReticleOverlay(
+            detections = liveDetections,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // Live points HUD (top-right) + floating reward pips.
         SessionPointsPill(

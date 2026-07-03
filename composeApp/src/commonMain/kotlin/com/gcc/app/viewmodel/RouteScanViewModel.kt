@@ -137,6 +137,47 @@ class RouteScanViewModel(
     // Consumed by the live points estimator; "fresh" cells also start revealed.
     private var cellPriorStates: Map<Pair<Int, Int>, String> = emptyMap()
 
+    // ── Expected-observation (rectify) flow ──────────────────────────
+    // Dirty world observations near the route, rendered as expected-trash AR
+    // markers. Walking within RECTIFY_PROXIMITY_METERS of one surfaces a
+    // confirm sheet: "Still there" dismisses for the session, "Already clean"
+    // posts to /api/scans/{id}/rectify (25-pt bonus when it supersedes a real
+    // prior dirty observation).
+    private val _expectedObservations = MutableStateFlow<List<WorldObservation>>(emptyList())
+    val expectedObservations: StateFlow<List<WorldObservation>> = _expectedObservations.asStateFlow()
+    private val _nearbyExpectedObservation = MutableStateFlow<WorldObservation?>(null)
+    val nearbyExpectedObservation: StateFlow<WorldObservation?> = _nearbyExpectedObservation.asStateFlow()
+    private val resolvedObservationIds = mutableSetOf<Int>()
+    private var rectifyBonusPoints = 0
+
+    /** "Still there" — keep the marker but stop prompting this session. */
+    fun dismissExpectedObservation(observation: WorldObservation) {
+        resolvedObservationIds.add(observation.id)
+        _nearbyExpectedObservation.value = null
+    }
+
+    /** "Already clean" — record the rectification and credit the bonus. */
+    fun rectifyObservation(observation: WorldObservation) {
+        val scanId = _uiState.value.scanId ?: return
+        resolvedObservationIds.add(observation.id)
+        _nearbyExpectedObservation.value = null
+        _expectedObservations.value = _expectedObservations.value.filterNot { it.id == observation.id }
+        scope.launch {
+            try {
+                val result = apiClient.rectifyScanObservation(scanId, observation.lat, observation.lng)
+                if (result.pointsAwarded > 0) {
+                    rectifyBonusPoints += result.pointsAwarded
+                    _sessionPointsEstimate.value = pointsEstimator.total + rectifyBonusPoints
+                    _pointsPips.tryEmit(result.pointsAwarded)
+                }
+            } catch (_: Exception) {
+                // Put it back so the worker can retry when they pass again.
+                resolvedObservationIds.remove(observation.id)
+                _expectedObservations.value = _expectedObservations.value + observation
+            }
+        }
+    }
+
     /**
      * Bring the digital twin into the AR fog: fetch `/api/map/coverage` for
      * the route's bounding box and (a) pre-reveal cells the ledger marks
@@ -170,6 +211,21 @@ class RouteScanViewModel(
                 if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
             } catch (_: Exception) {
                 // Non-fatal: fog stays session-local, estimator treats all as new.
+            }
+        }
+        scope.launch {
+            try {
+                val pad = 0.0005
+                val bbox = listOf(
+                    waypoints.minOf { it.lng } - pad,
+                    waypoints.minOf { it.lat } - pad,
+                    waypoints.maxOf { it.lng } + pad,
+                    waypoints.maxOf { it.lat } + pad,
+                ).joinToString(",")
+                _expectedObservations.value = apiClient.getMapObservations(bbox)
+                    .filter { it.state == "dirty" }
+            } catch (_: Exception) {
+                // Non-fatal: no expected-trash markers this session.
             }
         }
     }
@@ -719,9 +775,19 @@ class RouteScanViewModel(
                             gridCell, cellPriorStates[gridCell], segmentMeters,
                         )
                         if (pointsDelta > 0) {
-                            _sessionPointsEstimate.value = pointsEstimator.total
+                            _sessionPointsEstimate.value = pointsEstimator.total + rectifyBonusPoints
                             _pointsPips.tryEmit(pointsDelta)
                         }
+
+                        // Expected-observation proximity: prompt when within
+                        // range of an unresolved dirty observation.
+                        _nearbyExpectedObservation.value = _expectedObservations.value
+                            .asSequence()
+                            .filter { it.id !in resolvedObservationIds }
+                            .map { it to GeofenceVerification.distanceMeters(lat, lng, it.lat, it.lng) }
+                            .filter { (_, dist) -> dist <= RECTIFY_PROXIMITY_METERS }
+                            .minByOrNull { (_, dist) -> dist }
+                            ?.first
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
@@ -869,3 +935,6 @@ private fun ScanHotspot.sectionIndex(): Int? =
         ?.substringAfter("section:", missingDelimiterValue = "")
         ?.takeWhile { it.isDigit() }
         ?.toIntOrNull()
+
+/** Distance at which an expected-dirty observation surfaces the confirm sheet. */
+private const val RECTIFY_PROXIMITY_METERS = 5.0

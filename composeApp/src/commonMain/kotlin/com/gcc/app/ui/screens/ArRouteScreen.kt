@@ -3,7 +3,12 @@ package com.gcc.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -32,6 +37,8 @@ import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
+import com.gcc.app.platform.WorldMarkerKind
+import com.gcc.app.ui.components.DetectionReticleOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
@@ -68,6 +75,9 @@ fun ArRouteScreen(
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
     val sessionPoints by viewModel.sessionPointsEstimate.collectAsState()
+    val liveDetections by overlay.liveDetections.collectAsState()
+    val expectedObservations by viewModel.expectedObservations.collectAsState()
+    val nearbyExpected by viewModel.nearbyExpectedObservation.collectAsState()
 
     // Floating "+N pts" pips, fed by the ViewModel's one-shot pip events.
     var pips by remember { mutableStateOf(listOf<PointsPip>()) }
@@ -116,8 +126,23 @@ fun ArRouteScreen(
         }
     }
 
+    // Expected-trash markers from the digital twin. Re-run on GPS ticks:
+    // marker placement no-ops until the first geo-reference pairing exists,
+    // and ArFrameFeedback's 3m dedupe swallows the repeats afterwards.
+    LaunchedEffect(expectedObservations, ui.currentLat, ui.currentLng) {
+        expectedObservations.forEach { obs ->
+            overlay.addWorldMarker(obs.lat, obs.lng, WorldMarkerKind.EXPECTED_TRASH)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         ArRouteOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
+
+        // Live trash-detection reticles over the camera feed.
+        DetectionReticleOverlay(
+            detections = liveDetections,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // Live points HUD (top-right) + floating reward pips.
         SessionPointsPill(
@@ -173,6 +198,56 @@ fun ArRouteScreen(
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                 )
+            }
+        }
+
+        // Expected-observation confirm sheet (rectify flow).
+        nearbyExpected?.let { obs ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 76.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Trash was reported here — is it still there?",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .clickable { viewModel.dismissExpectedObservation(obs) }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            text = "Still there",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(GccGreen)
+                            .clickable { viewModel.rectifyObservation(obs) }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            text = "Already clean · +25 pts",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                        )
+                    }
+                }
             }
         }
 

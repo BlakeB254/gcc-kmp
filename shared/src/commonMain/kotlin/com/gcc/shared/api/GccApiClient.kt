@@ -1017,6 +1017,24 @@ class GccApiClient(
         return response.body<ScanCoverageSubmitResponse>()
     }
 
+    /**
+     * Confirm a previously-expected-dirty world observation is actually clean
+     * ("rectification"). Flat-JSON endpoint, same pattern as coverage above.
+     * The scan must belong to the authenticated worker.
+     */
+    suspend fun rectifyScanObservation(scanId: Int, lat: Double, lng: Double): RectifyResponse {
+        val response = httpClient.post("$baseUrl/api/scans/$scanId/rectify") {
+            contentType(ContentType.Application.Json)
+            setBody(RectifyRequest(lat = lat, lng = lng))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<RectifyResponse>()
+    }
+
     suspend fun getMapCoverage(bbox: String): MapCoverageResponse {
         val response = httpClient.get("$baseUrl/api/map/coverage") {
             parameter("bbox", bbox)
