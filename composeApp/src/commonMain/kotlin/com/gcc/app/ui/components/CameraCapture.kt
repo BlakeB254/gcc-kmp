@@ -71,16 +71,16 @@ fun CameraCapture(
     val hasDepthCapture = capturedPhotos.any { it.depthAnalysis?.hasDepth == true }
     val canCaptureDepth = !allowLibraryPick && capturedPhotos.isEmpty() && hasLiDAR()
 
-    Column(
+    // Full-bleed viewfinder: the preview IS the screen; every control floats
+    // above it (no rounded clip, no reserved strips — see build-107 field
+    // report: the old Column letterboxed the camera).
+    Box(
         modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // Live camera preview with overlays — tap anywhere to capture
         Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .fillMaxSize()
                 .pointerInput(atLimit) {
                     detectTapGestures {
                         if (!isCapturing && !atLimit) {
@@ -109,7 +109,8 @@ fun CameraCapture(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 44.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 140.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -131,7 +132,8 @@ fun CameraCapture(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(10.dp)
+                        .navigationBarsPadding()
+                        .padding(end = 10.dp, bottom = 176.dp)
                         .size(width = 140.dp, height = 110.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),
@@ -172,11 +174,12 @@ fun CameraCapture(
                 }
             }
 
-            // Photo count badge (bottom-start) with limit indicator
+            // Photo count badge (bottom-start, raised above Add details)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(10.dp)
+                    .navigationBarsPadding()
+                    .padding(start = 10.dp, bottom = 88.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.6f))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -210,12 +213,15 @@ fun CameraCapture(
             }
         }
 
-        // Thumbnail strip of captured photos
+        // Thumbnail strip — floats above the bottom chrome instead of
+        // reserving layout space below the preview.
         if (capturedPhotos.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 10.dp, bottom = 124.dp),
             ) {
                 items(capturedPhotos.size) { index ->
                     val photo = capturedPhotos[index]
@@ -281,11 +287,13 @@ fun CameraCapture(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Library button only \u2014 regular capture is tap-on-preview, no shutter button.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
