@@ -79,6 +79,7 @@ fun MapFullScreen(
     val affectedState by affectedBlocksVm.uiState.collectAsState()
     val locationProvider = koinInject<LocationProvider>()
     val tokenManager = koinInject<TokenManager>()
+    val gccApiClient = koinInject<com.gcc.shared.api.GccApiClient>()
     val isAdmin = remember { tokenManager.isAdmin() }
 
     // Wire real GPS location
@@ -147,6 +148,20 @@ fun MapFullScreen(
     }
     val centerLat = overrideCenterLat ?: resolved.lat
     val centerLng = overrideCenterLng ?: resolved.lng
+
+    // Foundational coverage-state tiles: ledger cells around the map center.
+    var coverageCells by remember { mutableStateOf(listOf<com.gcc.shared.model.MapCoverageCell>()) }
+    LaunchedEffect(centerLat, centerLng) {
+        try {
+            val pad = 0.006 // ~650m
+            val bbox = listOf(centerLng - pad, centerLat - pad, centerLng + pad, centerLat + pad)
+                .joinToString(",")
+            coverageCells = gccApiClient.getMapCoverage(bbox).cells
+        } catch (_: Exception) {
+            // Non-fatal: map renders without the coverage tiles.
+        }
+    }
+
     val mapZoom = overrideZoom ?: resolved.zoom
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
@@ -333,6 +348,7 @@ fun MapFullScreen(
             centerLng = centerLng,
             zoom = mapZoom,
             currentLocation = currentLocation,
+            coverageCells = coverageCells,
             enableGestures = true,
             showControls = true,
             statusBarPadding = true,

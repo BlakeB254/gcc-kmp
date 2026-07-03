@@ -104,6 +104,48 @@ fun buildRoutePolygonsGeoJson(routeCoordinates: List<List<Coordinates>>): String
 }
 
 /**
+ * Inner route boundaries (double-lined routes, route-v2 design): each route
+ * loop insets toward its centroid by [setbackMeters] — the public-corridor
+ * cutoff line that respects private property. Radial inset is an
+ * approximation that is visually parallel for the (rectangular) block loops
+ * we assign; a server-authored/admin-edited `innerBoundary` will override
+ * this once the route-v2 backend lands.
+ */
+fun buildRouteInnerBoundariesGeoJson(
+    routeCoordinates: List<List<Coordinates>>,
+    setbackMeters: Double = 8.0,
+): String {
+    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    val features = routeCoordinates.mapIndexedNotNull { index, coords ->
+        if (coords.size < 3) return@mapIndexedNotNull null
+        val ring = insetRingRadially(closeLoop(coords), setbackMeters)
+            ?: return@mapIndexedNotNull null
+        val ringJson = ring.joinToString(",") { "[${it.lng},${it.lat}]" }
+        """{"type":"Feature","properties":{"routeIndex":$index,"kind":"inner"},"geometry":{"type":"Polygon","coordinates":[[$ringJson]]}}"""
+    }.joinToString(",")
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/** Shrink a closed ring toward its centroid by [insetMeters]; null if degenerate. */
+private fun insetRingRadially(ring: List<Coordinates>, insetMeters: Double): List<Coordinates>? {
+    if (ring.size < 4) return null
+    val cLat = ring.dropLast(1).map { it.lat }.average()
+    val cLng = ring.dropLast(1).map { it.lng }.average()
+    val lngScale = kotlin.math.cos(cLat * kotlin.math.PI / 180.0)
+    return ring.map { v ->
+        val northM = (v.lat - cLat) * 111_320.0
+        val eastM = (v.lng - cLng) * 111_320.0 * lngScale
+        val dist = kotlin.math.sqrt(northM * northM + eastM * eastM)
+        if (dist <= insetMeters * 1.5) return null // loop too small to inset
+        val f = (dist - insetMeters) / dist
+        Coordinates(
+            lat = cLat + northM * f / 111_320.0,
+            lng = cLng + eastM * f / (111_320.0 * lngScale),
+        )
+    }
+}
+
+/**
  * Builds a GeoJSON FeatureCollection of Point features for bounty locations.
  * Only includes public/open bounties (secret bounties are never shown on map).
  */
@@ -636,4 +678,81 @@ fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Str
         """{"type":"Feature","properties":{"name":"$name","number":${area.number},"isServiceArea":${area.isServiceArea},"bountyCount":$bountyCount,"bountyTotal":$bountyDollars,"subtitle":"$subtitle","explorerLabel":"$explorerLabel"},"geometry":{"type":"Point","coordinates":[$centroidLng,$centroidLat]}}"""
     }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+
+/**
+ * Foundational coverage-state tiles for the map (product direction
+ * 2026-07-03): draw attention to what the scan economy has and hasn't
+ * touched. Returns (cleanJson, staleJson, fogJson):
+ *  - clean: fresh ledger cells with no active spot nearby → green tint
+ *  - stale: cells last scanned >24h ago → same family, FADED (deliberately
+ *    no stripes/dots so trash markers stay legible)
+ *  - fog: never-scanned 10m cells within [fogRadiusMeters] of the center
+ *    (bounded enumeration, capped — the attention-drawing "unknown" zones)
+ * Dirty coloration is NOT here: the existing spot-density heat layers
+ * already grade litter intensity.
+ */
+fun buildCoverageStateGeoJsons(
+    coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
+    activeSpots: List<com.gcc.shared.model.CommunityReport>,
+    centerLat: Double,
+    centerLng: Double,
+    fogRadiusMeters: Double = 320.0,
+    cellSizeMeters: Double = 10.0,
+): Triple<String, String, String> {
+    val empty = """{"type":"FeatureCollection","features":[]}"""
+    val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
+    val latStep = cellSizeMeters / 111_320.0
+    val lngStep = cellSizeMeters / (111_320.0 * lngScale)
+
+    fun cellQuad(lat: Double, lng: Double): String {
+        val hLat = latStep / 2
+        val hLng = lngStep / 2
+        return "[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}]," +
+            "[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]"
+    }
+
+    fun feature(lat: Double, lng: Double): String =
+        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[${cellQuad(lat, lng)}]}}"""
+
+    val spots = activeSpots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
+    fun hasSpotNear(lat: Double, lng: Double): Boolean = spots.any { spot ->
+        val dLatM = (spot.coordinates.lat - lat) * 111_320.0
+        val dLngM = (spot.coordinates.lng - lng) * 111_320.0 * lngScale
+        dLatM * dLatM + dLngM * dLngM < 12.0 * 12.0
+    }
+
+    val clean = coverageCells
+        .filter { it.state == "fresh" && !hasSpotNear(it.lat, it.lng) }
+        .joinToString(",") { feature(it.lat, it.lng) }
+    val stale = coverageCells
+        .filter { it.state == "stale" }
+        .joinToString(",") { feature(it.lat, it.lng) }
+
+    // Never-scanned fog: bounded grid around center minus covered cells.
+    val fogFeatures = StringBuilder()
+    var fogCount = 0
+    val steps = (fogRadiusMeters / cellSizeMeters).toInt()
+    outer@ for (dr in -steps..steps) {
+        for (dc in -steps..steps) {
+            if (dr * dr + dc * dc > steps * steps) continue
+            if (fogCount >= 2500) break@outer
+            val lat = centerLat + dr * latStep
+            val lng = centerLng + dc * lngStep
+            val covered = coverageCells.any { cell ->
+                val dLatM = (cell.lat - lat) * 111_320.0
+                val dLngM = (cell.lng - lng) * 111_320.0 * lngScale
+                dLatM * dLatM + dLngM * dLngM < 7.0 * 7.0
+            }
+            if (covered) continue
+            if (fogFeatures.isNotEmpty()) fogFeatures.append(',')
+            fogFeatures.append(feature(lat, lng))
+            fogCount++
+        }
+    }
+
+    fun wrap(features: String) =
+        if (features.isEmpty()) empty else """{"type":"FeatureCollection","features":[$features]}"""
+    return Triple(wrap(clean), wrap(stale), wrap(fogFeatures.toString()))
 }

@@ -157,7 +157,9 @@ fun CameraCapture(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 12.dp, bottom = 20.dp)
+                        // Raised above the Complete Scan pill's band so the
+                        // two never overlap on any device width.
+                        .padding(end = 12.dp, bottom = 96.dp)
                         .size(width = miniMapWidth, height = miniMapHeight)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),

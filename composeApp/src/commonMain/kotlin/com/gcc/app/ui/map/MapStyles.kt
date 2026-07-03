@@ -37,6 +37,7 @@ object MapStyles {
     const val LAYER_ROUTE_GLOW = "route-glow"
     const val LAYER_ROUTE_CASING = "route-casing"
     const val LAYER_ROUTE_LINE = "route-line"
+    const val LAYER_ROUTE_INNER_BOUNDARY = "route-inner-boundary"
     const val LAYER_ROUTE_LINE_COMPLETED = "route-line-completed"
     const val LAYER_ROUTE_LINE_REMAINING = "route-line-remaining"
     const val LAYER_CHECKPOINT_OUTER = "checkpoint-outer"
