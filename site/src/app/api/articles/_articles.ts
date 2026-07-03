@@ -22,6 +22,14 @@ export interface Article {
 
 export type ArticleSummary = Omit<Article, 'bodyMarkdown' | 'webUrl'>
 
+// Hidden until publishedAt passes — mirrors the isPublished() gate on the
+// web blog (blog/page.tsx, blog/[slug]/page.tsx). This endpoint has no
+// caller-side auth, so an unpublished article is invisible to the app the
+// same way an unpublished post 404s on the web, not just "not linked yet."
+function isPublished(publishedAt: string): boolean {
+  return Date.now() >= new Date(publishedAt).getTime()
+}
+
 const ARTICLES: Article[] = [
   {
     slug: '2026-07-03-issue-03',
@@ -29,7 +37,9 @@ const ARTICLES: Article[] = [
     excerpt:
       "Issue #3 — a cleaner site, a live iOS scanning feature (Android coming soon), a $2,000 gift from the University of Illinois Chicago toward our 100-block goal, the first North Lawndale cleanups landing July 5-6, a scan-powered heatmap getting sharper, and the next layer of our points economy.",
     author: 'The team at Global Community Cleaners NFP',
-    publishedAt: '2026-07-03T15:00:00Z',
+    // MANUAL HOLD — not scheduled yet, publish only once the team confirms
+    // a go-live time. Do not treat this as a real target date.
+    publishedAt: '2099-01-01T00:00:00Z',
     coverImageUrl: null,
     tags: ['Newsletter', 'Issue 3', 'North Lawndale', 'UIC', 'Gamification'],
     webUrl: 'https://globalcommunitycleaners.org/blog/2026-07-03-issue-03',
@@ -275,11 +285,12 @@ In the meantime — Dr. King's apartment is six blocks away. The work continues.
 ]
 
 export function getArticles(): ArticleSummary[] {
-  return ARTICLES.map(({ bodyMarkdown, webUrl, ...summary }) => summary).sort(
-    (a, b) => b.publishedAt.localeCompare(a.publishedAt),
-  )
+  return ARTICLES.filter((a) => isPublished(a.publishedAt))
+    .map(({ bodyMarkdown, webUrl, ...summary }) => summary)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
 }
 
 export function getArticle(slug: string): Article | null {
-  return ARTICLES.find((a) => a.slug === slug) ?? null
+  const article = ARTICLES.find((a) => a.slug === slug) ?? null
+  return article && isPublished(article.publishedAt) ? article : null
 }

@@ -19,6 +19,7 @@ import {
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
 import { PrecipitationLegend } from './PrecipitationLegend'
+import { CoverageFreshnessOverlay } from './CoverageFreshnessOverlay'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
 import type { Route } from './RouteMap'
@@ -137,6 +138,8 @@ export function CombinedMap({
   const [popup, setPopup] = useState<PopupTarget | null>(null)
   const [currentZoom, setCurrentZoom] = useState(ZOOM.NEIGHBORHOOD)
   const [heatmapVisible, setHeatmapVisible] = useState(true)
+  const [coverageOverlayVisible, setCoverageOverlayVisible] = useState(false) // off by default, per spec §4.2
+  const [mapBounds, setMapBounds] = useState<{ west: number; south: number; east: number; north: number } | null>(null)
   const detailZoomOpacity = Math.max(
     0,
     Math.min(
@@ -552,29 +555,50 @@ export function CombinedMap({
           ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-verification-ring'] : []),
         ]}
         onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
-        onMove={(event) => setCurrentZoom(event.viewState.zoom)}
+        onMove={(event) => {
+          setCurrentZoom(event.viewState.zoom)
+          const b = event.target.getBounds()
+          setMapBounds({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() })
+        }}
         cursor="pointer"
         legend={
-          spots.length > 0 ? (
-            <>
-              {heatmapVisible
-                ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
-                : legendNode}
-              <button
-                data-testid="precip-toggle"
-                onClick={() => setHeatmapVisible((v) => !v)}
-                aria-pressed={heatmapVisible}
-                className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
-                title="Toggle report density"
-              >
-                {/* stacked-layers glyph */}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
-                  <polyline points="2 15.5 12 22 22 15.5" />
-                </svg>
-              </button>
-            </>
-          ) : legendNode
+          <>
+            {spots.length > 0 ? (
+              <>
+                {heatmapVisible
+                  ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
+                  : legendNode}
+                <button
+                  data-testid="precip-toggle"
+                  onClick={() => setHeatmapVisible((v) => !v)}
+                  aria-pressed={heatmapVisible}
+                  className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
+                  title="Toggle report density"
+                >
+                  {/* stacked-layers glyph */}
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polygon points="12 2 22 8.5 12 15 2 8.5 12 2" />
+                    <polyline points="2 15.5 12 22 22 15.5" />
+                  </svg>
+                </button>
+              </>
+            ) : legendNode}
+            <button
+              data-testid="coverage-freshness-toggle"
+              onClick={() => setCoverageOverlayVisible((v) => !v)}
+              aria-pressed={coverageOverlayVisible}
+              className="absolute top-44 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
+              title="Show scan coverage"
+            >
+              {/* checkerboard/grid glyph */}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="8" height="8" />
+                <rect x="13" y="13" width="8" height="8" />
+                <rect x="13" y="3" width="8" height="8" opacity="0.35" />
+                <rect x="3" y="13" width="8" height="8" opacity="0.35" />
+              </svg>
+            </button>
+          </>
         }
         popup={popupNode}
         mapRef={(ref) => {
@@ -791,6 +815,12 @@ export function CombinedMap({
               }}
             />
           </Source>
+        )}
+
+        {/* Coverage freshness overlay — grey never-scanned / amber stale cells,
+            close-zoom-only and off by default (toggled via legend control above) */}
+        {mapBounds && (
+          <CoverageFreshnessOverlay bounds={mapBounds} zoom={currentZoom} visible={coverageOverlayVisible} />
         )}
 
         {/* ============================================================ */}
