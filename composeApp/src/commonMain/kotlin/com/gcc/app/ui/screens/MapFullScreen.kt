@@ -36,7 +36,9 @@ import com.gcc.app.ui.components.GccButton
 import com.gcc.app.ui.components.GccButtonVariant
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.components.PhotoStrip
+import com.gcc.app.ui.components.QuickActionGlyph
 import com.gcc.app.ui.theme.*
+import gcc_kmp.composeapp.generated.resources.*
 import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
@@ -659,9 +661,9 @@ private fun SpotCreateButton(onClick: () -> Unit) {
             pressedElevation = 6.dp,
         ),
     ) {
-        com.gcc.app.ui.components.EnvironmentScanIcon(
-            beamColor = Color.White,
-            natureColor = Color.White.copy(alpha = 0.92f),
+        QuickActionGlyph(
+            resource = Res.drawable.ic_quick_scan,
+            tint = Color.White,
             modifier = Modifier.size(26.dp),
         )
     }
