@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Source, Layer } from 'react-map-gl/maplibre'
 import { enumerateCellsInBounds, cellCenter } from '@/lib/grid-cell-client'
 import { METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
@@ -72,26 +72,37 @@ export function CoverageFreshnessOverlay({ bounds, zoom, visible }: CoverageFres
     }
   }, [shouldRender, bounds.west, bounds.south, bounds.east, bounds.north])
 
+  // Memoized on the primitive bounds values (not the `bounds` object itself,
+  // which is a fresh reference on every onMove frame during a pan) and on
+  // scannedCells. This means the up-to-5000-feature GeoJSON rebuild only
+  // happens when the viewport or scan data actually changes — not on every
+  // re-render triggered by something else (e.g. `visible` toggling) — while
+  // still rebuilding on every real pan frame, since bounds legitimately
+  // change then. Mirrors the dependency-array pattern already used by the
+  // fetch-debounce effect above.
+  const geojson = useMemo(() => {
+    const scannedCellIds = new Set(scannedCells.map((c) => c.locationCellId))
+    const allCellIds = enumerateCellsInBounds(bounds)
+
+    const features = [
+      // Never-scanned cells: anything enumerated but not returned by the API
+      ...allCellIds
+        .filter((id) => !scannedCellIds.has(id))
+        .map((id) => cellToFeature(id, 'never')),
+      // Stale cells: returned by the API with state === 'stale'
+      ...scannedCells
+        .filter((c) => c.state === 'stale')
+        .map((c) => cellToFeature(c.locationCellId, 'stale')),
+    ]
+
+    return {
+      type: 'FeatureCollection' as const,
+      features,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bounds.west, bounds.south, bounds.east, bounds.north, scannedCells])
+
   if (!shouldRender) return null
-
-  const scannedCellIds = new Set(scannedCells.map((c) => c.locationCellId))
-  const allCellIds = enumerateCellsInBounds(bounds)
-
-  const features = [
-    // Never-scanned cells: anything enumerated but not returned by the API
-    ...allCellIds
-      .filter((id) => !scannedCellIds.has(id))
-      .map((id) => cellToFeature(id, 'never')),
-    // Stale cells: returned by the API with state === 'stale'
-    ...scannedCells
-      .filter((c) => c.state === 'stale')
-      .map((c) => cellToFeature(c.locationCellId, 'stale')),
-  ]
-
-  const geojson = {
-    type: 'FeatureCollection' as const,
-    features,
-  }
 
   return (
     <Source id="coverage-freshness" type="geojson" data={geojson}>

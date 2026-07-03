@@ -41,20 +41,33 @@ export function enumerateCellsInBounds(
 ): string[] {
   const latStep = cellSizeMeters / METERS_PER_DEG_LAT
   const lngStep = cellSizeMeters / METERS_PER_DEG_LNG
-  const cells: string[] = []
-  const minLatIdx = Math.floor(bounds.south / latStep)
-  const maxLatIdx = Math.floor(bounds.north / latStep)
-  const minLngIdx = Math.floor(bounds.west / lngStep)
-  const maxLngIdx = Math.floor(bounds.east / lngStep)
+  const MAX_CELLS = 5000
 
-  // Safety cap: if a caller passes overly wide bounds despite the zoom gate,
-  // don't hang enumerating tens of thousands of cells.
-  const cellCount = (maxLatIdx - minLatIdx + 1) * (maxLngIdx - minLngIdx + 1)
-  if (cellCount > 5000) {
-    console.warn('enumerateCellsInBounds: bounds too wide, returning empty (expected close-zoom caller)')
-    return []
+  let minLatIdx = Math.floor(bounds.south / latStep)
+  let maxLatIdx = Math.floor(bounds.north / latStep)
+  let minLngIdx = Math.floor(bounds.west / lngStep)
+  let maxLngIdx = Math.floor(bounds.east / lngStep)
+
+  const totalCells = (maxLatIdx - minLatIdx + 1) * (maxLngIdx - minLngIdx + 1)
+
+  if (totalCells > MAX_CELLS) {
+    // Clip to a square-ish sub-region centered on the viewport's center,
+    // sized to stay under MAX_CELLS, rather than returning nothing. This
+    // means the overlay always renders something real near where the user
+    // is looking at any zoom >= the gate threshold, instead of silently
+    // being empty until the viewport happens to be small enough to fit
+    // under the cap in full (which in practice meant z17+ for a typical
+    // city viewport — far above the intended z14 activation zoom).
+    const centerLatIdx = Math.floor((minLatIdx + maxLatIdx) / 2)
+    const centerLngIdx = Math.floor((minLngIdx + maxLngIdx) / 2)
+    const halfSide = Math.floor(Math.sqrt(MAX_CELLS) / 2)
+    minLatIdx = centerLatIdx - halfSide
+    maxLatIdx = centerLatIdx + halfSide
+    minLngIdx = centerLngIdx - halfSide
+    maxLngIdx = centerLngIdx + halfSide
   }
 
+  const cells: string[] = []
   for (let latIdx = minLatIdx; latIdx <= maxLatIdx; latIdx++) {
     for (let lngIdx = minLngIdx; lngIdx <= maxLngIdx; lngIdx++) {
       cells.push(`${latIdx}:${lngIdx}`)
