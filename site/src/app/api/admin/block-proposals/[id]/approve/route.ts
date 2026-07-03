@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { blockProposals, blocks, blockExclusionZones } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { generateInnerBoundaryFromRing } from '@/lib/inner-boundary-generator'
 
 interface ProposalExclusionZone {
   polygon: { type: 'Polygon'; coordinates: [number, number][][] }
@@ -60,6 +61,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       )
     }
 
+    // Also compute the property-conforming inner boundary (same algorithm
+    // the route-v2 admin regenerate action uses) so this block matches the
+    // app's interior/exterior rendering from the moment it's published,
+    // not just its per-building exclusion zones. Best-effort: a live
+    // Overpass call can fail or time out, and that shouldn't block
+    // publishing the block itself — the admin can retry later via the
+    // existing regenerate-inner-boundary action once this block has a
+    // paired route.
+    let innerBoundaryGenerated = false
+    try {
+      const ring = (proposal.locationBoundary as { coordinates?: number[][][] })?.coordinates?.[0]
+      if (ring) {
+        const { multiPolygon } = await generateInnerBoundaryFromRing(ring)
+        await db.update(blocks).set({ innerBoundary: multiPolygon }).where(eq(blocks.id, newBlock.id))
+        innerBoundaryGenerated = true
+      }
+    } catch (error) {
+      console.error('[block-proposals/approve] inner boundary generation failed, block published without it:', error)
+    }
+
     await db
       .update(blockProposals)
       .set({
@@ -71,7 +92,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
       .where(eq(blockProposals.id, proposalId))
 
-    return NextResponse.json({ blockId: newBlock.id, exclusionZonesCreated: zones.length })
+    return NextResponse.json({ blockId: newBlock.id, exclusionZonesCreated: zones.length, innerBoundaryGenerated })
   } catch (error) {
     console.error('Error approving block proposal:', error)
     return NextResponse.json({ error: 'Failed to approve block proposal' }, { status: 500 })
