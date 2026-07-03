@@ -115,7 +115,7 @@ fun SpotScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = when (uiState.phase) {
-                        SpotPhase.CAMERA -> "Scan Spot"
+                        SpotPhase.CAMERA -> "Environment Scan"
                         SpotPhase.LOCATION -> "Confirm Location"
                         SpotPhase.DESCRIPTION -> "Add Details"
                         SpotPhase.SUBMITTING -> "Submitting..."

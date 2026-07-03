@@ -33,7 +33,9 @@ class OutdoorGate {
         /** Consistent evidence must span at least this long to change state. */
         const val DECISION_SPAN_MS = 5_000L
         /** Horizontal accuracy worse than this is indoor evidence. */
-        const val INDOOR_ACCURACY_METERS = 25.0
+        const val INDOOR_ACCURACY_METERS = 20.0
+        /** This many consecutive camera INDOOR votes flip the gate alone. */
+        const val SCENE_STREAK_TO_FLIP = 3
         /** Horizontal accuracy better than this is outdoor evidence. */
         const val OUTDOOR_ACCURACY_METERS = 10.0
         /** Scene votes see the room directly — they outweigh single GPS fixes. */
@@ -43,6 +45,7 @@ class OutdoorGate {
     private val indoorTs = ArrayDeque<Long>()
     private val outdoorTs = ArrayDeque<Long>()
     private var lastSceneIndoorTs: Long? = null
+    private var sceneIndoorStreak = 0
     private var lastIndoorAccuracyTs: Long? = null
 
     private val _state = MutableStateFlow(OutdoorState.UNCERTAIN)
@@ -76,9 +79,21 @@ class OutdoorGate {
             SceneVote.INDOOR -> {
                 repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
                 lastSceneIndoorTs = timestampMs
+                sceneIndoorStreak += 1
             }
-            SceneVote.OUTDOOR -> repeat(SCENE_VOTE_WEIGHT) { outdoorTs.addLast(timestampMs) }
+            SceneVote.OUTDOOR -> {
+                repeat(SCENE_VOTE_WEIGHT) { outdoorTs.addLast(timestampMs) }
+                sceneIndoorStreak = 0
+            }
             SceneVote.NONE -> Unit
+        }
+        // The camera seeing a room repeatedly is decisive on its own — GPS
+        // accuracy indoors often sits in the neutral band (WiFi-assisted
+        // 10-20m fixes), which starved the flip in field testing.
+        if (sceneIndoorStreak >= SCENE_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
+            DiagnosticsLog.info("outdoor-gate", "INDOOR ($sceneIndoorStreak consecutive camera votes)")
+            _state.value = OutdoorState.INDOOR
+            return
         }
         evaluate(timestampMs)
     }
@@ -103,7 +118,10 @@ class OutdoorGate {
             indoorTs.none { it >= outdoorTs.first() }
 
         val newState = when (_state.value) {
-            OutdoorState.INDOOR -> if (outdoorFlip) OutdoorState.OUTDOOR else OutdoorState.INDOOR
+            OutdoorState.INDOOR -> if (outdoorFlip) {
+                sceneIndoorStreak = 0
+                OutdoorState.OUTDOOR
+            } else OutdoorState.INDOOR
             else -> when {
                 indoorFlip -> OutdoorState.INDOOR
                 outdoorFlip -> OutdoorState.OUTDOOR

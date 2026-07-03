@@ -358,7 +358,7 @@ fun DashboardScreen(
                     // are already tabs within Rankings.
                     QuickActionButton(
                         emoji = "\uD83D\uDCF8",
-                        label = "Scan\nSpot",
+                        label = "Environment\nScan",
                         bgColor = GccBlue,
                         onClick = onSpotClick,
                         icon = { QuickActionGlyph(Res.drawable.ic_quick_scan, GccBlue) },

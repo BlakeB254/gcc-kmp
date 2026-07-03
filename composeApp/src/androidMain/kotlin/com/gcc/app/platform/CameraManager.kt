@@ -58,6 +58,8 @@ actual class CameraManager actual constructor() {
      * If the CameraPreview composable is active and has bound CameraX, this will
      * trigger a real capture. Otherwise returns null.
      */
+    actual suspend fun captureFrame(): CapturedPhoto? = capturePhoto()
+
     actual suspend fun capturePhoto(): CapturedPhoto? {
         val imageCapture = activeImageCapture ?: run {
             Log.w(TAG, "capturePhoto called but no active ImageCapture use case. Is CameraPreview visible?")

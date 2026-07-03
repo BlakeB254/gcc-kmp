@@ -25,9 +25,23 @@ import platform.AVFoundation.AVCaptureVideoDataOutput
 import platform.AVFoundation.AVCaptureVideoDataOutputSampleBufferDelegateProtocol
 import platform.CoreMedia.CMSampleBufferGetImageBuffer
 import platform.CoreMedia.CMSampleBufferRef
+import platform.CoreGraphics.CGImageRefVar
+import platform.CoreGraphics.CGImageRelease
+import platform.CoreVideo.CVPixelBufferGetHeight
+import platform.CoreVideo.CVPixelBufferGetWidth
 import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970
+import platform.QuartzCore.CATransaction
+import platform.UIKit.UIImageJPEGRepresentation
+import platform.UIKit.UIImageOrientation
+import platform.VideoToolbox.VTCreateCGImageFromCVPixelBuffer
 import platform.darwin.dispatch_queue_create
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.AVFoundation.AVCapturePhoto
 import platform.AVFoundation.AVCapturePhotoOutput
 import platform.AVFoundation.AVCapturePhotoSettings
@@ -217,6 +231,22 @@ actual class CameraManager actual constructor() {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    /**
+     * Silent capture: grabs the next frame from the live video tap — no
+     * AVCapturePhotoOutput, no system shutter sound. The environment scan
+     * uses this for both the ambient auto-capture and tap-to-tag (depth
+     * metadata is photo-output-only and intentionally traded for silence).
+     */
+    actual suspend fun captureFrame(): CapturedPhoto? {
+        val delegate = activeSceneDelegate as? SceneSampleDelegate ?: return capturePhoto()
+        val deferred = delegate.requestFrameCapture()
+        // Video frames arrive at ~30fps; 2s covers session warm-up hiccups.
+        return withTimeoutOrNull(2_000L) { deferred.await() } ?: run {
+            DiagnosticsLog.error("camera", "silent frame capture timed out — falling back to photo output")
+            capturePhoto()
+        }
+    }
+
     actual suspend fun capturePhoto(): CapturedPhoto? {
         if (!hasCameraHardware()) return null
 
@@ -624,9 +654,12 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
             val previewLayer = AVCaptureVideoPreviewLayer(session = captureSession)
             previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill
 
-            val container = UIView(frame = CGRectMake(0.0, 0.0, 400.0, 600.0))
+            // CALayers do NOT track their view's size: setting the frame once
+            // in the factory left a 400x600pt viewfinder pinned to the
+            // top-left on device (build 108). The subclass re-syncs the layer
+            // on every layout pass, so the preview always fills the screen.
+            val container = CameraPreviewContainerView(previewLayer)
             container.backgroundColor = platform.UIKit.UIColor.blackColor
-            previewLayer.frame = container.bounds
             container.layer.addSublayer(previewLayer)
 
             dispatch_async(dispatch_get_main_queue()) {
@@ -660,6 +693,20 @@ private fun CameraPreviewWithAVCapture(modifier: Modifier) {
  * [CameraSceneVoteBus] on the main queue. Frames outside the sampling window
  * return immediately (the delegate rides the 30fps video queue).
  */
+/** UIView that keeps its preview sublayer frame-synced through every layout pass. */
+@OptIn(ExperimentalForeignApi::class)
+private class CameraPreviewContainerView(
+    private val previewLayer: AVCaptureVideoPreviewLayer,
+) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewLayer.frame = bounds
+        CATransaction.commit()
+    }
+}
+
 private const val SCENE_SAMPLE_INTERVAL_MS = 2_000L
 
 @OptIn(ExperimentalForeignApi::class)
@@ -668,12 +715,29 @@ private class SceneSampleDelegate :
     AVCaptureVideoDataOutputSampleBufferDelegateProtocol {
 
     private var lastSampleAtMs = 0L
+    private var sampleCounter = 0
+
+    /** Pending silent-capture request; completed with the next frame. */
+    private var pendingFrame: CompletableDeferred<CapturedPhoto?>? = null
+
+    fun requestFrameCapture(): CompletableDeferred<CapturedPhoto?> {
+        val deferred = CompletableDeferred<CapturedPhoto?>()
+        pendingFrame = deferred
+        return deferred
+    }
 
     override fun captureOutput(
         output: AVCaptureOutput,
         didOutputSampleBuffer: CMSampleBufferRef?,
         fromConnection: AVCaptureConnection,
     ) {
+        val frameRequest = pendingFrame
+        if (frameRequest != null) {
+            pendingFrame = null
+            val buffer = CMSampleBufferGetImageBuffer(didOutputSampleBuffer)
+            frameRequest.complete(buffer?.let { pixelBufferToPhoto(it) })
+        }
+
         val nowMs = (NSDate().timeIntervalSince1970 * 1000).toLong()
         if (nowMs - lastSampleAtMs < SCENE_SAMPLE_INTERVAL_MS) return
         lastSampleAtMs = nowMs
@@ -686,9 +750,42 @@ private class SceneSampleDelegate :
             DiagnosticsLog.error("scene-vote", "viewfinder frame analysis failed", e)
             return
         }
+        sampleCounter += 1
+        if (sampleCounter % 5 == 1) {
+            DiagnosticsLog.info("scene-vote", "vote=${result.vote} sees: ${result.topLabels}")
+        }
         dispatch_async(dispatch_get_main_queue()) {
             if (result.vote != SceneVote.NONE) CameraSceneVoteBus.emit(result.vote)
             CameraDetectionBus.update(listOfNotNull(result.detection))
+        }
+    }
+    /** CVPixelBuffer → portrait JPEG CapturedPhoto (no depth; silent path). */
+    private fun pixelBufferToPhoto(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): CapturedPhoto? {
+        return try {
+            val cgImage = memScoped {
+                val out = alloc<CGImageRefVar>()
+                val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
+                if (status != 0) null else out.value
+            } ?: return null
+            // Sensor frames are landscape-right; rotate for the portrait UI.
+            val image = UIImage.imageWithCGImage(
+                cgImage,
+                scale = 1.0,
+                orientation = UIImageOrientation.UIImageOrientationRight,
+            )
+            val jpeg = UIImageJPEGRepresentation(image, 0.85)
+            CGImageRelease(cgImage)
+            val bytes = jpeg?.bytes?.readBytes(jpeg.length.toInt()) ?: return null
+            CapturedPhoto(
+                bytes = bytes,
+                width = CVPixelBufferGetHeight(pixelBuffer).toInt(),
+                height = CVPixelBufferGetWidth(pixelBuffer).toInt(),
+                depthAnalysis = null,
+                attestation = null,
+            )
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("camera", "frame → JPEG conversion failed", e)
+            null
         }
     }
 }

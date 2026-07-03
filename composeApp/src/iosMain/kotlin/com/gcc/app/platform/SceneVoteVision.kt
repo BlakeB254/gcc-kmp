@@ -19,17 +19,22 @@ import platform.Vision.VNSaliencyImageObservation
 @OptIn(ExperimentalForeignApi::class)
 internal object SceneVoteVision {
 
-    private const val SCENE_CONFIDENCE = 0.4f
+    private const val SCENE_CONFIDENCE = 0.3f
 
     val INDOOR_KEYWORDS = setOf(
         "indoor", "room", "ceiling", "wall", "kitchen", "bathroom", "bedroom",
         "office", "hallway", "furniture", "sofa", "couch", "desk", "carpet",
-        "curtain", "shelf", "stairs", "interior",
+        "curtain", "shelf", "stairs", "interior", "chair", "table",
+        "television", "lamp", "bed", "cabinet", "refrigerator", "laptop",
+        "monitor", "screen", "keyboard", "bookcase", "book", "rug", "pillow",
+        "blanket", "sink", "counter", "cupboard", "appliance",
     )
     val OUTDOOR_KEYWORDS = setOf(
         "outdoor", "street", "road", "sidewalk", "sky", "tree", "grass",
         "park", "building", "asphalt", "pavement", "cloud", "field",
-        "vehicle", "car", "house", "fence", "yard",
+        "vehicle", "car", "house", "fence", "yard", "highway", "lawn",
+        "garden", "trail", "bush", "truck", "bicycle", "traffic", "bridge",
+        "alley", "playground", "landscape", "horizon",
     )
 
     /** Token → reticle label; matches `_`/space-split Vision identifiers. */
@@ -84,6 +89,8 @@ internal object SceneVoteVision {
 internal data class ViewfinderFrameResult(
     val vote: SceneVote,
     val detection: LiveDetection?,
+    /** Top classifications, for the diagnostics panel ("what does Vision see?"). */
+    val topLabels: String = "",
 )
 
 @OptIn(ExperimentalForeignApi::class)
@@ -103,11 +110,14 @@ internal fun SceneVoteVision.analyzeViewfinderFrame(pixelBuffer: CVPixelBufferRe
         ?: return ViewfinderFrameResult(SceneVote.NONE, null)
 
     val vote = voteFrom(observations)
+    val topLabels = observations.take(4).joinToString(", ") {
+        "${it.identifier}(${(it.confidence * 100).toInt()}%)"
+    }
 
     val trashLabel = observations.firstNotNullOfOrNull { obs ->
         if (obs.confidence < 0.35f) return@firstNotNullOfOrNull null
         tokensOf(obs.identifier).firstNotNullOfOrNull { SceneVoteVision.TRASH_TOKENS[it] }
-    } ?: return ViewfinderFrameResult(vote, null)
+    } ?: return ViewfinderFrameResult(vote, null, topLabels)
 
     // Salient region → reticle position; fall back to frame center.
     var visionX = 0.5
@@ -135,5 +145,5 @@ internal fun SceneVoteVision.analyzeViewfinderFrame(pixelBuffer: CVPixelBufferRe
         label = trashLabel,
         distanceMeters = null,
     )
-    return ViewfinderFrameResult(vote, detection)
+    return ViewfinderFrameResult(vote, detection, topLabels)
 }

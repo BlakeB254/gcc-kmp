@@ -86,3 +86,30 @@ class OutdoorGateTest {
         assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
     }
 }
+
+class OutdoorGateSceneStreakTest {
+    private val t0 = 1_000_000L
+
+    @kotlin.test.Test
+    fun threeConsecutiveCameraIndoorVotesFlipAlone() {
+        val gate = OutdoorGate()
+        gate.onSceneVote(SceneVote.INDOOR, t0)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 2000)
+        kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 4000)
+        kotlin.test.assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @kotlin.test.Test
+    fun outdoorVoteResetsTheIndoorStreak() {
+        // Kept inside a <5s window so the general evidence rule can't flip —
+        // this isolates the consecutive-streak rule specifically.
+        val gate = OutdoorGate()
+        gate.onSceneVote(SceneVote.INDOOR, t0)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 1000)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 2000)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 3000)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 4000)
+        kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
+    }
+}
