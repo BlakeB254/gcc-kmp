@@ -20,7 +20,6 @@ export function FooterSection() {
   ]
 
   const aboutLinks = [
-    { href: '/about', label: 'About Us' },
     { href: '/impact-supporters', label: 'Impact & Supporters' },
     { href: '/bounties', label: 'Community Bounties' },
     { href: '/join', label: 'Join Movement' },

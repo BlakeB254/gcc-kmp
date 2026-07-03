@@ -206,34 +206,50 @@ function StandardCard({ entry }: { entry: RecognitionEntry }) {
   )
 }
 
-/** Gold ($2,000+) card — logo, a short writeup (tagline or bio), and a button out to their site — the "card display with a write-up and button" tier. */
+/** Gold ($2,000+) card — a real logo banner (sized to its own aspect ratio, never squeezed into a small square), the full writeup with no truncation, and a button out to their site. Sized generously: $2,000 is real money and the card should read that way, not like a footnote. */
 function GoldCard({ entry }: { entry: RecognitionEntry }) {
   const config = tierConfig.gold
   const writeup = entry.bio || entry.tagline
+  const initial = entry.displayName.trim().charAt(0).toUpperCase() || '?'
   return (
     <div
       className={cn(
-        'group relative col-span-2 flex flex-col gap-3 rounded-2xl border border-neutral-100 bg-white p-6 shadow-sm ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md sm:col-span-1',
+        'group relative col-span-2 flex flex-col gap-4 rounded-2xl border border-neutral-100 bg-white p-6 sm:p-7 shadow-sm ring-1 transition-all hover:-translate-y-0.5 hover:shadow-md',
         config.ring
       )}
     >
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-10">
         <TierBadge tier="gold" />
       </div>
-      <div className="flex items-center gap-3">
-        <Logo entry={entry} size={56} />
-        <p className="font-semibold text-neutral-900 leading-tight">{entry.displayName}</p>
+
+      {/* Logo banner — full card width, fixed height that scales up on larger screens, real aspect ratio preserved so a wide wordmark logo (like UIC's) stays legible instead of being squeezed into a small square */}
+      <div className="relative h-16 sm:h-20 w-full max-w-xs">
+        {entry.logoUrl ? (
+          <Image
+            src={entry.logoUrl}
+            alt={entry.displayName}
+            fill
+            className="object-contain object-left"
+            sizes="320px"
+          />
+        ) : (
+          <div className="flex h-full w-20 items-center justify-center rounded-xl bg-neutral-50">
+            <span className="text-2xl font-bold text-brand-green-600">{initial}</span>
+          </div>
+        )}
       </div>
-      {writeup && <p className="text-sm text-neutral-600 leading-relaxed line-clamp-4">{writeup}</p>}
+
+      <p className="font-semibold text-neutral-900 text-lg leading-tight">{entry.displayName}</p>
+      {writeup && <p className="text-sm text-neutral-600 leading-relaxed">{writeup}</p>}
       {entry.website && (
         <a
           href={websiteHref(entry.website)}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand-green-200 bg-brand-green-50 px-3 py-2 text-xs font-semibold text-brand-green-700 hover:bg-brand-green-100 transition-colors"
+          className="mt-auto inline-flex w-fit items-center justify-center gap-1.5 rounded-lg border border-brand-green-200 bg-brand-green-50 px-4 py-2.5 text-sm font-semibold text-brand-green-700 hover:bg-brand-green-100 transition-colors"
         >
           Visit {websiteLabel(entry.website)}
-          <ExternalLink className="w-3 h-3" />
+          <ExternalLink className="w-3.5 h-3.5" />
         </a>
       )}
     </div>

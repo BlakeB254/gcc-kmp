@@ -313,8 +313,9 @@ export function ImpactSupportersContent() {
         <div className="section-container">
           <SupporterRecognitionWall
             limit={24}
+            minAmount={2000}
             title="Our Honor Wall"
-            description="The organizations and individuals whose generosity fuels every block we clean."
+            description="Major sponsors ($2,000+) putting real money behind cleaner streets — every donation, of any size, is in the full supporter feed below."
           />
         </div>
       </section>

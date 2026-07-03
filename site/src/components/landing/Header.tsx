@@ -71,7 +71,6 @@ export function Header() {
   }, [])
 
   const navLinks = [
-    { label: 'About Us', href: '/about' },
     { label: 'How It Works', href: '/how-it-works' },
     { label: 'Bounties', href: '/bounties' },
     { label: 'Impact & Supporters', href: '/impact-supporters' },
