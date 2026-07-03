@@ -232,16 +232,16 @@ export function HeroSection() {
   )
 }
 
-/** Floating device mockup of the GCC app's map/heatmap screen (North Lawndale) — angled iPhone render with its own shadow and transparent background. */
+/** Floating device mockup of the GCC app's map/heatmap screen (North Lawndale) — angled iPhone render, background/baked-in shadow fully stripped so it composites cleanly with a real CSS shadow. */
 function PhoneMockup() {
   return (
-    <div className="relative w-[min(300px,36vh)] aspect-[1536/2752]">
+    <div className="relative w-[min(380px,44vh)] aspect-[1536/2752]">
       <Image
         src="/images/optimized/hero-app-phone-mockup.webp"
         alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
         fill
-        className="object-contain drop-shadow-2xl"
-        sizes="(min-width: 1280px) 320px, 300px"
+        className="object-contain drop-shadow-[0_30px_45px_rgba(0,0,0,0.5)]"
+        sizes="(min-width: 1280px) 400px, 380px"
         priority
       />
     </div>
