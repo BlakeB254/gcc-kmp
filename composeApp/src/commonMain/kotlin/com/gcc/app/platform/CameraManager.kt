@@ -42,6 +42,13 @@ expect class CameraManager() {
 
     /** Take a photo. Returns bytes of the captured image. */
     suspend fun capturePhoto(): CapturedPhoto?
+
+    /**
+     * Silent capture from the live preview stream — no shutter sound, no
+     * depth metadata. iOS grabs a video frame; other platforms fall back
+     * to [capturePhoto].
+     */
+    suspend fun captureFrame(): CapturedPhoto?
 }
 
 /**

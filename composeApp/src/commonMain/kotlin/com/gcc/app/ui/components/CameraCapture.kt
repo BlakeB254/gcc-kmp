@@ -97,7 +97,14 @@ fun CameraCapture(
                         if (!isCapturing && !atLimit) {
                             isCapturing = true
                             coroutineScope.launch {
-                                val photo = manager.capturePhoto()
+                                // Environment scan: silent frame grab (no
+                                // shutter); other flows keep the photo output
+                                // (depth + attestation).
+                                val photo = if (environmentScanMode) {
+                                    manager.captureFrame()
+                                } else {
+                                    manager.capturePhoto()
+                                }
                                 if (photo != null) onCapture(photo)
                                 isCapturing = false
                             }

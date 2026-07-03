@@ -191,12 +191,14 @@ fun SpotScanCapture(
         if (autoScanFired || !canCapture || capturedPhotos.isNotEmpty()) return@LaunchedEffect
         delay(2500L) // let the camera session + GPS settle
         if (!currentCanCapture) return@LaunchedEffect
-        val photo = cameraManager.capturePhoto()
+        // Silent frame grab — the environment scan must not fire the system
+        // shutter sound on open (build 108 field report).
+        val photo = cameraManager.captureFrame()
         if (photo != null) {
             autoScanFired = true
             handleCapture(photo)
         } else {
-            DiagnosticsLog.error("camera", "auto-scan capturePhoto() returned null")
+            DiagnosticsLog.error("camera", "auto-scan captureFrame() returned null")
         }
     }
 

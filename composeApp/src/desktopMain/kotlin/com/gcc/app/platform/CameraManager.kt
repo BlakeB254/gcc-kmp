@@ -24,6 +24,8 @@ actual class CameraManager actual constructor() {
     actual fun hasCameraHardware(): Boolean = false
 
     actual suspend fun capturePhoto(): CapturedPhoto? = null
+
+    actual suspend fun captureFrame(): CapturedPhoto? = null
 }
 
 @Composable
