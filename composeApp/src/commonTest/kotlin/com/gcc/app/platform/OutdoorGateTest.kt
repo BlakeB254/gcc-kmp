@@ -116,11 +116,9 @@ class OutdoorGateMapEvidenceTest {
     private val t0 = 1_000_000L
 
     @kotlin.test.Test
-    fun twoFixesInsideMappedBuildingFlipIndoor() {
+    fun singleFixInsideMappedBuildingFlipsImmediately() {
         val gate = OutdoorGate()
         gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
-        kotlin.test.assertEquals(OutdoorState.UNCERTAIN, gate.state.value)
-        gate.onMapEvidence(insideBuilding = true, timestampMs = t0 + 1000)
         kotlin.test.assertEquals(OutdoorState.INDOOR, gate.state.value)
     }
 

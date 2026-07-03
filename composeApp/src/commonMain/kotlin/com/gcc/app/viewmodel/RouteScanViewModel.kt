@@ -764,6 +764,10 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         updateBoundaryStatus(lat, lng)
+                        outdoorGate.onMapEvidence(
+                            insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(lat, lng),
+                            timestampMs = Clock.System.now().toEpochMilliseconds(),
+                        )
 
                         // "Go outside" gate: while judged indoors, accrue nothing —
                         // no path point, no ledger event, no coverage cells. Reset
