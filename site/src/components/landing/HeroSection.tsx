@@ -232,23 +232,18 @@ export function HeroSection() {
   )
 }
 
-/** Real phone-framed screenshot of the GCC app's map/heatmap screen (North Lawndale), cropped from the Issue #2 newsletter asset. */
+/** Floating device mockup of the GCC app's map/heatmap screen (North Lawndale) — angled iPhone render with its own shadow and transparent background. */
 function PhoneMockup() {
   return (
-    <div className="relative">
-      {/* Ambient glow behind the phone */}
-      <div className="absolute inset-0 scale-90 bg-brand-green-400/20 blur-3xl rounded-full" />
-
-      {/* Phone image already includes its own bezel/notch/home-indicator — width capped as a fraction of viewport height so it always fits beside the copy column, even on short laptop screens */}
-      <div className="relative w-[min(280px,34vh)] aspect-[893/1945] rounded-[2.75rem] shadow-2xl overflow-hidden">
-        <Image
-          src="/images/optimized/hero-app-map-screenshot.webp"
-          alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
-          fill
-          className="object-cover"
-          sizes="(min-width: 1280px) 300px, 280px"
-        />
-      </div>
+    <div className="relative w-[min(300px,36vh)] aspect-[1536/2752]">
+      <Image
+        src="/images/optimized/hero-app-phone-mockup.webp"
+        alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
+        fill
+        className="object-contain drop-shadow-2xl"
+        sizes="(min-width: 1280px) 320px, 300px"
+        priority
+      />
     </div>
   )
 }
