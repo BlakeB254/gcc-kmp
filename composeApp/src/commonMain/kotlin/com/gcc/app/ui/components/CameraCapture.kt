@@ -84,10 +84,14 @@ fun CameraCapture(
 
     // Full-bleed viewfinder: the preview IS the screen; every control floats
     // above it (no rounded clip, no reserved strips — see build-107 field
-    // report: the old Column letterboxed the camera).
-    Box(
+    // report: the old Column letterboxed the camera). BoxWithConstraints so
+    // the minimap sizes itself to the device (36% of width, clamped) instead
+    // of a fixed rectangle.
+    BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
+        val miniMapWidth = (maxWidth * 0.36f).coerceIn(128.dp, 200.dp)
+        val miniMapHeight = miniMapWidth * 0.78f
         // Live camera preview with overlays — tap anywhere to capture
         Box(
             modifier = Modifier
@@ -152,7 +156,7 @@ fun CameraCapture(
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
                         .padding(end = 10.dp, bottom = 176.dp)
-                        .size(width = 140.dp, height = 110.dp)
+                        .size(width = miniMapWidth, height = miniMapHeight)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.3f)),
                 ) {
