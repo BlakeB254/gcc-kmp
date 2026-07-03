@@ -59,6 +59,9 @@ enum class PointsAction {
     @SerialName("already_clean_report") ALREADY_CLEAN_REPORT,
     @SerialName("admin_grant") ADMIN_GRANT,
     @SerialName("bug_report") BUG_REPORT,
+    @SerialName("scan_coverage_new_area") SCAN_COVERAGE_NEW_AREA,
+    @SerialName("scan_coverage_stale") SCAN_COVERAGE_STALE,
+    @SerialName("scan_coverage_rectification") SCAN_COVERAGE_RECTIFICATION,
 }
 
 @Serializable
