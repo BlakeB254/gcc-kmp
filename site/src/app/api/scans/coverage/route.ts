@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordCoverageEvent, RecordCoverageEventInput } from '@/lib/scan-coverage'
 import { requireMobileAuth } from '@/lib/mobile-auth'
+import { MAX_DISTANCE_METERS_PER_EVENT } from '@/lib/points-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,9 @@ export async function POST(request: NextRequest) {
         typeof event.lat !== 'number' ||
         typeof event.lng !== 'number' ||
         typeof event.distanceMeters !== 'number' ||
+        !Number.isFinite(event.distanceMeters) ||
+        event.distanceMeters < 0 ||
+        event.distanceMeters > MAX_DISTANCE_METERS_PER_EVENT ||
         (event.scanMode !== 'route' && event.scanMode !== 'spot') ||
         !['basic', 'scanner', 'pro_scanner'].includes(event.deviceTier) ||
         typeof event.capturedAt !== 'string'

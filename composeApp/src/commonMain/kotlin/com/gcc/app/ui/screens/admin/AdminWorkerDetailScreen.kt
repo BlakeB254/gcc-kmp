@@ -612,6 +612,9 @@ private fun PointsHistoryRow(entry: PointsLedgerEntry) {
         PointsAction.ALREADY_CLEAN_REPORT -> "Already-clean report"
         PointsAction.ADMIN_GRANT -> "Admin grant"
         PointsAction.BUG_REPORT -> "Bug report"
+        PointsAction.SCAN_COVERAGE_NEW_AREA -> "New area scanned"
+        PointsAction.SCAN_COVERAGE_STALE -> "Stale area rescanned"
+        PointsAction.SCAN_COVERAGE_RECTIFICATION -> "Coverage rectified"
     }
     Row(
         modifier = Modifier

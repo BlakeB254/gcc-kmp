@@ -32,4 +32,7 @@ data class PointsBreakdown(
     val alreadyCleanReport: Int = 0,
     val adminGrant: Int = 0,
     val bugReport: Int = 0,
+    val scanCoverageNewArea: Int = 0,
+    val scanCoverageStale: Int = 0,
+    val scanCoverageRectification: Int = 0,
 )

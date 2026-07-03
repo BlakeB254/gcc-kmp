@@ -1265,6 +1265,9 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'already_clean_report',   // Reported spot was already clean (5 pts)
   'admin_grant',            // Admin manually granted/corrected points
   'bug_report',             // Reward for finding a bug in the app/website
+  'scan_coverage_new_area', // Distance-tracked: scanned a cell never scanned before
+  'scan_coverage_stale',    // Distance-tracked: re-scanned a cell stale >24h
+  'scan_coverage_rectification', // Confirmed a previously-expected-dirty spot is now clean
 ])
 
 // Spot verifications table (audit trail of each verification event)
