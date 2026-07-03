@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
 import {
   MapPin,
@@ -28,11 +29,15 @@ import {
   RefreshCw,
   Building2,
   Mail,
+  Coins,
+  Landmark,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn, formatCurrency } from '@/lib/utils'
 import { SupporterRecognitionWall } from '@/components/shared/SupporterRecognitionWall'
+import { BranasResultsChart, CollectiveEfficacyStat } from '../about/EvidenceCharts'
 
 interface ImpactStats {
   workers: {
@@ -321,12 +326,12 @@ export function ImpactSupportersContent() {
           {wallStats && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <DollarSign className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
+                <Coins className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-brand-green-600">{formatCurrency(wallStats.totalRaised * 100)}</p>
                 <p className="text-sm text-neutral-600">Total Raised</p>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <MapPin className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
+                <Landmark className="w-6 h-6 text-brand-green-600 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-brand-green-600">{wallStats.blocksFunded}</p>
                 <p className="text-sm text-neutral-600">Blocks Funded</p>
               </div>
@@ -336,7 +341,7 @@ export function ImpactSupportersContent() {
                 <p className="text-sm text-neutral-600">Total Supporters</p>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-neutral-100 text-center">
-                <Heart className="w-6 h-6 text-brand-blue-600 mx-auto mb-2" />
+                <Sparkles className="w-6 h-6 text-brand-blue-600 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-brand-blue-600">{wallStats.recentContributors}</p>
                 <p className="text-sm text-neutral-600">This Month</p>
               </div>
@@ -574,6 +579,11 @@ export function ImpactSupportersContent() {
             </p>
           </div>
 
+          <div className="max-w-3xl mx-auto mb-12 grid gap-6 sm:grid-cols-2">
+            <BranasResultsChart />
+            <CollectiveEfficacyStat />
+          </div>
+
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             <Card className="border-0 shadow-sm hover:shadow-md transition-shadow">
               <CardContent className="pt-6">
@@ -645,6 +655,25 @@ export function ImpactSupportersContent() {
             description="Clean streets attract foot traffic, encourage shopping local, and signal to entrepreneurs that this is a neighborhood worth investing in."
             color="brown"
           />
+        </div>
+      </section>
+
+      {/* Community Photo Band */}
+      <section className="section-container pb-16">
+        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-2xl shadow-lg">
+          <div className="relative h-80 sm:h-[26rem]">
+            <Image
+              src="/images/optimized/photo-community-celebration.webp"
+              alt="A multigenerational group of North Lawndale residents in GCC t-shirts celebrating together on a freshly cleaned block"
+              fill
+              className="object-cover"
+              sizes="(min-width: 1024px) 896px, 100vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <p className="absolute inset-x-0 bottom-0 p-6 text-lg font-semibold text-white sm:p-8 sm:text-xl">
+              Every pillar above has a face behind it — neighbors on a freshly cleaned North Lawndale block.
+            </p>
+          </div>
         </div>
       </section>
 

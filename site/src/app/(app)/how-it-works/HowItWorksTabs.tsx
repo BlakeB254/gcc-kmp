@@ -3,8 +3,8 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
-  DollarSign,
   Clock,
   MapPin,
   Smartphone,
@@ -12,7 +12,6 @@ import {
   Heart,
   ArrowRight,
   CheckCircle,
-  Users,
   Building,
   Receipt,
   Calculator,
@@ -33,6 +32,8 @@ import {
   Route,
   Flame,
   Target,
+  HandCoins,
+  UserRound,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -177,7 +178,7 @@ function GeneralTab({ onNavigate }: { onNavigate: (tab: TabKey) => void }) {
           <div className="mx-auto grid max-w-4xl gap-6 sm:grid-cols-3">
             <Card className="border-0 bg-white text-center">
               <CardContent className="pt-6">
-                <DollarSign className="mx-auto mb-3 h-8 w-8 text-brand-green-600" />
+                <HandCoins className="mx-auto mb-3 h-8 w-8 text-brand-green-600" />
                 <h3 className="mb-2 font-semibold">Earn as a Worker</h3>
                 <p className="mb-4 text-sm text-muted-foreground">
                   $100 per block cleaned, flexible hours.
@@ -224,7 +225,7 @@ function GeneralTab({ onNavigate }: { onNavigate: (tab: TabKey) => void }) {
 
 const workerBenefits = [
   {
-    icon: DollarSign,
+    icon: HandCoins,
     title: '$100 Per Block',
     description:
       'Earn a guaranteed $100 for each block you clean. No complicated pay structures - just complete the job and get paid.',
@@ -279,22 +280,33 @@ const workerRequirements = [
 function WorkersTab() {
   return (
     <>
-      <section className="section-container py-4 text-center">
-        <div className="mx-auto max-w-2xl">
-          <p className="text-lg text-muted-foreground">
-            Turn your time into money while making North Lawndale cleaner. No
-            experience needed - just your commitment to our community.
-          </p>
-          <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" asChild>
-              <Link href="/worker/signup">
-                Start Earning Today
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button variant="secondary" size="lg" asChild>
-              <Link href="/join">Join Waitlist</Link>
-            </Button>
+      <section className="section-container py-4">
+        <div className="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="text-center lg:text-left">
+            <p className="text-lg text-muted-foreground">
+              Turn your time into money while making North Lawndale cleaner. No
+              experience needed - just your commitment to our community.
+            </p>
+            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:justify-center lg:justify-start">
+              <Button size="lg" asChild>
+                <Link href="/worker/signup">
+                  Start Earning Today
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+              <Button variant="secondary" size="lg" asChild>
+                <Link href="/join">Join Waitlist</Link>
+              </Button>
+            </div>
+          </div>
+          <div className="relative mx-auto aspect-[1200/1489] w-full max-w-sm overflow-hidden rounded-2xl shadow-lg">
+            <Image
+              src="/images/optimized/photo-app-on-street.webp"
+              alt="A GCC worker in a branded t-shirt using the app on her phone on a clean North Lawndale sidewalk"
+              fill
+              className="object-cover"
+              sizes="(min-width: 1024px) 360px, 90vw"
+            />
           </div>
         </div>
       </section>
@@ -482,30 +494,41 @@ const enterpriseTiers = [
 function SponsorsTab() {
   return (
     <>
-      <section className="section-container py-4 text-center">
-        <div className="mx-auto max-w-2xl">
-          <p className="text-lg text-muted-foreground">
-            For just $100, you can sponsor the cleaning of one city block while
-            providing meaningful employment to local residents.
-          </p>
-          <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" asChild>
-              <Link href="/sponsor">
-                Sponsor a Block ($100)
-                <ArrowRight className="ml-2 h-5 w-5" />
+      <section className="section-container py-4">
+        <div className="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="text-center lg:text-left">
+            <p className="text-lg text-muted-foreground">
+              For just $100, you can sponsor the cleaning of one city block while
+              providing meaningful employment to local residents.
+            </p>
+            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:justify-center lg:justify-start">
+              <Button size="lg" asChild>
+                <Link href="/sponsor">
+                  Sponsor a Block ($100)
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+              <Button variant="outline" size="lg" asChild>
+                <Link href="/sponsor/calculator">Build Custom Package</Link>
+              </Button>
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/sponsor/wall"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                View our sponsors →
               </Link>
-            </Button>
-            <Button variant="outline" size="lg" asChild>
-              <Link href="/sponsor/calculator">Build Custom Package</Link>
-            </Button>
+            </div>
           </div>
-          <div className="mt-4">
-            <Link
-              href="/sponsor/wall"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              View our sponsors →
-            </Link>
+          <div className="relative mx-auto aspect-[1200/1489] w-full max-w-sm overflow-hidden rounded-2xl shadow-lg">
+            <Image
+              src="/images/optimized/photo-sponsor-handshake.webp"
+              alt="A GCC worker and a business-attired sponsor shaking hands outside a small storefront in the evening light"
+              fill
+              className="object-cover"
+              sizes="(min-width: 1024px) 360px, 90vw"
+            />
           </div>
         </div>
       </section>
@@ -594,7 +617,7 @@ function SponsorsTab() {
                 <span className="text-xs text-muted-foreground">Map & address</span>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <Users className="h-6 w-6 text-brand-green-600" />
+                <UserRound className="h-6 w-6 text-brand-green-600" />
                 <span className="text-sm font-medium">Worker Info</span>
                 <span className="text-xs text-muted-foreground">Name & photo</span>
               </div>
@@ -949,6 +972,50 @@ function AppFeaturesTab({ onNavigate }: { onNavigate: (tab: TabKey) => void }) {
         </div>
       </section>
 
+      <section className="section-container py-16">
+        <div className="mb-10 text-center">
+          <h2 className="mb-4 text-2xl font-bold">The App, Screen by Screen</h2>
+          <p className="mx-auto max-w-2xl text-muted-foreground">
+            Real screens from the live app — report what you see, then watch your
+            points add up.
+          </p>
+        </div>
+        <div className="mx-auto grid max-w-3xl gap-10 sm:grid-cols-2">
+          <div className="text-center">
+            <div className="relative mx-auto aspect-[800/1433] w-[min(280px,60vw)]">
+              <Image
+                src="/images/optimized/mockup-spot-report.webp"
+                alt="The GCC app's spot-report screen with camera capture, litter category chips, and a submit button"
+                fill
+                className="object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.35)]"
+                sizes="(min-width: 640px) 280px, 60vw"
+              />
+            </div>
+            <h3 className="mt-6 font-semibold">Report What You See</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Snap a photo, pick a category, and submit — it&apos;s on the map in
+              seconds.
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="relative mx-auto aspect-[800/1433] w-[min(280px,60vw)]">
+              <Image
+                src="/images/optimized/mockup-points-profile.webp"
+                alt="The GCC app's points and profile screen showing points balance, cleanup and bounty stats, and recent activity"
+                fill
+                className="object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.35)]"
+                sizes="(min-width: 640px) 280px, 60vw"
+              />
+            </div>
+            <h3 className="mt-6 font-semibold">Track Your Progress</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Points, streaks, and a running log of every cleanup and report
+              you&apos;ve made.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="bg-brand-green-50 py-16">
         <div className="section-container text-center">
           <h2 className="mb-4 text-2xl font-bold">See It in Action</h2>
@@ -985,7 +1052,7 @@ function BountiesTab() {
         <div className="mb-10 grid gap-6 sm:grid-cols-3">
           <Card className="border-0 bg-white/80 text-center backdrop-blur">
             <CardContent className="pt-6">
-              <DollarSign className="mx-auto mb-3 h-8 w-8 text-red-500" />
+              <HandCoins className="mx-auto mb-3 h-8 w-8 text-red-500" />
               <h3 className="mb-1 font-semibold">Post a Bounty</h3>
               <p className="text-sm text-muted-foreground">
                 Fund the cleanup of a spot you&apos;ve spotted.

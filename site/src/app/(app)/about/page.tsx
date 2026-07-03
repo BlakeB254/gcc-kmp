@@ -1,12 +1,11 @@
 import Link from 'next/link'
+import { BranasResultsChart, CollectiveEfficacyStat } from './EvidenceCharts'
 
 export const metadata = {
   title: 'About | Global Community Cleaners',
   description:
     "The history behind Global Community Cleaners — six blocks from Dr. King's 1966 apartment in North Lawndale, the field-evidence layer for community cleanliness, and the founder who built it.",
 }
-
-const media = '/newsletter/issue-01'
 
 export default function AboutPage() {
   return (
@@ -63,6 +62,12 @@ export default function AboutPage() {
           <p className="mt-6">
             We pay the resident on the block to clean it, and we document every inch of it. That documentation &mdash; not the cleaning alone &mdash; is what makes GCC data infrastructure for community cleanliness, not a cleaning service.
           </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/optimized/photo-community-celebration.webp"
+            alt="A multigenerational group of North Lawndale residents in GCC t-shirts celebrating together on a freshly cleaned block"
+            className="mt-6 w-full rounded-xl object-cover"
+          />
         </Section>
 
         {/* Founder's story */}
@@ -88,16 +93,30 @@ export default function AboutPage() {
           <p>
             Charles Branas&rsquo;s team at Penn ran a cluster-randomized trial across Philadelphia &mdash; the gold standard &mdash; comparing greened lots, trash-removal-only lots, and untouched controls. Published in <em>PNAS</em> and <em>JAMA Network Open</em>, it found a <strong>29% drop in gun assaults</strong> around treated lots, with the strongest effects for low-income residents.
           </p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`${media}/stats/branas-rct.png`}
-            alt="Branas trial results: 29.1% drop in gun assaults, 41.5% fewer depression reports, 68.7% drop for low-income residents"
-            className="mt-6 w-full rounded-xl"
-          />
+          <BranasResultsChart />
           <p className="mt-6">
             Robert Sampson&rsquo;s Chicago research adds the why: neighborhoods high in <strong>collective efficacy</strong> &mdash; whether neighbors feel any agency over their block &mdash; run roughly <strong>40% lower</strong> crime rates even when income and visible disorder look identical on paper.
           </p>
-          <p className="mt-2 font-semibold text-neutral-900">
+          <CollectiveEfficacyStat />
+          <p className="mt-8">
+            The stakes locally aren&rsquo;t abstract. A baby born in The Loop today can expect to live <strong>20.7 years longer</strong> than one born in West Garfield Park, immediately adjacent to North Lawndale &mdash; same city, same year.
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/optimized/life-expectancy-gap.webp"
+            alt="Life expectancy gap inside Chicago: 87.3 years in The Loop vs. 66.6 years in West Garfield Park, a 20.7-year gap"
+            className="mt-4 w-full rounded-xl"
+          />
+          <p className="mt-6">
+            And greening isn&rsquo;t just a cost &mdash; a Wharton analysis of Philadelphia&rsquo;s program found it pays for itself several times over.
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/optimized/roi.webp"
+            alt="Return on investment: $7.43 in additional municipal tax revenue for every public dollar spent on vacant-lot greening"
+            className="mt-4 w-full rounded-xl"
+          />
+          <p className="mt-6 font-semibold text-neutral-900">
             Invest in the people on the block, and the block follows. Our job is to give those people the data, the tools, and the paycheck.
           </p>
         </Section>

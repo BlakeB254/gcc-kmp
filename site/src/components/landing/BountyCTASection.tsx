@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { Target, DollarSign, MapPin, ArrowRight } from 'lucide-react'
 
 export function BountyCTASection() {
@@ -44,36 +45,33 @@ export function BountyCTASection() {
             </div>
           </div>
 
-          {/* Right - stats cards */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
-              <DollarSign className="w-8 h-8 text-white/80 mb-3" />
-              <p className="text-2xl font-bold">$10</p>
-              <p className="text-sm text-white/70">Minimum bounty</p>
+          {/* Right - real photo of a spot report in action, with stat badges layered on top */}
+          <div className="relative">
+            <div className="relative aspect-[4/5] w-full max-w-sm mx-auto overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/20">
+              <Image
+                src="/images/optimized/photo-spot-reporting.webp"
+                alt="A GCC community member photographing illegal dumping to file a spot report"
+                fill
+                className="object-cover"
+                sizes="(min-width: 1024px) 384px, 90vw"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
-              <MapPin className="w-8 h-8 text-white/80 mb-3" />
-              <p className="text-2xl font-bold">GPS</p>
-              <p className="text-sm text-white/70">Verified cleanups</p>
+
+            {/* Stat badges float over the photo corners */}
+            <div className="absolute -bottom-4 -left-4 flex items-center gap-2 rounded-xl bg-white/95 backdrop-blur-sm px-4 py-3 shadow-lg">
+              <DollarSign className="w-5 h-5 text-red-600" />
+              <div>
+                <p className="text-lg font-bold text-neutral-900 leading-none">$10</p>
+                <p className="text-xs text-neutral-500">Minimum bounty</p>
+              </div>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20 col-span-2">
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="w-10 h-10 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center text-sm font-bold"
-                    >
-                      {['S', 'C', 'F'][i - 1]}
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <p className="font-semibold">Peer-to-Peer System</p>
-                  <p className="text-sm text-white/70">
-                    Spotters report, funders pledge, cleaners earn
-                  </p>
-                </div>
+            <div className="absolute -top-4 -right-4 flex items-center gap-2 rounded-xl bg-white/95 backdrop-blur-sm px-4 py-3 shadow-lg">
+              <MapPin className="w-5 h-5 text-red-600" />
+              <div>
+                <p className="text-lg font-bold text-neutral-900 leading-none">GPS</p>
+                <p className="text-xs text-neutral-500">Verified cleanups</p>
               </div>
             </div>
           </div>

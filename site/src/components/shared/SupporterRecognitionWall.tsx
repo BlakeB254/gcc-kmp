@@ -27,6 +27,8 @@ const tierConfig = {
 interface SupporterRecognitionWallProps {
   /** Max number of supporters to display */
   limit?: number
+  /** Only show supporters whose total contribution is at least this many dollars (e.g. a homepage teaser showing only major donors) */
+  minAmount?: number
   title?: string
   description?: string
   className?: string
@@ -34,6 +36,7 @@ interface SupporterRecognitionWallProps {
 
 export function SupporterRecognitionWall({
   limit = 8,
+  minAmount,
   title = 'Our Honor Wall',
   description = 'The organizations and individuals whose generosity fuels every block we clean.',
   className,
@@ -45,10 +48,17 @@ export function SupporterRecognitionWall({
     let cancelled = false
     async function fetchEntries() {
       try {
-        const res = await fetch(`/api/public/support-wall?view=leaderboard&limit=${limit}`)
+        // Fetch a wider pool than `limit` when filtering by minAmount, so the
+        // dollar-threshold filter isn't starved by an early page-size cutoff —
+        // the leaderboard endpoint is sorted by amount descending, so this is
+        // still exactly the top `limit` qualifying supporters after filtering.
+        const fetchLimit = minAmount ? Math.max(limit * 3, 24) : limit
+        const res = await fetch(`/api/public/support-wall?view=leaderboard&limit=${fetchLimit}`)
         if (!res.ok) throw new Error('Failed to fetch recognition wall')
         const data = await res.json()
-        if (!cancelled) setEntries(data.leaderboard || [])
+        const all: RecognitionEntry[] = data.leaderboard || []
+        const filtered = minAmount ? all.filter((e) => e.totalAmount >= minAmount) : all
+        if (!cancelled) setEntries(filtered.slice(0, limit))
       } catch (error) {
         console.error('Failed to fetch recognition wall:', error)
       } finally {
@@ -59,7 +69,7 @@ export function SupporterRecognitionWall({
     return () => {
       cancelled = true
     }
-  }, [limit])
+  }, [limit, minAmount])
 
   if (!isLoading && entries.length === 0) {
     return (
