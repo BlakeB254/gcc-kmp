@@ -18,7 +18,7 @@ The dashboard's "Quick Actions" row (Scan Spot, Bounties, Wallet, Rankings, Comm
 | Color model | Flat single-color glyphs on transparent background, tinted at runtime via `ColorFilter.tint(accentColor)` — same per-button accent-color system as today, not baked-in color |
 | Icon concepts | Nano Banana proposes fresh concepts per action (given label + semantic hint), not a literal translation of today's shapes; user picks a favorite per icon from generated variants |
 | Scan icon concept | Neutral device + scan-beam motif, no specific object (no tree, no litter item) — see §7 |
-| Map FAB scope | In scope — update alongside the dashboard icon for the same reason they were unified in the first place (commit `dd45fde`) |
+| FAB reuse scope | In scope — 2 additional call sites beyond the quick-action row reuse `EnvironmentScanIcon` today (dashboard's own FAB, and the map's spot-report FAB); update both alongside the dashboard icon for the same reason they were unified in the first place (commit `dd45fde`) |
 | Asset format | Transparent-background PNG via `composeApp/src/commonMain/composeResources/drawable/`, not vectorized |
 
 ## 3. Background (from codebase)
@@ -27,7 +27,7 @@ The dashboard's "Quick Actions" row (Scan Spot, Bounties, Wallet, Rankings, Comm
 - **Current icons:** `composeApp/src/commonMain/kotlin/com/gcc/app/ui/components/QuickActionIcons.kt` — `EnvironmentScanIcon`, `BountyTargetIcon`, `WalletCardIcon`, `RankingsPodiumIcon`, `CommunityNetworkIcon`, each a `@Composable` drawing raw `Canvas` primitives, taking accent color(s) as parameters.
 - **Icon system elsewhere:** every other icon surface in the app (bottom nav, admin stat cards, wallet/feed screens) uses stock `compose.materialIconsExtended` glyphs, not custom art. The dashboard quick actions are the one place with bespoke hand-drawn icons.
 - **No existing asset pipeline:** the only file under `composeApp/src/commonMain/composeResources/drawable/` today is `gcc_logo.png`. No `.xcassets`, no Android `drawable/`, no SVG import step exists yet — this spec introduces the first icon-asset pipeline in the app.
-- **Map FAB reuse:** `EnvironmentScanIcon` is also drawn on the map's spot-report FABs (commit `dd45fde`, "reused the scan icon on dashboard + map spot FABs for consistency").
+- **FAB reuse:** `EnvironmentScanIcon` is drawn in 3 places total — `DashboardScreen.kt:363` (the quick-action row), `DashboardScreen.kt:192` (the dashboard's own `Scaffold` FAB), and `MapFullScreen.kt:662` (`SpotCreateButton`, the map's spot-report FAB, commit `dd45fde`: "reused the scan icon on dashboard + map spot FABs for consistency"). All 3 use the same composable; all 3 are in scope.
 - **Design tokens:** `shared/src/commonMain/kotlin/com/gcc/shared/theme/GccDesignTokens.kt` defines an icon-size scale (`iconSm=21`, `iconMd=34`, `iconLg=55`) that today's icons don't strictly follow (30–32dp Canvas draw area). New icons should land on one of these or a clearly-named new constant.
 - **Accent colors used per action:** Scan = `GccBlue`, Bounties = `CardAccentSky`, Wallet = `CardAccentBlue`, Rankings = `CardAccentPurple`, Community = `GccGreen` (`ui/theme/Color.kt`).
 
