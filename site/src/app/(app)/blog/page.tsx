@@ -26,7 +26,9 @@ const POSTS: PostCard[] = [
     slug: '2026-07-03-issue-03',
     title: 'Boots on the ground',
     date: '2026-07-03',
-    publishAt: '2026-07-03T10:00:00-05:00',
+    // MANUAL HOLD — not scheduled yet, publish only once the team confirms
+    // a go-live time. Not a real target date; do not auto-flip this.
+    publishAt: '2099-01-01T00:00:00-05:00',
     description:
       "Issue #3 — Boots on the Ground. A cleaner site, a live iOS scanning feature (Android coming soon), a $2,000 gift from the University of Illinois Chicago toward our 100-block goal, the first North Lawndale cleanups landing July 5-6, a scan-powered heatmap getting sharper, and the next layer of our points economy taking shape.",
     heroImage: '/newsletter/issue-02/heatmap.png',
