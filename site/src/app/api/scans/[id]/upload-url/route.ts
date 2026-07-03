@@ -9,7 +9,20 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const UPLOAD_URL_TTL_SECONDS = 300
-const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'heic', 'mp4', 'bin', 'ply'])
+// ext -> a fixed server-side MIME type. contentType is never taken from the
+// request body — an attacker-chosen Content-Type on an R2 object served back
+// to a browser (e.g. as text/html) would be a stored-XSS vector.
+const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  heic: 'image/heic',
+  mp4: 'video/mp4',
+  bin: 'application/octet-stream',
+  ply: 'application/octet-stream',
+}
+// Matches gridCell()'s output shape (site/src/lib/world-observations.ts).
+const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
+const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -57,7 +70,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const deviceId = typeof body?.deviceId === 'string' ? body.deviceId : ''
     const capturedAt = typeof body?.capturedAt === 'string' ? body.capturedAt : ''
     const ext = typeof body?.ext === 'string' ? body.ext.toLowerCase() : ''
-    const contentType = typeof body?.contentType === 'string' ? body.contentType : 'application/octet-stream'
 
     if (!locationCellId || !deviceId || !capturedAt) {
       return NextResponse.json(
@@ -65,9 +77,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 400 }
       )
     }
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
+    // Reject rather than sanitize-and-continue: these become R2 object-key
+    // path segments, so anything outside a strict allowlist (`/`, `\`, `..`,
+    // control characters) must be a hard error, not silently rewritten.
+    if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid locationCellId' }, { status: 400 })
+    }
+    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid deviceId' }, { status: 400 })
+    }
+    const contentType = EXTENSION_CONTENT_TYPES[ext]
+    if (!contentType) {
       return NextResponse.json(
-        { data: null, success: false, message: `ext must be one of: ${[...ALLOWED_EXTENSIONS].join(', ')}` },
+        { data: null, success: false, message: `ext must be one of: ${Object.keys(EXTENSION_CONTENT_TYPES).join(', ')}` },
         { status: 400 }
       )
     }

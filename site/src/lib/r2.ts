@@ -49,18 +49,37 @@ export function r2Client(): S3Client {
   return cachedClient
 }
 
+// Matches gridCell()'s exact output shape (site/src/lib/world-observations.ts):
+// `${latIdx}:${lngIdx}`, both signed integers.
+const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
+// Bounded alphanumeric identifier — covers CoverageDeviceId's 32-char hex
+// format without hard-coupling to that exact scheme.
+const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
+
 /**
  * Raw per-session capture key, per the documented bucket layout (design spec
- * §2.4): `raw/{locationCellId}/{deviceId}/{capturedAt}.{ext}`. `capturedAt`
- * is sanitized to filesystem/URL-safe characters since it's typically an ISO
- * timestamp (colons aren't valid in S3 keys used with some client libraries).
+ * §2.4): `raw/{locationCellId}/{deviceId}/{capturedAt}.{ext}`. Every
+ * caller-supplied component is validated against a strict allowlist — this is
+ * an R2 object key derived directly from request-body input, so anything
+ * permitting `/`, `\`, or `..` here would let a client write outside the
+ * intended prefix (or overwrite another cell's/device's objects) rather than
+ * just producing an odd filename.
  */
 export function rawScanKey(locationCellId: string, deviceId: string, capturedAt: string, ext: string): string {
+  if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
+    throw new Error(`invalid locationCellId: ${locationCellId}`)
+  }
+  if (!DEVICE_ID_PATTERN.test(deviceId)) {
+    throw new Error(`invalid deviceId: ${deviceId}`)
+  }
   const safeCapturedAt = capturedAt.replace(/[^0-9A-Za-z._-]/g, '-')
   return `raw/${locationCellId}/${deviceId}/${safeCapturedAt}.${ext}`
 }
 
 /** Reconstructed-asset key, per §2.4: `reconstructed/{locationCellId}/{version}/{assetType}.{format}`. */
 export function reconstructedAssetKey(locationCellId: string, version: number, assetType: string, format: string): string {
+  if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
+    throw new Error(`invalid locationCellId: ${locationCellId}`)
+  }
   return `reconstructed/${locationCellId}/${version}/${assetType}.${format}`
 }
