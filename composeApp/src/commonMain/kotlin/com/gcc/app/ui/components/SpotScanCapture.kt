@@ -1,6 +1,7 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,7 @@ import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ScanCapturedPhoto
+import com.gcc.app.ui.screens.SpotArScreen
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccBlue
 import com.gcc.app.ui.theme.GccError
@@ -56,6 +58,19 @@ fun SpotScanCapture(
     val analyzer = remember { OnDeviceAnalyzer() }
     val cameraManager = remember { CameraManager() }
     var captureIndex by remember { mutableStateOf(0) }
+    // AR spot guidance fully replaces the capture UI while active: an
+    // ARSession and the AVCapture camera session cannot share the camera,
+    // so the CameraCapture subtree must leave the composition.
+    var showArGuide by remember { mutableStateOf(false) }
+
+    if (showArGuide) {
+        SpotArScreen(
+            spotLocation = spotLocation,
+            onExit = { showArGuide = false },
+            modifier = modifier,
+        )
+        return
+    }
 
     DisposableEffect(Unit) {
         val startedLocationHere = !locationProvider.isTracking
@@ -188,6 +203,26 @@ fun SpotScanCapture(
                 .align(Alignment.TopEnd)
                 .padding(top = 8.dp, end = 8.dp),
         )
+
+        // AR walk-around guidance entry — AR-capable devices only.
+        if (deviceCapabilities.deviceClass != DeviceClass.BASIC) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 16.dp, end = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GccBlue.copy(alpha = 0.9f))
+                    .clickable { showArGuide = true }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = "AR guide",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                )
+            }
+        }
     }
 }
 
