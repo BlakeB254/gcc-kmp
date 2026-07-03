@@ -15,7 +15,7 @@ type Platform = 'ios' | 'android' | 'both'
 export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModalProps) {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [platform, setPlatform] = useState<Platform>('both')
+  const [platform, setPlatform] = useState<Platform>('android')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
     if (isSuccess) {
       setEmail('')
       setPhone('')
-      setPlatform('both')
+      setPlatform('android')
       setIsSuccess(false)
     }
     setError(null)
@@ -98,7 +98,9 @@ export function AppStoreWaitlistModal({ isOpen, onClose }: AppStoreWaitlistModal
               </div>
               <div>
                 <span className="text-lg font-bold">GCC Mobile App</span>
-                <p className="text-sm font-normal text-neutral-500">Launching February 2nd</p>
+                <p className="text-sm font-normal text-neutral-500">
+                  iOS is live now · Android launching soon
+                </p>
               </div>
             </DialogTitle>
           </div>
