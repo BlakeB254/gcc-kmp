@@ -113,17 +113,42 @@ fun buildRoutePolygonsGeoJson(routeCoordinates: List<List<Coordinates>>): String
  */
 fun buildRouteInnerBoundariesGeoJson(
     routeCoordinates: List<List<Coordinates>>,
+    overrideRings: List<List<Coordinates>> = emptyList(),
     setbackMeters: Double = 8.0,
 ): String {
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
-        val ring = insetRingByEdgeOffset(closeLoop(coords), setbackMeters)
-            ?: return@mapIndexedNotNull null
-        val ringJson = ring.joinToString(",") { "[${it.lng},${it.lat}]" }
-        """{"type":"Feature","properties":{"routeIndex":$index,"kind":"inner"},"geometry":{"type":"Polygon","coordinates":[[$ringJson]]}}"""
+        val rings = innerRingsForLoop(coords, overrideRings, setbackMeters)
+        if (rings.isEmpty()) return@mapIndexedNotNull null
+        rings.joinToString(",") { ring ->
+            val ringJson = ring.joinToString(",") { "[${it.lng},${it.lat}]" }
+            """{"type":"Feature","properties":{"routeIndex":$index,"kind":"inner"},"geometry":{"type":"Polygon","coordinates":[[$ringJson]]}}"""
+        }
     }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
+ * Inner rings for one route loop: server/admin-authored rings whose centroid
+ * falls inside the loop (MULTIPLE islands supported — unfenced vacant lots
+ * between them stay scannable), falling back to the parallel inset when the
+ * route has no authored boundary yet.
+ */
+internal fun innerRingsForLoop(
+    loop: List<Coordinates>,
+    overrideRings: List<List<Coordinates>>,
+    setbackMeters: Double,
+): List<List<Coordinates>> {
+    val loopPairs = loop.map { it.lat to it.lng }
+    val matched = overrideRings.filter { ring ->
+        if (ring.size < 3) return@filter false
+        val cLat = ring.map { it.lat }.average()
+        val cLng = ring.map { it.lng }.average()
+        com.gcc.shared.geo.pointInPolygon(cLat, cLng, loopPairs)
+    }.map { closeLoop(it) }
+    if (matched.isNotEmpty()) return matched
+    return listOfNotNull(insetRingByEdgeOffset(closeLoop(loop), setbackMeters))
 }
 
 /**
@@ -133,16 +158,20 @@ fun buildRouteInnerBoundariesGeoJson(
  */
 fun buildRouteCorridorGeoJson(
     routeCoordinates: List<List<Coordinates>>,
+    overrideRings: List<List<Coordinates>> = emptyList(),
     setbackMeters: Double = 8.0,
 ): String {
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
         val outer = closeLoop(coords)
-        val inner = insetRingByEdgeOffset(outer, setbackMeters) ?: return@mapIndexedNotNull null
+        val holes = innerRingsForLoop(coords, overrideRings, setbackMeters)
+        if (holes.isEmpty()) return@mapIndexedNotNull null
         val outerJson = outer.joinToString(",") { "[${it.lng},${it.lat}]" }
-        val innerJson = inner.joinToString(",") { "[${it.lng},${it.lat}]" }
-        """{"type":"Feature","properties":{"routeIndex":$index},"geometry":{"type":"Polygon","coordinates":[[$outerJson],[$innerJson]]}}"""
+        val holesJson = holes.joinToString(",") { hole ->
+            "[" + hole.joinToString(",") { "[${it.lng},${it.lat}]" } + "]"
+        }
+        """{"type":"Feature","properties":{"routeIndex":$index},"geometry":{"type":"Polygon","coordinates":[[$outerJson],$holesJson]}}"""
     }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
 }

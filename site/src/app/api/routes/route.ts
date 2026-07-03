@@ -61,6 +61,7 @@ export async function GET(request: Request) {
 
     let checkpointsMap: Map<number, typeof routeCheckpoints.$inferSelect[]> = new Map()
     const blockBoundaryMap = new Map<number, unknown>()
+    const innerBoundaryMap = new Map<number, unknown>()
 
     if (routeIds.length > 0) {
       const [allCheckpoints, routeBlocks] = await Promise.all([
@@ -73,6 +74,7 @@ export async function GET(request: Request) {
           .select({
             routeId: blocks.routeId,
             locationBoundary: blocks.locationBoundary,
+            innerBoundary: blocks.innerBoundary,
           })
           .from(blocks)
           .where(inArray(blocks.routeId, routeIds)),
@@ -89,6 +91,9 @@ export async function GET(request: Request) {
       for (const block of routeBlocks) {
         if (block.routeId && block.locationBoundary) {
           blockBoundaryMap.set(block.routeId, block.locationBoundary)
+        }
+        if (block.routeId && block.innerBoundary) {
+          innerBoundaryMap.set(block.routeId, block.innerBoundary)
         }
       }
     }
@@ -108,6 +113,7 @@ export async function GET(request: Request) {
         serviceAreaId: route.serviceAreaId,
         geometry: route.geometry,
         blockBoundary: blockBoundaryMap.get(route.id) ?? null,
+        innerBoundary: innerBoundaryMap.get(route.id) ?? null,
         status: route.status,
         distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
         estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,

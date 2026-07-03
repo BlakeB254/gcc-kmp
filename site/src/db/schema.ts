@@ -370,6 +370,9 @@ export const blocks = pgTable('blocks', {
   // Location
   locationNeighborhood: varchar('location_neighborhood'),
   locationBoundary: jsonb('location_boundary'), // GeoJSON polygon
+  // Route-v2 inner boundary: private-property cutoff (GeoJSON polygon).
+  // Between locationBoundary and this ring = the required scan corridor.
+  innerBoundary: jsonb('inner_boundary'),
   locationCenter: jsonb('location_center'), // GeoJSON point for map centering
 
   // Display image (Vercel Blob URL set via admin app)

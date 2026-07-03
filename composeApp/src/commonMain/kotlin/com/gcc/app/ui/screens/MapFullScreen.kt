@@ -253,6 +253,23 @@ fun MapFullScreen(
             block.blockRouteCoordinates().takeIf { it.size >= 2 }
         }
     }
+    // Authored inner boundaries (route-v2): every ring from every visible
+    // route's MultiPolygon (multiple exclusion islands per route supported);
+    // centroid pairing in the map builders nests them under the right loop.
+    val innerBoundaryRings: List<List<Coordinates>> = remember(uiState.routes, assignedJobRoutePairs) {
+        (uiState.routes + assignedJobRoutePairs.map { it.second })
+            .mapNotNull { it.innerBoundary }
+            .flatMap { multi ->
+                multi.coordinates.mapNotNull { poly ->
+                    poly.firstOrNull()?.mapNotNull { pt ->
+                        val lng = pt.getOrNull(0) ?: return@mapNotNull null
+                        val lat = pt.getOrNull(1) ?: return@mapNotNull null
+                        Coordinates(lat = lat, lng = lng)
+                    }?.takeIf { it.size >= 3 }
+                }
+            }
+    }
+
     val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {
         assignedRouteCoordinates
     } else if (availableRouteCoordinates.isNotEmpty()) {
@@ -349,6 +366,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
+            innerBoundaryRings = innerBoundaryRings,
             enableGestures = true,
             showControls = true,
             statusBarPadding = true,

@@ -90,6 +90,8 @@ expect fun GccMap(
     routePolygons: List<Pair<Int, List<Coordinates>>> = emptyList(),
     /** Ledger coverage cells for the foundational clean/stale/fog tiles. */
     coverageCells: List<com.gcc.shared.model.MapCoverageCell> = emptyList(),
+    /** Authored inner-boundary rings (route-v2); empty → parallel inset. */
+    innerBoundaryRings: List<List<Coordinates>> = emptyList(),
     affectedBlocks: List<AffectedBlock> = emptyList(),
     onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},

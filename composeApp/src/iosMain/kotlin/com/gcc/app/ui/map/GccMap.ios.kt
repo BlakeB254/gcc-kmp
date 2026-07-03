@@ -78,6 +78,7 @@ actual fun GccMap(
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
+    innerBoundaryRings: List<List<Coordinates>>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
@@ -92,8 +93,12 @@ actual fun GccMap(
     val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
-    val routeInnerJson = remember(routeCoordinates) { buildRouteInnerBoundariesGeoJson(routeCoordinates) }
-    val routeCorridorJson = remember(routeCoordinates) { buildRouteCorridorGeoJson(routeCoordinates) }
+    val routeInnerJson = remember(routeCoordinates, innerBoundaryRings) {
+        buildRouteInnerBoundariesGeoJson(routeCoordinates, innerBoundaryRings)
+    }
+    val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
+        buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
+    }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
         else buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng)
