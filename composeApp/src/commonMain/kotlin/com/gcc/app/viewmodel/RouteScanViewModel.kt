@@ -6,6 +6,9 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.OutdoorGate
+import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
@@ -102,6 +105,18 @@ class RouteScanViewModel(
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
     private var coverageFlushJob: Job? = null
+
+    // "Go outside" gate: GPS-accuracy evidence is fed here from the location
+    // stream; the AR screen feeds camera scene votes via [onSceneVote]. While
+    // INDOOR, coverage accrual (ledger events + tracker cells) is suppressed.
+    private val outdoorGate = OutdoorGate()
+    val outdoorState: StateFlow<OutdoorState> = outdoorGate.state
+    private var accuracyJob: Job? = null
+
+    /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
+    fun onSceneVote(vote: SceneVote) {
+        outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+    }
 
     // ── Read-only projections for the AR route overlay (Task 16) ─────────
     // Exposed as read-only accessors rather than the mutable CoverageTracker /
@@ -573,6 +588,12 @@ class RouteScanViewModel(
                 coverageEventQueue.flush() // failed flushes keep events queued
             }
         }
+        accuracyJob?.cancel()
+        accuracyJob = scope.launch {
+            locationProvider.horizontalAccuracyMeters.collect { accuracy ->
+                outdoorGate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+            }
+        }
         locationJob?.cancel()
         locationJob = scope.launch {
             locationProvider.locationFlow.collect { location ->
@@ -584,8 +605,16 @@ class RouteScanViewModel(
 
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
-                        scoutPath.add(Pair(lat, lng))
                         updateBoundaryStatus(lat, lng)
+
+                        // "Go outside" gate: while judged indoors, accrue nothing —
+                        // no path point, no ledger event, no coverage cells. Reset
+                        // the segment anchor so no phantom distance spans the gap.
+                        if (outdoorGate.state.value == OutdoorState.INDOOR) {
+                            lastCoverageFix = null
+                            return@collect
+                        }
+                        scoutPath.add(Pair(lat, lng))
 
                         // Coverage-ledger event: distance walked since the last fix.
                         // Desktop is dev-only and the endpoint rejects its platform

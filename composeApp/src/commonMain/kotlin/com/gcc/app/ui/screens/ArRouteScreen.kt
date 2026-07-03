@@ -25,7 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
+import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
@@ -54,12 +56,25 @@ fun ArRouteScreen(
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+    val outdoorState by viewModel.outdoorState.collectAsState()
+    val isIndoor = outdoorState == OutdoorState.INDOOR
 
     // Overlay lifecycle: start when entering the AR screen, stop on the way out.
     // (iOS also pauses the ARSession from the UIKitView's onRelease.)
+    // Camera scene votes feed the ViewModel's OutdoorGate while the screen lives.
     DisposableEffect(overlay) {
         overlay.start()
-        onDispose { overlay.stop() }
+        overlay.setSceneVoteListener { vote -> viewModel.onSceneVote(vote) }
+        onDispose {
+            overlay.setSceneVoteListener(null)
+            overlay.stop()
+        }
+    }
+
+    // While judged indoors, pause frame analysis (saves battery; the GPS
+    // accuracy signal alone drives recovery once the worker steps outside).
+    LaunchedEffect(isIndoor) {
+        overlay.setFrameAnalysisEnabled(!isIndoor)
     }
 
     // Pair every GPS fix with the AR camera position, then refresh the fog so
@@ -125,6 +140,9 @@ fun ArRouteScreen(
                 )
             }
         }
+
+        // "Go outside" scrim — sits under the exit button so leaving AR always works.
+        GoOutsideOverlay(visible = isIndoor)
 
         // Exit AR button (top-left) — returns to the scout map.
         TextButton(

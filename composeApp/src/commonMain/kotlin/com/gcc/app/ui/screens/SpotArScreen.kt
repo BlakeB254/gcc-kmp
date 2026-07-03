@@ -27,11 +27,14 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.ObjectCoverageTracker
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.OutdoorGate
+import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.SpotArOverlay
 import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
@@ -78,15 +81,25 @@ fun SpotArScreen(
     val coveragePercent by tracker.coveragePercent.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
 
+    // "Go outside" gate: GPS accuracy + camera scene votes; INDOOR suppresses
+    // coverage accrual and shows the scrim.
+    val gate = remember { OutdoorGate() }
+    val outdoorState by gate.state.collectAsState()
+    val isIndoor = outdoorState == OutdoorState.INDOOR
+
     DisposableEffect(Unit) {
         tracker.initAroundPoint(spotLocation.lat, spotLocation.lng)
         overlay.setItemLocation(spotLocation.lat, spotLocation.lng)
         overlay.start()
+        overlay.setSceneVoteListener { vote ->
+            gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+        }
         val startedLocationHere = !locationProvider.isTracking
         if (startedLocationHere) {
             locationProvider.startLocationUpdates()
         }
         onDispose {
+            overlay.setSceneVoteListener(null)
             overlay.stop()
             if (startedLocationHere) {
                 locationProvider.stopLocationUpdates()
@@ -95,17 +108,32 @@ fun SpotArScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        locationProvider.horizontalAccuracyMeters.collect { accuracy ->
+            gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+        }
+    }
+
+    // Indoors: pause frame analysis (battery); GPS accuracy drives recovery.
+    LaunchedEffect(isIndoor) {
+        overlay.setFrameAnalysisEnabled(!isIndoor)
+    }
+
     // Feed GPS fixes into the tracker/overlay and enqueue ledger events.
     LaunchedEffect(Unit) {
         var lastLat: Double? = null
         var lastLng: Double? = null
         locationProvider.locationFlow.collect { location ->
+            // Keep the AR geo-reference fresh even indoors (harmless), but
+            // accrue no coverage while the OutdoorGate reads INDOOR.
+            overlay.updateGeoReference(location.lat, location.lng)
+            if (gate.state.value == OutdoorState.INDOOR) return@collect
+
             val distToItem = GeofenceVerification.distanceMeters(
                 location.lat, location.lng,
                 spotLocation.lat, spotLocation.lng,
             )
             tracker.updateCapturedAngle(location.lat, location.lng, distToItem)
-            overlay.updateGeoReference(location.lat, location.lng)
             overlay.updateCoverage(
                 tracker.coveredSectors.value,
                 tracker.getUncoveredSectorCenters(),
@@ -184,6 +212,9 @@ fun SpotArScreen(
                 )
             }
         }
+
+        // "Go outside" scrim — sits under the exit button so leaving always works.
+        GoOutsideOverlay(visible = isIndoor)
 
         // Exit button (top-left) — returns to the photo-capture view.
         TextButton(
