@@ -588,12 +588,14 @@ class RouteScanViewModel(
                         updateBoundaryStatus(lat, lng)
 
                         // Coverage-ledger event: distance walked since the last fix.
+                        // Desktop is dev-only and the endpoint rejects its platform
+                        // value — skip so the queue can't fill with unsendable events.
                         val prevFix = lastCoverageFix
                         lastCoverageFix = Pair(lat, lng)
                         val segmentMeters = prevFix?.let { (prevLat, prevLng) ->
                             GeofenceVerification.distanceMeters(prevLat, prevLng, lat, lng)
                         } ?: 0.0
-                        coverageEventQueue.enqueue(
+                        if (getPlatformName() != "desktop") coverageEventQueue.enqueue(
                             ScanCoverageEventRequest(
                                 deviceId = CoverageDeviceId.value,
                                 platform = getPlatformName(),

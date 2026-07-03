@@ -117,7 +117,9 @@ fun SpotArScreen(
             lastLat = location.lat
             lastLng = location.lng
 
-            queue.enqueue(
+            // Desktop is dev-only and the endpoint rejects its platform value —
+            // skip so the queue can't fill with unsendable events.
+            if (getPlatformName() != "desktop") queue.enqueue(
                 ScanCoverageEventRequest(
                     deviceId = CoverageDeviceId.value,
                     platform = getPlatformName(),
