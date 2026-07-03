@@ -99,22 +99,17 @@ actual fun GccMap(
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
     }
-    val coverageStateJsons = remember(coverageCells, spots, routeCoordinates) {
+    val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
         else {
-            // Fog anchors to the route cluster's geography (+~250m margin),
-            // not the camera — no floating disc at any zoom.
-            val loopPoints = routeCoordinates.flatten()
-            val fogBounds = if (loopPoints.size >= 3) {
-                val margin = 0.0023 // ~250m
-                doubleArrayOf(
-                    loopPoints.minOf { it.lat } - margin,
-                    loopPoints.minOf { it.lng } - margin,
-                    loopPoints.maxOf { it.lat } + margin,
-                    loopPoints.maxOf { it.lng } + margin,
-                )
-            } else null
-            buildCoverageStateGeoJsons(coverageCells, spots, centerLat, centerLng, fogBounds = fogBounds)
+            // WORLDWIDE fog-of-war (product direction): every unscanned place
+            // on the planet wears the veil; scans punch holes through it.
+            // (Public-land masking — water, parks, private parcels — comes
+            // from the DGX world model later.)
+            buildCoverageStateGeoJsons(
+                coverageCells, spots, centerLat, centerLng,
+                fogBounds = doubleArrayOf(-85.0, -180.0, 85.0, 180.0),
+            )
         }
     }
     val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
@@ -498,11 +493,14 @@ actual fun GccMap(
                     id = "coverage-fog",
                     source = fogSrc,
                     color = const(Color(0xFF6B7280)),
+                    // Gentle at overview, present at street level — the
+                    // world-veil must never bury basemap labels.
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        13 to const(0f),
-                        14.5 to const(0.24f),
+                        10 to const(0.08f),
+                        14 to const(0.18f),
+                        16 to const(0.22f),
                     ),
                 )
                 FillLayer(

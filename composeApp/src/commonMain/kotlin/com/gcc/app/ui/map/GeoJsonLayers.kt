@@ -859,39 +859,32 @@ fun buildCoverageStateGeoJsons(
         .filter { it.state == "stale" }
         .joinToString(",") { feature(it.lat, it.lng) }
 
-    // Never-scanned fog: covers the WHOLE bounded area (route cluster bbox)
-    // minus covered cells; cell size adapts to keep the count under the cap.
+    // Never-scanned fog: ONE smooth veil polygon over the bounded area with
+    // holes punched where the ledger has coverage. Rendering discrete cell
+    // quads produced a "broken grid lines" look at every attempt (three
+    // field reports) — a single translucent surface with scan holes reads
+    // as deliberate fog instead.
     val fogFeatures = StringBuilder()
-    var fogCount = 0
     if (fogBounds != null && fogBounds.size == 4) {
-        val (minLat, minLng, maxLat, maxLng) = listOf(fogBounds[0], fogBounds[1], fogBounds[2], fogBounds[3])
-        val heightM = (maxLat - minLat) * 111_320.0
-        val widthM = (maxLng - minLng) * 111_320.0 * lngScale
-        val fogCell = kotlin.math.sqrt((heightM * widthM) / 4000.0).coerceAtLeast(15.0)
-        val fogLatStep = fogCell / 111_320.0
-        val fogLngStep = fogCell / (111_320.0 * lngScale)
-        val rows = ((maxLat - minLat) / fogLatStep).toInt() + 1
-        val cols = ((maxLng - minLng) / fogLngStep).toInt() + 1
-        outer@ for (r in 0 until rows) {
-            for (c in 0 until cols) {
-                if (fogCount >= 4500) break@outer
-                val lat = minLat + (r + 0.5) * fogLatStep
-                val lng = minLng + (c + 0.5) * fogLngStep
-                val covered = coverageCells.any { cell ->
-                    val dLatM = (cell.lat - lat) * 111_320.0
-                    val dLngM = (cell.lng - lng) * 111_320.0 * lngScale
-                    dLatM * dLatM + dLngM * dLngM < (fogCell * 0.7) * (fogCell * 0.7)
-                }
-                if (covered) continue
-                if (fogFeatures.isNotEmpty()) fogFeatures.append(',')
-                val hLat = fogLatStep / 2
-                val hLng = fogLngStep / 2
-                fogFeatures.append(
-                    """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}],[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]]}}"""
-                )
-                fogCount++
+        val minLat = fogBounds[0]
+        val minLng = fogBounds[1]
+        val maxLat = fogBounds[2]
+        val maxLng = fogBounds[3]
+        val outerRing = "[[$minLng,$minLat],[$maxLng,$minLat],[$maxLng,$maxLat],[$minLng,$maxLat],[$minLng,$minLat]]"
+        val holeSize = cellSizeMeters * 1.2
+        val hLat = holeSize / 2 / 111_320.0
+        val hLng = holeSize / 2 / (111_320.0 * lngScale)
+        val holes = coverageCells
+            .filter { it.lat in minLat..maxLat && it.lng in minLng..maxLng }
+            .take(1500)
+            .joinToString(",") { cell ->
+                "[[${cell.lng - hLng},${cell.lat - hLat}],[${cell.lng + hLng},${cell.lat - hLat}]," +
+                    "[${cell.lng + hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat - hLat}]]"
             }
-        }
+        val rings = if (holes.isEmpty()) "[$outerRing]" else "[$outerRing,$holes]"
+        fogFeatures.append(
+            """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":$rings}}"""
+        )
     }
 
     fun wrap(features: String) =
