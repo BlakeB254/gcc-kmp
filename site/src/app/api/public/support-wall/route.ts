@@ -18,10 +18,15 @@ export const runtime = 'nodejs'
  * - limit: Number of items (default: 20 for recent, 50 for leaderboard)
  */
 
-// Tier thresholds in cents
+// Tier thresholds in cents — kept in sync with the block-count tiers in
+// src/lib/sponsor-tiers.ts (1 block = $100): bronze 1-4 blocks, silver
+// 5-19, gold 20-49, platinum 50+. Content-treatment tiers layer on top of
+// these same numbers (see SupporterRecognitionWall / PartnerSpotlight):
+// gold = honor-wall card, platinum = on-page section, and $10,000+ within
+// platinum additionally gets a full blog-style page.
 const TIER_THRESHOLDS = {
-  platinum: 1000000, // $10,000+
-  gold: 250000,       // $2,500+
+  platinum: 500000,  // $5,000+
+  gold: 200000,       // $2,000+
   silver: 50000,      // $500+
   bronze: 0,          // < $500
 }
@@ -35,6 +40,7 @@ function getTier(amountCents: number): 'platinum' | 'gold' | 'silver' | 'bronze'
 
 interface LeaderboardEntry {
   rank: number
+  sponsorId: number | null
   displayName: string
   isAnonymous: boolean
   totalAmount: number // In dollars
@@ -43,6 +49,8 @@ interface LeaderboardEntry {
   blocksSponsored: number
   logoUrl: string | null
   tagline: string | null
+  bio: string | null
+  website: string | null
 }
 
 interface RecentContribution {
@@ -114,6 +122,8 @@ export async function GET(request: NextRequest) {
           isAnonymous: sponsors.preferencesIsAnonymous,
           profileIsPublic: sponsors.profileIsPublic,
           tagline: sponsors.profileTagline,
+          bio: sponsors.profileBio,
+          website: sponsors.businessWebsite,
           logoUrl: media.url,
         })
         .from(transactions)
@@ -127,6 +137,8 @@ export async function GET(request: NextRequest) {
           sponsors.preferencesIsAnonymous,
           sponsors.profileIsPublic,
           sponsors.profileTagline,
+          sponsors.profileBio,
+          sponsors.businessWebsite,
           media.url
         )
         .orderBy(desc(sum(transactions.amount)))
@@ -140,6 +152,8 @@ export async function GET(request: NextRequest) {
 
         return {
           rank: index + 1,
+          // Anonymous/private sponsors don't get a linkable profile page.
+          sponsorId: showProfileDetails ? row.sponsorId : null,
           displayName: isAnonymous
             ? 'Anonymous Supporter'
             : row.businessName || row.displayName || 'Anonymous Supporter',
@@ -150,6 +164,8 @@ export async function GET(request: NextRequest) {
           blocksSponsored: Number(row.blocksSponsored),
           logoUrl: showProfileDetails ? row.logoUrl || null : null,
           tagline: showProfileDetails ? row.tagline || null : null,
+          bio: showProfileDetails ? row.bio || null : null,
+          website: showProfileDetails ? row.website || null : null,
         }
       })
 
