@@ -45,6 +45,7 @@ import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.isTestAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
 import com.gcc.app.util.padTwo
+import gcc_kmp.composeapp.generated.resources.*
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
@@ -189,9 +190,9 @@ fun DashboardScreen(
                 onClick = onSpotClick,
                 containerColor = GccGreen,
             ) {
-                EnvironmentScanIcon(
-                    beamColor = Color.White,
-                    natureColor = Color.White.copy(alpha = 0.92f),
+                QuickActionGlyph(
+                    resource = Res.drawable.ic_quick_scan,
+                    tint = Color.White,
                 )
             }
         },
@@ -360,35 +361,35 @@ fun DashboardScreen(
                         label = "Environment\nScan",
                         bgColor = GccBlue,
                         onClick = onSpotClick,
-                        icon = { EnvironmentScanIcon(beamColor = GccBlue, natureColor = GccGreen) },
+                        icon = { QuickActionGlyph(Res.drawable.ic_quick_scan, GccBlue) },
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC6",
                         label = "Bounties",
                         bgColor = CardAccentSky,
                         onClick = onBountyListClick,
-                        icon = { BountyTargetIcon(color = CardAccentSky) },
+                        icon = { QuickActionGlyph(Res.drawable.ic_quick_bounty, CardAccentSky) },
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDCB0",
                         label = "Wallet",
                         bgColor = CardAccentBlue,
                         onClick = onWalletClick,
-                        icon = { WalletCardIcon(color = CardAccentBlue) },
+                        icon = { QuickActionGlyph(Res.drawable.ic_quick_wallet, CardAccentBlue) },
                     )
                     QuickActionButton(
                         emoji = "\uD83C\uDFC5",
                         label = "Rankings",
                         bgColor = CardAccentPurple,
                         onClick = onLeaderboardClick,
-                        icon = { RankingsPodiumIcon(color = CardAccentPurple) },
+                        icon = { QuickActionGlyph(Res.drawable.ic_quick_rankings, CardAccentPurple) },
                     )
                     QuickActionButton(
                         emoji = "\uD83D\uDCF0",
                         label = "Community",
                         bgColor = GccGreen,
                         onClick = onFeedClick,
-                        icon = { CommunityNetworkIcon(color = GccGreen) },
+                        icon = { QuickActionGlyph(Res.drawable.ic_quick_community, GccGreen) },
                     )
                 }
             }
