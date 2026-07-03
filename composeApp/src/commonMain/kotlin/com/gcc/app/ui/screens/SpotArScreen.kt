@@ -1,10 +1,13 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -15,7 +18,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,13 +30,24 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.DeviceCapabilities
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.ObjectCoverageTracker
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.OutdoorGate
+import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.SpotArOverlay
 import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.ui.components.DetectionReticleOverlay
+import com.gcc.app.ui.components.DiagnosticsOverlay
+import com.gcc.app.ui.components.GoOutsideOverlay
+import com.gcc.app.ui.components.PointsPip
+import com.gcc.app.ui.components.PointsPipOverlay
+import com.gcc.app.ui.components.SessionPointsPill
+import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
@@ -70,23 +86,48 @@ fun SpotArScreen(
     val overlay = remember { SpotArOverlay() }
     val tracker = remember { ObjectCoverageTracker() }
     val queue = remember(apiClient) {
-        CoverageEventQueue(submitFn = { apiClient.submitCoverageEvents(it) })
+        CoverageEventQueue(submitFn = { events ->
+            try {
+                apiClient.submitCoverageEvents(events)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("coverage-flush", "spot flush of ${events.size} events failed (kept queued)", e)
+                throw e
+            }
+        })
     }
     // Outlives the composition just long enough for the final flush on exit.
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
 
     val coveragePercent by tracker.coveragePercent.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+    val liveDetections by overlay.liveDetections.collectAsState()
+
+    // Live points HUD: spot mode has no session grid or prior fetch, so the
+    // estimate uses the server-equivalent 10m cells and treats them as new.
+    val estimator = remember { SessionPointsEstimator() }
+    var sessionPoints by remember { mutableStateOf(0) }
+    var pips by remember { mutableStateOf(listOf<PointsPip>()) }
+    var nextPipId by remember { mutableStateOf(0L) }
+
+    // "Go outside" gate: GPS accuracy + camera scene votes; INDOOR suppresses
+    // coverage accrual and shows the scrim.
+    val gate = remember { OutdoorGate() }
+    val outdoorState by gate.state.collectAsState()
+    val isIndoor = outdoorState == OutdoorState.INDOOR
 
     DisposableEffect(Unit) {
         tracker.initAroundPoint(spotLocation.lat, spotLocation.lng)
         overlay.setItemLocation(spotLocation.lat, spotLocation.lng)
         overlay.start()
+        overlay.setSceneVoteListener { vote ->
+            gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+        }
         val startedLocationHere = !locationProvider.isTracking
         if (startedLocationHere) {
             locationProvider.startLocationUpdates()
         }
         onDispose {
+            overlay.setSceneVoteListener(null)
             overlay.stop()
             if (startedLocationHere) {
                 locationProvider.stopLocationUpdates()
@@ -95,17 +136,40 @@ fun SpotArScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        locationProvider.horizontalAccuracyMeters.collect { accuracy ->
+            gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+        }
+    }
+
+    // Indoors: pause frame analysis (battery); GPS accuracy drives recovery.
+    LaunchedEffect(isIndoor) {
+        overlay.setFrameAnalysisEnabled(!isIndoor)
+    }
+
+    // Field diagnostics: state transitions land in the on-screen log.
+    LaunchedEffect(outdoorState) {
+        DiagnosticsLog.info("outdoor-gate", "spot gate → $outdoorState")
+    }
+    LaunchedEffect(trackingState) {
+        DiagnosticsLog.info("ar-tracking", "spot AR tracking → $trackingState")
+    }
+
     // Feed GPS fixes into the tracker/overlay and enqueue ledger events.
     LaunchedEffect(Unit) {
         var lastLat: Double? = null
         var lastLng: Double? = null
         locationProvider.locationFlow.collect { location ->
+            // Keep the AR geo-reference fresh even indoors (harmless), but
+            // accrue no coverage while the OutdoorGate reads INDOOR.
+            overlay.updateGeoReference(location.lat, location.lng)
+            if (gate.state.value == OutdoorState.INDOOR) return@collect
+
             val distToItem = GeofenceVerification.distanceMeters(
                 location.lat, location.lng,
                 spotLocation.lat, spotLocation.lng,
             )
             tracker.updateCapturedAngle(location.lat, location.lng, distToItem)
-            overlay.updateGeoReference(location.lat, location.lng)
             overlay.updateCoverage(
                 tracker.coveredSectors.value,
                 tracker.getUncoveredSectorCenters(),
@@ -116,6 +180,14 @@ fun SpotArScreen(
             } ?: 0.0
             lastLat = location.lat
             lastLng = location.lng
+
+            // Live points HUD estimate for this segment.
+            val cell10m = SessionPointsEstimator.gridCell10m(location.lat, location.lng)
+            val pointsDelta = estimator.onSegment(cell10m, priorState = null, meters = segmentMeters)
+            if (pointsDelta > 0) {
+                sessionPoints = estimator.total
+                pips = pips + PointsPip(id = nextPipId++, amount = pointsDelta)
+            }
 
             // Desktop is dev-only and the endpoint rejects its platform value —
             // skip so the queue can't fill with unsendable events.
@@ -145,11 +217,32 @@ fun SpotArScreen(
     Box(modifier = modifier.fillMaxSize()) {
         SpotArOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
 
+        // Live trash-detection reticles over the camera feed.
+        DetectionReticleOverlay(
+            detections = liveDetections,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Live points HUD (top-right) + floating reward pips.
+        SessionPointsPill(
+            points = sessionPoints,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 8.dp, end = 12.dp),
+        )
+        PointsPipOverlay(
+            pips = pips,
+            onExpired = { id -> pips = pips.filterNot { it.id == id } },
+            modifier = Modifier.fillMaxSize(),
+        )
+
         // Coverage progress (top-center).
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 48.dp)
+                .statusBarsPadding()
+                .padding(top = 8.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black.copy(alpha = 0.65f))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -171,7 +264,8 @@ fun SpotArScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 96.dp, start = 16.dp, end = 16.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.Black.copy(alpha = 0.65f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -185,11 +279,36 @@ fun SpotArScreen(
             }
         }
 
+        // Done (bottom-right) — returns to photo capture with coverage banked.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 16.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(GccGreen)
+                .clickable { onExit() }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+        ) {
+            Text(
+                text = if (coveragePercent >= 100.0) "Done ✓" else "Done scanning",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+        }
+
+        // "Go outside" scrim — sits under the exit button so leaving always works.
+        GoOutsideOverlay(visible = isIndoor)
+
+        DiagnosticsOverlay()
+
         // Exit button (top-left) — returns to the photo-capture view.
         TextButton(
             onClick = onExit,
             modifier = Modifier
-                .padding(8.dp)
+                .statusBarsPadding()
+                .padding(4.dp)
                 .align(Alignment.TopStart),
         ) {
             Box(

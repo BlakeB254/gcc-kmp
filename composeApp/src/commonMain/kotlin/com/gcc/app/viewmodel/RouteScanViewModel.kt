@@ -5,7 +5,12 @@ import com.gcc.app.platform.ArScanner
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.OutdoorGate
+import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.SceneVote
+import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
@@ -20,11 +25,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 
 // ── UI state ─────────────────────────────────────────────────────────
 
@@ -97,11 +107,160 @@ class RouteScanViewModel(
     // Coverage-ledger event batching (design spec §1.6): route-mode scan
     // coverage events queue locally and flush every 30s + on session end.
     private val coverageEventQueue = CoverageEventQueue(
-        submitFn = { apiClient.submitCoverageEvents(it) },
+        submitFn = { events ->
+            try {
+                apiClient.submitCoverageEvents(events)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("coverage-flush", "route flush of ${events.size} events failed (kept queued)", e)
+                throw e
+            }
+        },
     )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
     private var coverageFlushJob: Job? = null
+
+    // "Go outside" gate: GPS-accuracy evidence is fed here from the location
+    // stream; the AR screen feeds camera scene votes via [onSceneVote]. While
+    // INDOOR, coverage accrual (ledger events + tracker cells) is suppressed.
+    private val outdoorGate = OutdoorGate()
+    val outdoorState: StateFlow<OutdoorState> = outdoorGate.state
+    private var accuracyJob: Job? = null
+
+    /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
+    fun onSceneVote(vote: SceneVote) {
+        outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+    }
+
+    // Live points HUD: client-side estimate + one-shot "+N pts" pip events.
+    // Display-only; the server ledger total lands on the completion screen.
+    private val pointsEstimator = SessionPointsEstimator()
+    private val _sessionPointsEstimate = MutableStateFlow(0)
+    val sessionPointsEstimate: StateFlow<Int> = _sessionPointsEstimate.asStateFlow()
+    private val _pointsPips = MutableSharedFlow<Int>(extraBufferCapacity = 16)
+    val pointsPips: SharedFlow<Int> = _pointsPips
+
+    // Prior coverage state per client grid cell ("fresh" | "stale"), from the
+    // production ledger. Cells absent from the map were never scanned.
+    // Consumed by the live points estimator; "fresh" cells also start revealed.
+    private var cellPriorStates: Map<Pair<Int, Int>, String> = emptyMap()
+
+    // ── Expected-observation (rectify) flow ──────────────────────────
+    // Dirty world observations near the route, rendered as expected-trash AR
+    // markers. Walking within RECTIFY_PROXIMITY_METERS of one surfaces a
+    // confirm sheet: "Still there" dismisses for the session, "Already clean"
+    // posts to /api/scans/{id}/rectify (25-pt bonus when it supersedes a real
+    // prior dirty observation).
+    private val _expectedObservations = MutableStateFlow<List<WorldObservation>>(emptyList())
+    val expectedObservations: StateFlow<List<WorldObservation>> = _expectedObservations.asStateFlow()
+    private val _nearbyExpectedObservation = MutableStateFlow<WorldObservation?>(null)
+    val nearbyExpectedObservation: StateFlow<WorldObservation?> = _nearbyExpectedObservation.asStateFlow()
+    private val resolvedObservationIds = mutableSetOf<Int>()
+    private var rectifyBonusPoints = 0
+
+    /** "Still there" — keep the marker but stop prompting this session. */
+    fun dismissExpectedObservation(observation: WorldObservation) {
+        resolvedObservationIds.add(observation.id)
+        _nearbyExpectedObservation.value = null
+    }
+
+    /** "Already clean" — record the rectification and credit the bonus. */
+    fun rectifyObservation(observation: WorldObservation) {
+        val scanId = _uiState.value.scanId ?: return
+        resolvedObservationIds.add(observation.id)
+        _nearbyExpectedObservation.value = null
+        _expectedObservations.value = _expectedObservations.value.filterNot { it.id == observation.id }
+        scope.launch {
+            try {
+                val result = apiClient.rectifyScanObservation(scanId, observation.lat, observation.lng)
+                if (result.pointsAwarded > 0) {
+                    rectifyBonusPoints += result.pointsAwarded
+                    _sessionPointsEstimate.value = pointsEstimator.total + rectifyBonusPoints
+                    _pointsPips.tryEmit(result.pointsAwarded)
+                }
+            } catch (e: Exception) {
+                // Put it back so the worker can retry when they pass again.
+                DiagnosticsLog.error("rectify", "rectify of observation ${observation.id} failed (will re-prompt)", e)
+                resolvedObservationIds.remove(observation.id)
+                _expectedObservations.value = _expectedObservations.value + observation
+            }
+        }
+    }
+
+    /**
+     * Bring the digital twin into the AR fog: fetch `/api/map/coverage` for
+     * the route's bounding box and (a) pre-reveal cells the ledger marks
+     * fresh, (b) remember fresh/stale priors for live points estimation.
+     * Server cells are 10m; each maps onto the 3m client cells inside its
+     * footprint. Fetch failures degrade silently to session-local fog.
+     */
+    private fun seedFogFromServerCoverage(waypoints: List<Coordinates>) {
+        cellPriorStates = emptyMap()
+        if (waypoints.isEmpty()) return
+        scope.launch {
+            try {
+                val pad = 0.0005 // ~50m of slack around the route bbox
+                val bbox = listOf(
+                    waypoints.minOf { it.lng } - pad,
+                    waypoints.minOf { it.lat } - pad,
+                    waypoints.maxOf { it.lng } + pad,
+                    waypoints.maxOf { it.lat } + pad,
+                ).joinToString(",")
+                val serverCells = apiClient.getMapCoverage(bbox).cells
+
+                val priors = mutableMapOf<Pair<Int, Int>, String>()
+                val fresh = mutableSetOf<Pair<Int, Int>>()
+                for (serverCell in serverCells) {
+                    for (cell in clientCellsForServerCell(serverCell.lat, serverCell.lng)) {
+                        priors[cell] = serverCell.state
+                        if (serverCell.state == "fresh") fresh.add(cell)
+                    }
+                }
+                cellPriorStates = priors
+                if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
+                DiagnosticsLog.info("fog-seed", "seeded ${fresh.size} fresh cells, ${priors.size} priors from ${serverCells.size} server cells")
+            } catch (e: Exception) {
+                // Non-fatal: fog stays session-local, estimator treats all as new.
+                DiagnosticsLog.error("fog-seed", "coverage fetch failed — fog is session-local", e)
+            }
+        }
+        scope.launch {
+            try {
+                val pad = 0.0005
+                val bbox = listOf(
+                    waypoints.minOf { it.lng } - pad,
+                    waypoints.minOf { it.lat } - pad,
+                    waypoints.maxOf { it.lng } + pad,
+                    waypoints.maxOf { it.lat } + pad,
+                ).joinToString(",")
+                _expectedObservations.value = apiClient.getMapObservations(bbox)
+                    .filter { it.state == "dirty" }
+                DiagnosticsLog.info("expected-obs", "${_expectedObservations.value.size} dirty observations near route")
+            } catch (e: Exception) {
+                // Non-fatal: no expected-trash markers this session.
+                DiagnosticsLog.error("expected-obs", "observations fetch failed — no expected markers", e)
+            }
+        }
+    }
+
+    /** Client 3m grid cells whose centers fall inside a 10m server cell. */
+    private fun clientCellsForServerCell(centerLat: Double, centerLng: Double): Set<Pair<Int, Int>> {
+        val center = coverageTracker.cellForLatLng(centerLat, centerLng) ?: return emptySet()
+        val halfLat = 5.0 / 111_320.0
+        val halfLng = 5.0 / (111_320.0 * cos(centerLat * PI / 180.0))
+        val out = mutableSetOf<Pair<Int, Int>>()
+        for (dr in -2..2) {
+            for (dc in -2..2) {
+                val row = center.first + dr
+                val col = center.second + dc
+                val (lat, lng) = coverageTracker.cellCenterLatLng(row, col)
+                if (abs(lat - centerLat) <= halfLat && abs(lng - centerLng) <= halfLng) {
+                    out.add(row to col)
+                }
+            }
+        }
+        return out
+    }
 
     // ── Read-only projections for the AR route overlay (Task 16) ─────────
     // Exposed as read-only accessors rather than the mutable CoverageTracker /
@@ -186,6 +345,7 @@ class RouteScanViewModel(
         val waypoints = effectiveCheckpoints
             .map { it.coordinates }
         coverageTracker.initFromRoute(waypoints)
+        seedFogFromServerCoverage(waypoints)
 
         // Observe coverage changes
         coverageJob = scope.launch {
@@ -249,6 +409,7 @@ class RouteScanViewModel(
                 }
                 startTimer()
             } catch (e: Exception) {
+                DiagnosticsLog.error("scout", "startScout failed", e)
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
                     error = e.message ?: "Failed to start scout",
@@ -383,6 +544,7 @@ class RouteScanViewModel(
                     error = null,
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scout", "completeScout failed", e)
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to complete scout: ${e.message}",
                 )
@@ -405,6 +567,7 @@ class RouteScanViewModel(
                     sectionPrompt = "Record the after scan for the first cleanup target.",
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scan-phase", "startCleaning failed", e)
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to start cleaning: ${e.message}",
                 )
@@ -531,6 +694,7 @@ class RouteScanViewModel(
                     pointsAwarded = response.pointsAwarded,
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
                 _uiState.value = _uiState.value.copy(
                     phase = ScanPhase.SUBMITTING,
                     isSubmitting = false,
@@ -573,6 +737,21 @@ class RouteScanViewModel(
                 coverageEventQueue.flush() // failed flushes keep events queued
             }
         }
+        accuracyJob?.cancel()
+        accuracyJob = scope.launch {
+            locationProvider.horizontalAccuracyMeters.collect { accuracy ->
+                outdoorGate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+            }
+        }
+        scope.launch {
+            var lastState: OutdoorState? = null
+            outdoorGate.state.collect { gateState ->
+                if (gateState != lastState) {
+                    DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
+                    lastState = gateState
+                }
+            }
+        }
         locationJob?.cancel()
         locationJob = scope.launch {
             locationProvider.locationFlow.collect { location ->
@@ -584,8 +763,16 @@ class RouteScanViewModel(
 
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
-                        scoutPath.add(Pair(lat, lng))
                         updateBoundaryStatus(lat, lng)
+
+                        // "Go outside" gate: while judged indoors, accrue nothing —
+                        // no path point, no ledger event, no coverage cells. Reset
+                        // the segment anchor so no phantom distance spans the gap.
+                        if (outdoorGate.state.value == OutdoorState.INDOOR) {
+                            lastCoverageFix = null
+                            return@collect
+                        }
+                        scoutPath.add(Pair(lat, lng))
 
                         // Coverage-ledger event: distance walked since the last fix.
                         // Desktop is dev-only and the endpoint rejects its platform
@@ -607,6 +794,26 @@ class RouteScanViewModel(
                                 capturedAt = Clock.System.now().toString(),
                             )
                         )
+
+                        // Live points HUD: estimate what this segment earned.
+                        val gridCell = coverageTracker.cellForLatLng(lat, lng)
+                        val pointsDelta = pointsEstimator.onSegment(
+                            gridCell, cellPriorStates[gridCell], segmentMeters,
+                        )
+                        if (pointsDelta > 0) {
+                            _sessionPointsEstimate.value = pointsEstimator.total + rectifyBonusPoints
+                            _pointsPips.tryEmit(pointsDelta)
+                        }
+
+                        // Expected-observation proximity: prompt when within
+                        // range of an unresolved dirty observation.
+                        _nearbyExpectedObservation.value = _expectedObservations.value
+                            .asSequence()
+                            .filter { it.id !in resolvedObservationIds }
+                            .map { it to GeofenceVerification.distanceMeters(lat, lng, it.lat, it.lng) }
+                            .filter { (_, dist) -> dist <= RECTIFY_PROXIMITY_METERS }
+                            .minByOrNull { (_, dist) -> dist }
+                            ?.first
 
                         // AR tier: use camera frustum for coverage; GPS tier: use radius
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
@@ -754,3 +961,6 @@ private fun ScanHotspot.sectionIndex(): Int? =
         ?.substringAfter("section:", missingDelimiterValue = "")
         ?.takeWhile { it.isDigit() }
         ?.toIntOrNull()
+
+/** Distance at which an expected-dirty observation surfaces the confirm sheet. */
+private const val RECTIFY_PROXIMITY_METERS = 5.0

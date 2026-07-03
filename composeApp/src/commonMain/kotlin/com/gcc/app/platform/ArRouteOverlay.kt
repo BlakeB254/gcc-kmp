@@ -30,6 +30,21 @@ expect class ArRouteOverlay() {
     fun updateBoundaryStatus(isOutside: Boolean)
     fun start()
     fun stop()
+
+    /** Live trash detections from sampled AR frames (iOS only; empty elsewhere). */
+    val liveDetections: StateFlow<List<LiveDetection>>
+
+    /** Indoor/outdoor scene votes from sampled AR frames, for the OutdoorGate
+     *  (iOS only; never invoked elsewhere). Listener is called on the main thread. */
+    fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?)
+
+    /** Pause/resume frame sampling (scene votes + detections) without tearing
+     *  down the ARSession — used while the OutdoorGate reads INDOOR. */
+    fun setFrameAnalysisEnabled(enabled: Boolean)
+
+    /** Drop a persistent world-anchored marker at a lat/lng (no-op off-iOS,
+     *  and before the first geo-reference pairing exists). */
+    fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind)
 }
 
 /**

@@ -32,6 +32,14 @@ actual class LocationProvider actual constructor() {
     private val _headingDegrees = MutableStateFlow<Float?>(null)
     actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
 
+    private val _horizontalAccuracyMeters = MutableStateFlow<Double?>(null)
+    actual val horizontalAccuracyMeters: StateFlow<Double?> = _horizontalAccuracyMeters.asStateFlow()
+
+    /** CLLocation reports negative horizontalAccuracy for invalid fixes. */
+    private fun recordAccuracy(location: CLLocation) {
+        _horizontalAccuracyMeters.value = location.horizontalAccuracy.takeIf { it >= 0.0 }
+    }
+
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 
@@ -58,6 +66,7 @@ actual class LocationProvider actual constructor() {
                     Coordinates(lat = latitude, lng = longitude)
                 }
                 _currentLocation.value = coords
+                recordAccuracy(clLocation)
                 trySend(coords)
             }
 
@@ -111,6 +120,7 @@ actual class LocationProvider actual constructor() {
                     Coordinates(lat = latitude, lng = longitude)
                 }
                 _currentLocation.value = coords
+                recordAccuracy(clLocation)
             }
 
             override fun locationManager(

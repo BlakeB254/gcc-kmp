@@ -51,6 +51,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
 
+        // Apple-native crash/hang diagnostics (MetricKit): payloads arrive on
+        // the launch after an incident and are persisted for the in-app
+        // diagnostics panel + Files-app retrieval.
+        CrashDiagnosticsObserver.shared.start()
+
         // Bridge UIApplication push methods to Kotlin (K/N can't call these directly)
         PushNotificationManager.companion.registerCallback = {
             DispatchQueue.main.async {

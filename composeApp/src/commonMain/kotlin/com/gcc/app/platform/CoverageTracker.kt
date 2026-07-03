@@ -113,6 +113,33 @@ class CoverageTracker {
         return lat to lng
     }
 
+    /**
+     * Forward projection: the grid cell containing (lat, lng), or null when
+     * the point falls outside the grid (or the grid isn't initialised yet).
+     * Used to map production coverage cells ([seedScannedCells]) and world
+     * observations onto this session's grid.
+     */
+    fun cellForLatLng(lat: Double, lng: Double): Pair<Int, Int>? {
+        if (gridRows == 0 || gridCols == 0 || latPerMeter == 0.0 || lngPerMeter == 0.0) return null
+        val row = ((lat - originLat) / (cellSizeMeters * latPerMeter)).toInt()
+        val col = ((lng - originLng) / (cellSizeMeters * lngPerMeter)).toInt()
+        if (row < 0 || row >= gridRows || col < 0 || col >= gridCols) return null
+        return row to col
+    }
+
+    /**
+     * Seed cells that the production coverage ledger already marks fresh:
+     * they are excluded from the fog overlay (nothing left to reveal there)
+     * but do NOT count toward this session's [coveragePercent] — scout
+     * completion is still earned by the worker's own walk.
+     */
+    fun seedScannedCells(cells: Set<Pair<Int, Int>>) {
+        preSeededCells = preSeededCells + cells
+    }
+
+    /** Cells already fresh in the production ledger — fog-exempt only. */
+    private var preSeededCells: Set<Pair<Int, Int>> = emptySet()
+
     // ── Position update ──────────────────────────────────────────────
 
     /**
@@ -241,7 +268,7 @@ class CoverageTracker {
 
     /** Corridor cells (row, col) not yet scanned — drives ArRouteOverlay's fog node set. */
     fun getUnscannedCells(): Set<Pair<Int, Int>> =
-        corridorCells - _scannedCells.value
+        corridorCells - _scannedCells.value - preSeededCells
 
     // ── Reset ────────────────────────────────────────────────────────
 

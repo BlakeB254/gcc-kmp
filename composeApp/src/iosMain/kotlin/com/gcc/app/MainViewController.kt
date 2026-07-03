@@ -6,6 +6,7 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.app.di.appModule
 import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
+import com.gcc.app.platform.installCrashReporting
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
 import org.koin.mp.KoinPlatform
@@ -28,6 +29,10 @@ fun MainViewController() = MainViewControllerWithDemo(demoMode = false)
 fun MainViewControllerDemo() = MainViewControllerWithDemo(demoMode = true)
 
 private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIViewController {
+    // Crash reporting first: installs the Kotlin fatal-exception hook and
+    // imports any previous-session crash diagnostics into the 🐞 panel log.
+    installCrashReporting()
+
     // Initialize Koin before composable scope (must be stable across recompositions)
     if (runCatching { KoinPlatform.getKoin() }.isFailure) {
         startKoin {

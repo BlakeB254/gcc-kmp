@@ -56,6 +56,9 @@ actual class LocationProvider actual constructor() {
     private val _headingDegrees = MutableStateFlow<Float?>(null)
     actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
 
+    private val _horizontalAccuracyMeters = MutableStateFlow<Double?>(null)
+    actual val horizontalAccuracyMeters: StateFlow<Double?> = _horizontalAccuracyMeters.asStateFlow()
+
     private var _isTracking = false
     actual val isTracking: Boolean get() = _isTracking
 
@@ -86,6 +89,8 @@ actual class LocationProvider actual constructor() {
         override fun onLocationChanged(location: Location) {
             val coords = Coordinates(lat = location.latitude, lng = location.longitude)
             _currentLocation.value = coords
+            _horizontalAccuracyMeters.value =
+                if (location.hasAccuracy()) location.accuracy.toDouble() else null
             _locationFlow.tryEmit(coords)
         }
 

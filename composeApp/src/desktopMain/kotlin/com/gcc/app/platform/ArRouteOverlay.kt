@@ -17,6 +17,11 @@ actual class ArRouteOverlay actual constructor() {
     actual fun updateBoundaryStatus(isOutside: Boolean) {}
     actual fun start() {}
     actual fun stop() {}
+
+    actual val liveDetections: StateFlow<List<LiveDetection>> = MutableStateFlow(emptyList())
+    actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {}
+    actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
+    actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
 
 /** Desktop stub — no on-screen AR view; renders an empty box. */

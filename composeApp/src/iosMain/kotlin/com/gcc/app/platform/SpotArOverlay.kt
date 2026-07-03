@@ -59,6 +59,9 @@ actual class SpotArOverlay actual constructor() {
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
+    private val frameFeedback = ArFrameFeedback { sceneView }
+    actual val liveDetections: StateFlow<List<LiveDetection>> = frameFeedback.liveDetections
+
     private var hasItem = false
     private var itemLat = 0.0
     private var itemLng = 0.0
@@ -79,6 +82,7 @@ actual class SpotArOverlay actual constructor() {
         config.worldAlignment = ARWorldAlignment.ARWorldAlignmentGravityAndHeading
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
+        frameFeedback.start()
     }
 
     actual fun start() {
@@ -86,7 +90,27 @@ actual class SpotArOverlay actual constructor() {
     }
 
     actual fun stop() {
+        frameFeedback.stop()
         sceneView?.session?.pause()
+    }
+
+    actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {
+        frameFeedback.sceneVoteListener = listener
+    }
+
+    actual fun setFrameAnalysisEnabled(enabled: Boolean) {
+        frameFeedback.setEnabled(enabled)
+    }
+
+    actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {
+        if (!hasGeoRef) return
+        val local = latLngToLocal(lat, lng)
+        frameFeedback.addMarkerAt(
+            local.first.toFloat(),
+            refY - GROUND_OFFSET_METERS + 0.05f,
+            local.second.toFloat(),
+            kind,
+        )
     }
 
     actual fun setItemLocation(lat: Double, lng: Double) {

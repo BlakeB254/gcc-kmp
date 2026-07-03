@@ -38,6 +38,13 @@ expect class LocationProvider() {
     val headingDegrees: StateFlow<Float?>
 
     /**
+     * Horizontal accuracy of the latest fix in meters (68% confidence radius).
+     * Null when unknown (no fix yet, invalid reading, or desktop). Sustained
+     * degradation is the OutdoorGate's indoor-detection signal.
+     */
+    val horizontalAccuracyMeters: StateFlow<Double?>
+
+    /**
      * Enable background location tracking for active job sessions.
      * iOS: Requests "always" authorization and enables allowsBackgroundLocationUpdates.
      * Android: Starts a foreground service with a persistent notification.
