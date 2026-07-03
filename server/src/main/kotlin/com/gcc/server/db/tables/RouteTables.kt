@@ -359,3 +359,77 @@ object ScanHotspots : Table("scan_hotspots") {
     override val primaryKey = PrimaryKey(id)
 }
 
+// ===========================================================================
+// World model / digital twin (scan-guidance-world-model-and-rewards design,
+// 2026-07-02). Mirrors schema.ts's worldObservations/scanCoverageEvents/
+// cellCoverageSummary/reconstructionAssets — these shipped to schema.ts on
+// origin/main without an Exposed mirror; backfilled here per this repo's
+// schema-ownership policy (CLAUDE.md).
+// ===========================================================================
+object WorldObservations : Table("world_observations") {
+    val id = integer("id").autoIncrement()
+    val scanHotspotId = integer("scan_hotspot_id").nullable()
+    val communityReportId = integer("community_report_id").nullable()
+    val sourceType = varchar("source_type", 20)
+    val domain = varchar("domain", 20).default("litter")
+    val lat = double("lat")
+    val lng = double("lng")
+    val locationCellId = varchar("location_cell_id", 32)
+    val itemType = varchar("item_type", 50).nullable()
+    val state = varchar("state", 10)
+    val severity = integer("severity").nullable()
+    val estimatedVolumeLiters = double("estimated_volume_liters").nullable()
+    val estimatedWeightLbs = double("estimated_weight_lbs").nullable()
+    val confidence = double("confidence").nullable()
+    val mediaUrl = varchar("media_url", 500).nullable()
+    val depthData = text("depth_data").nullable()
+    val arAnchorData = text("ar_anchor_data").nullable()
+    val capturedAt = timestamp("captured_at")
+    val isCurrent = bool("is_current").default(true)
+    val excludedPrivateProperty = bool("excluded_private_property").default(false)
+    val createdAt = timestamp("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object ScanCoverageEvents : Table("scan_coverage_events") {
+    val id = integer("id").autoIncrement()
+    val deviceId = varchar("device_id", 64)
+    val platform = varchar("platform", 16)
+    val workerId = integer("worker_id").references(Workers.id).nullable()
+    val locationCellId = varchar("location_cell_id", 32)
+    val lat = double("lat")
+    val lng = double("lng")
+    val distanceMeters = double("distance_meters")
+    val scanMode = varchar("scan_mode", 10)
+    val deviceTier = varchar("device_tier", 16)
+    val capturedAt = timestamp("captured_at")
+    val createdAt = timestamp("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object CellCoverageSummary : Table("cell_coverage_summary") {
+    val locationCellId = varchar("location_cell_id", 32)
+    val firstScannedAt = timestamp("first_scanned_at")
+    val lastScannedAt = timestamp("last_scanned_at")
+    val totalDistanceMeters = double("total_distance_meters").default(0.0)
+    val scanCount = integer("scan_count").default(0)
+
+    override val primaryKey = PrimaryKey(locationCellId)
+}
+
+object ReconstructionAssets : Table("reconstruction_assets") {
+    val id = integer("id").autoIncrement()
+    val locationCellId = varchar("location_cell_id", 32)
+    val assetType = varchar("asset_type", 20)
+    val format = varchar("format", 10)
+    val r2Key = varchar("r2_key", 500)
+    val version = integer("version")
+    val sourceScanCoverageEventIds = jsonbCol<List<Int>>("source_scan_coverage_event_ids")
+    val activatedAt = timestamp("activated_at").nullable()
+    val createdAt = timestamp("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+

@@ -1641,6 +1641,28 @@ export const cellCoverageSummary = pgTable('cell_coverage_summary', {
 export type CellCoverageSummaryRow = typeof cellCoverageSummary.$inferSelect
 export type NewCellCoverageSummaryRow = typeof cellCoverageSummary.$inferInsert
 
+// Processed 3D reconstruction outputs (Phase 2/3 of the scan-guidance/world-model
+// design, docs/superpowers/specs/2026-07-02-scan-guidance-world-model-and-rewards-
+// design.md §2.4). Files themselves live in R2 as open formats (.ply/.glb) at
+// `reconstructed/{locationCellId}/{version}/{assetType}.{format}` — this table is
+// the explicit-provenance link back to the scan-coverage events that produced them.
+export const reconstructionAssets = pgTable('reconstruction_assets', {
+  id: serial('id').primaryKey(),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  assetType: varchar('asset_type', { length: 20 }).notNull(), // 'pointcloud' | 'splat' | 'mesh'
+  format: varchar('format', { length: 10 }).notNull(), // 'ply' | 'glb' | 'gltf' | 'laz'
+  r2Key: varchar('r2_key', { length: 500 }).notNull(),
+  version: integer('version').notNull(),
+  sourceScanCoverageEventIds: jsonb('source_scan_coverage_event_ids').notNull(), // number[]
+  activatedAt: timestamp('activated_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  cellVersionIdx: index('reconstruction_assets_cell_version_idx').on(table.locationCellId, table.version),
+}))
+
+export type ReconstructionAssetRow = typeof reconstructionAssets.$inferSelect
+export type NewReconstructionAssetRow = typeof reconstructionAssets.$inferInsert
+
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
