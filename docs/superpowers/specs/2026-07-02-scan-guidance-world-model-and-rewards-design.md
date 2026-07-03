@@ -589,6 +589,14 @@ battery/thermal-friendly while still letting the same raw scan data serve a
 second, heavier-compute purpose later, without requiring a second user capture
 pass.
 
+**Trees are part of the real-world model too (added 2026-07-03)**, under the
+`domain='vegetation'` value from §0.3: track presence/location, and — via the
+same append-only observation log already used for litter dirty/clean state —
+whether a tree was removed, damaged, or newly planted over time. Same
+processing split as the infrastructure domains above: not live on-device,
+examined in the background from R2-stored raw scans alongside sidewalk/pothole/
+street detection.
+
 This doesn't fully resolve the taxonomy question (exact detection models/vocab
 for the infrastructure domains are still unscoped), but it does resolve *where*
 that detection happens — background/R2-based, never live on-device — which
