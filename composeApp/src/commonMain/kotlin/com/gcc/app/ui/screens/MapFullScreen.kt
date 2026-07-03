@@ -149,6 +149,40 @@ fun MapFullScreen(
     val centerLat = overrideCenterLat ?: resolved.lat
     val centerLng = overrideCenterLng ?: resolved.lng
 
+    // Explorer scan-state coloring: analytics-derived states merged with a
+    // client-side derivation from the spots already loaded (analytics tables
+    // are empty until the aggregation pipeline runs; the map shouldn't wait).
+    var analyticsAreaStates by remember { mutableStateOf(mapOf<String, String>()) }
+    val spotDerivedAreaStates = remember(uiState.spots) {
+        val active = uiState.spots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
+        com.gcc.app.ui.map.chicagoCommunityAreas.mapNotNull { area ->
+            val inArea = active.count { spot ->
+                spot.coordinates.lat in area.bounds.south..area.bounds.north &&
+                    spot.coordinates.lng in area.bounds.west..area.bounds.east
+            }
+            when {
+                inArea > 0 -> area.displayName.replace("\n", " ") to "dirty"
+                else -> null
+            }
+        }.toMap()
+    }
+    val explorerAreaStates = analyticsAreaStates + spotDerivedAreaStates
+    LaunchedEffect(mapMode) {
+        if (mapMode == MapMode.MY_AREA || analyticsAreaStates.isNotEmpty()) return@LaunchedEffect
+        try {
+            val overview = gccApiClient.getCityCleanlinessOverview()
+            analyticsAreaStates = overview.areas.associate { stats ->
+                stats.area to when {
+                    stats.activeSpots > 0 -> "dirty"
+                    stats.resolvedSpots > 0 -> "clean"
+                    else -> "unscanned"
+                }
+            }
+        } catch (_: Exception) {
+            // Non-fatal: all areas render as unscanned grey.
+        }
+    }
+
     // Foundational coverage-state tiles: ledger cells around the map center.
     var coverageCells by remember { mutableStateOf(listOf<com.gcc.shared.model.MapCoverageCell>()) }
     LaunchedEffect(centerLat, centerLng) {
@@ -367,6 +401,7 @@ fun MapFullScreen(
             currentLocation = currentLocation,
             coverageCells = coverageCells,
             innerBoundaryRings = innerBoundaryRings,
+            explorerAreaStates = explorerAreaStates,
             enableGestures = true,
             showControls = true,
             statusBarPadding = true,

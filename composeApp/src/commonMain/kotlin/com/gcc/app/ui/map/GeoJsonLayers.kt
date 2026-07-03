@@ -891,3 +891,21 @@ fun buildCoverageStateGeoJsons(
         if (features.isEmpty()) empty else """{"type":"FeatureCollection","features":[$features]}"""
     return Triple(wrap(clean), wrap(stale), wrap(fogFeatures.toString()))
 }
+
+
+/**
+ * Explorer-mode scan-state color coding: buckets every Chicago community
+ * area by its scan state — "clean" | "dirty" | "stale" from analytics,
+ * everything else defaults to "unscanned" (grey; the whole city today).
+ * Keys are matched on normalized display names.
+ */
+fun buildExplorerAreaStateGeoJsons(
+    areaStates: Map<String, String>,
+): Map<String, String> {
+    val normalized = areaStates.mapKeys { (k, _) -> k.trim().lowercase() }
+    fun stateOf(area: CommunityArea): String =
+        normalized[area.displayName.replace("\n", " ").trim().lowercase()] ?: "unscanned"
+    return listOf("unscanned", "clean", "dirty", "stale").associateWith { state ->
+        buildCommunityAreasGeoJson(chicagoCommunityAreas.filter { stateOf(it) == state })
+    }
+}
