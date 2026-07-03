@@ -232,93 +232,18 @@ export function HeroSection() {
   )
 }
 
-/** CSS/SVG-only iPhone frame with a stylized in-app heatmap — no image asset required. */
+/** Floating device mockup of the GCC app's map/heatmap screen (North Lawndale) — angled iPhone render with its own shadow and transparent background. */
 function PhoneMockup() {
-  const heatCells = [
-    0.15, 0.3, 0.55, 0.25, 0.1, 0.4,
-    0.3, 0.75, 0.9, 0.6, 0.35, 0.2,
-    0.5, 0.85, 1, 0.7, 0.45, 0.15,
-    0.2, 0.5, 0.65, 0.4, 0.25, 0.1,
-    0.1, 0.2, 0.35, 0.2, 0.15, 0.05,
-  ]
-
   return (
-    <div className="relative">
-      {/* Ambient glow behind the phone */}
-      <div className="absolute inset-0 scale-90 bg-brand-green-400/20 blur-3xl rounded-full" />
-
-      {/* Phone body — width capped as a fraction of viewport height so it always fits beside the copy column, even on short laptop screens */}
-      <div className="relative w-[min(280px,34vh)] aspect-[9/19.5] rounded-[2.75rem] bg-neutral-900 border-[6px] border-neutral-800 shadow-2xl ring-1 ring-white/10 overflow-hidden">
-        {/* Dynamic island */}
-        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 w-24 h-6 rounded-full bg-black" />
-
-        {/* Screen */}
-        <div className="absolute inset-0 rounded-[2.2rem] overflow-hidden bg-gradient-to-b from-neutral-950 via-brand-green-900 to-neutral-950">
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-6 pt-4 text-[10px] font-semibold text-white/80">
-            <span>9:41</span>
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-2 rounded-sm border border-white/60" />
-            </span>
-          </div>
-
-          {/* App header */}
-          <div className="flex items-center justify-between px-4 mt-4">
-            <span className="text-xs font-bold text-white tracking-wide">GCC</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-500/20 px-2 py-0.5">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-green-400" />
-              </span>
-              <span className="text-[9px] font-semibold text-brand-green-300">Live</span>
-            </span>
-          </div>
-
-          {/* Mini heatmap card */}
-          <div className="mx-4 mt-3 rounded-2xl bg-white/5 border border-white/10 p-2.5">
-            <p className="text-[9px] font-medium text-neutral-300 mb-2 px-0.5">
-              Blocks near North Lawndale
-            </p>
-            <div className="grid grid-cols-6 gap-1">
-              {heatCells.map((intensity, i) => (
-                <div
-                  key={i}
-                  className="aspect-square rounded-[3px]"
-                  style={{
-                    backgroundColor: `rgba(74, 222, 128, ${0.15 + intensity * 0.75})`,
-                  }}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5 mt-2 px-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-blue-400" />
-              <span className="text-[8px] text-neutral-400">3 blocks open now</span>
-            </div>
-          </div>
-
-          {/* Stat chips */}
-          <div className="flex gap-2 mx-4 mt-3">
-            <div className="flex-1 rounded-xl bg-white/5 border border-white/10 px-2.5 py-2">
-              <p className="text-sm font-bold text-brand-green-400">$100</p>
-              <p className="text-[8px] text-neutral-400">min / block</p>
-            </div>
-            <div className="flex-1 rounded-xl bg-white/5 border border-white/10 px-2.5 py-2">
-              <p className="text-sm font-bold text-brand-blue-400">15-30m</p>
-              <p className="text-[8px] text-neutral-400">to payout</p>
-            </div>
-          </div>
-
-          {/* CTA button */}
-          <div className="mx-4 mt-4">
-            <div className="rounded-xl bg-brand-green-500 text-center py-2.5">
-              <span className="text-[10px] font-bold text-neutral-900">🧹 Start a Block Scan</span>
-            </div>
-          </div>
-
-          {/* Bottom home indicator */}
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-24 h-1 rounded-full bg-white/30" />
-        </div>
-      </div>
+    <div className="relative w-[min(300px,36vh)] aspect-[1536/2752]">
+      <Image
+        src="/images/optimized/hero-app-phone-mockup.webp"
+        alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
+        fill
+        className="object-contain drop-shadow-2xl"
+        sizes="(min-width: 1280px) 320px, 300px"
+        priority
+      />
     </div>
   )
 }
