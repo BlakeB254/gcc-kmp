@@ -55,6 +55,21 @@ Both boundaries are first-class admin-editable objects (site admin portal):
 - Exclusion behavior preview: the editor shades the excluded (inside-inner)
   area so admins see exactly what won't record before saving.
 
+## Shared-edge editing mechanics (product direction, 2026-07-03)
+
+Exterior block boundaries TILE the neighborhood: they run right up against
+each other and never overlap. Editing is topology-aware:
+- Dragging a block's edge into a neighbor THINS the neighbor by the claimed
+  overlap ("the more one expands, the thinner the other gets") — implemented
+  server-side in PUT /api/admin/blocks/[blockId]/boundaries (turf intersect/
+  difference; largest-piece retention if a subtraction splits a neighbor).
+- A neighbor can never be thinned below 40% of its area (422 with a clear
+  message) — blocks can't be silently swallowed.
+- The visual editor (extends PR #37's BlockProposalsMap admin tooling):
+  vertex drag/add/delete on outer + inner rings, live neighbor-thinning
+  preview, corridor shading, Save → the boundaries endpoint. Inner rings
+  support multiple islands (vacant unfenced lots stay scannable).
+
 ## Build sequence (suggested)
 
 1. Server: `innerBoundary` column (+ `boundaryVersion`) + inset-generation
