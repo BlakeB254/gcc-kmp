@@ -16,7 +16,9 @@ export const dynamic = 'force-dynamic'
 const SCHEDULE: Record<string, string> = {
   '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
-  '2026-07-03-issue-03': '2026-07-03T10:00:00-05:00',
+  // MANUAL HOLD — not scheduled yet, publish only once the team confirms a
+  // go-live time. Not a real target date; do not auto-flip this.
+  '2026-07-03-issue-03': '2099-01-01T00:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
