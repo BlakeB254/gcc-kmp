@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.embedGpsExif
@@ -104,7 +105,8 @@ class SpotViewModel(
                     } else {
                         _uiState.value = _uiState.value.copy(isAnalyzing = false)
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("vision-analyze", "spot photo analysis failed", e)
                     _uiState.value = _uiState.value.copy(isAnalyzing = false)
                 }
             }
@@ -201,6 +203,7 @@ class SpotViewModel(
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
         if (state.capturedPhotos.isEmpty()) return
+        DiagnosticsLog.info("spot-submit", "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s)")
         applyAiDescription()
         submitReport()
     }
@@ -269,8 +272,9 @@ class SpotViewModel(
                 if (bestMatch != null) {
                     _uiState.value = _uiState.value.copy(duplicateMatch = bestMatch)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Don't block the flow if duplicate check fails
+                DiagnosticsLog.error("spot-duplicates", "duplicate check failed (non-blocking)", e)
             }
         }
     }
@@ -338,6 +342,7 @@ class SpotViewModel(
                     setBody(request)
                 }
                 if (response.status.value == 409) {
+                    DiagnosticsLog.error("spot-submit", "server 409: duplicate spot within 15m")
                     _uiState.value = _uiState.value.copy(
                         isSubmitting = false,
                         phase = SpotPhase.DESCRIPTION,
@@ -365,6 +370,7 @@ class SpotViewModel(
                     matchingBounties = spotResponse.data.matchingBounties,
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("spot-submit", "report submission failed", e)
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
                     phase = SpotPhase.DESCRIPTION,

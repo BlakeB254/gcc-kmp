@@ -207,6 +207,8 @@ fun SpotScreen(
                     onBack = onBack,
                 )
             }
+
+            DiagnosticsOverlay()
         }
     }
 }

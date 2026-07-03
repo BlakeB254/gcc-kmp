@@ -116,7 +116,12 @@ internal class ArFrameFeedback(
             while (true) {
                 delay(TICK_MS)
                 if (!enabled) continue
-                val backoff = runCatching { analyzeTick() }.getOrDefault(true)
+                val backoff = try {
+                    analyzeTick()
+                } catch (e: Throwable) {
+                    DiagnosticsLog.error("ar-vision", "frame analysis tick failed (backing off)", e)
+                    true
+                }
                 if (backoff) delay(ERROR_BACKOFF_MS)
             }
         }
@@ -239,6 +244,7 @@ internal class ArFrameFeedback(
         }
         if (exists) return
         markerPositions.add(Triple(x, y, z))
+        DiagnosticsLog.info("ar-marker", "placed $kind marker #${markerPositions.size}")
 
         dispatch_async(dispatch_get_main_queue()) {
             val scene = sceneViewProvider()?.scene ?: return@dispatch_async

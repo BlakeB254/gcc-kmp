@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.ScoutCaptureDialog
 import com.gcc.app.ui.theme.GccSky
 import com.gcc.app.viewmodel.RouteScanViewModel
@@ -123,6 +124,8 @@ fun RouteScanScreen(
                 onDone = onComplete,
             )
         }
+
+        DiagnosticsOverlay()
 
         // Admin proxy banner — shown only when performing on behalf of a verified worker
         if (onBehalfOfWorkerName != null) {

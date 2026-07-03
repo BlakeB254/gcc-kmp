@@ -5,6 +5,7 @@ import com.gcc.app.platform.ArScanner
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
@@ -106,7 +107,14 @@ class RouteScanViewModel(
     // Coverage-ledger event batching (design spec §1.6): route-mode scan
     // coverage events queue locally and flush every 30s + on session end.
     private val coverageEventQueue = CoverageEventQueue(
-        submitFn = { apiClient.submitCoverageEvents(it) },
+        submitFn = { events ->
+            try {
+                apiClient.submitCoverageEvents(events)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("coverage-flush", "route flush of ${events.size} events failed (kept queued)", e)
+                throw e
+            }
+        },
     )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
@@ -170,8 +178,9 @@ class RouteScanViewModel(
                     _sessionPointsEstimate.value = pointsEstimator.total + rectifyBonusPoints
                     _pointsPips.tryEmit(result.pointsAwarded)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Put it back so the worker can retry when they pass again.
+                DiagnosticsLog.error("rectify", "rectify of observation ${observation.id} failed (will re-prompt)", e)
                 resolvedObservationIds.remove(observation.id)
                 _expectedObservations.value = _expectedObservations.value + observation
             }
@@ -209,8 +218,10 @@ class RouteScanViewModel(
                 }
                 cellPriorStates = priors
                 if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
-            } catch (_: Exception) {
+                DiagnosticsLog.info("fog-seed", "seeded ${fresh.size} fresh cells, ${priors.size} priors from ${serverCells.size} server cells")
+            } catch (e: Exception) {
                 // Non-fatal: fog stays session-local, estimator treats all as new.
+                DiagnosticsLog.error("fog-seed", "coverage fetch failed — fog is session-local", e)
             }
         }
         scope.launch {
@@ -224,8 +235,10 @@ class RouteScanViewModel(
                 ).joinToString(",")
                 _expectedObservations.value = apiClient.getMapObservations(bbox)
                     .filter { it.state == "dirty" }
-            } catch (_: Exception) {
+                DiagnosticsLog.info("expected-obs", "${_expectedObservations.value.size} dirty observations near route")
+            } catch (e: Exception) {
                 // Non-fatal: no expected-trash markers this session.
+                DiagnosticsLog.error("expected-obs", "observations fetch failed — no expected markers", e)
             }
         }
     }
@@ -396,6 +409,7 @@ class RouteScanViewModel(
                 }
                 startTimer()
             } catch (e: Exception) {
+                DiagnosticsLog.error("scout", "startScout failed", e)
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
                     error = e.message ?: "Failed to start scout",
@@ -530,6 +544,7 @@ class RouteScanViewModel(
                     error = null,
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scout", "completeScout failed", e)
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to complete scout: ${e.message}",
                 )
@@ -552,6 +567,7 @@ class RouteScanViewModel(
                     sectionPrompt = "Record the after scan for the first cleanup target.",
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scan-phase", "startCleaning failed", e)
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to start cleaning: ${e.message}",
                 )
@@ -678,6 +694,7 @@ class RouteScanViewModel(
                     pointsAwarded = response.pointsAwarded,
                 )
             } catch (e: Exception) {
+                DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
                 _uiState.value = _uiState.value.copy(
                     phase = ScanPhase.SUBMITTING,
                     isSubmitting = false,
@@ -724,6 +741,15 @@ class RouteScanViewModel(
         accuracyJob = scope.launch {
             locationProvider.horizontalAccuracyMeters.collect { accuracy ->
                 outdoorGate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
+            }
+        }
+        scope.launch {
+            var lastState: OutdoorState? = null
+            outdoorGate.state.collect { gateState ->
+                if (gateState != lastState) {
+                    DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
+                    lastState = gateState
+                }
             }
         }
         locationJob?.cancel()

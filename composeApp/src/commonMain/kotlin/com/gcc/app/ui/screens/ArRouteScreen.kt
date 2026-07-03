@@ -38,7 +38,9 @@ import com.gcc.app.platform.ArRouteOverlayView
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.WorldMarkerKind
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.ui.components.DetectionReticleOverlay
+import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
@@ -104,6 +106,11 @@ fun ArRouteScreen(
     // accuracy signal alone drives recovery once the worker steps outside).
     LaunchedEffect(isIndoor) {
         overlay.setFrameAnalysisEnabled(!isIndoor)
+    }
+
+    // Field diagnostics: AR tracking transitions land in the on-screen log.
+    LaunchedEffect(trackingState) {
+        DiagnosticsLog.info("ar-tracking", "route AR tracking → $trackingState")
     }
 
     // Pair every GPS fix with the AR camera position, then refresh the fog so
@@ -272,6 +279,8 @@ fun ArRouteScreen(
 
         // "Go outside" scrim — sits under the exit button so leaving AR always works.
         GoOutsideOverlay(visible = isIndoor)
+
+        DiagnosticsOverlay()
 
         // Exit AR button (top-left) — returns to the scout map.
         TextButton(

@@ -145,7 +145,8 @@ actual class OnDeviceAnalyzer actual constructor() {
             }
 
             handler.performRequests(listOf(classifyRequest), error = null)
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("vision-analyze", "Vision classify threw", e)
             continuation.resume(null)
         }
     }

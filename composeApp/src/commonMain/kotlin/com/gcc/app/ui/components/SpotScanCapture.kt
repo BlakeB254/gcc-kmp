@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.DeviceCapabilities
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -150,7 +151,8 @@ fun SpotScanCapture(
                         depthAnalysis = photo.depthAnalysis,
                     )
                     onPhotoCaptured(scanPhoto.copy(aiAnalysis = analysis))
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("vision-analyze", "first-capture analysis failed — photo kept without AI", e)
                     onPhotoCaptured(scanPhoto)
                 }
             }
@@ -172,6 +174,8 @@ fun SpotScanCapture(
         if (photo != null) {
             autoScanFired = true
             handleCapture(photo)
+        } else {
+            DiagnosticsLog.error("camera", "auto-scan capturePhoto() returned null")
         }
     }
 

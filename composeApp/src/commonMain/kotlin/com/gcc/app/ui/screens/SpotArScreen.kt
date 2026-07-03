@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.DeviceCapabilities
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.ObjectCoverageTracker
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
@@ -41,6 +42,7 @@ import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.ui.components.DetectionReticleOverlay
+import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
@@ -84,7 +86,14 @@ fun SpotArScreen(
     val overlay = remember { SpotArOverlay() }
     val tracker = remember { ObjectCoverageTracker() }
     val queue = remember(apiClient) {
-        CoverageEventQueue(submitFn = { apiClient.submitCoverageEvents(it) })
+        CoverageEventQueue(submitFn = { events ->
+            try {
+                apiClient.submitCoverageEvents(events)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("coverage-flush", "spot flush of ${events.size} events failed (kept queued)", e)
+                throw e
+            }
+        })
     }
     // Outlives the composition just long enough for the final flush on exit.
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
@@ -136,6 +145,14 @@ fun SpotArScreen(
     // Indoors: pause frame analysis (battery); GPS accuracy drives recovery.
     LaunchedEffect(isIndoor) {
         overlay.setFrameAnalysisEnabled(!isIndoor)
+    }
+
+    // Field diagnostics: state transitions land in the on-screen log.
+    LaunchedEffect(outdoorState) {
+        DiagnosticsLog.info("outdoor-gate", "spot gate → $outdoorState")
+    }
+    LaunchedEffect(trackingState) {
+        DiagnosticsLog.info("ar-tracking", "spot AR tracking → $trackingState")
     }
 
     // Feed GPS fixes into the tracker/overlay and enqueue ledger events.
@@ -283,6 +300,8 @@ fun SpotArScreen(
 
         // "Go outside" scrim — sits under the exit button so leaving always works.
         GoOutsideOverlay(visible = isIndoor)
+
+        DiagnosticsOverlay()
 
         // Exit button (top-left) — returns to the photo-capture view.
         TextButton(
