@@ -20,6 +20,8 @@ class MarkerPromotionTracker(
             streak = 0
             return false
         }
-        return streak >= streakTicks
+        val promoted = streak >= streakTicks
+        if (promoted) streak = 0
+        return promoted
     }
 }
