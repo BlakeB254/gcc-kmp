@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { blocks, routes, routeCheckpoints } from '@/db/schema'
+import { blocks, blockExclusionZones, routes, routeCheckpoints } from '@/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
@@ -124,12 +124,22 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invalid route ID' }, { status: 400 })
     }
 
-    // Delete checkpoints first, then route
-    await db.delete(routeCheckpoints).where(eq(routeCheckpoints.routeId, routeId))
-    const [deleted] = await db
-      .delete(routes)
-      .where(eq(routes.id, routeId))
-      .returning({ id: routes.id })
+    // Delete the route and everything hanging off it — checkpoints, the
+    // linked block (blocks.routeId is a 1:1 auto-created with the route,
+    // previously left orphaned), and that block's exclusion zones. db.batch
+    // runs all statements in a single transaction on the neon-http driver.
+    const [, , , deletedRoutes] = await db.batch([
+      db.delete(blockExclusionZones).where(
+        inArray(
+          blockExclusionZones.blockId,
+          db.select({ id: blocks.id }).from(blocks).where(eq(blocks.routeId, routeId)),
+        ),
+      ),
+      db.delete(routeCheckpoints).where(eq(routeCheckpoints.routeId, routeId)),
+      db.delete(blocks).where(eq(blocks.routeId, routeId)),
+      db.delete(routes).where(eq(routes.id, routeId)).returning({ id: routes.id }),
+    ])
+    const deleted = deletedRoutes[0]
 
     if (!deleted) {
       return NextResponse.json({ error: 'Route not found' }, { status: 404 })

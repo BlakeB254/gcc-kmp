@@ -132,6 +132,8 @@ const DRAW_COLOR = '#F59E0B'
 interface Props {
   blocks: EditorBlock[]
   onBlocksChanged: () => Promise<void> | void
+  /** Preselect this block once blocks load (deep link: ?blockId=…). */
+  initialBlockId?: number | null
 }
 
 function authHeaders(): HeadersInit {
@@ -139,7 +141,7 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${token}` }
 }
 
-export function BoundaryEditor({ blocks, onBlocksChanged }: Props) {
+export function BoundaryEditor({ blocks, onBlocksChanged, initialBlockId = null }: Props) {
   const [mapInst, setMapInst] = useState<any>(null)
   // Stable callback — an inline arrow would make React detach/re-attach the
   // ref (null → instance) on every render and thrash the listener effect.
@@ -257,6 +259,19 @@ export function BoundaryEditor({ blocks, onBlocksChanged }: Props) {
     historyRef.current = []
     setHistLen(0)
   }, [])
+
+  // Deep-link preselection (?blockId=…): select the requested block once
+  // blocks and the map are ready. Applied at most once so the admin can
+  // still switch blocks freely afterwards.
+  const appliedInitialRef = useRef(false)
+  useEffect(() => {
+    if (appliedInitialRef.current || initialBlockId === null || !mapInst) return
+    const block = blocks.find((b) => b.id === initialBlockId)
+    if (!block) return
+    appliedInitialRef.current = true
+    fittedAllRef.current = true // don't let the overview fit override the block fit
+    selectBlock(initialBlockId)
+  }, [mapInst, blocks, initialBlockId, selectBlock])
 
   // Overview fit once blocks load.
   useEffect(() => {
