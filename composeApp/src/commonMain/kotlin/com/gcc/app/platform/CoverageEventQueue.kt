@@ -2,23 +2,54 @@ package com.gcc.app.platform
 
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.ScanCoverageSubmitResponse
+import com.gcc.shared.serialization.GccJson
+import com.russhwolf.settings.Settings
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 
 /**
  * Local buffer for ScanCoverageEvents, flushed in one batch to the coverage
  * ledger endpoint. On failure (offline, transient error), events stay queued
  * for the next flush attempt rather than being lost — per design spec §1.6.
+ *
+ * Persisted via [settings] (same `multiplatform-settings` pattern as
+ * TokenManager) so a force-quit/crash between flushes doesn't lose queued
+ * events — the next app launch reloads them from disk and the next periodic
+ * flush picks up where the previous process left off.
  */
 class CoverageEventQueue(
     private val submitFn: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse,
+    private val settings: Settings = Settings(),
 ) {
     private val mutex = Mutex()
-    private val pending = mutableListOf<ScanCoverageEventRequest>()
+    private val pending = mutableListOf<ScanCoverageEventRequest>().apply {
+        addAll(loadPersisted())
+    }
     private var flushInProgress = false
 
+    private fun loadPersisted(): List<ScanCoverageEventRequest> {
+        val json = settings.getStringOrNull(KEY_PENDING_EVENTS) ?: return emptyList()
+        return try {
+            GccJson.decodeFromString(json)
+        } catch (e: Exception) {
+            // Corrupt/unreadable persisted state must never crash startup —
+            // degrade to an empty queue, same as if nothing had been persisted.
+            emptyList()
+        }
+    }
+
+    /** Must be called with `mutex` already held — writes the current `pending` snapshot to disk. */
+    private fun persistLocked() {
+        settings.putString(KEY_PENDING_EVENTS, GccJson.encodeToString(pending))
+    }
+
     suspend fun enqueue(event: ScanCoverageEventRequest) {
-        mutex.withLock { pending.add(event) }
+        mutex.withLock {
+            pending.add(event)
+            persistLocked()
+        }
     }
 
     /**
@@ -65,6 +96,7 @@ class CoverageEventQueue(
                     // `pending` concurrently), so removing by position is safe.
                     mutex.withLock {
                         repeat(batch.size) { pending.removeAt(0) }
+                        persistLocked()
                     }
                 } catch (e: Exception) {
                     return false
@@ -78,5 +110,8 @@ class CoverageEventQueue(
     companion object {
         /** Server-side cap on POST /api/scans/coverage batch size. */
         const val MAX_BATCH_SIZE = 500
+
+        /** Settings key for the persisted pending-events JSON blob. */
+        private const val KEY_PENDING_EVENTS = "pending_coverage_events"
     }
 }

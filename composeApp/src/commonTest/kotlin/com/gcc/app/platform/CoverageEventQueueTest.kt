@@ -2,6 +2,7 @@ package com.gcc.app.platform
 
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.ScanCoverageSubmitResponse
+import com.gcc.shared.offline.MemorySettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -27,7 +28,7 @@ class CoverageEventQueueTest {
             submittedBatch = events
             ScanCoverageSubmitResponse(inserted = events.size, success = true)
         }
-        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = MemorySettings())
 
         queue.enqueue(sampleEvent("a"))
         queue.enqueue(sampleEvent("b"))
@@ -44,7 +45,7 @@ class CoverageEventQueueTest {
             called = true
             ScanCoverageSubmitResponse(inserted = 0, success = true)
         }
-        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = MemorySettings())
 
         val result = queue.flush()
 
@@ -63,7 +64,7 @@ class CoverageEventQueueTest {
             submittedBatch = events
             ScanCoverageSubmitResponse(inserted = events.size, success = true)
         }
-        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = MemorySettings())
         queue.enqueue(original)
 
         val firstAttempt = queue.flush()
@@ -85,17 +86,15 @@ class CoverageEventQueueTest {
             gate.await()
             ScanCoverageSubmitResponse(inserted = events.size, success = true)
         }
-        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = MemorySettings())
         queue.enqueue(sampleEvent("a"))
 
-        // Launch two flush() calls without awaiting the first, so they overlap.
         val firstFlush = async { queue.flush() }
-        runCurrent() // drive the first flush up through submitFn, where it suspends on the gate
+        runCurrent()
 
         val secondFlush = async { queue.flush() }
-        runCurrent() // drive the second flush as far as it can go while the first is still in-flight
+        runCurrent()
 
-        // Nothing can complete submitFn until the gate opens.
         gate.complete(Unit)
         advanceUntilIdle()
 
@@ -109,19 +108,84 @@ class CoverageEventQueueTest {
 
     @Test
     fun oversizedBacklogDrainsInServerSizedChunks() = runTest {
-        // The live endpoint 400s any batch over MAX_BATCH_SIZE, so a backlog
-        // accumulated offline must drain in capped slices within one flush().
         val batchSizes = mutableListOf<Int>()
         val fakeSubmit: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse = { events ->
             batchSizes.add(events.size)
             ScanCoverageSubmitResponse(inserted = events.size, success = true)
         }
-        val queue = CoverageEventQueue(submitFn = fakeSubmit)
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = MemorySettings())
         repeat(CoverageEventQueue.MAX_BATCH_SIZE + 250) { queue.enqueue(sampleEvent("evt$it")) }
 
         val result = queue.flush()
 
         assertTrue(result)
         assertEquals(listOf(CoverageEventQueue.MAX_BATCH_SIZE, 250), batchSizes)
+    }
+
+    @Test
+    fun persistedEventsSurviveAFreshInstance() = runTest {
+        val sharedSettings = MemorySettings()
+        val fakeSubmit: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse = { events ->
+            ScanCoverageSubmitResponse(inserted = events.size, success = true)
+        }
+
+        val firstProcessQueue = CoverageEventQueue(submitFn = fakeSubmit, settings = sharedSettings)
+        firstProcessQueue.enqueue(sampleEvent("a"))
+        firstProcessQueue.enqueue(sampleEvent("b"))
+        // No flush() here — simulates the app being force-quit before the next
+        // periodic flush attempt, with events still sitting in the queue.
+
+        // A fresh instance sharing the same underlying settings simulates relaunch.
+        var submittedBatch: List<ScanCoverageEventRequest>? = null
+        val secondProcessQueue = CoverageEventQueue(
+            submitFn = { events -> submittedBatch = events; ScanCoverageSubmitResponse(inserted = events.size, success = true) },
+            settings = sharedSettings,
+        )
+        val result = secondProcessQueue.flush()
+
+        assertTrue(result)
+        assertEquals(2, submittedBatch?.size, "events enqueued before the simulated crash must still be present after relaunch")
+    }
+
+    @Test
+    fun successfulFlushClearsThePersistedCopyNotJustTheInMemoryList() = runTest {
+        val sharedSettings = MemorySettings()
+        val fakeSubmit: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse = { events ->
+            ScanCoverageSubmitResponse(inserted = events.size, success = true)
+        }
+
+        val firstProcessQueue = CoverageEventQueue(submitFn = fakeSubmit, settings = sharedSettings)
+        firstProcessQueue.enqueue(sampleEvent("a"))
+        val flushResult = firstProcessQueue.flush()
+        assertTrue(flushResult)
+
+        // A fresh instance sharing the same settings simulates relaunch after
+        // the flush already succeeded and the app was later killed anyway.
+        var called = false
+        val secondProcessQueue = CoverageEventQueue(
+            submitFn = { events -> called = true; ScanCoverageSubmitResponse(inserted = events.size, success = true) },
+            settings = sharedSettings,
+        )
+        val result = secondProcessQueue.flush()
+
+        assertTrue(result)
+        assertFalse(called, "nothing should be left to submit — the successful flush must have cleared the persisted copy too")
+    }
+
+    @Test
+    fun corruptPersistedJsonDegradesToAnEmptyQueue() = runTest {
+        val settings = MemorySettings()
+        settings.putString("pending_coverage_events", "not valid json")
+        var called = false
+        val fakeSubmit: suspend (List<ScanCoverageEventRequest>) -> ScanCoverageSubmitResponse = {
+            called = true
+            ScanCoverageSubmitResponse(inserted = 0, success = true)
+        }
+
+        val queue = CoverageEventQueue(submitFn = fakeSubmit, settings = settings)
+        val result = queue.flush()
+
+        assertTrue(result, "construction against corrupt persisted data must not throw, and flush must succeed as a no-op")
+        assertFalse(called, "there should be nothing to submit when persisted state was unparseable")
     }
 }
