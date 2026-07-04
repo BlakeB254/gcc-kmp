@@ -64,7 +64,6 @@ internal class ArFrameFeedback(
         private const val TICK_MS = 1_000L
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
-        private const val TRASH_CONFIDENCE = 0.35f
         private const val MARKER_DEDUPE_METERS = 3.0
 
     }
@@ -135,10 +134,9 @@ internal class ArFrameFeedback(
             emitSceneVote(observations)
         }
 
-        val trashLabel = observations.firstNotNullOfOrNull { obs ->
-            if (obs.confidence < TRASH_CONFIDENCE) return@firstNotNullOfOrNull null
-            tokensOf(obs.identifier).firstNotNullOfOrNull { SceneVoteVision.TRASH_TOKENS[it] }
-        }
+        val trashLabel = TrashDetectionRules.trashLabelFrom(
+            observations.map { ClassificationObservation(it.identifier, it.confidence) }
+        )
         if (trashLabel == null) {
             promotionTracker.onTick(null)
             _liveDetections.value = emptyList()
@@ -235,9 +233,6 @@ internal class ArFrameFeedback(
             scene.rootNode.addChildNode(node)
         }
     }
-
-    private fun tokensOf(identifier: String): List<String> =
-        identifier.lowercase().split('_', ' ', ',').filter { it.isNotBlank() }
 
     private fun matrixTranslation(transform: CValue<simd_float4x4>): List<Float> = memScoped {
         val matrix = alloc<simd_float4x4>()
