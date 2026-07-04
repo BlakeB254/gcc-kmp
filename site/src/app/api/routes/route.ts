@@ -104,7 +104,15 @@ export async function GET(request: Request) {
         checkpointsMap.get(route.id) || [],
         blockBoundaryMap.get(route.id) ?? route.geometry,
       )
-      if (checkpoints.length < 2) return []
+      // Checkpoints are legacy (photo-lap era): scan fulfillment runs on the
+      // block boundary / geometry. Only drop routes with nothing to scan.
+      if (
+        checkpoints.length < 2 &&
+        !blockBoundaryMap.get(route.id) &&
+        !route.geometry
+      ) {
+        return []
+      }
 
       return [{
         id: route.id,

@@ -326,8 +326,12 @@ class DashboardViewModel(
     }
 }
 
+// Checkpoints are legacy from the photo-lap era: a route is workable when it
+// has anything scannable — a block boundary (scan corridor), a path geometry,
+// or (legacy) checkpoints.
 private fun Route.isWorkerAvailableRoute(): Boolean =
-    status == RouteStatus.PUBLISHED && checkpoints.size >= 2
+    status == RouteStatus.PUBLISHED &&
+        (blockBoundary != null || geometry != null || checkpoints.size >= 2)
 
 private fun Job.isVisibleDashboardAssignment(
     nowMillis: Long = Clock.System.now().toEpochMilliseconds(),
