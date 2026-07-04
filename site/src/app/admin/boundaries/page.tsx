@@ -1,14 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { BoundaryEditor, type EditorBlock } from '@/components/admin/BoundaryEditor'
 
 /**
  * Admin boundary editor page (route-v2). Full editing of each block's
  * external boundary (locationBoundary) and internal exclusion islands
  * (innerBoundary) — see BoundaryEditor for the interaction model.
+ *
+ * Supports deep-linking via ?blockId=<id> (used by the /admin/routes
+ * "Boundaries" row action) — the given block is preselected on load.
  */
-export default function AdminBoundariesPage() {
+function AdminBoundariesPageInner() {
+  const searchParams = useSearchParams()
+  const blockIdParam = searchParams.get('blockId')
+  const parsedBlockId = blockIdParam ? Number(blockIdParam) : NaN
+  const initialBlockId = Number.isInteger(parsedBlockId) ? parsedBlockId : null
   const [blocks, setBlocks] = useState<EditorBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -62,8 +70,17 @@ export default function AdminBoundariesPage() {
       ) : loadError ? (
         <div className="text-red-400 text-sm py-12">{loadError}</div>
       ) : (
-        <BoundaryEditor blocks={blocks} onBlocksChanged={fetchBlocks} />
+        <BoundaryEditor blocks={blocks} onBlocksChanged={fetchBlocks} initialBlockId={initialBlockId} />
       )}
     </div>
+  )
+}
+
+export default function AdminBoundariesPage() {
+  // useSearchParams requires a Suspense boundary during prerendering.
+  return (
+    <Suspense fallback={<div className="p-6 text-neutral-500 text-sm">Loading…</div>}>
+      <AdminBoundariesPageInner />
+    </Suspense>
   )
 }

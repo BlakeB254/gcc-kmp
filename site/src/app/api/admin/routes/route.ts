@@ -25,6 +25,7 @@ export async function GET(request: Request) {
         status: routes.status,
         payoutAmount: routes.payoutAmount,
         imageUrl: routes.imageUrl,
+        description: routes.description,
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
       })
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
     const routeIds = routeList.map((r) => r.id)
     const checkpointsMap = new Map<number, any[]>()
     const blockBoundaryMap = new Map<number, unknown>()
+    const blockIdMap = new Map<number, number>()
 
     if (routeIds.length > 0) {
       const [filtered, routeBlocks] = await Promise.all([
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
           .where(inArray(routeCheckpoints.routeId, routeIds))
           .orderBy(routeCheckpoints.sequenceOrder),
         db.select({
+          id: blocks.id,
           routeId: blocks.routeId,
           locationBoundary: blocks.locationBoundary,
         }).from(blocks)
@@ -52,8 +55,11 @@ export async function GET(request: Request) {
         checkpointsMap.get(cp.routeId)!.push(cp)
       }
       for (const block of routeBlocks) {
-        if (block.routeId && block.locationBoundary) {
-          blockBoundaryMap.set(block.routeId, block.locationBoundary)
+        if (block.routeId) {
+          blockIdMap.set(block.routeId, block.id)
+          if (block.locationBoundary) {
+            blockBoundaryMap.set(block.routeId, block.locationBoundary)
+          }
         }
       }
     }
@@ -73,6 +79,8 @@ export async function GET(request: Request) {
         blockBoundaryMap.get(route.id) ?? route.geometry,
       ),
       imageUrl: route.imageUrl || null,
+      description: route.description || null,
+      blockId: blockIdMap.get(route.id) ?? null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
     }))
