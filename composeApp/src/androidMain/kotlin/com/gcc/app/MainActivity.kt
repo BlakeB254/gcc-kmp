@@ -63,8 +63,11 @@ class MainActivity : FragmentActivity() {
 
         // Now that Koin is up, flush any previous-session crash into the 🐞 panel
         // log and transmit it to the backend. Fire-and-forget: never blocks startup.
-        val apiClient = GlobalContext.get().get<GccApiClient>()
-        CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
+        // getOrNull, not get -- offlineAppModule never registers a real GccApiClient
+        // (deliberate), so this must degrade to "skip the flush" there, not crash.
+        GlobalContext.get().getOrNull<GccApiClient>()?.let { apiClient ->
+            CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
+        }
 
         val tokenManager = GlobalContext.get().get<TokenManager>()
         val root = RootComponent(

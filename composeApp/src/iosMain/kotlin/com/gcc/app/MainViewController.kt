@@ -49,8 +49,11 @@ private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIView
 
     // Now that Koin is up, flush any previous-session crash into the 🐞 panel
     // log and transmit it to the backend. Fire-and-forget: never blocks startup.
-    val apiClient = KoinPlatform.getKoin().get<GccApiClient>()
-    CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
+    // getOrNull, not get -- offlineAppModule never registers a real GccApiClient
+    // (deliberate), so this must degrade to "skip the flush" there, not crash.
+    KoinPlatform.getKoin().getOrNull<GccApiClient>()?.let { apiClient ->
+        CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
+    }
 
     // Create Decompose component outside composable scope — must survive recomposition
     val lifecycle = LifecycleRegistry()
