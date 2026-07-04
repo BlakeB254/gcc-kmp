@@ -49,7 +49,7 @@ import kotlin.math.sqrt
  *  - [LiveDetection]s when the classification looks like trash, positioned
  *    via the objectness saliency bounding box,
  *  - persistent world-anchored ring markers once a detection has been close
- *    (< [PERSIST_DISTANCE_METERS]) for two consecutive ticks — the
+ *    for two consecutive ticks (see [MarkerPromotionTracker]) — the
  *    "scanned close, so recreate it in the world" behavior.
  *
  * Vision work runs off the main thread; SceneKit mutations and the vote
@@ -65,8 +65,6 @@ internal class ArFrameFeedback(
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
         private const val TRASH_CONFIDENCE = 0.35f
-        private const val PERSIST_DISTANCE_METERS = 2.0
-        private const val PERSIST_STREAK_TICKS = 2
         private const val MARKER_DEDUPE_METERS = 3.0
 
     }
@@ -74,7 +72,7 @@ internal class ArFrameFeedback(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
     private var tick = 0
-    private var closeStreak = 0
+    private val promotionTracker = MarkerPromotionTracker()
     private var enabled = true
 
     /** World positions of placed markers, for the 3m dedupe. */
@@ -142,7 +140,7 @@ internal class ArFrameFeedback(
             tokensOf(obs.identifier).firstNotNullOfOrNull { SceneVoteVision.TRASH_TOKENS[it] }
         }
         if (trashLabel == null) {
-            closeStreak = 0
+            promotionTracker.onTick(null)
             _liveDetections.value = emptyList()
             return false
         }
@@ -180,15 +178,9 @@ internal class ArFrameFeedback(
         )
 
         // Close for two consecutive ticks → persist a world marker at the hit.
-        if (distance != null && distance <= PERSIST_DISTANCE_METERS) {
-            closeStreak += 1
-            if (closeStreak >= PERSIST_STREAK_TICKS && hit != null) {
-                val floats = matrixTranslation(hit.worldTransform)
-                addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH)
-                closeStreak = 0
-            }
-        } else {
-            closeStreak = 0
+        if (promotionTracker.onTick(distance?.toDouble()) && hit != null) {
+            val floats = matrixTranslation(hit.worldTransform)
+            addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH)
         }
         return false
     }
