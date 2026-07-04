@@ -311,6 +311,7 @@ private fun CameraPhase(
     var trackerReady by remember { mutableStateOf(false) }
     var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
 
     // Ledger emission: environment scans register real coverage (never-scanned
     // completions + 24h recency updates) exactly like the AR modes do.
@@ -362,6 +363,7 @@ private fun CameraPhase(
             val serverCells = apiClient.getMapCoverage(bbox).cells
             fetchedCells = serverCells
             staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
+            freshCells = serverCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
             DiagnosticsLog.info(
                 "env-scan",
@@ -374,6 +376,7 @@ private fun CameraPhase(
             }
             if (cached != null) {
                 staleCells = cached.coverageCells.filter { it.state == "stale" }.map { it.lat to it.lng }
+                freshCells = cached.coverageCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
                 fogCells = neverScannedGrid(anchor, cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
@@ -525,6 +528,7 @@ private fun CameraPhase(
                 trashItems = trashItems,
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
+                freshCellCenters = freshCells,
                 environmentScanMode = true,
                 statusText = scanStatus,
             )

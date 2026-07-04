@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -22,13 +21,10 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
 import com.gcc.app.util.padTwo
 import com.gcc.app.platform.LocationProvider
-import com.gcc.app.ui.map.CheckpointMarker
-import com.gcc.app.ui.map.CheckpointThumbnail
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
-import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
 import com.gcc.shared.model.Coordinates
@@ -394,71 +390,9 @@ fun RouteDetailScreen(
                     )
                 }
 
-                // Checkpoint list (compact)
-                if (sortedCheckpoints.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Checkpoints (${sortedCheckpoints.size})",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
-
-                    itemsIndexed(
-                        sortedCheckpoints,
-                        key = { _, cp -> cp.sequenceOrder },
-                    ) { index, checkpoint ->
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CheckpointMarker(
-                                    sequenceNumber = index + 1,
-                                    type = checkpoint.type,
-                                    status = CheckpointStatus.UPCOMING,
-                                    photoRequired = checkpoint.photoRequired,
-                                )
-                                if (index < sortedCheckpoints.size - 1) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(2.dp)
-                                            .height(40.dp)
-                                            .background(DividerColor)
-                                    )
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        checkpoint.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    Text(
-                                        checkpoint.type.name.replace("_", " "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextMuted,
-                                    )
-                                }
-
-                                CheckpointThumbnail(
-                                    type = checkpoint.type,
-                                    sequenceNumber = index + 1,
-                                    totalCheckpoints = sortedCheckpoints.size,
-                                    modifier = Modifier.size(44.dp),
-                                )
-                            }
-                        }
-                    }
-                }
+                // (Checkpoint list removed: checkpoints are photo-era legacy —
+                // scan fulfillment runs on the block boundary corridor. The
+                // sorted list above still feeds the map path fallback.)
 
                 // Route status and actions
                 item {

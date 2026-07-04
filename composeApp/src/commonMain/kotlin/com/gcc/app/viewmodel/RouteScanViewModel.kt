@@ -210,11 +210,17 @@ class RouteScanViewModel(
     val fogCellCenters: StateFlow<List<Pair<Double, Double>>> = _fogCellCenters.asStateFlow()
     private val _staleCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
     val staleCellCenters: StateFlow<List<Pair<Double, Double>>> = _staleCellCenters.asStateFlow()
+    private val _freshCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val freshCellCenters: StateFlow<List<Pair<Double, Double>>> = _freshCellCenters.asStateFlow()
 
     private fun refreshFogAndStaleCenters() {
         val classification = classifyFogAndStale(coverageTracker.getUnscannedCells(), cellPriorStates)
         _fogCellCenters.value = classification.fogCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+        // Ledger-fresh cells punch out of the minimap veil (already-scanned sky).
+        _freshCellCenters.value = cellPriorStates
+            .filterValues { it == "fresh" }
+            .keys.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
     }
 
     // ── Expected-observation (rectify) flow ──────────────────────────
