@@ -987,6 +987,9 @@ class GccApiClient(
     suspend fun refreshToken(): AuthRefreshResponse =
         postJson("/api/auth/refresh")
 
+    suspend fun reportCrash(report: CrashReportRequest): Unit =
+        postJson("/api/crashes", report)
+
     // Admin: Add photos to an existing spot report
     suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =
         patchJson<Map<String, Any>, CommunityReport>(

@@ -988,6 +988,19 @@ export const newsletterSends = pgTable('newsletter_sends', {
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
 })
 
+// Mobile crash reports (iOS/Android). Public, unauthenticated ingest -- a
+// crash can happen before login, so there's no worker/session to attach.
+export const crashReports = pgTable('crash_reports', {
+  id: serial('id').primaryKey(),
+  deviceId: varchar('device_id').notNull(),
+  platform: varchar('platform').notNull(),
+  appVersion: varchar('app_version'),
+  exceptionMessage: text('exception_message').notNull(),
+  stackTrace: text('stack_trace').notNull(),
+  occurredAt: timestamp('occurred_at', { mode: 'string', withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
 // =====================
 // FEEDBACK & COMMUNITY
 // =====================
