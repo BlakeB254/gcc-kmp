@@ -34,6 +34,7 @@ import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.auth.AuthTokenProvider
 import com.gcc.shared.auth.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,14 +61,17 @@ val appModule = module {
     single { detectDeviceCapabilities() }
     single {
         val tokenManager = get<TokenManager>()
-        GccApiClient(
+        lateinit var apiClient: GccApiClient
+        val authTokenProvider = AuthTokenProvider(tokenManager) { apiClient.refreshToken() }
+        apiClient = GccApiClient(
             baseUrl = getApiBaseUrl(),
-            tokenProvider = { tokenManager.getToken() },
+            tokenProvider = { authTokenProvider.currentToken() },
             onUnauthorized = {
                 tokenManager.clearToken()
                 SessionExpiredSignal.fire()
             },
         )
+        apiClient
     }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
