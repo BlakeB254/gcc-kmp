@@ -14,11 +14,18 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PermissionManager
 import com.gcc.app.platform.PushNotificationManager
+import com.gcc.app.platform.initCrashReportingContext
+import com.gcc.app.platform.installCrashReporting
+import com.gcc.app.platform.flushPendingCrashReport
 import com.gcc.app.platform.initSecureStorageContext
 import com.gcc.app.platform.initSqlDriverContext
 import com.gcc.app.platform.PlatformUrlOpener
 import com.gcc.app.platform.ShareManager
+import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
@@ -28,6 +35,11 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Crash reporting first: installs the uncaught-exception hook before
+        // anything else (including the other initXContext calls below) can crash.
+        initCrashReportingContext(this)
+        installCrashReporting()
 
         // Initialize platform providers that need Android context
         initSecureStorageContext(this)
@@ -49,6 +61,14 @@ class MainActivity : FragmentActivity() {
             startKoin {
                 modules(if (isDemo) offlineAppModule else appModule)
             }
+        }
+
+        // Now that Koin is up, flush any previous-session crash into the 🐞 panel
+        // log and transmit it to the backend. Fire-and-forget: never blocks startup.
+        // getOrNull, not get -- offlineAppModule never registers a real GccApiClient
+        // (deliberate), so this must degrade to "skip the flush" there, not crash.
+        GlobalContext.get().getOrNull<GccApiClient>()?.let { apiClient ->
+            CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
         }
 
         val tokenManager = GlobalContext.get().get<TokenManager>()

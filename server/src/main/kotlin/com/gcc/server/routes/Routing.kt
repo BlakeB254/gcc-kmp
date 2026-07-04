@@ -19,6 +19,7 @@ fun Application.configureRouting() {
         // Auth (public — login/register)
         authRoutes()
         routeQueueCronRoutes()
+        crashRoutes()
 
         // Public read-only (higher rate limit)
         rateLimit(RateLimitName("public")) {

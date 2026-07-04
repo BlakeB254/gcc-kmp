@@ -22,6 +22,7 @@ val appModule = module {
     single { WorkerService() }
     single { RouteService() }
     single { BlockService() }
+    single { CrashReportService() }
     single { JobService() }
     single { ServiceAreaService() }
     single { SpotService() }
