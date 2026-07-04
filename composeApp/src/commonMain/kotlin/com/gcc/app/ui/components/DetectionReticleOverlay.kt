@@ -28,10 +28,11 @@ import kotlin.math.roundToInt
  * frame pipeline. Detections arrive in normalized view coordinates
  * (top-left origin), so this just scales to the canvas size.
  *
- * The reticle also shows the detection's promotion progress: a brighter arc
- * sweeps around the dim base circle as MarkerPromotionTracker's streak
- * builds, and a checkmark briefly flashes in place of the arc the tick a
- * world marker gets placed.
+ * The reticle also shows the detection's promotion progress: a white arc
+ * overlay sweeps around the (unchanged, full-opacity) base circle as
+ * MarkerPromotionTracker's streak builds, and a checkmark briefly flashes in
+ * place of the arc the tick a world marker gets placed. At streakProgress=0
+ * the base circle renders identically to how it did before this feature.
  */
 @Composable
 fun DetectionReticleOverlay(
@@ -66,9 +67,12 @@ fun DetectionReticleOverlay(
             val center = Offset(detection.cx * size.width, detection.cy * size.height)
             val radius = (detection.r * minDim).coerceIn(28.dp.toPx(), minDim * 0.45f)
 
-            // Dim base circle -- the "track" the progress arc sweeps around.
+            // Base circle -- unchanged from its pre-promotion-feature appearance,
+            // regardless of streak progress. The progress arc below is drawn as a
+            // visually distinct overlay on top rather than relying on dimming
+            // this base for contrast.
             drawCircle(
-                color = GccGreen.copy(alpha = 0.35f),
+                color = GccGreen,
                 radius = radius,
                 center = center,
                 style = Stroke(width = 3.dp.toPx()),
@@ -92,14 +96,17 @@ fun DetectionReticleOverlay(
             } else if (detection.streakTicks > 0 && detection.streakProgress > 0) {
                 val sweepFraction = (detection.streakProgress.toFloat() / detection.streakTicks)
                     .coerceIn(0f, 1f)
+                // Distinct overlay color + thicker stroke than the base circle so
+                // this reads as "something building up" on top of the unchanged
+                // base, rather than a brightness contrast against a dimmed base.
                 drawArc(
-                    color = GccGreen,
+                    color = Color.White,
                     startAngle = -90f,
                     sweepAngle = 360f * sweepFraction,
                     useCenter = false,
                     topLeft = Offset(center.x - radius, center.y - radius),
                     size = Size(radius * 2, radius * 2),
-                    style = Stroke(width = 3.dp.toPx()),
+                    style = Stroke(width = 5.dp.toPx()),
                 )
             }
 
