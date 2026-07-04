@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
 
@@ -44,18 +46,42 @@ actual class PermissionManager actual constructor() {
             return PermissionStatus.GRANTED
         }
 
-        val activeLauncher = launcher
-        if (activeLauncher == null) {
-            // initActivity() hasn't run yet (e.g. called before MainActivity.onCreate).
-            return PermissionStatus.NOT_DETERMINED
-        }
+        // `pendingContinuation`/`activeLauncher` are shared, companion-level state:
+        // the ActivityResultLauncher callback can only ever resume ONE continuation
+        // (whichever launch() call happened most recently -- the Android permission
+        // dialog fires a single callback). If two callers raced into this function
+        // concurrently without the mutex below, the second call's assignment on the
+        // `pendingContinuation = continuation` line would silently overwrite the
+        // first caller's continuation, stranding it forever (its coroutine would
+        // never resume). Worse, the first (now-orphaned) continuation's
+        // `invokeOnCancellation` could still fire later and null out the SECOND
+        // (legitimately pending) continuation's slot, stranding that one too.
+        //
+        // requestMutex serializes access to this section so only one
+        // suspendCancellableCoroutine block can be "in flight" at a time. A second
+        // concurrent caller (e.g. two call sites both requesting Permission.CAMERA)
+        // suspends on the mutex until the first request resolves, then re-checks
+        // checkPermission() below -- if the first request's dialog already
+        // resolved the permission, the second caller returns that real answer
+        // without launching a second system dialog.
+        return requestMutex.withLock {
+            if (checkPermission(permission) == PermissionStatus.GRANTED) {
+                return@withLock PermissionStatus.GRANTED
+            }
 
-        markRequested(manifestPermission)
+            val activeLauncher = launcher
+            if (activeLauncher == null) {
+                // initActivity() hasn't run yet (e.g. called before MainActivity.onCreate).
+                return@withLock PermissionStatus.NOT_DETERMINED
+            }
 
-        return suspendCancellableCoroutine { continuation ->
-            pendingContinuation = continuation
-            activeLauncher.launch(manifestPermission)
-            continuation.invokeOnCancellation { pendingContinuation = null }
+            markRequested(manifestPermission)
+
+            suspendCancellableCoroutine { continuation ->
+                pendingContinuation = continuation
+                activeLauncher.launch(manifestPermission)
+                continuation.invokeOnCancellation { pendingContinuation = null }
+            }
         }
     }
 
@@ -114,6 +140,11 @@ actual class PermissionManager actual constructor() {
 
         @Volatile
         private var pendingContinuation: CancellableContinuation<PermissionStatus>? = null
+
+        // Serializes requestPermission() so at most one system permission dialog
+        // (and one pendingContinuation) is in flight at a time. See the comment
+        // in requestPermission() for the concurrency hazard this prevents.
+        private val requestMutex = Mutex()
 
         /**
          * Register the runtime-permission launcher and store the activity/context.
