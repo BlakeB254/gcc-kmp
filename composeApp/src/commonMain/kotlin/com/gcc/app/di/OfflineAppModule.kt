@@ -6,6 +6,7 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.ShareManager
+import com.gcc.app.platform.createSqlDriver
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BiometricAuthViewModel
@@ -30,6 +31,7 @@ import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.offline.OfflineTokenManager
 import com.gcc.shared.offline.createOfflineApiClient
 import org.koin.core.module.dsl.singleOf
@@ -45,6 +47,7 @@ val offlineAppModule = module {
     single { OnDeviceAnalyzer() }
     single { detectDeviceCapabilities() }
     single { createOfflineApiClient() }
+    single { RouteCacheStore(createSqlDriver()) }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)

@@ -5,6 +5,7 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.createSecureStorage
+import com.gcc.app.platform.createSqlDriver
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.detectDeviceCapabilities
@@ -35,6 +36,7 @@ import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.RouteCacheStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,6 +60,7 @@ val appModule = module {
     single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
     single { detectDeviceCapabilities() }
+    single { RouteCacheStore(createSqlDriver()) }
     single {
         val tokenManager = get<TokenManager>()
         GccApiClient(

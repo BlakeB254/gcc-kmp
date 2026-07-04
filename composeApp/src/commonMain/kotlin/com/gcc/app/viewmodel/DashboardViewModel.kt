@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.model.*
 import com.gcc.shared.offline.SeedData
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,7 @@ data class DashboardUiState(
 
 class DashboardViewModel(
     private val apiClient: GccApiClient,
+    private val routeCacheStore: RouteCacheStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -293,16 +295,24 @@ class DashboardViewModel(
         }.toMap()
     }
 
-    private suspend fun loadRouteRecordsSafely(): List<Route> =
-        try {
+    private suspend fun loadRouteRecordsSafely(): List<Route> {
+        val routes = try {
             apiClient.getRoutes()
         } catch (_: Exception) {
             try {
                 apiClient.getPublicRoutes()
             } catch (_: Exception) {
-                emptyList()
+                null
             }
         }
+        if (routes != null) {
+            if (routes.isNotEmpty()) routeCacheStore.replaceAll(routes)
+            return routes
+        }
+        // Both live fetches failed -- fall back to the last successfully
+        // cached set, instead of returning an empty list outright.
+        return routeCacheStore.getAll()
+    }
 
     private suspend fun loadBlockRecordsSafely(routeRecords: List<Route> = emptyList()): List<Block> {
         val apiBlocks = try {
