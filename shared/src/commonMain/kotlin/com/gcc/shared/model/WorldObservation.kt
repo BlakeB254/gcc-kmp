@@ -21,7 +21,7 @@ data class WorldObservation(
     val state: String, // 'dirty' | 'clean'
     val severity: Int? = null,
     val mediaUrl: String? = null,
-    val sourceType: String, // 'route_scan' | 'spot_report'
+    val sourceType: String, // 'route_scan' | 'spot_report' | 'ar_auto_detect'
     val capturedAt: String? = null,
     val scanHotspotId: Int? = null,
     val communityReportId: Int? = null,

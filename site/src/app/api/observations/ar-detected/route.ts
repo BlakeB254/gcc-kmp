@@ -22,6 +22,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const markers: ArDetectedMarker[] = body?.markers ?? []
 
+    const isValidMarker = (marker: ArDetectedMarker) =>
+      Number.isFinite(marker?.lat) &&
+      Number.isFinite(marker?.lng) &&
+      typeof marker?.label === 'string' &&
+      marker.label.length > 0 &&
+      typeof marker?.capturedAt === 'string' &&
+      marker.capturedAt.length > 0
+
+    if (!markers.every(isValidMarker)) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid marker data' }, { status: 400 })
+    }
+
     for (const marker of markers) {
       await recordWorldObservation({
         sourceType: 'ar_auto_detect',
