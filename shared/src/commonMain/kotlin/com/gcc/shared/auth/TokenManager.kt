@@ -136,6 +136,19 @@ open class TokenManager(private val settings: Settings = Settings()) {
     }
 
     /**
+     * Like [isTokenExpired], but true up to [bufferSeconds] before actual
+     * expiry -- lets callers refresh proactively while the token is still
+     * valid enough to authenticate the refresh call itself (the refresh
+     * endpoint rejects an already-expired token outright).
+     */
+    fun isTokenExpiringSoon(bufferSeconds: Long = ONE_DAY_SECONDS): Boolean {
+        val token = _token.value ?: return true
+        val exp = getJwtClaim(token, "exp") ?: return true
+        val expSeconds = exp.toLongOrNull() ?: return true
+        return currentTimeSeconds() >= (expSeconds - bufferSeconds)
+    }
+
+    /**
      * Extract the worker ID from the JWT payload's "workerId" claim.
      * Returns null if the token is missing or the claim cannot be parsed.
      */
@@ -203,6 +216,9 @@ open class TokenManager(private val settings: Settings = Settings()) {
         private const val KEY_REMEMBERED_EMAIL = "remembered_email"
         private const val KEY_CREDENTIAL_EMAIL = "credential_email"
         private const val KEY_CREDENTIAL_PASSWORD = "credential_password"
+
+        /** Default proactive-refresh buffer -- matches the server's 7-day token lifetime with room to spare. */
+        const val ONE_DAY_SECONDS = 86_400L
 
         /** Platform-independent current time in seconds since epoch. */
         private fun currentTimeSeconds(): Long {
