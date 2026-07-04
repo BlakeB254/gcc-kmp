@@ -2,8 +2,11 @@
 
 package com.gcc.app.platform
 
+import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.model.CrashReportRequest
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlin.experimental.ExperimentalNativeApi
+import kotlinx.datetime.Clock
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
@@ -30,11 +33,12 @@ import platform.Foundation.writeToFile
  *     also sets an unhandled-exception hook that writes the full Kotlin
  *     stack trace to disk before the process dies.
  *
- * On every launch, [installCrashReporting] imports whatever the previous
- * session left behind into [DiagnosticsLog], so an error screenshot of the
+ * On every launch, [flushPendingCrashReport] imports whatever the previous
+ * session left behind into [DiagnosticsLog] (and transmits the Kotlin
+ * fatal-exception case to the backend), so an error screenshot of the
  * 🐞 panel shows prior-session crashes too.
  */
-fun installCrashReporting() {
+actual fun installCrashReporting() {
     setUnhandledExceptionHook { throwable ->
         // Keep this hook minimal and allocation-light: the process terminates
         // (and Apple's crash reporter fires) as soon as it returns.
@@ -54,7 +58,6 @@ fun installCrashReporting() {
             println("GCC-DIAG ERR [crash] Kotlin fatal: $throwable")
         }
     }
-    importPreviousSessionCrashes()
 }
 
 private fun documentsPath(): String =
@@ -66,7 +69,7 @@ private fun lastKotlinCrashPath(): String = documentsPath() + "/gcc-last-kotlin-
 /** Directory the Swift MetricKit observer writes diagnostic JSON into. */
 private fun metricKitDirPath(): String = documentsPath() + "/gcc-crash-diagnostics"
 
-private fun importPreviousSessionCrashes() {
+actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
     val fm = NSFileManager.defaultManager
 
     val kotlinCrashPath = lastKotlinCrashPath()
@@ -80,6 +83,19 @@ private fun importPreviousSessionCrashes() {
             "crash",
             "previous session died with a Kotlin fatal exception:\n${text?.take(1500) ?: "(unreadable)"}",
         )
+        if (text != null) {
+            runCatching {
+                apiClient.reportCrash(
+                    CrashReportRequest(
+                        deviceId = CoverageDeviceId.value,
+                        platform = "ios",
+                        exceptionMessage = text.lineSequence().drop(1).firstOrNull() ?: "unknown",
+                        stackTrace = text,
+                        occurredAt = Clock.System.now(),
+                    ),
+                )
+            }
+        }
         fm.removeItemAtPath(kotlinCrashPath, error = null)
     }
 

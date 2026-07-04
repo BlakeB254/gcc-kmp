@@ -6,10 +6,15 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.gcc.app.di.appModule
 import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
+import com.gcc.app.platform.flushPendingCrashReport
 import com.gcc.app.platform.installCrashReporting
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.LocationProvider
+import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.koin.core.context.startKoin
 import org.koin.mp.KoinPlatform
 
@@ -31,8 +36,8 @@ fun MainViewController() = MainViewControllerWithDemo(demoMode = false)
 fun MainViewControllerDemo() = MainViewControllerWithDemo(demoMode = true)
 
 private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIViewController {
-    // Crash reporting first: installs the Kotlin fatal-exception hook and
-    // imports any previous-session crash diagnostics into the 🐞 panel log.
+    // Crash reporting first: installs the Kotlin fatal-exception hook before
+    // anything else can crash during init.
     installCrashReporting()
 
     // Initialize Koin before composable scope (must be stable across recompositions)
@@ -41,6 +46,11 @@ private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIView
             modules(if (demoMode) offlineAppModule else appModule)
         }
     }
+
+    // Now that Koin is up, flush any previous-session crash into the 🐞 panel
+    // log and transmit it to the backend. Fire-and-forget: never blocks startup.
+    val apiClient = KoinPlatform.getKoin().get<GccApiClient>()
+    CoroutineScope(Dispatchers.Default).launch { flushPendingCrashReport(apiClient) }
 
     // Create Decompose component outside composable scope — must survive recomposition
     val lifecycle = LifecycleRegistry()
