@@ -34,7 +34,7 @@ export function cellCenter(cellId: string, cellSizeMeters = CELL_SIZE_METERS): {
 }
 
 export interface RecordObservationInput {
-  sourceType: 'route_scan' | 'spot_report'
+  sourceType: 'route_scan' | 'spot_report' | 'ar_auto_detect'
   scanHotspotId?: number
   communityReportId?: number
   lat: number
