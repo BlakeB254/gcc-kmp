@@ -92,16 +92,22 @@ kotlin {
             implementation(libs.androidx.security.crypto)
             // Biometric authentication (fingerprint / face)
             implementation(libs.androidx.biometric)
+            // SQLDelight driver (route cache)
+            implementation(libs.sqldelight.android.driver)
         }
         iosMain.dependencies {
             // MapLibre + Compass mobile implementation (iOS)
             implementation(libs.maplibre.compose)
             implementation(libs.compass.geolocation.mobile)
+            // SQLDelight driver (route cache)
+            implementation(libs.sqldelight.native.driver)
         }
         val desktopMain by getting
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             // Desktop uses canvas map fallback — no MapLibre/Compass needed
+            // SQLDelight driver (route cache)
+            implementation(libs.sqldelight.sqlite.driver)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

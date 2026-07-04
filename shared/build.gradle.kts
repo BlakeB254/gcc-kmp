@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.sqldelight)
 }
 
 kotlin {
@@ -40,6 +41,7 @@ kotlin {
             implementation(libs.ktor.client.mock)
             // Compose UI for shared DrawScope drawing functions (CheckpointDrawing)
             implementation(compose.ui)
+            implementation(libs.sqldelight.runtime)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
@@ -55,6 +57,17 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.multiplatform.settings.test)
+        }
+        jvmTest.dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("GccDatabase") {
+            packageName.set("com.gcc.shared.cache")
         }
     }
 }

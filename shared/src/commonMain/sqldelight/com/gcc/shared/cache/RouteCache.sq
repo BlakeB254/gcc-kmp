@@ -1,0 +1,13 @@
+CREATE TABLE routeCache (
+  id INTEGER NOT NULL PRIMARY KEY,
+  json TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM routeCache;
+
+insertOrReplace:
+INSERT OR REPLACE INTO routeCache(id, json) VALUES (?, ?);
+
+clear:
+DELETE FROM routeCache;
