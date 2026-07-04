@@ -6,8 +6,8 @@ import com.gcc.shared.model.CrashReportRequest
 import kotlinx.datetime.Clock
 import org.jetbrains.exposed.sql.insert
 
-class CrashReportService {
-    suspend fun record(request: CrashReportRequest): Unit = dbQuery {
+open class CrashReportService {
+    open suspend fun record(request: CrashReportRequest): Unit = dbQuery {
         CrashReports.insert {
             it[deviceId] = request.deviceId
             it[platform] = request.platform
