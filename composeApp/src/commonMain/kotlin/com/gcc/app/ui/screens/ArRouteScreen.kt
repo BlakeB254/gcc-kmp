@@ -286,7 +286,10 @@ fun ArRouteScreen(
 
         // Live minimap — fog (never scanned) / stale (re-visit) / this-session
         // scanned cells + hotspot pins, matching the spot-capture minimap.
-        if (ui.currentLat != 0.0 || ui.currentLng != 0.0) {
+        // Suppressed while the rectify confirm sheet is showing: the sheet's
+        // buttons (below) would otherwise be covered by this BottomStart map,
+        // since the minimap is drawn later and wins z-order.
+        if (nearbyExpected == null && (ui.currentLat != 0.0 || ui.currentLng != 0.0)) {
             val miniMapWidth: Dp = 160.dp
             val miniMapHeight: Dp = miniMapWidth * 0.78f
             Box(
