@@ -107,9 +107,16 @@ export async function GET(
       checkpoints,
       routeBlock?.locationBoundary ?? route.geometry,
     )
-    if (baseCheckpointResponse.length < 2) {
+    // Checkpoints are legacy from the photo-lap era — scan-based fulfillment
+    // needs a block boundary or geometry, not checkpoints. Only reject a
+    // route with NO scannable geometry at all.
+    if (
+      baseCheckpointResponse.length < 2 &&
+      !routeBlock?.locationBoundary &&
+      !route.geometry
+    ) {
       return NextResponse.json(
-        { error: 'Route is not configured for work', success: false },
+        { error: 'Route has no boundary or path geometry to scan', success: false },
         { status: 404 },
       )
     }

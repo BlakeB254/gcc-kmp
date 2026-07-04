@@ -385,7 +385,7 @@ class RouteScanViewModel(
             _uiState.value = RouteScanUiState(
                 routeId = route.id,
                 route = route,
-                error = "This route is not available yet. An admin must publish it and configure checkpoints before scouting can start.",
+                error = "This route is not available yet. An admin must publish it and give it a block boundary (or path) before scanning can start.",
             )
             return
         }
@@ -407,10 +407,10 @@ class RouteScanViewModel(
             deviceType = deviceType,
             phase = ScanPhase.SCOUTING,
             routeSections = sections,
-            sectionPrompt = if (deviceType == DeviceType.AR) {
-                "Start the area scan at section 1."
-            } else {
-                "Start the fallback photo lap at section 1."
+            sectionPrompt = when {
+                sections.isEmpty() -> "Lap 1: walk the block and scan the full area."
+                deviceType == DeviceType.AR -> "Start the area scan at section 1."
+                else -> "Start the fallback photo lap at section 1."
             },
         )
 
@@ -472,7 +472,7 @@ class RouteScanViewModel(
                 val route = state.route
                 if (route?.isWorkerAvailableRoute(allowUnpublishedRoute) != true) {
                     throw IllegalStateException(
-                        "This route is not available yet. An admin must publish it and configure checkpoints before scouting can start."
+                        "This route is not available yet. An admin must publish it and give it a block boundary (or path) before scanning can start."
                     )
                 }
 
@@ -1194,9 +1194,14 @@ class RouteScanViewModel(
     }
 }
 
+// Checkpoints are legacy (photo-lap era). Scannable = block boundary for the
+// corridor, or geometry / checkpoints for the line-proximity fallback.
 private fun Route.isWorkerAvailableRoute(allowUnpublished: Boolean = false): Boolean =
     (status == RouteStatus.PUBLISHED || allowUnpublished) &&
-        CheckpointGenerator.generateIfMissing(this).size >= 2
+        (
+            (blockBoundary?.coordinates?.firstOrNull()?.size ?: 0) >= 3 ||
+                CheckpointGenerator.generateIfMissing(this).size >= 2
+        )
 
 private fun ScanHotspot.sectionIndex(): Int? =
     arAnchorData
