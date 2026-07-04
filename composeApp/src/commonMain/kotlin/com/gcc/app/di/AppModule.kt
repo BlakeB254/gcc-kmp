@@ -62,7 +62,7 @@ val appModule = module {
     single {
         val tokenManager = get<TokenManager>()
         lateinit var apiClient: GccApiClient
-        val authTokenProvider = AuthTokenProvider(tokenManager) { apiClient.refreshToken() }
+        val authTokenProvider = AuthTokenProvider(tokenManager) { currentToken -> apiClient.refreshToken(currentToken) }
         apiClient = GccApiClient(
             baseUrl = getApiBaseUrl(),
             tokenProvider = { authTokenProvider.currentToken() },
