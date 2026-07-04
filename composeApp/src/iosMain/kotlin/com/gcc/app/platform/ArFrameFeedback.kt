@@ -171,12 +171,18 @@ internal class ArFrameFeedback(
         // Landscape sensor image → portrait view: rotate 90° clockwise.
         val viewX = (1.0 - imageY).toFloat()
         val viewY = imageX.toFloat()
-        _liveDetections.value = listOf(
-            LiveDetection(cx = viewX, cy = viewY, r = radius, label = trashLabel, distanceMeters = distance)
-        )
-
         // Close for two consecutive ticks → persist a world marker at the hit.
-        if (promotionTracker.onTick(distance?.toDouble()) && hit != null) {
+        // Called before building this tick's LiveDetection so the reticle can
+        // show this tick's progress, not last tick's.
+        val progress = promotionTracker.onTick(distance?.toDouble())
+        _liveDetections.value = listOf(
+            LiveDetection(
+                cx = viewX, cy = viewY, r = radius, label = trashLabel, distanceMeters = distance,
+                streakProgress = progress.streak, streakTicks = progress.streakTicks,
+                justPromoted = progress.promoted,
+            )
+        )
+        if (progress.promoted && hit != null) {
             val floats = matrixTranslation(hit.worldTransform)
             addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH)
         }

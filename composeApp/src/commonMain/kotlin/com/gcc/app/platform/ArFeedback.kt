@@ -13,6 +13,12 @@ data class LiveDetection(
     val label: String,
     /** Estimated distance to the detection, when an AR hit-test resolved one. */
     val distanceMeters: Float? = null,
+    /** Consecutive close-range ticks so far this streak (see [MarkerPromotionTracker]). */
+    val streakProgress: Int = 0,
+    /** Ticks required to promote -- for rendering streakProgress as a fraction. */
+    val streakTicks: Int = 2,
+    /** True for exactly the one tick a world marker was just placed. */
+    val justPromoted: Boolean = false,
 )
 
 /** Kind of persistent world-anchored AR marker. */
