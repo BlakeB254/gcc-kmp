@@ -12,6 +12,7 @@ import com.gcc.app.navigation.RootComponent
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
+import com.gcc.app.platform.PermissionManager
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.initSecureStorageContext
 import com.gcc.app.platform.PlatformUrlOpener
@@ -35,6 +36,7 @@ class MainActivity : FragmentActivity() {
         PlatformUrlOpener.initContext(this)
         PushNotificationManager.initContext(this)
         BiometricAuth.initActivity(this)
+        PermissionManager.initActivity(this)
 
         val isDemo = intent.getBooleanExtra("GCC_DEMO", false)
             || System.getenv("GCC_DEMO") == "true"

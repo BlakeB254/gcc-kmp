@@ -152,8 +152,21 @@ actual class CameraManager actual constructor() {
 actual fun CameraPreview(modifier: Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val permissionManager = remember { PermissionManager() }
 
     var cameraProviderReady by remember { mutableStateOf(false) }
+    var permissionStatus by remember {
+        mutableStateOf(permissionManager.checkPermission(Permission.CAMERA))
+    }
+
+    // Request CAMERA permission before CameraX ever touches the hardware. Runs once
+    // per composition; if the user later grants it via Settings, checkPermission()
+    // above will pick it up on next entry to this composable.
+    LaunchedEffect(Unit) {
+        if (permissionStatus != PermissionStatus.GRANTED) {
+            permissionStatus = permissionManager.requestPermission(Permission.CAMERA)
+        }
+    }
 
     // Create the CameraX use cases once
     val imageCapture = remember {
@@ -174,8 +187,9 @@ actual fun CameraPreview(modifier: Modifier) {
         }
     }
 
-    // Bind CameraX to the lifecycle
-    LaunchedEffect(lifecycleOwner) {
+    // Bind CameraX to the lifecycle -- gated on CAMERA permission being granted.
+    LaunchedEffect(lifecycleOwner, permissionStatus) {
+        if (permissionStatus != PermissionStatus.GRANTED) return@LaunchedEffect
         try {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener(
@@ -201,8 +215,8 @@ actual fun CameraPreview(modifier: Modifier) {
         }
     }
 
-    if (cameraProviderReady) {
-        AndroidView(
+    when {
+        cameraProviderReady -> AndroidView(
             factory = { ctx ->
                 PreviewView(ctx).apply {
                     scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -215,19 +229,37 @@ actual fun CameraPreview(modifier: Modifier) {
                 preview.setSurfaceProvider(previewView.surfaceProvider)
             },
         )
-    } else {
-        // Loading state while CameraX initializes
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(Color(0xFF1A1A2E)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "Initializing camera...",
-                color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodyLarge,
-            )
+
+        permissionStatus == PermissionStatus.GRANTED -> {
+            // Permission is granted but CameraX hasn't finished binding yet.
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1A1A2E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Initializing camera...",
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+
+        else -> {
+            // Permission not (yet) granted -- CameraX is never started.
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1A1A2E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Camera permission is required to scan.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         }
     }
 }
