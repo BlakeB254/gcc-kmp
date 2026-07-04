@@ -32,6 +32,9 @@ import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.RouteCacheStore
+import com.gcc.shared.cache.ScanAreaCacheStore
+import com.gcc.app.platform.EnvScanSessionUploader
+import app.cash.sqldelight.db.SqlDriver
 import com.gcc.shared.offline.OfflineTokenManager
 import com.gcc.shared.offline.createOfflineApiClient
 import org.koin.core.module.dsl.singleOf
@@ -47,7 +50,10 @@ val offlineAppModule = module {
     single { OnDeviceAnalyzer() }
     single { detectDeviceCapabilities() }
     single { createOfflineApiClient() }
-    single { RouteCacheStore(createSqlDriver()) }
+    single<SqlDriver> { createSqlDriver() }
+    single { RouteCacheStore(get()) }
+    single { ScanAreaCacheStore(get()) }
+    single { EnvScanSessionUploader(get()) }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)
@@ -68,6 +74,6 @@ val offlineAppModule = module {
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }

@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,7 @@ import kotlin.math.cos
 private val StaleAmber = Color(0xFFF59E0B)
 private val FogGray = Color(0xFF6B7280)
 private val TrashOrange = Color(0xFFF97316)
+private val CorridorSlate = Color(0xFF334155)
 
 /**
  * Minimap overlay for the environment scan: draws (in map space, projected
@@ -43,6 +45,17 @@ fun ScanMinimapOverlay(
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshnessCellSizeMeters: Double = 10.0,
+    /** Block outline (lat, lng ring) — drawn as the minimap's boundary. */
+    outerBoundary: List<Pair<Double, Double>> = emptyList(),
+    /** Inner exclusion islands (private property) — amber outlines. */
+    innerBoundaries: List<List<Pair<Double, Double>>> = emptyList(),
+    /**
+     * Required-area cell centers. Drawn as a dim base under the green
+     * scanned cells so the block visibly "fills in" as the lap progresses.
+     */
+    corridorCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Lap-2 target: the problem area currently being guided to. */
+    guidanceTarget: Coordinates? = null,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -57,6 +70,18 @@ fun ScanMinimapOverlay(
             )
         }
 
+        fun drawRing(ring: List<Pair<Double, Double>>, color: Color, widthPx: Float) {
+            if (ring.size < 3) return
+            val path = Path()
+            ring.forEachIndexed { index, (lat, lng) ->
+                val p = toOffset(lat, lng)
+                if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+            }
+            path.close()
+            drawPath(path, color = color, style = Stroke(width = widthPx))
+        }
+
+
         fun drawCell(lat: Double, lng: Double, sideMeters: Double, color: Color) {
             val side = metersToPixels(sideMeters, centerLat, zoom).coerceAtLeast(2f)
             val c = toOffset(lat, lng)
@@ -67,6 +92,13 @@ fun ScanMinimapOverlay(
                 topLeft = Offset(c.x - side / 2f, c.y - side / 2f),
                 size = Size(side, side),
             )
+        }
+
+        // Required-area base (deepest layer): unscanned required cells read
+        // as dark slate; the green session fill covers them as the lap
+        // progresses — the fill-in effect.
+        for ((lat, lng) in corridorCellCenters) {
+            drawCell(lat, lng, cellSizeMeters, CorridorSlate.copy(alpha = 0.35f))
         }
 
         // Ledger freshness first (underneath): fog = never scanned, amber = stale.
@@ -82,7 +114,14 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.45f))
         }
 
-        // Geo-tagged trash items on top.
+        // Block boundaries over the fills: outer outline in the brand green,
+        // inner exclusion islands in amber (the not-required areas).
+        drawRing(outerBoundary, GccGreen, 2.dp.toPx())
+        for (island in innerBoundaries) {
+            drawRing(island, StaleAmber, 1.5.dp.toPx())
+        }
+
+        // Geo-tagged trash items on top — the landmarks the lap creates.
         for (item in trashItems) {
             val c = toOffset(item.lat, item.lng)
             if (c.x !in 0f..size.width || c.y !in 0f..size.height) continue
@@ -93,6 +132,14 @@ fun ScanMinimapOverlay(
                 center = c,
                 style = Stroke(width = 1.dp.toPx()),
             )
+        }
+
+        // Lap-2 guidance target: a double ring marking the problem area the
+        // worker is being steered toward.
+        guidanceTarget?.let { target ->
+            val c = toOffset(target.lat, target.lng)
+            drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
+            drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
         }
     }
 }

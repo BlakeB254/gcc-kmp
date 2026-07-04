@@ -65,6 +65,8 @@ import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.gcc.shared.cache.ScanAreaCacheStore
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import com.gcc.shared.model.OnDeviceAnalysisResult
@@ -302,6 +304,7 @@ private fun CameraPhase(
 
     // ── Environment-scan session: coverage credit + minimap layers ──
     val apiClient = koinInject<GccApiClient>()
+    val scanAreaCache = koinInject<ScanAreaCacheStore>()
     val tracker = remember { CoverageTracker() }
     // One session = one capture: this recorder's snapshot rides with submit.
     val sessionRecorder = remember { EnvScanSessionRecorder() }
@@ -347,14 +350,17 @@ private fun CameraPhase(
         tracker.initFromRoute(listOf(anchor))
         trackerReady = true
 
-        // Ledger freshness around the scan site (display-only; failures fine).
+        // Ledger freshness around the scan site (display-only; failures fall
+        // back to the last cached snapshot of this area).
+        val pad = 0.0012 // ~130m
+        val bbox = listOf(
+            anchor.lng - pad, anchor.lat - pad,
+            anchor.lng + pad, anchor.lat + pad,
+        ).joinToString(",")
+        var fetchedCells: List<MapCoverageCell>? = null
         try {
-            val pad = 0.0012 // ~130m
-            val bbox = listOf(
-                anchor.lng - pad, anchor.lat - pad,
-                anchor.lng + pad, anchor.lat + pad,
-            ).joinToString(",")
             val serverCells = apiClient.getMapCoverage(bbox).cells
+            fetchedCells = serverCells
             staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
             DiagnosticsLog.info(
@@ -362,18 +368,36 @@ private fun CameraPhase(
                 "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
             )
         } catch (e: Exception) {
-            DiagnosticsLog.error("env-scan", "coverage freshness fetch failed (minimap stays plain)", e)
+            DiagnosticsLog.error("env-scan", "coverage freshness fetch failed — trying cache", e)
+            val cached = withContext(Dispatchers.Default) {
+                scanAreaCache.get(ScanAreaCacheStore.areaKeyFor(anchor.lat, anchor.lng))
+            }
+            if (cached != null) {
+                staleCells = cached.coverageCells.filter { it.state == "stale" }.map { it.lat to it.lng }
+                fogCells = neverScannedGrid(anchor, cached.coverageCells)
+                DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
+            }
         }
         try {
-            val pad = 0.0012
-            val bbox = listOf(
-                anchor.lng - pad, anchor.lat - pad,
-                anchor.lng + pad, anchor.lat + pad,
-            ).joinToString(",")
             expectedDirty = apiClient.getMapObservations(bbox).filter { it.state == "dirty" }
             DiagnosticsLog.info("env-scan", "${expectedDirty.size} expected-dirty observations nearby")
         } catch (e: Exception) {
-            DiagnosticsLog.error("env-scan", "observations fetch failed — no clean-confirm prompts", e)
+            DiagnosticsLog.error("env-scan", "observations fetch failed — trying cache", e)
+            val cached = withContext(Dispatchers.Default) {
+                scanAreaCache.get(ScanAreaCacheStore.areaKeyFor(anchor.lat, anchor.lng))
+            }
+            if (cached != null) expectedDirty = cached.observations.filter { it.state == "dirty" }
+        }
+        // Snapshot whatever we fetched live so the next offline open has it.
+        if (fetchedCells != null) {
+            withContext(Dispatchers.Default) {
+                scanAreaCache.put(
+                    ScanAreaCacheStore.areaKeyFor(anchor.lat, anchor.lng),
+                    fetchedCells,
+                    expectedDirty,
+                    Clock.System.now().toEpochMilliseconds(),
+                )
+            }
         }
     }
 

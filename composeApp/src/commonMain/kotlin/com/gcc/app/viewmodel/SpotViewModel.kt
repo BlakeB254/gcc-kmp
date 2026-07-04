@@ -4,6 +4,7 @@ import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
+import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
@@ -83,6 +84,7 @@ class SpotViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
     private val analyzer: OnDeviceAnalyzer,
+    private val sessionUploader: EnvScanSessionUploader,
 ) {
     companion object {
         const val MAX_PHOTOS = 3
@@ -91,6 +93,12 @@ class SpotViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(SpotUiState())
     val uiState: StateFlow<SpotUiState> = _uiState.asStateFlow()
+
+    init {
+        // Catch up any session manifests that couldn't reach R2 last time
+        // (offline, or storage not provisioned yet).
+        scope.launch { sessionUploader.flushPending() }
+    }
 
     fun addPhoto(photo: CapturedPhoto) {
         val current = _uiState.value
@@ -268,18 +276,27 @@ class SpotViewModel(
                 val deviceId = CoverageDeviceId.value
                 val stamp = "${draft.sessionId}"
 
+                // Photos upload inline (their bytes only exist in memory now);
+                // a 501/offline here just means the manifest ships photoless —
+                // the photos are already durable on the community report.
                 val photoKeys = mutableListOf<String>()
-                state.capturedPhotos.forEachIndexed { index, photo ->
-                    val ticket = apiClient.createCaptureUploadUrl(
-                        CaptureUploadUrlRequest(
-                            locationCellId = cellId,
-                            deviceId = deviceId,
-                            capturedAt = "$stamp-photo$index",
-                            ext = "jpg",
+                try {
+                    state.capturedPhotos.forEachIndexed { index, photo ->
+                        val ticket = apiClient.createCaptureUploadUrl(
+                            CaptureUploadUrlRequest(
+                                locationCellId = cellId,
+                                deviceId = deviceId,
+                                capturedAt = "$stamp-photo$index",
+                                ext = "jpg",
+                            )
                         )
-                    )
-                    apiClient.uploadToPresignedUrl(ticket.uploadUrl, photo.bytes, "image/jpeg")
-                    photoKeys.add(ticket.r2Key)
+                        apiClient.uploadToPresignedUrl(ticket.uploadUrl, photo.bytes, "image/jpeg")
+                        photoKeys.add(ticket.r2Key)
+                    }
+                } catch (e: CaptureStorageNotConfiguredException) {
+                    DiagnosticsLog.info("env-capture", "R2 not provisioned — photos skipped, manifest will queue")
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("env-capture", "photo upload to R2 failed — manifest continues without", e)
                 }
 
                 val manifest = EnvScanManifest(
@@ -296,26 +313,13 @@ class SpotViewModel(
                     photoKeys = photoKeys,
                     communityReportId = reportId,
                 )
-                val manifestTicket = apiClient.createCaptureUploadUrl(
-                    CaptureUploadUrlRequest(
-                        locationCellId = cellId,
-                        deviceId = deviceId,
-                        capturedAt = "$stamp-manifest",
-                        ext = "json",
+                if (sessionUploader.uploadOrQueue(manifest)) {
+                    DiagnosticsLog.info(
+                        "env-capture",
+                        "session ${draft.sessionId} archived to R2: ${photoKeys.size} photo(s) + manifest " +
+                            "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
                     )
-                )
-                apiClient.uploadToPresignedUrl(
-                    manifestTicket.uploadUrl,
-                    GccJson.encodeToString(manifest).encodeToByteArray(),
-                    "application/json",
-                )
-                DiagnosticsLog.info(
-                    "env-capture",
-                    "session ${draft.sessionId} archived to R2: ${photoKeys.size} photo(s) + manifest " +
-                        "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
-                )
-            } catch (_: CaptureStorageNotConfiguredException) {
-                DiagnosticsLog.info("env-capture", "R2 storage not provisioned yet — session bundle skipped")
+                }
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
             }

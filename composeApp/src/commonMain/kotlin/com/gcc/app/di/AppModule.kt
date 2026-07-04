@@ -9,6 +9,7 @@ import com.gcc.app.platform.createSqlDriver
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.detectDeviceCapabilities
+import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BiometricAuthViewModel
@@ -38,6 +39,8 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.AuthTokenProvider
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.RouteCacheStore
+import com.gcc.shared.cache.ScanAreaCacheStore
+import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,7 +64,12 @@ val appModule = module {
     single { BiometricAuth() }
     single { OnDeviceAnalyzer() }
     single { detectDeviceCapabilities() }
-    single { RouteCacheStore(createSqlDriver()) }
+    // One shared driver: two native connections both running Schema.create
+    // against the same gcc.db file is a race SQLDelight doesn't guard.
+    single<SqlDriver> { createSqlDriver() }
+    single { RouteCacheStore(get()) }
+    single { ScanAreaCacheStore(get()) }
+    single { EnvScanSessionUploader(get()) }
     single {
         val tokenManager = get<TokenManager>()
         lateinit var apiClient: GccApiClient
@@ -98,6 +106,6 @@ val appModule = module {
     single { AffectedAreasRepository(get()) }
     singleOf(::AffectedBlocksViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }
