@@ -7,6 +7,8 @@ import com.gcc.app.di.appModule
 import com.gcc.app.di.offlineAppModule
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.platform.installCrashReporting
+import com.gcc.app.platform.LocationTrackingController
+import com.gcc.app.platform.LocationProvider
 import com.gcc.shared.auth.TokenManager
 import org.koin.core.context.startKoin
 import org.koin.mp.KoinPlatform
@@ -43,6 +45,7 @@ private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIView
     // Create Decompose component outside composable scope — must survive recomposition
     val lifecycle = LifecycleRegistry()
     val tokenManager = KoinPlatform.getKoin().get<TokenManager>()
+    LocationTrackingController.initLocationProvider(KoinPlatform.getKoin().get<LocationProvider>())
     val root = RootComponent(
         componentContext = DefaultComponentContext(lifecycle = lifecycle),
         tokenManager = tokenManager,
