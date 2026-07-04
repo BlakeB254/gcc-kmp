@@ -66,9 +66,10 @@ fun CameraCapture(
     scanCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Geo-tagged trash items — minimap orange dots. */
     trashItems: List<Coordinates> = emptyList(),
-    /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber). */
+    /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber) / fresh (clear). */
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
+    freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -183,6 +184,7 @@ fun CameraCapture(
                         trashItems = trashItems,
                         fogCellCenters = fogCellCenters,
                         staleCellCenters = staleCellCenters,
+                        freshCellCenters = freshCellCenters,
                     )
                     Box(
                         modifier = Modifier

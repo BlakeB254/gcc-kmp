@@ -261,7 +261,7 @@ internal fun AdminRoutesTab(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "$distMi \u2022 ${route.checkpoints.size} checkpoints",
+                                if (route.blockBoundary != null) "$distMi \u2022 boundary set" else "$distMi \u2022 no boundary yet",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -354,7 +354,7 @@ private fun CreateRouteDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "After creating, open the route to draw boundaries, add checkpoints, and upload an image.",
+                    "After creating, open the route to draw its block boundary and upload an image. Scan coverage is measured against the boundary.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -49,9 +49,7 @@ fun AdminRouteDetailScreen(
 
     var isUploading by remember { mutableStateOf(false) }
     var showCamera by remember { mutableStateOf(false) }
-    var showAddCheckpoint by remember { mutableStateOf(false) }
     var uploadSuccess by remember { mutableStateOf(false) }
-    var checkpointList by remember(route) { mutableStateOf(route?.checkpoints ?: emptyList()) }
     var editDisplayName by remember(route) { mutableStateOf(route?.displayName ?: "") }
     var editDescription by remember(route) { mutableStateOf(route?.description ?: "") }
     var nameDescDirty by remember { mutableStateOf(false) }
@@ -127,24 +125,6 @@ fun AdminRouteDetailScreen(
             onCapture = { photoBytes ->
                 showCamera = false
                 uploadAndSetCover(photoBytes)
-            },
-        )
-        return
-    }
-
-    // Add checkpoint dialog
-    if (showAddCheckpoint) {
-        AdminAddCheckpointDialog(
-            routeId = routeId,
-            nextSequenceOrder = checkpointList.size + 1,
-            currentLat = currentLocation?.lat ?: 0.0,
-            currentLng = currentLocation?.lng ?: 0.0,
-            onDismiss = { showAddCheckpoint = false },
-            onSave = { request ->
-                viewModel.addCheckpoint(routeId, request) { newCheckpoint ->
-                    checkpointList = checkpointList + newCheckpoint
-                }
-                showAddCheckpoint = false
             },
         )
         return
@@ -823,75 +803,15 @@ fun AdminRouteDetailScreen(
                         Text(distMi, style = MaterialTheme.typography.bodyMedium)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("Checkpoints", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${checkpointList.size}", style = MaterialTheme.typography.bodyMedium)
+                        Text("Boundary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (route.blockBoundary != null) "Set" else "Not set", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
 
-            // Checkpoints section
-            item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Checkpoints", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { showAddCheckpoint = true }) {
-                        Text("+ Add", color = GccGreen, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
 
-            items(checkpointList.sortedBy { it.sequenceOrder }, key = { it.id ?: it.sequenceOrder }) { cp ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(GccGreen),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "${cp.sequenceOrder}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(cp.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text(
-                                "${cp.type.name.lowercase().replace('_', ' ')}${if (cp.photoRequired) " \u2022 photo" else ""}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        cp.id?.let { cpId ->
-                            TextButton(
-                                onClick = {
-                                    viewModel.deleteCheckpoint(routeId, cpId) {
-                                        checkpointList = checkpointList.filter { it.id != cpId }
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp),
-                            ) {
-                                Text("\u2715", color = GccError, style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                }
-            }
+            // (Checkpoints section removed: checkpoints are photo-era legacy —
+            // scan fulfillment measures coverage against the block boundary.)
 
             // ── Delete Route ─────────────────────────────────────────────
             item {

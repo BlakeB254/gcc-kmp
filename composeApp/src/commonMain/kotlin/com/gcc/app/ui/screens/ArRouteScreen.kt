@@ -85,6 +85,7 @@ fun ArRouteScreen(
     val scannedCells by viewModel.scannedCells.collectAsState()
     val fogCellCenters by viewModel.fogCellCenters.collectAsState()
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
+    val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
@@ -389,6 +390,7 @@ fun ArRouteScreen(
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
                     fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,
+                    freshCellCenters = freshCellCenters,
                     outerBoundary = outerRing,
                     innerBoundaries = innerRings,
                     corridorCellCenters = corridorCenters,
