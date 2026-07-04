@@ -983,9 +983,25 @@ class GccApiClient(
     suspend fun updateAdminWorker(workerId: Int, updates: Map<String, String>): Worker =
         putJson("/api/admin/workers/$workerId", updates)
 
-    // Auth: Refresh JWT token — returns new token + expiry
-    suspend fun refreshToken(): AuthRefreshResponse =
-        postJson("/api/auth/refresh")
+    // Auth: Refresh JWT token — returns new token + expiry. Uses siteClient (no
+    // BearerAuth plugin) with an explicitly-passed token, rather than the usual
+    // tokenProvider()-driven httpClient — going through the normal client would
+    // call tokenProvider() again mid-request (which, for a refresh-triggering
+    // caller, IS AuthTokenProvider.currentToken()), causing unbounded recursion
+    // back into this exact call. Found and fixed after a task review traced it.
+    suspend fun refreshToken(currentToken: String): AuthRefreshResponse {
+        val response = siteClient.post("$baseUrl/api/auth/refresh") {
+            header(HttpHeaders.Authorization, "Bearer $currentToken")
+        }
+        if (!response.status.isSuccess()) {
+            // A 401/403 here means the buffer wasn't wide enough and the token is
+            // genuinely dead -- fire the session-expired flow now rather than
+            // waiting for the next real API call to also 401 one round-trip later.
+            checkUnauthorized(response.status.value)
+            throw Exception(httpErrorMessage(response.status.value, response.bodyAsText()))
+        }
+        return response.body<ApiResponse<AuthRefreshResponse>>().data
+    }
 
     // Admin: Add photos to an existing spot report
     suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =

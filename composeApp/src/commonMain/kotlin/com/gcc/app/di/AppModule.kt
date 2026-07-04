@@ -35,6 +35,7 @@ import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.auth.AuthTokenProvider
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.RouteCacheStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,14 +64,17 @@ val appModule = module {
     single { RouteCacheStore(createSqlDriver()) }
     single {
         val tokenManager = get<TokenManager>()
-        GccApiClient(
+        lateinit var apiClient: GccApiClient
+        val authTokenProvider = AuthTokenProvider(tokenManager) { currentToken -> apiClient.refreshToken(currentToken) }
+        apiClient = GccApiClient(
             baseUrl = getApiBaseUrl(),
-            tokenProvider = { tokenManager.getToken() },
+            tokenProvider = { authTokenProvider.currentToken() },
             onUnauthorized = {
                 tokenManager.clearToken()
                 SessionExpiredSignal.fire()
             },
         )
+        apiClient
     }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
