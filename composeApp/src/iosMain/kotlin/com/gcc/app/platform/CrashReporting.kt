@@ -94,9 +94,9 @@ actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
                         occurredAt = Clock.System.now(),
                     ),
                 )
+                fm.removeItemAtPath(kotlinCrashPath, error = null)
             }
         }
-        fm.removeItemAtPath(kotlinCrashPath, error = null)
     }
 
     val metricKitFiles = fm.contentsOfDirectoryAtPath(metricKitDirPath(), error = null)

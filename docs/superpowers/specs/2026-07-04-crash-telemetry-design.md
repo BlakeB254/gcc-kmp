@@ -234,6 +234,6 @@ Same constraints as every mobile-platform task this session: **iOS code cannot b
 
 - Third-party crash SDK (Sentry/Crashlytics/Bugsnag) — native/NDK components, external account, unverifiable on this host.
 - Attaching the logged-in `workerId` to a crash report — needs optional (not required) auth extraction on the ingest route, real added complexity for a first pass.
-- Retry/queueing for failed crash-report transmission (unlike `CoverageEventQueue`) — crashes are rare enough that "try once on next launch, silently drop on failure" is acceptable; the local file is deleted only on the platform-specific success path shown above, so this could be revisited to retry-until-success later if silent drops turn out to be a problem in practice.
+- No explicit retry queue (unlike `CoverageEventQueue`) — but both platforms retry implicitly: the local crash file is deleted only after a successful transmission, so a failed send is naturally retried on the next app launch until it succeeds. This is a deliberately simple, bounded form of retry (once per launch, not a tight loop) rather than `CoverageEventQueue`'s persistent batching queue.
 - Desktop crash reporting (no-op stubs only — not a real user deployment target).
 - Alerting/paging on new crashes (the admin page is pull, not push) — a future enhancement if crash volume ever warrants it.
