@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
@@ -44,11 +45,15 @@ import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
+import com.gcc.app.ui.components.ScanMinimapOverlay
 import com.gcc.app.ui.components.SessionPointsPill
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
+import com.gcc.shared.model.Coordinates
 
 /**
  * Full-screen AR route guidance overlay, shown during SCOUTING once the worker
@@ -73,6 +78,8 @@ fun ArRouteScreen(
     val ui by viewModel.uiState.collectAsState()
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
+    val fogCellCenters by viewModel.fogCellCenters.collectAsState()
+    val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
@@ -275,6 +282,44 @@ fun ArRouteScreen(
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
+        }
+
+        // Live minimap — fog (never scanned) / stale (re-visit) / this-session
+        // scanned cells + hotspot pins, matching the spot-capture minimap.
+        // Suppressed while the rectify confirm sheet is showing: the sheet's
+        // buttons (below) would otherwise be covered by this BottomStart map,
+        // since the minimap is drawn later and wins z-order.
+        if (nearbyExpected == null && (ui.currentLat != 0.0 || ui.currentLng != 0.0)) {
+            val miniMapWidth: Dp = 160.dp
+            val miniMapHeight: Dp = miniMapWidth * 0.78f
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, bottom = 16.dp)
+                    .size(width = miniMapWidth, height = miniMapHeight)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.3f)),
+            ) {
+                GccMap(
+                    modifier = Modifier.fillMaxSize(),
+                    centerLat = ui.currentLat,
+                    centerLng = ui.currentLng,
+                    zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                    currentLocation = Coordinates(lat = ui.currentLat, lng = ui.currentLng),
+                    gpsHeading = null,
+                )
+                ScanMinimapOverlay(
+                    centerLat = ui.currentLat,
+                    centerLng = ui.currentLng,
+                    zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                    scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
+                    cellSizeMeters = 3.0,
+                    trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
+                    fogCellCenters = fogCellCenters,
+                    staleCellCenters = staleCellCenters,
+                )
+            }
         }
 
         // "Go outside" scrim — sits under the exit button so leaving AR always works.
