@@ -15,6 +15,7 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PermissionManager
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.initSecureStorageContext
+import com.gcc.app.platform.initSqlDriverContext
 import com.gcc.app.platform.PlatformUrlOpener
 import com.gcc.app.platform.ShareManager
 import com.gcc.shared.auth.TokenManager
@@ -30,6 +31,7 @@ class MainActivity : FragmentActivity() {
 
         // Initialize platform providers that need Android context
         initSecureStorageContext(this)
+        initSqlDriverContext(this)
         LocationProvider.initContext(this)
         LocationTrackingController.initContext(this)
         ShareManager.initContext(this)
