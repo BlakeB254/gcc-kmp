@@ -24,6 +24,7 @@ import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
+import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.AdminRouteAssignment
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.JobStatus
@@ -38,10 +39,21 @@ fun AdminRouteDetailScreen(
     routeId: Int,
     onBack: () -> Unit,
     onBeginAsUser: (routeId: Int, workerId: Int, workerName: String) -> Unit = { _, _, _ -> },
+    onEditInnerBoundaries: (routeId: Int, blockId: Int) -> Unit = { _, _ -> },
 ) {
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
     val route = uiState.routes.find { it.id == routeId }
+    val apiClient = koinInject<GccApiClient>()
+    // The admin routes list payload has blockId but no boundary geometry —
+    // fetch the full route (GET /api/routes/{id}) to know whether an outer
+    // block boundary exists before enabling the inner-boundary editor.
+    var fullRoute by remember(routeId) { mutableStateOf<Route?>(null) }
+    var fullRouteLoaded by remember(routeId) { mutableStateOf(false) }
+    LaunchedEffect(routeId) {
+        fullRoute = runCatching { apiClient.getRoute(routeId) }.getOrNull()
+        fullRouteLoaded = true
+    }
     val scope = rememberCoroutineScope()
     val cameraManager = remember { CameraManager() }
     val locationProvider = koinInject<LocationProvider>()
@@ -812,6 +824,41 @@ fun AdminRouteDetailScreen(
 
             // (Checkpoints section removed: checkpoints are photo-era legacy —
             // scan fulfillment measures coverage against the block boundary.)
+
+            // ── Inner Boundaries (private-property exclusion islands) ──
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    "🏝 Inner Boundaries",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val blockId = route.blockId
+                val hasOuterBoundary = fullRoute?.blockBoundary != null
+                val canEdit = blockId != null && hasOuterBoundary
+                Button(
+                    onClick = { if (blockId != null) onEditInnerBoundaries(routeId, blockId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = canEdit,
+                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                ) {
+                    Text("Edit inner boundaries", color = Color.White)
+                }
+                if (!canEdit) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        when {
+                            blockId == null -> "No block is linked to this route yet — inner boundaries live on the block."
+                            !fullRouteLoaded -> "Checking block boundary..."
+                            else -> "This route's block has no outer boundary yet — set the block boundary first."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSubtle,
+                    )
+                }
+            }
 
             // ── Delete Route ─────────────────────────────────────────────
             item {

@@ -83,6 +83,9 @@ sealed class Screen {
     data class AdminBountyDetail(val bountyId: Int) : Screen()
 
     @Serializable
+    data class AdminBoundaryEditor(val routeId: Int, val blockId: Int) : Screen()
+
+    @Serializable
     data class SpotVerification(val reportId: Int) : Screen()
 
     @Serializable

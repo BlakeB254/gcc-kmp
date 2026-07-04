@@ -165,6 +165,10 @@ class RootComponent(
         navigation.push(Screen.AdminBountyDetail(bountyId))
     }
 
+    fun navigateToAdminBoundaryEditor(routeId: Int, blockId: Int) {
+        navigation.push(Screen.AdminBoundaryEditor(routeId, blockId))
+    }
+
     fun navigateToSpotVerification(reportId: Int) {
         navigation.push(Screen.SpotVerification(reportId))
     }
