@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,9 +32,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.log2
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
 import com.gcc.app.platform.OutdoorState
@@ -87,6 +92,9 @@ fun ArRouteScreen(
     val liveDetections by overlay.liveDetections.collectAsState()
     val expectedObservations by viewModel.expectedObservations.collectAsState()
     val nearbyExpected by viewModel.nearbyExpectedObservation.collectAsState()
+    val minimapBoundaries by viewModel.minimapBoundaries.collectAsState()
+    val (outerRing, innerRings) = minimapBoundaries
+    val corridorCenters = remember(outerRing) { viewModel.corridorCellCenters() }
 
     // Floating "+N pts" pips, fed by the ViewModel's one-shot pip events.
     var pips by remember { mutableStateOf(listOf<PointsPip>()) }
@@ -172,24 +180,61 @@ fun ArRouteScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Boundary-crossing warning banner (top).
-        if (isOutsideBoundary) {
-            Box(
+        // Top-center stack: lap fill bar, then (when applicable) the
+        // boundary-crossing warning below it.
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(top = 8.dp, start = 56.dp, end = 56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Lap progress: the required block area's fill percentage. Turns
+            // celebratory at LAP_COMPLETE_PERCENT (the lap-1 → lap-2 shift).
+            val fillFraction = (ui.coveragePercent / 100.0).toFloat().coerceIn(0f, 1f)
+            val lapDone = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT
+            Column(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, start = 16.dp, end = 16.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(GccError.copy(alpha = 0.9f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = "You've left the route boundary — head back inside.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    text = when {
+                        ui.lapNumber >= 2 -> "Lap 2 · clear the problem areas"
+                        lapDone -> "Lap 1 complete!"
+                        else -> "Lap 1 · ${ui.coveragePercent.toInt()}% of block scanned"
+                    },
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White,
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { fillFraction },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = if (lapDone) GccGreen else GccGreen.copy(alpha = 0.85f),
+                    trackColor = Color.White.copy(alpha = 0.25f),
+                )
+            }
+
+            if (isOutsideBoundary) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(GccError.copy(alpha = 0.9f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "You've left the route boundary — head back inside.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
             }
         }
 
@@ -292,6 +337,32 @@ fun ArRouteScreen(
         if (nearbyExpected == null && (ui.currentLat != 0.0 || ui.currentLng != 0.0)) {
             val miniMapWidth: Dp = 160.dp
             val miniMapHeight: Dp = miniMapWidth * 0.78f
+
+            // Frame the whole block when boundaries exist: the minimap's job
+            // during a block lap is showing the block filling in, not chasing
+            // the worker. Falls back to tracking the worker on boundary-less
+            // routes.
+            val density = LocalDensity.current
+            val blockFrame = remember(outerRing, density) {
+                if (outerRing.size < 3) return@remember null
+                val minLat = outerRing.minOf { it.first }
+                val maxLat = outerRing.maxOf { it.first }
+                val minLng = outerRing.minOf { it.second }
+                val maxLng = outerRing.maxOf { it.second }
+                val centerLat = (minLat + maxLat) / 2.0
+                val centerLng = (minLng + maxLng) / 2.0
+                val spanNorthMeters = (maxLat - minLat) * 111_320.0
+                val spanEastMeters = (maxLng - minLng) * 111_320.0 * cos(centerLat * PI / 180.0)
+                val boxPx = with(density) { minOf(miniMapWidth.toPx(), miniMapHeight.toPx()) }
+                // Invert metersToPixels: find z where the padded span fits the box.
+                val spanMeters = maxOf(spanNorthMeters, spanEastMeters) * 1.2
+                val zoom = log2(156543.03392 * cos(centerLat * PI / 180.0) * boxPx / spanMeters)
+                Triple(centerLat, centerLng, zoom)
+            }
+            val mapCenterLat = blockFrame?.first ?: ui.currentLat
+            val mapCenterLng = blockFrame?.second ?: ui.currentLng
+            val mapZoom = blockFrame?.third ?: MapStyles.ZOOM_ACTIVE_JOB
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -303,21 +374,25 @@ fun ArRouteScreen(
             ) {
                 GccMap(
                     modifier = Modifier.fillMaxSize(),
-                    centerLat = ui.currentLat,
-                    centerLng = ui.currentLng,
-                    zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                    centerLat = mapCenterLat,
+                    centerLng = mapCenterLng,
+                    zoom = mapZoom,
                     currentLocation = Coordinates(lat = ui.currentLat, lng = ui.currentLng),
                     gpsHeading = null,
                 )
                 ScanMinimapOverlay(
-                    centerLat = ui.currentLat,
-                    centerLng = ui.currentLng,
-                    zoom = MapStyles.ZOOM_ACTIVE_JOB,
+                    centerLat = mapCenterLat,
+                    centerLng = mapCenterLng,
+                    zoom = mapZoom,
                     scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
                     cellSizeMeters = 3.0,
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
                     fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,
+                    outerBoundary = outerRing,
+                    innerBoundaries = innerRings,
+                    corridorCellCenters = corridorCenters,
+                    guidanceTarget = ui.guidanceTarget?.center,
                 )
             }
         }

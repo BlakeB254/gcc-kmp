@@ -6,6 +6,8 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.EnvScanSessionRecorder
+import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
@@ -15,6 +17,8 @@ import com.gcc.app.platform.classifyFogAndStale
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
+import com.gcc.app.platform.getDeviceModel
+import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
@@ -53,6 +57,16 @@ data class RouteScanSectionUiItem(
     val status: RouteScanSectionStatus = RouteScanSectionStatus.PENDING,
 )
 
+/**
+ * A cluster of trash landmarks documented during the first (baseline) lap.
+ * Lap 2 guides the worker through these, largest problem first.
+ */
+data class ProblemArea(
+    val center: Coordinates,
+    val landmarkCount: Int,
+    val severityWeight: Int,
+)
+
 data class RouteScanUiState(
     val scanId: Int? = null,
     val routeId: Int = 0,
@@ -79,6 +93,12 @@ data class RouteScanUiState(
     val routeSections: List<RouteScanSectionUiItem> = emptyList(),
     val currentSectionIndex: Int = 0,
     val sectionPrompt: String? = null,
+    /** 1 = baseline documentation lap; 2 = cleanup lap guided by landmarks. */
+    val lapNumber: Int = 1,
+    /** Landmark clusters from lap 1, largest problem first. */
+    val problemAreas: List<ProblemArea> = emptyList(),
+    /** The problem area lap 2 is currently steering the worker toward. */
+    val guidanceTarget: ProblemArea? = null,
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────
@@ -86,7 +106,24 @@ data class RouteScanUiState(
 class RouteScanViewModel(
     private val apiClient: GccApiClient,
     private val locationProvider: LocationProvider,
+    private val sessionUploader: EnvScanSessionUploader,
 ) {
+    companion object {
+        /**
+         * Corridor fill that completes the baseline lap. Not a hard 100%:
+         * GPS/frustum coverage can never credit slivers pinched between the
+         * boundary padding and parked cars, so a strict 100% would strand
+         * workers circling for unreachable cells. Displayed as the fill bar's
+         * "complete" state.
+         */
+        const val LAP_COMPLETE_PERCENT = 95.0
+
+        /** Landmarks within this distance cluster into one problem area. */
+        const val PROBLEM_CLUSTER_METERS = 30.0
+
+        /** Reaching this close to a guidance target advances to the next one. */
+        const val PROBLEM_AREA_REACHED_METERS = 15.0
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _uiState = MutableStateFlow(RouteScanUiState())
@@ -100,6 +137,22 @@ class RouteScanViewModel(
     // Block boundary polygon as (lat, lng) pairs, matching PolygonContainment's
     // pointInPolygon convention. Empty when no boundary is loaded for the route.
     private var boundaryPolygon: List<Pair<Double, Double>> = emptyList()
+
+    // Boundary rings for the minimap: outer block outline + inner exclusion
+    // islands, as (lat, lng). Set once per initForRoute.
+    private val _minimapBoundaries = MutableStateFlow<Pair<List<Pair<Double, Double>>, List<List<Pair<Double, Double>>>>>(
+        emptyList<Pair<Double, Double>>() to emptyList()
+    )
+    val minimapBoundaries: StateFlow<Pair<List<Pair<Double, Double>>, List<List<Pair<Double, Double>>>>> =
+        _minimapBoundaries.asStateFlow()
+
+    /** Required-corridor cell centers (static per route) — the minimap fill base. */
+    fun corridorCellCenters(): List<Pair<Double, Double>> = coverageTracker.getCorridorCenters()
+
+    // One recorder per lap: the baseline lap and the clean lap each upload as
+    // their own session manifest (route-v2 design step 1/5).
+    private var lapSessionRecorder = EnvScanSessionRecorder()
+    private var lapTransitionFired = false
 
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
@@ -361,10 +414,34 @@ class RouteScanViewModel(
             },
         )
 
-        // Initialise coverage grid from route checkpoints (auto-generate if missing)
+        // Initialise coverage grid. When the route carries authored block
+        // boundaries, the required area is the block interior minus the inner
+        // exclusion islands (route-v2 corridor); otherwise fall back to
+        // checkpoint-line proximity.
         val waypoints = effectiveCheckpoints
             .map { it.coordinates }
-        coverageTracker.initFromRoute(waypoints)
+        val outerRing = route.blockBoundary?.coordinates?.firstOrNull().orEmpty().mapNotNull { point ->
+            val lng = point.getOrNull(0) ?: return@mapNotNull null
+            val lat = point.getOrNull(1) ?: return@mapNotNull null
+            Coordinates(lat = lat, lng = lng)
+        }
+        val innerRings = route.innerBoundary?.coordinates.orEmpty().mapNotNull { islandPolygon ->
+            islandPolygon.firstOrNull()?.mapNotNull { point ->
+                val lng = point.getOrNull(0) ?: return@mapNotNull null
+                val lat = point.getOrNull(1) ?: return@mapNotNull null
+                Coordinates(lat = lat, lng = lng)
+            }?.takeIf { it.size >= 3 }
+        }
+        if (outerRing.size >= 3) {
+            coverageTracker.initFromBlock(outerRing, innerRings, waypoints)
+        } else {
+            coverageTracker.initFromRoute(waypoints)
+        }
+        _minimapBoundaries.value =
+            outerRing.map { it.lat to it.lng } to innerRings.map { ring -> ring.map { it.lat to it.lng } }
+        lapSessionRecorder = EnvScanSessionRecorder()
+        lapTransitionFired = false
+        visitedProblemAreas.clear()
         seedFogFromServerCoverage(waypoints)
 
         // Observe coverage changes
@@ -565,7 +642,9 @@ class RouteScanViewModel(
                 _uiState.value = _uiState.value.copy(
                     phase = ScanPhase.SCOUT_REVIEW,
                     error = null,
+                    problemAreas = clusterProblemAreas(_uiState.value.hotspots),
                 )
+                uploadLapSession(lapKind = "baseline")
             } catch (e: Exception) {
                 DiagnosticsLog.error("scout", "completeScout failed", e)
                 _uiState.value = _uiState.value.copy(
@@ -584,10 +663,21 @@ class RouteScanViewModel(
                     AdvancePhaseRequest(phase = ScanPhase.CLEANING)
                 )
                 cleanPath.clear()
-                _uiState.value = _uiState.value.copy(
+                lapSessionRecorder = EnvScanSessionRecorder() // lap 2 = its own session
+                val currentState = _uiState.value
+                val areas = currentState.problemAreas
+                    .ifEmpty { clusterProblemAreas(currentState.hotspots) }
+                _uiState.value = currentState.copy(
                     phase = ScanPhase.CLEANING,
                     error = null,
-                    sectionPrompt = "Record the after scan for the first cleanup target.",
+                    lapNumber = 2,
+                    problemAreas = areas,
+                    guidanceTarget = areas.firstOrNull(),
+                    sectionPrompt = if (areas.isNotEmpty()) {
+                        "Lap 2: head to the biggest problem area (${areas.first().landmarkCount} landmark(s))."
+                    } else {
+                        "Record the after scan for the first cleanup target."
+                    },
                 )
             } catch (e: Exception) {
                 DiagnosticsLog.error("scan-phase", "startCleaning failed", e)
@@ -716,6 +806,7 @@ class RouteScanViewModel(
                     isComplete = true,
                     pointsAwarded = response.pointsAwarded,
                 )
+                uploadLapSession(lapKind = "clean")
             } catch (e: Exception) {
                 DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
                 _uiState.value = _uiState.value.copy(
@@ -738,11 +829,89 @@ class RouteScanViewModel(
         val state = _uiState.value
         val allSectionsRecorded = state.routeSections.isNotEmpty() &&
             state.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
-        return (state.coveragePercent >= 85.0 && state.isLoopClosed) || allSectionsRecorded
+        return state.coveragePercent >= LAP_COMPLETE_PERCENT ||
+            (state.coveragePercent >= 85.0 && state.isLoopClosed) ||
+            allSectionsRecorded
     }
 
     fun allHotspotsDone(): Boolean {
         return _uiState.value.hotspots.none { it.status == HotspotStatus.DETECTED }
+    }
+
+    // ── Lap sessions + problem-area guidance ─────────────────────────
+
+    private val visitedProblemAreas = mutableSetOf<ProblemArea>()
+
+    /**
+     * Greedy proximity clustering of lap-1 landmarks: each cluster's weight is
+     * its severity sum, and the list comes back largest-problem-first — the
+     * order lap 2 walks them in.
+     */
+    private fun clusterProblemAreas(hotspots: List<ScanHotspot>): List<ProblemArea> {
+        val remaining = hotspots.toMutableList()
+        val areas = mutableListOf<ProblemArea>()
+        while (remaining.isNotEmpty()) {
+            val seed = remaining.removeAt(0)
+            val cluster = mutableListOf(seed)
+            val iterator = remaining.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (GeofenceVerification.distanceMeters(
+                        seed.lat, seed.lng, candidate.lat, candidate.lng,
+                    ) <= PROBLEM_CLUSTER_METERS
+                ) {
+                    cluster.add(candidate)
+                    iterator.remove()
+                }
+            }
+            areas.add(
+                ProblemArea(
+                    center = Coordinates(
+                        lat = cluster.map { it.lat }.average(),
+                        lng = cluster.map { it.lng }.average(),
+                    ),
+                    landmarkCount = cluster.size,
+                    severityWeight = cluster.sumOf { it.severity },
+                )
+            )
+        }
+        return areas.sortedByDescending { it.severityWeight }
+    }
+
+    /**
+     * Archive the current lap's capture session to R2 (fire-and-forget; a
+     * failed upload queues persistently in [EnvScanSessionUploader]).
+     */
+    private fun uploadLapSession(lapKind: String) {
+        val recorder = lapSessionRecorder
+        val state = _uiState.value
+        scope.launch {
+            try {
+                val draft = recorder.draft(
+                    coverageTracker.getScannedCorridorCells()
+                        .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+                )
+                if (draft.path.isEmpty()) return@launch // nothing recorded — nothing to archive
+                val manifest = EnvScanManifest(
+                    sessionId = draft.sessionId,
+                    deviceId = CoverageDeviceId.value,
+                    deviceModel = getDeviceModel(),
+                    osVersion = getOsVersion(),
+                    startedAtMs = draft.startedAtMs,
+                    completedAtMs = Clock.System.now().toEpochMilliseconds(),
+                    path = draft.path,
+                    scannedCells = draft.scannedCells,
+                    scannedCellSizeMeters = CoverageTracker.cellSizeMeters,
+                    observedItems = emptyList(),
+                    photoKeys = emptyList(),
+                    lapKind = lapKind,
+                    routeId = state.routeId,
+                )
+                sessionUploader.uploadOrQueue(manifest)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("env-capture", "$lapKind lap session archive failed", e)
+            }
+        }
     }
 
     fun setError(message: String?) {
@@ -800,6 +969,12 @@ class RouteScanViewModel(
                             return@collect
                         }
                         scoutPath.add(Pair(lat, lng))
+                        lapSessionRecorder.addSample(
+                            lat = lat,
+                            lng = lng,
+                            headingDegrees = arScanner.getArHeading() ?: locationProvider.headingDegrees.value,
+                            accuracyMeters = locationProvider.horizontalAccuracyMeters.value,
+                        )
 
                         // Coverage-ledger event: distance walked since the last fix.
                         // Desktop is dev-only and the endpoint rejects its platform
@@ -871,6 +1046,19 @@ class RouteScanViewModel(
                             _uiState.value = _uiState.value.copy(isLoopClosed = true)
                         }
 
+                        // First-lap completion: the required area is filled —
+                        // archive the baseline session and advance to review
+                        // (the gateway into the cleanup lap).
+                        if (!lapTransitionFired &&
+                            _uiState.value.coveragePercent >= LAP_COMPLETE_PERCENT
+                        ) {
+                            lapTransitionFired = true
+                            _uiState.value = _uiState.value.copy(
+                                sectionPrompt = "Lap 1 complete — block documented. Review what you found.",
+                            )
+                            completeScout()
+                        }
+
                         // Periodically push coverage to server (every 20 points)
                         if (scoutPath.size % 20 == 0 && state.scanId != null) {
                             try {
@@ -887,6 +1075,33 @@ class RouteScanViewModel(
 
                     ScanPhase.CLEANING -> {
                         cleanPath.add(Pair(lat, lng))
+                        lapSessionRecorder.addSample(
+                            lat = lat,
+                            lng = lng,
+                            headingDegrees = locationProvider.headingDegrees.value,
+                            accuracyMeters = locationProvider.horizontalAccuracyMeters.value,
+                        )
+
+                        // Lap-2 guidance: when the current problem area is
+                        // reached, advance to the next-largest unvisited one.
+                        val target = _uiState.value.guidanceTarget
+                        if (target != null &&
+                            GeofenceVerification.distanceMeters(
+                                lat, lng, target.center.lat, target.center.lng,
+                            ) <= PROBLEM_AREA_REACHED_METERS
+                        ) {
+                            visitedProblemAreas.add(target)
+                            val next = _uiState.value.problemAreas
+                                .firstOrNull { it !in visitedProblemAreas }
+                            _uiState.value = _uiState.value.copy(
+                                guidanceTarget = next,
+                                sectionPrompt = if (next != null) {
+                                    "Area reached. Next problem area: ${next.landmarkCount} landmark(s)."
+                                } else {
+                                    "All problem areas visited — finish the remaining cleanups."
+                                },
+                            )
+                        }
 
                         // Check proximity to uncleaned hotspots (20m threshold).
                         // Compute distance once per hotspot to avoid double calculation.

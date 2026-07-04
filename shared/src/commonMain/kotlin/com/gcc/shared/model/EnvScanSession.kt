@@ -42,6 +42,15 @@ data class EnvScanManifest(
     val photoKeys: List<String>,
     /** The community report this session produced, when submission succeeded. */
     val communityReportId: Int? = null,
+    /**
+     * Which lap of a block-route fulfillment this session records:
+     * "baseline" (first lap, documents pre-clean state) or "clean" (post-
+     * cleanup lap). Null for free/explorer environment scans, which are not
+     * lap-structured. Route-v2 design doc, step 1.
+     */
+    val lapKind: String? = null,
+    /** The route this session fulfilled, when it was a block-route lap. */
+    val routeId: Int? = null,
     val schemaVersion: Int = 1,
 )
 

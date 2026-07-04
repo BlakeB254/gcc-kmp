@@ -52,10 +52,13 @@ import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.isTestAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
+import com.gcc.shared.cache.ScanAreaCacheStore
 import com.gcc.shared.offline.SeedData
 import kotlin.math.ln
 import kotlin.math.absoluteValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
@@ -80,6 +83,7 @@ fun MapFullScreen(
     val locationProvider = koinInject<LocationProvider>()
     val tokenManager = koinInject<TokenManager>()
     val gccApiClient = koinInject<com.gcc.shared.api.GccApiClient>()
+    val scanAreaCache = koinInject<ScanAreaCacheStore>()
     val isAdmin = remember { tokenManager.isAdmin() }
 
     // Wire real GPS location
@@ -184,15 +188,49 @@ fun MapFullScreen(
     }
 
     // Foundational coverage-state tiles: ledger cells around the map center.
+    // Explorer mode pulls a wider radius (the whole point is surveying scan
+    // state), and every successful fetch snapshots into the scan-area cache so
+    // the map has a last-known coverage picture offline / at next open.
     var coverageCells by remember { mutableStateOf(listOf<com.gcc.shared.model.MapCoverageCell>()) }
-    LaunchedEffect(centerLat, centerLng) {
+    LaunchedEffect(centerLat, centerLng, mapMode) {
+        val pad = if (mapMode == MapMode.EXPLORER) 0.02 else 0.006 // ~2.2km vs ~650m
+        val west = centerLng - pad
+        val south = centerLat - pad
+        val east = centerLng + pad
+        val north = centerLat + pad
+
+        // Cache-first: render the last-known snapshot immediately.
+        if (coverageCells.isEmpty()) {
+            val cached = withContext(Dispatchers.Default) {
+                scanAreaCache.getAll()
+                    .flatMap { it.coverageCells }
+                    .filter { it.lat in south..north && it.lng in west..east }
+                    .distinctBy { it.locationCellId }
+            }
+            if (cached.isNotEmpty()) coverageCells = cached
+        }
+
         try {
-            val pad = 0.006 // ~650m
-            val bbox = listOf(centerLng - pad, centerLat - pad, centerLng + pad, centerLat + pad)
-                .joinToString(",")
-            coverageCells = gccApiClient.getMapCoverage(bbox).cells
+            val bbox = listOf(west, south, east, north).joinToString(",")
+            val fetched = gccApiClient.getMapCoverage(bbox).cells
+            coverageCells = fetched
+            val observations = try {
+                gccApiClient.getMapObservations(bbox)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            withContext(Dispatchers.Default) {
+                val now = Clock.System.now().toEpochMilliseconds()
+                scanAreaCache.put(
+                    ScanAreaCacheStore.areaKeyFor(centerLat, centerLng),
+                    fetched,
+                    observations,
+                    now,
+                )
+                scanAreaCache.prune(now)
+            }
         } catch (_: Exception) {
-            // Non-fatal: map renders without the coverage tiles.
+            // Non-fatal: the cached snapshot (if any) stays on screen.
         }
     }
 
@@ -520,6 +558,29 @@ fun MapFullScreen(
                         onPrevious = { selectVisualRoute(selectedIndex - 1) },
                         onNext = { selectVisualRoute(selectedIndex + 1) },
                         modifier = Modifier.align(Alignment.CenterStart),
+                    )
+                }
+            }
+
+            // Explorer scan: the free-form scan, open anywhere on the map —
+            // no route, no boundary, coverage credit wherever you stand.
+            if (mapMode == MapMode.EXPLORER && selectedSpot == null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = if (hasBottomRecords) 84.dp else 20.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(GccGreen)
+                        .clickable { onNavigateToSpot() }
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("📷", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = "Explorer Scan",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
                     )
                 }
             }

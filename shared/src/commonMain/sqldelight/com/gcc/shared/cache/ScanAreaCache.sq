@@ -1,0 +1,21 @@
+CREATE TABLE scanAreaCache (
+  areaKey TEXT NOT NULL PRIMARY KEY,
+  coverageJson TEXT NOT NULL,
+  observationsJson TEXT NOT NULL,
+  cachedAtMs INTEGER NOT NULL
+);
+
+selectByArea:
+SELECT * FROM scanAreaCache WHERE areaKey = ?;
+
+selectAll:
+SELECT * FROM scanAreaCache;
+
+insertOrReplace:
+INSERT OR REPLACE INTO scanAreaCache(areaKey, coverageJson, observationsJson, cachedAtMs) VALUES (?, ?, ?, ?);
+
+deleteOlderThan:
+DELETE FROM scanAreaCache WHERE cachedAtMs < ?;
+
+clear:
+DELETE FROM scanAreaCache;

@@ -1,6 +1,7 @@
 package com.gcc.app.platform
 
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,6 +99,78 @@ class CoverageTracker {
         _scannedCells.value = emptySet()
         _coveragePercent.value = 0.0
     }
+
+    /**
+     * Build the grid from a block's authored boundaries instead of route-line
+     * proximity: the required scan area is every cell whose center lies INSIDE
+     * the outer boundary and OUTSIDE every inner-boundary island (private
+     * property / built stretches are excluded islands; vacant stretches have
+     * no island and stay required). Route-v2 design: corridor = between-lines
+     * band, coverage% = fill of that band.
+     *
+     * Falls back to [initFromRoute] semantics when [outerRing] is degenerate
+     * (fewer than 3 vertices), so callers can pass whatever the route carries.
+     */
+    fun initFromBlock(
+        outerRing: List<Coordinates>,
+        innerRings: List<List<Coordinates>>,
+        fallbackWaypoints: List<Coordinates> = emptyList(),
+    ) {
+        if (outerRing.size < 3) {
+            initFromRoute(fallbackWaypoints.ifEmpty { outerRing })
+            return
+        }
+
+        val minLat = outerRing.minOf { it.lat }
+        val maxLat = outerRing.maxOf { it.lat }
+        val minLng = outerRing.minOf { it.lng }
+        val maxLng = outerRing.maxOf { it.lng }
+
+        latPerMeter = 1.0 / 111_320.0
+        lngPerMeter = 1.0 / (111_320.0 * cos(minLat * PI / 180.0))
+
+        val paddingLat = 20.0 * latPerMeter
+        val paddingLng = 20.0 * lngPerMeter
+
+        originLat = minLat - paddingLat
+        originLng = minLng - paddingLng
+
+        val spanLat = (maxLat + paddingLat) - originLat
+        val spanLng = (maxLng + paddingLng) - originLng
+
+        gridRows = (spanLat / (cellSizeMeters * latPerMeter)).toInt() + 1
+        gridCols = (spanLng / (cellSizeMeters * lngPerMeter)).toInt() + 1
+
+        val outerPairs = outerRing.map { it.lat to it.lng }
+        val innerPairs = innerRings.filter { it.size >= 3 }.map { ring -> ring.map { it.lat to it.lng } }
+
+        val corridor = mutableSetOf<Pair<Int, Int>>()
+        for (row in 0 until gridRows) {
+            for (col in 0 until gridCols) {
+                val cellLat = originLat + (row + 0.5) * cellSizeMeters * latPerMeter
+                val cellLng = originLng + (col + 0.5) * cellSizeMeters * lngPerMeter
+                if (!pointInPolygon(cellLat, cellLng, outerPairs)) continue
+                if (innerPairs.any { pointInPolygon(cellLat, cellLng, it) }) continue
+                corridor.add(Pair(row, col))
+            }
+        }
+        corridorCells = corridor
+        totalCells = corridor.size
+        _scannedCells.value = emptySet()
+        _coveragePercent.value = 0.0
+    }
+
+    /** True when the required area was built from block boundaries (not line proximity). */
+    val hasBlockCorridor: Boolean
+        get() = totalCells > 0
+
+    /** Scanned cells clipped to the required corridor — the minimap fill set. */
+    fun getScannedCorridorCells(): Set<Pair<Int, Int>> =
+        _scannedCells.value intersect corridorCells
+
+    /** All required-corridor cell centers, for map fill rendering. */
+    fun getCorridorCenters(): List<Pair<Double, Double>> =
+        corridorCells.map { (row, col) -> cellCenterLatLng(row, col) }
 
     // ── Grid coordinate projection ───────────────────────────────────
 
