@@ -994,6 +994,10 @@ class GccApiClient(
             header(HttpHeaders.Authorization, "Bearer $currentToken")
         }
         if (!response.status.isSuccess()) {
+            // A 401/403 here means the buffer wasn't wide enough and the token is
+            // genuinely dead -- fire the session-expired flow now rather than
+            // waiting for the next real API call to also 401 one round-trip later.
+            checkUnauthorized(response.status.value)
             throw Exception(httpErrorMessage(response.status.value, response.bodyAsText()))
         }
         return response.body<ApiResponse<AuthRefreshResponse>>().data
