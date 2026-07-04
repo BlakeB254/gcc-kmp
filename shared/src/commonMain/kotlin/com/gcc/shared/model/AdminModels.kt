@@ -69,6 +69,25 @@ data class AdminRouteRequest(
     val unpublishAt: String? = null,
 )
 
+/**
+ * Body for PUT /api/admin/blocks/{blockId}/boundaries.
+ * v1 only edits the inner exclusion islands — locationBoundary is
+ * intentionally absent so the outer boundary is never touched.
+ * innerBoundary = null clears all islands (explicit null is encoded).
+ */
+@Serializable
+data class UpdateBlockBoundariesRequest(
+    val innerBoundary: GeoJSONMultiPolygon? = null,
+)
+
+/** Response of PUT /api/admin/blocks/{blockId}/boundaries (no data envelope). */
+@Serializable
+data class UpdateBlockBoundariesResponse(
+    val success: Boolean = false,
+    val blockId: Int = 0,
+    val thinnedNeighbors: List<Int> = emptyList(),
+)
+
 @Serializable
 data class AdminRouteAssignmentRequest(
     val workerId: Int,

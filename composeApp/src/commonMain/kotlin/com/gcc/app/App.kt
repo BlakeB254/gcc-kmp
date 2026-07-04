@@ -17,6 +17,7 @@ import com.gcc.app.navigation.RootComponent
 import com.gcc.app.navigation.Screen
 import com.gcc.app.ui.screens.*
 import com.gcc.app.ui.screens.admin.AdminPanelScreen
+import com.gcc.app.ui.screens.admin.AdminBoundaryEditorScreen
 import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
 import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
@@ -206,6 +207,12 @@ fun App(component: RootComponent) {
                     onBeginAsUser = { routeId, workerId, workerName ->
                         component.navigateToRouteScanAsUser(routeId, workerId, workerName)
                     },
+                    onEditInnerBoundaries = component::navigateToAdminBoundaryEditor,
+                )
+                is Screen.AdminBoundaryEditor -> AdminBoundaryEditorScreen(
+                    routeId = screen.routeId,
+                    blockId = screen.blockId,
+                    onBack = component::navigateBack,
                 )
                 is Screen.AdminBountyDetail -> AdminBountyDetailScreen(
                     bountyId = screen.bountyId,

@@ -822,6 +822,29 @@ class GccApiClient(
     suspend fun updateBlock(blockId: Int, request: AdminBlockRequest): Block =
         putJson("/api/admin/blocks/$blockId", request)
 
+    /**
+     * Save block boundaries (admin boundary editor). v1 only sends
+     * innerBoundary — the endpoint also accepts locationBoundary, but the
+     * mobile editor never touches the outer ring. The response is a bare
+     * `{ success, blockId, thinnedNeighbors }` object (no ApiResponse
+     * envelope), so this bypasses [putJson].
+     */
+    suspend fun updateBlockBoundaries(
+        blockId: Int,
+        request: UpdateBlockBoundariesRequest,
+    ): UpdateBlockBoundariesResponse {
+        val response = httpClient.put("$baseUrl/api/admin/blocks/$blockId/boundaries") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<UpdateBlockBoundariesResponse>()
+    }
+
     // Bounties
     suspend fun getAdminBounties(): List<Bounty> =
         get("/api/admin/bounties")

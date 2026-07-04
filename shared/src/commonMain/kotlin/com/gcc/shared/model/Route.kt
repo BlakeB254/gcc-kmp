@@ -23,6 +23,13 @@ data class Route(
      * the required scan area. Null → clients fall back to a parallel inset.
      */
     val innerBoundary: GeoJSONMultiPolygon? = null,
+    /**
+     * Id of the block that backs this route (blocks.routeId → routes.id).
+     * Only populated by GET /api/admin/routes (PR #60); null elsewhere.
+     * Needed by the admin boundary editor, which saves via
+     * PUT /api/admin/blocks/{blockId}/boundaries.
+     */
+    val blockId: Int? = null,
     val status: RouteStatus = RouteStatus.DRAFT,
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,
