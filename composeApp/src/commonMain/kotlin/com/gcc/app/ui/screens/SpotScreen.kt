@@ -472,13 +472,16 @@ private fun CameraPhase(
         }
     }
 
-    // Credit zones while outdoors: camera frustum sweep when heading exists.
+    // Credit zones while capture is allowed: while INDOOR, or still UNCERTAIN
+    // pending outdoor confirmation, accrue nothing — no tracker cells, no
+    // ledger event. Reset the segment anchor so no phantom distance bridges
+    // the gap once capture resumes. Camera frustum sweep when heading exists.
     LaunchedEffect(trackerReady) {
         if (!trackerReady) return@LaunchedEffect
         var lastLat: Double? = null
         var lastLng: Double? = null
         locationProvider.locationFlow.collect { loc ->
-            if (gate.state.value == OutdoorState.INDOOR) {
+            if (!gate.captureAllowed.value) {
                 lastLat = null; lastLng = null
                 return@collect
             }
@@ -602,7 +605,7 @@ private fun CameraPhase(
                 capturedPhotos = photos,
                 onPhotoCaptured = onScanCapture,
                 onRemovePhoto = onRemovePhoto,
-                captureBlocked = isIndoor,
+                captureBlocked = !captureAllowed,
                 onTrashObserved = onTrashObserved,
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
