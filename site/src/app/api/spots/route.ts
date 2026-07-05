@@ -164,38 +164,41 @@ export async function POST(request: NextRequest) {
     // for a single dump and corresponds to roughly one residential lot
     // width at Chicago latitudes (0.000135° ≈ 15m).
     const DUPLICATE_RADIUS_DEG = 0.000135
-    if (!duplicateOverrideReason) {
-      const duplicateCheck = await db
-        .select({ id: communityReports.id })
-        .from(communityReports)
-        .where(
-          and(
-            or(
-              eq(communityReports.status, 'pending'),
-              eq(communityReports.status, 'verified')
+    // Scan submissions (the world-scan camera flow always carries
+    // observedItems, even when empty) SUPERSEDE older active reports at the
+    // same location instead of being rejected as duplicates: the latest scan
+    // is fresher evidence, and its pin replaces the stale ones on the map.
+    // Only non-scan submissions (no observedItems array) keep the 409 guard.
+    const isScanSubmission = Array.isArray(observedItems)
+    const nearbyActiveReports = await db
+      .select({ id: communityReports.id })
+      .from(communityReports)
+      .where(
+        and(
+          or(
+            eq(communityReports.status, 'pending'),
+            eq(communityReports.status, 'verified')
+          ),
+          or(
+            // Object-style coordinates {lat, lng}
+            and(
+              sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
+              sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
             ),
-            or(
-              // Object-style coordinates {lat, lng}
-              and(
-                sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
-                sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
-              ),
-              // Array-style coordinates [lng, lat]
-              and(
-                sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
-                sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
-              ),
+            // Array-style coordinates [lng, lat]
+            and(
+              sql`(${communityReports.coordinates}->>0)::float BETWEEN ${lng - DUPLICATE_RADIUS_DEG} AND ${lng + DUPLICATE_RADIUS_DEG}`,
+              sql`(${communityReports.coordinates}->>1)::float BETWEEN ${lat - DUPLICATE_RADIUS_DEG} AND ${lat + DUPLICATE_RADIUS_DEG}`,
             ),
-          )
+          ),
         )
-        .limit(1)
+      )
 
-      if (duplicateCheck.length > 0) {
-        return NextResponse.json(
-          { data: null, success: false, message: 'A spot report already exists within 15m of this location', existingSpotId: duplicateCheck[0].id },
-          { status: 409 }
-        )
-      }
+    if (!isScanSubmission && !duplicateOverrideReason && nearbyActiveReports.length > 0) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'A spot report already exists within 15m of this location', existingSpotId: nearbyActiveReports[0].id },
+        { status: 409 }
+      )
     }
 
     // Derive affectedRadiusMeters from affectedArea if present
@@ -268,6 +271,47 @@ export async function POST(request: NextRequest) {
               confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
             }))
         : []
+
+    // Scan supersede: the fresh scan's data replaces older active pins it
+    // covered — near the report anchor AND near every scanned trash item.
+    // Old pins resolve (they disappear from the map); heat continuity comes
+    // from the new report + its world observations wherever the scan
+    // re-confirmed trash, and fades where the scan found the area clean.
+    if (isScanSubmission) {
+      const coveredPoints = [{ lat, lng }, ...clientItems.map((it) => ({ lat: it.lat, lng: it.lng }))]
+      const boxConditions = coveredPoints.map((p) =>
+        or(
+          and(
+            sql`(${communityReports.coordinates}->>'lng')::float BETWEEN ${p.lng - DUPLICATE_RADIUS_DEG} AND ${p.lng + DUPLICATE_RADIUS_DEG}`,
+            sql`(${communityReports.coordinates}->>'lat')::float BETWEEN ${p.lat - DUPLICATE_RADIUS_DEG} AND ${p.lat + DUPLICATE_RADIUS_DEG}`,
+          ),
+          and(
+            sql`(${communityReports.coordinates}->>0)::float BETWEEN ${p.lng - DUPLICATE_RADIUS_DEG} AND ${p.lng + DUPLICATE_RADIUS_DEG}`,
+            sql`(${communityReports.coordinates}->>1)::float BETWEEN ${p.lat - DUPLICATE_RADIUS_DEG} AND ${p.lat + DUPLICATE_RADIUS_DEG}`,
+          ),
+        )
+      )
+      const superseded = await db
+        .update(communityReports)
+        .set({
+          status: 'resolved',
+          reviewNotes: `Superseded by scan report #${newReport.id} — fresh scan data covers this location`,
+        })
+        .where(
+          and(
+            or(
+              eq(communityReports.status, 'pending'),
+              eq(communityReports.status, 'verified')
+            ),
+            sql`${communityReports.id} != ${newReport.id}`,
+            or(...boxConditions),
+          )
+        )
+        .returning({ id: communityReports.id })
+      if (superseded.length > 0) {
+        console.log(`Scan report ${newReport.id} superseded stale reports: ${superseded.map((r) => r.id).join(', ')}`)
+      }
+    }
 
     for (const item of clientItems) {
       await recordWorldObservation({
