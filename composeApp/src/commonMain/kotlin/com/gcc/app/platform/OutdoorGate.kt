@@ -61,6 +61,18 @@ class OutdoorGate {
     private val _state = MutableStateFlow(OutdoorState.UNCERTAIN)
     val state: StateFlow<OutdoorState> = _state.asStateFlow()
 
+    /** Field-report escape hatch: the fused evidence (GPS shadowing, dark
+     *  frames, map footprints) can misread a worker who IS outside. The
+     *  override pins OUTDOOR for the rest of this gate's life (one scan
+     *  session — the gate is remembered per screen). */
+    private var manualOverride = false
+
+    fun forceOutdoors() {
+        manualOverride = true
+        _state.value = OutdoorState.OUTDOOR
+        DiagnosticsLog.info("outdoor-gate", "manual override — user confirmed outdoors")
+    }
+
     private var sampleCount = 0
 
     fun onAccuracySample(horizontalAccuracyMeters: Double?, timestampMs: Long) {
@@ -113,7 +125,7 @@ class OutdoorGate {
                     "outdoor-gate",
                     "INDOOR (camera indoor ×$sceneIndoorStreak + no outdoor-grade GPS)",
                 )
-                _state.value = OutdoorState.INDOOR
+                if (!manualOverride) _state.value = OutdoorState.INDOOR
                 return
             }
             if (noOutdoorCueStreak >= NO_OUTDOOR_CUES_TO_FLIP) {
@@ -121,7 +133,7 @@ class OutdoorGate {
                     "outdoor-gate",
                     "INDOOR (no outdoor cues in $noOutdoorCueStreak samples + no outdoor-grade GPS)",
                 )
-                _state.value = OutdoorState.INDOOR
+                if (!manualOverride) _state.value = OutdoorState.INDOOR
                 return
             }
         }
@@ -139,7 +151,7 @@ class OutdoorGate {
             repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
             if (insideBuildingStreak >= MAP_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
                 DiagnosticsLog.info("outdoor-gate", "INDOOR (GPS inside mapped building ×$insideBuildingStreak)")
-                _state.value = OutdoorState.INDOOR
+                if (!manualOverride) _state.value = OutdoorState.INDOOR
                 return
             }
         } else {
@@ -158,7 +170,7 @@ class OutdoorGate {
             if (_state.value != OutdoorState.INDOOR) {
                 DiagnosticsLog.info("outdoor-gate", "INDOOR (scene vote + degraded GPS agree)")
             }
-            _state.value = OutdoorState.INDOOR
+            if (!manualOverride) _state.value = OutdoorState.INDOOR
             return
         }
 

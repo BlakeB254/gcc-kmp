@@ -215,6 +215,11 @@ class RouteScanViewModel(
     private var accuracyJob: Job? = null
 
     /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
+    /** Field escape hatch — user confirmed they're outdoors. */
+    fun forceOutdoors() {
+        outdoorGate.forceOutdoors()
+    }
+
     fun onSceneVote(vote: SceneVote) {
         outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
     }

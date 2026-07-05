@@ -755,15 +755,27 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    /** Silent frame grab from the AR feed (CameraManager's frame source). */
+    /**
+     * Silent frame grab from the AR feed (CameraManager's frame source).
+     * Polls briefly: the ARSession needs a moment after launch before the
+     * first frame exists, and the auto-scan fires just 2.5s after open —
+     * without the retry the first capture of every session could fail.
+     */
     suspend fun captureFrame(): CapturedPhoto? {
         val deferred = CompletableDeferred<CapturedPhoto?>()
         scope.launch {
-            val buffer = nativeSurface?.pixelBufferOrNull()
-                ?: sceneView?.session?.currentFrame?.capturedImage
-            deferred.complete(buffer?.let { cvPixelBufferToPortraitPhoto(it) })
+            var photo: CapturedPhoto? = null
+            var attempts = 0
+            while (photo == null && attempts < 10) {
+                val buffer = nativeSurface?.pixelBufferOrNull()
+                    ?: sceneView?.session?.currentFrame?.capturedImage
+                photo = buffer?.let { cvPixelBufferToPortraitPhoto(it) }
+                attempts++
+                if (photo == null) delay(300L)
+            }
+            deferred.complete(photo)
         }
-        return withTimeoutOrNull(2_000L) { deferred.await() }
+        return withTimeoutOrNull(4_000L) { deferred.await() }
     }
 
     private fun cameraPosition(): List<Float>? {

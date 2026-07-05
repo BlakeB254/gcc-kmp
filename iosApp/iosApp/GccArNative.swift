@@ -146,7 +146,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 index += 2
                 let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
                 wanted.insert(key)
-                if vectorCellEntities[key] != nil { continue }
+                if let existing = vectorCellEntities[key] {
+                    // Floor detection refines over time — cells placed against
+                    // the camera-offset estimate must settle onto the real floor.
+                    if abs(existing.position.y - groundY) > 0.08 {
+                        existing.position.y = groundY
+                    }
+                    continue
+                }
                 if vectorCellEntities.count >= Self.maxVectorCells { continue }
                 let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
                 let mesh = MeshResource.generatePlane(
@@ -235,7 +242,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 index += 2
                 let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
                 wanted.insert(key)
-                if fogCellEntities[key] != nil { continue }
+                if let existing = fogCellEntities[key] {
+                    if abs(existing.position.y - groundY) > 0.08 {
+                        existing.position.y = groundY
+                    }
+                    continue
+                }
                 if fogCellEntities.count >= Self.maxFogCells { continue }
                 let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
                 var material = PhysicallyBasedMaterial()
@@ -270,7 +282,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 index += 2
                 let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
                 wanted.insert(key)
-                if sectorPostEntities[key] != nil { continue }
+                if let existing = sectorPostEntities[key] {
+                    if abs(existing.position.y - (groundY + 0.25)) > 0.08 {
+                        existing.position.y = groundY + 0.25
+                    }
+                    continue
+                }
                 // Thin emissive pillar (cylinder mesh is iOS 18+).
                 let anchor = AnchorEntity(world: SIMD3(x, groundY + 0.25, z))
                 let post = ModelEntity(

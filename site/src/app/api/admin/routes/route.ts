@@ -81,6 +81,9 @@ export async function GET(request: Request) {
       imageUrl: route.imageUrl || null,
       description: route.description || null,
       blockId: blockIdMap.get(route.id) ?? null,
+      // The list rows show boundary status — without this the mobile
+      // subtitle said 'no boundary yet' for every route (thin-DTO lie).
+      blockBoundary: blockBoundaryMap.get(route.id) ?? null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
     }))
@@ -164,7 +167,12 @@ export async function POST(request: Request) {
       name: displayName,
       serviceAreaId,
       routeId: newRoute.id,
-      locationBoundary: { type: 'Polygon', coordinates: blockPolygon },
+      // NO auto-seeded boundary: admins author the block's outer edge in
+      // the mobile Boundary Studio (draw-first flow). The buffered polygon
+      // below still shapes the legacy checkpoints, but a machine rectangle
+      // must never masquerade as an authored boundary (field report: 'the
+      // outer boundary is not set to the map... automatically created').
+      locationBoundary: null,
       locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
       streetName: streetName || null,
       fromCorner: fromCorner || null,

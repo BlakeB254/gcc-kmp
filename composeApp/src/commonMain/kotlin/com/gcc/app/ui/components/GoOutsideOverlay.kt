@@ -31,6 +31,10 @@ fun GoOutsideOverlay(
     modifier: Modifier = Modifier,
     /** When set, shows a "Close Scan" button that exits the scan entirely. */
     onCloseScan: (() -> Unit)? = null,
+    /** Field escape hatch: the fused indoor evidence can misfire on a worker
+     *  who IS outside (GPS shadowing, dark pavement frames). When set, shows
+     *  an "I'm outside — continue" button that overrides the gate. */
+    onImOutside: (() -> Unit)? = null,
 ) {
     if (!visible) return
     Column(
@@ -62,8 +66,21 @@ fun GoOutsideOverlay(
             color = Color.White.copy(alpha = 0.85f),
             textAlign = TextAlign.Center,
         )
-        if (onCloseScan != null) {
+        if (onImOutside != null) {
             Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "I'm outside — continue",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                modifier = Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                    .background(Color(0xFF16A34A))
+                    .clickable(onClick = onImOutside)
+                    .padding(horizontal = 28.dp, vertical = 12.dp),
+            )
+        }
+        if (onCloseScan != null) {
+            Spacer(modifier = Modifier.height(if (onImOutside != null) 12.dp else 24.dp))
             Text(
                 text = "Close Scan",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
