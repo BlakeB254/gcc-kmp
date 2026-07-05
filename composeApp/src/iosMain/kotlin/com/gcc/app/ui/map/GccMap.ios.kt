@@ -81,6 +81,7 @@ actual fun GccMap(
     onBountyTap: ((bountyId: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
+    instantCamera: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,
@@ -164,6 +165,19 @@ actual fun GccMap(
         val currentPos = camera.position
         val targetLat = centerLat
         val targetLng = centerLng
+        if (instantCamera) {
+            // Editor overlays redraw synchronously against (center, zoom):
+            // the map must SNAP with zero threshold or geometry visibly
+            // detaches from the basemap during zoom/pan.
+            camera.animateTo(
+                finalPosition = CameraPosition(
+                    target = Position(latitude = targetLat, longitude = targetLng),
+                    zoom = zoom,
+                ),
+                duration = 0.milliseconds,
+            )
+            return@LaunchedEffect
+        }
         // Only animate if the position has actually changed meaningfully
         if (kotlin.math.abs(currentPos.target.latitude - targetLat) > 0.0001 ||
             kotlin.math.abs(currentPos.target.longitude - targetLng) > 0.0001 ||
@@ -577,9 +591,15 @@ actual fun GccMap(
                 color = const(GccGreen),
                 opacity = const(0.12f),
             )
-            // Inner boundary: the outer line's visual twin (same casing +
-            // core stack, same widths) so the pair reads as one system —
-            // exactly parallel, never touching (8m parallel-edge inset).
+            // Exclusion zones (inner boundaries): deliberately NOT the
+            // outer's twin — grey line + grey fill so "excluded from the
+            // scan area" reads at a glance against the green perimeter.
+            FillLayer(
+                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-excluded-fill",
+                source = routeInnerSrc,
+                color = const(Color(0xFF9E9E9E)),
+                opacity = const(0.22f),
+            )
             LineLayer(
                 id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-casing",
                 source = routeInnerSrc,
@@ -598,7 +618,7 @@ actual fun GccMap(
             LineLayer(
                 id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
                 source = routeInnerSrc,
-                color = const(GccGreen),
+                color = const(Color(0xFF757575)),
                 width = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),

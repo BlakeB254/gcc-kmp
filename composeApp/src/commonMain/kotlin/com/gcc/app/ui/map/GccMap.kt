@@ -79,6 +79,10 @@ expect fun GccMap(
     onBountyTap: ((bountyId: Int) -> Unit)? = null,
     onContextPin: ((lat: Double, lng: Double) -> Unit)? = null,
     showBuildings: Boolean = true,
+    /** Snap the camera instantly to center/zoom changes (no easing, no
+     *  min-delta threshold) — REQUIRED under editor overlays that redraw
+     *  synchronously, or the map visibly detaches during zoom/pan. */
+    instantCamera: Boolean = false,
     showGridLines: Boolean = true,
     showControls: Boolean = false,
     statusBarPadding: Boolean = false,
