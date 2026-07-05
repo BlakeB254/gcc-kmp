@@ -253,7 +253,8 @@ export async function POST(request: NextRequest) {
     // (heading-projected at capture time). Each becomes a world observation at
     // its own coordinates so the map/heatmap layers place items accurately.
     // Sanity-gated to 150m of the report location to keep junk out of the twin.
-    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number }[] =
+    const OBSERVATION_DOMAINS = ['litter', 'vegetation', 'construction', 'land_use'] as const
+    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number; estimatedWeightGrams?: number; estimatedWidthMeters?: number; domain?: (typeof OBSERVATION_DOMAINS)[number] }[] =
       Array.isArray(observedItems)
         ? observedItems
             .filter((it: any) =>
@@ -269,6 +270,9 @@ export async function POST(request: NextRequest) {
               itemType: String(it.itemType).slice(0, 64),
               severity: Number.isFinite(Number(it.severity)) ? Number(it.severity) : undefined,
               confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
+              estimatedWeightGrams: Number.isFinite(Number(it.estimatedWeightGrams)) ? Math.round(Number(it.estimatedWeightGrams)) : undefined,
+              estimatedWidthMeters: Number.isFinite(Number(it.estimatedWidthMeters)) ? Number(it.estimatedWidthMeters) : undefined,
+              domain: OBSERVATION_DOMAINS.includes(it.domain) ? (it.domain as (typeof OBSERVATION_DOMAINS)[number]) : undefined,
             }))
         : []
 
@@ -321,7 +325,14 @@ export async function POST(request: NextRequest) {
         lng: item.lng,
         itemType: item.itemType,
         state: 'dirty',
-        attributes: item.severity !== undefined ? { severity: item.severity } : undefined,
+        domain: item.domain,
+        attributes: (item.severity !== undefined || item.estimatedWeightGrams !== undefined || item.estimatedWidthMeters !== undefined)
+          ? {
+              ...(item.severity !== undefined ? { severity: item.severity } : {}),
+              ...(item.estimatedWeightGrams !== undefined ? { estimatedWeightGrams: item.estimatedWeightGrams } : {}),
+              ...(item.estimatedWidthMeters !== undefined ? { estimatedWidthMeters: item.estimatedWidthMeters } : {}),
+            }
+          : undefined,
         confidence: item.confidence,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
         capturedAt: newReport.capturedAt ?? new Date().toISOString(),

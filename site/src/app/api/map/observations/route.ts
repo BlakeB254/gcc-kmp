@@ -36,9 +36,12 @@ export async function GET(request: NextRequest) {
       lng: r.lng,
       itemType: r.itemType,
       state: r.state,
+      domain: r.domain,
       // Wire shape is unchanged from before the attributes refactor — only
       // the internal storage location of `severity` moved.
       severity: (r.attributes as Record<string, unknown> | null)?.severity ?? null,
+      estimatedWeightGrams: (r.attributes as Record<string, unknown> | null)?.estimatedWeightGrams ?? null,
+      estimatedWidthMeters: (r.attributes as Record<string, unknown> | null)?.estimatedWidthMeters ?? null,
       mediaUrl: r.mediaUrl,
       sourceType: r.sourceType,
       capturedAt: r.capturedAt,
