@@ -5,7 +5,10 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.readLocalFileBytes
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.serialization.GccJson
@@ -72,6 +75,8 @@ data class SpotUiState(
     val duplicateOverrideReason: String? = null,
     /** Trash items geo-tagged during the environment scan (minimap + submission). */
     val observedItems: List<ObservedSpotItem> = emptyList(),
+    /** Guided 3D capture of large litter (measured USDZ model), when performed. */
+    val objectCapture: ObjectCaptureResult? = null,
 )
 
 data class DuplicateMatch(
@@ -252,6 +257,60 @@ class SpotViewModel(
     /** Session ids whose manifest already shipped — a submit retry after a
      *  409/failure archive must not double-archive the same session. */
     private val archivedSessionIds = mutableSetOf<String>()
+
+    /**
+     * Attach a guided 3D capture: derive the bulk-weight estimate from the
+     * measured volume, then upload the USDZ to R2 in the background (the
+     * submission ships whatever is attached — dimensions are valuable even
+     * when the model upload fails or R2 is unprovisioned).
+     */
+    fun attachObjectCapture(outcome: ObjectCaptureOutcome) {
+        val result = ObjectCaptureResult(
+            r2Key = null,
+            widthMeters = outcome.widthMeters,
+            heightMeters = outcome.heightMeters,
+            depthMeters = outcome.depthMeters,
+            volumeLiters = outcome.volumeLiters,
+            estimatedWeightGrams = TrashItemCatalog.estimateWeightFromVolumeLiters(outcome.volumeLiters),
+        )
+        _uiState.value = _uiState.value.copy(objectCapture = result)
+        DiagnosticsLog.info(
+            "object-capture",
+            "attached: ${outcome.widthMeters}x${outcome.heightMeters}x${outcome.depthMeters}m " +
+                "≈${outcome.volumeLiters}L ≈${result.estimatedWeightGrams}g",
+        )
+        val path = outcome.usdzPath ?: return
+        scope.launch {
+            try {
+                val bytes = readLocalFileBytes(path) ?: run {
+                    DiagnosticsLog.error("object-capture", "USDZ unreadable at $path")
+                    return@launch
+                }
+                val state = _uiState.value
+                val cell = SessionPointsEstimator.gridCell10m(
+                    state.spotLat ?: state.currentLat,
+                    state.spotLng ?: state.currentLng,
+                )
+                val ticket = apiClient.createCaptureUploadUrl(
+                    CaptureUploadUrlRequest(
+                        locationCellId = "${cell.first}:${cell.second}",
+                        deviceId = CoverageDeviceId.value,
+                        capturedAt = "oc-${Clock.System.now().toEpochMilliseconds()}",
+                        ext = "usdz",
+                    )
+                )
+                apiClient.uploadToPresignedUrl(ticket.uploadUrl, bytes, "model/vnd.usdz+zip")
+                _uiState.value = _uiState.value.copy(
+                    objectCapture = _uiState.value.objectCapture?.copy(r2Key = ticket.r2Key),
+                )
+                DiagnosticsLog.info("object-capture", "USDZ archived: ${ticket.r2Key} (${bytes.size} bytes)")
+            } catch (e: CaptureStorageNotConfiguredException) {
+                DiagnosticsLog.info("object-capture", "R2 not provisioned — model kept local, dims still submit")
+            } catch (e: Exception) {
+                DiagnosticsLog.error("object-capture", "USDZ upload failed — dims still submit", e)
+            }
+        }
+    }
 
     fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
         val state = _uiState.value
@@ -460,6 +519,7 @@ class SpotViewModel(
                     onDeviceAiResult = onDeviceAiResult,
                     duplicateOverrideReason = state.duplicateOverrideReason,
                     observedItems = state.observedItems.ifEmpty { null },
+                    objectCapture = state.objectCapture,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)

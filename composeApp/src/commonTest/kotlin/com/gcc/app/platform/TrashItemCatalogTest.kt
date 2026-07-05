@@ -71,6 +71,16 @@ class TrashItemCatalogTest {
     }
 
     @Test
+    fun `volume-based bulk weight uses litter density`() {
+        // 100 L of loose mixed litter ≈ 13 kg at 130 g/L.
+        assertEquals(13_000, TrashItemCatalog.estimateWeightFromVolumeLiters(100.0))
+        assertEquals(1, TrashItemCatalog.estimateWeightFromVolumeLiters(0.0))
+        assertEquals(1, TrashItemCatalog.estimateWeightFromVolumeLiters(Double.NaN))
+        // Pile clamp is 2 tonnes, not the single-item 20 kg cap.
+        assertEquals(2_000_000, TrashItemCatalog.estimateWeightFromVolumeLiters(1e9))
+    }
+
+    @Test
     fun `every catalog type resolves to itself via infoFor`() {
         for (type in listOf(
             "plastic_bottle", "glass_bottle", "can", "plastic_bag", "cup", "paper",

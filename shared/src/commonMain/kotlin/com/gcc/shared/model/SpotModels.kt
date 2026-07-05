@@ -44,6 +44,22 @@ data class ObservedSpotItem(
     val domain: String? = null,
 )
 
+/**
+ * Result of a guided Object Capture (photogrammetry) pass over large litter:
+ * a reconstructed USDZ model in R2 plus its measured bounding box. Dimensions
+ * are real-world meters from the reconstruction bounds; volume assumes a
+ * ~50% bbox fill; weight uses the loose-mixed-litter bulk density heuristic.
+ */
+@Serializable
+data class ObjectCaptureResult(
+    val r2Key: String? = null,
+    val widthMeters: Double,
+    val heightMeters: Double,
+    val depthMeters: Double,
+    val volumeLiters: Double,
+    val estimatedWeightGrams: Int,
+)
+
 @kotlinx.serialization.Serializable
 data class CreateSpotRequest(
     val type: CommunityReportType = CommunityReportType.SIGHTING,
@@ -71,6 +87,8 @@ data class CreateSpotRequest(
      * they receive the standard observer reward (10 pts).
      */
     val discoveredByWorkerId: Int? = null,
+    /** Guided 3D capture of large litter (measured model), when performed. */
+    val objectCapture: ObjectCaptureResult? = null,
 )
 
 @Serializable

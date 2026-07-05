@@ -31,6 +31,7 @@ import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
 import com.gcc.app.platform.arEnvScanSupported
+import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
@@ -159,6 +160,7 @@ fun SpotScreen(
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
                     onCompleteScan = { draft -> viewModel.completeScan(draft) },
+                    onObjectCaptured = { outcome -> viewModel.attachObjectCapture(outcome) },
                     onBack = onBack,
                     spotLocation = currentLocation,
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
@@ -250,6 +252,7 @@ private fun CameraPhase(
     onNext: () -> Unit,
     onCompleteScan: (EnvScanSessionDraft) -> Unit,
     onBack: () -> Unit,
+    onObjectCaptured: (com.gcc.app.platform.ObjectCaptureOutcome) -> Unit = {},
     spotLocation: Coordinates? = null,
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
@@ -558,6 +561,12 @@ private fun CameraPhase(
     val rectifyScope = rememberCoroutineScope()
     val creditTick = scannedCells.size + litterItems.size * 10
 
+    // Guided 3D capture (Object Capture) — optional sub-flow for large
+    // litter. While open, the scan camera surface leaves the composition
+    // (UIKitView onRelease pauses the AR session) so ObjectCaptureSession
+    // can own the camera; closing it recomposes the scan surface.
+    var showObjectCapture by remember { mutableStateOf(false) }
+
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
         val scanStatus = when {
@@ -566,7 +575,7 @@ private fun CameraPhase(
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
             else -> "Environment scan active — sweep the camera slowly"
         }
-        if (isScanMode) {
+        if (!showObjectCapture) if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
                 geofenceRadius = 50.0,
@@ -698,6 +707,24 @@ private fun CameraPhase(
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
+        if (isScanMode && objectCaptureSupported() && !isIndoor && !showObjectCapture) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, bottom = 96.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { showObjectCapture = true }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    "◧ 3D scan",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+            }
+        }
         // Close-range confirm card: a locked candidate with type + LiDAR
         // size/weight estimates awaits Confirm / Not trash (above the
         // Complete pill, below the rectify sheet's band).
@@ -755,6 +782,16 @@ private fun CameraPhase(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
+            )
+        }
+
+        if (showObjectCapture) {
+            ObjectCapturePhase(
+                onDone = { outcome ->
+                    onObjectCaptured(outcome)
+                    showObjectCapture = false
+                },
+                onCancel = { showObjectCapture = false },
             )
         }
     }

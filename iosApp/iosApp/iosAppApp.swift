@@ -61,6 +61,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Kotlin falls back to its SceneKit render path automatically.
         GccArNative.register()
 
+        // Guided 3D capture (Object Capture) — registers only on capable
+        // hardware; Kotlin hides the feature when unregistered.
+        GccObjectCapture.register()
+
         // Bridge UIApplication push methods to Kotlin (K/N can't call these directly)
         PushNotificationManager.companion.registerCallback = {
             DispatchQueue.main.async {
