@@ -135,3 +135,109 @@ class OutdoorGateMapEvidenceTest {
         kotlin.test.assertEquals(OutdoorState.OUTDOOR, gate.state.value)
     }
 }
+
+class OutdoorGateV4Test {
+
+    private val t0 = 1_000_000L
+
+    @Test
+    fun captureDisallowedWhileUncertain() {
+        val gate = OutdoorGate()
+        assertEquals(false, gate.captureAllowed.value)
+    }
+
+    @Test
+    fun captureAllowedOnceOutdoor() {
+        val gate = OutdoorGate()
+        for (i in 0..6) gate.onAccuracySample(5.0, t0 + i * 1000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+        assertEquals(true, gate.captureAllowed.value)
+    }
+
+    @Test
+    fun ceilingPlaneFlipsIndoorInstantly() {
+        val gate = OutdoorGate()
+        gate.onCeilingPlane(true, t0)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+        assertEquals(false, gate.captureAllowed.value)
+    }
+
+    @Test
+    fun sceneStreakFlipsDespiteGoodGps() {
+        val gate = OutdoorGate()
+        // Outdoor-grade GPS in the window must no longer veto camera evidence.
+        gate.onAccuracySample(5.0, t0)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 500L)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 1500L)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @Test
+    fun twoOutdoorVotesRecoverFromIndoorFast() {
+        val gate = OutdoorGate()
+        gate.onSceneVote(SceneVote.INDOOR, t0)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 1000L)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+        // ~3s later the camera sees street twice — recover without 5s clean GPS.
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 3000L)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 4000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
+
+    @Test
+    fun outdoorVoteRecoveryBlockedByRecentCeiling() {
+        val gate = OutdoorGate()
+        gate.onCeilingPlane(true, t0)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 1000L)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 2000L)
+        // Ceiling seen 2s ago (< CEILING_RECENT_MS) — stay INDOOR.
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+        // Once the ceiling is stale, the same streak recovers.
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 6000L)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 7000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
+
+    @Test
+    fun outdoorVoteRecoveryBlockedWhileMapContained() {
+        val gate = OutdoorGate()
+        gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 1000L)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 2000L)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @Test
+    fun overrideSurvivesWeakEvidence() {
+        val gate = OutdoorGate()
+        gate.forceOutdoors()
+        gate.onSceneVote(SceneVote.INDOOR, t0)
+        gate.onSceneVote(SceneVote.INDOOR, t0 + 1000L)
+        for (i in 0..6) gate.onAccuracySample(40.0, t0 + 2000L + i * 1000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
+
+    @Test
+    fun overrideYieldsToMapContainment() {
+        val gate = OutdoorGate()
+        gate.forceOutdoors()
+        gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @Test
+    fun overrideYieldsToCeilingPlane() {
+        val gate = OutdoorGate()
+        gate.forceOutdoors()
+        gate.onCeilingPlane(true, t0)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+    }
+
+    @Test
+    fun lastIndoorFlipTimestampRecorded() {
+        val gate = OutdoorGate()
+        assertEquals(null, gate.lastIndoorFlipAtMs)
+        gate.onCeilingPlane(true, t0)
+        assertEquals(t0, gate.lastIndoorFlipAtMs)
+    }
+}
