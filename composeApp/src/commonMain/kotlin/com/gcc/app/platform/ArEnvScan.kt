@@ -67,6 +67,15 @@ expect class ArEnvScanOverlay() {
     /** Dismiss the pending candidate ("Not trash") and suppress that anchor. */
     fun dismissCandidate()
 
+    /**
+     * Fires when a landmark element (tree, fence, gate… — see
+     * [EnvironmentElementCatalog]) is auto-registered to the grid, with its
+     * raycast world position. Called on the main thread; iOS only.
+     */
+    fun setElementObservedListener(
+        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+    )
+
     /** Pause/resume frame sampling without tearing down the ARSession. */
     fun setFrameAnalysisEnabled(enabled: Boolean)
 

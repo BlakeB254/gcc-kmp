@@ -18,6 +18,8 @@ data class WorldObservation(
     val lat: Double,
     val lng: Double,
     val itemType: String? = null,
+    /** 'litter' (default) | 'vegetation' | 'construction' | 'land_use'. */
+    val domain: String? = null,
     val state: String, // 'dirty' | 'clean'
     val severity: Int? = null,
     val mediaUrl: String? = null,
@@ -56,6 +58,7 @@ fun WorldObservation.toScanMapPin(): CommunityReport {
         status = CommunityReportStatus.VERIFIED,
         tags = listOfNotNull(spotTagForItemType(itemType)),
         photoUrl = mediaUrl,
+        itemType = itemType,
         affectedRadiusMeters = 10.0, // world-observation grid cell size
         createdAt = now,
         updatedAt = now,

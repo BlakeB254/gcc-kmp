@@ -100,6 +100,10 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val VECTOR_RENDER_RADIUS_METERS = 30.0
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
+        /** Landmark elements: registration range, per-type dedupe, session cap. */
+        private const val ELEMENT_MAX_DISTANCE_METERS = 12.0
+        private const val ELEMENT_DEDUPE_METERS = 4.0
+        private const val MAX_ELEMENTS_PER_SESSION = 60
     }
 
     private var sceneView: ARSCNView? = null
@@ -141,6 +145,11 @@ actual class ArEnvScanOverlay actual constructor() {
     private var pendingWorld: Triple<Float, Float, Float>? = null
     private val suppressedWorld = mutableListOf<Triple<Float, Float, Float>>()
     private val markerPositions = mutableListOf<Triple<Float, Float, Float>>()
+
+    // Landmark elements registered this session: (itemType, x, z) for dedupe.
+    private val registeredElements = mutableListOf<Triple<String, Float, Float>>()
+    private var elementObservedListener:
+        ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
     private var roughGridTexture: UIImage? = null
@@ -239,6 +248,12 @@ actual class ArEnvScanOverlay actual constructor() {
         nearStreak = 0
     }
 
+    actual fun setElementObservedListener(
+        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+    ) {
+        elementObservedListener = listener
+    }
+
     // ── Frame loop ───────────────────────────────────────────────────
 
     private fun startLoop() {
@@ -314,6 +329,11 @@ actual class ArEnvScanOverlay actual constructor() {
         if (trashLabel == null) {
             nearStreak = 0
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
+            // No trash in view: a landmark element tick instead — trees,
+            // fences, gates… register to the grid so future scans expect
+            // them. (Only on trash-less ticks: a bag stuck in a bush must
+            // register as the bag.)
+            registerElementIfAny(frame, classifications, saliencyRequest)
             return
         }
         // The raw identifier that produced the label carries the fine-grained
@@ -407,6 +427,62 @@ actual class ArEnvScanOverlay actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             UIImpactFeedbackGenerator(style = UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium)
                 .impactOccurred()
+        }
+    }
+
+    /**
+     * Register a landmark element (vegetation/infrastructure) at its raycast
+     * world position — auto, no confirm: these aren't actionable like trash,
+     * they're the stable context the grid should expect next time. Deduped
+     * per type within 4m; capped per session.
+     */
+    private fun registerElementIfAny(
+        frame: ARFrame,
+        classifications: List<ClassificationObservation>,
+        saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest,
+    ) {
+        val listener = elementObservedListener ?: return
+        if (!hasGeoRef || registeredElements.size >= MAX_ELEMENTS_PER_SESSION) return
+        val (element, confidence) = EnvironmentElementCatalog.elementFrom(classifications) ?: return
+
+        var visionX = 0.5
+        var visionY = 0.5
+        saliencyRequest.results
+            ?.filterIsInstance<VNSaliencyImageObservation>()
+            ?.firstOrNull()
+            ?.salientObjects
+            ?.filterIsInstance<VNRectangleObservation>()
+            ?.firstOrNull()
+            ?.boundingBox?.useContents {
+                visionX = origin.x + size.width / 2.0
+                visionY = origin.y + size.height / 2.0
+            }
+        val hit = frame.hitTest(
+            CGPointMake(visionX, 1.0 - visionY),
+            types = ARHitTestResultTypeExistingPlaneUsingGeometry
+                or ARHitTestResultTypeEstimatedHorizontalPlane
+                or ARHitTestResultTypeFeaturePoint,
+        )?.firstOrNull() as? ARHitTestResult ?: return
+        if (hit.distance > ELEMENT_MAX_DISTANCE_METERS) return
+
+        val world = matrixTranslation(hit.worldTransform)
+        val duplicate = registeredElements.any { (type, x, z) ->
+            type == element.itemType && run {
+                val dx = (x - world[0]).toDouble()
+                val dz = (z - world[2]).toDouble()
+                sqrt(dx * dx + dz * dz) < ELEMENT_DEDUPE_METERS
+            }
+        }
+        if (duplicate) return
+        registeredElements.add(Triple(element.itemType, world[0], world[2]))
+
+        val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
+        DiagnosticsLog.info(
+            "env-ar",
+            "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m",
+        )
+        dispatch_async(dispatch_get_main_queue()) {
+            listener(lat, lng, element.itemType, element.domain, confidence)
         }
     }
 

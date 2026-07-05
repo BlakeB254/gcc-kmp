@@ -36,6 +36,12 @@ data class ObservedSpotItem(
     val estimatedWeightGrams: Int? = null,
     /** Physical width measured from LiDAR depth + bounding-box angular size. */
     val estimatedWidthMeters: Double? = null,
+    /**
+     * world_observations.domain: null/'litter' for trash; 'vegetation' /
+     * 'construction' for auto-registered landmark elements (trees, fences…)
+     * the scan maps to the grid so future scans expect them.
+     */
+    val domain: String? = null,
 )
 
 @kotlinx.serialization.Serializable

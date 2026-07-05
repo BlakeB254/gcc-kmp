@@ -268,6 +268,18 @@ private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
             drawCircle(color = outline, radius = u * 0.5f, center = c, style = stroke)
         }
         "mattress" -> rect(u * 2.8f, u * 1.4f, Color(0xFF93C5FD))
+        // Landmark elements (auto-registered context, not trash): muted
+        // greens/greys so they read as scenery behind the litter glyphs.
+        "tree" -> {
+            drawCircle(color = Color(0xFF16A34A).copy(alpha = 0.8f), radius = u * 1.3f, center = c)
+            drawCircle(color = Color(0xFF14532D), radius = u * 0.4f, center = c)
+        }
+        "bush" -> drawCircle(color = Color(0xFF22C55E).copy(alpha = 0.7f), radius = u * 0.9f, center = c)
+        "fence" -> rect(u * 2.6f, u * 0.7f, Color(0xFF9CA3AF))
+        "gate" -> rect(u * 1.2f, u * 1.6f, Color(0xFF9CA3AF))
+        "pole", "sign" -> rect(u * 0.6f, u * 2.4f, Color(0xFF9CA3AF))
+        "hydrant" -> rect(u * 1.0f, u * 1.4f, Color(0xFFDC2626))
+        "bench", "mailbox" -> rect(u * 1.8f, u * 1.2f, Color(0xFF6B7280))
         else -> {
             drawCircle(color = TrashOrange, radius = u * 1.15f, center = c)
             drawCircle(color = outline, radius = u * 1.15f, center = c, style = stroke)

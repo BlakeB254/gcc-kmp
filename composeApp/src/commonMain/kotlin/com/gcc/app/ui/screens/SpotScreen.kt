@@ -279,7 +279,25 @@ private fun CameraPhase(
         }
     }
     DisposableEffect(arOverlay) {
-        onDispose { arOverlay?.stop() }
+        // Landmark elements (trees, fences, gates…) auto-register into the
+        // same observed-items packet as trash — domain-tagged, so the server
+        // records them as vegetation/construction world observations and the
+        // grid expects them next scan.
+        arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence ->
+            onTrashObserved(
+                ObservedSpotItem(
+                    lat = lat,
+                    lng = lng,
+                    itemType = itemType,
+                    confidence = confidence,
+                    domain = domain,
+                )
+            )
+        }
+        onDispose {
+            arOverlay?.setElementObservedListener(null)
+            arOverlay?.stop()
+        }
     }
 
     // "Go outside" gate — GPS-accuracy evidence only here (the AVCapture
@@ -362,6 +380,11 @@ private fun CameraPhase(
     // observations from the world model; within range a confirm sheet offers
     // Still there / Already clean (rectification bonus).
     var expectedDirty by remember { mutableStateOf(listOf<WorldObservation>()) }
+    // Known landmark elements from the world model (trees, fences, gates…):
+    // depicted on the minimap as context, never as trash.
+    var knownElements by remember { mutableStateOf(listOf<WorldObservation>()) }
+    fun isLitterObservation(obs: WorldObservation) = obs.domain == null || obs.domain == "litter"
+    fun isElementObservation(obs: WorldObservation) = obs.domain == "vegetation" || obs.domain == "construction"
     val resolvedObservationIds = remember { mutableSetOf<Int>() }
     var nearbyDirty by remember { mutableStateOf<WorldObservation?>(null) }
 
@@ -404,14 +427,22 @@ private fun CameraPhase(
             }
         }
         try {
-            expectedDirty = apiClient.getMapObservations(bbox).filter { it.state == "dirty" }
-            DiagnosticsLog.info("env-scan", "${expectedDirty.size} expected-dirty observations nearby")
+            val allObs = apiClient.getMapObservations(bbox)
+            expectedDirty = allObs.filter { it.state == "dirty" && isLitterObservation(it) }
+            knownElements = allObs.filter { isElementObservation(it) }
+            DiagnosticsLog.info(
+                "env-scan",
+                "${expectedDirty.size} expected-dirty + ${knownElements.size} landmark observations nearby",
+            )
         } catch (e: Exception) {
             DiagnosticsLog.error("env-scan", "observations fetch failed — trying cache", e)
             val cached = withContext(Dispatchers.Default) {
                 scanAreaCache.get(ScanAreaCacheStore.areaKeyFor(anchor.lat, anchor.lng))
             }
-            if (cached != null) expectedDirty = cached.observations.filter { it.state == "dirty" }
+            if (cached != null) {
+                expectedDirty = cached.observations.filter { it.state == "dirty" && isLitterObservation(it) }
+                knownElements = cached.observations.filter { isElementObservation(it) }
+            }
         }
         // Snapshot whatever we fetched live so the next offline open has it.
         if (fetchedCells != null) {
@@ -487,20 +518,26 @@ private fun CameraPhase(
     LaunchedEffect(scanCellCenters) {
         arOverlay?.updateScannedCells(scanCellCenters)
     }
-    val trashItems = remember(observedItems) {
-        observedItems.map { Coordinates(lat = it.lat, lng = it.lng) }
+    // Litter vs landmark elements: elements ride the same submission packet
+    // but must never read as trash in the UI (dots, toasts, points).
+    val litterItems = remember(observedItems) {
+        observedItems.filter { it.domain == null || it.domain == "litter" }
+    }
+    val trashItems = remember(litterItems) {
+        litterItems.map { Coordinates(lat = it.lat, lng = it.lng) }
     }
     // Minimap glyphs: this session's confirmed items PLUS the world model's
     // known litter nearby — previously scanned trash persists on the minimap
     // as what it IS (bottle/can/bag glyph), not an anonymous dot. Items the
     // user resolves ("Already clean") drop out with expectedDirty.
-    val typedMinimapItems = remember(observedItems, expectedDirty) {
-        observedItems + expectedDirty.map { obs ->
+    val typedMinimapItems = remember(observedItems, expectedDirty, knownElements) {
+        observedItems + (expectedDirty + knownElements).map { obs ->
             ObservedSpotItem(
                 lat = obs.lat,
                 lng = obs.lng,
                 itemType = obs.itemType ?: "other",
                 severity = obs.severity,
+                domain = obs.domain,
             )
         }
     }
@@ -510,8 +547,8 @@ private fun CameraPhase(
 
     // Registration feedback: toast on tags, pulse on any credit.
     var toast by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(observedItems.size) {
-        if (observedItems.isNotEmpty()) {
+    LaunchedEffect(litterItems.size) {
+        if (litterItems.isNotEmpty()) {
             toast = "Trash tagged on the map ✓"
         }
     }
@@ -519,7 +556,7 @@ private fun CameraPhase(
         if (submitError != null) toast = "⚠ $submitError"
     }
     val rectifyScope = rememberCoroutineScope()
-    val creditTick = scannedCells.size + observedItems.size * 10
+    val creditTick = scannedCells.size + litterItems.size * 10
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
