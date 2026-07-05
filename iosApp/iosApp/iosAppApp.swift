@@ -56,6 +56,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // diagnostics panel + Files-app retrieval.
         CrashDiagnosticsObserver.shared.start()
 
+        // Native RealityKit AR surface for the environment scan. Registration
+        // is the opt-in — if this line is removed (or the factory throws),
+        // Kotlin falls back to its SceneKit render path automatically.
+        GccArNative.register()
+
         // Bridge UIApplication push methods to Kotlin (K/N can't call these directly)
         PushNotificationManager.companion.registerCallback = {
             DispatchQueue.main.async {

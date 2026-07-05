@@ -11,6 +11,7 @@ import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -107,6 +108,8 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     private var sceneView: ARSCNView? = null
+    /** Native RealityKit render surface — when set, SceneKit paths are inert. */
+    private var nativeSurface: ArNativeSurface? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
     private var tick = 0
@@ -184,10 +187,24 @@ actual class ArEnvScanOverlay actual constructor() {
         DiagnosticsLog.info("env-ar", "ARKit env-scan surface started (plane detection on)")
     }
 
+    /**
+     * Bind to a native RealityKit surface instead of an ARSCNView (see
+     * [ArNativeRegistry]). The Swift side owns the session, ground grid and
+     * effect rendering; this class keeps the identical Vision/candidate/
+     * geo-ref loop, reading frames + raycasts through [ArNativeSurface].
+     */
+    fun bindNative(surface: ArNativeSurface) {
+        nativeSurface = surface
+        CameraManager.externalFrameSource = { captureFrame() }
+        startLoop()
+        DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
+    }
+
     actual fun stop() {
         job?.cancel()
         job = null
         if (CameraManager.externalFrameSource != null) CameraManager.externalFrameSource = null
+        nativeSurface?.pause()
         sceneView?.session?.pause()
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
@@ -274,12 +291,20 @@ actual class ArEnvScanOverlay actual constructor() {
 
     /** Returns true when the loop should back off (error / no frame). */
     private fun analyzeTick(): Boolean {
-        val view = sceneView ?: return false
-        val frame = view.session.currentFrame ?: return false
+        val native = nativeSurface
+        val frame: ARFrame? = if (native == null) sceneView?.session?.currentFrame else null
+        if (native == null && frame == null) return false
         tick += 1
 
-        // Ground grid tracks detected planes even while Vision is paused.
-        dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
+        if (native != null) {
+            // Native mode: Swift renders its own classified plane grid; we
+            // only mirror its ground state for the status line.
+            val detected = native.groundDetected()
+            if (_groundDetected.value != detected) _groundDetected.value = detected
+        } else if (frame != null) {
+            // Ground grid tracks detected planes even while Vision is paused.
+            dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
+        }
 
         if (!analysisEnabled) return false
         // Thermal guard: continuous Vision + plane detection + depth is the
@@ -294,7 +319,7 @@ actual class ArEnvScanOverlay actual constructor() {
             return true
         }
 
-        val pixelBuffer = frame.capturedImage ?: return false
+        val pixelBuffer = (native?.let { nativePixelBuffer(it) } ?: frame?.capturedImage) ?: return false
         val classifyRequest = VNClassifyImageRequest()
         val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
         val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
@@ -315,8 +340,37 @@ actual class ArEnvScanOverlay actual constructor() {
         return false
     }
 
+    private class RayHit(val x: Float, val y: Float, val z: Float, val distance: Float)
+
+    /**
+     * World hit for a normalized image-space point, via whichever backend is
+     * live: native RealityKit raycast (distance derived from the camera
+     * position) or the SceneKit-era ARFrame.hitTest.
+     */
+    private fun raycastImage(frame: ARFrame?, imageX: Double, imageY: Double): RayHit? {
+        nativeSurface?.let { surface ->
+            val hit = surface.raycast(imageX, imageY) ?: return null
+            val cam = surface.cameraPosition() ?: return null
+            val dx = hit[0] - cam[0]
+            val dy = hit[1] - cam[1]
+            val dz = hit[2] - cam[2]
+            return RayHit(
+                hit[0].toFloat(), hit[1].toFloat(), hit[2].toFloat(),
+                sqrt(dx * dx + dy * dy + dz * dz).toFloat(),
+            )
+        }
+        val hit = frame?.hitTest(
+            CGPointMake(imageX, imageY),
+            types = ARHitTestResultTypeExistingPlaneUsingGeometry
+                or ARHitTestResultTypeEstimatedHorizontalPlane
+                or ARHitTestResultTypeFeaturePoint,
+        )?.firstOrNull() as? ARHitTestResult ?: return null
+        val world = matrixTranslation(hit.worldTransform)
+        return RayHit(world[0], world[1], world[2], hit.distance.toFloat())
+    }
+
     private fun analyzeTrash(
-        frame: ARFrame,
+        frame: ARFrame?,
         observations: List<VNClassificationObservation>,
         saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest,
     ) {
@@ -364,15 +418,8 @@ actual class ArEnvScanOverlay actual constructor() {
 
         val imageX = visionX
         val imageY = 1.0 - visionY
-        // ExistingPlaneUsingGeometry first: on LiDAR devices the detected
-        // planes carry fused-depth geometry, which beats a lone feature point.
-        val hit = frame.hitTest(
-            CGPointMake(imageX, imageY),
-            types = ARHitTestResultTypeExistingPlaneUsingGeometry
-                or ARHitTestResultTypeEstimatedHorizontalPlane
-                or ARHitTestResultTypeFeaturePoint,
-        )?.firstOrNull() as? ARHitTestResult
-        val distance = hit?.distance?.toFloat()
+        val hit = raycastImage(frame, imageX, imageY)
+        val distance = hit?.distance
 
         val viewX = (1.0 - imageY).toFloat()
         val viewY = imageX.toFloat()
@@ -395,7 +442,7 @@ actual class ArEnvScanOverlay actual constructor() {
 
         if (nearStreak < NEAR_STREAK_TICKS || hit == null || distance == null) return
 
-        val world = matrixTranslation(hit.worldTransform)
+        val world = floatArrayOf(hit.x, hit.y, hit.z)
         // Skip items already handled (confirmed or "not trash").
         val suppressed = suppressedWorld.any { (sx, _, sz) ->
             val dx = (sx - world[0]).toDouble()
@@ -404,7 +451,7 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         if (suppressed || !hasGeoRef) return
 
-        val widthMeters = physicalWidthMeters(frame, bboxWidthFrac, distance.toDouble())
+        val widthMeters = physicalWidthMeters(bboxWidthFrac, distance.toDouble())
         val itemType = TrashItemCatalog.canonicalType(rawIdentifier)
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
         candidateCounter += 1
@@ -424,6 +471,7 @@ actual class ArEnvScanOverlay actual constructor() {
             "env-ar",
             "candidate #$candidateCounter $itemType at ${distance}m width=${widthMeters ?: "?"}m",
         )
+        nativeSurface?.emitLockEffect(world[0].toDouble(), world[1].toDouble(), world[2].toDouble())
         dispatch_async(dispatch_get_main_queue()) {
             UIImpactFeedbackGenerator(style = UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium)
                 .impactOccurred()
@@ -437,7 +485,7 @@ actual class ArEnvScanOverlay actual constructor() {
      * per type within 4m; capped per session.
      */
     private fun registerElementIfAny(
-        frame: ARFrame,
+        frame: ARFrame?,
         classifications: List<ClassificationObservation>,
         saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest,
     ) {
@@ -457,15 +505,10 @@ actual class ArEnvScanOverlay actual constructor() {
                 visionX = origin.x + size.width / 2.0
                 visionY = origin.y + size.height / 2.0
             }
-        val hit = frame.hitTest(
-            CGPointMake(visionX, 1.0 - visionY),
-            types = ARHitTestResultTypeExistingPlaneUsingGeometry
-                or ARHitTestResultTypeEstimatedHorizontalPlane
-                or ARHitTestResultTypeFeaturePoint,
-        )?.firstOrNull() as? ARHitTestResult ?: return
+        val hit = raycastImage(frame, visionX, 1.0 - visionY) ?: return
         if (hit.distance > ELEMENT_MAX_DISTANCE_METERS) return
 
-        val world = matrixTranslation(hit.worldTransform)
+        val world = floatArrayOf(hit.x, hit.y, hit.z)
         val duplicate = registeredElements.any { (type, x, z) ->
             type == element.itemType && run {
                 val dx = (x - world[0]).toDouble()
@@ -491,7 +534,7 @@ actual class ArEnvScanOverlay actual constructor() {
      * intrinsics (column-major 3x3: fx at index 0) and pixelWidth from the
      * normalized bbox against the sensor resolution.
      */
-    private fun physicalWidthMeters(frame: ARFrame, bboxWidthFrac: Double, distance: Double): Double? {
+    private fun physicalWidthMeters(bboxWidthFrac: Double, distance: Double): Double? {
         if (bboxWidthFrac <= 0.0 || bboxWidthFrac >= 1.0) return null
         // Angular size with the iPhone wide lens's ~63° horizontal FOV (the
         // same approximation ArScanner.getCameraFovDegrees uses) — camera
@@ -601,8 +644,20 @@ actual class ArEnvScanOverlay actual constructor() {
 
     /** Lay "digitized" cell quads over already-credited ground (main queue). */
     private fun renderVectorCells() {
-        val scene = sceneView?.scene ?: return
         if (!hasGeoRef) return
+        nativeSurface?.let { surface ->
+            // Native mode: hand AR-local cell centers to the Swift renderer
+            // (it owns floor height, pulse animation and the node cap).
+            val flat = ArrayList<Double>(latestScannedCells.size * 2)
+            for ((lat, lng) in latestScannedCells) {
+                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+                flat.add(local.first)
+                flat.add(local.second)
+            }
+            surface.updateVectorCells(flat, CoverageTracker.cellSizeMeters)
+            return
+        }
+        val scene = sceneView?.scene ?: return
         val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.02f
 
         val wanted = mutableSetOf<Pair<Long, Long>>()
@@ -669,6 +724,12 @@ actual class ArEnvScanOverlay actual constructor() {
 
     private fun placeMarker(x: Float, y: Float, z: Float) {
         markerPositions.add(Triple(x, y, z))
+        nativeSurface?.let { surface ->
+            dispatch_async(dispatch_get_main_queue()) {
+                surface.addMarker(x.toDouble(), y.toDouble(), z.toDouble())
+            }
+            return
+        }
         dispatch_async(dispatch_get_main_queue()) {
             val scene = sceneView?.scene ?: return@dispatch_async
             val torus = SCNTorus.torusWithRingRadius(0.18, 0.02)
@@ -685,13 +746,23 @@ actual class ArEnvScanOverlay actual constructor() {
     suspend fun captureFrame(): CapturedPhoto? {
         val deferred = CompletableDeferred<CapturedPhoto?>()
         scope.launch {
-            val buffer = sceneView?.session?.currentFrame?.capturedImage
+            val buffer = nativeSurface?.let { nativePixelBuffer(it) }
+                ?: sceneView?.session?.currentFrame?.capturedImage
             deferred.complete(buffer?.let { cvPixelBufferToPortraitPhoto(it) })
         }
         return withTimeoutOrNull(2_000L) { deferred.await() }
     }
 
+    private fun nativePixelBuffer(surface: ArNativeSurface): platform.CoreVideo.CVPixelBufferRef? {
+        val address = surface.currentPixelBufferAddress()
+        if (address == 0L) return null
+        return address.toCPointer()
+    }
+
     private fun cameraPosition(): List<Float>? {
+        nativeSurface?.let { surface ->
+            return surface.cameraPosition()?.map { it.toFloat() }
+        }
         val transform = sceneView?.session?.currentFrame?.camera?.transform ?: return null
         return matrixTranslation(transform).toList()
     }
@@ -757,16 +828,30 @@ actual fun arEnvScanSupported(): Boolean = ARWorldTrackingConfiguration.isSuppor
 actual fun ArEnvScanView(overlay: ArEnvScanOverlay, modifier: Modifier) {
     UIKitView(
         factory = {
-            val view = ARSCNView()
-            overlay.bind(view)
-            val coaching = ARCoachingOverlayView()
-            coaching.session = view.session
-            coaching.goal = ARCoachingGoal.ARCoachingGoalHorizontalPlane
-            coaching.activatesAutomatically = true
-            coaching.setFrame(view.bounds)
-            coaching.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
-            view.addSubview(coaching)
-            view
+            // Native RealityKit surface when the Swift module registered one;
+            // ANY failure falls back to the proven SceneKit path — the render
+            // layer must never brick the scan.
+            val nativeView = try {
+                ArNativeRegistry.surfaceFactory?.invoke()?.let { surface ->
+                    overlay.bindNative(surface)
+                    surface.view()
+                }
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("env-ar", "native AR surface failed — SceneKit fallback", e)
+                null
+            }
+            nativeView ?: run {
+                val view = ARSCNView()
+                overlay.bind(view)
+                val coaching = ARCoachingOverlayView()
+                coaching.session = view.session
+                coaching.goal = ARCoachingGoal.ARCoachingGoalHorizontalPlane
+                coaching.activatesAutomatically = true
+                coaching.setFrame(view.bounds)
+                coaching.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+                view.addSubview(coaching)
+                view
+            }
         },
         modifier = modifier,
         onRelease = {
