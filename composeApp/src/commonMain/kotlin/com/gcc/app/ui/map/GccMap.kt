@@ -103,6 +103,9 @@ expect fun GccMap(
     explorerAreaStates: Map<String, String> = emptyMap(),
     affectedBlocks: List<AffectedBlock> = emptyList(),
     onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
+    /** Reports live camera zoom (throttled to actual changes) so callers can
+     *  zoom-gate chrome like the heat legend to when the layer is on screen. */
+    onZoomChanged: ((Double) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},
 )
 
