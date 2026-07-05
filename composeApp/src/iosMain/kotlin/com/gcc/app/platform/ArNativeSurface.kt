@@ -73,6 +73,12 @@ interface ArNativeSurface {
     fun setBoundaryVeilVisible(visible: Boolean)
 
     /**
+     * Spot mode: uncovered capture-angle posts as flat [x0, z0, …] AR-local
+     * positions; sectors absent from the list disappear (reveal-by-omission).
+     */
+    fun updateSectorPosts(flatXZ: List<Double>)
+
+    /**
      * World-anchored boundary wall strips as flat records of
      * [midX, midZ, lengthMeters, yawRadians, isOuter(1/0)] — Kotlin owns the
      * segment sampling policy; each call replaces the previous walls.
