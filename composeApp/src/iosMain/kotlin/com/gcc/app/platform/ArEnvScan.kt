@@ -256,6 +256,7 @@ actual class ArEnvScanOverlay actual constructor() {
             placeMarker(world.first, world.second, world.third)
         }
         dispatch_async(dispatch_get_main_queue()) {
+            CameraDetectionBus.update(emptyList())
             UINotificationFeedbackGenerator().notificationOccurred(
                 UINotificationFeedbackType.UINotificationFeedbackTypeSuccess
             )
@@ -274,6 +275,7 @@ actual class ArEnvScanOverlay actual constructor() {
         pendingWorld = null
         _trashCandidate.value = null
         nearStreak = 0
+        dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
     }
 
     actual fun setElementObservedListener(

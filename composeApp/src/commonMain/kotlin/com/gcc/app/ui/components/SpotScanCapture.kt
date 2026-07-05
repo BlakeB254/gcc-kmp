@@ -29,7 +29,6 @@ import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
 import com.gcc.shared.model.ScanCapturedPhoto
-import com.gcc.app.ui.screens.SpotArScreen
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccBlue
 import com.gcc.app.ui.theme.GccError
@@ -157,7 +156,8 @@ fun SpotScanCapture(
                             ObservedSpotItem(
                                 lat = itemPos.lat,
                                 lng = itemPos.lng,
-                                itemType = analysis.trashTypes.first(),
+                                itemType = com.gcc.app.platform.TrashItemCatalog
+                                    .canonicalType(analysis.trashTypes.first()),
                                 severity = analysis.severity,
                                 confidence = analysis.confidence,
                             )

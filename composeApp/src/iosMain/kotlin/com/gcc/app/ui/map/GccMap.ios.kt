@@ -1277,6 +1277,16 @@ actual fun GccMap(
                     case("food_waste", image(litterGlyphPainters.getValue("food_waste"), glyphSize)),
                     case("tire", image(litterGlyphPainters.getValue("tire"), glyphSize)),
                     case("mattress", image(litterGlyphPainters.getValue("mattress"), glyphSize)),
+                    case("debris_pile", image(litterGlyphPainters.getValue("debris_pile"), glyphSize)),
+                    case("tree", image(litterGlyphPainters.getValue("tree"), glyphSize)),
+                    case("bush", image(litterGlyphPainters.getValue("bush"), glyphSize)),
+                    case("fence", image(litterGlyphPainters.getValue("fence"), glyphSize)),
+                    case("gate", image(litterGlyphPainters.getValue("gate"), glyphSize)),
+                    case("pole", image(litterGlyphPainters.getValue("pole"), glyphSize)),
+                    case("hydrant", image(litterGlyphPainters.getValue("hydrant"), glyphSize)),
+                    case("bench", image(litterGlyphPainters.getValue("bench"), glyphSize)),
+                    case("mailbox", image(litterGlyphPainters.getValue("mailbox"), glyphSize)),
+                    case("sign", image(litterGlyphPainters.getValue("sign"), glyphSize)),
                     fallback = image(litterGlyphPainters.getValue("other"), glyphSize),
                 ),
                 iconSize = interpolate(
@@ -1418,7 +1428,10 @@ private fun MapZoomControlOverlay(
  */
 private val LITTER_GLYPH_TYPES = listOf(
     "plastic_bottle", "glass_bottle", "can", "plastic_bag", "cup", "paper",
-    "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress", "other",
+    "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress",
+    // Object-capture piles + landmark elements (world-model context):
+    "debris_pile", "tree", "bush", "fence", "gate", "pole", "hydrant",
+    "bench", "mailbox", "sign", "other",
 )
 
 /**
@@ -1439,6 +1452,13 @@ private fun litterBadgeColor(itemType: String): Color = when (itemType) {
     "food_waste" -> Color(0xFFB45309)
     "tire" -> Color(0xFF9A3412)
     "mattress" -> Color(0xFFF08A3C)
+    "debris_pile" -> Color(0xFF92400E)
+    // Landmark elements: greens for vegetation, greys for structures, so
+    // scenery reads as scenery next to the orange litter family.
+    "tree" -> Color(0xFF16A34A)
+    "bush" -> Color(0xFF22C55E)
+    "fence", "gate", "pole", "bench", "mailbox", "sign" -> Color(0xFF6B7280)
+    "hydrant" -> Color(0xFFDC2626)
     else -> Color(0xFFF97316)
 }
 
@@ -1577,6 +1597,54 @@ private class LitterGlyphPainter(private val itemType: String) : Painter() {
                 drawCircle(badge, radius = dot, center = Offset(cx - bw * 0.22f, cy))
                 drawCircle(badge, radius = dot, center = Offset(cx, cy))
                 drawCircle(badge, radius = dot, center = Offset(cx + bw * 0.22f, cy))
+            }
+            "debris_pile" -> {
+                val d = w * 0.30f
+                val p = Path().apply {
+                    moveTo(cx - d, cy + d * 0.6f)
+                    lineTo(cx - d * 0.3f, cy - d * 0.5f)
+                    lineTo(cx + d * 0.15f, cy + d * 0.05f)
+                    lineTo(cx + d * 0.45f, cy - d * 0.35f)
+                    lineTo(cx + d, cy + d * 0.6f)
+                    close()
+                }
+                drawPath(p, ink)
+            }
+            "tree" -> {
+                drawCircle(ink, radius = w * 0.20f, center = Offset(cx, cy - h * 0.08f))
+                drawRoundRect(ink, Offset(cx - w * 0.04f, cy + h * 0.06f), Size(w * 0.08f, h * 0.20f), CornerRadius(w * 0.02f))
+            }
+            "bush" -> {
+                drawCircle(ink, radius = w * 0.16f, center = Offset(cx - w * 0.08f, cy + h * 0.02f))
+                drawCircle(ink, radius = w * 0.14f, center = Offset(cx + w * 0.10f, cy + h * 0.04f))
+            }
+            "fence" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.24f, cy - h * 0.03f), Size(w * 0.48f, h * 0.06f), CornerRadius(w * 0.01f))
+                drawRoundRect(ink, Offset(cx - w * 0.18f, cy - h * 0.16f), Size(w * 0.06f, h * 0.32f), CornerRadius(w * 0.01f))
+                drawRoundRect(ink, Offset(cx + w * 0.12f, cy - h * 0.16f), Size(w * 0.06f, h * 0.32f), CornerRadius(w * 0.01f))
+            }
+            "gate" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.18f, cy - h * 0.18f), Size(w * 0.36f, h * 0.36f), CornerRadius(w * 0.03f))
+                drawRoundRect(badge, Offset(cx - w * 0.10f, cy - h * 0.10f), Size(w * 0.20f, h * 0.28f), CornerRadius(w * 0.02f))
+            }
+            "pole", "sign" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.035f, cy - h * 0.20f), Size(w * 0.07f, h * 0.40f), CornerRadius(w * 0.02f))
+                if (itemType == "sign") {
+                    drawRoundRect(ink, Offset(cx - w * 0.14f, cy - h * 0.22f), Size(w * 0.28f, h * 0.14f), CornerRadius(w * 0.02f))
+                }
+            }
+            "hydrant" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.10f, cy - h * 0.10f), Size(w * 0.20f, h * 0.28f), CornerRadius(w * 0.05f))
+                drawCircle(ink, radius = w * 0.10f, center = Offset(cx, cy - h * 0.12f))
+            }
+            "bench" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.22f, cy - h * 0.04f), Size(w * 0.44f, h * 0.08f), CornerRadius(w * 0.02f))
+                drawRoundRect(ink, Offset(cx - w * 0.18f, cy + h * 0.04f), Size(w * 0.05f, h * 0.14f), CornerRadius(w * 0.01f))
+                drawRoundRect(ink, Offset(cx + w * 0.13f, cy + h * 0.04f), Size(w * 0.05f, h * 0.14f), CornerRadius(w * 0.01f))
+            }
+            "mailbox" -> {
+                drawRoundRect(ink, Offset(cx - w * 0.15f, cy - h * 0.14f), Size(w * 0.30f, h * 0.18f), CornerRadius(w * 0.06f))
+                drawRoundRect(ink, Offset(cx - w * 0.03f, cy + h * 0.04f), Size(w * 0.06f, h * 0.16f), CornerRadius(w * 0.01f))
             }
             else -> {
                 // "other" / unknown: plain tinted badge, matching the legacy dot.

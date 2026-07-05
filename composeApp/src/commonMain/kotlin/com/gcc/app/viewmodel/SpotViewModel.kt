@@ -124,7 +124,10 @@ class SpotViewModel(
                                 ObservedSpotItem(
                                     lat = _uiState.value.currentLat,
                                     lng = _uiState.value.currentLng,
-                                    itemType = result.trashTypes.first(),
+                                    // Analyzer emits display labels ("Glass",
+                                    // "Tires") — canonicalize so glyphs and the
+                                    // server taxonomy stay coherent.
+                                    itemType = TrashItemCatalog.canonicalType(result.trashTypes.first()),
                                     severity = result.severity,
                                     confidence = result.confidence,
                                 )
@@ -376,6 +379,7 @@ class SpotViewModel(
                     observedItems = state.observedItems,
                     photoKeys = photoKeys,
                     communityReportId = reportId,
+                    objectCapture = state.objectCapture,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(

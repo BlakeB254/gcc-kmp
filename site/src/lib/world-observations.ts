@@ -89,6 +89,25 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       ? isNull(worldObservations.itemType)
       : eq(worldObservations.itemType, input.itemType)
 
+    // Supersede MERGES attributes forward, not replace: a lean re-scan (auto
+    // detect with no size data) must not wipe a prior observation's measured
+    // estimates (weight/width/objectCapture). New keys win over inherited.
+    const [prior] = await db
+      .select({ attributes: worldObservations.attributes })
+      .from(worldObservations)
+      .where(and(
+        eq(worldObservations.locationCellId, cellId),
+        itemTypeCondition,
+        eq(worldObservations.isCurrent, true)
+      ))
+      .limit(1)
+    if (prior?.attributes && typeof prior.attributes === 'object') {
+      input = {
+        ...input,
+        attributes: { ...(prior.attributes as Record<string, unknown>), ...(input.attributes ?? {}) },
+      }
+    }
+
     await db
       .update(worldObservations)
       .set({ isCurrent: false })

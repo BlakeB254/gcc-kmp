@@ -43,6 +43,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var veilEntity: ModelEntity?
     private var guidanceTarget: SIMD3<Float>?
     private var updateSubscription: Cancellable?
+    private var coachingOverlay: ARCoachingOverlayView?
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -85,6 +86,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         coaching.frame = arView.bounds
         coaching.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         arView.addSubview(coaching)
+        coachingOverlay = coaching
     }
 
     // MARK: - ArNativeSurface
@@ -208,7 +210,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     func setGroundGridVisible(visible: Bool) {
         DispatchQueue.main.async { [self] in
             groundGridVisible = visible
+            // The plane-acquisition coaching prompt is an env-scan affordance;
+            // in route/spot mode (grid hidden, fog/posts own the ground) an
+            // auto-activating "find a surface" overlay is intrusive — and the
+            // SceneKit fallbacks never had one.
+            coachingOverlay?.activatesAutomatically = visible
             if !visible {
+                coachingOverlay?.setActive(false, animated: false)
                 for (_, entity) in planeEntities { entity.anchor.removeFromParent() }
                 planeEntities.removeAll()
                 refreshGroundState()
@@ -493,7 +501,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     private func upsertPlane(_ plane: ARPlaneAnchor) {
-        guard groundGridVisible else { return }
         let extent = SIMD2(plane.planeExtent.width, plane.planeExtent.height)
         guard extent.x >= 0.4, extent.y >= 0.4 else { return }
         // Unclassified horizontal planes count as ground (matches the Kotlin
@@ -504,6 +511,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         case .none: isFloor = true
         default: isFloor = false
         }
+        // Floor height feeds fog/walls/posts/cells in EVERY mode — track it
+        // even when the grid itself is hidden (route/spot), otherwise those
+        // entities sit at the camera-offset estimate forever.
+        if isFloor {
+            let y = plane.transform.columns.3.y + plane.center.y
+            if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
+        }
+        guard groundGridVisible else { return }
 
         if let existing = planeEntities[plane.identifier] {
             existing.model.position = plane.center
@@ -526,11 +541,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         anchor.addChild(model)
         arView.scene.addAnchor(anchor)
         planeEntities[plane.identifier] = PlaneGridEntity(anchor: anchor, model: model, isFloor: isFloor)
-
-        if isFloor {
-            let y = plane.transform.columns.3.y + plane.center.y
-            if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
-        }
         refreshGroundState()
     }
 
