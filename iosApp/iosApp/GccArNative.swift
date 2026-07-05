@@ -3,6 +3,7 @@ import Foundation
 import ARKit
 import RealityKit
 import UIKit
+import Vision
 import ComposeApp
 
 /// Native RealityKit render surface for the environment scan.
@@ -147,6 +148,23 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             }
             return false
         }
+    }
+
+    /// Swift-side Vision scene classification of the current frame — top-15
+    /// "identifier|confidence" entries, empty when no frame. Native path only;
+    /// keeps ALL Vision work in Swift (Kotlin applies the shared scoring).
+    func classifySceneLabels() -> [String] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+        let request = VNClassifyImageRequest()
+        let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, options: [:])
+        guard (try? handler.perform([request])) != nil, let results = request.results else { return [] }
+        return results
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(15)
+            .map { "\($0.identifier)|\($0.confidence)" }
     }
 
     func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {

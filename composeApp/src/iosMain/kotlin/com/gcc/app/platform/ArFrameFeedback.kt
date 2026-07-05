@@ -67,8 +67,10 @@ internal class ArFrameFeedback(
 ) {
     companion object {
         private const val TICK_MS = 1_000L
+        private const val FAST_TICK_MS = 750L
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
+        private const val DISABLED_VOTE_EVERY_TICKS = 2
         private const val MARKER_DEDUPE_METERS = 3.0
 
     }
@@ -78,6 +80,11 @@ internal class ArFrameFeedback(
     private var tick = 0
     private val promotionTracker = MarkerPromotionTracker()
     private var enabled = true
+
+    /** Scene-vote cadence: true samples every tick (~750ms), false the
+     *  [SCENE_VOTE_EVERY_TICKS]/[DISABLED_VOTE_EVERY_TICKS] cadence at the
+     *  slower [TICK_MS] tick. Set via the overlay's `setSceneVoteCadence`. */
+    var fastSceneVotes: Boolean = true
 
     /** World positions of placed markers, for the 3m dedupe. */
     private val markerPositions = mutableListOf<Triple<Float, Float, Float>>()
@@ -98,18 +105,13 @@ internal class ArFrameFeedback(
         if (job != null) return
         job = scope.launch {
             while (true) {
-                delay(TICK_MS)
-                if (!enabled) {
-                    try { emitCeilingCue() } catch (_: Throwable) {}
-                    continue
-                }
                 val backoff = try {
                     analyzeTick()
                 } catch (e: Throwable) {
                     DiagnosticsLog.error("ar-vision", "frame analysis tick failed (backing off)", e)
                     true
                 }
-                if (backoff) delay(ERROR_BACKOFF_MS)
+                delay(if (backoff) ERROR_BACKOFF_MS else if (fastSceneVotes) FAST_TICK_MS else TICK_MS)
             }
         }
     }
@@ -126,30 +128,54 @@ internal class ArFrameFeedback(
 
         val native = nativeSurfaceProvider()
         val frame = if (native == null) sceneViewProvider()?.session?.currentFrame else null
-        val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
         tick += 1
 
-        val classifyRequest = VNClassifyImageRequest()
-        val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
-        val handler = VNImageRequestHandler(
-            cVPixelBuffer = pixelBuffer,
-            options = emptyMap<Any?, Any>(),
-        )
-        handler.performRequests(listOf(classifyRequest, saliencyRequest), error = null)
+        // Vote cadence: fastSceneVotes samples every tick; otherwise the
+        // DISABLED/enabled cadence below (labels-only loop while blocked —
+        // scene votes keep flowing at a slower cadence, everything else stops).
+        val voteDue = if (fastSceneVotes) true
+            else if (!enabled) tick % DISABLED_VOTE_EVERY_TICKS == 0
+            else tick % SCENE_VOTE_EVERY_TICKS == 0
+        if (!enabled && !voteDue) return false
 
-        val observations = classifyRequest.results
-            ?.filterIsInstance<VNClassificationObservation>()
-            ?.sortedByDescending { it.confidence }
-            ?.take(15)
-            ?: return true
+        val commonObs: List<ClassificationObservation>
+        // SceneKit-only: the combined classify+saliency pass computed together
+        // (native path runs saliency separately, only if/when a trash label
+        // is actually found — see below).
+        var saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest? = null
 
-        if (tick % SCENE_VOTE_EVERY_TICKS == 0) {
-            emitSceneVote(observations)
+        if (native != null) {
+            // Native path: ALL Vision classification runs in Swift
+            // (GccArNative.classifySceneLabels) — Kotlin only scores the
+            // shared "identifier|confidence" packets.
+            commonObs = parseSceneLabels(native.classifySceneLabels())
+            if (commonObs.isEmpty()) return false
+        } else {
+            val pixelBuffer = frame?.capturedImage ?: return false
+            val classifyRequest = VNClassifyImageRequest()
+            val saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+            val handler = VNImageRequestHandler(
+                cVPixelBuffer = pixelBuffer,
+                options = emptyMap<Any?, Any>(),
+            )
+            handler.performRequests(listOf(classifyRequest, saliency), error = null)
+
+            val observations = classifyRequest.results
+                ?.filterIsInstance<VNClassificationObservation>()
+                ?.sortedByDescending { it.confidence }
+                ?.take(15)
+                ?: return true
+            commonObs = observations.map { ClassificationObservation(it.identifier, it.confidence) }
+            saliencyRequest = saliency
         }
 
-        val trashLabel = TrashDetectionRules.trashLabelFrom(
-            observations.map { ClassificationObservation(it.identifier, it.confidence) }
-        )
+        if (voteDue) emitSceneVote(commonObs)
+        // Labels-only loop while disabled: scene votes above, but no
+        // saliency, trash/element detection, marker placement, or frame
+        // persistence below.
+        if (!enabled) return false
+
+        val trashLabel = TrashDetectionRules.trashLabelFrom(commonObs)
         if (trashLabel == null) {
             promotionTracker.onTick(null)
             _liveDetections.value = emptyList()
@@ -157,10 +183,19 @@ internal class ArFrameFeedback(
         }
 
         // Salient region → reticle position; fall back to frame center.
+        // Native path: only now (trash label found, analysis enabled) do we
+        // pull the pixel buffer and run Kotlin saliency — classification
+        // itself never touches the pixel buffer on this path.
         var visionX = 0.5
         var visionY = 0.5
         var radius = 0.12f
-        val salient = saliencyRequest.results
+        val salientResults = saliencyRequest?.results ?: native?.pixelBufferOrNull()?.let { pixelBuffer ->
+            val request = VNGenerateObjectnessBasedSaliencyImageRequest()
+            val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
+            handler.performRequests(listOf(request), error = null)
+            request.results
+        }
+        val salient = salientResults
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
             ?.salientObjects
@@ -243,8 +278,8 @@ internal class ArFrameFeedback(
         }
     }
 
-    private fun emitSceneVote(observations: List<VNClassificationObservation>) {
-        val vote = SceneVoteVision.voteFrom(observations)
+    private fun emitSceneVote(observations: List<ClassificationObservation>) {
+        val vote = TrashDetectionRules.sceneVoteFrom(observations)
         val listener = sceneVoteListener ?: return
         // NONE flows too — repeated absence of outdoor cues is evidence.
         dispatch_async(dispatch_get_main_queue()) { listener(vote) }

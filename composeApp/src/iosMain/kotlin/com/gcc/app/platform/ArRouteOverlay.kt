@@ -166,6 +166,10 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.setEnabled(enabled)
     }
 
+    actual fun setSceneVoteCadence(fast: Boolean) {
+        frameFeedback.fastSceneVotes = fast
+    }
+
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {
         if (!hasGeoRef) return
         val local = latLngToLocal(lat, lng)

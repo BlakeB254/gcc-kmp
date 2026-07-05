@@ -86,8 +86,10 @@ actual class ArEnvScanOverlay actual constructor() {
 
     companion object {
         private const val TICK_MS = 1_000L
+        private const val FAST_TICK_MS = 750L
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
+        private const val DISABLED_VOTE_EVERY_TICKS = 2
         /** Candidate promotion: this close, for this many consecutive ticks. */
         private const val NEAR_DISTANCE_METERS = 2.0
         private const val NEAR_STREAK_TICKS = 2
@@ -113,6 +115,11 @@ actual class ArEnvScanOverlay actual constructor() {
     private var job: Job? = null
     private var tick = 0
     private var analysisEnabled = true
+
+    /** Scene-vote cadence: true samples every tick (~750ms), false the
+     *  [SCENE_VOTE_EVERY_TICKS]/[DISABLED_VOTE_EVERY_TICKS] cadence at the
+     *  slower [TICK_MS] tick. Set via `setSceneVoteCadence`. */
+    var fastSceneVotes: Boolean = true
 
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
@@ -289,20 +296,23 @@ actual class ArEnvScanOverlay actual constructor() {
         ceilingListener = listener
     }
 
+    actual fun setSceneVoteCadence(fast: Boolean) {
+        fastSceneVotes = fast
+    }
+
     // ── Frame loop ───────────────────────────────────────────────────
 
     private fun startLoop() {
         if (job != null) return
         job = scope.launch {
             while (true) {
-                delay(TICK_MS)
                 val backoff = try {
                     analyzeTick()
                 } catch (e: Throwable) {
                     DiagnosticsLog.error("env-ar", "tick failed (backing off)", e)
                     true
                 }
-                if (backoff) delay(ERROR_BACKOFF_MS)
+                delay(if (backoff) ERROR_BACKOFF_MS else if (fastSceneVotes) FAST_TICK_MS else TICK_MS)
             }
         }
     }
@@ -340,9 +350,18 @@ actual class ArEnvScanOverlay actual constructor() {
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
         }
 
-        if (!analysisEnabled) return false
+        // Vote cadence: fastSceneVotes samples every tick; otherwise the
+        // DISABLED/enabled cadence below (labels-only loop while blocked —
+        // scene votes keep flowing at a slower cadence, everything else stops).
+        val voteDue = if (fastSceneVotes) true
+            else if (!analysisEnabled) tick % DISABLED_VOTE_EVERY_TICKS == 0
+            else tick % SCENE_VOTE_EVERY_TICKS == 0
+        if (!analysisEnabled && !voteDue) return false
+
         // Thermal guard: continuous Vision + plane detection + depth is the
-        // hottest path in the app — shed the Vision load first.
+        // hottest path in the app — shed the Vision load first, ABOVE all
+        // Vision work (full analysis or the labels-only vote below), on
+        // both the SceneKit and native (classifySceneLabels) paths.
         // KVO — cinterop doesn't expose thermalState (serious=2, critical=3).
         val thermal = try {
             (NSProcessInfo.processInfo as platform.darwin.NSObject)
@@ -353,25 +372,62 @@ actual class ArEnvScanOverlay actual constructor() {
             return true
         }
 
-        val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
-        val classifyRequest = VNClassifyImageRequest()
-        val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
-        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
-        handler.performRequests(listOf(classifyRequest, saliencyRequest), error = null)
+        val commonObs: List<ClassificationObservation>
+        // SceneKit-only: the combined classify+saliency pass computed together
+        // (native path runs saliency separately, only if/when a trash label
+        // is actually found — see analyzeTrash/registerElementIfAny).
+        var saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest? = null
 
-        val observations = classifyRequest.results
-            ?.filterIsInstance<VNClassificationObservation>()
-            ?.sortedByDescending { it.confidence }
-            ?.take(15)
-            ?: return true
+        if (native != null) {
+            // Native path: ALL Vision classification runs in Swift
+            // (GccArNative.classifySceneLabels) — Kotlin only scores the
+            // shared "identifier|confidence" packets.
+            commonObs = parseSceneLabels(native.classifySceneLabels())
+            if (commonObs.isEmpty()) return false
+        } else {
+            val pixelBuffer = frame?.capturedImage ?: return false
+            val classifyRequest = VNClassifyImageRequest()
+            val saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+            val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
+            handler.performRequests(listOf(classifyRequest, saliency), error = null)
 
-        if (tick % SCENE_VOTE_EVERY_TICKS == 0) {
-            val vote = SceneVoteVision.voteFrom(observations)
-            dispatch_async(dispatch_get_main_queue()) { CameraSceneVoteBus.emit(vote) }
+            val observations = classifyRequest.results
+                ?.filterIsInstance<VNClassificationObservation>()
+                ?.sortedByDescending { it.confidence }
+                ?.take(15)
+                ?: return true
+            commonObs = observations.map { ClassificationObservation(it.identifier, it.confidence) }
+            saliencyRequest = saliency
         }
 
-        analyzeTrash(frame, observations, saliencyRequest)
+        if (voteDue) {
+            val vote = TrashDetectionRules.sceneVoteFrom(commonObs)
+            dispatch_async(dispatch_get_main_queue()) { CameraSceneVoteBus.emit(vote) }
+        }
+        // Labels-only loop while disabled: scene votes above, but no
+        // saliency, trash/element detection, or candidate promotion below.
+        if (!analysisEnabled) return false
+
+        analyzeTrash(frame, native, commonObs, saliencyRequest)
         return false
+    }
+
+    /**
+     * SceneKit path already ran saliency alongside classification — pass it
+     * straight through. Native path only pulls the pixel buffer and runs
+     * saliency here, on demand (trash label or landmark element found), so
+     * classification itself never touches the pixel buffer.
+     */
+    private fun saliencyOnDemand(
+        native: ArNativeSurface?,
+        computed: VNGenerateObjectnessBasedSaliencyImageRequest?,
+    ): VNGenerateObjectnessBasedSaliencyImageRequest? {
+        if (computed != null) return computed
+        val pixelBuffer = native?.pixelBufferOrNull() ?: return null
+        val request = VNGenerateObjectnessBasedSaliencyImageRequest()
+        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
+        handler.performRequests(listOf(request), error = null)
+        return request
     }
 
     private class RayHit(val x: Float, val y: Float, val z: Float, val distance: Float)
@@ -405,14 +461,14 @@ actual class ArEnvScanOverlay actual constructor() {
 
     private fun analyzeTrash(
         frame: ARFrame?,
-        observations: List<VNClassificationObservation>,
-        saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest,
+        native: ArNativeSurface?,
+        classifications: List<ClassificationObservation>,
+        saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest?,
     ) {
         // While a candidate is pending the loop idles: the card is on screen
         // and the reticle freezes on the locked item's projected position.
         if (_trashCandidate.value != null) return
 
-        val classifications = observations.map { ClassificationObservation(it.identifier, it.confidence) }
         val trashLabel = TrashDetectionRules.trashLabelFrom(classifications)
         if (trashLabel == null) {
             nearStreak = 0
@@ -421,23 +477,26 @@ actual class ArEnvScanOverlay actual constructor() {
             // fences, gates… register to the grid so future scans expect
             // them. (Only on trash-less ticks: a bag stuck in a bush must
             // register as the bag.)
-            registerElementIfAny(frame, classifications, saliencyRequest)
+            registerElementIfAny(frame, native, classifications, saliencyRequest)
             return
         }
         // The raw identifier that produced the label carries the fine-grained
         // tokens ("glass_bottle" vs "bottle") the canonical typing needs.
-        val rawIdentifier = observations.firstOrNull { obs ->
+        val rawIdentifier = classifications.firstOrNull { obs ->
             obs.confidence >= 0.35f &&
                 TrashDetectionRules.tokensOf(obs.identifier).any { it in TrashDetectionRules.TRASH_TOKENS }
         }?.identifier ?: trashLabel
-        val confidence = observations.firstOrNull { it.identifier == rawIdentifier }?.confidence ?: 0.5f
+        val confidence = classifications.firstOrNull { it.identifier == rawIdentifier }?.confidence ?: 0.5f
 
-        // Salient region -> reticle position + angular size.
+        // Salient region -> reticle position + angular size. SceneKit already
+        // computed this alongside classification; native path runs it now,
+        // on demand, only because a trash label was actually found.
         var visionX = 0.5
         var visionY = 0.5
         var radius = 0.12f
         var bboxWidthFrac = 0.2
-        val salient = saliencyRequest.results
+        val effectiveSaliency = saliencyOnDemand(native, saliencyRequest)
+        val salient = effectiveSaliency?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
             ?.salientObjects
@@ -520,8 +579,9 @@ actual class ArEnvScanOverlay actual constructor() {
      */
     private fun registerElementIfAny(
         frame: ARFrame?,
+        native: ArNativeSurface?,
         classifications: List<ClassificationObservation>,
-        saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest,
+        saliencyRequest: VNGenerateObjectnessBasedSaliencyImageRequest?,
     ) {
         val listener = elementObservedListener ?: return
         if (!hasGeoRef || registeredElements.size >= MAX_ELEMENTS_PER_SESSION) return
@@ -529,7 +589,7 @@ actual class ArEnvScanOverlay actual constructor() {
 
         var visionX = 0.5
         var visionY = 0.5
-        saliencyRequest.results
+        saliencyOnDemand(native, saliencyRequest)?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
             ?.salientObjects

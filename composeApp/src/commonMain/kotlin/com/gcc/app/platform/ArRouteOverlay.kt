@@ -57,6 +57,11 @@ expect class ArRouteOverlay() {
      *  down the ARSession — used while the OutdoorGate reads INDOOR. */
     fun setFrameAnalysisEnabled(enabled: Boolean)
 
+    /** Scene-vote sampling cadence: true (~750ms) for fast response near a
+     *  gate transition, false for the slower steady-state cadence. iOS only;
+     *  no-op on Android/Desktop. */
+    fun setSceneVoteCadence(fast: Boolean)
+
     /** Fires with the current ceiling-plane detection state on every sampled
      *  AR frame (see [OutdoorGate.onCeilingPlane]). iOS only; never invoked
      *  elsewhere. Listener is called on the main thread. */

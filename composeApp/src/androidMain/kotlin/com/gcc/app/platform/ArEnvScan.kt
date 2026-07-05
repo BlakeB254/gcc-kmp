@@ -24,6 +24,7 @@ actual class ArEnvScanOverlay actual constructor() {
     ) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
+    actual fun setSceneVoteCadence(fast: Boolean) {}
     actual fun stop() {}
 }
 

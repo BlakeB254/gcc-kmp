@@ -26,6 +26,7 @@ actual class ArRouteOverlay actual constructor() {
     actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
+    actual fun setSceneVoteCadence(fast: Boolean) {}
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
 

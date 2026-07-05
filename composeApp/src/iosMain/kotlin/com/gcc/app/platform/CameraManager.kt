@@ -436,6 +436,10 @@ actual class CameraManager actual constructor() {
         internal var hasDepthCapability: Boolean = false
         internal var sessionId: String = platform.Foundation.NSUUID().UUIDString()
         internal var captureCount: Int = 0
+        /** Adaptive scene-vote cadence for the AVCapture viewfinder fallback
+         *  (SceneKit/AR paths use ArFrameFeedback/ArEnvScanOverlay's own flag);
+         *  default true samples every ~750ms, matching the AR paths' default. */
+        var sceneVoteFastMode: Boolean = true
     }
 }
 
@@ -722,6 +726,7 @@ private class CameraPreviewContainerView(
 }
 
 private const val SCENE_SAMPLE_INTERVAL_MS = 1_500L
+private const val SCENE_SAMPLE_FAST_INTERVAL_MS = 750L
 
 @OptIn(ExperimentalForeignApi::class)
 private class SceneSampleDelegate :
@@ -753,7 +758,8 @@ private class SceneSampleDelegate :
         }
 
         val nowMs = (NSDate().timeIntervalSince1970 * 1000).toLong()
-        if (nowMs - lastSampleAtMs < SCENE_SAMPLE_INTERVAL_MS) return
+        val interval = if (CameraManager.sceneVoteFastMode) SCENE_SAMPLE_FAST_INTERVAL_MS else SCENE_SAMPLE_INTERVAL_MS
+        if (nowMs - lastSampleAtMs < interval) return
         lastSampleAtMs = nowMs
 
         val pixelBuffer = CMSampleBufferGetImageBuffer(didOutputSampleBuffer)
