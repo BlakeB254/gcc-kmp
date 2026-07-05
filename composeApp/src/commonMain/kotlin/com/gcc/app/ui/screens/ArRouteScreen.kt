@@ -409,7 +409,7 @@ fun ArRouteScreen(
         }
 
         // "Go outside" scrim — sits under the exit button so leaving AR always works.
-        GoOutsideOverlay(visible = isIndoor)
+        GoOutsideOverlay(visible = isIndoor, onImOutside = { viewModel.forceOutdoors() })
 
         DiagnosticsOverlay()
 

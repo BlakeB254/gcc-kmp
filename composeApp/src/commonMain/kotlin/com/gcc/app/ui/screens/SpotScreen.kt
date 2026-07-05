@@ -765,7 +765,11 @@ private fun CameraPhase(
 
         // Indoors in a residence: nothing scans, nothing submits (capture,
         // coverage, tagging all gate-suppressed) — offer Close Scan instead.
-        GoOutsideOverlay(visible = isIndoor, onCloseScan = onBack)
+        GoOutsideOverlay(
+            visible = isIndoor,
+            onCloseScan = onBack,
+            onImOutside = { gate.forceOutdoors() },
+        )
 
         // No top-left ✕ here by design: once an environment scan session is
         // running, the bottom Complete Scan pill is the only way out — every

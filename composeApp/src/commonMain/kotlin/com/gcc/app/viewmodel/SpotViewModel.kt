@@ -522,7 +522,12 @@ class SpotViewModel(
                     captureAttestation = captureAttestation,
                     onDeviceAiResult = onDeviceAiResult,
                     duplicateOverrideReason = state.duplicateOverrideReason,
-                    observedItems = state.observedItems.ifEmpty { null },
+                    // ALWAYS an array (even empty): the presence of the
+                    // array is the server's scan marker — scans supersede
+                    // nearby stale reports instead of 409ing. `null` here
+                    // made zero-item scans read as manual reports and get
+                    // rejected with 'already exists within 15m'.
+                    observedItems = state.observedItems,
                     objectCapture = state.objectCapture,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {

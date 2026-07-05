@@ -314,7 +314,7 @@ fun SpotArScreen(
         }
 
         // "Go outside" scrim — sits under the exit button so leaving always works.
-        GoOutsideOverlay(visible = isIndoor)
+        GoOutsideOverlay(visible = isIndoor, onImOutside = { gate.forceOutdoors() })
 
         DiagnosticsOverlay()
 

@@ -81,6 +81,9 @@ export async function GET(request: Request) {
       imageUrl: route.imageUrl || null,
       description: route.description || null,
       blockId: blockIdMap.get(route.id) ?? null,
+      // The list rows show boundary status — without this the mobile
+      // subtitle said 'no boundary yet' for every route (thin-DTO lie).
+      blockBoundary: blockBoundaryMap.get(route.id) ?? null,
       createdAt: new Date(route.createdAt).toISOString(),
       updatedAt: new Date(route.updatedAt).toISOString(),
     }))

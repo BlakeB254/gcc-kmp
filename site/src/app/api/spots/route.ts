@@ -170,7 +170,10 @@ export async function POST(request: NextRequest) {
     // same location instead of being rejected as duplicates: the latest scan
     // is fresher evidence, and its pin replaces the stale ones on the map.
     // Only non-scan submissions (no observedItems array) keep the 409 guard.
-    const isScanSubmission = Array.isArray(observedItems)
+    // A live-capture attestation also marks a scan: deployed clients send
+    // observedItems = null when the scan confirmed zero items, and a
+    // zero-item scan must supersede, not 409.
+    const isScanSubmission = Array.isArray(observedItems) || Boolean(captureAttestation)
     const nearbyActiveReports = await db
       .select({ id: communityReports.id })
       .from(communityReports)

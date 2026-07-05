@@ -17,6 +17,7 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   bin: 'application/octet-stream',
   ply: 'application/octet-stream',
   json: 'application/json',
+  usdz: 'model/vnd.usdz+zip',
 }
 const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
 const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/

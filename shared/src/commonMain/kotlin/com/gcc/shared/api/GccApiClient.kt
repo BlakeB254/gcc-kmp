@@ -1167,7 +1167,15 @@ class GccApiClient(
 
     /** PUT a blob straight to a presigned URL (no auth header — it's in the signature). */
     suspend fun uploadToPresignedUrl(url: String, bytes: ByteArray, contentType: String) {
-        val response = httpClient.put(url) {
+        val response = httpClient.put {
+            // Presigned URLs are signature-sensitive: ktor's normal URL
+            // parsing DECODES and RE-ENCODES the path and query, changing
+            // percent-encoding (e.g. %2F in X-Amz-Credential, %3A in the
+            // key) — R2 then rejects the PUT with 400. Feed the builder the
+            // raw ENCODED components so nothing is ever re-encoded. (curl
+            // with the same ticket succeeds; this was why every app-side
+            // R2 upload failed while server-side verification passed.)
+            url { takeFromRawEncoded(url) }
             contentType(ContentType.parse(contentType))
             setBody(bytes)
         }
