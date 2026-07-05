@@ -14,6 +14,8 @@ object TrashDetectionRules {
 
     private const val SCENE_CONFIDENCE = 0.3f
     private const val TRASH_CONFIDENCE = 0.35f
+    private const val SCENE_SCORE_MIN = 0.5f
+    private const val INDOOR_DOMINANCE = 1.25f
 
     val INDOOR_KEYWORDS = setOf(
         "indoor", "room", "ceiling", "wall", "kitchen", "bathroom", "bedroom",
@@ -24,6 +26,7 @@ object TrashDetectionRules {
         "blanket", "sink", "counter", "cupboard", "appliance", "tile",
         "computer", "floor", "flooring", "hardwood", "printer", "document",
         "paper", "drawer", "wardrobe", "closet", "mug", "houseplant",
+        "blinds", "mirror", "doorway", "fireplace", "dresser", "bathtub", "shower", "oven", "stove", "microwave", "dishwasher", "staircase",
     )
     val OUTDOOR_KEYWORDS = setOf(
         "outdoor", "street", "road", "sidewalk", "sky", "tree", "grass",
@@ -44,17 +47,19 @@ object TrashDetectionRules {
         identifier.lowercase().split('_', ' ', ',').filter { it.isNotBlank() }
 
     fun sceneVoteFrom(observations: List<ClassificationObservation>): SceneVote {
-        var indoorHits = 0
-        var outdoorHits = 0
+        var indoorScore = 0f
+        var outdoorScore = 0f
         for (obs in observations) {
             if (obs.confidence < SCENE_CONFIDENCE) continue
             val tokens = tokensOf(obs.identifier)
-            if (tokens.any { it in INDOOR_KEYWORDS }) indoorHits += 1
-            if (tokens.any { it in OUTDOOR_KEYWORDS }) outdoorHits += 1
+            if (tokens.any { it in INDOOR_KEYWORDS }) indoorScore += obs.confidence
+            if (tokens.any { it in OUTDOOR_KEYWORDS }) outdoorScore += obs.confidence
         }
+        // Confidence-weighted: one "tree through the window" label no longer
+        // saves an indoor scene, but ties still read outdoor (porches).
         return when {
-            indoorHits > 0 && outdoorHits == 0 -> SceneVote.INDOOR
-            outdoorHits > 0 && outdoorHits >= indoorHits -> SceneVote.OUTDOOR
+            indoorScore >= SCENE_SCORE_MIN && indoorScore > outdoorScore * INDOOR_DOMINANCE -> SceneVote.INDOOR
+            outdoorScore >= SCENE_SCORE_MIN && outdoorScore >= indoorScore -> SceneVote.OUTDOOR
             else -> SceneVote.NONE
         }
     }
