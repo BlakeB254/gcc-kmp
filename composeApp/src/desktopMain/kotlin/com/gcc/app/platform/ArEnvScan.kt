@@ -23,6 +23,7 @@ actual class ArEnvScanOverlay actual constructor() {
         listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
     ) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
+    actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
     actual fun stop() {}
 }
 

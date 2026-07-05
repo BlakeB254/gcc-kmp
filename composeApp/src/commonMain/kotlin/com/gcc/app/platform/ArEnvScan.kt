@@ -79,6 +79,11 @@ expect class ArEnvScanOverlay() {
     /** Pause/resume frame sampling without tearing down the ARSession. */
     fun setFrameAnalysisEnabled(enabled: Boolean)
 
+    /** Fires with the current ceiling-plane detection state on every AR tick
+     *  (see [OutdoorGate.onCeilingPlane]). iOS only; never invoked elsewhere.
+     *  Listener is called on the main thread. */
+    fun setCeilingListener(listener: ((Boolean) -> Unit)?)
+
     fun stop()
 }
 

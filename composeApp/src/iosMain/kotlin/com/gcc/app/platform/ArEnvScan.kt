@@ -152,6 +152,7 @@ actual class ArEnvScanOverlay actual constructor() {
     private val registeredElements = mutableListOf<Triple<String, Float, Float>>()
     private var elementObservedListener:
         ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
+    private var ceilingListener: ((Boolean) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
     private var roughGridTexture: UIImage? = null
@@ -284,6 +285,10 @@ actual class ArEnvScanOverlay actual constructor() {
         elementObservedListener = listener
     }
 
+    actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
+        ceilingListener = listener
+    }
+
     // ── Frame loop ───────────────────────────────────────────────────
 
     private fun startLoop() {
@@ -308,6 +313,22 @@ actual class ArEnvScanOverlay actual constructor() {
         val frame: ARFrame? = if (native == null) sceneView?.session?.currentFrame else null
         if (native == null && frame == null) return false
         tick += 1
+
+        // Ceiling cue for the OutdoorGate — checked every tick, cheap
+        // (anchors are already tracked; no Vision work involved).
+        val ceiling = when {
+            native != null -> native.ceilingDetected()
+            frame != null -> frame.anchors.filterIsInstance<ARPlaneAnchor>().any { anchor ->
+                val classification = try {
+                    (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
+                } catch (_: Throwable) { 0L }
+                classification == 3L // ARPlaneClassification.ceiling
+            }
+            else -> false
+        }
+        ceilingListener?.let { listener ->
+            dispatch_async(dispatch_get_main_queue()) { listener(ceiling) }
+        }
 
         if (native != null) {
             // Native mode: Swift renders its own classified plane grid; we

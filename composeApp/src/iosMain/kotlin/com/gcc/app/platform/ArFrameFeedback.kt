@@ -22,8 +22,10 @@ import platform.ARKit.ARFrame
 import platform.ARKit.ARHitTestResult
 import platform.ARKit.ARHitTestResultTypeEstimatedHorizontalPlane
 import platform.ARKit.ARHitTestResultTypeFeaturePoint
+import platform.ARKit.ARPlaneAnchor
 import platform.ARKit.ARSCNView
 import platform.CoreGraphics.CGPointMake
+import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
 import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNNode
@@ -84,6 +86,7 @@ internal class ArFrameFeedback(
     val liveDetections: StateFlow<List<LiveDetection>> = _liveDetections.asStateFlow()
 
     var sceneVoteListener: ((SceneVote) -> Unit)? = null
+    var ceilingListener: ((Boolean) -> Unit)? = null
     var markerPlacedListener: ((x: Float, y: Float, z: Float, label: String) -> Unit)? = null
 
     fun setEnabled(value: Boolean) {
@@ -120,6 +123,22 @@ internal class ArFrameFeedback(
         val frame = if (native == null) sceneViewProvider()?.session?.currentFrame else null
         val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
         tick += 1
+
+        // Ceiling cue for the OutdoorGate — checked every tick, cheap
+        // (anchors are already tracked; no Vision work involved).
+        val ceiling = when {
+            native != null -> native.ceilingDetected()
+            frame != null -> frame.anchors.filterIsInstance<ARPlaneAnchor>().any { anchor ->
+                val classification = try {
+                    (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
+                } catch (_: Throwable) { 0L }
+                classification == 3L // ARPlaneClassification.ceiling
+            }
+            else -> false
+        }
+        ceilingListener?.let { listener ->
+            dispatch_async(dispatch_get_main_queue()) { listener(ceiling) }
+        }
 
         val classifyRequest = VNClassifyImageRequest()
         val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()

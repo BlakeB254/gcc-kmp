@@ -52,6 +52,11 @@ interface ArNativeSurface {
     /** True once at least one floor plane is being rendered (grid live). */
     fun groundDetected(): Boolean
 
+    /** True when the session currently tracks a ceiling-classified plane
+     *  (ARPlaneClassification.ceiling). Outdoors this is essentially never
+     *  true — the OutdoorGate's strongest camera-side indoor cue. */
+    fun ceilingDetected(): Boolean
+
     /** Camera tracking quality: 0 normal, 1 limited, 2 unavailable. */
     fun trackingStateRaw(): Int
 

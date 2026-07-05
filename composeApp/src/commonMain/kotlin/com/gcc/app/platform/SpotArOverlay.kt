@@ -44,6 +44,11 @@ expect class SpotArOverlay() {
      *  down the ARSession — used while the OutdoorGate reads INDOOR. */
     fun setFrameAnalysisEnabled(enabled: Boolean)
 
+    /** Fires with the current ceiling-plane detection state on every sampled
+     *  AR frame (see [OutdoorGate.onCeilingPlane]). iOS only; never invoked
+     *  elsewhere. Listener is called on the main thread. */
+    fun setCeilingListener(listener: ((Boolean) -> Unit)?)
+
     /** Drop a persistent world-anchored marker at a lat/lng (no-op off-iOS,
      *  and before the first geo-reference pairing exists). */
     fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind)
