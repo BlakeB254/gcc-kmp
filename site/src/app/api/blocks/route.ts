@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
       serviceAreaName: serviceAreas.name,
       locationNeighborhood: blocks.locationNeighborhood,
       locationBoundary: blocks.locationBoundary,
+      innerBoundary: blocks.innerBoundary,
       locationCenter: blocks.locationCenter,
       displayImage: blocks.displayImage,
       imageLocationLat: blocks.imageLocationLat,
@@ -112,6 +113,9 @@ export async function GET(request: NextRequest) {
         boundary: block.locationBoundary,
         center: block.locationCenter,
       },
+      // Authored exclusion zones — the main map renders these; without them
+      // clients fall back to the synthetic 8m-inset ring (the 'mirror').
+      innerBoundary: block.innerBoundary ?? null,
       // Display image (Vercel Blob URL)
       displayImage: block.displayImage || null,
       imageLocationLat: block.imageLocationLat ?? null,

@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +50,8 @@ private typealias Ring = List<Pair<Double, Double>>
 
 private val IslandAmber = Color(0xFFF59E0B)
 private val IslandAmberBright = Color(0xFFFFB300)
+private val ExclusionGrey = Color(0xFF757575)
+private val ExclusionGreyDark = Color(0xFF424242)
 
 /**
  * Max interactive zoom. The MIN is dynamic: the fit-to-boundary zoom — the
@@ -118,16 +121,24 @@ fun AdminBoundaryEditorScreen(
     var savedIslands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var islands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var initialized by remember { mutableStateOf(false) }
-    var step by remember { mutableStateOf(EditStep.ISLANDS) }
+    var step by remember { mutableStateOf(EditStep.OUTER) }
     var drawMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(route) {
         val r = route ?: return@LaunchedEffect
         if (!initialized) {
-            val serverOuter = r.blockBoundary?.coordinates?.firstOrNull()
+            // The outer edge MUST be the loop every user-facing map renders:
+            // the route's drawn geometry (the original January draws). The
+            // block's location_boundary is a separately-seeded polygon only
+            // admin/AR code reads — loading it here made the editor show a
+            // rectangle nobody recognizes from the main app experience.
+            val geometryLoop = r.geometry?.coordinates
                 ?.let { uncloseRing(it.map { pt -> pt[1] to pt[0] }) }
                 ?.takeIf { it.size >= 3 }
-                ?: emptyList()
+            val boundaryLoop = r.blockBoundary?.coordinates?.firstOrNull()
+                ?.let { uncloseRing(it.map { pt -> pt[1] to pt[0] }) }
+                ?.takeIf { it.size >= 3 }
+            val serverOuter = geometryLoop ?: boundaryLoop ?: emptyList()
             savedOuter = serverOuter
             outer = serverOuter
             val initial = r.innerBoundary?.coordinates.orEmpty().mapNotNull { polygon ->
@@ -164,7 +175,7 @@ fun AdminBoundaryEditorScreen(
     fun warnIfOutside(ring: Ring) {
         if (outer.size >= 3 && ring.any { !pointInPolygon(it.first, it.second, outer) }) {
             scope.launch {
-                snackbarHostState.showSnackbar("Warning: island extends outside the block boundary")
+                snackbarHostState.showSnackbar("Warning: exclusion zone extends outside the perimeter")
             }
         }
     }
@@ -209,6 +220,29 @@ fun AdminBoundaryEditorScreen(
                 saving = false
             }
         }
+    }
+
+    /**
+     * Corridor preset: ONE island = the outer ring inset inward — exactly
+     * the shape the route map renders as the "inner boundary" band (same
+     * inset math as the worker-facing double-lined route). The area between
+     * outer and this ring is the scannable corridor; adjust vertices to fit.
+     */
+    fun makeCorridor() {
+        if (outer.size < 3) return
+        val insetRing = com.gcc.app.ui.map.insetRingByEdgeOffset(
+            outer.map { (lat, lng) -> com.gcc.shared.model.Coordinates(lat = lat, lng = lng) }
+                .let { it + it.first() }, // closed ring expected
+            insetMeters = 8.0,
+        )?.map { it.lat to it.lng }
+        if (insetRing == null || insetRing.size < 3) {
+            scope.launch { snackbarHostState.showSnackbar("Couldn't inset this shape — adjust the outer edge first") }
+            return
+        }
+        pushUndoSnapshot()
+        islands = listOf(uncloseRing(insetRing))
+        selectedIsland = 0
+        selectedVertex = null
     }
 
     fun suggestIslands() {
@@ -326,6 +360,7 @@ fun AdminBoundaryEditorScreen(
                     selectedIsland = null
                     selectedVertex = null
                 },
+                onCorridor = ::makeCorridor,
                 suggesting = suggesting,
                 onSuggest = ::suggestIslands,
                 canUndo = undoStack.isNotEmpty(),
@@ -389,7 +424,7 @@ fun AdminBoundaryEditorScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             StepChip(
-                                label = "1 · Outer edge",
+                                label = "1 · Perimeter",
                                 active = step == EditStep.OUTER,
                                 enabled = !drawMode,
                             ) {
@@ -398,7 +433,7 @@ fun AdminBoundaryEditorScreen(
                                 selectedVertex = null
                             }
                             StepChip(
-                                label = "2 · Islands (${islands.size})",
+                                label = "2 · Exclusions (${islands.size})",
                                 active = step == EditStep.ISLANDS,
                                 enabled = !drawMode && outer.size >= 3,
                             ) {
@@ -413,6 +448,19 @@ fun AdminBoundaryEditorScreen(
                 val density = LocalDensity.current
                 val boxWidthPx = with(density) { maxWidth.toPx() }
                 val boxHeightPx = with(density) { maxHeight.toPx() }
+                // MapLibre's zoom scale is defined per POINT; the overlay
+                // canvas works in PHYSICAL pixels (3x on modern iPhones).
+                // Every projection built against physical pixels must bias
+                // the zoom by log2(density) or geometry draws ~3x too small
+                // against the basemap (field screenshots: the block rendered
+                // as a small square mid-screen).
+                // ×density: MapLibre zoom scale is per POINT, the canvas
+                // works in PHYSICAL pixels. ×2: MapLibre zoom is defined
+                // against 512px tiles — one full level below the classic
+                // 256-tile 156543/2^z formula. Verified empirically against
+                // a MapLibre-rendered underlay of the same polygon (the
+                // canvas ring drew concentric at ~60% scale before the ×2).
+                val zoomBias = log2(density.density.toDouble() * 2.0)
 
                 // Framing geometry: the SAVED outer (stable while dragging the
                 // live one), falling back to the route line for boundary-less
@@ -442,7 +490,7 @@ fun AdminBoundaryEditorScreen(
                     val midLat = (bbox[0] + bbox[1]) / 2.0
                     val midLng = (bbox[2] + bbox[3]) / 2.0
                     val lngScale = cos(midLat * PI / 180.0)
-                    val mpp = 156543.03392 * lngScale / 2.0.pow(z)
+                    val mpp = 156543.03392 * lngScale / 2.0.pow(z + zoomBias)
                     val halfViewLat = hPx * mpp / 111_320.0 / 2.0
                     val halfViewLng = wPx * mpp / (111_320.0 * lngScale) / 2.0
                     // ~18% padding keeps edge vertices + their handles visible.
@@ -463,17 +511,34 @@ fun AdminBoundaryEditorScreen(
                 // (invert metersToPixels: z = log2(156543.03392·cos(lat)·px/spanMeters)).
                 // Keyed on frameRing: the route arrives ASYNC, so the frame
                 // must (re)run after blockBoundary lands, not just at mount.
+                // PER-AXIS fit: the ENTIRE outer boundary must be featured,
+                // as large as the viewport allows — north-south span fits the
+                // viewport HEIGHT, east-west span fits the WIDTH, and the
+                // tighter of the two wins. (The old min-dimension fit framed
+                // tall blocks against the screen WIDTH, wasting margin and
+                // drifting the block off-center.)
+                // Each step has a home view: Perimeter = fully zoomed out
+                // (boundary + neighborhood context); Exclusions = snug fit
+                // (whole boundary, slightly closer). Switching steps snaps
+                // to that step's home framing.
+                LaunchedEffect(step) {
+                    if (frameRing.isNotEmpty() && fitZoom > 13.0) {
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
+                        centerLat = (bbox[0] + bbox[1]) / 2.0
+                        centerLng = (bbox[2] + bbox[3]) / 2.0
+                    }
+                }
                 LaunchedEffect(frameRing, boxWidthPx, boxHeightPx) {
                     if (boxWidthPx > 0 && boxHeightPx > 0 && frameRing.isNotEmpty()) {
                         centerLat = (bbox[0] + bbox[1]) / 2.0
                         centerLng = (bbox[2] + bbox[3]) / 2.0
-                        val spanNorth = (bbox[1] - bbox[0]) * 111_320.0
-                        val spanEast = (bbox[3] - bbox[2]) * 111_320.0 * cos(centerLat * PI / 180.0)
-                        val spanMeters = maxOf(spanNorth, spanEast, 30.0) * 1.3
-                        val boxPx = minOf(boxWidthPx, boxHeightPx)
-                        fitZoom = log2(156543.03392 * cos(centerLat * PI / 180.0) * boxPx / spanMeters)
-                            .coerceIn(13.0, ZOOM_MAX)
-                        zoom = fitZoom
+                        val cosLat = cos(centerLat * PI / 180.0)
+                        val spanNorth = maxOf((bbox[1] - bbox[0]) * 111_320.0, 30.0) * 1.25
+                        val spanEast = maxOf((bbox[3] - bbox[2]) * 111_320.0 * cosLat, 30.0) * 1.25
+                        val zoomForHeight = log2(156543.03392 * cosLat * boxHeightPx / spanNorth)
+                        val zoomForWidth = log2(156543.03392 * cosLat * boxWidthPx / spanEast)
+                        fitZoom = (minOf(zoomForHeight, zoomForWidth) - zoomBias).coerceIn(13.0, ZOOM_MAX)
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
                     }
                 }
 
@@ -484,7 +549,19 @@ fun AdminBoundaryEditorScreen(
                     zoom = zoom,
                     enableGestures = false,
                     showBuildings = false,
+                    instantCamera = true,
+                    innerBoundaryFallback = false,
                     showGridLines = false,
+                    // The LIVE geometry rendered by MapLibre itself — the
+                    // exact pipeline the public map uses. The canvas on top
+                    // adds only handles, hatching and drafts, so what admins
+                    // edit IS what workers see.
+                    routeCoordinates = if (outer.size >= 3) {
+                        listOf(outer.map { (lat, lng) -> com.gcc.shared.model.Coordinates(lat = lat, lng = lng) })
+                    } else emptyList(),
+                    innerBoundaryRings = islands.filter { it.size >= 3 }.map { ring ->
+                        (ring + ring.first()).map { (lat, lng) -> com.gcc.shared.model.Coordinates(lat = lat, lng = lng) }
+                    },
                 )
 
                 // Overlay: draws boundaries AND owns ALL touch. One custom
@@ -496,7 +573,7 @@ fun AdminBoundaryEditorScreen(
                         .fillMaxSize()
                         .pointerInput(step, drawMode) {
                             fun projection() = BoundaryProjection(
-                                centerLat, centerLng, zoom,
+                                centerLat, centerLng, zoom + zoomBias,
                                 size.width.toFloat(), size.height.toFloat(),
                             )
 
@@ -639,9 +716,10 @@ fun AdminBoundaryEditorScreen(
                                         val newDist = (a.position - b.position).getDistance()
                                         val cur = projection()
                                         val (gLat, gLng) = cur.unproject(oldCentroid)
+                                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 2.5
                                         val newZoom = if (oldDist > 8f && newDist > 8f) {
                                             (zoom + log2(newDist.toDouble() / oldDist))
-                                                .coerceIn(minOf(fitZoom, ZOOM_MAX), ZOOM_MAX)
+                                                .coerceIn(minOf(zoomFloor, ZOOM_MAX), ZOOM_MAX)
                                         } else zoom
                                         // Solve the center that keeps the geo point
                                         // under the pinch centroid geo-fixed.
@@ -736,7 +814,7 @@ fun AdminBoundaryEditorScreen(
                             }
                         },
                 ) {
-                    val proj = BoundaryProjection(centerLat, centerLng, zoom, size.width, size.height)
+                    val proj = BoundaryProjection(centerLat, centerLng, zoom + zoomBias, size.width, size.height)
 
                     fun ringPath(ring: Ring): Path {
                         val path = Path()
@@ -766,9 +844,13 @@ fun AdminBoundaryEditorScreen(
                     }
 
                     if (outer.size >= 3) {
-                        // Dim everything OUTSIDE the outer boundary: one even-odd
-                        // path (full-canvas rect + boundary ring as the hole) —
-                        // blend-mode-free, robust on iOS Skia.
+                        // Step-aware exterior mask (one even-odd path: full-
+                        // canvas rect + boundary ring as the hole; blend-mode-
+                        // free, robust on iOS Skia):
+                        //  · OUTER — barely-there dim: reshaping the perimeter
+                        //    needs the surrounding streets and lots visible.
+                        //  · ISLANDS — heavy mask: the working surface is ONLY
+                        //    the block interior.
                         val shade = Path().apply {
                             fillType = PathFillType.EvenOdd
                             addRect(Rect(0f, 0f, size.width, size.height))
@@ -778,30 +860,60 @@ fun AdminBoundaryEditorScreen(
                             }
                             close()
                         }
-                        drawPath(shade, color = Color.Black.copy(alpha = 0.45f))
+                        // PERIMETER step: no mask at all — match the main-map
+                        // block view (green loop over the plain basemap).
+                        if (step == EditStep.ISLANDS) {
+                            drawPath(shade, color = Color.Black.copy(alpha = 0.72f))
+                        }
 
-                        // Outer boundary — green; bolder + handled in OUTER step.
+                        // The perimeter LINE is MapLibre's job (the live ring
+                        // is fed to the map's route layers — identical to the
+                        // public display). The canvas adds only the editing
+                        // affordances: an amber accent while edits are
+                        // unsaved, and the corner/midpoint handles.
                         val outerActive = step == EditStep.OUTER && !drawMode
-                        drawPath(
-                            ringPath(outer),
-                            color = if (outerDirty) IslandAmberBright else GccGreen,
-                            style = Stroke(width = (if (outerActive) 3.5.dp else 2.5.dp).toPx()),
-                        )
+                        if (outerDirty) {
+                            drawPath(
+                                ringPath(outer),
+                                color = IslandAmberBright,
+                                style = Stroke(width = 2.5.dp.toPx()),
+                            )
+                        }
                         if (outerActive) drawHandles(outer, GccGreen)
                     }
 
-                    // Inner islands — amber fill + stroke; selected drawn brighter/thicker.
-                    val islandsActive = step == EditStep.ISLANDS
-                    islands.forEachIndexed { i, island ->
-                        if (island.size < 3) return@forEachIndexed
-                        val selected = islandsActive && i == selectedIsland
-                        val path = ringPath(island)
-                        val baseAlpha = if (islandsActive) 0.25f else 0.12f
-                        val fill = if (selected) IslandAmberBright.copy(alpha = 0.35f) else IslandAmber.copy(alpha = baseAlpha)
-                        val strokeColor = if (selected) IslandAmberBright else IslandAmber.copy(alpha = if (islandsActive) 0.85f else 0.4f)
-                        drawPath(path, color = fill)
-                        drawPath(path, color = strokeColor, style = Stroke(width = (if (selected) 3.dp else 1.5.dp).toPx()))
-                        if (selected) drawHandles(island, IslandAmberBright)
+                    // Exclusion zones — ONLY on the exclusions step (the
+                    // perimeter step stays clean, like the main-map view).
+                    // Visual language: grey perimeter + grey diagonal hatch
+                    // = "excluded from the scan area".
+                    if (step == EditStep.ISLANDS) {
+                        islands.forEachIndexed { i, island ->
+                            if (island.size < 3) return@forEachIndexed
+                            val selected = i == selectedIsland
+                            val path = ringPath(island)
+                            val grey = if (selected) ExclusionGreyDark else ExclusionGrey
+                            // Line + fill come from the map's grey exclusion
+                            // layers (same pipeline as the public map); the
+                            // canvas contributes the diagonal hatch language.
+                            clipPath(path) {
+                                val hatchStep = 12.dp.toPx()
+                                val h = size.height
+                                var d = -h
+                                while (d < size.width) {
+                                    drawLine(
+                                        color = grey.copy(alpha = if (selected) 0.6f else 0.45f),
+                                        start = Offset(d, 0f),
+                                        end = Offset(d + h, h),
+                                        strokeWidth = 1.5.dp.toPx(),
+                                    )
+                                    d += hatchStep
+                                }
+                            }
+                            if (selected) {
+                                drawPath(path, color = grey, style = Stroke(width = 3.dp.toPx()))
+                                drawHandles(island, ExclusionGreyDark)
+                            }
+                        }
                     }
 
                     // In-progress draft ring — points + connecting lines.
@@ -837,7 +949,7 @@ fun AdminBoundaryEditorScreen(
                 }
                 if (chipRing != null && chipVertex != null && chipVertex < chipRing.size) {
                     val pt = chipRing[chipVertex]
-                    val pos = BoundaryProjection(centerLat, centerLng, zoom, boxWidthPx, boxHeightPx)
+                    val pos = BoundaryProjection(centerLat, centerLng, zoom + zoomBias, boxWidthPx, boxHeightPx)
                         .project(pt.first, pt.second)
                     val chipW = with(density) { 150.dp.toPx() }
                     val chipH = with(density) { 40.dp.toPx() }
@@ -883,7 +995,11 @@ fun AdminBoundaryEditorScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     fun nudgeZoom(delta: Double) {
-                        zoom = (zoom + delta).coerceIn(minOf(fitZoom, ZOOM_MAX), ZOOM_MAX)
+                        // Islands: out just far enough for the outer boundary
+                        // + a little context. Outer: more room, for reshaping
+                        // the perimeter against the neighborhood.
+                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 2.5
+                        zoom = (zoom + delta).coerceIn(minOf(zoomFloor, ZOOM_MAX), ZOOM_MAX)
                         val c = clampedCenter(centerLat, centerLng, zoom, boxWidthPx, boxHeightPx)
                         centerLat = c.first
                         centerLng = c.second
@@ -891,8 +1007,8 @@ fun AdminBoundaryEditorScreen(
                     ZoomButton("+") { nudgeZoom(0.5) }
                     ZoomButton("−") { nudgeZoom(-0.5) }
                     ZoomButton("⊡") {
-                        // Re-frame: back to the fitted, centered working area.
-                        zoom = fitZoom
+                        // Re-frame: back to the step's home view.
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
                         centerLat = (bbox[0] + bbox[1]) / 2.0
                         centerLng = (bbox[2] + bbox[3]) / 2.0
                     }
@@ -910,7 +1026,7 @@ fun AdminBoundaryEditorScreen(
                                 step == EditStep.OUTER && draft.isEmpty() ->
                                     "Draw the block's outer edge: tap each corner · tap the first point to close"
                                 step == EditStep.OUTER ->
-                                    "Outer edge: ${draft.size} corner${if (draft.size == 1) "" else "s"} · tap the first point to close"
+                                    "Perimeter: ${draft.size} corner${if (draft.size == 1) "" else "s"} · tap the first point to close"
                                 draft.isEmpty() -> "Tap the map to place points · tap the first point to close"
                                 else -> "Tap to place points (${draft.size}) · tap the first point to close"
                             },
@@ -938,7 +1054,7 @@ fun AdminBoundaryEditorScreen(
                             Text(
                                 "One finger edits · two fingers move the map. " +
                                     if (step == EditStep.OUTER) "Drag the green corners to reshape the block."
-                                    else "Islands are excluded from required scanning.",
+                                    else "◫ Corridor makes one exclusion ring matching the route's band — or draw exclusion zones per lot.",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = TextSubtle,
                                 modifier = Modifier.weight(1f),
@@ -951,6 +1067,18 @@ fun AdminBoundaryEditorScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ToolbarLabel(text: String, color: Color? = null) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = color ?: Color.Unspecified,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Visible,
+    )
 }
 
 @Composable
@@ -1014,6 +1142,7 @@ private fun EditorToolbar(
     selectedIndex: Int?,
     onDeleteIsland: () -> Unit,
     onClearIslands: () -> Unit,
+    onCorridor: () -> Unit,
     suggesting: Boolean,
     onSuggest: () -> Unit,
     canUndo: Boolean,
@@ -1059,40 +1188,54 @@ private fun EditorToolbar(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "Island ${selectedIndex + 1} of $islandCount",
+                            "Zone ${selectedIndex + 1} of ${islandCount}",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = IslandAmberBright,
                             modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = onDeleteIsland) {
-                            Text("Delete island", color = GccError)
+                            Text("Delete zone", color = GccError)
                         }
                     }
                 }
                 if (step == EditStep.ISLANDS) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Four actions in one row: tight padding + single-line
+                    // labels (default M3 padding wrapped 'Corridor'/'Clear'
+                    // into two ugly lines on phone widths).
+                    val tightPad = PaddingValues(horizontal = 4.dp, vertical = 12.dp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = onCorridor,
+                            enabled = hasOuter,
+                            modifier = Modifier.weight(1.15f),
+                            contentPadding = tightPad,
+                            colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                        ) { ToolbarLabel("Corridor", Color.White) }
                         Button(
                             onClick = onStartDraw,
                             modifier = Modifier.weight(1f),
+                            contentPadding = tightPad,
                             colors = ButtonDefaults.buttonColors(containerColor = GccSky),
-                        ) { Text("+ Island", color = Color.White) }
+                        ) { ToolbarLabel("+ Zone", Color.White) }
                         OutlinedButton(
                             onClick = onSuggest,
                             enabled = !suggesting && hasOuter,
-                            modifier = Modifier.weight(1.1f),
+                            modifier = Modifier.weight(0.9f),
+                            contentPadding = tightPad,
                         ) {
                             if (suggesting) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             } else {
-                                Text("✨ Suggest")
+                                ToolbarLabel("✨ Auto")
                             }
                         }
                         OutlinedButton(
                             onClick = onClearIslands,
                             enabled = islandCount > 0,
-                            modifier = Modifier.weight(0.9f),
-                        ) { Text("Clear") }
+                            modifier = Modifier.weight(0.8f),
+                            contentPadding = tightPad,
+                        ) { ToolbarLabel("Clear") }
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

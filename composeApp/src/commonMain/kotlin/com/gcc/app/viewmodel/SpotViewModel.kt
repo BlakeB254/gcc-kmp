@@ -45,6 +45,8 @@ enum class AreaMode { CIRCLE, RECTANGLE }
 
 data class SpotUiState(
     val capturedPhotos: List<CapturedPhoto> = emptyList(),
+    /** Complete Scan pressed with nothing to submit — screen should close. */
+    val scanFinishedWithoutReport: Boolean = false,
     val currentLat: Double = MapStyles.NORTH_LAWNDALE_CENTER_LAT,
     val currentLng: Double = MapStyles.NORTH_LAWNDALE_CENTER_LNG,
     /** Spot pin position — null means use GPS position (currentLat/currentLng). */
@@ -318,7 +320,18 @@ class SpotViewModel(
     fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
-        if (state.capturedPhotos.isEmpty()) return
+        if (state.capturedPhotos.isEmpty()) {
+            // Complete Scan ALWAYS ends the session (product rule: the
+            // bottom button is the only exit). With no captures there is
+            // no report to file, but the session manifest — GPS/heading
+            // track, scanned cells, tagged items — is still archived, and
+            // the view closes. (Silently doing nothing here stranded the
+            // user on the camera.)
+            DiagnosticsLog.info("spot-submit", "Complete Scan with no captures — archiving session, closing")
+            sessionDraft?.let { uploadEnvScanSession(it, reportId = null) }
+            _uiState.value = _uiState.value.copy(scanFinishedWithoutReport = true)
+            return
+        }
         pendingSessionDraft = sessionDraft
         DiagnosticsLog.info("spot-submit", "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s)")
         applyAiDescription()
