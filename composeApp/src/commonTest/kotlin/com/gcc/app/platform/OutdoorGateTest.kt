@@ -256,4 +256,21 @@ class OutdoorGateV4Test {
         gate.onSceneVote(SceneVote.OUTDOOR, t0 + 9000L)
         assertEquals(OutdoorState.OUTDOOR, gate.state.value)
     }
+
+    @Test
+    fun overrideSurvivesSustainedDegradedGpsAlone() {
+        val gate = OutdoorGate()
+        gate.forceOutdoors()
+        for (i in 0..9) gate.onAccuracySample(40.0, t0 + i * 1000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
+
+    @Test
+    fun twoOutdoorVotesUnlockFromUncertainFast() {
+        val gate = OutdoorGate()
+        gate.onSceneVote(SceneVote.OUTDOOR, t0)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 750L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+        assertEquals(true, gate.captureAllowed.value)
+    }
 }

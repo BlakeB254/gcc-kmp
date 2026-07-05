@@ -26,7 +26,8 @@ object TrashDetectionRules {
         "blanket", "sink", "counter", "cupboard", "appliance", "tile",
         "computer", "floor", "flooring", "hardwood", "printer", "document",
         "paper", "drawer", "wardrobe", "closet", "mug", "houseplant",
-        "blinds", "mirror", "doorway", "fireplace", "dresser", "bathtub", "shower", "oven", "stove", "microwave", "dishwasher", "staircase",
+        "blinds", "mirror", "doorway", "fireplace", "dresser", "bathtub", "shower",
+        "oven", "stove", "microwave", "dishwasher", "staircase", "toilet",
     )
     val OUTDOOR_KEYWORDS = setOf(
         "outdoor", "street", "road", "sidewalk", "sky", "tree", "grass",

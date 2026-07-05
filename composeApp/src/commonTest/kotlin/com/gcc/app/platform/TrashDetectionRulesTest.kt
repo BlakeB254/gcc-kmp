@@ -60,6 +60,14 @@ class TrashDetectionRulesTest {
     }
 
     @Test
+    fun toiletKeywordRecognizedAsIndoor() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("toilet", 0.4f), obs("tile", 0.3f))
+        )
+        assertEquals(SceneVote.INDOOR, vote)
+    }
+
+    @Test
     fun trashKeywordAboveThresholdMatches() {
         // tokensOf splits "plastic_bottle" into ["plastic", "bottle"]; firstNotNullOfOrNull
         // matches the first token present in TRASH_TOKENS, so "plastic" wins over "bottle".

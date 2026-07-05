@@ -768,6 +768,7 @@ private fun CameraPhase(
             TrashConfirmCard(
                 candidate = candidate,
                 onConfirm = { selectedType ->
+                    if (!gate.captureAllowed.value) return@TrashConfirmCard
                     val final = arOverlay?.confirmCandidate(selectedType)
                     if (final != null) {
                         onTrashObserved(

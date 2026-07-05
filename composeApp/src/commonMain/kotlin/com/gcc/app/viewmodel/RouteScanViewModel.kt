@@ -220,6 +220,7 @@ class RouteScanViewModel(
     /** Field escape hatch — user confirmed they're outdoors. */
     fun forceOutdoors() {
         outdoorGate.forceOutdoors()
+        lapSessionRecorder.noteGateEvent("override@${Clock.System.now().toEpochMilliseconds()}")
     }
 
     fun onSceneVote(vote: SceneVote) {
@@ -994,6 +995,17 @@ class RouteScanViewModel(
                 if (gateState != lastState) {
                     DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
                     lastState = gateState
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    // Audit trail rides with whichever lap recorder is current
+                    // at event time — a lap boundary may have swapped it out.
+                    lapSessionRecorder.noteGateEvent("gate@$nowMs state=$gateState")
+                    if (gateState == OutdoorState.INDOOR) {
+                        // Privacy purge: drop the trailing walk-inside seconds
+                        // recorded just before this flip so they never upload.
+                        lapSessionRecorder.purgeSince(
+                            (outdoorGate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
+                        )
+                    }
                 }
             }
         }

@@ -48,9 +48,10 @@ class OutdoorGate {
         const val OUTDOOR_ACCURACY_METERS = 10.0
         /** Scene votes see the room directly — they outweigh single GPS fixes. */
         private const val SCENE_VOTE_WEIGHT = 2
-        /** Consecutive camera OUTDOOR votes that recover from INDOOR without
-         *  waiting for 5s of clean GPS (fast auto-recovery — the mitigation
-         *  that makes aggressive flipping acceptable). */
+        /** Consecutive camera OUTDOOR votes that recover from INDOOR (or
+         *  unlock straight out of UNCERTAIN) without waiting for 5s of clean
+         *  GPS (fast auto-recovery — the mitigation that makes aggressive
+         *  flipping acceptable). */
         const val OUTDOOR_SCENE_STREAK_TO_RECOVER = 2
         /** A ceiling plane seen within this window blocks recovery. */
         const val CEILING_RECENT_MS = 5_000L
@@ -141,9 +142,11 @@ class OutdoorGate {
                 noOutdoorCueStreak = 0
                 sceneOutdoorStreak += 1
                 // Fast auto-recovery: the camera seeing street/sky twice in a
-                // row is stronger outdoor proof than urban GPS accuracy.
+                // row is stronger outdoor proof than urban GPS accuracy. Also
+                // unlocks straight out of UNCERTAIN — no reason to wait 5s of
+                // clean GPS at scan-open when the camera already confirms it.
                 val ceilingRecent = lastCeilingTs?.let { timestampMs - it <= CEILING_RECENT_MS } == true
-                if (_state.value == OutdoorState.INDOOR &&
+                if (_state.value != OutdoorState.OUTDOOR &&
                     sceneOutdoorStreak >= OUTDOOR_SCENE_STREAK_TO_RECOVER &&
                     insideBuildingStreak == 0 && !ceilingRecent
                 ) {
@@ -263,7 +266,11 @@ class OutdoorGate {
                 OutdoorState.OUTDOOR
             } else OutdoorState.INDOOR
             else -> when {
-                indoorFlip -> OutdoorState.INDOOR
+                // Sustained degraded GPS alone must not re-flip a manual
+                // override (e.g. "I'm outside" under an awning) — strong
+                // evidence (map containment, ceiling plane) already clears
+                // the override explicitly and bypasses this path entirely.
+                indoorFlip && !manualOverride -> OutdoorState.INDOOR
                 outdoorFlip -> OutdoorState.OUTDOOR
                 else -> _state.value
             }
