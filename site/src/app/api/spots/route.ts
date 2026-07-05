@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
       onDeviceAiResult,
       duplicateOverrideReason,
       observedItems,
+      objectCapture,
     } = body
 
     // Validate coordinates
@@ -351,6 +352,21 @@ export async function POST(request: NextRequest) {
           }))
         : [{ itemType: (effectiveTags?.[0] as string) ?? 'general_litter' }]
 
+    // Guided Object Capture (photogrammetry) of a large pile, when performed:
+    // its measured bounds + volume-derived weight ride along on the anchor
+    // observation's attributes. Each numeric field is validated independently
+    // so a partial/garbled payload contributes only its sound values.
+    const objectCaptureAttributes: Record<string, unknown> = {}
+    if (objectCapture && typeof objectCapture === 'object') {
+      if (typeof objectCapture.r2Key === 'string') objectCaptureAttributes.objectCaptureR2Key = objectCapture.r2Key
+      if (Number.isFinite(Number(objectCapture.widthMeters))) objectCaptureAttributes.objectCaptureWidthMeters = Number(objectCapture.widthMeters)
+      if (Number.isFinite(Number(objectCapture.heightMeters))) objectCaptureAttributes.objectCaptureHeightMeters = Number(objectCapture.heightMeters)
+      if (Number.isFinite(Number(objectCapture.depthMeters))) objectCaptureAttributes.objectCaptureDepthMeters = Number(objectCapture.depthMeters)
+      if (Number.isFinite(Number(objectCapture.volumeLiters))) objectCaptureAttributes.objectCaptureVolumeLiters = Number(objectCapture.volumeLiters)
+      if (Number.isFinite(Number(objectCapture.estimatedWeightGrams))) objectCaptureAttributes.objectCaptureWeightGrams = Math.round(Number(objectCapture.estimatedWeightGrams))
+    }
+    const hasObjectCapture = Object.keys(objectCaptureAttributes).length > 0
+
     for (const item of clientItems.length > 0 ? [] : detectedItems) {
       await recordWorldObservation({
         sourceType: 'spot_report',
@@ -359,8 +375,32 @@ export async function POST(request: NextRequest) {
         lng,
         itemType: item.itemType,
         state: 'dirty',
-        attributes: item.severity !== undefined ? { severity: item.severity } : undefined,
+        attributes: (item.severity !== undefined || hasObjectCapture)
+          ? {
+              ...(item.severity !== undefined ? { severity: item.severity } : {}),
+              ...objectCaptureAttributes,
+            }
+          : undefined,
         confidence: item.confidence,
+        mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
+        depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
+        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+      })
+    }
+
+    // Object Capture with scanned items present: the fallback anchor loop
+    // above is skipped when clientItems exist, so the measured pile gets its
+    // own anchor observation — otherwise the 3D capture data would vanish on
+    // exactly the scans most likely to include it.
+    if (hasObjectCapture && clientItems.length > 0) {
+      await recordWorldObservation({
+        sourceType: 'spot_report',
+        communityReportId: newReport.id,
+        lat,
+        lng,
+        itemType: 'debris_pile',
+        state: 'dirty',
+        attributes: objectCaptureAttributes,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
         depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
         capturedAt: newReport.capturedAt ?? new Date().toISOString(),

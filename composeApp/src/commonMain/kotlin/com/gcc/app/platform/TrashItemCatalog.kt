@@ -94,6 +94,17 @@ object TrashItemCatalog {
         return scaled.roundToInt().coerceIn(MIN_WEIGHT_GRAMS, MAX_WEIGHT_GRAMS)
     }
 
+    /**
+     * Bulk weight for a measured VOLUME of mixed litter (Object Capture of
+     * piles/heaps): loose municipal litter runs ~100-150 g/L; 130 g/L is the
+     * midpoint. Clamped like item estimates.
+     */
+    fun estimateWeightFromVolumeLiters(volumeLiters: Double): Int {
+        if (!volumeLiters.isFinite() || volumeLiters <= 0.0) return MIN_WEIGHT_GRAMS
+        // Piles legitimately exceed the single-item clamp — cap at 2 tonnes.
+        return (volumeLiters * 130.0).roundToInt().coerceIn(MIN_WEIGHT_GRAMS, 2_000_000)
+    }
+
     private fun pow(base: Double, exp: Double): Double {
         if (base <= 0.0) return 0.0
         return kotlin.math.exp(exp * kotlin.math.ln(base))
