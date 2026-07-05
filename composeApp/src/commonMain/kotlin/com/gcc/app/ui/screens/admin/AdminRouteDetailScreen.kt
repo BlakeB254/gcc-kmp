@@ -816,7 +816,14 @@ fun AdminRouteDetailScreen(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Boundary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if (route.blockBoundary != null) "Set" else "Not set", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            when {
+                                fullRoute?.blockBoundary != null -> "Set"
+                                fullRoute == null -> "…"
+                                else -> "Not set"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
                 }
             }
@@ -829,7 +836,7 @@ fun AdminRouteDetailScreen(
             item {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text(
-                    "🏝 Inner Boundaries",
+                    "🗺 Boundaries",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
@@ -837,23 +844,24 @@ fun AdminRouteDetailScreen(
 
                 val blockId = route.blockId
                 val hasOuterBoundary = fullRoute?.blockBoundary != null
-                val canEdit = blockId != null && hasOuterBoundary
+                // Outer editing lives in the same editor now — a missing
+                // boundary just opens the editor in draw-the-edge mode.
+                val canEdit = blockId != null
                 Button(
                     onClick = { if (blockId != null) onEditInnerBoundaries(routeId, blockId) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = canEdit,
                     colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
                 ) {
-                    Text("Edit inner boundaries", color = Color.White)
+                    Text(
+                        if (hasOuterBoundary) "Edit boundaries" else "Set block boundary",
+                        color = Color.White,
+                    )
                 }
                 if (!canEdit) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        when {
-                            blockId == null -> "No block is linked to this route yet — inner boundaries live on the block."
-                            !fullRouteLoaded -> "Checking block boundary..."
-                            else -> "This route's block has no outer boundary yet — set the block boundary first."
-                        },
+                        "No block is linked to this route yet — boundaries live on the block.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSubtle,
                     )

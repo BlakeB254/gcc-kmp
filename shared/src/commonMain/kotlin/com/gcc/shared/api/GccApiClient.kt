@@ -829,6 +829,19 @@ class GccApiClient(
      * `{ success, blockId, thinnedNeighbors }` object (no ApiResponse
      * envelope), so this bypasses [putJson].
      */
+    /**
+     * Run the OSM frontage generator for this route's block — the server
+     * saves the generated islands AND returns them.
+     */
+    suspend fun regenerateInnerBoundary(routeId: Int): RegenerateInnerBoundaryResponse {
+        val response = httpClient.post("$baseUrl/api/admin/routes/$routeId/regenerate-inner-boundary")
+        if (!response.status.isSuccess()) {
+            val body = runCatching { response.body<RegenerateInnerBoundaryResponse>() }.getOrNull()
+            throw Exception(body?.error ?: "Island generation failed (${response.status.value})")
+        }
+        return response.body()
+    }
+
     suspend fun updateBlockBoundaries(
         blockId: Int,
         request: UpdateBlockBoundariesRequest,

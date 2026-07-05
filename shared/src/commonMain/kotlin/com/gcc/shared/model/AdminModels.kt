@@ -78,6 +78,16 @@ data class AdminRouteRequest(
 @Serializable
 data class UpdateBlockBoundariesRequest(
     val innerBoundary: GeoJSONMultiPolygon? = null,
+    /** Edited outer ring — the server trims overlapping neighbors on save. */
+    val locationBoundary: GeoJSONPolygon? = null,
+)
+
+/** Response of POST /api/admin/routes/{routeId}/regenerate-inner-boundary. */
+@Serializable
+data class RegenerateInnerBoundaryResponse(
+    val success: Boolean = false,
+    val innerBoundary: GeoJSONMultiPolygon? = null,
+    val error: String? = null,
 )
 
 /** Response of PUT /api/admin/blocks/{blockId}/boundaries (no data envelope). */
