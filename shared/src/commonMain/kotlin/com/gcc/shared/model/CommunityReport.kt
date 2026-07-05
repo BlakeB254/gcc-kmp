@@ -45,6 +45,13 @@ data class CommunityReport(
     val affectedArea: AffectedArea? = null,
     val tags: List<SpotTag> = emptyList(),
     val photoUrl: String? = null,
+    /**
+     * Canonical litter type from [com.gcc.app.platform.TrashItemCatalog]
+     * (e.g. "plastic_bottle", "can") when this pin came from a typed scan
+     * observation. Null for generic reports; map layers fall back to the
+     * plain marker dot when absent.
+     */
+    val itemType: String? = null,
     // Verification lifecycle
     val lastVerifiedAt: Instant? = null,
     val verificationCount: Int = 0,

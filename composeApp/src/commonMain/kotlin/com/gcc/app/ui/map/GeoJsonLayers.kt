@@ -303,7 +303,11 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
             val tagsStr = s.tags.joinToString(",") { "\"${it.name.lowercase()}\"" }
             val heatWeight = spotHeatWeight(s)
             val densityWeight = spotDensityWeight(s)
-            """{"type":"Feature","properties":{"id":${s.id},"type":"${s.type}","points":${s.observerRewardPoints},"heatWeight":$heatWeight,"densityWeight":$densityWeight,"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+            // itemType is emitted only when this pin carries a canonical litter
+            // type (typed scan observations). Its presence/absence is the map's
+            // switch between per-type glyphs and the plain marker dot.
+            val itemTypeProp = s.itemType?.let { """"itemType":"${it.lowercase()}",""" } ?: ""
+            """{"type":"Feature","properties":{"id":${s.id},$itemTypeProp"type":"${s.type}","points":${s.observerRewardPoints},"heatWeight":$heatWeight,"densityWeight":$densityWeight,"hasBounty":${s.bountyId != null},"radiusMeters":${s.affectedRadiusMeters},"areaType":"$areaType","rectWidth":$rectWidth,"rectHeight":$rectHeight,"rectRotation":$rectRotation,"needsVerification":${s.needsVerification},"tags":[$tagsStr]},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
         }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
 }

@@ -85,8 +85,22 @@ Fog veil, corridor fill, `LAP_COMPLETE_PERCENT` fill bar, freshCellCenters wirin
 - Compile gates: `:composeApp:linkDebugFrameworkIosSimulatorArm64`, xcodebuild sim, `npx tsc --noEmit` in site/.
 - Physical-device walk test required for: plane classification behavior, raycast placement accuracy, wall alignment, thermal behavior. Flagged for Blake's next field session.
 
-## Out of scope
+## Agreed follow-up round: native Swift RealityKit module
 
-- RealityKit Swift bridge (deferred; SceneKit does everything needed).
+Per Blake (2026-07-04): the AR render layer should eventually move to a
+native Swift module to get the full modern iPhone stack — RealityKit ECS,
+particle systems, PBR materials, post-processing, Object Capture
+photogrammetry (measured 3D models of large dumps), RoomPlan-style scans.
+Architecture: a `GccArNative` Swift target in iosApp/ exposing an `@objc`
+view + callback protocol (CrashDiagnostics.swift precedent), plugged in
+BEHIND the Kotlin-facing `ArEnvScanOverlay`/`ArRouteOverlay` interfaces this
+round establishes — Swift owns the AR view, KMP keeps owning business logic,
+screens, and the API layer. NOT a separate Swift app (that would fork the
+product and lose the shared coverage/points/offline machinery). Scope it as
+its own design + PR after this round's device test.
+
+## Out of scope (this round)
+
+- The RealityKit Swift module above (SceneKit covers this round's effects).
 - Custom TACO/YOLO CoreML litter detector — biggest future accuracy win for typed detection, but training/converting a model is its own project. Current round uses VNClassify + saliency, which the codebase already trusts.
 - Android parity (iOS-first per 2026-07-04 direction).
