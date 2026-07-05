@@ -146,6 +146,31 @@ class ArMarkerQueueTest {
     }
 
     @Test
+    fun successfulFlushClearsThePersistedCopyNotJustTheInMemoryList() = runTest {
+        val sharedSettings = MemorySettings()
+        val fakeSubmit: suspend (List<ArDetectedMarkerRequest>) -> ArDetectedMarkerBatchResponse = { markers ->
+            ArDetectedMarkerBatchResponse(inserted = markers.size, success = true)
+        }
+
+        val firstProcessQueue = ArMarkerQueue(submitFn = fakeSubmit, settings = sharedSettings)
+        firstProcessQueue.enqueue(sampleMarker("bottle"))
+        val flushResult = firstProcessQueue.flush()
+        assertTrue(flushResult)
+
+        // A fresh instance sharing the same settings simulates relaunch after
+        // the flush already succeeded and the app was later killed anyway.
+        var called = false
+        val secondProcessQueue = ArMarkerQueue(
+            submitFn = { markers -> called = true; ArDetectedMarkerBatchResponse(markers.size, true) },
+            settings = sharedSettings,
+        )
+        val result = secondProcessQueue.flush()
+
+        assertTrue(result)
+        assertFalse(called, "nothing should be left to submit — the successful flush must have cleared the persisted copy too")
+    }
+
+    @Test
     fun corruptPersistedJsonDegradesToAnEmptyQueue() = runTest {
         val settings = MemorySettings()
         settings.putString("pending_ar_markers", "not valid json")
