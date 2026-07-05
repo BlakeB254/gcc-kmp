@@ -197,7 +197,10 @@ class RouteScanViewModel(
         scope.launch {
             arMarkerQueue.enqueue(
                 ArDetectedMarkerRequest(
-                    lat = lat, lng = lng, label = label,
+                    lat = lat, lng = lng,
+                    // Canonical type, not the display label — the server
+                    // stores this verbatim as world_observations.itemType.
+                    label = com.gcc.app.platform.TrashItemCatalog.canonicalType(label),
                     capturedAt = Clock.System.now(),
                 ),
             )

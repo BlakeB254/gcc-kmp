@@ -103,6 +103,45 @@ actual fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
     )
 }
 
+/**
+ * Strong ref while the preview is up — QLPreviewController holds its data
+ * source weakly (same K/N pattern as the camera delegates).
+ */
+private var activeUsdzPreviewSource: UsdzPreviewDataSource? = null
+
+private class UsdzPreviewDataSource(private val fileUrl: platform.Foundation.NSURL) :
+    platform.darwin.NSObject(),
+    platform.QuickLook.QLPreviewControllerDataSourceProtocol {
+
+    override fun numberOfPreviewItemsInPreviewController(
+        controller: platform.QuickLook.QLPreviewController,
+    ): Long = 1L
+
+    override fun previewController(
+        controller: platform.QuickLook.QLPreviewController,
+        previewItemAtIndex: Long,
+    ): platform.QuickLook.QLPreviewItemProtocol = fileUrl as platform.QuickLook.QLPreviewItemProtocol
+}
+
+actual fun presentUsdzPreview(path: String) {
+    platform.darwin.dispatch_async(platform.darwin.dispatch_get_main_queue()) {
+        try {
+            val url = platform.Foundation.NSURL.fileURLWithPath(path)
+            val source = UsdzPreviewDataSource(url)
+            activeUsdzPreviewSource = source
+            val controller = platform.QuickLook.QLPreviewController()
+            controller.dataSource = source
+            var top = platform.UIKit.UIApplication.sharedApplication.keyWindow?.rootViewController
+            while (top?.presentedViewController != null) top = top.presentedViewController
+            top?.presentViewController(controller, animated = true, completion = null)
+                ?: run { activeUsdzPreviewSource = null }
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("object-capture", "USDZ preview failed", e)
+            activeUsdzPreviewSource = null
+        }
+    }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 actual fun readLocalFileBytes(path: String): ByteArray? {
     val data: NSData = NSData.dataWithContentsOfFile(path) ?: return null

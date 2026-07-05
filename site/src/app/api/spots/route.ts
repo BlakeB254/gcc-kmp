@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
             .map((it: any) => ({
               lat: Number(it.lat),
               lng: Number(it.lng),
-              itemType: String(it.itemType).slice(0, 64),
+              itemType: String(it.itemType).slice(0, 50),
               severity: Number.isFinite(Number(it.severity)) ? Number(it.severity) : undefined,
               confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
               estimatedWeightGrams: Number.isFinite(Number(it.estimatedWeightGrams)) ? Math.round(Number(it.estimatedWeightGrams)) : undefined,

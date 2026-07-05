@@ -43,6 +43,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var veilEntity: ModelEntity?
     private var guidanceTarget: SIMD3<Float>?
     private var updateSubscription: Cancellable?
+    private var coachingOverlay: ARCoachingOverlayView?
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -85,6 +86,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         coaching.frame = arView.bounds
         coaching.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         arView.addSubview(coaching)
+        coachingOverlay = coaching
     }
 
     // MARK: - ArNativeSurface
@@ -150,13 +152,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 let mesh = MeshResource.generatePlane(
                     width: Float(cellSizeMeters), depth: Float(cellSizeMeters)
                 )
-                anchor.addChild(ModelEntity(mesh: mesh, materials: [gridMaterial(vectorGridTexture, tint: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 0.5), uvScale: 1)]))
+                let cell = ModelEntity(mesh: mesh, materials: [gridMaterial(vectorGridTexture, tint: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 0.5), uvScale: 1)])
+                anchor.addChild(cell)
                 arView.scene.addAnchor(anchor)
                 vectorCellEntities[key] = anchor
+                animateIn(cell)
+                // Slow shimmer after the grow-in settles.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak cell] in
+                    guard let cell else { return }
+                    self.addPulse(to: cell, scale: 0.94, duration: 1.4)
+                }
             }
             for (key, anchor) in vectorCellEntities where !wanted.contains(key) {
-                anchor.removeFromParent()
                 vectorCellEntities.removeValue(forKey: key)
+                animateOutAndRemove(anchor)
             }
         }
     }
@@ -176,6 +185,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             disc.scale = SIMD3(1, 0.08, 1)
             anchor.addChild(disc)
             arView.scene.addAnchor(anchor)
+            animateIn(disc)
+            if kind == 1 {
+                // Expected-trash seeds pulse: "come check this" (mirrors the
+                // SceneKit EXPECTED_TRASH behavior).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak disc] in
+                    guard let disc else { return }
+                    self.addPulse(to: disc, scale: 1.3, duration: 0.8)
+                }
+            }
         }
     }
 
@@ -192,7 +210,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     func setGroundGridVisible(visible: Bool) {
         DispatchQueue.main.async { [self] in
             groundGridVisible = visible
+            // The plane-acquisition coaching prompt is an env-scan affordance;
+            // in route/spot mode (grid hidden, fog/posts own the ground) an
+            // auto-activating "find a surface" overlay is intrusive — and the
+            // SceneKit fallbacks never had one.
+            coachingOverlay?.activatesAutomatically = visible
             if !visible {
+                coachingOverlay?.setActive(false, animated: false)
                 for (_, entity) in planeEntities { entity.anchor.removeFromParent() }
                 planeEntities.removeAll()
                 refreshGroundState()
@@ -226,10 +250,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 arView.scene.addAnchor(anchor)
                 fogCellEntities[key] = anchor
             }
-            // Reveal-by-omission: scanned cells vanish.
+            // Reveal-by-omission: scanned cells shrink away — walking a cell
+            // visibly "clears" the world instead of blinking out.
             for (key, anchor) in fogCellEntities where !wanted.contains(key) {
-                anchor.removeFromParent()
                 fogCellEntities.removeValue(forKey: key)
+                animateOutAndRemove(anchor)
             }
         }
     }
@@ -255,11 +280,16 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 anchor.addChild(post)
                 arView.scene.addAnchor(anchor)
                 sectorPostEntities[key] = anchor
+                animateIn(post)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak post] in
+                    guard let post else { return }
+                    self.addPulse(to: post, scale: 1.12, duration: 0.9)
+                }
             }
-            // Covered sectors vanish.
+            // Covered sectors shrink away — progress reads spatially.
             for (key, anchor) in sectorPostEntities where !wanted.contains(key) {
-                anchor.removeFromParent()
                 sectorPostEntities.removeValue(forKey: key)
+                animateOutAndRemove(anchor)
             }
         }
     }
@@ -319,6 +349,49 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 arView.scene.addAnchor(anchor)
                 wallEntities.append(anchor)
             }
+        }
+    }
+
+    // MARK: - Animation helpers (iOS 17-safe: transform-bound animations —
+    // OpacityComponent and its bind targets are iOS 18+)
+
+    /// Endless gentle scale pulse (autoreversed) — "live data", not paint.
+    private func addPulse(to entity: Entity, scale: Float, duration: TimeInterval) {
+        let start = entity.transform
+        var end = start
+        end.scale = start.scale * scale
+        let animation = FromToByAnimation<Transform>(
+            name: "gcc-pulse",
+            from: start,
+            to: end,
+            duration: duration,
+            timing: .easeInOut,
+            bindTarget: .transform,
+            repeatMode: .autoReverse
+        )
+        if let resource = try? AnimationResource.generate(with: animation) {
+            entity.playAnimation(resource.repeat(), transitionDuration: 0, startsPaused: false)
+        }
+    }
+
+    /// Grow-in on spawn: entities pop from 1% scale to their real size.
+    private func animateIn(_ entity: Entity, duration: TimeInterval = 0.35) {
+        let target = entity.transform
+        var start = target
+        start.scale = SIMD3(repeating: 0.01)
+        entity.transform = start
+        entity.move(to: target, relativeTo: entity.parent, duration: duration, timingFunction: .easeOut)
+    }
+
+    /// Shrink-out then remove: reveals read as the world being "cleared".
+    private func animateOutAndRemove(_ anchor: AnchorEntity, duration: TimeInterval = 0.3) {
+        if let model = anchor.children.first {
+            var end = model.transform
+            end.scale = SIMD3(repeating: 0.01)
+            model.move(to: end, relativeTo: anchor, duration: duration, timingFunction: .easeIn)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) {
+            anchor.removeFromParent()
         }
     }
 
@@ -428,7 +501,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     private func upsertPlane(_ plane: ARPlaneAnchor) {
-        guard groundGridVisible else { return }
         let extent = SIMD2(plane.planeExtent.width, plane.planeExtent.height)
         guard extent.x >= 0.4, extent.y >= 0.4 else { return }
         // Unclassified horizontal planes count as ground (matches the Kotlin
@@ -439,6 +511,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         case .none: isFloor = true
         default: isFloor = false
         }
+        // Floor height feeds fog/walls/posts/cells in EVERY mode — track it
+        // even when the grid itself is hidden (route/spot), otherwise those
+        // entities sit at the camera-offset estimate forever.
+        if isFloor {
+            let y = plane.transform.columns.3.y + plane.center.y
+            if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
+        }
+        guard groundGridVisible else { return }
 
         if let existing = planeEntities[plane.identifier] {
             existing.model.position = plane.center
@@ -461,11 +541,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         anchor.addChild(model)
         arView.scene.addAnchor(anchor)
         planeEntities[plane.identifier] = PlaneGridEntity(anchor: anchor, model: model, isFloor: isFloor)
-
-        if isFloor {
-            let y = plane.transform.columns.3.y + plane.center.y
-            if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
-        }
         refreshGroundState()
     }
 

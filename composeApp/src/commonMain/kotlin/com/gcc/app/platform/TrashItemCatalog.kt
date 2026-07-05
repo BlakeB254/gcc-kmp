@@ -61,18 +61,20 @@ object TrashItemCatalog {
     fun canonicalType(label: String): String {
         val tokens = TrashDetectionRules.tokensOf(label)
         fun has(vararg words: String) = tokens.any { it in words }
+        // Plural forms included: the on-device analyzer emits display labels
+        // ("Tires", "Bottles") that must land on the same canonical types.
         return when {
-            has("cigarette", "butt") -> "cigarette"
-            has("bottle") -> if (has("glass")) "glass_bottle" else "plastic_bottle"
-            has("can", "tin", "aluminum") -> "can"
-            has("bag", "sack") -> "plastic_bag"
-            has("cup", "mug") -> "cup"
+            has("cigarette", "cigarettes", "butt") -> "cigarette"
+            has("bottle", "bottles") -> if (has("glass")) "glass_bottle" else "plastic_bottle"
+            has("can", "cans", "tin", "aluminum") -> "can"
+            has("bag", "bags", "sack") -> "plastic_bag"
+            has("cup", "cups", "mug") -> "cup"
             has("paper", "cardboard", "newspaper", "document") -> "paper"
-            has("wrapper", "foil", "film") -> "wrapper"
-            has("carton", "box") -> "carton"
+            has("wrapper", "wrappers", "foil", "film") -> "wrapper"
+            has("carton", "cartons", "box") -> "carton"
             has("food", "fruit", "banana", "apple") -> "food_waste"
-            has("tire", "tyre") -> "tire"
-            has("mattress") -> "mattress"
+            has("tire", "tires", "tyre", "tyres") -> "tire"
+            has("mattress", "mattresses", "furniture") -> "mattress"
             has("glass") -> "glass_bottle"
             has("plastic") -> "plastic_bottle"
             else -> FALLBACK_TYPE

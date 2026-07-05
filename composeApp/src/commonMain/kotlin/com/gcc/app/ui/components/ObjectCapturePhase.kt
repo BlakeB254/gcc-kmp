@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -46,9 +45,6 @@ fun ObjectCapturePhase(
     val progress by controller.progress.collectAsState()
     val outcome by controller.outcome.collectAsState()
 
-    LaunchedEffect(outcome) {
-        outcome?.let { onDone(it) }
-    }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         com.gcc.app.platform.ObjectCaptureHostView(
@@ -113,8 +109,50 @@ fun ObjectCapturePhase(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
             }
+            // Completed: show the measurements, offer the AR Quick Look
+            // preview (the payoff!), then attach to the report.
+            val finished = outcome
+            if (stage == ObjectCaptureStage.COMPLETED && finished != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "${(finished.widthMeters * 100).toInt()} × ${(finished.heightMeters * 100).toInt()} × " +
+                            "${(finished.depthMeters * 100).toInt()} cm · ~${finished.volumeLiters.toInt()} L",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    if (finished.usdzPath != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable { com.gcc.app.platform.presentUsdzPreview(finished.usdzPath) }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                        ) {
+                            Text("View 3D model", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(GccGreen)
+                            .clickable { onDone(finished) }
+                            .padding(horizontal = 28.dp, vertical = 16.dp),
+                    ) {
+                        Text(
+                            "Attach to report ✓",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
             val cancelLabel = when (stage) {
                 ObjectCaptureStage.RECONSTRUCTING -> null // let it finish
+                ObjectCaptureStage.COMPLETED -> null // completed panel owns the actions
                 ObjectCaptureStage.FAILED, ObjectCaptureStage.UNSUPPORTED -> "Close"
                 else -> "Cancel 3D scan"
             }

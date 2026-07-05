@@ -262,6 +262,10 @@ private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
         "paper", "carton" -> rect(u * 2f, u * 2f, Color(0xFFFde68A))
         "wrapper" -> rect(u * 1.8f, u * 1.0f, StaleAmber)
         "cigarette" -> rect(u * 0.7f, u * 2.2f, Color(0xFFE5E7EB))
+        "food_waste" -> {
+            drawCircle(color = Color(0xFF84CC16), radius = u * 1.1f, center = c)
+            drawCircle(color = outline, radius = u * 1.1f, center = c, style = stroke)
+        }
         "tire" -> {
             drawCircle(color = Color(0xFF374151), radius = u * 1.4f, center = c)
             drawCircle(color = outline, radius = u * 1.4f, center = c, style = stroke)

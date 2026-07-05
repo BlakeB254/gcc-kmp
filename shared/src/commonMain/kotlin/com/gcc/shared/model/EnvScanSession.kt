@@ -42,6 +42,9 @@ data class EnvScanManifest(
     val photoKeys: List<String>,
     /** The community report this session produced, when submission succeeded. */
     val communityReportId: Int? = null,
+    /** Guided 3D capture (measured USDZ model), when performed — rides the
+     *  durable manifest so an offline submission can't lose the 3D scan. */
+    val objectCapture: ObjectCaptureResult? = null,
     /**
      * Which lap of a block-route fulfillment this session records:
      * "baseline" (first lap, documents pre-clean state) or "clean" (post-

@@ -220,6 +220,17 @@ actual class ArEnvScanOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // Native mode has no ARSessionDelegate — mirror tracking quality on
+        // the same cadence the route/spot overlays do.
+        nativeSurface?.let { surface ->
+            sessionHealth.overrideState(
+                when (surface.trackingStateRaw()) {
+                    0 -> TrackingState.NORMAL
+                    1 -> TrackingState.LIMITED
+                    else -> TrackingState.NOT_AVAILABLE
+                }
+            )
+        }
     }
 
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
@@ -245,6 +256,7 @@ actual class ArEnvScanOverlay actual constructor() {
             placeMarker(world.first, world.second, world.third)
         }
         dispatch_async(dispatch_get_main_queue()) {
+            CameraDetectionBus.update(emptyList())
             UINotificationFeedbackGenerator().notificationOccurred(
                 UINotificationFeedbackType.UINotificationFeedbackTypeSuccess
             )
@@ -263,6 +275,7 @@ actual class ArEnvScanOverlay actual constructor() {
         pendingWorld = null
         _trashCandidate.value = null
         nearStreak = 0
+        dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
     }
 
     actual fun setElementObservedListener(

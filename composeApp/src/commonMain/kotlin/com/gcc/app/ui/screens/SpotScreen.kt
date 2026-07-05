@@ -569,7 +569,11 @@ private fun CameraPhase(
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
+        val arTracking by (arOverlay?.trackingState
+            ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
         val scanStatus = when {
+            arTracking == com.gcc.app.platform.TrackingState.LIMITED ->
+                "Hold steady — AR tracking is settling"
             trashCandidate != null -> "Item locked — confirm below"
             liveDetections.isNotEmpty() -> "Trash spotted — walk up close to identify it"
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
@@ -696,13 +700,17 @@ private fun CameraPhase(
 
         // Scanning feedback: credited zones painted onto the ground ahead
         // (spatial replacement for the old zone counter), sweep + pulse,
-        // live trash reticle, transient popups.
-        ZoneOutlineOverlay(
-            userLat = currentLocation?.lat,
-            userLng = currentLocation?.lng,
-            headingDegrees = gpsHeading,
-            cellCenters = scanCellCenters,
-        )
+        // live trash reticle, transient popups. The pinhole-projected zone
+        // overlay draws only on the non-AR fallback — the AR surface renders
+        // real world-anchored vector cells for the same information.
+        if (arOverlay == null) {
+            ZoneOutlineOverlay(
+                userLat = currentLocation?.lat,
+                userLng = currentLocation?.lng,
+                headingDegrees = gpsHeading,
+                cellCenters = scanCellCenters,
+            )
+        }
         EnvironmentScanEffects(active = !isIndoor, creditTick = creditTick)
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
