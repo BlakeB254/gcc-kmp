@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   })
 
   if (priorDirty) {
-    await db.insert(pointsLedger).values({
+    if (auth.role !== 'admin') await db.insert(pointsLedger).values({
       workerId: auth.workerId,
       action: 'scan_coverage_rectification',
       points: RECTIFICATION_BONUS_POINTS,
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     observationId: observation.id,
-    pointsAwarded: priorDirty ? RECTIFICATION_BONUS_POINTS : 0,
+    pointsAwarded: priorDirty && auth.role !== 'admin' ? RECTIFICATION_BONUS_POINTS : 0,
     wasRectification: Boolean(priorDirty),
   })
 }

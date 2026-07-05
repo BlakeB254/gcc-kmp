@@ -146,7 +146,11 @@ class DashboardViewModel(
      * previously never appeared on the mobile map at all.
      */
     private suspend fun loadUnifiedSpots(): List<CommunityReport> {
-        val reports = apiClient.getSpots(limit = 100)
+        // High limit: legacy spots must stay on the map (powering pins +
+        // heat) until a scan supersedes them — at limit=100 the OLDEST
+        // reports (exactly the legacy ones) silently fell off as new scan
+        // reports accumulated.
+        val reports = apiClient.getSpots(limit = 500)
         val scanPins = try {
             apiClient.getMapObservations()
                 // sourceType (not communityReportId) is the dedupe key: spot-report
