@@ -38,6 +38,11 @@ expect class ArRouteOverlay() {
      *  (iOS only; never invoked elsewhere). Listener is called on the main thread. */
     fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?)
 
+    /** Fires when a live-detected (CONFIRMED_TRASH) marker is placed, with its
+     *  real lat/lng (converted from AR-local coordinates) and item label.
+     *  iOS only; never invoked elsewhere. Listener is called on the main thread. */
+    fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?)
+
     /** Pause/resume frame sampling (scene votes + detections) without tearing
      *  down the ARSession — used while the OutdoorGate reads INDOOR. */
     fun setFrameAnalysisEnabled(enabled: Boolean)

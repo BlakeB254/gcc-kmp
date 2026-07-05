@@ -20,6 +20,7 @@ actual class ArRouteOverlay actual constructor() {
 
     actual val liveDetections: StateFlow<List<LiveDetection>> = MutableStateFlow(emptyList())
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {}
+    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
