@@ -57,3 +57,9 @@ expect fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
 
 /** Read a local file produced by the capture flow (USDZ upload path). */
 expect fun readLocalFileBytes(path: String): ByteArray?
+
+/**
+ * Present the system AR Quick Look preview for a local USDZ file — pinch,
+ * orbit, and place-in-room come free from the OS. No-op off-iOS.
+ */
+expect fun presentUsdzPreview(path: String)
