@@ -67,6 +67,11 @@ export async function generateInnerBoundaryFromRing(
   const query = `[out:json][timeout:20];(way["building"](${Math.min(...lats) - pad},${Math.min(...lngs) - pad},${Math.max(...lats) + pad},${Math.max(...lngs) + pad}););out geom;`
 
   const buildingSegments: Array<readonly [readonly [number, number], readonly [number, number]]> = []
+  // Full closed footprints too: every building on the map is itself an
+  // exclusion (workers must never be REQUIRED to scan the middle of a
+  // house), lightly buffered to respect fences/stoops; admins fine-tune
+  // per-parcel in the studio.
+  const buildingFootprints: number[][][] = []
   const overpass = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     headers: {
@@ -84,6 +89,13 @@ export async function generateInnerBoundaryFromRing(
     const geom = el.geometry ?? []
     for (let i = 0; i + 1 < geom.length; i++) {
       buildingSegments.push([toM([geom[i].lon, geom[i].lat]), toM([geom[i + 1].lon, geom[i + 1].lat])])
+    }
+    if (
+      geom.length >= 4 &&
+      geom[0].lat === geom[geom.length - 1].lat &&
+      geom[0].lon === geom[geom.length - 1].lon
+    ) {
+      buildingFootprints.push(geom.map((g) => [g.lon, g.lat]))
     }
   }
 
@@ -222,6 +234,25 @@ export async function generateInnerBoundaryFromRing(
 
   type Feat = ReturnType<typeof turfPolygon>
   let feats: Feat[] = []
+  // Building footprints (buffered ~1m for fence/stoop respect) join the
+  // frontage strips as exclusion candidates before clip + union.
+  const outerFeat = turfPolygon([closedOuter])
+  for (const fp of buildingFootprints) {
+    try {
+      const raw = turfPolygon([fp])
+      const inBlock = turfIntersect(featureCollection([raw, outerFeat]))
+      if (!inBlock) continue
+      const buffered = turfBuffer(raw, 1.0, { units: 'meters' })
+      if (!buffered) continue
+      if (buffered.geometry.type === 'Polygon') {
+        islands.push(buffered.geometry.coordinates as number[][][])
+      } else {
+        for (const poly of buffered.geometry.coordinates) islands.push(poly as number[][][])
+      }
+    } catch {
+      // skip malformed footprints
+    }
+  }
   for (const island of islands) {
     let feat: Feat
     try {
