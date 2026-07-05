@@ -52,6 +52,8 @@ actual class SpotArOverlay actual constructor() {
     }
 
     private var sceneView: ARSCNView? = null
+    /** Native RealityKit render surface — when set, SceneKit paths are inert. */
+    private var nativeSurface: ArNativeSurface? = null
     private val sectorNodes = mutableMapOf<Int, SCNNode>()
     private var arrowNode: SCNNode? = null
     private var guideTarget: SCNNode? = null
@@ -59,7 +61,7 @@ actual class SpotArOverlay actual constructor() {
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
-    private val frameFeedback = ArFrameFeedback({ sceneView })
+    private val frameFeedback = ArFrameFeedback({ sceneView }, { nativeSurface })
     actual val liveDetections: StateFlow<List<LiveDetection>> = frameFeedback.liveDetections
 
     private var hasItem = false
@@ -85,12 +87,21 @@ actual class SpotArOverlay actual constructor() {
         frameFeedback.start()
     }
 
+    /** Native RealityKit surface binding — same shape as ArRouteOverlay. */
+    fun bindNative(surface: ArNativeSurface) {
+        nativeSurface = surface
+        surface.setGroundGridVisible(false) // spot mode: posts + markers only
+        frameFeedback.start()
+        DiagnosticsLog.info("ar-spot", "RealityKit native spot surface started")
+    }
+
     actual fun start() {
         // Session start is driven by `bind`, called from the Compose UIKitView factory.
     }
 
     actual fun stop() {
         frameFeedback.stop()
+        nativeSurface?.pause()
         sceneView?.session?.pause()
     }
 
@@ -128,6 +139,16 @@ actual class SpotArOverlay actual constructor() {
         refZ = position[2]
         lngScale = cos(lat * PI / 180.0)
         hasGeoRef = true
+        // Native mode has no ARSessionDelegate — mirror tracking quality.
+        nativeSurface?.let { surface ->
+            sessionHealth.overrideState(
+                when (surface.trackingStateRaw()) {
+                    0 -> TrackingState.NORMAL
+                    1 -> TrackingState.LIMITED
+                    else -> TrackingState.NOT_AVAILABLE
+                }
+            )
+        }
     }
 
     /**
@@ -136,8 +157,35 @@ actual class SpotArOverlay actual constructor() {
      * Also retargets the guidance arrow at the nearest uncovered marker.
      */
     actual fun updateCoverage(coveredSectors: Set<Int>, uncoveredBearings: List<Double>) {
-        val scene = sceneView?.scene ?: return
         if (!hasGeoRef || !hasItem) return
+        nativeSurface?.let { surface ->
+            // Native mode: ship post positions; the surface owns rendering
+            // and reveal-by-omission. Arrow reuses the guidance-target API.
+            val itemLocal = latLngToLocal(itemLat, itemLng)
+            val flat = ArrayList<Double>(uncoveredBearings.size * 2)
+            var nearestDistSq = Double.MAX_VALUE
+            var nearest: Pair<Double, Double>? = null
+            for (bearing in uncoveredBearings) {
+                val rad = bearing * PI / 180.0
+                val x = itemLocal.first + MARKER_RING_RADIUS_METERS * sin(rad)
+                val z = itemLocal.second - MARKER_RING_RADIUS_METERS * cos(rad)
+                flat.add(x)
+                flat.add(z)
+                val dx = x - refX.toDouble()
+                val dz = z - refZ.toDouble()
+                val distSq = dx * dx + dz * dz
+                if (distSq < nearestDistSq) {
+                    nearestDistSq = distSq
+                    nearest = x to z
+                }
+            }
+            surface.updateSectorPosts(flat)
+            val target = nearest
+            if (target != null) surface.setGuidanceTarget(target.first, target.second)
+            else surface.clearGuidanceTarget()
+            return
+        }
+        val scene = sceneView?.scene ?: return
 
         val sectorWidth = 360.0 / ObjectCoverageTracker.SECTOR_COUNT
         val uncoveredSectors = uncoveredBearings
@@ -274,9 +322,18 @@ actual class SpotArOverlay actual constructor() {
 actual fun SpotArOverlayView(overlay: SpotArOverlay, modifier: Modifier) {
     UIKitView(
         factory = {
-            val view = ARSCNView()
-            overlay.bind(view)
-            view
+            // Native RealityKit surface when registered; SceneKit fallback on
+            // any failure (same kill switch as the other AR surfaces).
+            val nativeView = try {
+                ArNativeRegistry.surfaceFactory?.invoke()?.let { surface ->
+                    overlay.bindNative(surface)
+                    surface.view()
+                }
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("ar-spot", "native AR surface failed — SceneKit fallback", e)
+                null
+            }
+            nativeView ?: ARSCNView().also { overlay.bind(it) }
         },
         modifier = modifier,
         onRelease = {

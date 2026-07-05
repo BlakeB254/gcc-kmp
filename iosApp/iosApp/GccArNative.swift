@@ -30,6 +30,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var planeEntities: [UUID: PlaneGridEntity] = [:]
     private var vectorCellEntities: [String: AnchorEntity] = [:]
     private var fogCellEntities: [String: AnchorEntity] = [:]
+    private var sectorPostEntities: [String: AnchorEntity] = [:]
     private var wallEntities: [AnchorEntity] = []
     private var floorWorldY: Float?
     private var groundLive = false
@@ -229,6 +230,36 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             for (key, anchor) in fogCellEntities where !wanted.contains(key) {
                 anchor.removeFromParent()
                 fogCellEntities.removeValue(forKey: key)
+            }
+        }
+    }
+
+    func updateSectorPosts(flatXZ: [KotlinDouble]) {
+        DispatchQueue.main.async { [self] in
+            let groundY = (floorWorldY ?? cameraFallbackGroundY())
+            var wanted = Set<String>()
+            var index = 0
+            while index + 1 < flatXZ.count {
+                let x = Float(truncating: flatXZ[index])
+                let z = Float(truncating: flatXZ[index + 1])
+                index += 2
+                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
+                wanted.insert(key)
+                if sectorPostEntities[key] != nil { continue }
+                // Thin emissive pillar (cylinder mesh is iOS 18+).
+                let anchor = AnchorEntity(world: SIMD3(x, groundY + 0.25, z))
+                let post = ModelEntity(
+                    mesh: .generateBox(size: SIMD3(0.06, 0.5, 0.06)),
+                    materials: [UnlitMaterial(color: UIColor.orange.withAlphaComponent(0.9))]
+                )
+                anchor.addChild(post)
+                arView.scene.addAnchor(anchor)
+                sectorPostEntities[key] = anchor
+            }
+            // Covered sectors vanish.
+            for (key, anchor) in sectorPostEntities where !wanted.contains(key) {
+                anchor.removeFromParent()
+                sectorPostEntities.removeValue(forKey: key)
             }
         }
     }
