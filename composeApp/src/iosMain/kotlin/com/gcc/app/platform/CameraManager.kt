@@ -238,6 +238,13 @@ actual class CameraManager actual constructor() {
      * metadata is photo-output-only and intentionally traded for silence).
      */
     actual suspend fun captureFrame(): CapturedPhoto? {
+        // ARKit env-scan surface active: frames come from the ARSession.
+        externalFrameSource?.let { source ->
+            val photo = source()
+            if (photo != null) return photo
+            DiagnosticsLog.error("camera", "AR frame source returned null — no AVCapture fallback while ARSession owns the camera")
+            return null
+        }
         val delegate = activeSceneDelegate as? SceneSampleDelegate ?: return capturePhoto()
         val deferred = delegate.requestFrameCapture()
         // Video frames arrive at ~30fps; 2s covers session warm-up hiccups.
@@ -419,6 +426,13 @@ actual class CameraManager actual constructor() {
         internal var activeSession: AVCaptureSession? = null
         /** Strong ref — AVCaptureVideoDataOutput holds its delegate weakly. */
         internal var activeSceneDelegate: Any? = null
+        /**
+         * When the environment scan runs on the ARKit surface there is no
+         * AVCapture session (ARSession owns the camera) — the AR overlay
+         * registers itself here so [captureFrame] pulls from the AR feed
+         * instead of falling through to the modal picker.
+         */
+        internal var externalFrameSource: (suspend () -> CapturedPhoto?)? = null
         internal var hasDepthCapability: Boolean = false
         internal var sessionId: String = platform.Foundation.NSUUID().UUIDString()
         internal var captureCount: Int = 0
@@ -761,34 +775,42 @@ private class SceneSampleDelegate :
             CameraDetectionBus.update(listOfNotNull(result.detection))
         }
     }
-    /** CVPixelBuffer → portrait JPEG CapturedPhoto (no depth; silent path). */
-    private fun pixelBufferToPhoto(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): CapturedPhoto? {
-        return try {
-            val cgImage = memScoped {
-                val out = alloc<CGImageRefVar>()
-                val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
-                if (status != 0) null else out.value
-            } ?: return null
-            // Sensor frames are landscape-right; rotate for the portrait UI.
-            val image = UIImage.imageWithCGImage(
-                cgImage,
-                scale = 1.0,
-                orientation = UIImageOrientation.UIImageOrientationRight,
-            )
-            val jpeg = UIImageJPEGRepresentation(image, 0.85)
-            CGImageRelease(cgImage)
-            val bytes = jpeg?.bytes?.readBytes(jpeg.length.toInt()) ?: return null
-            CapturedPhoto(
-                bytes = bytes,
-                width = CVPixelBufferGetHeight(pixelBuffer).toInt(),
-                height = CVPixelBufferGetWidth(pixelBuffer).toInt(),
-                depthAnalysis = null,
-                attestation = null,
-            )
-        } catch (e: Throwable) {
-            DiagnosticsLog.error("camera", "frame → JPEG conversion failed", e)
-            null
-        }
+    private fun pixelBufferToPhoto(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): CapturedPhoto? =
+        cvPixelBufferToPortraitPhoto(pixelBuffer)
+}
+
+/**
+ * CVPixelBuffer → portrait JPEG CapturedPhoto (no depth; silent path).
+ * Shared by the AVCapture video tap and the ARKit env-scan surface — both
+ * feeds are landscape-right sensor frames.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun cvPixelBufferToPortraitPhoto(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): CapturedPhoto? {
+    return try {
+        val cgImage = memScoped {
+            val out = alloc<CGImageRefVar>()
+            val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
+            if (status != 0) null else out.value
+        } ?: return null
+        // Sensor frames are landscape-right; rotate for the portrait UI.
+        val image = UIImage.imageWithCGImage(
+            cgImage,
+            scale = 1.0,
+            orientation = UIImageOrientation.UIImageOrientationRight,
+        )
+        val jpeg = UIImageJPEGRepresentation(image, 0.85)
+        CGImageRelease(cgImage)
+        val bytes = jpeg?.bytes?.readBytes(jpeg.length.toInt()) ?: return null
+        CapturedPhoto(
+            bytes = bytes,
+            width = CVPixelBufferGetHeight(pixelBuffer).toInt(),
+            height = CVPixelBufferGetWidth(pixelBuffer).toInt(),
+            depthAnalysis = null,
+            attestation = null,
+        )
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("camera", "frame → JPEG conversion failed", e)
+        null
     }
 }
 

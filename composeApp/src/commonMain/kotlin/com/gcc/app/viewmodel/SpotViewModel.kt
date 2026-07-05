@@ -249,6 +249,10 @@ class SpotViewModel(
     /** The session snapshot travelling with the next successful submission. */
     private var pendingSessionDraft: EnvScanSessionDraft? = null
 
+    /** Session ids whose manifest already shipped — a submit retry after a
+     *  409/failure archive must not double-archive the same session. */
+    private val archivedSessionIds = mutableSetOf<String>()
+
     fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
@@ -265,7 +269,8 @@ class SpotViewModel(
      * tagged items. Fire-and-forget after the report submits — a 501 means R2
      * env vars aren't provisioned yet, which is expected and only logged.
      */
-    private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int) {
+    private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int?) {
+        if (!archivedSessionIds.add(draft.sessionId)) return
         val state = _uiState.value
         scope.launch {
             try {
@@ -462,6 +467,13 @@ class SpotViewModel(
                 }
                 if (response.status.value == 409) {
                     DiagnosticsLog.error("spot-submit", "server 409: duplicate spot within 15m")
+                    // The REPORT is a duplicate but the SCAN still happened:
+                    // archive the session bundle (GPS/heading/timestamp track,
+                    // cells, items) so no completed scan ever vanishes.
+                    pendingSessionDraft?.let { draft ->
+                        pendingSessionDraft = null
+                        uploadEnvScanSession(draft, reportId = null)
+                    }
                     // World-scan model: failures land back on the camera, not
                     // the legacy manual-details forms.
                     _uiState.value = _uiState.value.copy(
@@ -498,6 +510,12 @@ class SpotViewModel(
                 }
             } catch (e: Exception) {
                 DiagnosticsLog.error("spot-submit", "report submission failed", e)
+                // Archive the scan bundle even though the report failed — the
+                // uploader's persistent queue makes it durable offline, so the
+                // session (geo/heading/timestamps) reaches the backend either
+                // way. A retry that later succeeds skips the re-archive via
+                // archivedSessionIds.
+                pendingSessionDraft?.let { draft -> uploadEnvScanSession(draft, reportId = null) }
                 // Back to the camera with the error surfaced as a popup —
                 // Complete Scan can simply be tapped again.
                 _uiState.value = _uiState.value.copy(

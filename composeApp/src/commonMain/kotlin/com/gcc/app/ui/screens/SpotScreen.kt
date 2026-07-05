@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.ui.components.GccLogo
+import com.gcc.app.platform.ArEnvScanOverlay
+import com.gcc.app.platform.TrashCandidate
+import com.gcc.app.platform.arEnvScanSupported
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
@@ -45,6 +48,7 @@ import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.ui.components.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.datetime.Clock
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
@@ -261,6 +265,23 @@ private fun CameraPhase(
         ?: currentLocation
         ?: Coordinates(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
 
+    // ARKit environment-scan surface (ground grid + vector-scan overlay +
+    // trash lock-on). Null on unsupported hardware → AVCapture viewfinder.
+    val arOverlay = remember { if (isScanMode && arEnvScanSupported()) ArEnvScanOverlay() else null }
+    val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
+    val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
+    // Gate pauses AR frame analysis indoors (same behavior the route AR has),
+    // and geo-references pair every GPS fix with the AR camera position.
+    LaunchedEffect(arOverlay) {
+        if (arOverlay == null) return@LaunchedEffect
+        locationProvider.locationFlow.collect { loc ->
+            arOverlay.updateGeoReference(loc.lat, loc.lng)
+        }
+    }
+    DisposableEffect(arOverlay) {
+        onDispose { arOverlay?.stop() }
+    }
+
     // "Go outside" gate — GPS-accuracy evidence only here (the AVCapture
     // viewfinder has no frame stream to classify; AR mode adds camera votes).
     val gate = remember { OutdoorGate() }
@@ -300,6 +321,7 @@ private fun CameraPhase(
     }
     LaunchedEffect(outdoorState) {
         DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
+        arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
     }
 
     // ── Environment-scan session: coverage credit + minimap layers ──
@@ -460,8 +482,27 @@ private fun CameraPhase(
     val scanCellCenters = remember(scannedCells) {
         scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
+    // Vector-scan effect: credited cells render as "digitized" ground quads
+    // in the AR camera view, mirroring the minimap fill.
+    LaunchedEffect(scanCellCenters) {
+        arOverlay?.updateScannedCells(scanCellCenters)
+    }
     val trashItems = remember(observedItems) {
         observedItems.map { Coordinates(lat = it.lat, lng = it.lng) }
+    }
+    // Minimap glyphs: this session's confirmed items PLUS the world model's
+    // known litter nearby — previously scanned trash persists on the minimap
+    // as what it IS (bottle/can/bag glyph), not an anonymous dot. Items the
+    // user resolves ("Already clean") drop out with expectedDirty.
+    val typedMinimapItems = remember(observedItems, expectedDirty) {
+        observedItems + expectedDirty.map { obs ->
+            ObservedSpotItem(
+                lat = obs.lat,
+                lng = obs.lng,
+                itemType = obs.itemType ?: "other",
+                severity = obs.severity,
+            )
+        }
     }
 
     // Live viewfinder trash reticle (frame tap on the AVCapture stream).
@@ -483,7 +524,9 @@ private fun CameraPhase(
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
         val scanStatus = when {
-            liveDetections.isNotEmpty() -> "Trash spotted — move closer and tap to tag it"
+            trashCandidate != null -> "Item locked — confirm below"
+            liveDetections.isNotEmpty() -> "Trash spotted — walk up close to identify it"
+            arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
             else -> "Environment scan active — sweep the camera slowly"
         }
         if (isScanMode) {
@@ -501,8 +544,10 @@ private fun CameraPhase(
                 onTrashObserved = onTrashObserved,
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
+                typedTrashItems = typedMinimapItems,
                 environmentScanMode = true,
                 statusText = scanStatus,
+                arOverlay = arOverlay,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -526,6 +571,7 @@ private fun CameraPhase(
                 gpsHeading = gpsHeading,
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
+                typedTrashItems = typedMinimapItems,
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
@@ -615,28 +661,45 @@ private fun CameraPhase(
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
+        // Close-range confirm card: a locked candidate with type + LiDAR
+        // size/weight estimates awaits Confirm / Not trash (above the
+        // Complete pill, below the rectify sheet's band).
+        trashCandidate?.let { candidate ->
+            TrashConfirmCard(
+                candidate = candidate,
+                onConfirm = { selectedType ->
+                    val final = arOverlay?.confirmCandidate(selectedType)
+                    if (final != null) {
+                        onTrashObserved(
+                            ObservedSpotItem(
+                                lat = final.lat,
+                                lng = final.lng,
+                                itemType = final.itemType,
+                                severity = null,
+                                confidence = final.confidence,
+                                estimatedWeightGrams = final.estimatedWeightGrams,
+                                estimatedWidthMeters = final.estimatedWidthMeters,
+                            )
+                        )
+                    }
+                },
+                onDismiss = { arOverlay?.dismissCandidate() },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 104.dp, start = 16.dp, end = 16.dp),
+            )
+        }
+
         // Indoors in a residence: nothing scans, nothing submits (capture,
         // coverage, tagging all gate-suppressed) — offer Close Scan instead.
         GoOutsideOverlay(visible = isIndoor, onCloseScan = onBack)
 
-        // Exit (top-left) — the camera phase has no header bar.
-        TextButton(
-            onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(4.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("✕", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
-            }
-        }
+        // No top-left ✕ here by design: once an environment scan session is
+        // running, the bottom Complete Scan pill is the only way out — every
+        // finished scan submits, none are silently abandoned. (Indoors the
+        // GoOutsideOverlay above still offers Close Scan, since nothing can
+        // scan or submit from inside.)
 
         // Primary action: Complete Scan, bottom-center (the Pokéball spot).
         val canComplete = photos.isNotEmpty() && !isIndoor

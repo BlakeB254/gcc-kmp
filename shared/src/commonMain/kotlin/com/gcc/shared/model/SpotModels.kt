@@ -32,6 +32,10 @@ data class ObservedSpotItem(
     val itemType: String,
     val severity: Int? = null,
     val confidence: Float? = null,
+    /** Estimated mass in grams (type-typical mass scaled by LiDAR-measured size). */
+    val estimatedWeightGrams: Int? = null,
+    /** Physical width measured from LiDAR depth + bounding-box angular size. */
+    val estimatedWidthMeters: Double? = null,
 )
 
 @kotlinx.serialization.Serializable

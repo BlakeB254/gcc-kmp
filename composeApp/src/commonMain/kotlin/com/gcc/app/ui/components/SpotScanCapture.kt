@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DiagnosticsLog
@@ -56,8 +57,12 @@ fun SpotScanCapture(
     scanCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Pass-through minimap trash markers. */
     trashItems: List<Coordinates> = emptyList(),
+    /** Typed pass-through — per-type minimap glyphs. */
+    typedTrashItems: List<ObservedSpotItem> = emptyList(),
     environmentScanMode: Boolean = false,
     statusText: String? = null,
+    /** ARKit env-scan surface, passed through to the viewfinder. */
+    arOverlay: ArEnvScanOverlay? = null,
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -201,8 +206,10 @@ fun SpotScanCapture(
             cameraManager = cameraManager,
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,
+            typedTrashItems = typedTrashItems,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
+            arOverlay = arOverlay,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -224,7 +231,6 @@ fun SpotScanCapture(
                 .padding(top = 8.dp, end = 8.dp),
         )
 
-    var captureIndex by remember { mutableStateOf(0) }
     }
 }
 
