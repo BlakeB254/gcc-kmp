@@ -190,6 +190,10 @@ class RouteScanViewModel(
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
     fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
+        if (!lat.isFinite() || !lng.isFinite() || label.isBlank()) {
+            DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
+            return
+        }
         scope.launch {
             arMarkerQueue.enqueue(
                 ArDetectedMarkerRequest(

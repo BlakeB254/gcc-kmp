@@ -103,8 +103,14 @@ actual class ArRouteOverlay actual constructor() {
 
     actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {
         frameFeedback.markerPlacedListener = if (listener == null) null else { x, _, z, label ->
-            val (lat, lng) = localToLatLng(x, z)
-            listener(lat, lng, label)
+            if (hasGeoRef) {
+                val (lat, lng) = localToLatLng(x, z)
+                listener(lat, lng, label)
+            }
+            // else: no geo reference yet (GPS hasn't paired with the AR camera).
+            // Silently drop this promotion event rather than persist garbage
+            // coordinates — the marker still renders locally in the AR scene
+            // (that path is unaffected); only server persistence is skipped.
         }
     }
 
