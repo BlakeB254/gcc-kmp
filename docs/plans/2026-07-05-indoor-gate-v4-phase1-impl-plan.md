@@ -550,123 +550,113 @@ git commit -m "Ceiling-plane cue: ARKit plane classification feeds the gate on a
 
 ---
 
-### Task 4: First-frame verdict + adaptive cadence + labels-only INDOOR loop (iosMain)
+### Task 4 (REVISED — Swift-first sensing): Swift Vision classification + first-frame verdict + adaptive cadence + labels-only INDOOR loop
+
+> **Amendment 2026-07-05 (Blake):** the majority of platform sensing work must live in native Swift, not Kotlin/cinterop. Scene classification on the native-surface path now runs IN SWIFT; Kotlin keeps only policy (cadence choice, vote scoring via shared TrashDetectionRules, gate fusion). The SceneKit/AVCapture fallbacks keep their existing Kotlin Vision path as legacy.
 
 **Files:**
-- Modify: `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArEnvScan.kt`
+- Modify: `iosApp/iosApp/GccArNative.swift` (Swift Vision classification)
+- Modify: `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArNativeSurface.kt`
 - Modify: `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArFrameFeedback.kt`
+- Modify: `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArEnvScan.kt`
 - Modify: `composeApp/src/iosMain/kotlin/com/gcc/app/platform/CameraManager.kt`
+- Modify: the three overlay expect declarations + Android AND desktop no-op actuals (locations already known from Task 3: grep `expect class ArEnvScanOverlay` / `SpotArOverlay` / `ArRouteOverlay` in commonMain; actuals in androidMain and desktopMain)
 
 **Interfaces:**
-- Produces: `var fastSceneVotes: Boolean` on `ArFrameFeedback`; `CameraManager.sceneVoteFastMode: Boolean` (companion-level); overlays gain expect/actual `setSceneVoteCadence(fast: Boolean)` delegating to these. Task 5 wires screens to call `setSceneVoteCadence(outdoorState != OutdoorState.OUTDOOR)`.
-- Changed semantics: `setFrameAnalysisEnabled(false)` / `setEnabled(false)` now mean "detection off, scene votes continue at 2s cadence" — the labels-only recovery loop. No frame ever persists on that path (votes are enum values).
+- Consumes: `TrashDetectionRules.sceneVoteFrom(List<ClassificationObservation>)` (Task 2), `SceneVote`, existing `sceneVoteListener` plumbing, `ArNativeSurface.ceilingDetected()` (Task 3).
+- Produces (Task 5 relies on these):
+  - `ArNativeSurface.classifySceneLabels(): List<String>` — each entry `"identifier|confidence"` (e.g. `"living_room|0.83"`), top 15 by confidence, empty list when no frame or Vision error. Runs `VNClassifyImageRequest` IN SWIFT on the frameLock'd `lastFrame`.
+  - `fun setSceneVoteCadence(fast: Boolean)` expect member on all three overlays (iOS actuals set the flags below; Android/desktop no-ops).
+  - `ArFrameFeedback.fastSceneVotes: Boolean` (default true), same-named var on `ArEnvScanOverlay` iOS actual.
+  - `CameraManager.sceneVoteFastMode: Boolean` (companion var, default true).
 
-- [ ] **Step 1: Rework the `ArFrameFeedback` loop.** Replace the companion constants and `start()`/`analyzeTick()` gating:
+- [ ] **Step 1: Swift classification.** In `GccArNative.swift` (add `import Vision` at the top if absent), inside `RealityKitArSurface` next to `ceilingDetected()`:
 
-```kotlin
-    companion object {
-        private const val TICK_MS = 1_000L
-        private const val FAST_TICK_MS = 750L
-        private const val ERROR_BACKOFF_MS = 3_000L
-        private const val SCENE_VOTE_EVERY_TICKS = 2
-        private const val DISABLED_VOTE_EVERY_TICKS = 2   // labels-only cadence while blocked (~2s)
-        private const val MARKER_DEDUPE_METERS = 3.0
+```swift
+    func classifySceneLabels() -> [String] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+        let request = VNClassifyImageRequest()
+        let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, options: [:])
+        guard (try? handler.perform([request])) != nil, let results = request.results else { return [] }
+        return results
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(15)
+            .map { "\($0.identifier)|\($0.confidence)" }
     }
-
-    /** While the gate is not yet OUTDOOR: tick faster and vote every tick. */
-    var fastSceneVotes: Boolean = true
 ```
 
-`start()` — first analysis happens immediately (first-frame verdict), delay moves to the end:
+And the matching member on the Kotlin `ArNativeSurface` interface:
 
 ```kotlin
-    fun start() {
-        if (job != null) return
+    /** Swift-side Vision scene classification of the current frame — top-15
+     *  "identifier|confidence" entries, empty when no frame. Native path only;
+     *  keeps ALL Vision work in Swift (Kotlin applies the shared scoring). */
+    fun classifySceneLabels(): List<String>
+```
+
+Add a shared parser in `ArNativeSurface.kt` (file-level, next to the existing `pixelBufferOrNull` helper):
+
+```kotlin
+internal fun parseSceneLabels(entries: List<String>): List<ClassificationObservation> =
+    entries.mapNotNull { entry ->
+        val i = entry.lastIndexOf('|')
+        if (i <= 0) return@mapNotNull null
+        val confidence = entry.substring(i + 1).toFloatOrNull() ?: return@mapNotNull null
+        ClassificationObservation(entry.substring(0, i), confidence)
+    }
+```
+
+- [ ] **Step 2: Native path consumes Swift labels.** In BOTH `ArFrameFeedback.analyzeTick()` and `ArEnvScan.analyzeTick()`: when `native != null`, do NOT run Kotlin `VNClassifyImageRequest` on the pixel buffer. Instead: `val commonObs = parseSceneLabels(native.classifySceneLabels())`; scene vote = `TrashDetectionRules.sceneVoteFrom(commonObs)` (ArEnvScan emits to `CameraSceneVoteBus`, ArFrameFeedback to its `sceneVoteListener` — unchanged listeners); trash label = `TrashDetectionRules.trashLabelFrom(commonObs)`. Kotlin-side saliency (`VNGenerateObjectnessBasedSaliencyImageRequest` on the pixel buffer) runs ONLY when a trash label was found AND analysis is enabled — restructure so classification no longer requires pulling the pixel buffer at all on the native path. The SceneKit branch (`native == null`) keeps the existing combined Kotlin classify+saliency pass, but where it maps to common observations, route BOTH vote and trash decisions through the same `TrashDetectionRules` calls (they already do — keep behavior identical). ArEnvScan's `analyzeTrash`/element helpers may need their parameter type changed from `List<VNClassificationObservation>` to `List<ClassificationObservation>` with the SceneKit branch converting at the call site — that conversion (`.map { ClassificationObservation(it.identifier, it.confidence) }`) already exists in the current code; hoist it.
+
+- [ ] **Step 3: First-frame verdict + adaptive tick.** In both loops (`ArFrameFeedback.start()`, `ArEnvScan.startLoop()`): analyze FIRST, delay after —
+
+```kotlin
         job = scope.launch {
             while (true) {
-                val backoff = try {
-                    analyzeTick()
-                } catch (e: Throwable) {
-                    DiagnosticsLog.error("ar-vision", "frame analysis tick failed (backing off)", e)
+                val backoff = try { analyzeTick() } catch (e: Throwable) {
+                    DiagnosticsLog.error(TAG, "frame analysis tick failed (backing off)", e)
                     true
                 }
                 delay(if (backoff) ERROR_BACKOFF_MS else if (fastSceneVotes) FAST_TICK_MS else TICK_MS)
             }
         }
-    }
 ```
 
-In `analyzeTick()`, replace the early `if (!enabled) continue` behavior (it lived in the loop; now handle inside): after obtaining `observations`, vote on the right cadence, and skip detection work when disabled:
+(`ArFrameFeedback.start()` keeps its `if (!enabled) { emitCeilingCue(); continue }` behavior from the Task 3 fix — fold it into the loop so ceiling cue + labels-only votes still run while disabled, see Step 4.) Constants both files: `FAST_TICK_MS = 750L`, `DISABLED_VOTE_EVERY_TICKS = 2`, keep `TICK_MS = 1_000L`, `SCENE_VOTE_EVERY_TICKS = 2`.
+
+- [ ] **Step 4: Labels-only loop while blocked.** Semantics change for `setEnabled(false)` / `setFrameAnalysisEnabled(false)`: scene votes CONTINUE (at `DISABLED_VOTE_EVERY_TICKS` cadence, i.e. ~2s; or every tick in fastSceneVotes mode), ceiling cue continues, but NO saliency, NO trash/element detection, NO marker placement, NO frame persistence. Vote cadence selector in both analyzeTick()s:
 
 ```kotlin
         val voteDue = if (fastSceneVotes) true
             else if (!enabled) tick % DISABLED_VOTE_EVERY_TICKS == 0
             else tick % SCENE_VOTE_EVERY_TICKS == 0
-        if (voteDue) emitSceneVote(observations)
-        if (!enabled) return false   // labels-only: no saliency/trash/markers while blocked
 ```
 
-Also remove the old `if (!enabled) continue` from the loop in `start()` (votes must flow while disabled), and in `setEnabled(false)` keep clearing `_liveDetections`. Move the `VNGenerateObjectnessBasedSaliencyImageRequest` so it only runs when `enabled` (saliency is the expensive half; classify-only while blocked):
+(`ArEnvScan` uses `analysisEnabled` for `enabled`.) Keep ArEnvScan's thermal guard ABOVE all Vision work — thermal shedding still wins over gate reactivity; on the native path the thermal guard also skips `classifySceneLabels()`.
 
-```kotlin
-        val classifyRequest = VNClassifyImageRequest()
-        val requests: List<VNRequest> = if (enabled) {
-            listOf(classifyRequest, VNGenerateObjectnessBasedSaliencyImageRequest())
-        } else listOf(classifyRequest)
-        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
-        handler.performRequests(requests, error = null)
-```
+- [ ] **Step 5: AVCapture fallback cadence.** In `CameraManager.kt`: `private const val SCENE_SAMPLE_FAST_INTERVAL_MS = 750L`; companion `var sceneVoteFastMode: Boolean = true`; in `SceneSampleDelegate`'s throttle: `val interval = if (CameraManager.sceneVoteFastMode) SCENE_SAMPLE_FAST_INTERVAL_MS else SCENE_SAMPLE_INTERVAL_MS`. Confirm `lastSampleAtMs` starts at 0 (first frame classifies immediately).
 
-(Keep a reference to the saliency request when built — the trash path below reads it. Import `platform.Vision.VNRequest`.)
+- [ ] **Step 6: Cadence control expects.** `fun setSceneVoteCadence(fast: Boolean)` on all three overlay expects; iOS actuals set `frameFeedback.fastSceneVotes = fast` (Spot/Route) and the ArEnvScan var; Android + desktop actuals no-op.
 
-- [ ] **Step 2: Same treatment in `ArEnvScan.kt`:** add `var fastSceneVotes = true` + `FAST_TICK_MS = 750L` + `DISABLED_VOTE_EVERY_TICKS = 2` to its companion, make `startLoop()` analyze-then-delay with the fast/normal choice, and in `analyzeTick()` replace `if (!analysisEnabled) return false` with the vote-then-skip-detection pattern:
-
-```kotlin
-        val voteDue = if (fastSceneVotes) true
-            else if (!analysisEnabled) tick % DISABLED_VOTE_EVERY_TICKS == 0
-            else tick % SCENE_VOTE_EVERY_TICKS == 0
-        // ... run classify (skip saliency when !analysisEnabled), then:
-        if (voteDue) {
-            val vote = SceneVoteVision.voteFrom(observations)
-            dispatch_async(dispatch_get_main_queue()) { CameraSceneVoteBus.emit(vote) }
-        }
-        if (!analysisEnabled) return false
-        analyzeTrash(frame, observations, saliencyRequest)
-```
-
-IMPORTANT: keep the thermal guard (`thermal >= 2L → return true`) ABOVE all Vision work — thermal shedding beats gate reactivity.
-
-- [ ] **Step 3: AVCapture path.** In `CameraManager.kt`, `SceneSampleDelegate`: change the throttle to read a settable companion flag:
-
-```kotlin
-private const val SCENE_SAMPLE_INTERVAL_MS = 1_500L
-private const val SCENE_SAMPLE_FAST_INTERVAL_MS = 750L
-```
-
-In `CameraManager`'s companion add: `var sceneVoteFastMode: Boolean = true`. In the delegate's throttle check use:
-
-```kotlin
-        val interval = if (CameraManager.sceneVoteFastMode) SCENE_SAMPLE_FAST_INTERVAL_MS else SCENE_SAMPLE_INTERVAL_MS
-        if (nowMs - lastSampleAtMs < interval) return
-```
-
-(Confirm `lastSampleAtMs` starts at 0 so the first frame processes immediately — it does; if not, initialize it to 0.)
-
-- [ ] **Step 4: Expose cadence control on the overlays.** Add expect member to all three overlays: `fun setSceneVoteCadence(fast: Boolean)`; iOS actuals set `frameFeedback.fastSceneVotes = fast` / `fastSceneVotes = fast`; Android actuals no-op.
-
-- [ ] **Step 5: Verify**
-
-Run: `./gradlew :composeApp:desktopTest 2>&1 | tail -5` → PASS.
-Run: `./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 2>&1 | tail -5` → BUILD SUCCESSFUL.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Verify**
 
 ```bash
-git add -A composeApp/src
-git commit -m "First-frame verdict, 750ms adaptive cadence, labels-only vote loop while blocked"
+./gradlew :composeApp:desktopTest 2>&1 | tail -3                        # expect BUILD SUCCESSFUL
+./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 2>&1 | tail -3 # expect BUILD SUCCESSFUL
+cd iosApp && xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' build 2>&1 | tail -3  # expect BUILD SUCCEEDED
 ```
 
----
+If xcodebuild reports a stale-framework symptom, `rm -rf composeApp/build/xcode-frameworks` and re-run the link step first.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A composeApp/src iosApp/iosApp/GccArNative.swift
+git commit -m "Swift-first scene sensing: Vision classification in GccArNative, first-frame verdict, 750ms adaptive cadence, labels-only vote loop"
+```
 
 ### Task 5: captureAllowed plumbing + UNCERTAIN chip on all three surfaces
 

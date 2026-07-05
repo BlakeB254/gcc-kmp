@@ -23,6 +23,8 @@ Field testing (builds 113–118) shows the outdoor gate is simultaneously too sl
 - All three scan surfaces behave identically.
 - Two PRs: Phase 1 (gate v4, client-only) then Phase 2 (real building footprints).
 
+> **Amendment (2026-07-05, Blake, mid-implementation):** platform sensing must be Swift-first. On the native RealityKit surface, Vision scene classification and plane-classification reads run in Swift (`GccArNative.swift`) and cross the bridge as raw label/confidence packets; Kotlin keeps only policy — the shared `TrashDetectionRules` scoring (preserving the iOS/Android threshold-drift guarantee), cadence selection, and the `OutdoorGate` fusion state machine with its commonTest suite. The SceneKit/AVCapture fallback paths keep their existing Kotlin Vision pipeline as legacy.
+
 ## Phase 1 — Gate v4 (client-only PR)
 
 ### OutdoorGate changes (`composeApp/commonMain/.../platform/OutdoorGate.kt`, stays pure/testable)
