@@ -1,7 +1,5 @@
 package com.gcc.app.platform
 
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.min
 
@@ -25,12 +23,18 @@ class SessionPointsEstimator {
 
         /**
          * Server-equivalent ~10m grid cell for spot mode, where no session
-         * CoverageTracker grid exists. Matches `gridCell` in
-         * `site/src/lib/world-observations.ts`.
+         * CoverageTracker grid exists. MUST stay byte-for-byte equal to
+         * `gridCell` in `site/src/lib/world-observations.ts` — the key is
+         * canonical in the world model (world_observations.locationCellId
+         * rows, R2 `raw/{locationCellId}/…` paths the DGX pipeline groups
+         * by), so the server's FIXED Chicago-anchored constants win over
+         * latitude-general math: 111_000 m/deg lat and 82_300 m/deg lng
+         * (`site/src/lib/geo-utils.ts`). A cos(lat) lng scale here produced
+         * keys that never matched the server's for the same coordinates.
          */
         fun gridCell10m(lat: Double, lng: Double): Pair<Int, Int> {
-            val latStep = 10.0 / 111_320.0
-            val lngStep = 10.0 / (111_320.0 * cos(lat * PI / 180.0))
+            val latStep = 10.0 / 111_000.0
+            val lngStep = 10.0 / 82_300.0
             return floor(lat / latStep).toInt() to floor(lng / lngStep).toInt()
         }
     }

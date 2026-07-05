@@ -27,6 +27,12 @@ expect class ArRouteOverlay() {
     /** Render fog over [unscannedCells]; cells absent from the set are revealed. */
     fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>)
 
+    /** "Digitized" vector quads over cells this session has credited — the
+     *  positive counterpart of [updateFog]'s reveal-by-omission, matching the
+     *  env-scan surface so both scan modes give the same scanned-ground
+     *  feedback. iOS only; no-op on Android/Desktop. */
+    fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
+
     /**
      * World-anchored boundary walls: the route/block edge rendered as vertical
      * translucent strips on the ground, so panning the camera toward the

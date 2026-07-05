@@ -82,6 +82,10 @@ fun AdminSpotCreateScreen(
     var spotLng by remember { mutableStateOf(defaultLng) }
     var hasLockedToGps by remember { mutableStateOf(false) }
     val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
+    // Physical-pixel draw/drag conversions must bias the point-space camera
+    // zoom (see mapOverlayZoomBias) or the ring draws too small vs the basemap.
+    val overlayZoom = mapZoom +
+        com.gcc.app.ui.map.mapOverlayZoomBias(androidx.compose.ui.platform.LocalDensity.current.density)
     val initialSuccessNonce = remember { uiState.spotCreateSuccessNonce }
     val selectedDiscoveredByWorker = uiState.workers.find { it.id == selectedDiscoveredByWorkerId }
     val discoveredBySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -350,7 +354,7 @@ fun AdminSpotCreateScreen(
                                 .pointerInput(spotLat, spotLng, mapZoom) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
-                                        val metersPerPixel = 156543.03392 * cos(spotLat * kotlin.math.PI / 180.0) / 2.0.pow(mapZoom)
+                                        val metersPerPixel = 156543.03392 * cos(spotLat * kotlin.math.PI / 180.0) / 2.0.pow(overlayZoom)
                                         val dLat = -(dragAmount.y * metersPerPixel) / 111320.0
                                         val dLng = (dragAmount.x * metersPerPixel) / (111320.0 * cos(spotLat * kotlin.math.PI / 180.0))
                                         spotLat = (spotLat + dLat).coerceIn(-85.0, 85.0)
@@ -362,13 +366,13 @@ fun AdminSpotCreateScreen(
 
                             when (areaMode) {
                                 AreaMode.CIRCLE -> {
-                                    val pixelRadius = metersToPixels(radiusMeters.toDouble(), spotLat, mapZoom)
+                                    val pixelRadius = metersToPixels(radiusMeters.toDouble(), spotLat, overlayZoom)
                                     drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
                                     drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                                 }
                                 AreaMode.RECTANGLE -> {
-                                    val pxW = metersToPixels(rectWidth.toDouble(), spotLat, mapZoom)
-                                    val pxH = metersToPixels(rectHeight.toDouble(), spotLat, mapZoom)
+                                    val pxW = metersToPixels(rectWidth.toDouble(), spotLat, overlayZoom)
+                                    val pxH = metersToPixels(rectHeight.toDouble(), spotLat, overlayZoom)
                                     val topLeft = androidx.compose.ui.geometry.Offset(center.x - pxW, center.y - pxH)
                                     val rectSize = androidx.compose.ui.geometry.Size(pxW * 2, pxH * 2)
                                     drawRect(color = GccSky.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)

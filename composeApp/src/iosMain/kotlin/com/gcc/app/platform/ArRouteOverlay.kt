@@ -28,6 +28,7 @@ import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.hypot
+import kotlin.math.roundToLong
 
 /**
  * iOS SceneKit-based AR overlay for the "Begin Route" experience.
@@ -69,6 +70,10 @@ actual class ArRouteOverlay actual constructor() {
         private const val WALL_HALF_HEIGHT_METERS = 0.45f
         /** Hard ceiling on live wall nodes, protects the SceneKit frame rate. */
         private const val MAX_WALL_SEGMENTS = 200
+
+        /** Vector-scan quads over credited cells — same policy as env scan. */
+        private const val MAX_VECTOR_NODES = 350
+        private const val VECTOR_RENDER_RADIUS_METERS = 30.0
         /** Rebuild walls after at most this many geo-reference updates… */
         private const val WALL_REBUILD_GEO_INTERVAL = 3
         /** …or as soon as the camera reference has moved more than this. */
@@ -80,6 +85,10 @@ actual class ArRouteOverlay actual constructor() {
     private var nativeSurface: ArNativeSurface? = null
     private val fogNodes = mutableMapOf<Pair<Int, Int>, SCNNode>()
     private var boundaryVeil: SCNNode? = null
+
+    // Credited-cell vector quads (see [updateScannedCells]).
+    private var latestScannedCells: List<Pair<Double, Double>> = emptyList()
+    private val vectorNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
 
     // World-anchored boundary walls (see [updateBoundaries]).
     private var boundaryOuter: List<Pair<Double, Double>> = emptyList()
@@ -125,7 +134,10 @@ actual class ArRouteOverlay actual constructor() {
      */
     fun bindNative(surface: ArNativeSurface) {
         nativeSurface = surface
-        surface.setGroundGridVisible(false) // fog owns the ground on routes
+        // Routes show the same ground grid as env scans (direction 2026-07-05:
+        // both scan modes surface the grid when ground is recognized); fog
+        // covers UNscanned cells on top of it, vector quads mark credited ones.
+        surface.setGroundGridVisible(true)
         frameFeedback.start()
         DiagnosticsLog.info("ar-route", "RealityKit native route surface started")
     }
@@ -277,6 +289,79 @@ actual class ArRouteOverlay actual constructor() {
         }
 
         updateFrontierTarget(nearestLocal)
+    }
+
+    /**
+     * "Digitized" quads over cells this session has credited — the positive
+     * counterpart of [updateFog]'s reveal-by-omission, mirroring the env-scan
+     * surface's vector-scan overlay (same cap/radius policy).
+     */
+    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {
+        latestScannedCells = cellCenters
+        renderVectorCells()
+    }
+
+    private fun renderVectorCells() {
+        if (!hasGeoRef) return
+        nativeSurface?.let { surface ->
+            // Native mode: hand AR-local cell centers to the Swift renderer
+            // (it owns floor height, pulse animation and the node cap).
+            val flat = ArrayList<Double>(latestScannedCells.size * 2)
+            var shipped = 0
+            for ((lat, lng) in latestScannedCells) {
+                val local = latLngToLocal(lat, lng)
+                val dx = local.first - refX.toDouble()
+                val dz = local.second - refZ.toDouble()
+                if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
+                if (shipped >= MAX_VECTOR_NODES) break
+                flat.add(local.first)
+                flat.add(local.second)
+                shipped++
+            }
+            surface.updateVectorCells(flat, CoverageTracker.cellSizeMeters)
+            return
+        }
+        val scene = sceneView?.scene ?: return
+        val groundY = refY - GROUND_OFFSET_METERS + 0.02f
+
+        val wanted = mutableSetOf<Pair<Long, Long>>()
+        for ((lat, lng) in latestScannedCells) {
+            val key = (lat * 1e6).roundToLong() to (lng * 1e6).roundToLong()
+            wanted.add(key)
+            if (key in vectorNodes) continue
+            if (vectorNodes.size >= MAX_VECTOR_NODES) continue
+            val local = latLngToLocal(lat, lng)
+            val dx = local.first - refX.toDouble()
+            val dz = local.second - refZ.toDouble()
+            if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
+            vectorNodes[key] = makeVectorCellNode(local.first.toFloat(), groundY, local.second.toFloat())
+                .also { scene.rootNode.addChildNode(it) }
+        }
+        for ((key, node) in vectorNodes.toMap()) {
+            if (key !in wanted) {
+                node.removeFromParentNode()
+                vectorNodes.remove(key)
+            }
+        }
+    }
+
+    private fun makeVectorCellNode(x: Float, y: Float, z: Float): SCNNode {
+        val plane = SCNPlane.planeWithWidth(
+            CoverageTracker.cellSizeMeters,
+            CoverageTracker.cellSizeMeters,
+        )
+        val material = SCNMaterial()
+        // Plain translucent green (the SceneKit fallback skips the textured
+        // grid the env overlay draws — degraded mode keeps node cost minimal).
+        material.diffuse.contents = UIColor.colorWithRed(0.15, 0.95, 0.55, 1.0).colorWithAlphaComponent(0.35)
+        material.doubleSided = true
+        material.writesToDepthBuffer = false
+        plane.materials = listOf(material)
+
+        val node = SCNNode.nodeWithGeometry(plane)
+        node.eulerAngles = SCNVector3Make((-PI / 2).toFloat(), 0f, 0f)
+        node.position = SCNVector3Make(x, y, z)
+        return node
     }
 
     actual fun updateBoundaryStatus(isOutside: Boolean) {

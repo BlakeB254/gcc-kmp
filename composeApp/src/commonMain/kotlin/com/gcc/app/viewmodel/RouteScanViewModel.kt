@@ -405,6 +405,10 @@ class RouteScanViewModel(
     /** Device compass heading in degrees, or null when unavailable. */
     val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
 
+    /** GPS horizontal accuracy in meters (null = no valid fix) — screens gate
+     *  AR geo-reference pairing on this (see [isGeoRefFixUsable]). */
+    val gpsAccuracyMeters: StateFlow<Double?> get() = locationProvider.horizontalAccuracyMeters
+
     // GPS breadcrumb paths for GeoJSON.
     // These grow at ~1 Hz; a 30-min scan produces ~1800 entries. Downsampled to
     // ≤500 points in buildGeoJsonLineString() before transmission to the server.

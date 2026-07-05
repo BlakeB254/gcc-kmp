@@ -37,6 +37,7 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.SpotArOverlay
+import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
@@ -190,9 +191,13 @@ fun SpotArScreen(
         var lastLat: Double? = null
         var lastLng: Double? = null
         locationProvider.locationFlow.collect { location ->
-            // Keep the AR geo-reference fresh even indoors (harmless), but
-            // accrue no coverage while the OutdoorGate reads INDOOR.
-            overlay.updateGeoReference(location.lat, location.lng)
+            // Keep the AR geo-reference fresh even indoors, but only from
+            // fixes accurate enough to anchor the frame (one wild fix drags
+            // all geo-derived AR geometry), and accrue no coverage while the
+            // OutdoorGate reads INDOOR.
+            if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
+                overlay.updateGeoReference(location.lat, location.lng)
+            }
             if (!gate.captureAllowed.value) {
                 // Gate flipped closed mid-segment: drop the anchors so the next
                 // allowed fix doesn't measure a segment that spans the gap.

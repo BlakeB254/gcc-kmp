@@ -128,7 +128,13 @@ fun AdminSpotDetailScreen(
                         zoom = mapZoom,
                     )
                     androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                        val pixelRadius = metersToPixels(report.affectedRadiusMeters, report.coordinates.lat, mapZoom)
+                        // Physical-pixel draw over a point-space camera zoom
+                        // needs the overlay bias (see mapOverlayZoomBias).
+                        val pixelRadius = metersToPixels(
+                            report.affectedRadiusMeters,
+                            report.coordinates.lat,
+                            mapZoom + com.gcc.app.ui.map.mapOverlayZoomBias(density),
+                        )
                         val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                         drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
                         drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))

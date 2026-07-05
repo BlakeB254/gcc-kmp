@@ -653,7 +653,13 @@ private fun spotHeatWeight(spot: CommunityReport): Double {
     val verificationBoost = if (spot.needsVerification) 0.25 else 0.0
     val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 100.0
     val radiusBoost = ((spot.affectedRadiusMeters - 20.0) / 180.0).coerceIn(0.0, 0.35)
-    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.65, 2.4)
+    val severityBoost = when (spot.aiAnalysis?.severity) {
+        "high" -> 0.3
+        "medium" -> 0.15
+        else -> 0.0
+    }
+    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost + severityBoost)
+        .coerceIn(0.65, 2.4)
 }
 
 private fun spotDensityWeight(spot: CommunityReport): Double {
@@ -667,7 +673,13 @@ private fun spotDensityWeight(spot: CommunityReport): Double {
     val verificationBoost = if (spot.needsVerification) 0.04 else 0.0
     val rewardBoost = spot.observerRewardPoints.coerceIn(0, 25) / 500.0
     val radiusBoost = ((spot.affectedRadiusMeters - 20.0) / 220.0).coerceIn(0.0, 0.06)
-    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.18, 0.48)
+    val severityBoost = when (spot.aiAnalysis?.severity) {
+        "high" -> 0.06
+        "medium" -> 0.03
+        else -> 0.0
+    }
+    return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost + severityBoost)
+        .coerceIn(0.18, 0.48)
 }
 
 /** Spots that have progressed into a bounty, rendered as a distinct halo. */

@@ -156,10 +156,14 @@ class DashboardViewModel(
                 // sourceType (not communityReportId) is the dedupe key: spot-report
                 // observations are already pinned via /api/spots, and sourceType is
                 // present in every deployed version of the observations response.
+                // route_scan AND ar_auto_detect observations have no backing
+                // report row — without both here, env-scan AR markers save to
+                // the server but never appear on the phone that scanned them.
                 // Litter domain only: landmark elements (trees, fences…) are
                 // world-model context, not trash pins.
                 .filter {
-                    it.sourceType == "route_scan" && it.state == "dirty" &&
+                    (it.sourceType == "route_scan" || it.sourceType == "ar_auto_detect") &&
+                        it.state == "dirty" &&
                         (it.domain == null || it.domain == "litter")
                 }
                 .map { it.toScanMapPin() }

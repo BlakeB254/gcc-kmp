@@ -65,7 +65,8 @@ interface ArNativeSurface {
      *  keeps ALL Vision work in Swift (Kotlin applies the shared scoring). */
     fun classifySceneLabels(): List<String>
 
-    /** Route mode hides the ground grid — fog owns the ground there. */
+    /** Ground grid on detected planes. Both scan modes show it (env scan AND
+     *  block route — direction 2026-07-05); spot mode hides it. */
     fun setGroundGridVisible(visible: Boolean)
 
     /**
