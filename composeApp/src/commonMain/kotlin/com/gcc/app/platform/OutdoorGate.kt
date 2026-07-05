@@ -48,6 +48,16 @@ class OutdoorGate {
         const val OUTDOOR_ACCURACY_METERS = 10.0
         /** Scene votes see the room directly — they outweigh single GPS fixes. */
         private const val SCENE_VOTE_WEIGHT = 2
+        /** Consecutive camera OUTDOOR votes that recover from INDOOR (or
+         *  unlock straight out of UNCERTAIN) without waiting for 5s of clean
+         *  GPS (fast auto-recovery — the mitigation that makes aggressive
+         *  flipping acceptable). */
+        const val OUTDOOR_SCENE_STREAK_TO_RECOVER = 2
+        /** A ceiling plane seen within this window blocks recovery. */
+        const val CEILING_RECENT_MS = 5_000L
+        /** On an INDOOR flip, callers purge data recorded in this trailing
+         *  window (frames/observations captured while walking inside). */
+        const val PURGE_WINDOW_MS = 10_000L
     }
 
     private val indoorTs = ArrayDeque<Long>()
@@ -57,9 +67,21 @@ class OutdoorGate {
     private var noOutdoorCueStreak = 0
     private var insideBuildingStreak = 0
     private var lastIndoorAccuracyTs: Long? = null
+    private var sceneOutdoorStreak = 0
+    private var lastCeilingTs: Long? = null
 
     private val _state = MutableStateFlow(OutdoorState.UNCERTAIN)
     val state: StateFlow<OutdoorState> = _state.asStateFlow()
+
+    private val _captureAllowed = MutableStateFlow(false)
+    /** Deny-by-default: capture/credit/persistence allowed ONLY while OUTDOOR.
+     *  UNCERTAIN blocks capture (not the screen) — the privacy window closes
+     *  structurally instead of racing detection latency. */
+    val captureAllowed: StateFlow<Boolean> = _captureAllowed.asStateFlow()
+
+    /** Timestamp of the most recent transition to INDOOR (purge coordination). */
+    var lastIndoorFlipAtMs: Long? = null
+        private set
 
     /** Field-report escape hatch: the fused evidence (GPS shadowing, dark
      *  frames, map footprints) can misread a worker who IS outside. The
@@ -69,8 +91,17 @@ class OutdoorGate {
 
     fun forceOutdoors() {
         manualOverride = true
-        _state.value = OutdoorState.OUTDOOR
+        setState(OutdoorState.OUTDOOR, 0L)
         DiagnosticsLog.info("outdoor-gate", "manual override — user confirmed outdoors")
+    }
+
+    private fun setState(newState: OutdoorState, nowMs: Long) {
+        if (newState == OutdoorState.INDOOR && _state.value != OutdoorState.INDOOR) {
+            lastIndoorFlipAtMs = nowMs
+            sceneOutdoorStreak = 0
+        }
+        _state.value = newState
+        _captureAllowed.value = newState == OutdoorState.OUTDOOR
     }
 
     private var sampleCount = 0
@@ -103,37 +134,80 @@ class OutdoorGate {
                 lastSceneIndoorTs = timestampMs
                 sceneIndoorStreak += 1
                 noOutdoorCueStreak += 1
+                sceneOutdoorStreak = 0
             }
             SceneVote.OUTDOOR -> {
                 repeat(SCENE_VOTE_WEIGHT) { outdoorTs.addLast(timestampMs) }
                 sceneIndoorStreak = 0
                 noOutdoorCueStreak = 0
+                sceneOutdoorStreak += 1
+                // Fast auto-recovery: the camera seeing street/sky twice in a
+                // row is stronger outdoor proof than urban GPS accuracy. Also
+                // unlocks straight out of UNCERTAIN — no reason to wait 5s of
+                // clean GPS at scan-open when the camera already confirms it.
+                val ceilingRecent = lastCeilingTs?.let { timestampMs - it <= CEILING_RECENT_MS } == true
+                if (_state.value != OutdoorState.OUTDOOR &&
+                    sceneOutdoorStreak >= OUTDOOR_SCENE_STREAK_TO_RECOVER &&
+                    insideBuildingStreak == 0 && !ceilingRecent
+                ) {
+                    DiagnosticsLog.info(
+                        "outdoor-gate",
+                        "OUTDOOR (camera outdoor ×$sceneOutdoorStreak — fast recovery)",
+                    )
+                    // The camera saw indoors seconds ago; those stamps must not
+                    // immediately re-flip via the sustained-indoor path.
+                    indoorTs.clear()
+                    lastSceneIndoorTs = null
+                    lastIndoorAccuracyTs = null
+                    setState(OutdoorState.OUTDOOR, timestampMs)
+                    return
+                }
             }
             SceneVote.NONE -> {
                 // Not conclusive alone — but enclosed spaces never show
                 // outdoor cues, so the absence accumulates.
                 noOutdoorCueStreak += 1
+                sceneOutdoorStreak = 0
             }
         }
-        // Fusion rules (a computer on a park bench must NOT gate): camera
-        // evidence only flips when GPS agrees by omission — zero
-        // outdoor-grade fixes in the window.
-        val gpsShowsNoOutdoor = outdoorTs.isEmpty()
-        if (gpsShowsNoOutdoor && _state.value != OutdoorState.INDOOR) {
+        // Fusion rules (a computer on a park bench must NOT gate): a positive
+        // camera INDOOR streak is unmuted evidence on its own — unlike cue
+        // absence (pointing at pavement), a room is unambiguous. Cue absence
+        // still requires GPS to agree by omission (zero outdoor-grade fixes).
+        if (_state.value != OutdoorState.INDOOR) {
             if (sceneIndoorStreak >= SCENE_STREAK_TO_FLIP) {
-                DiagnosticsLog.info(
-                    "outdoor-gate",
-                    "INDOOR (camera indoor ×$sceneIndoorStreak + no outdoor-grade GPS)",
-                )
-                if (!manualOverride) _state.value = OutdoorState.INDOOR
+                DiagnosticsLog.info("outdoor-gate", "INDOOR (camera indoor ×$sceneIndoorStreak)")
+                if (!manualOverride) setState(OutdoorState.INDOOR, timestampMs)
                 return
             }
-            if (noOutdoorCueStreak >= NO_OUTDOOR_CUES_TO_FLIP) {
+            if (noOutdoorCueStreak >= NO_OUTDOOR_CUES_TO_FLIP && outdoorTs.isEmpty()) {
                 DiagnosticsLog.info(
                     "outdoor-gate",
                     "INDOOR (no outdoor cues in $noOutdoorCueStreak samples + no outdoor-grade GPS)",
                 )
-                if (!manualOverride) _state.value = OutdoorState.INDOOR
+                if (!manualOverride) setState(OutdoorState.INDOOR, timestampMs)
+                return
+            }
+        }
+        evaluate(timestampMs)
+    }
+
+    /**
+     * ARKit plane evidence: a ceiling-classified plane above the camera.
+     * Outdoors there is essentially never a classified ceiling — this is the
+     * cheapest high-precision indoor signal and it overrides the manual pin.
+     */
+    fun onCeilingPlane(detected: Boolean, timestampMs: Long) {
+        if (detected) {
+            lastCeilingTs = timestampMs
+            repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
+            if (_state.value != OutdoorState.INDOOR) {
+                DiagnosticsLog.info("outdoor-gate", "INDOOR (ceiling plane detected)")
+                if (manualOverride) {
+                    manualOverride = false
+                    DiagnosticsLog.info("outdoor-gate", "manual override cleared by ceiling plane")
+                }
+                setState(OutdoorState.INDOOR, timestampMs)
                 return
             }
         }
@@ -151,7 +225,11 @@ class OutdoorGate {
             repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
             if (insideBuildingStreak >= MAP_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
                 DiagnosticsLog.info("outdoor-gate", "INDOOR (GPS inside mapped building ×$insideBuildingStreak)")
-                if (!manualOverride) _state.value = OutdoorState.INDOOR
+                if (manualOverride) {
+                    manualOverride = false
+                    DiagnosticsLog.info("outdoor-gate", "manual override cleared by map containment")
+                }
+                setState(OutdoorState.INDOOR, timestampMs)
                 return
             }
         } else {
@@ -170,7 +248,7 @@ class OutdoorGate {
             if (_state.value != OutdoorState.INDOOR) {
                 DiagnosticsLog.info("outdoor-gate", "INDOOR (scene vote + degraded GPS agree)")
             }
-            if (!manualOverride) _state.value = OutdoorState.INDOOR
+            if (!manualOverride) setState(OutdoorState.INDOOR, nowMs)
             return
         }
 
@@ -179,14 +257,20 @@ class OutdoorGate {
         val outdoorFlip = span(outdoorTs) >= DECISION_SPAN_MS &&
             indoorTs.none { it >= outdoorTs.first() }
 
+        val ceilingRecent = lastCeilingTs?.let { nowMs - it <= CEILING_RECENT_MS } == true
         val newState = when (_state.value) {
-            OutdoorState.INDOOR -> if (outdoorFlip && insideBuildingStreak == 0) {
+            OutdoorState.INDOOR -> if (outdoorFlip && insideBuildingStreak == 0 && !ceilingRecent) {
                 sceneIndoorStreak = 0
                 noOutdoorCueStreak = 0
+                sceneOutdoorStreak = 0
                 OutdoorState.OUTDOOR
             } else OutdoorState.INDOOR
             else -> when {
-                indoorFlip -> OutdoorState.INDOOR
+                // Sustained degraded GPS alone must not re-flip a manual
+                // override (e.g. "I'm outside" under an awning) — strong
+                // evidence (map containment, ceiling plane) already clears
+                // the override explicitly and bypasses this path entirely.
+                indoorFlip && !manualOverride -> OutdoorState.INDOOR
                 outdoorFlip -> OutdoorState.OUTDOOR
                 else -> _state.value
             }
@@ -198,7 +282,7 @@ class OutdoorGate {
                     "indoorSpan=${span(indoorTs)}ms outdoorSpan=${span(outdoorTs)}ms)",
             )
         }
-        _state.value = newState
+        setState(newState, nowMs)
     }
 
     private fun prune(nowMs: Long) {

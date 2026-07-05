@@ -22,6 +22,8 @@ actual class SpotArOverlay actual constructor() {
     actual val liveDetections: StateFlow<List<LiveDetection>> = MutableStateFlow(emptyList())
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
+    actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
+    actual fun setSceneVoteCadence(fast: Boolean) {}
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
 

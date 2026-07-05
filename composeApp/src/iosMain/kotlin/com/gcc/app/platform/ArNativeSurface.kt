@@ -52,8 +52,18 @@ interface ArNativeSurface {
     /** True once at least one floor plane is being rendered (grid live). */
     fun groundDetected(): Boolean
 
+    /** True when the session currently tracks a ceiling-classified plane
+     *  (ARPlaneClassification.ceiling). Outdoors this is essentially never
+     *  true — the OutdoorGate's strongest camera-side indoor cue. */
+    fun ceilingDetected(): Boolean
+
     /** Camera tracking quality: 0 normal, 1 limited, 2 unavailable. */
     fun trackingStateRaw(): Int
+
+    /** Swift-side Vision scene classification of the current frame — top-15
+     *  "identifier|confidence" entries, empty when no frame. Native path only;
+     *  keeps ALL Vision work in Swift (Kotlin applies the shared scoring). */
+    fun classifySceneLabels(): List<String>
 
     /** Route mode hides the ground grid — fog owns the ground there. */
     fun setGroundGridVisible(visible: Boolean)
@@ -116,3 +126,14 @@ internal fun ArNativeSurface.pixelBufferOrNull(): platform.CoreVideo.CVPixelBuff
     if (address == 0L) return null
     return address.toCPointer()
 }
+
+/** Parses Swift's `"identifier|confidence"` scene-label packets (see
+ *  [ArNativeSurface.classifySceneLabels]) into the shared [ClassificationObservation]
+ *  type the [TrashDetectionRules] scoring runs on. */
+internal fun parseSceneLabels(entries: List<String>): List<ClassificationObservation> =
+    entries.mapNotNull { entry ->
+        val i = entry.lastIndexOf('|')
+        if (i <= 0) return@mapNotNull null
+        val confidence = entry.substring(i + 1).toFloatOrNull() ?: return@mapNotNull null
+        ClassificationObservation(entry.substring(0, i), confidence)
+    }

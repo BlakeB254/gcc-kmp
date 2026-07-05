@@ -190,6 +190,7 @@ class RouteScanViewModel(
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
     fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
+        if (!outdoorGate.captureAllowed.value) return
         if (!lat.isFinite() || !lng.isFinite() || label.isBlank()) {
             DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
             return
@@ -212,16 +213,23 @@ class RouteScanViewModel(
     // INDOOR, coverage accrual (ledger events + tracker cells) is suppressed.
     private val outdoorGate = OutdoorGate()
     val outdoorState: StateFlow<OutdoorState> = outdoorGate.state
+    val captureAllowed: StateFlow<Boolean> = outdoorGate.captureAllowed
     private var accuracyJob: Job? = null
 
     /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
     /** Field escape hatch — user confirmed they're outdoors. */
     fun forceOutdoors() {
         outdoorGate.forceOutdoors()
+        lapSessionRecorder.noteGateEvent("override@${Clock.System.now().toEpochMilliseconds()}")
     }
 
     fun onSceneVote(vote: SceneVote) {
         outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+    }
+
+    /** Ceiling-plane evidence from the AR screen (ArRouteScreen). */
+    fun onCeilingPlane(detected: Boolean) {
+        outdoorGate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
     }
 
     // Live points HUD: client-side estimate + one-shot "+N pts" pip events.
@@ -950,6 +958,7 @@ class RouteScanViewModel(
                     photoKeys = emptyList(),
                     lapKind = lapKind,
                     routeId = state.routeId,
+                    gateEvents = draft.gateEvents,
                 )
                 sessionUploader.uploadOrQueue(manifest)
             } catch (e: Exception) {
@@ -986,6 +995,17 @@ class RouteScanViewModel(
                 if (gateState != lastState) {
                     DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
                     lastState = gateState
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    // Audit trail rides with whichever lap recorder is current
+                    // at event time — a lap boundary may have swapped it out.
+                    lapSessionRecorder.noteGateEvent("gate@$nowMs state=$gateState")
+                    if (gateState == OutdoorState.INDOOR) {
+                        // Privacy purge: drop the trailing walk-inside seconds
+                        // recorded just before this flip so they never upload.
+                        lapSessionRecorder.purgeSince(
+                            (outdoorGate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
+                        )
+                    }
                 }
             }
         }
@@ -1006,10 +1026,12 @@ class RouteScanViewModel(
                             timestampMs = Clock.System.now().toEpochMilliseconds(),
                         )
 
-                        // "Go outside" gate: while judged indoors, accrue nothing —
-                        // no path point, no ledger event, no coverage cells. Reset
-                        // the segment anchor so no phantom distance spans the gap.
-                        if (outdoorGate.state.value == OutdoorState.INDOOR) {
+                        // "Go outside" gate: while capture isn't allowed (INDOOR, or
+                        // still UNCERTAIN pending outdoor confirmation), accrue
+                        // nothing — no path point, no ledger event, no coverage
+                        // cells. Reset the segment anchor so no phantom distance
+                        // bridges the gap once capture resumes.
+                        if (!outdoorGate.captureAllowed.value) {
                             lastCoverageFix = null
                             return@collect
                         }

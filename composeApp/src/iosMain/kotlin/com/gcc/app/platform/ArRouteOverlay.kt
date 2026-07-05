@@ -145,6 +145,10 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.sceneVoteListener = listener
     }
 
+    actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
+        frameFeedback.ceilingListener = listener
+    }
+
     actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {
         frameFeedback.markerPlacedListener = if (listener == null) null else { x, _, z, label ->
             if (hasGeoRef) {
@@ -160,6 +164,10 @@ actual class ArRouteOverlay actual constructor() {
 
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
         frameFeedback.setEnabled(enabled)
+    }
+
+    actual fun setSceneVoteCadence(fast: Boolean) {
+        frameFeedback.fastSceneVotes = fast
     }
 
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {

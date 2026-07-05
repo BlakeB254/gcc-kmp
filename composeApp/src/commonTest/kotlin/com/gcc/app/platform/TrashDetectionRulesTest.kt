@@ -6,25 +6,65 @@ import kotlin.test.assertNull
 
 class TrashDetectionRulesTest {
 
-    @Test
-    fun indoorHitWithNoOutdoorHitIsIndoor() {
-        val obs = listOf(ClassificationObservation("kitchen", 0.5f))
-        assertEquals(SceneVote.INDOOR, TrashDetectionRules.sceneVoteFrom(obs))
-    }
+    private fun obs(id: String, c: Float) = ClassificationObservation(id, c)
 
     @Test
-    fun outdoorHitsAtLeastIndoorHitsIsOutdoor() {
-        val obs = listOf(
-            ClassificationObservation("street", 0.5f),
-            ClassificationObservation("sky", 0.4f),
+    fun windowViewStillVotesIndoor() {
+        // Several indoor labels + one outdoor label through the window: the
+        // v3 rule (any outdoor hit kills INDOOR) was the "misses entirely" bug.
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("living_room", 0.6f), obs("sofa", 0.4f), obs("tree", 0.5f))
         )
-        assertEquals(SceneVote.OUTDOOR, TrashDetectionRules.sceneVoteFrom(obs))
+        assertEquals(SceneVote.INDOOR, vote)
     }
 
     @Test
-    fun lowConfidenceObservationsAreIgnored() {
-        val obs = listOf(ClassificationObservation("kitchen", 0.1f))
-        assertEquals(SceneVote.NONE, TrashDetectionRules.sceneVoteFrom(obs))
+    fun streetSceneVotesOutdoor() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("street", 0.7f), obs("sidewalk", 0.5f), obs("car", 0.4f))
+        )
+        assertEquals(SceneVote.OUTDOOR, vote)
+    }
+
+    @Test
+    fun weakSignalsVoteNone() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("lamp", 0.35f), obs("mug", 0.1f))
+        )
+        assertEquals(SceneVote.NONE, vote) // indoorScore 0.35 < 0.5 floor
+    }
+
+    @Test
+    fun balancedSceneVotesOutdoorNotIndoor() {
+        // porch: equal evidence must NOT read indoor (aggressive ≠ reckless).
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("ceiling", 0.5f), obs("yard", 0.5f))
+        )
+        assertEquals(SceneVote.OUTDOOR, vote) // outdoor >= indoor wins ties
+    }
+
+    @Test
+    fun subConfidenceObservationsIgnored() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("kitchen", 0.29f), obs("bedroom", 0.29f))
+        )
+        assertEquals(SceneVote.NONE, vote)
+    }
+
+    @Test
+    fun residenceInteriorKeywordsRecognized() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("bathtub", 0.4f), obs("mirror", 0.3f))
+        )
+        assertEquals(SceneVote.INDOOR, vote)
+    }
+
+    @Test
+    fun toiletKeywordRecognizedAsIndoor() {
+        val vote = TrashDetectionRules.sceneVoteFrom(
+            listOf(obs("toilet", 0.4f), obs("tile", 0.3f))
+        )
+        assertEquals(SceneVote.INDOOR, vote)
     }
 
     @Test

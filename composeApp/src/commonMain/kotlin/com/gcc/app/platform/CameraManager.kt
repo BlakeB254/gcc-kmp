@@ -49,6 +49,17 @@ expect class CameraManager() {
      * to [capturePhoto].
      */
     suspend fun captureFrame(): CapturedPhoto?
+
+    companion object {
+        /**
+         * Scene-vote sampling cadence for the AVCapture (non-AR) viewfinder
+         * fallback: true samples every ~750ms (OutdoorGate not yet OUTDOOR —
+         * matches the AR paths' fast cadence), false uses the default ~2s
+         * interval. Driven by the screen's OutdoorGate observer; no-op on
+         * platforms without a scene-vote sampler (Android/desktop).
+         */
+        var sceneVoteFastMode: Boolean
+    }
 }
 
 /**

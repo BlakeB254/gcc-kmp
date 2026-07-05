@@ -109,8 +109,16 @@ actual class SpotArOverlay actual constructor() {
         frameFeedback.sceneVoteListener = listener
     }
 
+    actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
+        frameFeedback.ceilingListener = listener
+    }
+
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
         frameFeedback.setEnabled(enabled)
+    }
+
+    actual fun setSceneVoteCadence(fast: Boolean) {
+        frameFeedback.fastSceneVotes = fast
     }
 
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {

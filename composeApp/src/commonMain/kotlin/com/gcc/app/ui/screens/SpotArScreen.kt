@@ -41,6 +41,7 @@ import com.gcc.app.platform.SpotArOverlayView
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.ui.components.ConfirmingOutdoorsChip
 import com.gcc.app.ui.components.DetectionReticleOverlay
 import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
@@ -78,6 +79,7 @@ fun SpotArScreen(
     spotLocation: Coordinates,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    onPurgeRecentCaptures: (Long) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -114,6 +116,7 @@ fun SpotArScreen(
     val gate = remember { OutdoorGate() }
     val outdoorState by gate.state.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
+    val captureAllowed by gate.captureAllowed.collectAsState()
 
     DisposableEffect(Unit) {
         tracker.initAroundPoint(spotLocation.lat, spotLocation.lng)
@@ -122,12 +125,16 @@ fun SpotArScreen(
         overlay.setSceneVoteListener { vote ->
             gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
         }
+        overlay.setCeilingListener { detected ->
+            gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
+        }
         val startedLocationHere = !locationProvider.isTracking
         if (startedLocationHere) {
             locationProvider.startLocationUpdates()
         }
         onDispose {
             overlay.setSceneVoteListener(null)
+            overlay.setCeilingListener(null)
             overlay.stop()
             if (startedLocationHere) {
                 locationProvider.stopLocationUpdates()
@@ -165,6 +172,14 @@ fun SpotArScreen(
     // Field diagnostics: state transitions land in the on-screen log.
     LaunchedEffect(outdoorState) {
         DiagnosticsLog.info("outdoor-gate", "spot gate → $outdoorState")
+        overlay.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
+        if (outdoorState == OutdoorState.INDOOR) {
+            // This surface has no EnvScanSessionRecorder of its own (it's the
+            // circle-the-item AR guidance view, not a capture surface) — just
+            // propagate the purge cutoff to whatever owns the captures.
+            val cutoff = (gate.lastIndoorFlipAtMs ?: Clock.System.now().toEpochMilliseconds()) - OutdoorGate.PURGE_WINDOW_MS
+            onPurgeRecentCaptures(cutoff)
+        }
     }
     LaunchedEffect(trackingState) {
         DiagnosticsLog.info("ar-tracking", "spot AR tracking → $trackingState")
@@ -178,7 +193,13 @@ fun SpotArScreen(
             // Keep the AR geo-reference fresh even indoors (harmless), but
             // accrue no coverage while the OutdoorGate reads INDOOR.
             overlay.updateGeoReference(location.lat, location.lng)
-            if (gate.state.value == OutdoorState.INDOOR) return@collect
+            if (!gate.captureAllowed.value) {
+                // Gate flipped closed mid-segment: drop the anchors so the next
+                // allowed fix doesn't measure a segment that spans the gap.
+                lastLat = null
+                lastLng = null
+                return@collect
+            }
 
             val distToItem = GeofenceVerification.distanceMeters(
                 location.lat, location.lng,
@@ -315,6 +336,10 @@ fun SpotArScreen(
 
         // "Go outside" scrim — sits under the exit button so leaving always works.
         GoOutsideOverlay(visible = isIndoor, onImOutside = { gate.forceOutdoors() })
+        ConfirmingOutdoorsChip(
+            visible = outdoorState == OutdoorState.UNCERTAIN,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
+        )
 
         DiagnosticsOverlay()
 

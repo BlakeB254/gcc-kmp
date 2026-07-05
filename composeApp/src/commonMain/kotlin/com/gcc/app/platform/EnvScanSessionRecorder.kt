@@ -20,6 +20,7 @@ class EnvScanSessionRecorder {
     val startedAtMs: Long = Clock.System.now().toEpochMilliseconds()
 
     private val samples = mutableListOf<EnvScanPathSample>()
+    private val gateEvents = mutableListOf<String>()
 
     fun addSample(lat: Double, lng: Double, headingDegrees: Float?, accuracyMeters: Double?) {
         if (samples.size >= MAX_SAMPLES) return
@@ -34,12 +35,26 @@ class EnvScanSessionRecorder {
         )
     }
 
+    /** Privacy purge: drop everything recorded at/after [cutoffMs] — called on
+     *  an INDOOR flip so the trailing walk-inside seconds never upload. */
+    fun purgeSince(cutoffMs: Long) {
+        val before = samples.size
+        samples.removeAll { it.atMs >= cutoffMs }
+        noteGateEvent("purge@${Clock.System.now().toEpochMilliseconds()} dropped=${before - samples.size}")
+    }
+
+    /** Audit trail: gate flips, override presses/yields, purges. */
+    fun noteGateEvent(event: String) {
+        if (gateEvents.size < 200) gateEvents.add(event)
+    }
+
     fun draft(scannedCellCenters: List<Pair<Double, Double>>): EnvScanSessionDraft =
         EnvScanSessionDraft(
             sessionId = sessionId,
             startedAtMs = startedAtMs,
             path = samples.toList(),
             scannedCells = scannedCellCenters.map { (lat, lng) -> EnvScanCell(lat, lng) },
+            gateEvents = gateEvents.toList(),
         )
 
     companion object {
@@ -54,4 +69,5 @@ data class EnvScanSessionDraft(
     val startedAtMs: Long,
     val path: List<EnvScanPathSample>,
     val scannedCells: List<EnvScanCell>,
+    val gateEvents: List<String> = emptyList(),
 )

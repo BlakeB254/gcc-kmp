@@ -54,6 +54,10 @@ data class EnvScanManifest(
     val lapKind: String? = null,
     /** The route this session fulfilled, when it was a block-route lap. */
     val routeId: Int? = null,
+    /** Audit trail of gate flips, manual overrides, and privacy purges during
+     *  this session — additive/optional so older manifests deserialize
+     *  unchanged. Null for sessions recorded before this field existed. */
+    val gateEvents: List<String>? = null,
     val schemaVersion: Int = 1,
 )
 
