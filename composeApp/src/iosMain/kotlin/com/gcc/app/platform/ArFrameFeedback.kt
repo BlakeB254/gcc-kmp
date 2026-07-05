@@ -99,7 +99,10 @@ internal class ArFrameFeedback(
         job = scope.launch {
             while (true) {
                 delay(TICK_MS)
-                if (!enabled) continue
+                if (!enabled) {
+                    try { emitCeilingCue() } catch (_: Throwable) {}
+                    continue
+                }
                 val backoff = try {
                     analyzeTick()
                 } catch (e: Throwable) {
@@ -119,26 +122,12 @@ internal class ArFrameFeedback(
 
     /** Returns true when the loop should back off (error / no frame). */
     private fun analyzeTick(): Boolean {
+        emitCeilingCue()
+
         val native = nativeSurfaceProvider()
         val frame = if (native == null) sceneViewProvider()?.session?.currentFrame else null
         val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
         tick += 1
-
-        // Ceiling cue for the OutdoorGate — checked every tick, cheap
-        // (anchors are already tracked; no Vision work involved).
-        val ceiling = when {
-            native != null -> native.ceilingDetected()
-            frame != null -> frame.anchors.filterIsInstance<ARPlaneAnchor>().any { anchor ->
-                val classification = try {
-                    (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
-                } catch (_: Throwable) { 0L }
-                classification == 3L // ARPlaneClassification.ceiling
-            }
-            else -> false
-        }
-        ceilingListener?.let { listener ->
-            dispatch_async(dispatch_get_main_queue()) { listener(ceiling) }
-        }
 
         val classifyRequest = VNClassifyImageRequest()
         val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
@@ -227,6 +216,31 @@ internal class ArFrameFeedback(
             addMarkerAt(hitWorld[0], hitWorld[1], hitWorld[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel)
         }
         return false
+    }
+
+    /**
+     * Ceiling cue for the OutdoorGate — cheap (anchors are already tracked;
+     * no Vision work involved) so it can run every tick, including while
+     * disabled (e.g. once the gate has flipped INDOOR and Vision analysis
+     * itself is paused).
+     */
+    private fun emitCeilingCue() {
+        val native = nativeSurfaceProvider()
+        val ceiling = if (native != null) {
+            native.ceilingDetected()
+        } else {
+            sceneViewProvider()?.session?.currentFrame?.anchors
+                ?.filterIsInstance<ARPlaneAnchor>()
+                ?.any { anchor ->
+                    val classification = try {
+                        (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
+                    } catch (_: Throwable) { 0L }
+                    classification == 3L // ARPlaneClassification.ceiling
+                } ?: false
+        }
+        ceilingListener?.let { listener ->
+            dispatch_async(dispatch_get_main_queue()) { listener(ceiling) }
+        }
     }
 
     private fun emitSceneVote(observations: List<VNClassificationObservation>) {

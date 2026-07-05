@@ -136,7 +136,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     func groundDetected() -> Bool { groundLive }
 
     func ceilingDetected() -> Bool {
-        guard let frame = arView.session.currentFrame else { return false }
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return false }
         return frame.anchors.contains { anchor in
             guard let plane = anchor as? ARPlaneAnchor else { return false }
             if #available(iOS 12.0, *) {
