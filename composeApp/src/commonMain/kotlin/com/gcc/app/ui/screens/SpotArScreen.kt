@@ -185,7 +185,13 @@ fun SpotArScreen(
             // Keep the AR geo-reference fresh even indoors (harmless), but
             // accrue no coverage while the OutdoorGate reads INDOOR.
             overlay.updateGeoReference(location.lat, location.lng)
-            if (!gate.captureAllowed.value) return@collect
+            if (!gate.captureAllowed.value) {
+                // Gate flipped closed mid-segment: drop the anchors so the next
+                // allowed fix doesn't measure a segment that spans the gap.
+                lastLat = null
+                lastLng = null
+                return@collect
+            }
 
             val distToItem = GeofenceVerification.distanceMeters(
                 location.lat, location.lng,
