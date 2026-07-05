@@ -727,8 +727,12 @@ fun AdminBoundaryEditorScreen(
                                         } else zoom
                                         // Solve the center that keeps the geo point
                                         // under the pinch centroid geo-fixed.
+                                        // zoom + zoomBias like every other projection —
+                                        // unbiased zoom here solved the pan at ~1/6 scale,
+                                        // which the clamp then swallowed: panning felt dead
+                                        // at close zooms.
                                         val solved = BoundaryProjection(
-                                            centerLat, centerLng, newZoom,
+                                            centerLat, centerLng, newZoom + zoomBias,
                                             size.width.toFloat(), size.height.toFloat(),
                                         ).centerFor(gLat, gLng, newCentroid)
                                         val clamped = clampedCenter(
