@@ -59,6 +59,8 @@ actual fun GccMap(
     onBountyTap: ((bountyId: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
+    instantCamera: Boolean,
+    innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,
@@ -73,9 +75,13 @@ actual fun GccMap(
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<AffectedBlock>,
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
+    onZoomChanged: ((Double) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
+
+    // Canvas fallback has no live camera; report the static zoom param.
+    LaunchedEffect(zoom, onZoomChanged) { onZoomChanged?.invoke(zoom) }
     val coroutineScope = rememberCoroutineScope()
 
     // --- Gesture state ---

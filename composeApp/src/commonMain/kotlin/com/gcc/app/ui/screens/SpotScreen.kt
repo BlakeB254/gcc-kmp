@@ -154,6 +154,9 @@ fun SpotScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            LaunchedEffect(uiState.scanFinishedWithoutReport) {
+                if (uiState.scanFinishedWithoutReport) onBack()
+            }
             when (uiState.phase) {
                 SpotPhase.CAMERA -> CameraPhase(
                     photos = uiState.capturedPhotos,

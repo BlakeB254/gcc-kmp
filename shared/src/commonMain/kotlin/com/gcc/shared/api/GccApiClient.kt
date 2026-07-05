@@ -793,6 +793,9 @@ class GccApiClient(
                     try { BlockStatus.valueOf(s.uppercase()) } catch (_: Exception) { BlockStatus.AVAILABLE }
                 } ?: BlockStatus.AVAILABLE,
                 boundary = decodePolygon(location?.get("boundary") as? JsonObject),
+                innerBoundary = (obj["innerBoundary"] as? JsonObject)?.let {
+                    runCatching { json.decodeFromJsonElement<GeoJSONMultiPolygon>(it) }.getOrNull()
+                },
                 center = decodePoint(location?.get("center") as? JsonObject),
                 displayImage = str("displayImage"),
                 imageLocationLat = str("imageLocationLat")?.toDoubleOrNull(),

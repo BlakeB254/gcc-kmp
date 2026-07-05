@@ -79,6 +79,13 @@ expect fun GccMap(
     onBountyTap: ((bountyId: Int) -> Unit)? = null,
     onContextPin: ((lat: Double, lng: Double) -> Unit)? = null,
     showBuildings: Boolean = true,
+    /** Snap the camera instantly to center/zoom changes (no easing, no
+     *  min-delta threshold) — REQUIRED under editor overlays that redraw
+     *  synchronously, or the map visibly detaches during zoom/pan. */
+    instantCamera: Boolean = false,
+    /** Editor mode: never synthesize the 8m-inset inner ring for loops with
+     *  no authored exclusion zones (an uneditable ghost in the editor). */
+    innerBoundaryFallback: Boolean = true,
     showGridLines: Boolean = true,
     showControls: Boolean = false,
     statusBarPadding: Boolean = false,
@@ -96,6 +103,9 @@ expect fun GccMap(
     explorerAreaStates: Map<String, String> = emptyMap(),
     affectedBlocks: List<AffectedBlock> = emptyList(),
     onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
+    /** Reports live camera zoom (throttled to actual changes) so callers can
+     *  zoom-gate chrome like the heat legend to when the layer is on screen. */
+    onZoomChanged: ((Double) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

@@ -687,6 +687,17 @@ fun AdminRouteDetailScreen(
                             zoom = fitZoom,
                             enableGestures = true,
                             routeCoordinates = listOf(routePoints),
+                            // Authored exclusion zones — without these the
+                            // review map fell back to the synthetic 8m inset
+                            // and admin edits never appeared here.
+                            innerBoundaryRings = fullRoute?.innerBoundary?.coordinates.orEmpty().mapNotNull { poly ->
+                                poly.firstOrNull()?.mapNotNull { pt ->
+                                    val lng = pt.getOrNull(0) ?: return@mapNotNull null
+                                    val lat = pt.getOrNull(1) ?: return@mapNotNull null
+                                    com.gcc.shared.model.Coordinates(lat = lat, lng = lng)
+                                }?.takeIf { it.size >= 3 }
+                            },
+                            innerBoundaryFallback = false,
                             imageStars = listOf(starCoord),
                             showBuildings = false,
                             showGridLines = false,

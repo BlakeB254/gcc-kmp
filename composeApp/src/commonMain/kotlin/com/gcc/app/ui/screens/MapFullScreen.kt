@@ -240,6 +240,11 @@ fun MapFullScreen(
     }
 
     val mapZoom = overrideZoom ?: resolved.zoom
+
+    // Live camera zoom reported by GccMap — gates the heat legend to the
+    // zoom band where the heatmap actually renders (an intensity legend
+    // floating over street-zoom pins labels a layer that isn't on screen).
+    var currentMapZoom by remember { mutableStateOf(mapZoom) }
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
     val currentGpsArea = remember(currentLocation) {
@@ -333,9 +338,13 @@ fun MapFullScreen(
     // Authored inner boundaries (route-v2): every ring from every visible
     // route's MultiPolygon (multiple exclusion islands per route supported);
     // centroid pairing in the map builders nests them under the right loop.
-    val innerBoundaryRings: List<List<Coordinates>> = remember(uiState.routes, assignedJobRoutePairs) {
-        (uiState.routes + assignedJobRoutePairs.map { it.second })
-            .mapNotNull { it.innerBoundary }
+    val innerBoundaryRings: List<List<Coordinates>> = remember(uiState.routes, assignedJobRoutePairs, displayBlocks) {
+        // Routes AND blocks: with 0 available routes the map shows block
+        // loops, whose authored exclusion zones ride the blocks feed — the
+        // route list alone left the map falling back to the synthetic 8m
+        // inset ('the inner boundary that mirrors the outer').
+        ((uiState.routes + assignedJobRoutePairs.map { it.second }).mapNotNull { it.innerBoundary } +
+            displayBlocks.mapNotNull { it.innerBoundary })
             .flatMap { multi ->
                 multi.coordinates.mapNotNull { poly ->
                     poly.firstOrNull()?.mapNotNull { pt ->
@@ -345,6 +354,7 @@ fun MapFullScreen(
                     }?.takeIf { it.size >= 3 }
                 }
             }
+            .distinct()
     }
 
     val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {
@@ -479,6 +489,7 @@ fun MapFullScreen(
             bounties = visibleBounties,
             spots = if (heatmapVisible) visibleSpots else emptyList(),
             mapMode = mapMode,
+            onZoomChanged = { currentMapZoom = it },
             affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
                 affectedBlocksVm.selectBlock(blockId)
@@ -543,12 +554,19 @@ fun MapFullScreen(
 
             // Precipitation intensity legend — right edge, vertically centered so it
             // never overlaps the top-left community info panel (routes/jobs/earnings).
-            if (heatmapVisible) {
-                PrecipitationLegend(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp),
-                )
+            // Zoom-gated to the band where the heatmap actually renders; at
+            // street zoom the pins speak for themselves and the legend would
+            // label a layer that isn't on screen.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = heatmapVisible &&
+                    currentMapZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp),
+            ) {
+                PrecipitationLegend()
             }
 
             selectedRecordIndex?.let { selectedIndex ->

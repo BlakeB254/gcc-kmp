@@ -829,7 +829,9 @@ private fun CameraPreviewFallback(modifier: Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Tap to capture",
+            // Simulator-only placeholder (no camera hardware). Real devices
+            // never see this — capture is automatic during scans.
+            text = "Camera unavailable in simulator",
             color = Color.White.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyLarge,
         )
