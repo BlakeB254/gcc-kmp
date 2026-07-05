@@ -1,6 +1,7 @@
 package com.gcc.app.ui.screens.admin
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -31,6 +33,7 @@ import com.gcc.app.ui.theme.TextSubtle
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.GeoJSONMultiPolygon
+import com.gcc.shared.model.GeoJSONPolygon
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.UpdateBlockBoundariesRequest
 import kotlinx.coroutines.launch
@@ -54,30 +57,38 @@ private val IslandAmberBright = Color(0xFFFFB300)
 private const val ZOOM_MAX = 19.0
 
 /** What a single-finger gesture is manipulating, decided at pointer-down. */
-private enum class DragTarget { PAN, VERTEX, ISLAND }
+private enum class DragTarget { NONE, VERTEX, RING }
+
+/** Which geometry the editor is working on. */
+private enum class EditStep { OUTER, ISLANDS }
+
+/** One undo entry: the full geometry state before a gesture. */
+private data class GeoSnapshot(val outer: Ring, val islands: List<Ring>)
 
 /**
- * Native admin editor for a route's INNER boundary islands — the
- * private-property exclusion zones cut out of the scannable corridor.
+ * Boundary Studio — the native admin editor for a block's boundaries.
  *
- * Direct-touch interaction model (mirror of the web BoundaryEditor, adapted
- * for fingers): tap an island to select it, drag a vertex handle to reshape,
- * tap an edge midpoint to insert a vertex, drag the island body to move it,
- * drag empty map to pan, pinch to zoom. "+ Island" enters draw mode where
- * each map tap places a vertex and tapping the first point closes the ring.
+ * Two explicit steps via a segmented header:
+ *  · OUTER — the block's perimeter. Same direct-touch editing as islands
+ *    (drag vertices, tap midpoints to insert, drag the body to move the whole
+ *    ring). If the block has no boundary yet, this step opens in draw mode.
+ *    Saving an edited outer warns that overlapping neighbors get trimmed
+ *    (the server's thinning behavior).
+ *  · ISLANDS — the private-property exclusion islands. "+ Island" draws one
+ *    tap-by-tap; "✨ Suggest" runs the OSM building-frontage generator
+ *    (server-side, results load in for adjusting); "Clear" removes all.
  *
- * GccMap stays gesture-disabled and state-driven; a full-size Canvas overlay
- * both draws the geometry and owns ALL touch via one custom awaitEachGesture
- * pointer loop. Every pixel↔geo conversion goes through [BoundaryProjection]
- * so hit testing, dragging and rendering always agree.
+ * One gesture contract, no ambiguity: ONE finger only ever edits (tap =
+ * select/deselect, drag = move vertex/ring, draw-mode taps place corners; a
+ * one-finger drag on empty map does NOTHING). TWO fingers always pan/zoom,
+ * clamped so the block can never leave the viewport. GccMap itself stays
+ * gesture-disabled; a full-size Canvas overlay draws all geometry and owns
+ * all touch through one awaitEachGesture loop. Every pixel↔geo conversion
+ * goes through [BoundaryProjection] so hit testing, dragging and rendering
+ * always agree.
  *
- * The camera is LOCKED to this route's block: it frames the outer boundary
- * (re-framing once the async route payload lands), min zoom is the fit zoom,
- * pan is clamped so the boundary bbox can't leave the viewport, and the map
- * outside the outer boundary is dimmed with an even-odd shade.
- *
- * Saves via PUT /api/admin/blocks/{blockId}/boundaries with an innerBoundary
- * MultiPolygon only (the outer boundary is never sent from the app).
+ * Saves via PUT /api/admin/blocks/{blockId}/boundaries — innerBoundary
+ * always; locationBoundary (outer) only when the outer was actually edited.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,44 +112,57 @@ fun AdminBoundaryEditorScreen(
         }
     }
 
-    // Outer boundary ring, (lat, lng), unclosed.
-    val outerRing: Ring = remember(route) {
-        route?.blockBoundary?.coordinates?.firstOrNull()?.let { uncloseRing(it.map { pt -> pt[1] to pt[0] }) }
-            ?: emptyList()
-    }
-
-    // ── Island state ────────────────────────────────────────────────────
-    // Islands are held unclosed; rings are re-closed only on serialize.
+    // ── Geometry state (outer + islands, all unclosed) ─────────────────
+    var savedOuter by remember { mutableStateOf<Ring>(emptyList()) }
+    var outer by remember { mutableStateOf<Ring>(emptyList()) }
     var savedIslands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var islands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var initialized by remember { mutableStateOf(false) }
+    var step by remember { mutableStateOf(EditStep.ISLANDS) }
+    var drawMode by remember { mutableStateOf(false) }
+
     LaunchedEffect(route) {
         val r = route ?: return@LaunchedEffect
         if (!initialized) {
+            val serverOuter = r.blockBoundary?.coordinates?.firstOrNull()
+                ?.let { uncloseRing(it.map { pt -> pt[1] to pt[0] }) }
+                ?.takeIf { it.size >= 3 }
+                ?: emptyList()
+            savedOuter = serverOuter
+            outer = serverOuter
             val initial = r.innerBoundary?.coordinates.orEmpty().mapNotNull { polygon ->
                 polygon.firstOrNull()?.let { ring -> uncloseRing(ring.map { pt -> pt[1] to pt[0] }) }
             }.filter { it.size >= 3 }
             savedIslands = initial
             islands = initial
+            // No boundary yet? The flow starts by drawing one.
+            if (serverOuter.isEmpty()) {
+                step = EditStep.OUTER
+                drawMode = true
+            }
             initialized = true
         }
     }
 
     var selectedIsland by remember { mutableStateOf<Int?>(null) }
     var selectedVertex by remember { mutableStateOf<Int?>(null) }
-    var drawMode by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf<Ring>(emptyList()) }
-    var undoStack by remember { mutableStateOf<List<List<Ring>>>(emptyList()) }
+    var undoStack by remember { mutableStateOf<List<GeoSnapshot>>(emptyList()) }
     var saving by remember { mutableStateOf(false) }
+    var suggesting by remember { mutableStateOf(false) }
     var hintDismissed by remember { mutableStateOf(false) }
+    var confirmOuterSave by remember { mutableStateOf(false) }
+
+    val outerDirty = outer != savedOuter
+    val islandsDirty = islands != savedIslands
 
     /** Push a PRE-edit snapshot — one entry per gesture, never per frame. */
-    fun pushUndoSnapshot(prev: List<Ring>) {
-        undoStack = (undoStack + listOf(prev)).takeLast(50)
+    fun pushUndoSnapshot(prevOuter: Ring = outer, prevIslands: List<Ring> = islands) {
+        undoStack = (undoStack + GeoSnapshot(prevOuter, prevIslands)).takeLast(50)
     }
 
     fun warnIfOutside(ring: Ring) {
-        if (outerRing.size >= 3 && ring.any { !pointInPolygon(it.first, it.second, outerRing) }) {
+        if (outer.size >= 3 && ring.any { !pointInPolygon(it.first, it.second, outer) }) {
             scope.launch {
                 snackbarHostState.showSnackbar("Warning: island extends outside the block boundary")
             }
@@ -147,13 +171,68 @@ fun AdminBoundaryEditorScreen(
 
     fun closeDraft() {
         if (draft.size < 3) return
-        pushUndoSnapshot(islands)
-        islands = islands + listOf(draft)
-        selectedIsland = islands.lastIndex
+        pushUndoSnapshot()
+        if (step == EditStep.OUTER) {
+            outer = draft
+        } else {
+            islands = islands + listOf(draft)
+            selectedIsland = islands.lastIndex
+            warnIfOutside(draft)
+        }
         selectedVertex = null
-        warnIfOutside(draft)
         draft = emptyList()
         drawMode = false
+    }
+
+    fun performSave() {
+        saving = true
+        scope.launch {
+            try {
+                val body = UpdateBlockBoundariesRequest(
+                    innerBoundary = if (islands.isEmpty()) null else islandsToMultiPolygon(islands),
+                    locationBoundary = if (outerDirty && outer.size >= 3) ringToPolygon(outer) else null,
+                )
+                apiClient.updateBlockBoundaries(blockId, body)
+                val outerWasDirty = outerDirty
+                savedIslands = islands
+                savedOuter = outer
+                snackbarHostState.showSnackbar(
+                    buildString {
+                        append("Saved")
+                        if (outerWasDirty) append(" · outer boundary updated")
+                        append(" · ${islands.size} island${if (islands.size == 1) "" else "s"}")
+                    }
+                )
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(e.message ?: "Save failed")
+            } finally {
+                saving = false
+            }
+        }
+    }
+
+    fun suggestIslands() {
+        suggesting = true
+        scope.launch {
+            try {
+                val result = apiClient.regenerateInnerBoundary(routeId)
+                val generated = result.innerBoundary?.coordinates.orEmpty().mapNotNull { polygon ->
+                    polygon.firstOrNull()?.let { ring -> uncloseRing(ring.map { pt -> pt[1] to pt[0] }) }
+                }.filter { it.size >= 3 }
+                pushUndoSnapshot()
+                islands = generated
+                savedIslands = generated // the generator persists server-side
+                selectedIsland = null
+                selectedVertex = null
+                snackbarHostState.showSnackbar(
+                    "Suggested ${generated.size} island${if (generated.size == 1) "" else "s"} from buildings — adjust freely"
+                )
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(e.message ?: "Island suggestion failed")
+            } finally {
+                suggesting = false
+            }
+        }
     }
 
     // ── Camera (locked to the block: min zoom = fit zoom, pan clamped) ──
@@ -162,12 +241,37 @@ fun AdminBoundaryEditorScreen(
     var zoom by remember { mutableStateOf(17.0) }
     var fitZoom by remember { mutableStateOf(13.0) }
 
+    if (confirmOuterSave) {
+        AlertDialog(
+            onDismissRequest = { confirmOuterSave = false },
+            title = { Text("Save outer boundary?") },
+            text = {
+                Text(
+                    "You reshaped this block's perimeter. Neighboring blocks that " +
+                        "overlap the new edge will be trimmed to fit against it."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmOuterSave = false
+                        performSave()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                ) { Text("Save", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmOuterSave = false }) { Text("Cancel") }
+            },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Inner Boundaries${route?.let { " · ${it.code}" } ?: ""}") },
+                title = { Text("Boundaries${route?.let { " · ${it.code}" } ?: ""}") },
                 navigationIcon = {
                     TextButton(onClick = onBack) {
                         Text("← Back", color = Color.White)
@@ -181,6 +285,7 @@ fun AdminBoundaryEditorScreen(
         },
         bottomBar = {
             EditorToolbar(
+                step = step,
                 drawMode = drawMode,
                 draftCount = draft.size,
                 onStartDraw = {
@@ -192,90 +297,106 @@ fun AdminBoundaryEditorScreen(
                 onCloseDraft = ::closeDraft,
                 onCancelDraft = {
                     draft = emptyList()
+                    // Backing out of a forced first-draw leaves an empty outer;
+                    // that's fine — Save stays meaningful for islands only.
                     drawMode = false
                 },
+                hasOuter = outer.size >= 3,
                 islandCount = islands.size,
-                selectedIndex = selectedIsland,
+                selectedIndex = if (step == EditStep.ISLANDS) selectedIsland else null,
                 onDeleteIsland = {
                     val idx = selectedIsland ?: return@EditorToolbar
-                    pushUndoSnapshot(islands)
+                    pushUndoSnapshot()
                     islands = islands.toMutableList().also { it.removeAt(idx) }
                     selectedIsland = null
                     selectedVertex = null
                 },
+                onClearIslands = {
+                    if (islands.isEmpty()) return@EditorToolbar
+                    pushUndoSnapshot()
+                    islands = emptyList()
+                    selectedIsland = null
+                    selectedVertex = null
+                },
+                suggesting = suggesting,
+                onSuggest = ::suggestIslands,
                 canUndo = undoStack.isNotEmpty(),
                 onUndo = {
                     undoStack.lastOrNull()?.let { prev ->
                         undoStack = undoStack.dropLast(1)
-                        islands = prev
-                        if ((selectedIsland ?: -1) >= prev.size) selectedIsland = null
+                        outer = prev.outer
+                        islands = prev.islands
+                        if ((selectedIsland ?: -1) >= prev.islands.size) selectedIsland = null
                         selectedVertex = null
                     }
                 },
-                isDirty = islands != savedIslands,
+                isDirty = outerDirty || islandsDirty,
                 onReset = {
-                    pushUndoSnapshot(islands)
+                    pushUndoSnapshot()
+                    outer = savedOuter
                     islands = savedIslands
                     selectedIsland = null
                     selectedVertex = null
                 },
                 saving = saving,
                 onSave = {
-                    saving = true
-                    scope.launch {
-                        try {
-                            val body = UpdateBlockBoundariesRequest(
-                                innerBoundary = if (islands.isEmpty()) null else islandsToMultiPolygon(islands),
-                            )
-                            apiClient.updateBlockBoundaries(blockId, body)
-                            savedIslands = islands
-                            snackbarHostState.showSnackbar(
-                                if (islands.isEmpty()) "Saved — all islands cleared"
-                                else "Saved ${islands.size} island${if (islands.size == 1) "" else "s"}"
-                            )
-                        } catch (e: Exception) {
-                            snackbarHostState.showSnackbar(e.message ?: "Save failed")
-                        } finally {
-                            saving = false
-                        }
-                    }
+                    if (outerDirty && outer.size >= 3) confirmOuterSave = true else performSave()
                 },
             )
         },
     ) { padding ->
         when {
             loadError != null -> CenteredMessage(loadError!!, onBack, Modifier.padding(padding))
-            route == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            route == null || !initialized -> Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
                 CircularProgressIndicator(color = GccGreen)
             }
-            outerRing.size < 3 -> CenteredMessage(
-                "This route's block has no outer boundary — nothing to edit against.",
-                onBack,
-                Modifier.padding(padding),
-            )
             else -> Column(Modifier.fillMaxSize().padding(padding)) {
-                // Slim context header — which block this editor is locked to.
+                // Step header: which geometry the next touch edits.
                 val routeInfo = route
-                if (routeInfo != null) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                routeInfo.displayName,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                routeInfo.code,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TextSubtle,
-                            )
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        if (routeInfo != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    routeInfo.displayName,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    routeInfo.code,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextSubtle,
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StepChip(
+                                label = "1 · Outer edge",
+                                active = step == EditStep.OUTER,
+                                enabled = !drawMode,
+                            ) {
+                                step = EditStep.OUTER
+                                selectedIsland = null
+                                selectedVertex = null
+                            }
+                            StepChip(
+                                label = "2 · Islands (${islands.size})",
+                                active = step == EditStep.ISLANDS,
+                                enabled = !drawMode && outer.size >= 3,
+                            ) {
+                                step = EditStep.ISLANDS
+                                selectedVertex = null
+                            }
                         }
                     }
                 }
@@ -285,31 +406,41 @@ fun AdminBoundaryEditorScreen(
                 val boxWidthPx = with(density) { maxWidth.toPx() }
                 val boxHeightPx = with(density) { maxHeight.toPx() }
 
-                // Outer-boundary bbox: [minLat, maxLat, minLng, maxLng].
-                val bbox = remember(outerRing) {
-                    listOf(
-                        outerRing.minOf { it.first }, outerRing.maxOf { it.first },
-                        outerRing.minOf { it.second }, outerRing.maxOf { it.second },
+                // Framing geometry: the SAVED outer (stable while dragging the
+                // live one), falling back to the route line for boundary-less
+                // blocks so first-draw still frames the right street.
+                val frameRing: Ring = remember(savedOuter, route) {
+                    savedOuter.takeIf { it.size >= 3 }
+                        ?: route?.geometry?.coordinates.orEmpty().map { pt -> pt[1] to pt[0] }
+                }
+
+                // Framing bbox: [minLat, maxLat, minLng, maxLng].
+                val bbox = remember(frameRing) {
+                    if (frameRing.isEmpty()) listOf(0.0, 0.0, 0.0, 0.0)
+                    else listOf(
+                        frameRing.minOf { it.first }, frameRing.maxOf { it.first },
+                        frameRing.minOf { it.second }, frameRing.maxOf { it.second },
                     )
                 }
 
-                // Keep the camera on the block: the center may not leave the
-                // boundary bbox expanded by ~50% of the viewport span.
+                // Keep the camera on the block: the center may drift at most
+                // ~25% of the viewport span past the framing bbox — the block
+                // can never slide off screen.
                 fun clampedCenter(lat: Double, lng: Double, z: Double, wPx: Float, hPx: Float): Pair<Double, Double> {
                     val lngScale = cos(lat * PI / 180.0)
                     val mpp = 156543.03392 * lngScale / 2.0.pow(z)
-                    val halfLat = hPx * mpp / 111_320.0 / 2.0
-                    val halfLng = wPx * mpp / (111_320.0 * lngScale) / 2.0
-                    return lat.coerceIn(bbox[0] - halfLat, bbox[1] + halfLat) to
-                        lng.coerceIn(bbox[2] - halfLng, bbox[3] + halfLng)
+                    val slackLat = hPx * mpp / 111_320.0 / 4.0
+                    val slackLng = wPx * mpp / (111_320.0 * lngScale) / 4.0
+                    return lat.coerceIn(bbox[0] - slackLat, bbox[1] + slackLat) to
+                        lng.coerceIn(bbox[2] - slackLng, bbox[3] + slackLng)
                 }
 
-                // Fit the outer boundary bbox with ~15% padding per side
+                // Fit the framing bbox with ~15% padding per side
                 // (invert metersToPixels: z = log2(156543.03392·cos(lat)·px/spanMeters)).
-                // Keyed on outerRing: the route arrives ASYNC, so the frame
+                // Keyed on frameRing: the route arrives ASYNC, so the frame
                 // must (re)run after blockBoundary lands, not just at mount.
-                LaunchedEffect(outerRing, boxWidthPx, boxHeightPx) {
-                    if (boxWidthPx > 0 && boxHeightPx > 0) {
+                LaunchedEffect(frameRing, boxWidthPx, boxHeightPx) {
+                    if (boxWidthPx > 0 && boxHeightPx > 0 && frameRing.isNotEmpty()) {
                         centerLat = (bbox[0] + bbox[1]) / 2.0
                         centerLng = (bbox[2] + bbox[3]) / 2.0
                         val spanNorth = (bbox[1] - bbox[0]) * 111_320.0
@@ -333,18 +464,19 @@ fun AdminBoundaryEditorScreen(
                 )
 
                 // Overlay: draws boundaries AND owns ALL touch. One custom
-                // pointer loop — 2+ pointers pinch-zoom/pan, 1 pointer runs
-                // the hit-test logic (vertex > midpoint > island body > pan).
+                // pointer loop — 2+ pointers pinch-zoom/pan the map, 1 pointer
+                // ONLY edits (vertex > midpoint > ring body > tap-deselect;
+                // one-finger drags on empty map deliberately do nothing).
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
+                        .pointerInput(step, drawMode) {
                             fun projection() = BoundaryProjection(
                                 centerLat, centerLng, zoom,
                                 size.width.toFloat(), size.height.toFloat(),
                             )
 
-                            /** Pan so the map follows the finger (inverse delta on center). */
+                            /** Pan so the map follows the fingers (2-finger only). */
                             fun panBy(delta: Offset) {
                                 val p = projection()
                                 val (la, ln) = clampedCenter(
@@ -356,6 +488,20 @@ fun AdminBoundaryEditorScreen(
                                 centerLng = ln
                             }
 
+                            /** The rings a one-finger gesture may edit in this step. */
+                            fun activeRings(): List<Ring> =
+                                if (step == EditStep.OUTER) listOf(outer).filter { it.size >= 3 }
+                                else islands
+
+                            fun activeSelected(): Int? =
+                                if (step == EditStep.OUTER) (if (outer.size >= 3) 0 else null)
+                                else selectedIsland
+
+                            fun setActiveRing(index: Int, ring: Ring) {
+                                if (step == EditStep.OUTER) outer = ring
+                                else islands = islands.toMutableList().also { it[index] = ring }
+                            }
+
                             awaitEachGesture {
                                 val down = awaitFirstDown()
                                 val downPos = down.position
@@ -364,28 +510,34 @@ fun AdminBoundaryEditorScreen(
                                 val midpointHitPx = 22.dp.toPx()
                                 val edgeSlopPx = 16.dp.toPx()
 
-                                var target = DragTarget.PAN
+                                var target = DragTarget.NONE
                                 var dragVertex = -1
-                                var tappedIsland: Int? = null
-                                var preGesture: List<Ring>? = null
+                                var tappedRing: Int? = null
+                                var preOuter: Ring? = null
+                                var preIslands: List<Ring>? = null
                                 var edited = false
                                 var pinched = false
                                 var pastSlop = false
 
+                                fun rememberPre() {
+                                    preOuter = outer
+                                    preIslands = islands
+                                }
+
                                 // ── Classify the pointer-down ──────────────
                                 val p0 = projection()
-                                val selIdx = selectedIsland
-                                val sel = if (drawMode) null else selIdx?.let { islands.getOrNull(it) }
+                                val selIdx = activeSelected()
+                                val sel = if (drawMode) null else selIdx?.let { activeRings().getOrNull(it) }
                                 if (sel != null && selIdx != null) {
                                     val pts = sel.map { (la, ln) -> p0.project(la, ln) }
-                                    // 1) Vertex handle of the selected island.
+                                    // 1) Vertex handle of the selected ring.
                                     val vi = pts.indices
                                         .minByOrNull { (pts[it] - downPos).getDistance() }
                                         ?.takeIf { (pts[it] - downPos).getDistance() <= vertexHitPx }
                                     if (vi != null) {
                                         target = DragTarget.VERTEX
                                         dragVertex = vi
-                                        preGesture = islands
+                                        rememberPre()
                                     } else {
                                         // 2) Edge-midpoint dot → insert a vertex there,
                                         // then keep dragging it (one undo entry total).
@@ -396,12 +548,12 @@ fun AdminBoundaryEditorScreen(
                                             .minByOrNull { (mids[it] - downPos).getDistance() }
                                             ?.takeIf { (mids[it] - downPos).getDistance() <= midpointHitPx }
                                         if (mi != null) {
-                                            preGesture = islands
+                                            rememberPre()
                                             val (mLat, mLng) = p0.unproject(mids[mi])
-                                            islands = islands.toMutableList().also { list ->
-                                                list[selIdx] = list[selIdx].toMutableList()
-                                                    .also { it.add(mi + 1, mLat to mLng) }
-                                            }
+                                            setActiveRing(
+                                                selIdx,
+                                                sel.toMutableList().also { it.add(mi + 1, mLat to mLng) },
+                                            )
                                             target = DragTarget.VERTEX
                                             dragVertex = mi + 1
                                             selectedVertex = mi + 1
@@ -409,26 +561,29 @@ fun AdminBoundaryEditorScreen(
                                         }
                                     }
                                 }
-                                if (target == DragTarget.PAN && !drawMode) {
-                                    // 3) Island body (generous hit slop around edges).
+                                if (target == DragTarget.NONE && !drawMode) {
+                                    // 3) Ring body (generous hit slop around edges).
                                     fun hits(ring: Ring): Boolean {
                                         val pts = ring.map { (la, ln) -> p0.project(la, ln) }
                                         return screenPointInPolygon(downPos, pts) ||
                                             distanceToPolygonEdge(downPos, pts) <= edgeSlopPx
                                     }
+                                    val rings = activeRings()
                                     val hitIdx = when {
-                                        selIdx != null && islands.getOrNull(selIdx)?.let(::hits) == true -> selIdx
-                                        else -> islands.indices.lastOrNull { hits(islands[it]) }
+                                        selIdx != null && rings.getOrNull(selIdx)?.let(::hits) == true -> selIdx
+                                        else -> rings.indices.lastOrNull { hits(rings[it]) }
                                     }
                                     if (hitIdx != null) {
-                                        tappedIsland = hitIdx
+                                        tappedRing = hitIdx
                                         if (hitIdx == selIdx) {
-                                            // Drag inside the selected island moves it.
-                                            target = DragTarget.ISLAND
-                                            preGesture = islands
+                                            // Drag inside the selected ring moves it.
+                                            target = DragTarget.RING
+                                            rememberPre()
                                         }
                                     }
-                                    // 4) Otherwise: empty map → pan / tap-deselect.
+                                    // 4) Otherwise: empty map → a one-finger drag
+                                    // does NOTHING (map moves with two fingers);
+                                    // a tap deselects.
                                 }
 
                                 // ── Track the gesture ──────────────────────
@@ -444,9 +599,12 @@ fun AdminBoundaryEditorScreen(
                                         if (!pinched) {
                                             pinched = true
                                             if (edited) {
-                                                preGesture?.let(::pushUndoSnapshot)
+                                                preOuter?.let { po ->
+                                                    preIslands?.let { pi -> pushUndoSnapshot(po, pi) }
+                                                }
                                                 edited = false
-                                                preGesture = null
+                                                preOuter = null
+                                                preIslands = null
                                             }
                                         }
                                         val a = pressed[0]
@@ -487,32 +645,34 @@ fun AdminBoundaryEditorScreen(
                                         pinched -> if (delta != Offset.Zero) panBy(delta) // finger left after pinch
                                         target == DragTarget.VERTEX && (pastSlop || edited) -> {
                                             // Vertex rides the finger (absolute position).
-                                            val si = selectedIsland
-                                            if (si != null && dragVertex < (islands.getOrNull(si)?.size ?: 0)) {
+                                            val si = activeSelected()
+                                            if (si != null && dragVertex < (activeRings().getOrNull(si)?.size ?: 0)) {
                                                 val (la, ln) = projection().unproject(change.position)
-                                                islands = islands.toMutableList().also { list ->
-                                                    list[si] = list[si].toMutableList()
-                                                        .also { it[dragVertex] = la to ln }
-                                                }
+                                                setActiveRing(
+                                                    si,
+                                                    activeRings()[si].toMutableList()
+                                                        .also { it[dragVertex] = la to ln },
+                                                )
                                                 edited = true
                                             }
                                         }
-                                        target == DragTarget.ISLAND && pastSlop -> {
-                                            // Island follows the finger.
-                                            val si = selectedIsland
-                                            if (si != null && si < islands.size && delta != Offset.Zero) {
+                                        target == DragTarget.RING && pastSlop -> {
+                                            // Ring follows the finger.
+                                            val si = activeSelected()
+                                            val rings = activeRings()
+                                            if (si != null && si < rings.size && delta != Offset.Zero) {
                                                 val cur = projection()
                                                 val dLat = -delta.y * cur.metersPerPixel / 111_320.0
                                                 val dLng = delta.x * cur.metersPerPixel / (111_320.0 * cur.lngScale)
-                                                islands = islands.toMutableList().also { list ->
-                                                    list[si] = list[si].map { (la, ln) -> (la + dLat) to (ln + dLng) }
-                                                }
+                                                setActiveRing(
+                                                    si,
+                                                    rings[si].map { (la, ln) -> (la + dLat) to (ln + dLng) },
+                                                )
                                                 edited = true
                                             }
                                         }
-                                        target == DragTarget.PAN && pastSlop -> {
-                                            if (delta != Offset.Zero) panBy(delta)
-                                        }
+                                        // DragTarget.NONE: one-finger drag on empty
+                                        // map is intentionally inert.
                                     }
                                     change.consume()
                                 }
@@ -520,8 +680,12 @@ fun AdminBoundaryEditorScreen(
                                 // ── Gesture end ────────────────────────────
                                 if (edited) {
                                     // One undo entry for the whole gesture.
-                                    preGesture?.let(::pushUndoSnapshot)
-                                    selectedIsland?.let { si -> islands.getOrNull(si)?.let(::warnIfOutside) }
+                                    preOuter?.let { po ->
+                                        preIslands?.let { pi -> pushUndoSnapshot(po, pi) }
+                                    }
+                                    if (step == EditStep.ISLANDS) {
+                                        selectedIsland?.let { si -> islands.getOrNull(si)?.let(::warnIfOutside) }
+                                    }
                                 } else if (!pinched && !pastSlop) {
                                     // A TAP.
                                     if (drawMode) {
@@ -533,14 +697,14 @@ fun AdminBoundaryEditorScreen(
                                     } else when {
                                         target == DragTarget.VERTEX ->
                                             selectedVertex = if (selectedVertex == dragVertex) null else dragVertex
-                                        tappedIsland != null -> {
-                                            if (selectedIsland != tappedIsland) {
-                                                selectedIsland = tappedIsland
+                                        tappedRing != null && step == EditStep.ISLANDS -> {
+                                            if (selectedIsland != tappedRing) {
+                                                selectedIsland = tappedRing
                                             }
                                             selectedVertex = null
                                         }
                                         else -> {
-                                            selectedIsland = null
+                                            if (step == EditStep.ISLANDS) selectedIsland = null
                                             selectedVertex = null
                                         }
                                     }
@@ -560,59 +724,72 @@ fun AdminBoundaryEditorScreen(
                         return path
                     }
 
-                    // Dim everything OUTSIDE the outer boundary: one even-odd
-                    // path (full-canvas rect + boundary ring as the hole) —
-                    // blend-mode-free, robust on iOS Skia.
-                    val shade = Path().apply {
-                        fillType = PathFillType.EvenOdd
-                        addRect(Rect(0f, 0f, size.width, size.height))
-                        outerRing.forEachIndexed { i, (lat, lng) ->
-                            val p = proj.project(lat, lng)
-                            if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+                    fun drawHandles(ring: Ring, accent: Color) {
+                        val pts = ring.map { (lat, lng) -> proj.project(lat, lng) }
+                        // Edge midpoints — small hollow dots (tap to insert a vertex).
+                        for (j in pts.indices) {
+                            val mid = (pts[j] + pts[(j + 1) % pts.size]) / 2f
+                            drawCircle(Color.Black.copy(alpha = 0.35f), radius = 4.5.dp.toPx(), center = mid, style = Stroke(width = 3.5.dp.toPx()))
+                            drawCircle(Color.White, radius = 4.dp.toPx(), center = mid, style = Stroke(width = 2.dp.toPx()))
                         }
-                        close()
+                        // Vertex handles — filled; the tapped one highlighted.
+                        pts.forEachIndexed { j, p ->
+                            val isSel = j == selectedVertex
+                            if (isSel) drawCircle(GccSky, radius = 9.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
+                            drawCircle(Color.White, radius = (if (isSel) 7.dp else 5.5.dp).toPx(), center = p)
+                            drawCircle(accent, radius = (if (isSel) 5.dp else 4.dp).toPx(), center = p)
+                        }
                     }
-                    drawPath(shade, color = Color.Black.copy(alpha = 0.45f))
 
-                    // Outer boundary — green stroke (not editable here).
-                    drawPath(ringPath(outerRing), color = GccGreen, style = Stroke(width = 2.5.dp.toPx()))
+                    if (outer.size >= 3) {
+                        // Dim everything OUTSIDE the outer boundary: one even-odd
+                        // path (full-canvas rect + boundary ring as the hole) —
+                        // blend-mode-free, robust on iOS Skia.
+                        val shade = Path().apply {
+                            fillType = PathFillType.EvenOdd
+                            addRect(Rect(0f, 0f, size.width, size.height))
+                            outer.forEachIndexed { i, (lat, lng) ->
+                                val p = proj.project(lat, lng)
+                                if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+                            }
+                            close()
+                        }
+                        drawPath(shade, color = Color.Black.copy(alpha = 0.45f))
+
+                        // Outer boundary — green; bolder + handled in OUTER step.
+                        val outerActive = step == EditStep.OUTER && !drawMode
+                        drawPath(
+                            ringPath(outer),
+                            color = if (outerDirty) IslandAmberBright else GccGreen,
+                            style = Stroke(width = (if (outerActive) 3.5.dp else 2.5.dp).toPx()),
+                        )
+                        if (outerActive) drawHandles(outer, GccGreen)
+                    }
 
                     // Inner islands — amber fill + stroke; selected drawn brighter/thicker.
+                    val islandsActive = step == EditStep.ISLANDS
                     islands.forEachIndexed { i, island ->
                         if (island.size < 3) return@forEachIndexed
-                        val selected = i == selectedIsland
+                        val selected = islandsActive && i == selectedIsland
                         val path = ringPath(island)
-                        val fill = if (selected) IslandAmberBright.copy(alpha = 0.35f) else IslandAmber.copy(alpha = 0.25f)
-                        val strokeColor = if (selected) IslandAmberBright else IslandAmber.copy(alpha = 0.85f)
+                        val baseAlpha = if (islandsActive) 0.25f else 0.12f
+                        val fill = if (selected) IslandAmberBright.copy(alpha = 0.35f) else IslandAmber.copy(alpha = baseAlpha)
+                        val strokeColor = if (selected) IslandAmberBright else IslandAmber.copy(alpha = if (islandsActive) 0.85f else 0.4f)
                         drawPath(path, color = fill)
                         drawPath(path, color = strokeColor, style = Stroke(width = (if (selected) 3.dp else 1.5.dp).toPx()))
-                        if (selected) {
-                            val pts = island.map { (lat, lng) -> proj.project(lat, lng) }
-                            // Edge midpoints — small hollow dots (tap to insert a vertex).
-                            for (j in pts.indices) {
-                                val mid = (pts[j] + pts[(j + 1) % pts.size]) / 2f
-                                drawCircle(Color.Black.copy(alpha = 0.35f), radius = 4.5.dp.toPx(), center = mid, style = Stroke(width = 3.5.dp.toPx()))
-                                drawCircle(Color.White, radius = 4.dp.toPx(), center = mid, style = Stroke(width = 2.dp.toPx()))
-                            }
-                            // Vertex handles — filled; the tapped one highlighted.
-                            pts.forEachIndexed { j, p ->
-                                val isSel = j == selectedVertex
-                                if (isSel) drawCircle(GccSky, radius = 9.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
-                                drawCircle(Color.White, radius = (if (isSel) 7.dp else 5.5.dp).toPx(), center = p)
-                                drawCircle(IslandAmberBright, radius = (if (isSel) 5.dp else 4.dp).toPx(), center = p)
-                            }
-                        }
+                        if (selected) drawHandles(island, IslandAmberBright)
                     }
 
-                    // In-progress draft island — points + connecting lines.
+                    // In-progress draft ring — points + connecting lines.
                     if (draft.isNotEmpty()) {
+                        val accent = if (step == EditStep.OUTER) GccGreen else GccSky
                         val pts = draft.map { (lat, lng) -> proj.project(lat, lng) }
                         for (i in 0 until pts.size - 1) {
-                            drawLine(color = GccSky, start = pts[i], end = pts[i + 1], strokeWidth = 2.dp.toPx())
+                            drawLine(color = accent, start = pts[i], end = pts[i + 1], strokeWidth = 2.dp.toPx())
                         }
                         if (pts.size >= 3) {
                             drawLine(
-                                color = GccSky.copy(alpha = 0.4f),
+                                color = accent.copy(alpha = 0.4f),
                                 start = pts.last(),
                                 end = pts.first(),
                                 strokeWidth = 1.5.dp.toPx(),
@@ -622,49 +799,57 @@ fun AdminBoundaryEditorScreen(
                         }
                         pts.forEach { p ->
                             drawCircle(color = Color.White, radius = 5.dp.toPx(), center = p)
-                            drawCircle(color = GccSky, radius = 3.5.dp.toPx(), center = p)
+                            drawCircle(color = accent, radius = 3.5.dp.toPx(), center = p)
                         }
                     }
                 }
 
                 // Floating "remove point" chip near the tap-selected vertex.
-                val chipIsland = selectedIsland
                 val chipVertex = selectedVertex
-                if (!drawMode && chipIsland != null && chipVertex != null) {
-                    val ring = islands.getOrNull(chipIsland)
-                    val pt = ring?.getOrNull(chipVertex)
-                    if (pt != null) {
-                        val pos = BoundaryProjection(centerLat, centerLng, zoom, boxWidthPx, boxHeightPx)
-                            .project(pt.first, pt.second)
-                        val chipW = with(density) { 150.dp.toPx() }
-                        val chipH = with(density) { 40.dp.toPx() }
-                        val gap = with(density) { 18.dp.toPx() }
-                        val x = (pos.x - chipW / 2f).coerceIn(8f, (boxWidthPx - chipW - 8f).coerceAtLeast(8f))
-                        val y = (pos.y - chipH - gap).coerceAtLeast(8f)
-                        val canRemove = ring.size > 3
-                        Surface(
-                            modifier = Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) },
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color.Black.copy(alpha = 0.75f),
-                            shadowElevation = 4.dp,
-                        ) {
-                            Text(
-                                text = if (canRemove) "✕ Remove point" else "Min 3 points",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (canRemove) Color.White else Color.White.copy(alpha = 0.5f),
-                                modifier = Modifier
-                                    .then(
-                                        if (canRemove) Modifier.clickable {
-                                            pushUndoSnapshot(islands)
-                                            val newRing = ring.toMutableList().also { it.removeAt(chipVertex) }
-                                            islands = islands.toMutableList().also { it[chipIsland] = newRing }
-                                            selectedVertex = null
-                                            warnIfOutside(newRing)
-                                        } else Modifier
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                            )
-                        }
+                val chipRing: Ring? = when {
+                    drawMode || chipVertex == null -> null
+                    step == EditStep.OUTER -> outer.takeIf { it.size >= 3 }
+                    else -> selectedIsland?.let { islands.getOrNull(it) }
+                }
+                if (chipRing != null && chipVertex != null && chipVertex < chipRing.size) {
+                    val pt = chipRing[chipVertex]
+                    val pos = BoundaryProjection(centerLat, centerLng, zoom, boxWidthPx, boxHeightPx)
+                        .project(pt.first, pt.second)
+                    val chipW = with(density) { 150.dp.toPx() }
+                    val chipH = with(density) { 40.dp.toPx() }
+                    val gap = with(density) { 18.dp.toPx() }
+                    val x = (pos.x - chipW / 2f).coerceIn(8f, (boxWidthPx - chipW - 8f).coerceAtLeast(8f))
+                    val y = (pos.y - chipH - gap).coerceAtLeast(8f)
+                    val canRemove = chipRing.size > 3
+                    Surface(
+                        modifier = Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.Black.copy(alpha = 0.75f),
+                        shadowElevation = 4.dp,
+                    ) {
+                        Text(
+                            text = if (canRemove) "✕ Remove point" else "Min 3 points",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = if (canRemove) Color.White else Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .then(
+                                    if (canRemove) Modifier.clickable {
+                                        pushUndoSnapshot()
+                                        val newRing = chipRing.toMutableList().also { it.removeAt(chipVertex) }
+                                        if (step == EditStep.OUTER) {
+                                            outer = newRing
+                                        } else {
+                                            val ci = selectedIsland
+                                            if (ci != null) {
+                                                islands = islands.toMutableList().also { it[ci] = newRing }
+                                                warnIfOutside(newRing)
+                                            }
+                                        }
+                                        selectedVertex = null
+                                    } else Modifier
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
                     }
                 }
 
@@ -691,8 +876,14 @@ fun AdminBoundaryEditorScreen(
                         color = Color.Black.copy(alpha = 0.7f),
                     ) {
                         Text(
-                            if (draft.isEmpty()) "Tap the map to place points · tap the first point to close"
-                            else "Tap to place points (${draft.size}) · tap the first point to close",
+                            when {
+                                step == EditStep.OUTER && draft.isEmpty() ->
+                                    "Draw the block's outer edge: tap each corner · tap the first point to close"
+                                step == EditStep.OUTER ->
+                                    "Outer edge: ${draft.size} corner${if (draft.size == 1) "" else "s"} · tap the first point to close"
+                                draft.isEmpty() -> "Tap the map to place points · tap the first point to close"
+                                else -> "Tap to place points (${draft.size}) · tap the first point to close"
+                            },
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = Color.White,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -700,12 +891,12 @@ fun AdminBoundaryEditorScreen(
                     }
                 }
 
-                // First-open hint when there are no islands yet.
-                if (initialized && !drawMode && islands.isEmpty() && !hintDismissed) {
+                // First-open hint: teach the gesture contract once.
+                if (initialized && !drawMode && !hintDismissed) {
                     Surface(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 12.dp, start = 16.dp, end = 16.dp),
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp, start = 16.dp, end = 16.dp),
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                         shadowElevation = 3.dp,
@@ -715,7 +906,9 @@ fun AdminBoundaryEditorScreen(
                             modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
                         ) {
                             Text(
-                                "Private-property islands are excluded from required scanning. Tap + Island to draw one.",
+                                "One finger edits · two fingers move the map. " +
+                                    if (step == EditStep.OUTER) "Drag the green corners to reshape the block."
+                                    else "Islands are excluded from required scanning.",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = TextSubtle,
                                 modifier = Modifier.weight(1f),
@@ -727,6 +920,27 @@ fun AdminBoundaryEditorScreen(
                 } // BoxWithConstraints
             }
         }
+    }
+}
+
+@Composable
+private fun StepChip(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (active) GccSkyDark else MaterialTheme.colorScheme.surface,
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick),
+        shadowElevation = if (active) 2.dp else 0.dp,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = when {
+                active -> Color.White
+                enabled -> TextSubtle
+                else -> TextSubtle.copy(alpha = 0.4f)
+            },
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+        )
     }
 }
 
@@ -759,14 +973,19 @@ private fun CenteredMessage(message: String, onBack: () -> Unit, modifier: Modif
 
 @Composable
 private fun EditorToolbar(
+    step: EditStep,
     drawMode: Boolean,
     draftCount: Int,
     onStartDraw: () -> Unit,
     onCloseDraft: () -> Unit,
     onCancelDraft: () -> Unit,
+    hasOuter: Boolean,
     islandCount: Int,
     selectedIndex: Int?,
     onDeleteIsland: () -> Unit,
+    onClearIslands: () -> Unit,
+    suggesting: Boolean,
+    onSuggest: () -> Unit,
     canUndo: Boolean,
     onUndo: () -> Unit,
     isDirty: Boolean,
@@ -792,7 +1011,7 @@ private fun EditorToolbar(
                         "$draftCount point${if (draftCount == 1) "" else "s"}",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = GccSky,
+                        color = if (step == EditStep.OUTER) GccGreen else GccSky,
                         modifier = Modifier.weight(1f),
                     )
                     Button(
@@ -804,7 +1023,7 @@ private fun EditorToolbar(
                 }
             } else {
                 // Contextual row for the selected island.
-                if (selectedIndex != null) {
+                if (step == EditStep.ISLANDS && selectedIndex != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -821,12 +1040,40 @@ private fun EditorToolbar(
                         }
                     }
                 }
+                if (step == EditStep.ISLANDS) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onStartDraw,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = GccSky),
+                        ) { Text("+ Island", color = Color.White) }
+                        OutlinedButton(
+                            onClick = onSuggest,
+                            enabled = !suggesting && hasOuter,
+                            modifier = Modifier.weight(1.1f),
+                        ) {
+                            if (suggesting) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("✨ Suggest")
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = onClearIslands,
+                            enabled = islandCount > 0,
+                            modifier = Modifier.weight(0.9f),
+                        ) { Text("Clear") }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onStartDraw,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = GccSky),
+                        ) { Text(if (hasOuter) "Redraw edge" else "Draw edge", color = Color.White) }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onStartDraw,
-                        modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(containerColor = GccSky),
-                    ) { Text("+ Island", color = Color.White) }
                     OutlinedButton(onClick = onUndo, enabled = canUndo, modifier = Modifier.weight(1f)) {
                         Text("Undo")
                     }
@@ -868,4 +1115,12 @@ private fun islandsToMultiPolygon(islands: List<Ring>): GeoJSONMultiPolygon =
             val pts = ring.map { (lat, lng) -> listOf(lng, lat) }
             listOf(pts + listOf(pts.first()))
         },
+    )
+
+/** Serialize the outer ring to a closed GeoJSON Polygon ([lng, lat] order). */
+private fun ringToPolygon(ring: Ring): GeoJSONPolygon =
+    GeoJSONPolygon(
+        coordinates = listOf(
+            ring.map { (lat, lng) -> listOf(lng, lat) }.let { it + listOf(it.first()) },
+        ),
     )
