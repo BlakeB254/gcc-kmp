@@ -220,6 +220,17 @@ actual class ArEnvScanOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // Native mode has no ARSessionDelegate — mirror tracking quality on
+        // the same cadence the route/spot overlays do.
+        nativeSurface?.let { surface ->
+            sessionHealth.overrideState(
+                when (surface.trackingStateRaw()) {
+                    0 -> TrackingState.NORMAL
+                    1 -> TrackingState.LIMITED
+                    else -> TrackingState.NOT_AVAILABLE
+                }
+            )
+        }
     }
 
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
