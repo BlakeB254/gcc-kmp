@@ -240,4 +240,20 @@ class OutdoorGateV4Test {
         gate.onCeilingPlane(true, t0)
         assertEquals(t0, gate.lastIndoorFlipAtMs)
     }
+
+    @Test
+    fun staleOutdoorStreakDoesNotShortcutRecovery() {
+        val gate = OutdoorGate()
+        // Rack up outdoor votes while OUTDOOR, then flip INDOOR via ceiling.
+        gate.onSceneVote(SceneVote.OUTDOOR, t0)
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 1000L)
+        gate.onCeilingPlane(true, t0 + 2000L)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+        // ONE fresh outdoor vote must not recover (needs 2 consecutive)…
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 8000L)
+        assertEquals(OutdoorState.INDOOR, gate.state.value)
+        // …the second one may (ceiling is stale by now: >5s).
+        gate.onSceneVote(SceneVote.OUTDOOR, t0 + 9000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
 }

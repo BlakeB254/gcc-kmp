@@ -97,6 +97,7 @@ class OutdoorGate {
     private fun setState(newState: OutdoorState, nowMs: Long) {
         if (newState == OutdoorState.INDOOR && _state.value != OutdoorState.INDOOR) {
             lastIndoorFlipAtMs = nowMs
+            sceneOutdoorStreak = 0
         }
         _state.value = newState
         _captureAllowed.value = newState == OutdoorState.OUTDOOR
