@@ -41,6 +41,9 @@ export interface RecordObservationInput {
   lng: number
   itemType: string | null
   state: 'dirty' | 'clean'
+  // Which world domain this observation belongs to. Defaults to 'litter';
+  // vegetation/construction/land_use are auto-registered landmark elements.
+  domain?: 'litter' | 'vegetation' | 'construction' | 'land_use'
   // Domain-specific descriptive payload — litter's severity/volume/weight
   // today, whatever a future domain needs tomorrow, without a schema change.
   attributes?: Record<string, unknown>
@@ -107,6 +110,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       locationCellId: cellId,
       itemType: input.itemType,
       state: input.state,
+      domain: input.domain ?? 'litter',
       attributes: input.attributes ?? null,
       confidence: input.confidence ?? null,
       mediaUrl: input.mediaUrl ?? null,

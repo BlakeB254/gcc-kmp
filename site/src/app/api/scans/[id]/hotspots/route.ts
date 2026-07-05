@@ -39,6 +39,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await request.json().catch(() => null)
     const lat = Number(body?.lat)
     const lng = Number(body?.lng)
+    const estimatedWeightGrams = Number.isFinite(Number(body?.estimatedWeightGrams))
+      ? Math.round(Number(body.estimatedWeightGrams))
+      : null
+    const estimatedWidthMeters = Number.isFinite(Number(body?.estimatedWidthMeters))
+      ? Number(body.estimatedWidthMeters)
+      : null
     const beforePhotoUrl = typeof body?.beforePhotoUrl === 'string' ? body.beforePhotoUrl : ''
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return NextResponse.json({ data: null, success: false, message: 'lat and lng are required' }, { status: 400 })
@@ -82,6 +88,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         severity: hotspot.severity,
         ...(hotspot.estimatedVolumeLiters != null ? { estimatedVolumeLiters: hotspot.estimatedVolumeLiters } : {}),
         ...(hotspot.estimatedWeightLbs != null ? { estimatedWeightLbs: hotspot.estimatedWeightLbs } : {}),
+        ...(estimatedWeightGrams != null ? { estimatedWeightGrams } : {}),
+        ...(estimatedWidthMeters != null ? { estimatedWidthMeters } : {}),
       },
       confidence: hotspot.confidence,
       mediaUrl: hotspot.beforePhotoUrl,

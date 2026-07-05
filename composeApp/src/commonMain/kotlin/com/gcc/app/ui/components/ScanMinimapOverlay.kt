@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.ObservedSpotItem
 import kotlin.math.PI
 import kotlin.math.cos
 
@@ -43,6 +44,9 @@ fun ScanMinimapOverlay(
     scanCellCenters: List<Pair<Double, Double>>,
     cellSizeMeters: Double,
     trashItems: List<Coordinates>,
+    /** Typed items (env-scan confirmed trash) — drawn as per-type glyphs
+     *  instead of the generic orange dot. */
+    typedTrashItems: List<ObservedSpotItem> = emptyList(),
     /** Legacy fog dots — superseded by the full veil; kept for call-site compat. */
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
@@ -148,6 +152,33 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.60f), overscan = 1.2f)
         }
 
+        // ── Scan-cell grid ───────────────────────────────────────────
+        // A faint lattice aligned to the CoverageTracker cell grid, over the
+        // veil and fills: the minimap reads as the same "surveyed graph
+        // paper" the AR ground grid projects onto the world. Anchored to a
+        // real cell center when one exists so lines land on cell EDGES.
+        run {
+            var spacing = metersToPixels(cellSizeMeters, centerLat, zoom)
+            if (spacing >= 3f) {
+                if (spacing < 8f) spacing *= 2f // drop to every 2nd line when dense
+                val anchorCell = scanCellCenters.firstOrNull()
+                    ?: corridorCellCenters.firstOrNull()
+                val anchor = anchorCell?.let { toOffset(it.first, it.second) }
+                    ?: Offset(size.width / 2f, size.height / 2f)
+                val gridColor = Color.White.copy(alpha = 0.14f)
+                var x = (anchor.x - spacing / 2f).mod(spacing)
+                while (x < size.width) {
+                    drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+                    x += spacing
+                }
+                var y = (anchor.y - spacing / 2f).mod(spacing)
+                while (y < size.height) {
+                    drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                    y += spacing
+                }
+            }
+        }
+
         // Block boundaries over the fills: outer outline in the brand green,
         // inner exclusion islands in amber (the not-required areas).
         drawRing(outerBoundary, GccGreen, 2.dp.toPx())
@@ -156,7 +187,11 @@ fun ScanMinimapOverlay(
         }
 
         // Geo-tagged trash items on top — the landmarks the lap creates.
+        // Typed items draw as per-type glyphs (WHAT is there, not just that
+        // something is); untyped coordinates keep the legacy orange dot.
+        val typedPositions = typedTrashItems.map { it.lat to it.lng }.toSet()
         for (item in trashItems) {
+            if ((item.lat to item.lng) in typedPositions) continue
             val c = toOffset(item.lat, item.lng)
             if (c.x !in 0f..size.width || c.y !in 0f..size.height) continue
             drawCircle(color = TrashOrange, radius = 3.5.dp.toPx(), center = c)
@@ -167,6 +202,11 @@ fun ScanMinimapOverlay(
                 style = Stroke(width = 1.dp.toPx()),
             )
         }
+        for (item in typedTrashItems) {
+            val c = toOffset(item.lat, item.lng)
+            if (c.x !in 0f..size.width || c.y !in 0f..size.height) continue
+            drawTrashGlyph(item.itemType, c)
+        }
 
         // Lap-2 guidance target: a double ring marking the problem area the
         // worker is being steered toward.
@@ -174,6 +214,75 @@ fun ScanMinimapOverlay(
             val c = toOffset(target.lat, target.lng)
             drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
             drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+        }
+    }
+}
+
+/**
+ * Small per-type litter glyph. Shapes stay in the litter orange/amber family
+ * (glass = teal accent) with a white outline for legibility over any fill —
+ * the point is that a can, a bag and a bottle read differently at a glance.
+ */
+private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
+    val u = 3.dp.toPx() // half-size unit
+    val outline = Color.White
+    val stroke = Stroke(width = 1.dp.toPx())
+    fun rect(w: Float, h: Float, fill: Color) {
+        val topLeft = Offset(c.x - w / 2f, c.y - h / 2f)
+        drawRect(color = fill, topLeft = topLeft, size = Size(w, h))
+        drawRect(color = outline, topLeft = topLeft, size = Size(w, h), style = stroke)
+    }
+    fun diamond(fill: Color) {
+        val path = Path().apply {
+            moveTo(c.x, c.y - u * 1.3f)
+            lineTo(c.x + u, c.y)
+            lineTo(c.x, c.y + u * 1.3f)
+            lineTo(c.x - u, c.y)
+            close()
+        }
+        drawPath(path, color = fill)
+        drawPath(path, color = outline, style = stroke)
+    }
+    fun triangle(fill: Color) {
+        val path = Path().apply {
+            moveTo(c.x - u, c.y - u)
+            lineTo(c.x + u, c.y - u)
+            lineTo(c.x, c.y + u * 1.2f)
+            close()
+        }
+        drawPath(path, color = fill)
+        drawPath(path, color = outline, style = stroke)
+    }
+    when (itemType) {
+        "plastic_bottle" -> rect(u * 1.1f, u * 2.6f, TrashOrange)
+        "glass_bottle" -> rect(u * 1.1f, u * 2.6f, Color(0xFF14B8A6))
+        "can" -> rect(u * 1.6f, u * 1.8f, Color(0xFFEF4444))
+        "plastic_bag" -> diamond(TrashOrange)
+        "cup" -> triangle(StaleAmber)
+        "paper", "carton" -> rect(u * 2f, u * 2f, Color(0xFFFde68A))
+        "wrapper" -> rect(u * 1.8f, u * 1.0f, StaleAmber)
+        "cigarette" -> rect(u * 0.7f, u * 2.2f, Color(0xFFE5E7EB))
+        "tire" -> {
+            drawCircle(color = Color(0xFF374151), radius = u * 1.4f, center = c)
+            drawCircle(color = outline, radius = u * 1.4f, center = c, style = stroke)
+            drawCircle(color = outline, radius = u * 0.5f, center = c, style = stroke)
+        }
+        "mattress" -> rect(u * 2.8f, u * 1.4f, Color(0xFF93C5FD))
+        // Landmark elements (auto-registered context, not trash): muted
+        // greens/greys so they read as scenery behind the litter glyphs.
+        "tree" -> {
+            drawCircle(color = Color(0xFF16A34A).copy(alpha = 0.8f), radius = u * 1.3f, center = c)
+            drawCircle(color = Color(0xFF14532D), radius = u * 0.4f, center = c)
+        }
+        "bush" -> drawCircle(color = Color(0xFF22C55E).copy(alpha = 0.7f), radius = u * 0.9f, center = c)
+        "fence" -> rect(u * 2.6f, u * 0.7f, Color(0xFF9CA3AF))
+        "gate" -> rect(u * 1.2f, u * 1.6f, Color(0xFF9CA3AF))
+        "pole", "sign" -> rect(u * 0.6f, u * 2.4f, Color(0xFF9CA3AF))
+        "hydrant" -> rect(u * 1.0f, u * 1.4f, Color(0xFFDC2626))
+        "bench", "mailbox" -> rect(u * 1.8f, u * 1.2f, Color(0xFF6B7280))
+        else -> {
+            drawCircle(color = TrashOrange, radius = u * 1.15f, center = c)
+            drawCircle(color = outline, radius = u * 1.15f, center = c, style = stroke)
         }
     }
 }

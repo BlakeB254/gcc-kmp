@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.gcc.app.platform.ArEnvScanOverlay
+import com.gcc.app.platform.ArEnvScanView
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.CapturedPhoto
@@ -66,6 +68,8 @@ fun CameraCapture(
     scanCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Geo-tagged trash items — minimap orange dots. */
     trashItems: List<Coordinates> = emptyList(),
+    /** Typed trash items — minimap per-type glyphs (win over plain dots). */
+    typedTrashItems: List<com.gcc.shared.model.ObservedSpotItem> = emptyList(),
     /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber) / fresh (clear). */
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
@@ -74,6 +78,9 @@ fun CameraCapture(
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
     statusText: String? = null,
+    /** When set, the viewfinder is the ARKit env-scan surface (ground grid,
+     *  vector-scan overlay, trash lock-on) instead of the AVCapture preview. */
+    arOverlay: ArEnvScanOverlay? = null,
 ) {
     val manager = cameraManager ?: remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
@@ -117,7 +124,11 @@ fun CameraCapture(
                     }
                 },
         ) {
-            CameraPreview(modifier = Modifier.fillMaxSize())
+            if (arOverlay != null) {
+                ArEnvScanView(overlay = arOverlay, modifier = Modifier.fillMaxSize())
+            } else {
+                CameraPreview(modifier = Modifier.fillMaxSize())
+            }
 
             // Capture-in-progress indicator
             if (isCapturing) {
@@ -182,6 +193,7 @@ fun CameraCapture(
                         scanCellCenters = scanCellCenters,
                         cellSizeMeters = 3.0,
                         trashItems = trashItems,
+                        typedTrashItems = typedTrashItems,
                         fogCellCenters = fogCellCenters,
                         staleCellCenters = staleCellCenters,
                         freshCellCenters = freshCellCenters,

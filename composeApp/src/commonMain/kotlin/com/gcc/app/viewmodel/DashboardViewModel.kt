@@ -152,7 +152,12 @@ class DashboardViewModel(
                 // sourceType (not communityReportId) is the dedupe key: spot-report
                 // observations are already pinned via /api/spots, and sourceType is
                 // present in every deployed version of the observations response.
-                .filter { it.sourceType == "route_scan" && it.state == "dirty" }
+                // Litter domain only: landmark elements (trees, fences…) are
+                // world-model context, not trash pins.
+                .filter {
+                    it.sourceType == "route_scan" && it.state == "dirty" &&
+                        (it.domain == null || it.domain == "litter")
+                }
                 .map { it.toScanMapPin() }
         } catch (_: Exception) {
             emptyList() // observation layer is additive; never block report pins

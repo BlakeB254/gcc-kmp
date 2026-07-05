@@ -27,6 +27,16 @@ expect class ArRouteOverlay() {
     /** Render fog over [unscannedCells]; cells absent from the set are revealed. */
     fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>)
 
+    /**
+     * World-anchored boundary walls: the route/block edge rendered as vertical
+     * translucent strips on the ground, so panning the camera toward the
+     * assignment edge shows the boundary line in place. [outer] is the block's
+     * outer ring, [islands] the inner exclusion polygons — both as (lat, lng)
+     * pairs. Pass an empty [outer] to skip walls (routes with no block polygon).
+     * iOS only; no-op on Android/Desktop.
+     */
+    fun updateBoundaries(outer: List<Pair<Double, Double>>, islands: List<List<Pair<Double, Double>>>)
+
     fun updateBoundaryStatus(isOutside: Boolean)
     fun start()
     fun stop()

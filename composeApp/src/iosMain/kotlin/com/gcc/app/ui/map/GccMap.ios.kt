@@ -8,7 +8,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
@@ -18,13 +27,17 @@ import org.maplibre.spatialk.geojson.Position
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
+import org.maplibre.compose.expressions.dsl.case
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.em
 import org.maplibre.compose.expressions.dsl.exponential
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
+import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.dsl.interpolate
+import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
+import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
@@ -127,6 +140,13 @@ actual fun GccMap(
     val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
     val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
     val hasHeatActivity = hasActiveSpots
+
+    // Per-type litter glyphs for close-zoom pins. Stable instances so the
+    // MapLibre image manager registers each drawable once (keyed by painter
+    // identity) instead of re-uploading on every recomposition.
+    val litterGlyphPainters = remember {
+        LITTER_GLYPH_TYPES.associateWith { LitterGlyphPainter(it) }
+    }
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -1196,10 +1216,13 @@ actual fun GccMap(
 
             // Visible spot dots — close zoom only. The overview heatmap uses the
             // same switch zoom as maxZoom, so markers and heat never render together.
+            // Only UNTYPED pins render as the plain orange dot; pins carrying a
+            // canonical "itemType" are drawn by the per-type glyph SymbolLayer below.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
                 minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                filter = !feature.has("itemType"),
                 color = const(MapStyles.SPOT_MARKER_COLOR),
                 radius = interpolate(
                     type = exponential(1.5f),
@@ -1225,6 +1248,46 @@ actual fun GccMap(
                     14.5 to const(0.95f),
                     15 to const(1f),
                 ),
+            )
+
+            // Per-type litter glyphs — pins with a canonical itemType are drawn
+            // as a small badge depicting WHAT was scanned (bottle, can, bag …)
+            // instead of the uniform dot. The tap target below the halos already
+            // covers these features, so no onClick is needed here.
+            @Suppress("UNCHECKED_CAST")
+            val itemTypeExpr = feature["itemType"] as
+                org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+            val glyphSize = DpSize(30.dp, 30.dp)
+            SymbolLayer(
+                id = "spot-markers-glyphs",
+                source = spotSrc,
+                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                filter = feature.has("itemType"),
+                iconImage = switch(
+                    itemTypeExpr,
+                    case("plastic_bottle", image(litterGlyphPainters.getValue("plastic_bottle"), glyphSize)),
+                    case("glass_bottle", image(litterGlyphPainters.getValue("glass_bottle"), glyphSize)),
+                    case("can", image(litterGlyphPainters.getValue("can"), glyphSize)),
+                    case("plastic_bag", image(litterGlyphPainters.getValue("plastic_bag"), glyphSize)),
+                    case("cup", image(litterGlyphPainters.getValue("cup"), glyphSize)),
+                    case("paper", image(litterGlyphPainters.getValue("paper"), glyphSize)),
+                    case("wrapper", image(litterGlyphPainters.getValue("wrapper"), glyphSize)),
+                    case("carton", image(litterGlyphPainters.getValue("carton"), glyphSize)),
+                    case("cigarette", image(litterGlyphPainters.getValue("cigarette"), glyphSize)),
+                    case("food_waste", image(litterGlyphPainters.getValue("food_waste"), glyphSize)),
+                    case("tire", image(litterGlyphPainters.getValue("tire"), glyphSize)),
+                    case("mattress", image(litterGlyphPainters.getValue("mattress"), glyphSize)),
+                    fallback = image(litterGlyphPainters.getValue("other"), glyphSize),
+                ),
+                iconSize = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    14 to const(0.5f),
+                    16 to const(0.72f),
+                    18 to const(0.9f),
+                ),
+                iconAllowOverlap = const(true),
+                iconIgnorePlacement = const(true),
             )
 
             // ── Verification indicator — orange ring on spots needing verification ──
@@ -1345,5 +1408,179 @@ private fun MapZoomControlOverlay(
             onZoomOut = onZoomOut,
         )
         ScaleBar(zoom = zoomState.value)
+    }
+}
+
+/**
+ * Canonical litter types that get a per-type close-zoom map glyph. Mirrors
+ * [com.gcc.app.platform.TrashItemCatalog]; "other" is the catch-all and also
+ * the [switch] fallback for any unexpected type string.
+ */
+private val LITTER_GLYPH_TYPES = listOf(
+    "plastic_bottle", "glass_bottle", "can", "plastic_bag", "cup", "paper",
+    "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress", "other",
+)
+
+/**
+ * Badge tint for each litter glyph. The whole set stays in the orange/amber
+ * litter family with a per-type hue nudge so the markers read as one system;
+ * glass_bottle breaks to teal to echo its real-world color cue.
+ */
+private fun litterBadgeColor(itemType: String): Color = when (itemType) {
+    "plastic_bottle" -> Color(0xFFF97316)
+    "glass_bottle" -> Color(0xFF0E9F9A)
+    "can" -> Color(0xFFEA580C)
+    "plastic_bag" -> Color(0xFFFB923C)
+    "cup" -> Color(0xFFF59E0B)
+    "paper" -> Color(0xFFF6B740)
+    "wrapper" -> Color(0xFFEF6A16)
+    "carton" -> Color(0xFFD97706)
+    "cigarette" -> Color(0xFFFBBF24)
+    "food_waste" -> Color(0xFFB45309)
+    "tire" -> Color(0xFF9A3412)
+    "mattress" -> Color(0xFFF08A3C)
+    else -> Color(0xFFF97316)
+}
+
+/**
+ * Draws a small white-stroked circular badge tinted per litter type with a
+ * simple white glyph depicting the item. Rasterized once by the MapLibre image
+ * manager and referenced from the spot-markers-glyphs SymbolLayer. Kept simple
+ * and flat so shapes stay legible at ~15-27dp on the map.
+ */
+private class LitterGlyphPainter(private val itemType: String) : Painter() {
+    override val intrinsicSize: Size = Size(30f, 30f)
+
+    override fun DrawScope.onDraw() {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = minOf(w, h) / 2f
+        val ring = r * 0.13f
+        val badge = litterBadgeColor(itemType)
+        // White badge ring + tinted fill — the "dot that shows what it is".
+        drawCircle(color = Color.White, radius = r, center = Offset(cx, cy))
+        drawCircle(color = badge, radius = r - ring, center = Offset(cx, cy))
+
+        val ink = Color.White
+        when (itemType) {
+            "plastic_bottle" -> {
+                val bw = w * 0.20f
+                val bh = h * 0.46f
+                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f + h * 0.04f), Size(bw, bh), CornerRadius(bw * 0.5f))
+                drawRoundRect(ink, Offset(cx - bw * 0.28f, cy - bh / 2f - h * 0.02f), Size(bw * 0.56f, h * 0.09f), CornerRadius(bw * 0.15f))
+            }
+            "glass_bottle" -> {
+                val bw = w * 0.22f
+                val bh = h * 0.50f
+                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f + h * 0.04f), Size(bw, bh), CornerRadius(bw * 0.28f))
+                drawRoundRect(ink, Offset(cx - bw * 0.22f, cy - bh / 2f - h * 0.03f), Size(bw * 0.44f, h * 0.10f), CornerRadius(bw * 0.1f))
+            }
+            "can" -> {
+                val bw = w * 0.42f
+                val bh = h * 0.34f
+                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bw * 0.16f))
+            }
+            "plastic_bag" -> {
+                val d = w * 0.28f
+                val p = Path().apply {
+                    moveTo(cx, cy - d)
+                    lineTo(cx + d, cy)
+                    lineTo(cx, cy + d)
+                    lineTo(cx - d, cy)
+                    close()
+                }
+                drawPath(p, ink)
+            }
+            "cup" -> {
+                val topHalf = w * 0.24f
+                val botHalf = w * 0.15f
+                val hh = h * 0.24f
+                val p = Path().apply {
+                    moveTo(cx - topHalf, cy - hh)
+                    lineTo(cx + topHalf, cy - hh)
+                    lineTo(cx + botHalf, cy + hh)
+                    lineTo(cx - botHalf, cy + hh)
+                    close()
+                }
+                drawPath(p, ink)
+            }
+            "paper" -> {
+                val s = w * 0.42f
+                val half = s / 2f
+                val fold = s * 0.34f
+                val p = Path().apply {
+                    moveTo(cx - half, cy - half)
+                    lineTo(cx + half - fold, cy - half)
+                    lineTo(cx + half, cy - half + fold)
+                    lineTo(cx + half, cy + half)
+                    lineTo(cx - half, cy + half)
+                    close()
+                }
+                drawPath(p, ink)
+                val fp = Path().apply {
+                    moveTo(cx + half - fold, cy - half)
+                    lineTo(cx + half, cy - half + fold)
+                    lineTo(cx + half - fold, cy - half + fold)
+                    close()
+                }
+                drawPath(fp, badge)
+            }
+            "wrapper" -> {
+                val bw = w * 0.42f
+                val bh = h * 0.24f
+                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bh * 0.3f))
+                val left = Path().apply {
+                    moveTo(cx - bw / 2f, cy - bh / 2f)
+                    lineTo(cx - bw / 2f - w * 0.08f, cy)
+                    lineTo(cx - bw / 2f, cy + bh / 2f)
+                    close()
+                }
+                drawPath(left, ink)
+                val right = Path().apply {
+                    moveTo(cx + bw / 2f, cy - bh / 2f)
+                    lineTo(cx + bw / 2f + w * 0.08f, cy)
+                    lineTo(cx + bw / 2f, cy + bh / 2f)
+                    close()
+                }
+                drawPath(right, ink)
+            }
+            "carton" -> {
+                val s = w * 0.40f
+                drawRoundRect(ink, Offset(cx - s / 2f, cy - s / 2f), Size(s, s), CornerRadius(s * 0.14f))
+                drawLine(badge, Offset(cx, cy - s / 2f), Offset(cx, cy + s / 2f), strokeWidth = w * 0.03f)
+            }
+            "cigarette" -> {
+                rotate(degrees = -35f, pivot = Offset(cx, cy)) {
+                    val bw = w * 0.5f
+                    val bh = h * 0.14f
+                    drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw * 0.7f, bh), CornerRadius(bh * 0.2f))
+                    drawRoundRect(Color(0xFFB45309), Offset(cx + bw * 0.2f, cy - bh / 2f), Size(bw * 0.3f, bh), CornerRadius(bh * 0.2f))
+                }
+            }
+            "food_waste" -> {
+                val fr = w * 0.20f
+                drawCircle(ink, radius = fr, center = Offset(cx, cy))
+                drawCircle(badge, radius = fr * 0.62f, center = Offset(cx + fr * 0.9f, cy - fr * 0.2f))
+                drawLine(ink, Offset(cx, cy - fr), Offset(cx + fr * 0.3f, cy - fr * 1.4f), strokeWidth = w * 0.03f)
+            }
+            "tire" -> {
+                val outer = w * 0.24f
+                drawCircle(ink, radius = outer, center = Offset(cx, cy), style = Stroke(width = w * 0.11f))
+            }
+            "mattress" -> {
+                val bw = w * 0.5f
+                val bh = h * 0.3f
+                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bh * 0.35f))
+                val dot = w * 0.025f
+                drawCircle(badge, radius = dot, center = Offset(cx - bw * 0.22f, cy))
+                drawCircle(badge, radius = dot, center = Offset(cx, cy))
+                drawCircle(badge, radius = dot, center = Offset(cx + bw * 0.22f, cy))
+            }
+            else -> {
+                // "other" / unknown: plain tinted badge, matching the legacy dot.
+            }
+        }
     }
 }

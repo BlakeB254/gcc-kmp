@@ -10,6 +10,8 @@ interface ArDetectedMarker {
   lng: number
   label: string
   capturedAt: string
+  estimatedWeightGrams?: number
+  estimatedWidthMeters?: number
 }
 
 export async function POST(request: NextRequest) {
@@ -35,12 +37,24 @@ export async function POST(request: NextRequest) {
     }
 
     for (const marker of markers) {
+      const estimatedWeightGrams = Number.isFinite(Number(marker.estimatedWeightGrams))
+        ? Math.round(Number(marker.estimatedWeightGrams))
+        : undefined
+      const estimatedWidthMeters = Number.isFinite(Number(marker.estimatedWidthMeters))
+        ? Number(marker.estimatedWidthMeters)
+        : undefined
       await recordWorldObservation({
         sourceType: 'ar_auto_detect',
         lat: marker.lat,
         lng: marker.lng,
         itemType: marker.label,
         state: 'dirty',
+        attributes: (estimatedWeightGrams !== undefined || estimatedWidthMeters !== undefined)
+          ? {
+              ...(estimatedWeightGrams !== undefined ? { estimatedWeightGrams } : {}),
+              ...(estimatedWidthMeters !== undefined ? { estimatedWidthMeters } : {}),
+            }
+          : undefined,
         capturedAt: marker.capturedAt,
       })
     }

@@ -20,10 +20,14 @@ import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNNode
 import platform.SceneKit.SCNPlane
 import platform.SceneKit.SCNPyramid
+import platform.SceneKit.SCNScene
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIColor
 import platform.darwin.simd_float4x4
 import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.ceil
+import kotlin.math.hypot
 
 /**
  * iOS SceneKit-based AR overlay for the "Begin Route" experience.
@@ -54,11 +58,36 @@ actual class ArRouteOverlay actual constructor() {
         /** Fog planes sit this far below the camera (approx. phone-at-chest ground offset). */
         private const val GROUND_OFFSET_METERS = 1.4f
         private const val METERS_PER_DEG_LAT = 111_320.0
+
+        /** Only build wall strips for boundary edges within this radius of the camera. */
+        private const val WALL_RENDER_RADIUS_METERS = 45.0
+        /** Boundary edges are sampled into strips no longer than this. */
+        private const val WALL_SEGMENT_MAX_METERS = 5.0
+        /** Vertical extent of each wall strip. */
+        private const val WALL_HEIGHT_METERS = 0.9f
+        /** Wall strips sit half their height above the ground so the bottom edge meets it. */
+        private const val WALL_HALF_HEIGHT_METERS = 0.45f
+        /** Hard ceiling on live wall nodes, protects the SceneKit frame rate. */
+        private const val MAX_WALL_SEGMENTS = 200
+        /** Rebuild walls after at most this many geo-reference updates… */
+        private const val WALL_REBUILD_GEO_INTERVAL = 3
+        /** …or as soon as the camera reference has moved more than this. */
+        private const val WALL_REBUILD_MOVE_METERS = 5.0
     }
 
     private var sceneView: ARSCNView? = null
     private val fogNodes = mutableMapOf<Pair<Int, Int>, SCNNode>()
     private var boundaryVeil: SCNNode? = null
+
+    // World-anchored boundary walls (see [updateBoundaries]).
+    private var boundaryOuter: List<Pair<Double, Double>> = emptyList()
+    private var boundaryIslands: List<List<Pair<Double, Double>>> = emptyList()
+    private val boundaryWallNodes = mutableListOf<SCNNode>()
+    private var hasBuiltWalls = false
+    private var geoUpdatesSinceWallRebuild = 0
+    private var lastWallRebuildX = 0f
+    private var lastWallRebuildZ = 0f
+
     private var arrowNode: SCNNode? = null
     private var frontierTarget: SCNNode? = null
 
@@ -143,6 +172,7 @@ actual class ArRouteOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        maybeRebuildWallsOnGeoUpdate()
     }
 
     /**
@@ -191,6 +221,38 @@ actual class ArRouteOverlay actual constructor() {
         veil.hidden = !isOutside
     }
 
+    /**
+     * Store the route/block boundary polygons and (re)build the world-anchored
+     * wall strips. Placement needs the geo reference, so if no GPS fix has been
+     * paired yet the walls are deferred — the first [updateGeoReference] builds
+     * them (see [maybeRebuildWallsOnGeoUpdate]).
+     */
+    actual fun updateBoundaries(outer: List<Pair<Double, Double>>, islands: List<List<Pair<Double, Double>>>) {
+        boundaryOuter = outer
+        boundaryIslands = islands
+        if (hasGeoRef) rebuildBoundaryWalls()
+    }
+
+    /**
+     * Rebuild walls as the camera reference shifts: the render window is
+     * camera-relative (only edges within [WALL_RENDER_RADIUS_METERS] get nodes),
+     * so a moving worker needs the nearby slice recomputed. Throttled to avoid
+     * rebuilding on every GPS tick — at most every [WALL_REBUILD_GEO_INTERVAL]
+     * updates, or immediately once the camera has moved [WALL_REBUILD_MOVE_METERS].
+     */
+    private fun maybeRebuildWallsOnGeoUpdate() {
+        if (!hasBoundaryData()) return
+        geoUpdatesSinceWallRebuild++
+        val dx = refX - lastWallRebuildX
+        val dz = refZ - lastWallRebuildZ
+        val movedFar = dx * dx + dz * dz > (WALL_REBUILD_MOVE_METERS * WALL_REBUILD_MOVE_METERS).toFloat()
+        if (!hasBuiltWalls || geoUpdatesSinceWallRebuild >= WALL_REBUILD_GEO_INTERVAL || movedFar) {
+            rebuildBoundaryWalls()
+        }
+    }
+
+    private fun hasBoundaryData(): Boolean = boundaryOuter.size >= 3 || boundaryIslands.isNotEmpty()
+
     // ── SceneKit node construction ───────────────────────────────────
 
     private fun makeFogNode(x: Float, z: Float): SCNNode {
@@ -207,6 +269,104 @@ actual class ArRouteOverlay actual constructor() {
         // SCNPlane is vertical (XY) by default — lay it flat on the ground.
         node.eulerAngles = SCNVector3Make((-PI / 2).toFloat(), 0f, 0f)
         node.position = SCNVector3Make(x, refY - GROUND_OFFSET_METERS, z)
+        return node
+    }
+
+    /**
+     * Rebuild the world-anchored boundary walls against the current geo
+     * reference: green strips for the outer ring, amber for inner islands.
+     * Old nodes are dropped first. Only edges near the camera get nodes, and
+     * the total is capped at [MAX_WALL_SEGMENTS] to protect the frame rate.
+     */
+    private fun rebuildBoundaryWalls() {
+        val scene = sceneView?.scene ?: return
+        if (!hasGeoRef) return
+
+        for (node in boundaryWallNodes) node.removeFromParentNode()
+        boundaryWallNodes.clear()
+
+        // Record the reference this build was placed against, for throttling.
+        geoUpdatesSinceWallRebuild = 0
+        lastWallRebuildX = refX
+        lastWallRebuildZ = refZ
+        hasBuiltWalls = true
+
+        if (!hasBoundaryData()) return
+
+        val outerColor = UIColor.colorWithRed(0.13, 0.77, 0.37, 1.0)
+        val amberColor = UIColor.colorWithRed(1.0, 0.72, 0.0, 1.0)
+        val radiusSq = WALL_RENDER_RADIUS_METERS * WALL_RENDER_RADIUS_METERS
+
+        var capped = false
+        if (boundaryOuter.size >= 3) {
+            capped = addRingWalls(scene, boundaryOuter, outerColor, radiusSq)
+        }
+        for (island in boundaryIslands) {
+            if (island.size < 3) continue
+            if (addRingWalls(scene, island, amberColor, radiusSq)) capped = true
+        }
+        if (capped) {
+            DiagnosticsLog.info(
+                "ar-boundary",
+                "boundary walls capped at $MAX_WALL_SEGMENTS segments near camera",
+            )
+        }
+    }
+
+    /**
+     * Sample one closed ring's edges into ≤[WALL_SEGMENT_MAX_METERS] strips and
+     * add a wall node for each whose midpoint is within [radiusSq] of the camera
+     * reference. Returns true if the [MAX_WALL_SEGMENTS] cap was hit.
+     */
+    private fun addRingWalls(
+        scene: SCNScene,
+        ring: List<Pair<Double, Double>>,
+        color: UIColor,
+        radiusSq: Double,
+    ): Boolean {
+        val locals = ring.map { latLngToLocal(it.first, it.second) }
+        val n = locals.size
+        for (i in 0 until n) {
+            val a = locals[i]
+            val b = locals[(i + 1) % n]
+            val ax = a.first; val az = a.second
+            val dx = b.first - ax; val dz = b.second - az
+            val edgeLen = hypot(dx, dz)
+            if (edgeLen < 0.5) continue // skip degenerate/closing duplicate edges
+            val segCount = ceil(edgeLen / WALL_SEGMENT_MAX_METERS).toInt()
+            val segLen = edgeLen / segCount
+            // SCNPlane is a vertical XY quad facing +Z; a yaw about Y turns its
+            // width axis (+X) to run along the edge direction in the ground plane.
+            val yaw = atan2(-dz, dx).toFloat()
+            for (s in 0 until segCount) {
+                if (boundaryWallNodes.size >= MAX_WALL_SEGMENTS) return true
+                val t = (s + 0.5) / segCount
+                val mx = ax + dx * t
+                val mz = az + dz * t
+                val ddx = mx - refX
+                val ddz = mz - refZ
+                if (ddx * ddx + ddz * ddz > radiusSq) continue
+                val node = makeWallSegment(mx.toFloat(), mz.toFloat(), segLen, yaw, color)
+                scene.rootNode.addChildNode(node)
+                boundaryWallNodes.add(node)
+            }
+        }
+        return false
+    }
+
+    private fun makeWallSegment(x: Float, z: Float, length: Double, yaw: Float, color: UIColor): SCNNode {
+        val plane = SCNPlane.planeWithWidth(length, WALL_HEIGHT_METERS.toDouble())
+        val material = SCNMaterial()
+        material.diffuse.contents = color
+        material.emission.contents = color // glow, so the strip reads in low light
+        material.transparency = 0.3
+        material.doubleSided = true
+        material.writesToDepthBuffer = false
+        plane.materials = listOf(material)
+
+        val node = SCNNode.nodeWithGeometry(plane)
+        node.eulerAngles = SCNVector3Make(0f, yaw, 0f)
+        node.position = SCNVector3Make(x, refY - GROUND_OFFSET_METERS + WALL_HALF_HEIGHT_METERS, z)
         return node
     }
 
