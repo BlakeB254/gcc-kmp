@@ -493,9 +493,13 @@ fun AdminBoundaryEditorScreen(
                     val mpp = 156543.03392 * lngScale / 2.0.pow(z + zoomBias)
                     val halfViewLat = hPx * mpp / 111_320.0 / 2.0
                     val halfViewLng = wPx * mpp / (111_320.0 * lngScale) / 2.0
-                    // ~18% padding keeps edge vertices + their handles visible.
-                    val padLat = (bbox[1] - bbox[0]) * 0.18
-                    val padLng = (bbox[3] - bbox[2]) * 0.18
+                    // ~18% padding keeps edge vertices + their handles
+                    // visible; zoomed in tight for precise zone editing the
+                    // frame widens to 40% so panning along edges and corners
+                    // feels free while staying anchored to this block.
+                    val padFactor = if (z > fitZoom + 1.0) 0.40 else 0.18
+                    val padLat = (bbox[1] - bbox[0]) * padFactor
+                    val padLng = (bbox[3] - bbox[2]) * padFactor
                     val frameLoLat = bbox[0] - padLat
                     val frameHiLat = bbox[1] + padLat
                     val frameLoLng = bbox[2] - padLng

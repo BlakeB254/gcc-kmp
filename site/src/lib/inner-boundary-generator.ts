@@ -14,9 +14,15 @@
  * so a typical block in our current communities yields MULTIPLE islands.
  */
 
+import { polygon as turfPolygon, featureCollection } from '@turf/helpers'
+import turfBuffer from '@turf/buffer'
+import { intersect as turfIntersect } from '@turf/intersect'
+import { union as turfUnion } from '@turf/union'
+import turfArea from '@turf/area'
+
 export interface InnerBoundaryResult {
   multiPolygon: { type: 'MultiPolygon'; coordinates: number[][][][] }
-  stats: { samples: number; simplifiedTo: number; buildingSegments: number; islands: number }
+  stats: { samples: number; simplifiedTo: number; buildingSegments: number; islands: number; rawIslands: number }
 }
 
 export async function generateInnerBoundaryFromRing(
@@ -30,10 +36,19 @@ export async function generateInnerBoundaryFromRing(
   const defaultSetback = clamp(options?.setbackMeters || 8, 4, 20)
   const frontageMargin = 1.5
   // Follow real frontage depth (storefront ~3m .. deep residential ~15m).
-  const minSetback = 3
+  // Floor raised 3→5m: islands were crowding the perimeter and choking the
+  // walkable corridor in spots ('a bit too aggressive in some areas').
+  const minSetback = 5
   const maxSetback = 15
   const frontageRange = 25 // a hit farther than this = effectively open
-  const backDepth = 30 // exclusion strip depth behind the frontage line
+  // 30→20m: Chicago lots run ~28m street-to-alley; 30m strips crossed the
+  // mid-block alley (scannable ground) and collided with strips from the
+  // opposite street face.
+  const backDepth = 20
+  // Every island keeps at least this much clearance from the outer ring —
+  // enforced geometrically (clip mask), not just via per-sample setback,
+  // so corners can't pinch the corridor either.
+  const corridorMinMeters = 5
   const minRunSamples = 3 // built stretches under ~6m are noise
   const gapMergeSamples = 2 // open gaps under ~4m get absorbed into a run
 
@@ -182,16 +197,105 @@ export async function generateInnerBoundaryFromRing(
     islands.push([ring2.map(([x, y]) => [...toLL(x, y)])])
   }
 
+  // ── Post-process: clip to the corridor mask, merge overlaps, drop noise ──
+  //
+  // 1. CLIP: every island is intersected with the outer ring shrunk by
+  //    corridorMinMeters, guaranteeing a walkable band all the way around
+  //    (including corners, which per-sample setbacks can't protect).
+  // 2. MERGE: adjacent-edge runs meet at corners and overlap — overlapping
+  //    exclusions must read as ONE solid exclusion, so islands are unioned
+  //    until no two intersect.
+  // 3. FILTER: slivers under ~25 m² are classification noise, not parcels.
+  const rawCount = islands.length
+  const closedOuter = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+    ? ring
+    : [...ring, ring[0]]
+  let mask: ReturnType<typeof turfPolygon> | null = null
+  try {
+    const shrunk = turfBuffer(turfPolygon([closedOuter]), -corridorMinMeters, { units: 'meters' })
+    if (shrunk && shrunk.geometry.type === 'Polygon') {
+      mask = turfPolygon(shrunk.geometry.coordinates)
+    }
+  } catch {
+    mask = null // degenerate outer — skip clipping rather than fail
+  }
+
+  type Feat = ReturnType<typeof turfPolygon>
+  let feats: Feat[] = []
+  for (const island of islands) {
+    let feat: Feat
+    try {
+      feat = turfPolygon(island)
+    } catch {
+      continue
+    }
+    if (mask) {
+      try {
+        const clipped = turfIntersect(featureCollection([feat, mask]))
+        if (!clipped) continue
+        if (clipped.geometry.type === 'Polygon') {
+          feats.push(turfPolygon(clipped.geometry.coordinates))
+        } else {
+          for (const poly of clipped.geometry.coordinates) feats.push(turfPolygon(poly))
+        }
+        continue
+      } catch {
+        // fall through with the unclipped island
+      }
+    }
+    feats.push(feat)
+  }
+
+  // Union until stable: any pair that intersects becomes one solid exclusion.
+  let merged = true
+  while (merged && feats.length > 1) {
+    merged = false
+    outer: for (let i = 0; i < feats.length; i++) {
+      for (let j = i + 1; j < feats.length; j++) {
+        let u
+        try {
+          const inter = turfIntersect(featureCollection([feats[i], feats[j]]))
+          if (!inter) continue
+          u = turfUnion(featureCollection([feats[i], feats[j]]))
+        } catch {
+          continue
+        }
+        if (!u) continue
+        const replacement: Feat[] = []
+        if (u.geometry.type === 'Polygon') {
+          replacement.push(turfPolygon(u.geometry.coordinates))
+        } else {
+          for (const poly of u.geometry.coordinates) replacement.push(turfPolygon(poly))
+        }
+        feats.splice(j, 1)
+        feats.splice(i, 1, ...replacement)
+        merged = true
+        break outer
+      }
+    }
+  }
+
+  feats = feats.filter((f) => {
+    try {
+      return turfArea(f) >= 25
+    } catch {
+      return false
+    }
+  })
+
+  const finalIslands = feats.map((f) => f.geometry.coordinates)
+
   return {
     multiPolygon: {
       type: 'MultiPolygon',
-      coordinates: islands,
+      coordinates: finalIslands,
     },
     stats: {
       samples: samples.length,
       simplifiedTo: totalSimplified,
       buildingSegments: buildingSegments.length,
-      islands: islands.length,
+      islands: finalIslands.length,
+      rawIslands: rawCount,
     },
   }
 }
