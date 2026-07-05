@@ -160,12 +160,22 @@ object MapStyles {
     // Heatmap fallback color for non-native renderers.
     val SPOT_HEATMAP_COLOR = SPOT_HEAT_EXTREME
 
-    // Zoom thresholds — heatmap below the switch, spot dots at/above the switch.
-    // Keep the handoff tight so the app never renders dots and heat at the same zoom.
+    // Zoom thresholds — heat owns overview zooms, spot dots own street zooms,
+    // and the two CROSSFADE between SPOT_DOTS_MIN_ZOOM and
+    // SPOT_HEATMAP_FADE_OUT_ZOOM (heat fades out while small translucent dots
+    // fade in) so the handoff never pops. One dominant layer per zoom band:
+    // heat < 12.5, block routes 13–15.5, individual spot detail 15.5+.
     const val SPOT_HEATMAP_MIN_ZOOM = 2.0
-    const val SPOT_HEATMAP_MAX_ZOOM = 12.99
-    const val SPOT_HEATMAP_FADE_OUT_ZOOM = 12.99
+    const val SPOT_HEATMAP_MAX_ZOOM = 14.2
+    const val SPOT_HEATMAP_FADE_OUT_ZOOM = 14.2
     const val SPOT_DOTS_MIN_ZOOM = 13.0
+
+    // Street-level detail tiers: halos + verification rings only appear once
+    // pins are sparse enough on screen to afford the extra ink; typed glyph
+    // badges resolve slightly earlier. Below these zooms every pin is a small
+    // additive dot so overlapping reports read as density, not an opaque blob.
+    const val SPOT_DETAIL_MIN_ZOOM = 15.5
+    const val SPOT_GLYPH_MIN_ZOOM = 15.0
 }
 
 

@@ -81,6 +81,7 @@ actual fun GccMap(
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
+    onZoomChanged: ((Double) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -144,6 +145,15 @@ actual fun GccMap(
     }
 
     val scaleBarZoom by remember { derivedStateOf { camera.position.zoom } }
+
+    // Report live zoom to the caller (legend gating). snapshotFlow keeps the
+    // camera read out of composition — same flicker guard as the bounds check.
+    if (onZoomChanged != null) {
+        LaunchedEffect(onZoomChanged) {
+            snapshotFlow { camera.position.zoom }
+                .collect { onZoomChanged(it) }
+        }
+    }
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -304,6 +314,165 @@ actual fun GccMap(
             // earth ([-180,-85] to [180,85]); painting it as a tint hid
             // OpenFreeMap's road and label layers underneath. Spot density
             // is now conveyed by dot clustering, not an overlay wash.
+
+            // ── Spot density heat surface (BELOW the route stack) ──
+            // Heat is texture, routes are structure: the wash renders under
+            // the green loops so route opportunities stay readable at
+            // overview zoom. Opacity ramps to 0 at SPOT_HEATMAP_FADE_OUT_ZOOM
+            // — a real crossfade with the spot dots (which fade in from
+            // SPOT_DOTS_MIN_ZOOM) instead of the old hard clip at 12.99.
+            val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
+            val spotHeatWeightExpr = feature["heatWeight"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.FloatValue>
+
+            // Terrain-style field: broad green/yellow density that reads at
+            // overview zoom before hot cores resolve into individual spots.
+            HeatmapLayer(
+                id = MapStyles.LAYER_SPOT_THERMAL_FIELD,
+                source = spotSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM.toFloat(),
+                color = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
+                    0.0 to const(Color(0x00000000)),
+                    0.01 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.62f)),
+                    0.08 to const(MapStyles.SPOT_HEAT_EDGE),
+                    0.18 to const(MapStyles.SPOT_HEAT_LOW),
+                    0.34 to const(MapStyles.SPOT_HEAT_MEDIUM),
+                    0.54 to const(MapStyles.SPOT_HEAT_HIGH),
+                    0.74 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    1.0 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
+                ),
+                weight = spotHeatWeightExpr,
+                intensity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.20f),
+                    4 to const(0.32f),
+                    6 to const(0.50f),
+                    8 to const(0.72f),
+                    10 to const(0.92f),
+                    12 to const(1.05f),
+                    13 to const(0.90f),
+                    13.75 to const(0.55f),
+                    14.1 to const(0.45f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.38f),
+                ),
+                // Smaller low-zoom radius so concentrated clusters keep an organic
+                // shape instead of melting into a perfect-circle bullseye (mirrors web).
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(18.dp),
+                    4 to const(30.dp),
+                    6 to const(50.dp),
+                    8 to const(74.dp),
+                    10 to const(100.dp),
+                    12 to const(128.dp),
+                    13 to const(120.dp),
+                    13.75 to const(88.dp),
+                    14.1 to const(68.dp),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(54.dp),
+                ),
+                // Capped peak at ~0.45 so the OpenFreeMap base style's road
+                // lines and street labels remain readable underneath. Previously
+                // peaked at 0.98 which blanketed all street detail.
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.32f),
+                    4 to const(0.40f),
+                    8 to const(0.45f),
+                    12 to const(0.45f),
+                    13 to const(0.35f),
+                    13.75 to const(0.20f),
+                    14.1 to const(0.10f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
+                ),
+            )
+
+            // ── Spot scrim: neutral off-white tint beneath heatmap ──
+            // Planet-spanning fill sourced from the same clean-zone GeoJSON.
+            // Fades from 0.55 opacity at overview zoom to 0 by
+            // SPOT_HEATMAP_FADE_OUT_ZOOM so it doesn't compete with street
+            // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
+            // Gated on spots being present so toggle-off and zero-report areas
+            // don't show a gray wash (mirrors the web version's guard).
+            if (spots.isNotEmpty()) {
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    color = const(MapStyles.SPOT_SCRIM_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
+                        MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
+                    ),
+                )
+            }
+
+            HeatmapLayer(
+                id = MapStyles.LAYER_SPOT_HEATMAP,
+                source = spotSrc,
+                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                maxZoom = MapStyles.SPOT_HEATMAP_MAX_ZOOM.toFloat(),
+                color = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
+                    0.0 to const(Color(0x00000000)),
+                    0.04 to const(Color(0x00000000)),
+                    0.12 to const(MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = 0.78f)),
+                    0.24 to const(MapStyles.SPOT_HEAT_HIGH),
+                    0.4 to const(MapStyles.SPOT_HEAT_EXTREME),
+                    0.62 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
+                    1.0 to const(MapStyles.SPOT_HEAT_PEAK),
+                ),
+                weight = spotHeatWeightExpr,
+                intensity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.05f),
+                    5 to const(0.22f),
+                    8 to const(0.52f),
+                    10 to const(0.78f),
+                    12 to const(0.92f),
+                    13 to const(0.7f),
+                    13.75 to const(0.32f),
+                    14.1 to const(0.26f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.2f),
+                ),
+                // Tighter low-zoom radius keeps the hot core organic, not a solid disk.
+                radius = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(7.dp),
+                    5 to const(14.dp),
+                    8 to const(26.dp),
+                    10 to const(42.dp),
+                    12 to const(66.dp),
+                    13 to const(76.dp),
+                    13.75 to const(40.dp),
+                    14.1 to const(28.dp),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(22.dp),
+                ),
+                // Capped at ~0.55 peak so street lines and labels show through.
+                // Old peak was 0.98 which (stacked with SPOT_THERMAL_FIELD)
+                // hid the entire OpenFreeMap base style at neighborhood zoom.
+                opacity = interpolate(
+                    type = org.maplibre.compose.expressions.dsl.linear(),
+                    input = zoom(),
+                    2 to const(0.12f),
+                    5 to const(0.32f),
+                    8 to const(0.50f),
+                    10 to const(0.55f),
+                    12 to const(0.55f),
+                    13 to const(0.44f),
+                    13.75 to const(0.18f),
+                    14.1 to const(0.10f),
+                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
+                ),
+            )
 
             // ── Route polygon fill — invisible tap target ──
             // Was previously a solid green fill (zoom 10-14 dominant, fading
@@ -578,177 +747,32 @@ actual fun GccMap(
             )
 
             // ── Spot report markers ──
-            val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
-            val spotHeatWeightExpr = feature["heatWeight"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.FloatValue>
+            // (spotSrc + the heat field + scrim moved BELOW the route stack:
+            // heat is texture, routes are structure — green loops must stay
+            // readable over the wash at overview zooms.)
 
-            // Terrain-style field: broad green/yellow density that reads at
-            // overview zoom before hot cores resolve into individual spots.
-            HeatmapLayer(
-                id = MapStyles.LAYER_SPOT_THERMAL_FIELD,
-                source = spotSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM.toFloat(),
-                color = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),
-                    0.01 to const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.62f)),
-                    0.08 to const(MapStyles.SPOT_HEAT_EDGE),
-                    0.18 to const(MapStyles.SPOT_HEAT_LOW),
-                    0.34 to const(MapStyles.SPOT_HEAT_MEDIUM),
-                    0.54 to const(MapStyles.SPOT_HEAT_HIGH),
-                    0.74 to const(MapStyles.SPOT_HEAT_EXTREME),
-                    1.0 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
-                ),
-                weight = spotHeatWeightExpr,
-                intensity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.20f),
-                    4 to const(0.32f),
-                    6 to const(0.50f),
-                    8 to const(0.72f),
-                    10 to const(0.92f),
-                    12 to const(1.05f),
-                    13 to const(0.90f),
-                    13.75 to const(0.55f),
-                    14.1 to const(0.45f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.38f),
-                ),
-                // Smaller low-zoom radius so concentrated clusters keep an organic
-                // shape instead of melting into a perfect-circle bullseye (mirrors web).
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(18.dp),
-                    4 to const(30.dp),
-                    6 to const(50.dp),
-                    8 to const(74.dp),
-                    10 to const(100.dp),
-                    12 to const(128.dp),
-                    13 to const(120.dp),
-                    13.75 to const(88.dp),
-                    14.1 to const(68.dp),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(54.dp),
-                ),
-                // Capped peak at ~0.45 so the OpenFreeMap base style's road
-                // lines and street labels remain readable underneath. Previously
-                // peaked at 0.98 which blanketed all street detail.
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.32f),
-                    4 to const(0.40f),
-                    8 to const(0.45f),
-                    12 to const(0.45f),
-                    13 to const(0.35f),
-                    13.75 to const(0.20f),
-                    14.1 to const(0.16f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.14f),
-                ),
-            )
-
-            // ── Spot scrim: neutral off-white tint beneath heatmap ──
-            // Planet-spanning fill sourced from the same clean-zone GeoJSON.
-            // Fades from 0.55 opacity at overview zoom to 0 by
-            // SPOT_HEATMAP_FADE_OUT_ZOOM so it doesn't compete with street
-            // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
-            // Gated on spots being present so toggle-off and zero-report areas
-            // don't show a gray wash (mirrors the web version's guard).
-            if (spots.isNotEmpty()) {
-                FillLayer(
-                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                    source = spotCleanZoneSrc,
-                    color = const(MapStyles.SPOT_SCRIM_COLOR),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
-                        MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0f),
-                    ),
-                )
-            }
-
-            HeatmapLayer(
-                id = MapStyles.LAYER_SPOT_HEATMAP,
-                source = spotSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = MapStyles.SPOT_HEATMAP_MAX_ZOOM.toFloat(),
-                color = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = org.maplibre.compose.expressions.dsl.heatmapDensity(),
-                    0.0 to const(Color(0x00000000)),
-                    0.04 to const(Color(0x00000000)),
-                    0.12 to const(MapStyles.SPOT_HEAT_MEDIUM.copy(alpha = 0.78f)),
-                    0.24 to const(MapStyles.SPOT_HEAT_HIGH),
-                    0.4 to const(MapStyles.SPOT_HEAT_EXTREME),
-                    0.62 to const(MapStyles.SPOT_HEAT_NEAR_PEAK),
-                    1.0 to const(MapStyles.SPOT_HEAT_PEAK),
-                ),
-                weight = spotHeatWeightExpr,
-                intensity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.05f),
-                    5 to const(0.22f),
-                    8 to const(0.52f),
-                    10 to const(0.78f),
-                    12 to const(0.92f),
-                    13 to const(0.7f),
-                    13.75 to const(0.32f),
-                    14.1 to const(0.26f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.2f),
-                ),
-                // Tighter low-zoom radius keeps the hot core organic, not a solid disk.
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(7.dp),
-                    5 to const(14.dp),
-                    8 to const(26.dp),
-                    10 to const(42.dp),
-                    12 to const(66.dp),
-                    13 to const(76.dp),
-                    13.75 to const(40.dp),
-                    14.1 to const(28.dp),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(22.dp),
-                ),
-                // Capped at ~0.55 peak so street lines and labels show through.
-                // Old peak was 0.98 which (stacked with SPOT_THERMAL_FIELD)
-                // hid the entire OpenFreeMap base style at neighborhood zoom.
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.12f),
-                    5 to const(0.32f),
-                    8 to const(0.50f),
-                    10 to const(0.55f),
-                    12 to const(0.55f),
-                    13 to const(0.44f),
-                    13.75 to const(0.18f),
-                    14.1 to const(0.14f),
-                    MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM to const(0.12f),
-                ),
-            )
-
+            // Soft halos are STREET-LEVEL detail only: at neighborhood zoom a
+            // dense scan area stacks dozens of 18dp halos into an opaque
+            // orange blob that buries the route line. Once pins are sparse on
+            // screen they earn the ink.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKER_HALOS,
                 source = spotSrc,
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.16f)),
+                minZoom = MapStyles.SPOT_DETAIL_MIN_ZOOM.toFloat(),
+                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.10f)),
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(10.dp),
-                    15 to const(13.dp),
-                    17 to const(18.dp),
+                    15.5 to const(8.dp),
+                    17 to const(12.dp),
+                    19 to const(15.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(0f),
-                    14.5 to const(0.8f),
-                    16 to const(1f),
+                    15.5 to const(0f),
+                    16 to const(0.6f),
+                    17 to const(0.8f),
                 ),
             )
 
@@ -805,7 +829,10 @@ actual fun GccMap(
                 } else null,
             )
 
-            // Individual spot dots — fade in as the heatmap disappears.
+            // Small ADDITIVE dots — fade in across the heat crossfade window,
+            // capped below full opacity so overlapping reports in a dense
+            // area sum into visibly darker orange (density reads without an
+            // opaque mass) and the route line stays legible beneath.
             CircleLayer(
                 id = MapStyles.LAYER_SPOT_MARKERS,
                 source = spotSrc,
@@ -814,26 +841,27 @@ actual fun GccMap(
                 radius = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(4.dp),
-                    14.5 to const(5.dp),
-                    16 to const(7.dp),
-                    17 to const(8.dp),
-                    20 to const(10.dp),
+                    14 to const(3.dp),
+                    15 to const(4.5.dp),
+                    16 to const(6.dp),
+                    17 to const(7.dp),
+                    20 to const(9.dp),
                 ),
                 strokeColor = const(Color.White),
                 strokeWidth = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(1.dp),
-                    16 to const(1.6.dp),
-                    18 to const(2.dp),
+                    14 to const(0.8.dp),
+                    16 to const(1.2.dp),
+                    18 to const(1.6.dp),
                 ),
                 opacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    14 to const(0f),
-                    14.5 to const(0.8f),
-                    15 to const(1f),
+                    13 to const(0f),
+                    13.5 to const(0.35f),
+                    14.5 to const(0.75f),
+                    16 to const(0.9f),
                 ),
                 onClick = if (onSpotTap != null) { features ->
                     val id = (features.firstOrNull()?.properties?.get("id") as? Number)?.toInt()

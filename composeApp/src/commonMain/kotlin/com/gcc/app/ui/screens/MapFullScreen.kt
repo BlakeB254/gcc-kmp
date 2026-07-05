@@ -240,6 +240,11 @@ fun MapFullScreen(
     }
 
     val mapZoom = overrideZoom ?: resolved.zoom
+
+    // Live camera zoom reported by GccMap — gates the heat legend to the
+    // zoom band where the heatmap actually renders (an intensity legend
+    // floating over street-zoom pins labels a layer that isn't on screen).
+    var currentMapZoom by remember { mutableStateOf(mapZoom) }
     // GPS-gated visibility: admin sees all data globally,
     // normal users see only their current community area
     val currentGpsArea = remember(currentLocation) {
@@ -484,6 +489,7 @@ fun MapFullScreen(
             bounties = visibleBounties,
             spots = if (heatmapVisible) visibleSpots else emptyList(),
             mapMode = mapMode,
+            onZoomChanged = { currentMapZoom = it },
             affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
                 affectedBlocksVm.selectBlock(blockId)
@@ -548,12 +554,19 @@ fun MapFullScreen(
 
             // Precipitation intensity legend — right edge, vertically centered so it
             // never overlaps the top-left community info panel (routes/jobs/earnings).
-            if (heatmapVisible) {
-                PrecipitationLegend(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp),
-                )
+            // Zoom-gated to the band where the heatmap actually renders; at
+            // street zoom the pins speak for themselves and the legend would
+            // label a layer that isn't on screen.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = heatmapVisible &&
+                    currentMapZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp),
+            ) {
+                PrecipitationLegend()
             }
 
             selectedRecordIndex?.let { selectedIndex ->
