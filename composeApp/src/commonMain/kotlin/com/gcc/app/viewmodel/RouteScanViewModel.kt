@@ -190,6 +190,7 @@ class RouteScanViewModel(
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
     fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
+        if (!outdoorGate.captureAllowed.value) return
         if (!lat.isFinite() || !lng.isFinite() || label.isBlank()) {
             DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
             return
@@ -956,6 +957,7 @@ class RouteScanViewModel(
                     photoKeys = emptyList(),
                     lapKind = lapKind,
                     routeId = state.routeId,
+                    gateEvents = draft.gateEvents,
                 )
                 sessionUploader.uploadOrQueue(manifest)
             } catch (e: Exception) {

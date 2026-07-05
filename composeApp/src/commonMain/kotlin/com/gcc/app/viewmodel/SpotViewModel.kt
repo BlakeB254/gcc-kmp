@@ -99,6 +99,12 @@ class SpotViewModel(
     private val _uiState = MutableStateFlow(SpotUiState())
     val uiState: StateFlow<SpotUiState> = _uiState.asStateFlow()
 
+    // Parallel to uiState.observedItems / uiState.capturedPhotos — client-side
+    // only, never serialized to the wire model. Lets purgeRecentCaptures drop
+    // whatever was captured inside an INDOOR gate's trailing privacy window.
+    private val observedItemStamps = mutableListOf<Long>()
+    private val photoStamps = mutableListOf<Long>()
+
     init {
         // Catch up any session manifests that couldn't reach R2 last time
         // (offline, or storage not provisioned yet).
@@ -111,6 +117,7 @@ class SpotViewModel(
         _uiState.value = current.copy(
             capturedPhotos = current.capturedPhotos + photo,
         )
+        photoStamps.add(Clock.System.now().toEpochMilliseconds())
 
         // Trigger on-device AI analysis on the first photo
         if (current.capturedPhotos.isEmpty() && analyzer.isAvailable()) {
@@ -179,6 +186,7 @@ class SpotViewModel(
         }
         if (duplicate) return
         _uiState.value = _uiState.value.copy(observedItems = existing + item)
+        observedItemStamps.add(Clock.System.now().toEpochMilliseconds())
         DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
     }
 
@@ -187,6 +195,10 @@ class SpotViewModel(
         if (index in current.indices) {
             current.removeAt(index)
             _uiState.value = _uiState.value.copy(capturedPhotos = current)
+            // Keep photoStamps aligned to capturedPhotos by index — otherwise
+            // a later purgeRecentCaptures cutoff would be checked against the
+            // wrong photo's timestamp.
+            if (index in photoStamps.indices) photoStamps.removeAt(index)
         }
     }
 
@@ -380,6 +392,7 @@ class SpotViewModel(
                     photoKeys = photoKeys,
                     communityReportId = reportId,
                     objectCapture = state.objectCapture,
+                    gateEvents = draft.gateEvents,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(
@@ -657,8 +670,29 @@ class SpotViewModel(
         }
     }
 
+    /** Privacy purge on an INDOOR flip: drop items/photos captured in the
+     *  gate's trailing window (walked inside while still flagged OUTDOOR). */
+    fun purgeRecentCaptures(cutoffMs: Long) {
+        val state = _uiState.value
+        val keptItems = state.observedItems.filterIndexed { i, _ ->
+            observedItemStamps.getOrNull(i)?.let { it < cutoffMs } ?: true
+        }
+        val keptPhotos = state.capturedPhotos.filterIndexed { i, _ ->
+            photoStamps.getOrNull(i)?.let { it < cutoffMs } ?: true
+        }
+        val dropped = (state.observedItems.size - keptItems.size) + (state.capturedPhotos.size - keptPhotos.size)
+        if (dropped > 0) {
+            DiagnosticsLog.info("outdoor-gate", "privacy purge: dropped $dropped capture(s) from trailing window")
+        }
+        while (observedItemStamps.size > keptItems.size) observedItemStamps.removeLast()
+        while (photoStamps.size > keptPhotos.size) photoStamps.removeLast()
+        _uiState.value = state.copy(observedItems = keptItems, capturedPhotos = keptPhotos)
+    }
+
     fun reset() {
         _uiState.value = SpotUiState()
+        observedItemStamps.clear()
+        photoStamps.clear()
     }
 
     private fun SpotUiState.effectiveAffectedRadiusMeters(): Double {

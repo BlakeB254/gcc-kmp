@@ -79,6 +79,7 @@ fun SpotArScreen(
     spotLocation: Coordinates,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    onPurgeRecentCaptures: (Long) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -172,6 +173,13 @@ fun SpotArScreen(
     LaunchedEffect(outdoorState) {
         DiagnosticsLog.info("outdoor-gate", "spot gate → $outdoorState")
         overlay.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
+        if (outdoorState == OutdoorState.INDOOR) {
+            // This surface has no EnvScanSessionRecorder of its own (it's the
+            // circle-the-item AR guidance view, not a capture surface) — just
+            // propagate the purge cutoff to whatever owns the captures.
+            val cutoff = (gate.lastIndoorFlipAtMs ?: Clock.System.now().toEpochMilliseconds()) - OutdoorGate.PURGE_WINDOW_MS
+            onPurgeRecentCaptures(cutoff)
+        }
     }
     LaunchedEffect(trackingState) {
         DiagnosticsLog.info("ar-tracking", "spot AR tracking → $trackingState")

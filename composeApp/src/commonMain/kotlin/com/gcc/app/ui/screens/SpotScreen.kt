@@ -168,6 +168,7 @@ fun SpotScreen(
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
                     submitError = uiState.error,
+                    onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -259,6 +260,7 @@ private fun CameraPhase(
     observedItems: List<ObservedSpotItem> = emptyList(),
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
     submitError: String? = null,
+    onPurgeRecentCaptures: (Long) -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -290,6 +292,10 @@ private fun CameraPhase(
     val outdoorState by gate.state.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
     val captureAllowed by gate.captureAllowed.collectAsState()
+    // One session = one capture: this recorder's snapshot rides with submit.
+    // Declared here (ahead of its other uses below) so the outdoor-state gate
+    // effect can reach it for purge/audit-trail events.
+    val sessionRecorder = remember { EnvScanSessionRecorder() }
 
     DisposableEffect(arOverlay) {
         // Landmark elements (trees, fences, gates…) auto-register into the
@@ -355,14 +361,18 @@ private fun CameraPhase(
         arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
         arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
         CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
+        if (outdoorState == OutdoorState.INDOOR) {
+            val cutoff = (gate.lastIndoorFlipAtMs ?: Clock.System.now().toEpochMilliseconds()) - OutdoorGate.PURGE_WINDOW_MS
+            sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
+            onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
+        }
+        sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
     }
 
     // ── Environment-scan session: coverage credit + minimap layers ──
     val apiClient = koinInject<GccApiClient>()
     val scanAreaCache = koinInject<ScanAreaCacheStore>()
     val tracker = remember { CoverageTracker() }
-    // One session = one capture: this recorder's snapshot rides with submit.
-    val sessionRecorder = remember { EnvScanSessionRecorder() }
     var trackerReady by remember { mutableStateOf(false) }
     var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
@@ -730,7 +740,7 @@ private fun CameraPhase(
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
-        if (isScanMode && objectCaptureSupported() && !isIndoor && !showObjectCapture) {
+        if (isScanMode && objectCaptureSupported() && captureAllowed && !showObjectCapture) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -783,7 +793,10 @@ private fun CameraPhase(
         GoOutsideOverlay(
             visible = isIndoor,
             onCloseScan = onBack,
-            onImOutside = { gate.forceOutdoors() },
+            onImOutside = {
+                gate.forceOutdoors()
+                sessionRecorder.noteGateEvent("override@${Clock.System.now().toEpochMilliseconds()}")
+            },
         )
         ConfirmingOutdoorsChip(
             visible = outdoorState == OutdoorState.UNCERTAIN,
