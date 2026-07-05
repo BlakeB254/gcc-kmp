@@ -1,5 +1,7 @@
 package com.gcc.app.platform
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.toCPointer
 import platform.UIKit.UIView
 
 /**
@@ -50,6 +52,33 @@ interface ArNativeSurface {
     /** True once at least one floor plane is being rendered (grid live). */
     fun groundDetected(): Boolean
 
+    /** Camera tracking quality: 0 normal, 1 limited, 2 unavailable. */
+    fun trackingStateRaw(): Int
+
+    /** Route mode hides the ground grid — fog owns the ground there. */
+    fun setGroundGridVisible(visible: Boolean)
+
+    /**
+     * Fog-of-war: unscanned cells as a flat [x0, z0, x1, z1, …] AR-local
+     * list (Kotlin applies the 35m/600 policy). Removed keys reveal.
+     */
+    fun updateFogCells(flatXZ: List<Double>, cellSizeMeters: Double)
+
+    /** Aim the camera-attached guidance arrow at an AR-local ground point. */
+    fun setGuidanceTarget(x: Double, z: Double)
+
+    fun clearGuidanceTarget()
+
+    /** Camera-attached red warning veil (worker outside the boundary). */
+    fun setBoundaryVeilVisible(visible: Boolean)
+
+    /**
+     * World-anchored boundary wall strips as flat records of
+     * [midX, midZ, lengthMeters, yawRadians, isOuter(1/0)] — Kotlin owns the
+     * segment sampling policy; each call replaces the previous walls.
+     */
+    fun updateBoundaryWalls(flatSegments: List<Double>)
+
     /**
      * Vector-scan overlay: credited cells as a flat [x0, z0, x1, z1, …]
      * AR-local list. The surface places quads on its own detected floor
@@ -57,8 +86,8 @@ interface ArNativeSurface {
      */
     fun updateVectorCells(flatXZ: List<Double>, cellSizeMeters: Double)
 
-    /** Persistent confirmed-trash marker at an AR world position. */
-    fun addMarker(x: Double, y: Double, z: Double)
+    /** Persistent trash marker: kind 0 = confirmed (green), 1 = expected (orange). */
+    fun addMarker(x: Double, y: Double, z: Double, kind: Int)
 
     /** One-shot lock-on effect (particles on iOS 18+, pulse otherwise). */
     fun emitLockEffect(x: Double, y: Double, z: Double)
@@ -72,4 +101,12 @@ interface ArNativeSurface {
  */
 object ArNativeRegistry {
     var surfaceFactory: (() -> ArNativeSurface)? = null
+}
+
+/** Shared address→CVPixelBuffer bridge (see [ArNativeSurface.currentPixelBufferAddress]). */
+@OptIn(ExperimentalForeignApi::class)
+internal fun ArNativeSurface.pixelBufferOrNull(): platform.CoreVideo.CVPixelBufferRef? {
+    val address = currentPixelBufferAddress()
+    if (address == 0L) return null
+    return address.toCPointer()
 }

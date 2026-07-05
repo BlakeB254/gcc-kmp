@@ -35,6 +35,12 @@ actual class ArSessionHealth actual constructor() {
         }
     }
 
+    /** Native-surface mode has no ARSessionDelegate — overlays poll the
+     *  surface's raw tracking state and push it here instead. */
+    internal fun overrideState(state: TrackingState) {
+        _trackingState.value = state
+    }
+
     /** Call once the ARSession exists (from ArRouteOverlay.bind / SpotArOverlay.bind). */
     fun bind(session: ARSession) {
         session.delegate = delegate

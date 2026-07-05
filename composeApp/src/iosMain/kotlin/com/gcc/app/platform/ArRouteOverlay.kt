@@ -76,6 +76,8 @@ actual class ArRouteOverlay actual constructor() {
     }
 
     private var sceneView: ARSCNView? = null
+    /** Native RealityKit render surface — when set, SceneKit paths are inert. */
+    private var nativeSurface: ArNativeSurface? = null
     private val fogNodes = mutableMapOf<Pair<Int, Int>, SCNNode>()
     private var boundaryVeil: SCNNode? = null
 
@@ -94,7 +96,7 @@ actual class ArRouteOverlay actual constructor() {
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
-    private val frameFeedback = ArFrameFeedback { sceneView }
+    private val frameFeedback = ArFrameFeedback({ sceneView }, { nativeSurface })
     actual val liveDetections: StateFlow<List<LiveDetection>> = frameFeedback.liveDetections
 
     // Latest GPS fix <-> AR camera position pairing (see class KDoc).
@@ -116,6 +118,18 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.start()
     }
 
+    /**
+     * Bind to the native RealityKit surface instead of an ARSCNView. The
+     * Swift side renders fog/arrow/veil/walls/markers from the primitives
+     * this class ships; all route logic stays identical to SceneKit mode.
+     */
+    fun bindNative(surface: ArNativeSurface) {
+        nativeSurface = surface
+        surface.setGroundGridVisible(false) // fog owns the ground on routes
+        frameFeedback.start()
+        DiagnosticsLog.info("ar-route", "RealityKit native route surface started")
+    }
+
     actual fun start() {
         // Session start is driven by `bind`, called from the Compose UIKitView
         // factory in Task 16 — nothing to do here beyond what `bind` already does.
@@ -123,6 +137,7 @@ actual class ArRouteOverlay actual constructor() {
 
     actual fun stop() {
         frameFeedback.stop()
+        nativeSurface?.pause()
         sceneView?.session?.pause()
     }
 
@@ -172,6 +187,17 @@ actual class ArRouteOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // Native mode has no ARSessionDelegate — mirror the surface's
+        // tracking quality into the shared flow on the same cadence.
+        nativeSurface?.let { surface ->
+            sessionHealth.overrideState(
+                when (surface.trackingStateRaw()) {
+                    0 -> TrackingState.NORMAL
+                    1 -> TrackingState.LIMITED
+                    else -> TrackingState.NOT_AVAILABLE
+                }
+            )
+        }
         maybeRebuildWallsOnGeoUpdate()
     }
 
@@ -181,8 +207,37 @@ actual class ArRouteOverlay actual constructor() {
      * Also retargets the guidance arrow at the nearest unscanned cell.
      */
     actual fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>) {
-        val scene = sceneView?.scene ?: return
         if (!hasGeoRef) return
+        nativeSurface?.let { surface ->
+            // Native mode: ship nearby cells (same radius/cap policy) as
+            // AR-local coords; the surface owns reveal-by-omission.
+            val flat = ArrayList<Double>()
+            var nearestDistSq = Double.MAX_VALUE
+            var nearest: Pair<Double, Double>? = null
+            var shipped = 0
+            for (cell in unscannedCells) {
+                val (lat, lng) = cellCenter(cell.first, cell.second)
+                val local = latLngToLocal(lat, lng)
+                val dx = local.first - refX.toDouble()
+                val dz = local.second - refZ.toDouble()
+                val distSq = dx * dx + dz * dz
+                if (distSq < nearestDistSq) {
+                    nearestDistSq = distSq
+                    nearest = local
+                }
+                if (distSq > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
+                if (shipped >= MAX_FOG_NODES) continue
+                flat.add(local.first)
+                flat.add(local.second)
+                shipped++
+            }
+            surface.updateFogCells(flat, CoverageTracker.cellSizeMeters)
+            val target = nearest
+            if (target != null) surface.setGuidanceTarget(target.first, target.second)
+            else surface.clearGuidanceTarget()
+            return
+        }
+        val scene = sceneView?.scene ?: return
 
         // Reveal: drop nodes for cells that are no longer unscanned.
         for ((cell, node) in fogNodes.toMap()) {
@@ -217,6 +272,10 @@ actual class ArRouteOverlay actual constructor() {
     }
 
     actual fun updateBoundaryStatus(isOutside: Boolean) {
+        nativeSurface?.let { surface ->
+            surface.setBoundaryVeilVisible(isOutside)
+            return
+        }
         val veil = boundaryVeil ?: makeBoundaryVeil() ?: return
         veil.hidden = !isOutside
     }
@@ -279,8 +338,27 @@ actual class ArRouteOverlay actual constructor() {
      * the total is capped at [MAX_WALL_SEGMENTS] to protect the frame rate.
      */
     private fun rebuildBoundaryWalls() {
-        val scene = sceneView?.scene ?: return
         if (!hasGeoRef) return
+        nativeSurface?.let { surface ->
+            geoUpdatesSinceWallRebuild = 0
+            lastWallRebuildX = refX
+            lastWallRebuildZ = refZ
+            hasBuiltWalls = true
+            if (!hasBoundaryData()) {
+                surface.updateBoundaryWalls(emptyList())
+                return
+            }
+            val radiusSq = WALL_RENDER_RADIUS_METERS * WALL_RENDER_RADIUS_METERS
+            val flat = ArrayList<Double>()
+            if (boundaryOuter.size >= 3) collectRingSegments(boundaryOuter, isOuter = true, radiusSq, flat)
+            for (island in boundaryIslands) {
+                if (island.size < 3) continue
+                collectRingSegments(island, isOuter = false, radiusSq, flat)
+            }
+            surface.updateBoundaryWalls(flat)
+            return
+        }
+        val scene = sceneView?.scene ?: return
 
         for (node in boundaryWallNodes) node.removeFromParentNode()
         boundaryWallNodes.clear()
@@ -352,6 +430,46 @@ actual class ArRouteOverlay actual constructor() {
             }
         }
         return false
+    }
+
+    /**
+     * Native-mode variant of [addRingWalls]: same sampling/window/cap policy,
+     * but emits flat [midX, midZ, length, yaw, isOuter] records for the
+     * RealityKit surface instead of SceneKit nodes.
+     */
+    private fun collectRingSegments(
+        ring: List<Pair<Double, Double>>,
+        isOuter: Boolean,
+        radiusSq: Double,
+        out: MutableList<Double>,
+    ) {
+        val locals = ring.map { latLngToLocal(it.first, it.second) }
+        val n = locals.size
+        for (i in 0 until n) {
+            val a = locals[i]
+            val b = locals[(i + 1) % n]
+            val ax = a.first; val az = a.second
+            val dx = b.first - ax; val dz = b.second - az
+            val edgeLen = hypot(dx, dz)
+            if (edgeLen < 0.5) continue
+            val segCount = ceil(edgeLen / WALL_SEGMENT_MAX_METERS).toInt()
+            val segLen = edgeLen / segCount
+            val yaw = atan2(-dz, dx)
+            for (s in 0 until segCount) {
+                if (out.size / 5 >= MAX_WALL_SEGMENTS) return
+                val t = (s + 0.5) / segCount
+                val mx = ax + dx * t
+                val mz = az + dz * t
+                val ddx = mx - refX
+                val ddz = mz - refZ
+                if (ddx * ddx + ddz * ddz > radiusSq) continue
+                out.add(mx)
+                out.add(mz)
+                out.add(segLen)
+                out.add(yaw)
+                out.add(if (isOuter) 1.0 else 0.0)
+            }
+        }
     }
 
     private fun makeWallSegment(x: Float, z: Float, length: Double, yaw: Float, color: UIColor): SCNNode {
@@ -482,9 +600,19 @@ actual class ArRouteOverlay actual constructor() {
 actual fun ArRouteOverlayView(overlay: ArRouteOverlay, modifier: Modifier) {
     UIKitView(
         factory = {
-            val view = ARSCNView()
-            overlay.bind(view)
-            view
+            // Native RealityKit surface when registered; any failure falls
+            // back to the proven SceneKit path (same kill switch as the
+            // environment scan).
+            val nativeView = try {
+                ArNativeRegistry.surfaceFactory?.invoke()?.let { surface ->
+                    overlay.bindNative(surface)
+                    surface.view()
+                }
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("ar-route", "native AR surface failed — SceneKit fallback", e)
+                null
+            }
+            nativeView ?: ARSCNView().also { overlay.bind(it) }
         },
         modifier = modifier,
         onRelease = {

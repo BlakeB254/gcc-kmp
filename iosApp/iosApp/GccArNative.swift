@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ARKit
 import RealityKit
@@ -28,8 +29,19 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     private var planeEntities: [UUID: PlaneGridEntity] = [:]
     private var vectorCellEntities: [String: AnchorEntity] = [:]
+    private var fogCellEntities: [String: AnchorEntity] = [:]
+    private var wallEntities: [AnchorEntity] = []
     private var floorWorldY: Float?
     private var groundLive = false
+    private var groundGridVisible = true
+
+    // Route-mode extras: camera-attached guidance arrow + warning veil.
+    private static let maxFogCells = 600
+    private let cameraAnchor = AnchorEntity(.camera)
+    private var arrowEntity: ModelEntity?
+    private var veilEntity: ModelEntity?
+    private var guidanceTarget: SIMD3<Float>?
+    private var updateSubscription: Cancellable?
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -57,6 +69,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
         arView.session.delegate = self
         arView.session.run(config)
+
+        arView.scene.addAnchor(cameraAnchor)
+        // RealityKit has no LookAt constraint — a per-frame scene update
+        // re-aims the guidance arrow at the current frontier target.
+        updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            self?.aimArrow()
+        }
 
         let coaching = ARCoachingOverlayView()
         coaching.session = arView.session
@@ -141,18 +160,176 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    func addMarker(x: Double, y: Double, z: Double) {
+    func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
         DispatchQueue.main.async { [self] in
             let anchor = AnchorEntity(world: SIMD3(Float(x), Float(y), Float(z)))
             // Flat emissive disc (squashed sphere — cylinder mesh is iOS 18+).
+            // kind 0 = confirmed trash (green), 1 = expected seed (orange).
+            let color = kind == 0
+                ? UIColor.green.withAlphaComponent(0.85)
+                : UIColor.orange.withAlphaComponent(0.85)
             let disc = ModelEntity(
                 mesh: .generateSphere(radius: 0.18),
-                materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.85))]
+                materials: [UnlitMaterial(color: color)]
             )
             disc.scale = SIMD3(1, 0.08, 1)
             anchor.addChild(disc)
             arView.scene.addAnchor(anchor)
         }
+    }
+
+    func trackingStateRaw() -> Int32 {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        switch lastFrame?.camera.trackingState {
+        case .normal: return 0
+        case .limited: return 1
+        default: return 2
+        }
+    }
+
+    func setGroundGridVisible(visible: Bool) {
+        DispatchQueue.main.async { [self] in
+            groundGridVisible = visible
+            if !visible {
+                for (_, entity) in planeEntities { entity.anchor.removeFromParent() }
+                planeEntities.removeAll()
+                refreshGroundState()
+            }
+        }
+    }
+
+    func updateFogCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {
+        DispatchQueue.main.async { [self] in
+            let groundY = (floorWorldY ?? cameraFallbackGroundY())
+            var wanted = Set<String>()
+            var index = 0
+            while index + 1 < flatXZ.count {
+                let x = Float(truncating: flatXZ[index])
+                let z = Float(truncating: flatXZ[index + 1])
+                index += 2
+                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
+                wanted.insert(key)
+                if fogCellEntities[key] != nil { continue }
+                if fogCellEntities.count >= Self.maxFogCells { continue }
+                let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
+                var material = PhysicallyBasedMaterial()
+                material.baseColor = .init(tint: UIColor(white: 0.5, alpha: 0.45))
+                material.roughness = 1.0
+                material.metallic = 0.0
+                material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+                let mesh = MeshResource.generatePlane(
+                    width: Float(cellSizeMeters), depth: Float(cellSizeMeters)
+                )
+                anchor.addChild(ModelEntity(mesh: mesh, materials: [material]))
+                arView.scene.addAnchor(anchor)
+                fogCellEntities[key] = anchor
+            }
+            // Reveal-by-omission: scanned cells vanish.
+            for (key, anchor) in fogCellEntities where !wanted.contains(key) {
+                anchor.removeFromParent()
+                fogCellEntities.removeValue(forKey: key)
+            }
+        }
+    }
+
+    func setGuidanceTarget(x: Double, z: Double) {
+        DispatchQueue.main.async { [self] in
+            let groundY = (floorWorldY ?? cameraFallbackGroundY())
+            guidanceTarget = SIMD3(Float(x), groundY, Float(z))
+            arrow().isEnabled = true
+        }
+    }
+
+    func clearGuidanceTarget() {
+        DispatchQueue.main.async { [self] in
+            guidanceTarget = nil
+            arrowEntity?.isEnabled = false
+        }
+    }
+
+    func setBoundaryVeilVisible(visible: Bool) {
+        DispatchQueue.main.async { [self] in
+            veil().isEnabled = visible
+        }
+    }
+
+    func updateBoundaryWalls(flatSegments: [KotlinDouble]) {
+        DispatchQueue.main.async { [self] in
+            for wall in wallEntities { wall.removeFromParent() }
+            wallEntities.removeAll()
+            let groundY = (floorWorldY ?? cameraFallbackGroundY())
+            var index = 0
+            // Records of [midX, midZ, lengthMeters, yawRadians, isOuter].
+            while index + 4 < flatSegments.count {
+                let midX = Float(truncating: flatSegments[index])
+                let midZ = Float(truncating: flatSegments[index + 1])
+                let length = Float(truncating: flatSegments[index + 2])
+                let yaw = Float(truncating: flatSegments[index + 3])
+                let isOuter = Double(truncating: flatSegments[index + 4]) >= 0.5
+                index += 5
+                let tint = isOuter
+                    ? UIColor(red: 0.13, green: 0.77, blue: 0.37, alpha: 0.3)
+                    : UIColor(red: 1.0, green: 0.72, blue: 0.0, alpha: 0.3)
+                var material = PhysicallyBasedMaterial()
+                material.baseColor = .init(tint: tint)
+                material.emissiveColor = .init(color: tint)
+                material.emissiveIntensity = 2.0
+                material.roughness = 1.0
+                material.metallic = 0.0
+                material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+                let anchor = AnchorEntity(world: SIMD3(midX, groundY + 0.45, midZ))
+                let wall = ModelEntity(
+                    mesh: .generatePlane(width: length, height: 0.9),
+                    materials: [material]
+                )
+                wall.orientation = simd_quatf(angle: yaw, axis: SIMD3(0, 1, 0))
+                anchor.addChild(wall)
+                arView.scene.addAnchor(anchor)
+                wallEntities.append(anchor)
+            }
+        }
+    }
+
+    // MARK: - Guidance arrow internals
+
+    /// Elongated emissive box pointer (cone/pyramid meshes are iOS 18+),
+    /// hanging below the camera; long axis is Z so look-style aiming works.
+    private func arrow() -> ModelEntity {
+        if let arrowEntity { return arrowEntity }
+        let entity = ModelEntity(
+            mesh: .generateBox(size: SIMD3(0.05, 0.05, 0.28)),
+            materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.95))]
+        )
+        entity.position = SIMD3(0, -0.4, -1.0)
+        cameraAnchor.addChild(entity)
+        arrowEntity = entity
+        return entity
+    }
+
+    private func veil() -> ModelEntity {
+        if let veilEntity { return veilEntity }
+        let entity = ModelEntity(
+            mesh: .generatePlane(width: 2.0, height: 2.0),
+            materials: [UnlitMaterial(color: UIColor.red.withAlphaComponent(0.35))]
+        )
+        entity.position = SIMD3(0, 0, -0.8)
+        entity.isEnabled = false
+        cameraAnchor.addChild(entity)
+        veilEntity = entity
+        return entity
+    }
+
+    private func aimArrow() {
+        guard let target = guidanceTarget, let arrow = arrowEntity, arrow.isEnabled else { return }
+        let from = arrow.position(relativeTo: nil)
+        let direction = target - from
+        let flat = SIMD3(direction.x, direction.y, direction.z)
+        guard simd_length(flat) > 0.01 else { return }
+        arrow.setOrientation(
+            simd_quatf(from: SIMD3(0, 0, -1), to: simd_normalize(flat)),
+            relativeTo: nil
+        )
     }
 
     func emitLockEffect(x: Double, y: Double, z: Double) {
@@ -220,6 +397,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     private func upsertPlane(_ plane: ARPlaneAnchor) {
+        guard groundGridVisible else { return }
         let extent = SIMD2(plane.planeExtent.width, plane.planeExtent.height)
         guard extent.x >= 0.4, extent.y >= 0.4 else { return }
         // Unclassified horizontal planes count as ground (matches the Kotlin
