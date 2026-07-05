@@ -212,6 +212,7 @@ class RouteScanViewModel(
     // INDOOR, coverage accrual (ledger events + tracker cells) is suppressed.
     private val outdoorGate = OutdoorGate()
     val outdoorState: StateFlow<OutdoorState> = outdoorGate.state
+    val captureAllowed: StateFlow<Boolean> = outdoorGate.captureAllowed
     private var accuracyJob: Job? = null
 
     /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
@@ -222,6 +223,11 @@ class RouteScanViewModel(
 
     fun onSceneVote(vote: SceneVote) {
         outdoorGate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
+    }
+
+    /** Ceiling-plane evidence from the AR screen (ArRouteScreen). */
+    fun onCeilingPlane(detected: Boolean) {
+        outdoorGate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
     }
 
     // Live points HUD: client-side estimate + one-shot "+N pts" pip events.
@@ -1006,10 +1012,12 @@ class RouteScanViewModel(
                             timestampMs = Clock.System.now().toEpochMilliseconds(),
                         )
 
-                        // "Go outside" gate: while judged indoors, accrue nothing —
-                        // no path point, no ledger event, no coverage cells. Reset
-                        // the segment anchor so no phantom distance spans the gap.
-                        if (outdoorGate.state.value == OutdoorState.INDOOR) {
+                        // "Go outside" gate: while capture isn't allowed (INDOOR, or
+                        // still UNCERTAIN pending outdoor confirmation), accrue
+                        // nothing — no path point, no ledger event, no coverage
+                        // cells. Reset the segment anchor so no phantom distance
+                        // bridges the gap once capture resumes.
+                        if (!outdoorGate.captureAllowed.value) {
                             lastCoverageFix = null
                             return@collect
                         }

@@ -26,6 +26,11 @@ actual class CameraManager actual constructor() {
     actual suspend fun capturePhoto(): CapturedPhoto? = null
 
     actual suspend fun captureFrame(): CapturedPhoto? = null
+
+    actual companion object {
+        /** No real camera on Desktop — no-op. */
+        actual var sceneVoteFastMode: Boolean = true
+    }
 }
 
 @Composable

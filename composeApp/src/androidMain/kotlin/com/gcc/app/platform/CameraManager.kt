@@ -125,7 +125,7 @@ actual class CameraManager actual constructor() {
         }
     }
 
-    companion object {
+    actual companion object {
         /**
          * The currently active ImageCapture use case, set by CameraPreview when CameraX binds.
          * Cleared when the composable leaves composition.
@@ -138,6 +138,9 @@ actual class CameraManager actual constructor() {
          */
         @Volatile
         internal var activeContext: Context? = null
+
+        /** No AVCapture-style scene-vote sampler on Android — no-op. */
+        actual var sceneVoteFastMode: Boolean = true
     }
 }
 

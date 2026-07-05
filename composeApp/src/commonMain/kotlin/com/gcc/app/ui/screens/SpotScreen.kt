@@ -37,6 +37,7 @@ import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.CameraDetectionBus
+import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraSceneVoteBus
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
@@ -281,12 +282,22 @@ private fun CameraPhase(
             arOverlay.updateGeoReference(loc.lat, loc.lng)
         }
     }
+
+    // "Go outside" gate — fused from GPS accuracy, mapped-building containment,
+    // AR/AVCapture camera scene votes, and ARKit ceiling-plane evidence; capture,
+    // coverage credit, and tagging are all gated on gate.captureAllowed.
+    val gate = remember { OutdoorGate() }
+    val outdoorState by gate.state.collectAsState()
+    val isIndoor = outdoorState == OutdoorState.INDOOR
+    val captureAllowed by gate.captureAllowed.collectAsState()
+
     DisposableEffect(arOverlay) {
         // Landmark elements (trees, fences, gates…) auto-register into the
         // same observed-items packet as trash — domain-tagged, so the server
         // records them as vegetation/construction world observations and the
         // grid expects them next scan.
         arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence ->
+            if (!gate.captureAllowed.value) return@setElementObservedListener
             onTrashObserved(
                 ObservedSpotItem(
                     lat = lat,
@@ -297,17 +308,16 @@ private fun CameraPhase(
                 )
             )
         }
+        arOverlay?.setCeilingListener { detected ->
+            gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
+        }
         onDispose {
             arOverlay?.setElementObservedListener(null)
+            arOverlay?.setCeilingListener(null)
             arOverlay?.stop()
         }
     }
 
-    // "Go outside" gate — GPS-accuracy evidence only here (the AVCapture
-    // viewfinder has no frame stream to classify; AR mode adds camera votes).
-    val gate = remember { OutdoorGate() }
-    val outdoorState by gate.state.collectAsState()
-    val isIndoor = outdoorState == OutdoorState.INDOOR
     LaunchedEffect(Unit) {
         locationProvider.horizontalAccuracyMeters.collect { accuracy ->
             gate.onAccuracySample(accuracy, Clock.System.now().toEpochMilliseconds())
@@ -343,6 +353,8 @@ private fun CameraPhase(
     LaunchedEffect(outdoorState) {
         DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
         arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
+        arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
+        CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
     }
 
     // ── Environment-scan session: coverage credit + minimap layers ──
@@ -711,7 +723,7 @@ private fun CameraPhase(
                 cellCenters = scanCellCenters,
             )
         }
-        EnvironmentScanEffects(active = !isIndoor, creditTick = creditTick)
+        EnvironmentScanEffects(active = captureAllowed, creditTick = creditTick)
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
@@ -770,6 +782,10 @@ private fun CameraPhase(
             onCloseScan = onBack,
             onImOutside = { gate.forceOutdoors() },
         )
+        ConfirmingOutdoorsChip(
+            visible = outdoorState == OutdoorState.UNCERTAIN,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+        )
 
         // No top-left ✕ here by design: once an environment scan session is
         // running, the bottom Complete Scan pill is the only way out — every
@@ -778,7 +794,7 @@ private fun CameraPhase(
         // scan or submit from inside.)
 
         // Primary action: Complete Scan, bottom-center (the Pokéball spot).
-        val canComplete = photos.isNotEmpty() && !isIndoor
+        val canComplete = photos.isNotEmpty() && captureAllowed
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

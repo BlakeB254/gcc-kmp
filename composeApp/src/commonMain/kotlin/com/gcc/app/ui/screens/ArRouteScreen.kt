@@ -45,6 +45,7 @@ import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.WorldMarkerKind
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.ui.components.ConfirmingOutdoorsChip
 import com.gcc.app.ui.components.DetectionReticleOverlay
 import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
@@ -112,9 +113,11 @@ fun ArRouteScreen(
     DisposableEffect(overlay) {
         overlay.start()
         overlay.setSceneVoteListener { vote -> viewModel.onSceneVote(vote) }
+        overlay.setCeilingListener { detected -> viewModel.onCeilingPlane(detected) }
         overlay.setMarkerPlacedListener { lat, lng, label -> viewModel.onMarkerPlaced(lat, lng, label) }
         onDispose {
             overlay.setSceneVoteListener(null)
+            overlay.setCeilingListener(null)
             overlay.setMarkerPlacedListener(null)
             overlay.stop()
         }
@@ -124,6 +127,12 @@ fun ArRouteScreen(
     // accuracy signal alone drives recovery once the worker steps outside).
     LaunchedEffect(isIndoor) {
         overlay.setFrameAnalysisEnabled(!isIndoor)
+    }
+
+    // Fast scene-vote cadence while not yet confirmed OUTDOOR (UNCERTAIN or
+    // INDOOR) — faster recovery once the worker actually steps outside.
+    LaunchedEffect(outdoorState) {
+        overlay.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
     }
 
     // Field diagnostics: AR tracking transitions land in the on-screen log.
@@ -410,6 +419,10 @@ fun ArRouteScreen(
 
         // "Go outside" scrim — sits under the exit button so leaving AR always works.
         GoOutsideOverlay(visible = isIndoor, onImOutside = { viewModel.forceOutdoors() })
+        ConfirmingOutdoorsChip(
+            visible = outdoorState == OutdoorState.UNCERTAIN,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
+        )
 
         DiagnosticsOverlay()
 

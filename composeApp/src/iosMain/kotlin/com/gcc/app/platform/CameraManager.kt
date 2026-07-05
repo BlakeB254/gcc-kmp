@@ -421,7 +421,7 @@ actual class CameraManager actual constructor() {
             }
         }
 
-    companion object {
+    actual companion object {
         internal var activePhotoOutput: AVCapturePhotoOutput? = null
         internal var activeSession: AVCaptureSession? = null
         /** Strong ref — AVCaptureVideoDataOutput holds its delegate weakly. */
@@ -439,7 +439,7 @@ actual class CameraManager actual constructor() {
         /** Adaptive scene-vote cadence for the AVCapture viewfinder fallback
          *  (SceneKit/AR paths use ArFrameFeedback/ArEnvScanOverlay's own flag);
          *  default true samples every ~750ms, matching the AR paths' default. */
-        var sceneVoteFastMode: Boolean = true
+        actual var sceneVoteFastMode: Boolean = true
     }
 }
 
