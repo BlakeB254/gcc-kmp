@@ -212,6 +212,14 @@ fun AdminBoundaryEditorScreen(
     }
 
     fun suggestIslands() {
+        // The generator runs server-side from the SAVED boundary — a drawn
+        // but unsaved outer would silently suggest against stale geometry.
+        if (savedOuter.size < 3 || outerDirty) {
+            scope.launch {
+                snackbarHostState.showSnackbar("Save the outer edge first — suggestions are generated from the saved boundary")
+            }
+            return
+        }
         suggesting = true
         scope.launch {
             try {
@@ -423,16 +431,32 @@ fun AdminBoundaryEditorScreen(
                     )
                 }
 
-                // Keep the camera on the block: the center may drift at most
-                // ~25% of the viewport span past the framing bbox — the block
-                // can never slide off screen.
+                // STABLE WORKING AREA: a true "contain" clamp. Per axis —
+                // when the viewport (at this zoom) is larger than the padded
+                // block frame, the center is PINNED to the frame's midpoint
+                // (the block sits centered and cannot move at all); when
+                // zoomed in tighter, the center may move only while the
+                // viewport stays fully inside the padded frame. The boxed-in
+                // area is always the view; drift is impossible.
                 fun clampedCenter(lat: Double, lng: Double, z: Double, wPx: Float, hPx: Float): Pair<Double, Double> {
-                    val lngScale = cos(lat * PI / 180.0)
+                    val midLat = (bbox[0] + bbox[1]) / 2.0
+                    val midLng = (bbox[2] + bbox[3]) / 2.0
+                    val lngScale = cos(midLat * PI / 180.0)
                     val mpp = 156543.03392 * lngScale / 2.0.pow(z)
-                    val slackLat = hPx * mpp / 111_320.0 / 4.0
-                    val slackLng = wPx * mpp / (111_320.0 * lngScale) / 4.0
-                    return lat.coerceIn(bbox[0] - slackLat, bbox[1] + slackLat) to
-                        lng.coerceIn(bbox[2] - slackLng, bbox[3] + slackLng)
+                    val halfViewLat = hPx * mpp / 111_320.0 / 2.0
+                    val halfViewLng = wPx * mpp / (111_320.0 * lngScale) / 2.0
+                    // ~18% padding keeps edge vertices + their handles visible.
+                    val padLat = (bbox[1] - bbox[0]) * 0.18
+                    val padLng = (bbox[3] - bbox[2]) * 0.18
+                    val frameLoLat = bbox[0] - padLat
+                    val frameHiLat = bbox[1] + padLat
+                    val frameLoLng = bbox[2] - padLng
+                    val frameHiLng = bbox[3] + padLng
+                    val clampedLat = if (frameHiLat - frameLoLat <= halfViewLat * 2) midLat
+                        else lat.coerceIn(frameLoLat + halfViewLat, frameHiLat - halfViewLat)
+                    val clampedLng = if (frameHiLng - frameLoLng <= halfViewLng * 2) midLng
+                        else lng.coerceIn(frameLoLng + halfViewLng, frameHiLng - halfViewLng)
+                    return clampedLat to clampedLng
                 }
 
                 // Fit the framing bbox with ~15% padding per side
@@ -866,6 +890,12 @@ fun AdminBoundaryEditorScreen(
                     }
                     ZoomButton("+") { nudgeZoom(0.5) }
                     ZoomButton("−") { nudgeZoom(-0.5) }
+                    ZoomButton("⊡") {
+                        // Re-frame: back to the fitted, centered working area.
+                        zoom = fitZoom
+                        centerLat = (bbox[0] + bbox[1]) / 2.0
+                        centerLng = (bbox[2] + bbox[3]) / 2.0
+                    }
                 }
 
                 // Draw-mode banner.

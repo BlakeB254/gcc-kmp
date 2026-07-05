@@ -167,7 +167,12 @@ export async function POST(request: Request) {
       name: displayName,
       serviceAreaId,
       routeId: newRoute.id,
-      locationBoundary: { type: 'Polygon', coordinates: blockPolygon },
+      // NO auto-seeded boundary: admins author the block's outer edge in
+      // the mobile Boundary Studio (draw-first flow). The buffered polygon
+      // below still shapes the legacy checkpoints, but a machine rectangle
+      // must never masquerade as an authored boundary (field report: 'the
+      // outer boundary is not set to the map... automatically created').
+      locationBoundary: null,
       locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
       streetName: streetName || null,
       fromCorner: fromCorner || null,
