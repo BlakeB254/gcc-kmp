@@ -174,6 +174,7 @@ fun SpotScreen(
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
+                    onFlushMarkers = { viewModel.flushArMarkers() },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -266,6 +267,8 @@ private fun CameraPhase(
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
+    /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
+    onFlushMarkers: () -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -401,12 +404,18 @@ private fun CameraPhase(
     }
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(Unit) {
-        onDispose { flushScope.launch { coverageQueue.flush() } }
+        onDispose {
+            flushScope.launch { coverageQueue.flush() }
+            onFlushMarkers()
+        }
     }
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000L)
             coverageQueue.flush()
+            // Confirmed litter reaches the public map mid-scan on the same
+            // cadence route AR markers use (was submit-only before).
+            onFlushMarkers()
         }
     }
 
@@ -820,6 +829,12 @@ private fun CameraPhase(
         // scan or submit from inside.)
 
         // Primary action: Complete Scan, bottom-center (the Pokéball spot).
+        // ALWAYS tappable — it is the sole exit (no top ✕ by design), and the
+        // VM handles every state: photos → submit, none → archive + close.
+        // Gating the tap on captureAllowed stranded users whenever the gate
+        // sat in UNCERTAIN (no GoOutside escape there) or no photo was ever
+        // taken; capture itself is already gated upstream, so an always-on
+        // exit leaks no indoor data. Dim = "nothing to submit yet" cue only.
         val canComplete = photos.isNotEmpty() && captureAllowed
         Box(
             modifier = Modifier
@@ -828,7 +843,7 @@ private fun CameraPhase(
                 .padding(bottom = 24.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
-                .clickable(enabled = canComplete) { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
+                .clickable { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
             Text(

@@ -291,6 +291,27 @@ fun ArRouteScreen(
             }
         }
 
+        // Walking-pace prompt — same slot as the tracking prompt, which wins
+        // when both apply (degraded tracking already tells them to slow down).
+        if (ui.movingTooFast && trackingState != TrackingState.LIMITED) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Slow down — scanning works best at an easy walking pace.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+            }
+        }
+
         // Expected-observation confirm sheet (rectify flow).
         nearbyExpected?.let { obs ->
             Column(

@@ -76,6 +76,8 @@ data class RouteScanUiState(
     val phase: ScanPhase = ScanPhase.SCOUTING,
     val coveragePercent: Double = 0.0,
     val hotspots: List<ScanHotspot> = emptyList(),
+    /** True while the worker is walking too fast for good scan coverage. */
+    val movingTooFast: Boolean = false,
     val startLat: Double = 0.0,
     val startLng: Double = 0.0,
     val currentLat: Double = 0.0,
@@ -173,6 +175,8 @@ class RouteScanViewModel(
     )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
+    private var lastCoverageFixAtMs: Long? = null
+    private var fastFixStreak = 0
     private var coverageFlushJob: Job? = null
 
     // AR-detected marker queue: live-detected (CONFIRMED_TRASH) markers from the
@@ -187,6 +191,14 @@ class RouteScanViewModel(
             }
         },
     )
+
+    init {
+        // Catch up lap manifests that couldn't reach R2 last time (offline /
+        // storage unprovisioned). Spot scans always did this on open; route
+        // manifests queued here used to strand until the user happened to
+        // open an ENV scan (the only other flushPending caller).
+        scope.launch { sessionUploader.flushPending() }
+    }
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
     fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
@@ -958,7 +970,21 @@ class RouteScanViewModel(
                     path = draft.path,
                     scannedCells = draft.scannedCells,
                     scannedCellSizeMeters = CoverageTracker.cellSizeMeters,
-                    observedItems = emptyList(),
+                    // The lap's hotspots ARE its litter record — without them
+                    // the R2 bundle the DGX world-model pipeline reads carried
+                    // no items at all (hotspots only reached their own API).
+                    // itemType uses the SpotTag vocabulary (lowercase), not
+                    // TrashItemCatalog canonical types.
+                    observedItems = state.hotspots.map { h ->
+                        ObservedSpotItem(
+                            lat = h.lat,
+                            lng = h.lng,
+                            itemType = h.trashTypes.firstOrNull()?.name?.lowercase() ?: "trash",
+                            severity = h.severity,
+                            confidence = h.confidence,
+                            atMs = h.detectedAt.toEpochMilliseconds(),
+                        )
+                    },
                     photoKeys = emptyList(),
                     lapKind = lapKind,
                     routeId = state.routeId,
@@ -1037,6 +1063,10 @@ class RouteScanViewModel(
                         // bridges the gap once capture resumes.
                         if (!outdoorGate.captureAllowed.value) {
                             lastCoverageFix = null
+                            fastFixStreak = 0
+                            if (_uiState.value.movingTooFast) {
+                                _uiState.value = _uiState.value.copy(movingTooFast = false)
+                            }
                             return@collect
                         }
                         scoutPath.add(Pair(lat, lng))
@@ -1055,6 +1085,20 @@ class RouteScanViewModel(
                         val segmentMeters = prevFix?.let { (prevLat, prevLng) ->
                             GeofenceVerification.distanceMeters(prevLat, prevLng, lat, lng)
                         } ?: 0.0
+
+                        // Walking-pace check: fast walking leaves sparse,
+                        // motion-blurred coverage the scan can't analyze.
+                        // Two consecutive fast fixes trip the banner (single
+                        // GPS jitter spikes don't); one slow fix clears it.
+                        val fixAtMs = Clock.System.now().toEpochMilliseconds()
+                        val dtMs = lastCoverageFixAtMs?.let { fixAtMs - it } ?: 0L
+                        lastCoverageFixAtMs = fixAtMs
+                        val speed = if (dtMs in 300..10_000) segmentMeters / (dtMs / 1000.0) else 0.0
+                        fastFixStreak = if (speed > 1.8) fastFixStreak + 1 else 0
+                        val tooFast = fastFixStreak >= 2
+                        if (_uiState.value.movingTooFast != tooFast) {
+                            _uiState.value = _uiState.value.copy(movingTooFast = tooFast)
+                        }
                         if (getPlatformName() != "desktop") coverageEventQueue.enqueue(
                             ScanCoverageEventRequest(
                                 deviceId = CoverageDeviceId.value,
