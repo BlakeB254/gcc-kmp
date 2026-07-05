@@ -59,7 +59,7 @@ actual class SpotArOverlay actual constructor() {
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
-    private val frameFeedback = ArFrameFeedback { sceneView }
+    private val frameFeedback = ArFrameFeedback({ sceneView })
     actual val liveDetections: StateFlow<List<LiveDetection>> = frameFeedback.liveDetections
 
     private var hasItem = false

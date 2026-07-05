@@ -59,6 +59,9 @@ import kotlin.math.sqrt
 @OptIn(ExperimentalForeignApi::class)
 internal class ArFrameFeedback(
     private val sceneViewProvider: () -> ARSCNView?,
+    /** When it returns a surface, frames/raycasts/markers go through the
+     *  native RealityKit layer instead of the ARSCNView. */
+    private val nativeSurfaceProvider: () -> ArNativeSurface? = { null },
 ) {
     companion object {
         private const val TICK_MS = 1_000L
@@ -113,8 +116,9 @@ internal class ArFrameFeedback(
 
     /** Returns true when the loop should back off (error / no frame). */
     private fun analyzeTick(): Boolean {
-        val frame = sceneViewProvider()?.session?.currentFrame ?: return false
-        val pixelBuffer = frame.capturedImage ?: return false
+        val native = nativeSurfaceProvider()
+        val frame = if (native == null) sceneViewProvider()?.session?.currentFrame else null
+        val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
         tick += 1
 
         val classifyRequest = VNClassifyImageRequest()
@@ -163,11 +167,28 @@ internal class ArFrameFeedback(
         // Vision uses bottom-left origin; ARFrame.hitTest wants top-left image space.
         val imageX = visionX
         val imageY = 1.0 - visionY
-        val hit = frame.hitTest(
-            CGPointMake(imageX, imageY),
-            types = ARHitTestResultTypeEstimatedHorizontalPlane or ARHitTestResultTypeFeaturePoint,
-        )?.firstOrNull() as? ARHitTestResult
-        val distance = hit?.distance?.toFloat()
+        var hitWorld: FloatArray? = null
+        var distance: Float? = null
+        if (native != null) {
+            val rayHit = native.raycast(imageX, imageY)
+            val cam = native.cameraPosition()
+            if (rayHit != null && cam != null) {
+                hitWorld = floatArrayOf(rayHit[0].toFloat(), rayHit[1].toFloat(), rayHit[2].toFloat())
+                val dx = rayHit[0] - cam[0]
+                val dy = rayHit[1] - cam[1]
+                val dz = rayHit[2] - cam[2]
+                distance = sqrt(dx * dx + dy * dy + dz * dz).toFloat()
+            }
+        } else {
+            val hit = frame?.hitTest(
+                CGPointMake(imageX, imageY),
+                types = ARHitTestResultTypeEstimatedHorizontalPlane or ARHitTestResultTypeFeaturePoint,
+            )?.firstOrNull() as? ARHitTestResult
+            if (hit != null) {
+                hitWorld = matrixTranslation(hit.worldTransform).toFloatArray()
+                distance = hit.distance.toFloat()
+            }
+        }
 
         // Landscape sensor image → portrait view: rotate 90° clockwise.
         val viewX = (1.0 - imageY).toFloat()
@@ -183,9 +204,8 @@ internal class ArFrameFeedback(
                 justPromoted = progress.promoted,
             )
         )
-        if (progress.promoted && hit != null) {
-            val floats = matrixTranslation(hit.worldTransform)
-            addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel)
+        if (progress.promoted && hitWorld != null) {
+            addMarkerAt(hitWorld[0], hitWorld[1], hitWorld[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel)
         }
         return false
     }
@@ -216,6 +236,16 @@ internal class ArFrameFeedback(
             if (listener != null) {
                 dispatch_async(dispatch_get_main_queue()) { listener(x, y, z, label) }
             }
+        }
+
+        nativeSurfaceProvider()?.let { surface ->
+            dispatch_async(dispatch_get_main_queue()) {
+                surface.addMarker(
+                    x.toDouble(), y.toDouble(), z.toDouble(),
+                    kind = if (kind == WorldMarkerKind.CONFIRMED_TRASH) 0 else 1,
+                )
+            }
+            return
         }
 
         dispatch_async(dispatch_get_main_queue()) {

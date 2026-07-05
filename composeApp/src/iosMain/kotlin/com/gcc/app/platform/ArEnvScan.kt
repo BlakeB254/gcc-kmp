@@ -11,7 +11,6 @@ import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -195,6 +194,7 @@ actual class ArEnvScanOverlay actual constructor() {
      */
     fun bindNative(surface: ArNativeSurface) {
         nativeSurface = surface
+        surface.setGroundGridVisible(true)
         CameraManager.externalFrameSource = { captureFrame() }
         startLoop()
         DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
@@ -319,7 +319,7 @@ actual class ArEnvScanOverlay actual constructor() {
             return true
         }
 
-        val pixelBuffer = (native?.let { nativePixelBuffer(it) } ?: frame?.capturedImage) ?: return false
+        val pixelBuffer = (native?.pixelBufferOrNull() ?: frame?.capturedImage) ?: return false
         val classifyRequest = VNClassifyImageRequest()
         val saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
         val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
@@ -726,7 +726,7 @@ actual class ArEnvScanOverlay actual constructor() {
         markerPositions.add(Triple(x, y, z))
         nativeSurface?.let { surface ->
             dispatch_async(dispatch_get_main_queue()) {
-                surface.addMarker(x.toDouble(), y.toDouble(), z.toDouble())
+                surface.addMarker(x.toDouble(), y.toDouble(), z.toDouble(), kind = 0)
             }
             return
         }
@@ -746,17 +746,11 @@ actual class ArEnvScanOverlay actual constructor() {
     suspend fun captureFrame(): CapturedPhoto? {
         val deferred = CompletableDeferred<CapturedPhoto?>()
         scope.launch {
-            val buffer = nativeSurface?.let { nativePixelBuffer(it) }
+            val buffer = nativeSurface?.pixelBufferOrNull()
                 ?: sceneView?.session?.currentFrame?.capturedImage
             deferred.complete(buffer?.let { cvPixelBufferToPortraitPhoto(it) })
         }
         return withTimeoutOrNull(2_000L) { deferred.await() }
-    }
-
-    private fun nativePixelBuffer(surface: ArNativeSurface): platform.CoreVideo.CVPixelBufferRef? {
-        val address = surface.currentPixelBufferAddress()
-        if (address == 0L) return null
-        return address.toCPointer()
     }
 
     private fun cameraPosition(): List<Float>? {
