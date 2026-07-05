@@ -6,11 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -63,13 +62,7 @@ fun ScanMinimapOverlay(
     guidanceTarget: Coordinates? = null,
     modifier: Modifier = Modifier,
 ) {
-    // Offscreen compositing so BlendMode.Clear punches holes in the veil
-    // instead of the whole minimap stack.
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
-    ) {
+    Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
 
         fun toOffset(lat: Double, lng: Double): Offset {
@@ -93,57 +86,65 @@ fun ScanMinimapOverlay(
         }
 
 
-        fun drawCell(
-            lat: Double,
-            lng: Double,
-            sideMeters: Double,
-            color: Color,
-            blendMode: BlendMode = DrawScope.DefaultBlendMode,
-            // Punched holes look ragged if adjacent cells leave hairline
-            // seams — overscan each cell slightly so neighbors fuse.
-            overscan: Float = 1f,
-        ) {
+        fun cellRect(lat: Double, lng: Double, sideMeters: Double, overscan: Float): Rect? {
+            // Overscan slightly so adjacent cells fuse without hairline seams.
             val side = metersToPixels(sideMeters, centerLat, zoom).coerceAtLeast(2f) * overscan
             val c = toOffset(lat, lng)
-            if (c.x < -side || c.x > size.width + side) return
-            if (c.y < -side || c.y > size.height + side) return
-            drawRect(
-                color = color,
-                topLeft = Offset(c.x - side / 2f, c.y - side / 2f),
-                size = Size(side, side),
-                blendMode = blendMode,
-            )
+            if (c.x < -side || c.x > size.width + side) return null
+            if (c.y < -side || c.y > size.height + side) return null
+            return Rect(Offset(c.x - side / 2f, c.y - side / 2f), Size(side, side))
+        }
+
+        fun drawCell(lat: Double, lng: Double, sideMeters: Double, color: Color, overscan: Float = 1f) {
+            val r = cellRect(lat, lng, sideMeters, overscan) ?: return
+            drawRect(color = color, topLeft = r.topLeft, size = r.size)
         }
 
         // ── Fog-of-war veil ──────────────────────────────────────────
         // The WHOLE minimap starts under one heavy dark veil: everything you
-        // can see is unscanned world, and that should be unmissable. Scanned
-        // areas get punched out of the veil below — the map literally lights
-        // up where data exists.
-        drawRect(color = VeilSlate.copy(alpha = 0.62f), size = size)
+        // can see is unscanned world, and that should be unmissable. Cells
+        // with scan data are cut out of the veil GEOMETRICALLY — one path
+        // with even-odd holes. (Deliberately no BlendMode.Clear/offscreen
+        // layer: that construct is fragile on the iOS Skia backend and a
+        // failure there blanks the whole overlay.)
+        // Path.combine(Difference) handles overlapping holes correctly
+        // (corridor and session cells share locations; overscanned neighbors
+        // overlap at edges — even-odd parity would re-fill those overlaps).
+        val holes = Path()
+        fun punch(lat: Double, lng: Double, sideMeters: Double, overscan: Float) {
+            cellRect(lat, lng, sideMeters, overscan)?.let { holes.addRect(it) }
+        }
+        for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
+        for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
+        for ((lat, lng) in scanCellCenters) punch(lat, lng, cellSizeMeters, 1.2f)
+        val veil = Path.combine(
+            PathOperation.Difference,
+            Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
+            holes,
+        )
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.62f))
 
-        // Required corridor (block laps): lighten the veil over the required
-        // area so the assignment reads as a distinct region to clear.
+        // Required corridor (block laps): punched out of the heavy veil, then
+        // re-shaded lighter so the assignment reads as a distinct region.
         for ((lat, lng) in corridorCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.35f), BlendMode.Src, overscan = 1.15f)
+            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.35f), overscan = 1.15f)
         }
 
-        // Ledger-fresh cells: already scanned by the community — clear sky.
+        // Ledger-fresh cells: already scanned by the community — clear sky
+        // with a faint green wash.
         for ((lat, lng) in freshCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, Color.Transparent, BlendMode.Clear, overscan = 1.1f)
             drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.14f), overscan = 1.1f)
         }
 
-        // Stale cells: scanned before, worth re-scanning — amber glow through
-        // a thinned veil.
+        // Stale cells: scanned before, worth re-scanning — amber glow over
+        // the veil.
         for ((lat, lng) in staleCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.55f), BlendMode.Src, overscan = 1.1f)
+            drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
         }
 
-        // This session's credited zones: fully punched + vivid green. This is
+        // This session's credited zones: cut clear + vivid green. This is
         // the live "you just scanned this" feedback.
         for ((lat, lng) in scanCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, Color.Transparent, BlendMode.Clear, overscan = 1.2f)
             drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.60f), overscan = 1.2f)
         }
 
