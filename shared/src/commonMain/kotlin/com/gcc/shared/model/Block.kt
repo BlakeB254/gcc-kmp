@@ -16,6 +16,9 @@ data class Block(
     val serviceAreaId: Int? = null,
     val status: BlockStatus = BlockStatus.AVAILABLE,
     val boundary: GeoJSONPolygon? = null,
+    /** Authored exclusion zones (MultiPolygon of islands) — mirrors
+     *  blocks.inner_boundary; renders as the grey no-scan areas. */
+    val innerBoundary: GeoJSONMultiPolygon? = null,
     val center: GeoJSONPoint? = null,
     val displayImage: String? = null,
     val imageLocationLat: Double? = null,

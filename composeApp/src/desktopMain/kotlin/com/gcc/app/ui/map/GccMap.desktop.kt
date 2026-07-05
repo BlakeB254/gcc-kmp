@@ -60,6 +60,7 @@ actual fun GccMap(
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     instantCamera: Boolean,
+    innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,

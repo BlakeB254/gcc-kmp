@@ -83,6 +83,9 @@ expect fun GccMap(
      *  min-delta threshold) — REQUIRED under editor overlays that redraw
      *  synchronously, or the map visibly detaches during zoom/pan. */
     instantCamera: Boolean = false,
+    /** Editor mode: never synthesize the 8m-inset inner ring for loops with
+     *  no authored exclusion zones (an uneditable ghost in the editor). */
+    innerBoundaryFallback: Boolean = true,
     showGridLines: Boolean = true,
     showControls: Boolean = false,
     statusBarPadding: Boolean = false,

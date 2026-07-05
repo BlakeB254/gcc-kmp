@@ -115,11 +115,15 @@ fun buildRouteInnerBoundariesGeoJson(
     routeCoordinates: List<List<Coordinates>>,
     overrideRings: List<List<Coordinates>> = emptyList(),
     setbackMeters: Double = 8.0,
+    /** When false, loops with no authored rings get NOTHING instead of the
+     *  synthetic 8m-inset corridor — the editor must never render a ghost
+     *  ring the admin can't select or edit. */
+    fallbackInset: Boolean = true,
 ): String {
     if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
-        val rings = innerRingsForLoop(coords, overrideRings, setbackMeters)
+        val rings = innerRingsForLoop(coords, overrideRings, setbackMeters, fallbackInset)
         if (rings.isEmpty()) return@mapIndexedNotNull null
         rings.joinToString(",") { ring ->
             val ringJson = ring.joinToString(",") { "[${it.lng},${it.lat}]" }
@@ -139,6 +143,7 @@ internal fun innerRingsForLoop(
     loop: List<Coordinates>,
     overrideRings: List<List<Coordinates>>,
     setbackMeters: Double,
+    fallbackInset: Boolean = true,
 ): List<List<Coordinates>> {
     val loopPairs = loop.map { it.lat to it.lng }
     val matched = overrideRings.filter { ring ->
@@ -148,6 +153,7 @@ internal fun innerRingsForLoop(
         com.gcc.shared.geo.pointInPolygon(cLat, cLng, loopPairs)
     }.map { closeLoop(it) }
     if (matched.isNotEmpty()) return matched
+    if (!fallbackInset) return emptyList()
     return listOfNotNull(insetRingByEdgeOffset(closeLoop(loop), setbackMeters))
 }
 

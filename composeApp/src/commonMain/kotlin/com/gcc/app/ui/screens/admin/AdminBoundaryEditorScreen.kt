@@ -121,7 +121,7 @@ fun AdminBoundaryEditorScreen(
     var savedIslands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var islands by remember { mutableStateOf<List<Ring>>(emptyList()) }
     var initialized by remember { mutableStateOf(false) }
-    var step by remember { mutableStateOf(EditStep.ISLANDS) }
+    var step by remember { mutableStateOf(EditStep.OUTER) }
     var drawMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(route) {
@@ -454,7 +454,13 @@ fun AdminBoundaryEditorScreen(
                 // the zoom by log2(density) or geometry draws ~3x too small
                 // against the basemap (field screenshots: the block rendered
                 // as a small square mid-screen).
-                val zoomBias = log2(density.density.toDouble())
+                // ×density: MapLibre zoom scale is per POINT, the canvas
+                // works in PHYSICAL pixels. ×2: MapLibre zoom is defined
+                // against 512px tiles — one full level below the classic
+                // 256-tile 156543/2^z formula. Verified empirically against
+                // a MapLibre-rendered underlay of the same polygon (the
+                // canvas ring drew concentric at ~60% scale before the ×2).
+                val zoomBias = log2(density.density.toDouble() * 2.0)
 
                 // Framing geometry: the SAVED outer (stable while dragging the
                 // live one), falling back to the route line for boundary-less
@@ -511,6 +517,17 @@ fun AdminBoundaryEditorScreen(
                 // tighter of the two wins. (The old min-dimension fit framed
                 // tall blocks against the screen WIDTH, wasting margin and
                 // drifting the block off-center.)
+                // Each step has a home view: Perimeter = fully zoomed out
+                // (boundary + neighborhood context); Exclusions = snug fit
+                // (whole boundary, slightly closer). Switching steps snaps
+                // to that step's home framing.
+                LaunchedEffect(step) {
+                    if (frameRing.isNotEmpty() && fitZoom > 13.0) {
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
+                        centerLat = (bbox[0] + bbox[1]) / 2.0
+                        centerLng = (bbox[2] + bbox[3]) / 2.0
+                    }
+                }
                 LaunchedEffect(frameRing, boxWidthPx, boxHeightPx) {
                     if (boxWidthPx > 0 && boxHeightPx > 0 && frameRing.isNotEmpty()) {
                         centerLat = (bbox[0] + bbox[1]) / 2.0
@@ -521,7 +538,7 @@ fun AdminBoundaryEditorScreen(
                         val zoomForHeight = log2(156543.03392 * cosLat * boxHeightPx / spanNorth)
                         val zoomForWidth = log2(156543.03392 * cosLat * boxWidthPx / spanEast)
                         fitZoom = (minOf(zoomForHeight, zoomForWidth) - zoomBias).coerceIn(13.0, ZOOM_MAX)
-                        zoom = fitZoom
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
                     }
                 }
 
@@ -533,7 +550,18 @@ fun AdminBoundaryEditorScreen(
                     enableGestures = false,
                     showBuildings = false,
                     instantCamera = true,
+                    innerBoundaryFallback = false,
                     showGridLines = false,
+                    // The LIVE geometry rendered by MapLibre itself — the
+                    // exact pipeline the public map uses. The canvas on top
+                    // adds only handles, hatching and drafts, so what admins
+                    // edit IS what workers see.
+                    routeCoordinates = if (outer.size >= 3) {
+                        listOf(outer.map { (lat, lng) -> com.gcc.shared.model.Coordinates(lat = lat, lng = lng) })
+                    } else emptyList(),
+                    innerBoundaryRings = islands.filter { it.size >= 3 }.map { ring ->
+                        (ring + ring.first()).map { (lat, lng) -> com.gcc.shared.model.Coordinates(lat = lat, lng = lng) }
+                    },
                 )
 
                 // Overlay: draws boundaries AND owns ALL touch. One custom
@@ -688,7 +716,7 @@ fun AdminBoundaryEditorScreen(
                                         val newDist = (a.position - b.position).getDistance()
                                         val cur = projection()
                                         val (gLat, gLng) = cur.unproject(oldCentroid)
-                                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 1.5
+                                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 2.5
                                         val newZoom = if (oldDist > 8f && newDist > 8f) {
                                             (zoom + log2(newDist.toDouble() / oldDist))
                                                 .coerceIn(minOf(zoomFloor, ZOOM_MAX), ZOOM_MAX)
@@ -838,13 +866,19 @@ fun AdminBoundaryEditorScreen(
                             drawPath(shade, color = Color.Black.copy(alpha = 0.72f))
                         }
 
-                        // Outer boundary — green; bolder + handled in OUTER step.
+                        // The perimeter LINE is MapLibre's job (the live ring
+                        // is fed to the map's route layers — identical to the
+                        // public display). The canvas adds only the editing
+                        // affordances: an amber accent while edits are
+                        // unsaved, and the corner/midpoint handles.
                         val outerActive = step == EditStep.OUTER && !drawMode
-                        drawPath(
-                            ringPath(outer),
-                            color = if (outerDirty) IslandAmberBright else GccGreen,
-                            style = Stroke(width = (if (outerActive) 3.5.dp else 2.5.dp).toPx()),
-                        )
+                        if (outerDirty) {
+                            drawPath(
+                                ringPath(outer),
+                                color = IslandAmberBright,
+                                style = Stroke(width = 2.5.dp.toPx()),
+                            )
+                        }
                         if (outerActive) drawHandles(outer, GccGreen)
                     }
 
@@ -858,6 +892,9 @@ fun AdminBoundaryEditorScreen(
                             val selected = i == selectedIsland
                             val path = ringPath(island)
                             val grey = if (selected) ExclusionGreyDark else ExclusionGrey
+                            // Line + fill come from the map's grey exclusion
+                            // layers (same pipeline as the public map); the
+                            // canvas contributes the diagonal hatch language.
                             clipPath(path) {
                                 val hatchStep = 12.dp.toPx()
                                 val h = size.height
@@ -872,9 +909,10 @@ fun AdminBoundaryEditorScreen(
                                     d += hatchStep
                                 }
                             }
-                            drawPath(path, color = grey.copy(alpha = 0.10f))
-                            drawPath(path, color = grey, style = Stroke(width = (if (selected) 3.dp else 2.dp).toPx()))
-                            if (selected) drawHandles(island, ExclusionGreyDark)
+                            if (selected) {
+                                drawPath(path, color = grey, style = Stroke(width = 3.dp.toPx()))
+                                drawHandles(island, ExclusionGreyDark)
+                            }
                         }
                     }
 
@@ -960,7 +998,7 @@ fun AdminBoundaryEditorScreen(
                         // Islands: out just far enough for the outer boundary
                         // + a little context. Outer: more room, for reshaping
                         // the perimeter against the neighborhood.
-                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 1.5
+                        val zoomFloor = if (step == EditStep.ISLANDS) fitZoom - 0.5 else fitZoom - 2.5
                         zoom = (zoom + delta).coerceIn(minOf(zoomFloor, ZOOM_MAX), ZOOM_MAX)
                         val c = clampedCenter(centerLat, centerLng, zoom, boxWidthPx, boxHeightPx)
                         centerLat = c.first
@@ -969,8 +1007,8 @@ fun AdminBoundaryEditorScreen(
                     ZoomButton("+") { nudgeZoom(0.5) }
                     ZoomButton("−") { nudgeZoom(-0.5) }
                     ZoomButton("⊡") {
-                        // Re-frame: back to the fitted, centered working area.
-                        zoom = fitZoom
+                        // Re-frame: back to the step's home view.
+                        zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
                         centerLat = (bbox[0] + bbox[1]) / 2.0
                         centerLng = (bbox[2] + bbox[3]) / 2.0
                     }

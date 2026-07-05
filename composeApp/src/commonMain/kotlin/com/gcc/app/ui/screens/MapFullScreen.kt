@@ -333,9 +333,13 @@ fun MapFullScreen(
     // Authored inner boundaries (route-v2): every ring from every visible
     // route's MultiPolygon (multiple exclusion islands per route supported);
     // centroid pairing in the map builders nests them under the right loop.
-    val innerBoundaryRings: List<List<Coordinates>> = remember(uiState.routes, assignedJobRoutePairs) {
-        (uiState.routes + assignedJobRoutePairs.map { it.second })
-            .mapNotNull { it.innerBoundary }
+    val innerBoundaryRings: List<List<Coordinates>> = remember(uiState.routes, assignedJobRoutePairs, displayBlocks) {
+        // Routes AND blocks: with 0 available routes the map shows block
+        // loops, whose authored exclusion zones ride the blocks feed — the
+        // route list alone left the map falling back to the synthetic 8m
+        // inset ('the inner boundary that mirrors the outer').
+        ((uiState.routes + assignedJobRoutePairs.map { it.second }).mapNotNull { it.innerBoundary } +
+            displayBlocks.mapNotNull { it.innerBoundary })
             .flatMap { multi ->
                 multi.coordinates.mapNotNull { poly ->
                     poly.firstOrNull()?.mapNotNull { pt ->
@@ -345,6 +349,7 @@ fun MapFullScreen(
                     }?.takeIf { it.size >= 3 }
                 }
             }
+            .distinct()
     }
 
     val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {

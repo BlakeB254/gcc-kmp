@@ -82,6 +82,7 @@ actual fun GccMap(
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
     showBuildings: Boolean,
     instantCamera: Boolean,
+    innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
     statusBarPadding: Boolean,
@@ -108,8 +109,11 @@ actual fun GccMap(
     val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
-    val routeInnerJson = remember(routeCoordinates, innerBoundaryRings) {
-        buildRouteInnerBoundariesGeoJson(routeCoordinates, innerBoundaryRings)
+    val routeInnerJson = remember(routeCoordinates, innerBoundaryRings, innerBoundaryFallback) {
+        buildRouteInnerBoundariesGeoJson(
+            routeCoordinates, innerBoundaryRings,
+            fallbackInset = innerBoundaryFallback,
+        )
     }
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
@@ -168,13 +172,13 @@ actual fun GccMap(
         if (instantCamera) {
             // Editor overlays redraw synchronously against (center, zoom):
             // the map must SNAP with zero threshold or geometry visibly
-            // detaches from the basemap during zoom/pan.
-            camera.animateTo(
-                finalPosition = CameraPosition(
-                    target = Position(latitude = targetLat, longitude = targetLng),
-                    zoom = zoom,
-                ),
-                duration = 0.milliseconds,
+            // detaches from the basemap during zoom/pan. Direct position
+            // assignment — animateTo(0ms) does not reliably move the
+            // camera (the editor rendered its geometry half a block off
+            // because the camera silently stayed at the initial position).
+            camera.position = CameraPosition(
+                target = Position(latitude = targetLat, longitude = targetLng),
+                zoom = zoom,
             )
             return@LaunchedEffect
         }
