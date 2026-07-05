@@ -24,7 +24,6 @@ import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIColor
 import platform.darwin.simd_float4x4
 import kotlin.math.PI
-import kotlin.math.cos
 
 /**
  * iOS SceneKit-based AR overlay for the "Begin Route" experience.
@@ -102,6 +101,19 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.sceneVoteListener = listener
     }
 
+    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {
+        frameFeedback.markerPlacedListener = if (listener == null) null else { x, _, z, label ->
+            if (hasGeoRef) {
+                val (lat, lng) = localToLatLng(x, z)
+                listener(lat, lng, label)
+            }
+            // else: no geo reference yet (GPS hasn't paired with the AR camera).
+            // Silently drop this promotion event rather than persist garbage
+            // coordinates — the marker still renders locally in the AR scene
+            // (that path is unaffected); only server persistence is skipped.
+        }
+    }
+
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
         frameFeedback.setEnabled(enabled)
     }
@@ -129,7 +141,7 @@ actual class ArRouteOverlay actual constructor() {
         refX = position[0]
         refY = position[1]
         refZ = position[2]
-        lngScale = cos(lat * PI / 180.0)
+        lngScale = lngScaleFor(lat)
         hasGeoRef = true
     }
 
@@ -273,11 +285,12 @@ actual class ArRouteOverlay actual constructor() {
     // ── Coordinate math ──────────────────────────────────────────────
 
     /** (lat, lng) -> AR-local (x, z) meters, via the current geo reference. */
-    private fun latLngToLocal(lat: Double, lng: Double): Pair<Double, Double> {
-        val northMeters = (lat - refLat) * METERS_PER_DEG_LAT
-        val eastMeters = (lng - refLng) * METERS_PER_DEG_LAT * lngScale
-        return (refX + eastMeters) to (refZ - northMeters)
-    }
+    private fun latLngToLocal(lat: Double, lng: Double): Pair<Double, Double> =
+        latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+
+    /** AR-local (x, z) meters -> (lat, lng), via the current geo reference. */
+    private fun localToLatLng(x: Float, z: Float): Pair<Double, Double> =
+        localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
 
     /** Current camera world position [x, y, z], or null before the first AR frame. */
     private fun cameraPosition(): List<Float>? {

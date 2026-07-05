@@ -81,6 +81,7 @@ internal class ArFrameFeedback(
     val liveDetections: StateFlow<List<LiveDetection>> = _liveDetections.asStateFlow()
 
     var sceneVoteListener: ((SceneVote) -> Unit)? = null
+    var markerPlacedListener: ((x: Float, y: Float, z: Float, label: String) -> Unit)? = null
 
     fun setEnabled(value: Boolean) {
         enabled = value
@@ -184,7 +185,7 @@ internal class ArFrameFeedback(
         )
         if (progress.promoted && hit != null) {
             val floats = matrixTranslation(hit.worldTransform)
-            addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH)
+            addMarkerAt(floats[0], floats[1], floats[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel)
         }
         return false
     }
@@ -200,7 +201,7 @@ internal class ArFrameFeedback(
      * Add a persistent ring marker at an AR world position (main queue),
      * unless one already exists within [MARKER_DEDUPE_METERS] horizontally.
      */
-    fun addMarkerAt(x: Float, y: Float, z: Float, kind: WorldMarkerKind) {
+    fun addMarkerAt(x: Float, y: Float, z: Float, kind: WorldMarkerKind, label: String = "") {
         val exists = markerPositions.any { (mx, _, mz) ->
             val dx = (mx - x).toDouble()
             val dz = (mz - z).toDouble()
@@ -209,6 +210,13 @@ internal class ArFrameFeedback(
         if (exists) return
         markerPositions.add(Triple(x, y, z))
         DiagnosticsLog.info("ar-marker", "placed $kind marker #${markerPositions.size}")
+
+        if (kind == WorldMarkerKind.CONFIRMED_TRASH) {
+            val listener = markerPlacedListener
+            if (listener != null) {
+                dispatch_async(dispatch_get_main_queue()) { listener(x, y, z, label) }
+            }
+        }
 
         dispatch_async(dispatch_get_main_queue()) {
             val scene = sceneViewProvider()?.scene ?: return@dispatch_async

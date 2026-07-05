@@ -1664,7 +1664,7 @@ export const worldObservations = pgTable('world_observations', {
   id: serial('id').primaryKey(),
   scanHotspotId: integer('scan_hotspot_id'),
   communityReportId: integer('community_report_id'),
-  sourceType: varchar('source_type', { length: 20 }).notNull(), // 'route_scan' | 'spot_report'
+  sourceType: varchar('source_type', { length: 20 }).notNull(), // 'route_scan' | 'spot_report' | 'ar_auto_detect'
   domain: varchar('domain', { length: 20 }).default('litter').notNull(), // 'litter' | 'vegetation' | 'construction' | 'land_use'
   lat: doublePrecision('lat').notNull(),
   lng: doublePrecision('lng').notNull(),

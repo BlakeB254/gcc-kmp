@@ -940,6 +940,10 @@ class GccApiClient(
         return json.decodeFromString<WorldObservationsResponse>(response.bodyAsText()).observations
     }
 
+    /** Batch-submit live AR-detected trash markers so they survive past the AR session. */
+    suspend fun reportArDetectedMarkers(markers: List<ArDetectedMarkerRequest>): ArDetectedMarkerBatchResponse =
+        postJson("/api/observations/ar-detected", ArDetectedMarkerBatchRequest(markers))
+
     // Upload spot photos (multipart form data), returns list of public URLs
     suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> {
         if (photos.isEmpty()) return emptyList()

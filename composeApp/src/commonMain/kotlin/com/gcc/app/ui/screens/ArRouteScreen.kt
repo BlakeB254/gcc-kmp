@@ -112,8 +112,10 @@ fun ArRouteScreen(
     DisposableEffect(overlay) {
         overlay.start()
         overlay.setSceneVoteListener { vote -> viewModel.onSceneVote(vote) }
+        overlay.setMarkerPlacedListener { lat, lng, label -> viewModel.onMarkerPlaced(lat, lng, label) }
         onDispose {
             overlay.setSceneVoteListener(null)
+            overlay.setMarkerPlacedListener(null)
             overlay.stop()
         }
     }

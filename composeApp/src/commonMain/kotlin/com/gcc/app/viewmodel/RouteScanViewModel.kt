@@ -1,6 +1,7 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.AiDirectionEngine
+import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.ArScanner
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
@@ -173,6 +174,35 @@ class RouteScanViewModel(
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
     private var coverageFlushJob: Job? = null
+
+    // AR-detected marker queue: live-detected (CONFIRMED_TRASH) markers from the
+    // AR screen queue locally and flush alongside the coverage-ledger events.
+    private val arMarkerQueue = ArMarkerQueue(
+        submitFn = { markers ->
+            try {
+                apiClient.reportArDetectedMarkers(markers)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("ar-marker-flush", "flush of ${markers.size} markers failed (kept queued)", e)
+                throw e
+            }
+        },
+    )
+
+    /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
+    fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
+        if (!lat.isFinite() || !lng.isFinite() || label.isBlank()) {
+            DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
+            return
+        }
+        scope.launch {
+            arMarkerQueue.enqueue(
+                ArDetectedMarkerRequest(
+                    lat = lat, lng = lng, label = label,
+                    capturedAt = Clock.System.now(),
+                ),
+            )
+        }
+    }
 
     // "Go outside" gate: GPS-accuracy evidence is fed here from the location
     // stream; the AR screen feeds camera scene votes via [onSceneVote]. While
@@ -783,7 +813,7 @@ class RouteScanViewModel(
         // Final coverage-ledger flush for the session — independent of the
         // scan-completion request below, and non-fatal if it fails (events
         // stay queued for a future session's flush).
-        scope.launch { coverageEventQueue.flush() }
+        scope.launch { coverageEventQueue.flush(); arMarkerQueue.flush() }
 
         scope.launch {
             _uiState.value = state.copy(
@@ -933,6 +963,7 @@ class RouteScanViewModel(
             while (true) {
                 delay(30_000L)
                 coverageEventQueue.flush() // failed flushes keep events queued
+                arMarkerQueue.flush()
             }
         }
         accuracyJob?.cancel()
@@ -1183,7 +1214,7 @@ class RouteScanViewModel(
         locationJob?.cancel()
         coverageJob?.cancel()
         coverageFlushJob?.cancel()
-        scope.launch { coverageEventQueue.flush() }
+        scope.launch { coverageEventQueue.flush(); arMarkerQueue.flush() }
         aiDirectionJob?.cancel()
         aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
