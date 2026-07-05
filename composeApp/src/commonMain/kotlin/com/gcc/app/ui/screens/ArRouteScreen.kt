@@ -145,6 +145,13 @@ fun ArRouteScreen(
     LaunchedEffect(isOutsideBoundary) {
         overlay.updateBoundaryStatus(isOutsideBoundary)
     }
+    // World-anchored boundary walls: the block outer ring + inner exclusion
+    // islands, rendered on the ground so panning toward the edge shows the
+    // boundary line in place. No-op until the geo reference pairs; empty
+    // outerRing (boundary-less corridor routes) yields no walls.
+    LaunchedEffect(outerRing, innerRings) {
+        overlay.updateBoundaries(outerRing, innerRings)
+    }
     LaunchedEffect(scannedCells) {
         overlay.updateFog(viewModel.unscannedCells()) { row, col ->
             viewModel.cellCenterLatLng(row, col)
