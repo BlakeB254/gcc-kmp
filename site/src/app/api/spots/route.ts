@@ -428,22 +428,27 @@ export async function POST(request: NextRequest) {
     }).catch(() => {}) // Silently ignore geocoding failures
 
     // Award 10 observer points for creating a spot report
-    const observerPoints = 10
-    await db.insert(pointsLedger).values({
-      workerId: auth.workerId,
-      action: 'spot_created',
-      points: observerPoints,
-      referenceType: 'spot',
-      referenceId: newReport.id,
-    })
-
-    // Update worker's denormalized points total
-    await db
-      .update(workers)
-      .set({
-        statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${observerPoints}`,
+    // Admin scans work exactly like user scans — same supersede, same world
+    // observations, same map data — but issue NO points (admins seeding or
+    // auditing the map must not climb the leaderboard).
+    const observerPoints = auth.role === 'admin' ? 0 : 10
+    if (observerPoints > 0) {
+      await db.insert(pointsLedger).values({
+        workerId: auth.workerId,
+        action: 'spot_created',
+        points: observerPoints,
+        referenceType: 'spot',
+        referenceId: newReport.id,
       })
-      .where(eq(workers.id, auth.workerId))
+
+      // Update worker's denormalized points total
+      await db
+        .update(workers)
+        .set({
+          statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${observerPoints}`,
+        })
+        .where(eq(workers.id, auth.workerId))
+    }
 
     // Build response matching SpotResponse { report, matchingBounties }
     const report = toCommunityReport(newReport)

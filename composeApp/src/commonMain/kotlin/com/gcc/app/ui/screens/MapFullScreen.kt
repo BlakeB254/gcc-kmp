@@ -144,7 +144,12 @@ fun MapFullScreen(
         selectedRouteForZoom = null
     }
 
-    val resolved = remember(uiState.serviceArea, currentLocation) {
+    // Keyed on location AVAILABILITY, not the location value: the camera
+    // should center once when the first GPS fix arrives, then leave the user
+    // alone — keying on the value recentered on every 1Hz tick, yanking the
+    // map back to the dot mid-pan (build 116 field report).
+    val hasLocation = currentLocation != null
+    val resolved = remember(uiState.serviceArea, hasLocation) {
         resolveMapCenter(
             serviceArea = uiState.serviceArea,
             currentLocation = currentLocation,
