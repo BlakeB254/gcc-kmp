@@ -138,6 +138,22 @@ Files: `ScanMinimapOverlay.kt`, `SpotScreen.kt` (~:585-605), AR overlays
 
 ## 6. Explicitly deferred
 
+**Blake, mid-build 2026-07-06 (next spec after this ships):**
+- **Live map streaming (read side):** write side is already near-live (30s event
+  flush mid-scan + flush on close). The gap is read-side freshness — the main map
+  refetches coverage only on navigation. Follow-up: push/poll refresh of coverage
+  tiles + observation pins so an in-progress scan appears on other users' maps
+  within seconds. (Write cadence needs no change.)
+- **Size/shape-accurate landmarks at close zoom:** landmarks currently persist as
+  points + type glyphs. AR already estimates physical width (raycast distance +
+  saliency bbox — the trash path does this); carry width/extent through
+  ObservedSpotItem → world_observations → a close-zoom footprint layer on the map,
+  with the cleanliness heatmap remaining the far-zoom representation.
+- **Purge-scope guarantee (confirmed in THIS build, recorded for posterity):** the
+  INDOOR purge/retraction is windowed to the 10s before the gate flip — a long
+  outdoor scan followed by walking indoors keeps everything except the doorway
+  seconds; server retraction windows are bounded ≤10min by design.
+
 - LiDAR `sceneDepth` per-pixel coverage (buffer is enabled but unread) — the v2
   upgrade path once raycast UX proves out.
 - DGX-pipeline consumption of the quality field.
