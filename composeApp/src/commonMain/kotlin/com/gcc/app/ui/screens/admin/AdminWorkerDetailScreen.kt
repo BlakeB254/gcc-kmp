@@ -30,6 +30,7 @@ import com.gcc.shared.model.DocumentMedia
 import com.gcc.shared.model.DocumentStatus
 import com.gcc.shared.model.PointsAction
 import com.gcc.shared.model.PointsLedgerEntry
+import com.gcc.shared.model.StripeOnboardingStatus
 import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.Worker
 import kotlin.math.abs
@@ -56,6 +57,8 @@ fun AdminWorkerDetailScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     var showGrantPointsDialog by remember { mutableStateOf(false) }
+    var showSendPayoutDialog by remember { mutableStateOf(false) }
+    var payoutResultMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(workerId) {
         viewModel.loadWorkerDetail(workerId)
@@ -220,6 +223,30 @@ fun AdminWorkerDetailScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = GccSky),
                                 enabled = !isLoading,
                             ) { Text("Grant Points") }
+                        }
+                    }
+
+                    // Ad-hoc payout (bonus / correction / off-platform work)
+                    item {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Text("Payouts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                payoutRoutingSummary(w),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Button(
+                                onClick = { showSendPayoutDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                                enabled = !isLoading,
+                            ) { Text("Send Payout") }
                         }
                     }
 
@@ -438,6 +465,152 @@ fun AdminWorkerDetailScreen(
             },
         )
     }
+
+    // Send Payout dialog
+    if (showSendPayoutDialog && worker != null) {
+        SendPayoutDialog(
+            worker = worker!!,
+            onDismiss = { showSendPayoutDialog = false },
+            onSubmit = { amountCents, note, idempotencyKey, onDone ->
+                viewModel.sendPayout(
+                    workerId = workerId,
+                    amountCents = amountCents,
+                    note = note,
+                    idempotencyKey = idempotencyKey,
+                ) { success, message ->
+                    onDone(success, message)
+                    if (success) {
+                        showSendPayoutDialog = false
+                        payoutResultMessage = message
+                    }
+                }
+            },
+        )
+    }
+
+    // Payout result confirmation
+    payoutResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { payoutResultMessage = null },
+            title = { Text("Payout") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { payoutResultMessage = null }) { Text("OK") }
+            },
+        )
+    }
+}
+
+/** One-line summary of where a payout to this worker would go. */
+private fun payoutRoutingSummary(worker: Worker): String = when {
+    worker.payoutMethod == "check" ->
+        "Gets paid by mailed paper check"
+    worker.stripe.onboardingStatus == StripeOnboardingStatus.COMPLETED ->
+        "Gets paid by direct deposit (Stripe)"
+    else ->
+        "Hasn't finished Stripe payout setup"
+}
+
+@Composable
+private fun SendPayoutDialog(
+    worker: Worker,
+    onDismiss: () -> Unit,
+    onSubmit: (
+        amountCents: Int,
+        note: String?,
+        idempotencyKey: String,
+        onDone: (success: Boolean, message: String?) -> Unit,
+    ) -> Unit,
+) {
+    var amountText by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var localError by remember { mutableStateOf<String?>(null) }
+    // One key per dialog open: a retried tap or flaky network can't double-send.
+    val idempotencyKey = remember {
+        val hex = "0123456789abcdef"
+        buildString(32) { repeat(32) { append(hex[kotlin.random.Random.nextInt(16)]) } }
+    }
+
+    val amountCents = parsePayoutDollarsToCents(amountText)
+    val stripeNotReady = worker.payoutMethod != "check" &&
+        worker.stripe.onboardingStatus != StripeOnboardingStatus.COMPLETED
+    val canSubmit = !sending && !stripeNotReady &&
+        amountCents != null && amountCents > 0 && amountCents <= MAX_ADHOC_PAYOUT_CENTS
+
+    AlertDialog(
+        onDismissRequest = { if (!sending) onDismiss() },
+        title = { Text("Send Payout") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    when {
+                        worker.payoutMethod == "check" ->
+                            "${worker.name} gets paid by paper check — this payout will join the checks-to-mail queue in the Payouts tab."
+                        !stripeNotReady ->
+                            "${worker.name} will be paid by direct deposit via Stripe immediately."
+                        else ->
+                            "${worker.name} hasn't finished Stripe payout setup, so a payout can't be sent. Ask them to finish setup in Wallet, or have them switch to paper checks."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (stripeNotReady) GccError else TextMuted,
+                )
+
+                GccTextField(
+                    value = amountText,
+                    onValueChange = { input ->
+                        if (input.isEmpty() || input.matches(Regex("^\\d{0,4}(\\.\\d{0,2})?$"))) {
+                            amountText = input
+                            localError = null
+                        }
+                    },
+                    label = "Amount in dollars (max $${MAX_ADHOC_PAYOUT_CENTS / 100})",
+                    keyboardType = KeyboardType.Decimal,
+                    singleLine = true,
+                )
+
+                GccTextField(
+                    value = note,
+                    onValueChange = { note = it.take(280) },
+                    label = "Note (optional — shown to the worker)",
+                    singleLine = false,
+                )
+
+                localError?.let { err ->
+                    Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cents = amountCents ?: return@Button
+                    sending = true
+                    onSubmit(cents, note.trim().ifBlank { null }, idempotencyKey) { success, message ->
+                        sending = false
+                        if (!success) localError = message ?: "Failed to send payout"
+                    }
+                },
+                enabled = canSubmit,
+                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+            ) { Text(if (sending) "Sending…" else "Send") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !sending) { Text("Cancel") }
+        },
+    )
+}
+
+/** $1,000 cap, mirrored from the server's MAX_PAYOUT_CENTS. */
+private const val MAX_ADHOC_PAYOUT_CENTS = 100_000
+
+private fun parsePayoutDollarsToCents(input: String): Int? {
+    val trimmed = input.trim()
+    if (trimmed.isEmpty()) return null
+    val parts = trimmed.split(".")
+    val dollars = parts[0].toIntOrNull() ?: return null
+    val cents = if (parts.size > 1) parts[1].padEnd(2, '0').take(2).toIntOrNull() ?: return null else 0
+    return dollars * 100 + cents
 }
 
 @Composable

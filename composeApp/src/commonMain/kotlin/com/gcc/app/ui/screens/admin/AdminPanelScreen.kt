@@ -155,9 +155,12 @@ fun AdminPanelScreen(
                         )
                         AdminTab.PAYOUTS -> AdminPayoutsTab(
                             reviews = uiState.pendingReviews,
+                            pendingChecks = uiState.pendingChecks,
+                            recentPayouts = uiState.recentPayouts,
                             payoutActionError = uiState.payoutActionError,
                             onApprove = { jobId, onResult -> viewModel.approveJob(jobId, onResult) },
                             onDeny = { jobId, reason, onResult -> viewModel.denyJob(jobId, reason, onResult) },
+                            onMarkMailed = { payoutId, onResult -> viewModel.markPayoutMailed(payoutId, onResult) },
                             onDismissActionError = { viewModel.clearPayoutActionError() },
                         )
                         AdminTab.BLOCK_PROPOSALS -> AdminBlockProposalsTab(

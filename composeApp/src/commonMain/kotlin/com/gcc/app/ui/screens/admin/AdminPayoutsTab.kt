@@ -15,19 +15,26 @@ import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccSky
 import com.gcc.shared.api.PendingReview
+import com.gcc.shared.model.AdminPayout
+import com.gcc.shared.util.GccFormatters
 
 @Composable
 internal fun AdminPayoutsTab(
     reviews: List<PendingReview>,
+    pendingChecks: List<AdminPayout>,
+    recentPayouts: List<AdminPayout>,
     payoutActionError: String?,
     onApprove: (jobId: Int, onResult: (success: Boolean, error: String?) -> Unit) -> Unit,
     onDeny: (jobId: Int, reason: String, onResult: (success: Boolean, error: String?) -> Unit) -> Unit,
+    onMarkMailed: (payoutId: Int, onResult: (success: Boolean, error: String?) -> Unit) -> Unit,
     onDismissActionError: () -> Unit,
 ) {
     // Deny dialog state
     var denyTargetJobId by remember { mutableStateOf<Int?>(null) }
     var denyReason by remember { mutableStateOf("") }
     var actionInProgress by remember { mutableStateOf(false) }
+    // Mark-as-mailed confirm state
+    var mailTarget by remember { mutableStateOf<AdminPayout?>(null) }
 
     // Dismiss payout action error snackbar
     payoutActionError?.let { error ->
@@ -36,10 +43,10 @@ internal fun AdminPayoutsTab(
         }
     }
 
-    if (reviews.isEmpty()) {
+    if (reviews.isEmpty() && pendingChecks.isEmpty() && recentPayouts.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "💰\nNo pending approvals",
+                "💰\nNo pending approvals or checks",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -53,20 +60,80 @@ internal fun AdminPayoutsTab(
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(reviews, key = { it.jobId }) { review ->
-            PayoutReviewCard(
-                review = review,
-                actionInProgress = actionInProgress,
-                onApprove = {
-                    actionInProgress = true
-                    onApprove(review.jobId) { _, _ -> actionInProgress = false }
-                },
-                onDenyClick = {
-                    denyTargetJobId = review.jobId
-                    denyReason = ""
-                },
-            )
+        if (reviews.isNotEmpty()) {
+            item(key = "header-approvals") {
+                PayoutSectionHeader("Job approvals (${reviews.size})")
+            }
+            items(reviews, key = { "review-${it.jobId}" }) { review ->
+                PayoutReviewCard(
+                    review = review,
+                    actionInProgress = actionInProgress,
+                    onApprove = {
+                        actionInProgress = true
+                        onApprove(review.jobId) { _, _ -> actionInProgress = false }
+                    },
+                    onDenyClick = {
+                        denyTargetJobId = review.jobId
+                        denyReason = ""
+                    },
+                )
+            }
         }
+
+        if (pendingChecks.isNotEmpty()) {
+            item(key = "header-checks") {
+                PayoutSectionHeader("Checks to mail (${pendingChecks.size})")
+            }
+            items(pendingChecks, key = { "check-${it.id}" }) { payout ->
+                CheckToMailCard(
+                    payout = payout,
+                    actionInProgress = actionInProgress,
+                    onMarkMailed = { mailTarget = payout },
+                )
+            }
+        }
+
+        if (recentPayouts.isNotEmpty()) {
+            item(key = "header-recent") {
+                PayoutSectionHeader("Recent payouts")
+            }
+            items(recentPayouts, key = { "recent-${it.id}" }) { payout ->
+                RecentPayoutRow(payout)
+            }
+        }
+    }
+
+    // Mark-as-mailed confirm dialog
+    mailTarget?.let { payout ->
+        AlertDialog(
+            onDismissRequest = { mailTarget = null },
+            title = { Text("Mark check as mailed?") },
+            text = {
+                Text(
+                    "${GccFormatters.formatCents(payout.amountCents)} to " +
+                        "${payout.workerName ?: "worker #${payout.workerId}"}. This records " +
+                        "the check as sent and notifies the worker — make sure it's " +
+                        "actually in the mail.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !actionInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                    onClick = {
+                        actionInProgress = true
+                        onMarkMailed(payout.id) { _, _ ->
+                            actionInProgress = false
+                            mailTarget = null
+                        }
+                    },
+                ) { Text("Mark as mailed") }
+            },
+            dismissButton = {
+                TextButton(onClick = { mailTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 
     // Deny reason dialog
@@ -119,6 +186,125 @@ internal fun AdminPayoutsTab(
             },
         )
     }
+}
+
+@Composable
+private fun PayoutSectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun CheckToMailCard(
+    payout: AdminPayout,
+    actionInProgress: Boolean,
+    onMarkMailed: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        payout.workerName ?: "Worker #${payout.workerId}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    payout.workerEmail?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(
+                    GccFormatters.formatCents(payout.amountCents),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = GccGreen,
+                )
+            }
+
+            payout.mailingAddress?.let { address ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "📬 ${address.name}\n${address.street}\n${address.city}, ${address.state} ${address.zip}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+
+            payout.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "“$note”",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onMarkMailed,
+                enabled = !actionInProgress,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+            ) { Text("Mark as mailed") }
+        }
+    }
+}
+
+@Composable
+private fun RecentPayoutRow(payout: AdminPayout) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    payout.workerName ?: "Worker #${payout.workerId}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    adminPayoutStatusLabel(payout),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                GccFormatters.formatCents(payout.amountCents),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (payout.status == "failed") MaterialTheme.colorScheme.error else GccGreen,
+            )
+        }
+    }
+}
+
+private fun adminPayoutStatusLabel(payout: AdminPayout): String = when (payout.status) {
+    "processing" -> "Stripe payout processing"
+    "completed" -> "Paid via Stripe"
+    "failed" -> "Stripe payout FAILED — reconcile"
+    "check_pending" -> "Check waiting to be mailed"
+    "check_mailed" -> "Check mailed"
+    else -> payout.status
 }
 
 @Composable

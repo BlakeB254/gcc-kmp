@@ -1,4 +1,8 @@
 import webpush from 'web-push'
+import { inArray } from 'drizzle-orm'
+import { db } from '@/db'
+import { workers } from '@/db/schema'
+import { sendApns, apnsConfigured } from './apns'
 
 // Initialize web-push with VAPID keys
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -137,6 +141,12 @@ export const notificationTemplates = {
     url: '/sponsor/impact',
   }),
 
+  checkMailed: (amount: string) => ({
+    title: 'Your check is in the mail 📬',
+    body: `Your check for ${amount} has been mailed. Allow 5–7 business days for delivery.`,
+    url: '/worker/dashboard',
+  }),
+
   // Admin notifications
   payoutNeedsApproval: (workerName: string, jobId: number, amountDollars: string) => ({
     title: 'Payout Approval Needed 💰',
@@ -145,6 +155,67 @@ export const notificationTemplates = {
     tag: `payout-approval-${jobId}`,
     data: { jobId },
   }),
+
+  checkToMail: (workerName: string, amountDollars: string, payoutId: number) => ({
+    title: 'New check to mail 📬',
+    body: `$${amountDollars} payout to ${workerName} is waiting in the checks-to-mail queue.`,
+    url: '/admin',
+    tag: `check-payout-${payoutId}`,
+    data: { type: 'check_payout', payoutId, deep_link: '/dashboard' },
+  }),
+}
+
+/**
+ * Best-effort push to every admin (ADMIN_EMAILS) with push enabled. Handles
+ * both stored subscription shapes: VAPID web-push subscriptions
+ * ({ endpoint, keys }) and native mobile tokens ({ token, platform } → APNs).
+ * Never throws — money paths call this fire-and-forget.
+ */
+export async function notifyAdmins(notification: NotificationPayload): Promise<void> {
+  try {
+    const adminEmails = (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+    if (adminEmails.length === 0) return
+
+    const adminWorkers = await db
+      .select({
+        pushEnabled: workers.notificationsPushEnabled,
+        pushSubscription: workers.notificationsPushSubscription,
+      })
+      .from(workers)
+      .where(inArray(workers.email, adminEmails))
+
+    const sends = adminWorkers
+      .filter((w) => w.pushEnabled && w.pushSubscription)
+      .map((w) => {
+        const sub = w.pushSubscription as Record<string, unknown>
+        if (
+          typeof sub.endpoint === 'string' &&
+          sub.keys &&
+          typeof (sub.keys as Record<string, unknown>).p256dh === 'string' &&
+          typeof (sub.keys as Record<string, unknown>).auth === 'string'
+        ) {
+          return sendPushNotification(
+            sub as unknown as PushSubscription,
+            notification
+          )
+        }
+        if (typeof sub.token === 'string' && sub.token && apnsConfigured()) {
+          return sendApns(sub.token, {
+            title: notification.title,
+            body: notification.body,
+            data: notification.data as Record<string, string | number | boolean> | undefined,
+          }).then((r) => r.success)
+        }
+        return Promise.resolve(false)
+      })
+
+    await Promise.allSettled(sends)
+  } catch (err) {
+    console.error('[notifications] notifyAdmins failed:', err)
+  }
 }
 
 /**

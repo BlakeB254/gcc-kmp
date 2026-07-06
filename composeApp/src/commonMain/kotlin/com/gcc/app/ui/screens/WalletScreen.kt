@@ -45,6 +45,17 @@ fun WalletScreen(
         viewModel.loadWallet()
         viewModel.loadTransactions()
         viewModel.loadConnectStatus()
+        viewModel.loadPayoutMethod()
+        viewModel.loadMyPayouts()
+    }
+
+    // Paper-check mailing address form
+    if (uiState.showCheckAddressForm) {
+        CheckAddressDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissCheckAddressForm() },
+        )
     }
 
     // Block Cleaning bottom sheet
@@ -167,6 +178,21 @@ fun WalletScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
                         }
+                    }
+                }
+
+                // ── How you get paid: direct deposit vs mailed paper check ──
+                item {
+                    PayoutMethodCard(uiState = uiState, viewModel = viewModel)
+                }
+
+                // ── Recent ad-hoc payouts (bonuses/corrections sent by admins) ──
+                if (uiState.myPayouts.isNotEmpty()) {
+                    item {
+                        SectionHeader(title = "Recent Payouts")
+                    }
+                    items(uiState.myPayouts.take(10)) { payout ->
+                        WorkerPayoutRow(payout)
                     }
                 }
 
@@ -1378,6 +1404,247 @@ private fun TransactionListItem(
             )
         }
     }
+}
+
+// ── How you get paid (payout method + paper checks) ─────────────────────
+
+@Composable
+private fun PayoutMethodCard(
+    uiState: com.gcc.app.viewmodel.WalletUiState,
+    viewModel: WalletViewModel,
+) {
+    val info = uiState.payoutMethodInfo
+    val method = info?.method ?: "stripe"
+    val effectiveAddress = info?.effectiveMailingAddress
+
+    GccCard(accentColor = CardAccentBlue) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "How you get paid",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            )
+            if (uiState.payoutMethodSaving) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = GccGreen,
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        PayoutMethodOption(
+            selected = method == "stripe",
+            title = "Direct deposit / debit card",
+            subtitle = if (uiState.connectStatus?.payoutsReady == true) {
+                "Paid straight to your bank or card via Stripe"
+            } else {
+                "Fastest — finish payout setup above to activate"
+            },
+            enabled = !uiState.payoutMethodSaving,
+            onSelect = { if (method != "stripe") viewModel.selectStripeMethod() },
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        PayoutMethodOption(
+            selected = method == "check",
+            title = "Paper check by mail",
+            subtitle = if (effectiveAddress?.isComplete == true) {
+                "Mailed to ${effectiveAddress.oneLine()}"
+            } else {
+                "Add a mailing address to choose this"
+            },
+            enabled = !uiState.payoutMethodSaving,
+            onSelect = { if (method != "check") viewModel.selectCheckMethod() },
+            trailing = if (method == "check") {
+                {
+                    TextButton(onClick = { viewModel.openCheckAddressForm() }) {
+                        Text("Edit address", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            } else null,
+        )
+
+        uiState.payoutMethodError?.let { err ->
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun PayoutMethodOption(
+    selected: Boolean,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onSelect: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onSelect,
+            enabled = enabled,
+            colors = RadioButtonDefaults.colors(selectedColor = GccGreen),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun CheckAddressDialog(
+    uiState: com.gcc.app.viewmodel.WalletUiState,
+    viewModel: WalletViewModel,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mailing address for checks") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Paper checks will be mailed to this address. Allow 5–7 business days for delivery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+                OutlinedTextField(
+                    value = uiState.checkAddressName,
+                    onValueChange = viewModel::updateCheckAddressName,
+                    label = { Text("Name on check") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = uiState.checkAddressStreet,
+                    onValueChange = viewModel::updateCheckAddressStreet,
+                    label = { Text("Street address") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = uiState.checkAddressCity,
+                    onValueChange = viewModel::updateCheckAddressCity,
+                    label = { Text("City") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = uiState.checkAddressState,
+                        onValueChange = viewModel::updateCheckAddressState,
+                        label = { Text("State") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = uiState.checkAddressZip,
+                        onValueChange = viewModel::updateCheckAddressZip,
+                        label = { Text("ZIP") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                uiState.payoutMethodError?.let { err ->
+                    Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { viewModel.saveCheckAddress() },
+                enabled = !uiState.payoutMethodSaving,
+            ) {
+                Text(if (uiState.payoutMethodSaving) "Saving…" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun WorkerPayoutRow(payout: WorkerPayout) {
+    val (statusLabel, statusColor) = payoutStatusDisplay(payout.status, payout.checkMailedAt)
+    GccCard(accentColor = if (payout.status == "failed") CardAccentRed else CardAccentGreen) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    statusLabel,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = statusColor,
+                )
+                payout.note?.takeIf { it.isNotBlank() }?.let { note ->
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    formatShortDate(payout.createdAt),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                )
+            }
+            Text(
+                formatCents(payout.amountCents),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (payout.status == "failed") GccError else GccGreen,
+            )
+        }
+    }
+}
+
+@Composable
+private fun payoutStatusDisplay(
+    status: String,
+    checkMailedAt: kotlinx.datetime.Instant?,
+): Pair<String, androidx.compose.ui.graphics.Color> = when (status) {
+    "processing" -> "Payout processing" to MaterialTheme.colorScheme.onSurface
+    "completed" -> "Sent to your bank" to GccGreen
+    "failed" -> "Payout failed — contact support" to GccError
+    "check_pending" -> "Check being prepared" to MaterialTheme.colorScheme.onSurface
+    "check_mailed" -> {
+        val mailedOn = checkMailedAt?.let { " ${formatShortDate(it)}" } ?: ""
+        "Check mailed$mailedOn" to GccGreen
+    }
+    else -> status to TextMuted
+}
+
+private val SHORT_MONTHS = listOf(
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+private fun formatShortDate(instant: kotlinx.datetime.Instant): String {
+    val local = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+    return "${SHORT_MONTHS[local.monthNumber - 1]} ${local.dayOfMonth}"
 }
 
 private val DECIMAL_INPUT_REGEX = Regex("^\\d*\\.?\\d{0,2}$")

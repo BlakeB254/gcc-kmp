@@ -155,7 +155,8 @@ export async function POST(request: Request, context: RouteContext) {
       row.stripeAccountId,
       amountCents,
       String(jobId),
-      useInstant
+      useInstant,
+      String(row.workerId)
     )
     transferId = result.transfer.id
     payoutMethod = result.payout.method ?? (useInstant ? 'instant' : 'standard')

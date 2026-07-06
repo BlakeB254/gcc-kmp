@@ -36,6 +36,8 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       instantPayoutsEnabled: row.stripeInstantPayoutsEnabled ?? false,
       defaultPayoutMethod: row.stripeDefaultPayoutMethod ?? 'standard',
     },
+    // Ad-hoc payout routing preference: 'stripe' | 'check'
+    payoutMethod: row.payoutMethod ?? 'stripe',
     stats: {
       jobsCompleted: Number(row.statsJobsCompleted ?? 0),
       totalEarnings: Number(row.statsTotalEarnings ?? 0),

@@ -8,6 +8,7 @@ import {
   transactions,
   sponsors,
   sponsorDeliverablePackages,
+  payouts,
 } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import Stripe from 'stripe'
@@ -387,6 +388,63 @@ export async function POST(request: NextRequest) {
         const payout = event.data.object as Stripe.Payout
         const jobId = payout.metadata?.jobId
         const workerId = payout.metadata?.workerId
+        const adhocPayoutId = payout.metadata?.payoutId
+
+        // Ad-hoc admin payout: reconcile the payouts row, bump earnings
+        // (NOT jobs-completed — this isn't a job), notify the worker.
+        if (adhocPayoutId) {
+          const [payoutRow] = await db
+            .update(payouts)
+            .set({
+              status: 'completed',
+              stripePayoutId: payout.id,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(payouts.id, Number(adhocPayoutId)))
+            .returning({ amountCents: payouts.amountCents, workerId: payouts.workerId })
+
+          if (payoutRow) {
+            const [worker] = await db
+              .select()
+              .from(workers)
+              .where(eq(workers.id, payoutRow.workerId))
+              .limit(1)
+
+            if (worker) {
+              await db
+                .update(workers)
+                .set({
+                  statsTotalEarnings: String(
+                    Number(worker.statsTotalEarnings || 0) + payoutRow.amountCents
+                  ),
+                  updatedAt: new Date().toISOString(),
+                })
+                .where(eq(workers.id, payoutRow.workerId))
+
+              // Fire-and-forget-with-logging, same pattern as the job branch.
+              try {
+                const amountDollars = (payoutRow.amountCents / 100).toFixed(2)
+                await notifyWorker(
+                  {
+                    phone: worker.phone ?? undefined,
+                    pushSubscription: (worker.notificationsPushSubscription as any) ?? undefined,
+                    preferences: {
+                      pushEnabled: worker.notificationsPushEnabled ?? undefined,
+                      smsEnabled: worker.notificationsSmsEnabled ?? undefined,
+                    },
+                  },
+                  notificationTemplates.payoutSent(`$${amountDollars}`)
+                )
+              } catch (notifyErr) {
+                console.error(
+                  '[webhook] Failed to send payoutSent notification for ad-hoc payout ' + adhocPayoutId,
+                  notifyErr
+                )
+              }
+            }
+          }
+          break
+        }
 
         if (jobId) {
           // Update job payout status
@@ -456,6 +514,19 @@ export async function POST(request: NextRequest) {
       case 'payout.failed': {
         const payout = event.data.object as Stripe.Payout
         const jobId = payout.metadata?.jobId
+        const adhocPayoutId = payout.metadata?.payoutId
+
+        if (adhocPayoutId) {
+          await db
+            .update(payouts)
+            .set({
+              status: 'failed',
+              stripePayoutId: payout.id,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(payouts.id, Number(adhocPayoutId)))
+          break
+        }
 
         if (jobId) {
           await db

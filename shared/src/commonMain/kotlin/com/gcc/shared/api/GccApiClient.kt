@@ -527,6 +527,38 @@ class GccApiClient(
         }
     }
 
+    // ── Admin: Ad-hoc Payouts ──────────────────────────────────────────
+
+    /**
+     * One-off payout to a worker (bonus/correction). Routes by the
+     * worker's payout method: Stripe transfer+payout, or queued as a
+     * check to mail. idempotencyKey dedupes retries server-side.
+     */
+    suspend fun adminCreatePayout(workerId: Int, request: CreatePayoutRequest): CreatePayoutResponse =
+        postJson("/api/admin/workers/$workerId/payout", request)
+
+    /** Ad-hoc payouts, newest first. status=check_pending is the checks-to-mail queue. */
+    suspend fun getAdminPayouts(status: String? = null, page: Int = 1, limit: Int = 50): AdminPayoutsResponse =
+        get("/api/admin/payouts") {
+            status?.let { parameter("status", it) }
+            parameter("page", page)
+            parameter("limit", limit)
+        }
+
+    suspend fun markPayoutMailed(payoutId: Int): MarkMailedResponse =
+        postJson("/api/admin/payouts/$payoutId/mark-mailed")
+
+    // ── Worker: payout method + history ────────────────────────────────
+
+    suspend fun getPayoutMethod(): PayoutMethodInfo =
+        get("/api/workers/me/payout-method")
+
+    suspend fun updatePayoutMethod(request: UpdatePayoutMethodRequest): PayoutMethodInfo =
+        putJson("/api/workers/me/payout-method", request)
+
+    suspend fun getMyPayouts(): WorkerPayoutsResponse =
+        get("/api/workers/me/payouts")
+
     // ── Admin: Block Proposals ──────────────────────────────────────────
     // AI-generated block candidates staged for review — see
     // site/src/app/api/admin/block-proposals/*. Nothing here is live/public

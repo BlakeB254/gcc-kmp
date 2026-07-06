@@ -26,6 +26,8 @@ data class Worker(
     val address: WorkerAddress,
     val verification: WorkerVerification = WorkerVerification(),
     val stripe: WorkerStripe = WorkerStripe(),
+    /** Ad-hoc payout routing preference: "stripe" | "check". */
+    val payoutMethod: String = "stripe",
     val stats: WorkerStats = WorkerStats(),
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
     val role: String = "worker",

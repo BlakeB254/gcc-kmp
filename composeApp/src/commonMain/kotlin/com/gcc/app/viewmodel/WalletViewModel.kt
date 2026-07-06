@@ -21,6 +21,17 @@ data class WalletUiState(
     val connectStatusLoading: Boolean = false,
     val connectOnboardLoading: Boolean = false,
     val connectError: String? = null,
+    // How the worker gets paid (stripe vs mailed check) + ad-hoc payout history
+    val payoutMethodInfo: PayoutMethodInfo? = null,
+    val payoutMethodSaving: Boolean = false,
+    val payoutMethodError: String? = null,
+    val showCheckAddressForm: Boolean = false,
+    val checkAddressName: String = "",
+    val checkAddressStreet: String = "",
+    val checkAddressCity: String = "",
+    val checkAddressState: String = "",
+    val checkAddressZip: String = "",
+    val myPayouts: List<WorkerPayout> = emptyList(),
     val depositAmount: String = "",
     val isDepositing: Boolean = false,
     val depositError: String? = null,
@@ -92,6 +103,109 @@ class WalletViewModel(
                 _uiState.value = _uiState.value.copy(
                     connectOnboardLoading = false,
                     connectError = e.message ?: "Could not start payout setup",
+                )
+            }
+        }
+    }
+
+    // ── Payout method (how ad-hoc payouts reach this worker) ──────────
+
+    fun loadPayoutMethod() {
+        scope.launch {
+            try {
+                val info = apiClient.getPayoutMethod()
+                _uiState.value = _uiState.value.copy(payoutMethodInfo = info)
+            } catch (_: Exception) {
+                // Non-critical: the card just shows the Stripe default.
+            }
+        }
+    }
+
+    fun loadMyPayouts() {
+        scope.launch {
+            try {
+                val response = apiClient.getMyPayouts()
+                _uiState.value = _uiState.value.copy(myPayouts = response.payouts)
+            } catch (_: Exception) {
+                // History is non-critical; silently fail like transactions.
+            }
+        }
+    }
+
+    /** Switch back to direct deposit (Stripe Connect). */
+    fun selectStripeMethod() {
+        savePayoutMethod(UpdatePayoutMethodRequest(method = "stripe"))
+    }
+
+    /**
+     * Switch to paper checks. When no usable address exists yet the form
+     * opens instead so the worker can enter one.
+     */
+    fun selectCheckMethod() {
+        val info = _uiState.value.payoutMethodInfo
+        if (info?.effectiveMailingAddress?.isComplete == true) {
+            savePayoutMethod(UpdatePayoutMethodRequest(method = "check"))
+        } else {
+            openCheckAddressForm()
+        }
+    }
+
+    fun openCheckAddressForm() {
+        val info = _uiState.value.payoutMethodInfo
+        val prefill = info?.mailingAddressOverride ?: info?.effectiveMailingAddress
+        _uiState.value = _uiState.value.copy(
+            showCheckAddressForm = true,
+            payoutMethodError = null,
+            checkAddressName = prefill?.name ?: "",
+            checkAddressStreet = prefill?.street ?: "",
+            checkAddressCity = prefill?.city ?: "",
+            checkAddressState = prefill?.state ?: "",
+            checkAddressZip = prefill?.zip ?: "",
+        )
+    }
+
+    fun dismissCheckAddressForm() {
+        _uiState.value = _uiState.value.copy(showCheckAddressForm = false)
+    }
+
+    fun updateCheckAddressName(v: String) { _uiState.value = _uiState.value.copy(checkAddressName = v) }
+    fun updateCheckAddressStreet(v: String) { _uiState.value = _uiState.value.copy(checkAddressStreet = v) }
+    fun updateCheckAddressCity(v: String) { _uiState.value = _uiState.value.copy(checkAddressCity = v) }
+    fun updateCheckAddressState(v: String) { _uiState.value = _uiState.value.copy(checkAddressState = v) }
+    fun updateCheckAddressZip(v: String) { _uiState.value = _uiState.value.copy(checkAddressZip = v) }
+
+    fun saveCheckAddress() {
+        val state = _uiState.value
+        val address = MailingAddress(
+            name = state.checkAddressName.trim(),
+            street = state.checkAddressStreet.trim(),
+            city = state.checkAddressCity.trim(),
+            state = state.checkAddressState.trim(),
+            zip = state.checkAddressZip.trim(),
+        )
+        if (!address.isComplete) {
+            _uiState.value = state.copy(
+                payoutMethodError = "Street, city, state, and ZIP are all required",
+            )
+            return
+        }
+        savePayoutMethod(UpdatePayoutMethodRequest(method = "check", mailingAddress = address))
+    }
+
+    private fun savePayoutMethod(request: UpdatePayoutMethodRequest) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(payoutMethodSaving = true, payoutMethodError = null)
+            try {
+                val info = apiClient.updatePayoutMethod(request)
+                _uiState.value = _uiState.value.copy(
+                    payoutMethodInfo = info,
+                    payoutMethodSaving = false,
+                    showCheckAddressForm = false,
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    payoutMethodSaving = false,
+                    payoutMethodError = e.message ?: "Could not update payout method",
                 )
             }
         }
