@@ -188,6 +188,61 @@ class CoverageQueuePurgeTest {
         assertEquals(1, flushedCount)
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun successfulDeliveryDischargesDeferredPurgeCutoff() = runTest {
+        val settings = FakeSettings()
+        val gate1 = CompletableDeferred<ScanCoverageSubmitResponse>()
+        val gate2 = CompletableDeferred<ScanCoverageSubmitResponse>()
+        var submitCallCount = 0
+        val queue = CoverageEventQueue(
+            submitFn = {
+                submitCallCount++
+                if (submitCallCount == 1) gate1.await() else gate2.await()
+            },
+            settings = settings,
+        )
+        queue.enqueue(event("2026-07-06T15:00:20Z")) // in-window, will be shielded
+
+        val flushResult = CompletableDeferred<Boolean>()
+        val flushJob = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            flushResult.complete(queue.flush())
+        }
+        assertEquals(1, submitCallCount) // batch 1 (the in-window event) parked in flight
+
+        // Arm the deferred cutoff while batch 1 is in flight: the in-window event
+        // is shielded, so purgeSince drops nothing and records the cutoff.
+        val cutoff = kotlinx.datetime.Instant.parse("2026-07-06T15:00:00Z").toEpochMilliseconds()
+        assertEquals(0, queue.purgeSince(cutoffEpochMs = cutoff))
+
+        // A legitimate NEW event enqueued after the flip — its capturedAt is >= the
+        // cutoff, but it was never shielded and must never be deferred-purged.
+        queue.enqueue(event("2026-07-06T15:00:40Z"))
+
+        // Batch 1 SUCCEEDS: the shielded event reached the server, discharging the
+        // deferred obligation. flush() loops and submits batch 2 (the new event).
+        gate1.complete(ScanCoverageSubmitResponse(inserted = 1, success = true))
+        advanceUntilIdle()
+        assertEquals(2, submitCallCount)
+
+        // Batch 2 hits a transient failure. With a stale (undischarged) cutoff the
+        // failure path would silently purge the never-shielded new event.
+        gate2.complete(ScanCoverageSubmitResponse(inserted = 0, success = false))
+        advanceUntilIdle()
+        flushJob.join()
+        assertTrue(!flushResult.await())
+
+        // The new legitimate event SURVIVED the failed flush — not over-purged.
+        // Persistence check: a reloaded queue on the same settings still flushes it.
+        var flushedCount = -1
+        val reloaded = CoverageEventQueue(
+            submitFn = { flushedCount = it.size; ScanCoverageSubmitResponse(it.size, true) },
+            settings = settings,
+        )
+        assertTrue(reloaded.flush())
+        assertEquals(1, flushedCount)
+    }
+
     @Test
     fun retractionQueueFlushesAndRetriesOnFailure() = runTest {
         val settings = FakeSettings()

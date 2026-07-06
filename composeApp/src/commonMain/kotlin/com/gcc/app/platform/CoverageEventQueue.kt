@@ -50,8 +50,14 @@ class CoverageEventQueue(
      * `pending` — but by then the server-side retraction window for it has already
      * run, so a later flush() must not resubmit it. [flush] applies this deferred
      * cutoff (full walk, nothing in-flight to protect) on the failure/exception
-     * paths and clears it once the queue fully drains. `maxOf` across repeated
-     * purgeSince calls during the same in-flight window so the widest cutoff wins.
+     * paths, and DISCHARGES it (clears without purging) the moment a batch is
+     * successfully delivered: the shielded events reached the server, so the
+     * deferred obligation is fulfilled. Leaving the cutoff armed past that point
+     * would let a later transient batch failure wrongly purge legitimate NEW
+     * events (enqueued after the flip, never shielded) whose capturedAt happens
+     * to be >= the stale cutoff. A purge during a later in-flight batch simply
+     * re-arms it. `maxOf` across repeated purgeSince calls during the same
+     * in-flight window so the widest cutoff wins.
      */
     private var pendingPurgeCutoffMs: Long? = null
 
@@ -239,6 +245,13 @@ class CoverageEventQueue(
                     mutex.withLock {
                         repeat(batch.size) { pending.removeAt(0) }
                         inFlightCount = 0
+                        // Successful delivery discharges any deferred purge: the shielded
+                        // events (if any) are on the server now — the queue has nothing
+                        // left to drop for that flip. Clearing here (not just on full
+                        // drain) is essential: if a LATER batch in this same loop fails,
+                        // a stale cutoff would wrongly purge legitimate new events
+                        // enqueued after the flip that were never shielded.
+                        pendingPurgeCutoffMs = null
                         persistLocked()
                     }
                 } catch (e: Exception) {
@@ -257,8 +270,13 @@ class CoverageEventQueue(
             // reset it here too so an unexpected exit (e.g. coroutine cancellation
             // propagating past the inner catch) can never leave a stale nonzero
             // inFlightCount behind to wrongly shield elements from a later purge.
+            // pendingPurgeCutoffMs is likewise cleared: every explicit exit above
+            // already discharged or applied it, so anything still set here is stale
+            // state from an abnormal exit — carrying it into the NEXT flush() call
+            // could wrongly purge never-shielded events on that call's failure path.
             mutex.withLock {
                 inFlightCount = 0
+                pendingPurgeCutoffMs = null
                 flushInProgress = false
             }
         }
