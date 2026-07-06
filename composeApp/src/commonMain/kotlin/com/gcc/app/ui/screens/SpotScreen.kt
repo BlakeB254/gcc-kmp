@@ -53,7 +53,10 @@ import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.ui.components.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Clock
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
@@ -144,7 +147,7 @@ fun SpotScreen(
                         SpotPhase.LOCATION -> "Confirm Location"
                         SpotPhase.DESCRIPTION -> "Add Details"
                         SpotPhase.SUBMITTING -> "Submitting..."
-                        SpotPhase.RESULT -> "Report Submitted"
+                        SpotPhase.RESULT -> "Scan Session Complete"
                     },
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.weight(1f),
@@ -159,7 +162,12 @@ fun SpotScreen(
                 .padding(padding),
         ) {
             LaunchedEffect(uiState.scanFinishedWithoutReport) {
-                if (uiState.scanFinishedWithoutReport) onBack()
+                if (uiState.scanFinishedWithoutReport) {
+                    // Clear before leaving: the VM is a singleton, so a stale
+                    // true here instantly closed every later scan open.
+                    viewModel.consumeScanFinishedSignal()
+                    onBack()
+                }
             }
             when (uiState.phase) {
                 SpotPhase.CAMERA -> CameraPhase(
@@ -232,6 +240,9 @@ fun SpotScreen(
 
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
+                    session = uiState.completedSession,
+                    itemCount = uiState.observedItems.size,
+                    photoCount = uiState.capturedPhotos.size,
                     matchingBounties = uiState.matchingBounties,
                     createdBounty = uiState.createdBounty,
                     isCreatingBounty = uiState.isCreatingBounty,
@@ -437,10 +448,17 @@ private fun CameraPhase(
     var nearbyDirty by remember { mutableStateOf<WorldObservation?>(null) }
 
     // Initialise the scan grid at the first real fix (single-point "route"
-    // gives a ~15m-corridor zone around the spot).
-    LaunchedEffect(currentLocation, spotLocation) {
+    // gives a ~15m-corridor zone around the spot). Keyed on Unit on purpose:
+    // spotLocation is the LIVE GPS value at the call site, so keying on it
+    // restarted this effect on every fix, cancelling the in-flight coverage/
+    // observation fetches below (field diagnostics: "observations fetch
+    // failed … CancellationException") — and because trackerReady was already
+    // set, the restarted effect bailed out and the data never loaded at all.
+    // Await the first fix from the flow instead of restarting.
+    LaunchedEffect(Unit) {
         if (trackerReady) return@LaunchedEffect
-        val anchor = spotLocation ?: currentLocation ?: return@LaunchedEffect
+        val anchor = spotLocation
+            ?: locationProvider.currentLocation.filterNotNull().first()
         tracker.initFromRoute(listOf(anchor))
         trackerReady = true
 
@@ -462,6 +480,8 @@ private fun CameraPhase(
                 "env-scan",
                 "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
             )
+        } catch (e: CancellationException) {
+            throw e // scan screen closing — not a fetch failure
         } catch (e: Exception) {
             DiagnosticsLog.error("env-scan", "coverage freshness fetch failed — trying cache", e)
             val cached = withContext(Dispatchers.Default) {
@@ -482,6 +502,8 @@ private fun CameraPhase(
                 "env-scan",
                 "${expectedDirty.size} expected-dirty + ${knownElements.size} landmark observations nearby",
             )
+        } catch (e: CancellationException) {
+            throw e // scan screen closing — not a fetch failure
         } catch (e: Exception) {
             DiagnosticsLog.error("env-scan", "observations fetch failed — trying cache", e)
             val cached = withContext(Dispatchers.Default) {
@@ -565,7 +587,10 @@ private fun CameraPhase(
         scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
     // Vector-scan effect: credited cells render as "digitized" ground quads
-    // in the AR camera view, mirroring the minimap fill.
+    // in the AR camera view, mirroring the minimap fill. (AR fog over
+    // unswept ground is the session-scoped updateFog below — it dissipates
+    // as cells credit, which also covers never-scanned territory on a first
+    // visit; the ledger's never-scanned picture stays on the minimap+map.)
     LaunchedEffect(scanCellCenters) {
         arOverlay?.updateScannedCells(scanCellCenters)
     }
@@ -1556,6 +1581,9 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
 @Composable
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
+    session: EnvScanSessionDraft?,
+    itemCount: Int,
+    photoCount: Int,
     matchingBounties: List<Bounty>,
     createdBounty: Bounty?,
     isCreatingBounty: Boolean,
@@ -1573,8 +1601,17 @@ private fun ResultPhase(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Success card
+        // Session summary: shaded coverage map + headline stats.
         item {
+            ScanSessionSummaryCard(
+                session = session,
+                itemCount = itemCount,
+                photoCount = photoCount,
+            )
+        }
+
+        // Report confirmation (only when a report was actually filed).
+        if (report != null) item {
             GccCard(accentColor = CardAccentGreen) {
                 Text(
                     "Report Created",
@@ -1582,7 +1619,7 @@ private fun ResultPhase(
                     color = GccGreen,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                report?.let {
+                report.let {
                     if (it.reporterName == "GCC") {
                         Text(
                             "Spotted by GCC",
@@ -1736,7 +1773,7 @@ private fun ResultPhase(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GccButton(
-                    text = "Spot Another",
+                    text = "Scan Another Area",
                     onClick = onNewReport,
                     variant = GccButtonVariant.OUTLINED,
                 )

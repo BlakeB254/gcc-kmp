@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.boundaryFitZoom
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccSky
@@ -536,12 +537,14 @@ fun AdminBoundaryEditorScreen(
                     if (boxWidthPx > 0 && boxHeightPx > 0 && frameRing.isNotEmpty()) {
                         centerLat = (bbox[0] + bbox[1]) / 2.0
                         centerLng = (bbox[2] + bbox[3]) / 2.0
-                        val cosLat = cos(centerLat * PI / 180.0)
-                        val spanNorth = maxOf((bbox[1] - bbox[0]) * 111_320.0, 30.0) * 1.25
-                        val spanEast = maxOf((bbox[3] - bbox[2]) * 111_320.0 * cosLat, 30.0) * 1.25
-                        val zoomForHeight = log2(156543.03392 * cosLat * boxHeightPx / spanNorth)
-                        val zoomForWidth = log2(156543.03392 * cosLat * boxWidthPx / spanEast)
-                        fitZoom = (minOf(zoomForHeight, zoomForWidth) - zoomBias).coerceIn(13.0, ZOOM_MAX)
+                        fitZoom = boundaryFitZoom(
+                            latSpanDeg = bbox[1] - bbox[0],
+                            lngSpanDeg = bbox[3] - bbox[2],
+                            centerLat = centerLat,
+                            widthPx = boxWidthPx,
+                            heightPx = boxHeightPx,
+                            zoomBias = zoomBias,
+                        ).coerceIn(13.0, ZOOM_MAX)
                         zoom = if (step == EditStep.OUTER) (fitZoom - 1.5).coerceAtLeast(13.0) else fitZoom
                     }
                 }

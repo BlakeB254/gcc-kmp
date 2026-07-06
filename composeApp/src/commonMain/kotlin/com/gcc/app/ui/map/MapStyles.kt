@@ -200,6 +200,32 @@ fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
  */
 fun mapOverlayZoomBias(density: Float): Double = log2(density.toDouble() * 2.0)
 
+/**
+ * Per-axis fit zoom for framing a lat/lng bounding box in a viewport: the
+ * north-south span fits the viewport HEIGHT, the east-west span fits the
+ * WIDTH, and the tighter of the two wins — an elongated boundary is fully
+ * featured instead of overflowing its long axis. Spans are floored at 30m
+ * and padded ×1.25. Inverts [metersToPixels] at `zoom + zoomBias` (pass the
+ * same [mapOverlayZoomBias] every overlay projection uses); the result is
+ * MapLibre point-space camera zoom. Unclamped — call sites apply their own
+ * bounds.
+ */
+fun boundaryFitZoom(
+    latSpanDeg: Double,
+    lngSpanDeg: Double,
+    centerLat: Double,
+    widthPx: Float,
+    heightPx: Float,
+    zoomBias: Double,
+): Double {
+    val cosLat = cos(centerLat * kotlin.math.PI / 180.0)
+    val spanNorthMeters = maxOf(latSpanDeg * 111_320.0, 30.0) * 1.25
+    val spanEastMeters = maxOf(lngSpanDeg * 111_320.0 * cosLat, 30.0) * 1.25
+    val zoomForHeight = log2(156543.03392 * cosLat * heightPx / spanNorthMeters)
+    val zoomForWidth = log2(156543.03392 * cosLat * widthPx / spanEastMeters)
+    return minOf(zoomForHeight, zoomForWidth) - zoomBias
+}
+
 /** Format a coordinate to 4 decimal places, handling negative values correctly. */
 fun formatCoord(value: Double): String {
     val sign = if (value < 0) "-" else ""

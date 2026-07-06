@@ -197,6 +197,11 @@ fun MapFullScreen(
     // state), and every successful fetch snapshots into the scan-area cache so
     // the map has a last-known coverage picture offline / at next open.
     var coverageCells by remember { mutableStateOf(listOf<com.gcc.shared.model.MapCoverageCell>()) }
+    // Current observations near the viewport — the "what the last scan found"
+    // payload behind the coverage-cell info card.
+    var mapObservations by remember { mutableStateOf(listOf<com.gcc.shared.model.WorldObservation>()) }
+    // Coverage tile the user tapped (fresh/stale) — shows the last-scan card.
+    var selectedCoverageCell by remember { mutableStateOf<com.gcc.shared.model.MapCoverageCell?>(null) }
     LaunchedEffect(centerLat, centerLng, mapMode) {
         val pad = if (mapMode == MapMode.EXPLORER) 0.02 else 0.006 // ~2.2km vs ~650m
         val west = centerLng - pad
@@ -206,13 +211,18 @@ fun MapFullScreen(
 
         // Cache-first: render the last-known snapshot immediately.
         if (coverageCells.isEmpty()) {
-            val cached = withContext(Dispatchers.Default) {
-                scanAreaCache.getAll()
-                    .flatMap { it.coverageCells }
-                    .filter { it.lat in south..north && it.lng in west..east }
-                    .distinctBy { it.locationCellId }
-            }
+            val cachedAreas = withContext(Dispatchers.Default) { scanAreaCache.getAll() }
+            val cached = cachedAreas
+                .flatMap { it.coverageCells }
+                .filter { it.lat in south..north && it.lng in west..east }
+                .distinctBy { it.locationCellId }
             if (cached.isNotEmpty()) coverageCells = cached
+            if (mapObservations.isEmpty()) {
+                mapObservations = cachedAreas
+                    .flatMap { it.observations }
+                    .filter { it.lat in south..north && it.lng in west..east }
+                    .distinctBy { it.id }
+            }
         }
 
         try {
@@ -224,6 +234,7 @@ fun MapFullScreen(
             } catch (_: Exception) {
                 emptyList()
             }
+            if (observations.isNotEmpty()) mapObservations = observations
             withContext(Dispatchers.Default) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 scanAreaCache.put(
@@ -490,6 +501,10 @@ fun MapFullScreen(
             spots = if (heatmapVisible) visibleSpots else emptyList(),
             mapMode = mapMode,
             onZoomChanged = { currentMapZoom = it },
+            onCoverageCellTap = { cellId ->
+                selectedCoverageCell = coverageCells.find { it.locationCellId == cellId }
+                if (selectedCoverageCell != null) selectedSpot = null
+            },
             affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
                 affectedBlocksVm.selectBlock(blockId)
@@ -567,6 +582,22 @@ fun MapFullScreen(
                     .padding(end = 12.dp),
             ) {
                 PrecipitationLegend()
+            }
+
+            // Scan-coverage legend — takes over from the heat legend at
+            // street zoom, where the coverage tiles are the dominant layer.
+            // Green/amber/grey previously rendered UNLABELED; this is what
+            // tells a worker "grey ground needs scanning".
+            androidx.compose.animation.AnimatedVisibility(
+                visible = currentMapZoom >= MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM &&
+                    selectedCoverageCell == null,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp),
+            ) {
+                ScanCoverageLegend()
             }
 
             selectedRecordIndex?.let { selectedIndex ->
@@ -702,6 +733,19 @@ fun MapFullScreen(
                         onBountyClick(-spot.id)
                         selectedSpot = null
                     },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                )
+            }
+
+            // Coverage-cell info card — tap a scanned (green/amber) tile to
+            // see when it was last scanned and what that scan found nearby.
+            selectedCoverageCell?.let { cell ->
+                CoverageCellInfoCard(
+                    cell = cell,
+                    observations = mapObservations,
+                    onDismiss = { selectedCoverageCell = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
@@ -1580,4 +1624,154 @@ private fun RowScope.ProgressionConnector(filled: Boolean) {
                 else Color(0xFF9E9E9E).copy(alpha = 0.25f)
             ),
     )
+}
+
+/**
+ * Legend for the foundational coverage tiles: the green/amber fills and grey
+ * fog communicate scan state, and the grey rows is the call to action —
+ * "this ground still needs scanning".
+ */
+@Composable
+private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 4.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "Scan state",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            )
+            ScanLegendRow(Color(0xFF22C55E), "Scanned · clean")
+            ScanLegendRow(Color(0xFFEF4444), "Scanned · litter found")
+            ScanLegendRow(Color(0xFFF59E0B), "Stale · re-scan")
+            ScanLegendRow(Color(0xFF4B5563), "Never scanned")
+            Text(
+                "Tap a scanned tile\nfor last results",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScanLegendRow(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(color.copy(alpha = 0.7f)),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** "N min/h/d ago" from an ISO timestamp; the raw string when unparseable. */
+private fun lastScannedLabel(iso: String): String {
+    val instant = runCatching { kotlinx.datetime.Instant.parse(iso) }.getOrNull()
+        ?: return iso
+    val minutes = (Clock.System.now() - instant).inWholeMinutes
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        minutes < 48 * 60 -> "${minutes / 60}h ago"
+        else -> "${minutes / (60 * 24)}d ago"
+    }
+}
+
+/**
+ * Bottom info card for a tapped coverage tile: when the cell was last
+ * scanned plus what current observations sit within it (~10m server cell) —
+ * the map's answer to "what did the last scan of this spot find".
+ */
+@Composable
+private fun CoverageCellInfoCard(
+    cell: com.gcc.shared.model.MapCoverageCell,
+    observations: List<com.gcc.shared.model.WorldObservation>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lngScale = kotlin.math.cos(cell.lat * kotlin.math.PI / 180.0)
+    val nearby = remember(cell.locationCellId, observations) {
+        observations.filter { obs ->
+            val dLatM = (obs.lat - cell.lat) * 111_320.0
+            val dLngM = (obs.lng - cell.lng) * 111_320.0 * lngScale
+            dLatM * dLatM + dLngM * dLngM < 8.0 * 8.0
+        }
+    }
+    val dirty = nearby.filter { it.state == "dirty" && (it.domain == null || it.domain == "litter") }
+    val stale = cell.state == "stale"
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    when {
+                        stale -> "Scanned — needs re-scan"
+                        dirty.isNotEmpty() -> "Scanned — litter on record"
+                        else -> "Scanned — clean"
+                    },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = when {
+                        stale -> Color(0xFFB45309)
+                        dirty.isNotEmpty() -> Color(0xFFDC2626)
+                        else -> GccGreenDark
+                    },
+                )
+                TextButton(onClick = onDismiss) { Text("✕", color = TextMuted) }
+            }
+            Text(
+                "Last scanned ${lastScannedLabel(cell.lastScannedAt)}" +
+                    if (stale) " — over 24h old, scan it again to keep it fresh" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            if (dirty.isEmpty()) {
+                Text(
+                    "Last scan found no litter here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GccGreen,
+                )
+            } else {
+                Text(
+                    "Litter still on record here:",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                dirty.take(4).forEach { obs ->
+                    Text(
+                        "• ${(obs.itemType ?: "litter").replace('_', ' ')}" +
+                            (obs.severity?.let { " · severity $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                }
+                if (dirty.size > 4) {
+                    Text(
+                        "…and ${dirty.size - 4} more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSubtle,
+                    )
+                }
+            }
+        }
+    }
 }

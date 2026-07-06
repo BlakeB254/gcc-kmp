@@ -825,17 +825,26 @@ fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Str
 }
 
 
+/** The four coverage-state tile collections — one visual system: green =
+ *  scanned clean, red = scanned but litter on record, amber = stale (ready
+ *  for a fresh scan), fog veil = never scanned at all. */
+data class CoverageStateJsons(
+    val clean: String,
+    val dirty: String,
+    val stale: String,
+    val fog: String,
+)
+
 /**
  * Foundational coverage-state tiles for the map (product direction
- * 2026-07-03): draw attention to what the scan economy has and hasn't
- * touched. Returns (cleanJson, staleJson, fogJson):
+ * 2026-07-03; visual system extended 2026-07-06): communicate scan state
+ * per ~10m ledger cell at a glance.
  *  - clean: fresh ledger cells with no active spot nearby → green tint
- *  - stale: cells last scanned >24h ago → same family, FADED (deliberately
- *    no stripes/dots so trash markers stay legible)
- *  - fog: never-scanned 10m cells within [fogRadiusMeters] of the center
- *    (bounded enumeration, capped — the attention-drawing "unknown" zones)
- * Dirty coloration is NOT here: the existing spot-density heat layers
- * already grade litter intensity.
+ *  - dirty: fresh cells WITH an active spot/litter on record → red tint
+ *    (the tile-level "cleanliness readout"; the heat layers still grade
+ *    density at overview zooms)
+ *  - stale: cells last scanned >24h ago → amber, the "scan me again" call
+ *  - fog: never-scanned veil over [fogBounds] with holes at covered cells
  */
 fun buildCoverageStateGeoJsons(
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
@@ -851,7 +860,7 @@ fun buildCoverageStateGeoJsons(
      */
     fogBounds: DoubleArray? = null,
     cellSizeMeters: Double = 10.0,
-): Triple<String, String, String> {
+): CoverageStateJsons {
     val empty = """{"type":"FeatureCollection","features":[]}"""
     val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
     val latStep = cellSizeMeters / 111_320.0
@@ -864,8 +873,12 @@ fun buildCoverageStateGeoJsons(
             "[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]"
     }
 
-    fun feature(lat: Double, lng: Double): String =
-        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[${cellQuad(lat, lng)}]}}"""
+    // cellId rides in feature properties so the fill layers are tappable —
+    // MapFullScreen resolves the id back to the full MapCoverageCell for the
+    // last-scan info card.
+    fun feature(cell: com.gcc.shared.model.MapCoverageCell): String =
+        """{"type":"Feature","properties":{"cellId":"${cell.locationCellId}"},""" +
+            """"geometry":{"type":"Polygon","coordinates":[${cellQuad(cell.lat, cell.lng)}]}}"""
 
     val spots = activeSpots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
     fun hasSpotNear(lat: Double, lng: Double): Boolean = spots.any { spot ->
@@ -874,12 +887,19 @@ fun buildCoverageStateGeoJsons(
         dLatM * dLatM + dLngM * dLngM < 12.0 * 12.0
     }
 
-    val clean = coverageCells
-        .filter { it.state == "fresh" && !hasSpotNear(it.lat, it.lng) }
-        .joinToString(",") { feature(it.lat, it.lng) }
+    val fresh = coverageCells.filter { it.state == "fresh" }
+    val clean = fresh
+        .filter { !hasSpotNear(it.lat, it.lng) }
+        .joinToString(",") { feature(it) }
+    // Scanned recently but litter is still on record — previously these
+    // cells were silently DROPPED (no tile at all); now they read red so a
+    // scanned-but-dirty area is distinguishable from unscanned ground.
+    val dirty = fresh
+        .filter { hasSpotNear(it.lat, it.lng) }
+        .joinToString(",") { feature(it) }
     val stale = coverageCells
         .filter { it.state == "stale" }
-        .joinToString(",") { feature(it.lat, it.lng) }
+        .joinToString(",") { feature(it) }
 
     // Never-scanned fog: ONE smooth veil polygon over the bounded area with
     // holes punched where the ledger has coverage. Rendering discrete cell
@@ -911,7 +931,12 @@ fun buildCoverageStateGeoJsons(
 
     fun wrap(features: String) =
         if (features.isEmpty()) empty else """{"type":"FeatureCollection","features":[$features]}"""
-    return Triple(wrap(clean), wrap(stale), wrap(fogFeatures.toString()))
+    return CoverageStateJsons(
+        clean = wrap(clean),
+        dirty = wrap(dirty),
+        stale = wrap(stale),
+        fog = wrap(fogFeatures.toString()),
+    )
 }
 
 
