@@ -75,6 +75,10 @@ object EnvScanGuidance {
      * grazed — or nothing uncredited remains — steer at the nearest
      * grazed-but-not-close cluster like a 3D-scan app's "get closer" pass
      * (phase DETAIL). Same stickiness as [pickFrontier] in both phases.
+     * Returns null only when nothing remains anywhere: falls back to any
+     * remaining uncredited frontier (phase COVER) if the DETAIL pick over
+     * [grazedNotClose] comes up empty (e.g. coverage cleared the threshold
+     * but no cell ever grazed — everything left is still raw fog).
      */
     fun pickTarget(
         current: Pair<Double, Double>?,
@@ -90,8 +94,12 @@ object EnvScanGuidance {
                 return GuidancePick(it, GuidancePhase.COVER)
             }
         }
-        return pickFrontier(current, grazedNotClose, userLat, userLng)
-            ?.let { GuidancePick(it, GuidancePhase.DETAIL) }
+        pickFrontier(current, grazedNotClose, userLat, userLng)?.let {
+            return GuidancePick(it, GuidancePhase.DETAIL)
+        }
+        return pickFrontier(current, uncredited, userLat, userLng)?.let {
+            GuidancePick(it, GuidancePhase.COVER)
+        }
     }
 
     /** Equirectangular distance — plenty at scan-session scale (≤100m). */

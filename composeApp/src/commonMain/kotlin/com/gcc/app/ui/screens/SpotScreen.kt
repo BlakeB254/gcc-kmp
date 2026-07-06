@@ -48,7 +48,6 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
-import com.gcc.app.platform.RaycastCoverageHit
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
@@ -482,7 +481,7 @@ private fun CameraPhase(
 
     DisposableEffect(Unit) {
         onDispose {
-            flushScope.launch { coverageQueue.flush() }
+            flushScope.launch { coverageQueue.flush(); retractQueue.flush() }
             onFlushMarkers()
         }
     }
@@ -490,6 +489,7 @@ private fun CameraPhase(
         while (true) {
             delay(30_000L)
             coverageQueue.flush()
+            retractQueue.flush()
             // Confirmed litter reaches the public map mid-scan on the same
             // cadence route AR markers use (was submit-only before).
             onFlushMarkers()

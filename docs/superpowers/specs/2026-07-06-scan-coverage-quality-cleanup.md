@@ -19,6 +19,14 @@ Blake's indoor scan credited ~3 geotiles before this PR's fixes. After deploy:
 3. Verify: the tiles return to fog on the map (pull-to-refresh / reopen).
 
 MERGE ACTIONS for the PR itself:
+- ORDERING IS NOT OPTIONAL: run `cd site && npm run db:push` against prod
+  BEFORE merging/deploying the server code in this PR. The new server code
+  reads `scan_coverage_events.quality` and `cell_coverage_summary.best_quality`
+  / `last_close_scanned_at` — if the code deploys first and the migration
+  runs second, every coverage request 500s against prod until db:push
+  catches up. The reverse order (db:push first, old code deployed) is fully
+  safe: the columns are additive with defaults and the not-yet-deployed old
+  code just ignores them.
 - `cd site && npm run db:push` (new columns: scan_coverage_events.quality,
   cell_coverage_summary.best_quality / last_close_scanned_at)
 - `npm run db:push` also carries a Postgres ENUM addition — `scan_coverage_close_upgrade`

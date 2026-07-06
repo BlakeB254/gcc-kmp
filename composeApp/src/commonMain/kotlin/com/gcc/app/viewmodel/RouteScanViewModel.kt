@@ -1040,6 +1040,7 @@ class RouteScanViewModel(
                 delay(30_000L)
                 coverageEventQueue.flush() // failed flushes keep events queued
                 arMarkerQueue.flush()
+                retractionQueue.flush()
             }
         }
         accuracyJob?.cancel()

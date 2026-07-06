@@ -49,6 +49,19 @@ class EnvScanGuidancePhaseTest {
     }
 
     @Test
+    fun coverFallbackWhenDetailPoolEmptyButUncreditedRemains() {
+        val pick = EnvScanGuidance.pickTarget(
+            current = null,
+            uncredited = listOf(farCell),
+            grazedNotClose = emptyList(),
+            userLat = user.first, userLng = user.second,
+            coveragePercent = 80.0,
+        )
+        assertEquals(GuidancePhase.COVER, pick?.phase)
+        assertEquals(farCell, pick?.target)
+    }
+
+    @Test
     fun nothingLeftAnywhereReturnsNull() {
         assertNull(
             EnvScanGuidance.pickTarget(
