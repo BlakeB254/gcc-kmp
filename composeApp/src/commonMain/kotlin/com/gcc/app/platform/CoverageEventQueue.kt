@@ -1,11 +1,13 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.model.RetractCoverageRequest
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.ScanCoverageSubmitResponse
 import com.gcc.shared.serialization.GccJson
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.Instant
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
@@ -49,6 +51,29 @@ class CoverageEventQueue(
         mutex.withLock {
             pending.add(event)
             persistLocked()
+        }
+    }
+
+    /**
+     * INDOOR-flip purge: drop still-pending events captured at/after the
+     * cutoff so they never reach the server, and re-persist. Returns how many
+     * were dropped. Events that already flushed are handled by the retraction
+     * queue instead (spec §2).
+     */
+    suspend fun purgeSince(cutoffEpochMs: Long): Int {
+        mutex.withLock {
+            val before = pending.size
+            pending.removeAll { event ->
+                val at = try {
+                    Instant.parse(event.capturedAt).toEpochMilliseconds()
+                } catch (e: Exception) {
+                    return@removeAll false // unparseable timestamp: keep (server validates)
+                }
+                at >= cutoffEpochMs
+            }
+            val dropped = before - pending.size
+            if (dropped > 0) persistLocked()
+            return dropped
         }
     }
 
@@ -113,5 +138,60 @@ class CoverageEventQueue(
 
         /** Settings key for the persisted pending-events JSON blob. */
         private const val KEY_PENDING_EVENTS = "pending_coverage_events"
+    }
+}
+
+/**
+ * Persistent queue of coverage RETRACTIONS — windows of already-flushed
+ * events the server must undo after an INDOOR flip. Same offline-safe
+ * pattern as [CoverageEventQueue]: enqueue persists immediately; flush
+ * retries until the server accepts.
+ */
+class CoverageRetractionQueue(
+    private val submitFn: suspend (RetractCoverageRequest) -> Boolean,
+    private val settings: Settings = Settings(),
+) {
+    private val mutex = Mutex()
+    private val pending = mutableListOf<RetractCoverageRequest>().apply {
+        val json = settings.getStringOrNull(KEY_PENDING_RETRACTIONS)
+        if (json != null) {
+            try {
+                addAll(GccJson.decodeFromString<List<RetractCoverageRequest>>(json))
+            } catch (e: Exception) {
+                // Corrupt persisted state degrades to empty, same as the event queue.
+            }
+        }
+    }
+
+    private fun persistLocked() {
+        settings.putString(KEY_PENDING_RETRACTIONS, GccJson.encodeToString(pending))
+    }
+
+    suspend fun enqueue(request: RetractCoverageRequest) {
+        mutex.withLock {
+            pending.add(request)
+            persistLocked()
+        }
+    }
+
+    /** True when empty or all retractions were accepted; false leaves the rest queued. */
+    suspend fun flush(): Boolean {
+        while (true) {
+            val next = mutex.withLock { pending.firstOrNull() } ?: return true
+            val ok = try {
+                submitFn(next)
+            } catch (e: Exception) {
+                false
+            }
+            if (!ok) return false
+            mutex.withLock {
+                pending.removeAt(0)
+                persistLocked()
+            }
+        }
+    }
+
+    companion object {
+        private const val KEY_PENDING_RETRACTIONS = "pending_coverage_retractions"
     }
 }
