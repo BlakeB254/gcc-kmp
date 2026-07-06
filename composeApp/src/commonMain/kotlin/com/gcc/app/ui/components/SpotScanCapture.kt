@@ -70,6 +70,9 @@ fun SpotScanCapture(
     guidanceTarget: Coordinates? = null,
     environmentScanMode: Boolean = false,
     statusText: String? = null,
+    /** Two-phase guidance: DETAIL phase caption pass-through ("move closer —
+     *  detail-scan the light areas"), shown alongside statusText. */
+    detailPhase: Boolean = false,
     /** ARKit env-scan surface, passed through to the viewfinder. */
     arOverlay: ArEnvScanOverlay? = null,
     modifier: Modifier = Modifier,
@@ -225,6 +228,7 @@ fun SpotScanCapture(
             guidanceTarget = guidanceTarget,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
+            detailPhase = detailPhase,
             arOverlay = arOverlay,
             modifier = Modifier.fillMaxSize(),
         )

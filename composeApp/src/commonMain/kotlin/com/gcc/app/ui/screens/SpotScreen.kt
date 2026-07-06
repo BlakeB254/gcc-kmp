@@ -33,6 +33,7 @@ import com.gcc.app.platform.TrashCandidate
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
+import com.gcc.app.platform.GuidancePhase
 import com.gcc.app.platform.arEnvScanSupported
 import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
@@ -653,15 +654,30 @@ private fun CameraPhase(
     // that dissipates as they credit, and the frontier pick aims the minimap
     // ring + AR arrow at the nearest remaining patch (sticky vs GPS jitter).
     var guidanceTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    LaunchedEffect(scanCellCenters, trackerReady, currentLocation) {
+    var guidancePhase by remember { mutableStateOf(GuidancePhase.COVER) }
+    val coveragePercentValue by tracker.coveragePercent.collectAsState()
+    LaunchedEffect(scanCellCenters, closeCellCenters, trackerReady, currentLocation) {
         if (!trackerReady) return@LaunchedEffect
         val uncredited = tracker.getUnscannedCells()
             .map { (row, col) -> tracker.cellCenterLatLng(row, col) }
         arOverlay?.updateFog(uncredited)
+        val grazedNotClose = creditedCells
+            .filterValues { it.quality == CoverageQuality.GRAZED }
+            .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
         val loc = currentLocation
-        val target = loc?.let { EnvScanGuidance.pickFrontier(guidanceTarget, uncredited, it.lat, it.lng) }
-        guidanceTarget = target
+        val pick = loc?.let {
+            EnvScanGuidance.pickTarget(
+                current = guidanceTarget,
+                uncredited = uncredited,
+                grazedNotClose = grazedNotClose,
+                userLat = it.lat, userLng = it.lng,
+                coveragePercent = coveragePercentValue,
+            )
+        }
+        guidanceTarget = pick?.target
+        guidancePhase = pick?.phase ?: GuidancePhase.COVER
         if (arOverlay != null) {
+            val target = pick?.target
             if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
             else arOverlay.clearGuidanceTarget()
         }
@@ -740,6 +756,10 @@ private fun CameraPhase(
                 "Turn toward the highlighted area on the minimap"
             else -> "Environment scan active — sweep the camera slowly"
         }
+        // DETAIL-phase caption is a sibling chip, not a scanStatus branch —
+        // it must not fight the idle nudge for the same status line.
+        val showDetailCaption = guidancePhase == GuidancePhase.DETAIL &&
+            !(idleNudge && guidanceTarget != null)
         if (!showObjectCapture) if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
@@ -764,6 +784,7 @@ private fun CameraPhase(
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
                 statusText = scanStatus,
+                detailPhase = showDetailCaption,
                 arOverlay = arOverlay,
                 modifier = Modifier.fillMaxSize(),
             )
