@@ -33,6 +33,7 @@ import com.gcc.app.platform.TrashCandidate
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
+import com.gcc.app.platform.GuidancePhase
 import com.gcc.app.platform.arEnvScanSupported
 import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
@@ -44,6 +45,8 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraSceneVoteBus
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
+import com.gcc.app.platform.CoverageQuality
+import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
@@ -75,6 +78,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
+import com.gcc.shared.model.RetractCoverageRequest
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
@@ -100,6 +104,19 @@ fun SpotScreen(
     val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
+
+    // The VM is a Koin singleton: CAMERA (the default SpotUiState phase) is
+    // the only "fresh entry" state. Anything else on first composition means
+    // the previous session never finished cleanly — back button from
+    // LOCATION/DESCRIPTION/RESULT instead of Complete Scan, or a killed
+    // process mid-flow — so force a full reset before this session starts
+    // rather than letting stale photos/items/draft bleed into it (field
+    // report: submitting a second scan after the first crashed).
+    LaunchedEffect(Unit) {
+        if (viewModel.uiState.value.phase != SpotPhase.CAMERA) {
+            viewModel.reset()
+        }
+    }
 
     // Start GPS on entry, stop on leave
     DisposableEffect(Unit) {
@@ -325,6 +342,14 @@ private fun CameraPhase(
     // Declared here (ahead of its other uses below) so the outdoor-state gate
     // effect can reach it for purge/audit-trail events.
     val sessionRecorder = remember { EnvScanSessionRecorder() }
+    // Coverage tracker: hoisted above the AR-overlay DisposableEffect below
+    // (rather than down with its other env-scan state) because the
+    // raycast-fan listener registered there needs it in scope.
+    val tracker = remember { CoverageTracker() }
+    // Set by the raycast-fan listener when any CLOSE-tier hit credits; read +
+    // reset per coverage event so the event carries the best tier since the
+    // previous fix. Plain holder (not Compose state): mutated off-composition.
+    val closeCreditSinceLastEvent = remember { object { var value = false } }
 
     DisposableEffect(arOverlay) {
         // Landmark elements (trees, fences, gates…) auto-register into the
@@ -346,9 +371,17 @@ private fun CameraPhase(
         arOverlay?.setCeilingListener { detected ->
             gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
         }
+        arOverlay?.setCoverageHitListener { hits ->
+            if (!gate.captureAllowed.value) return@setCoverageHitListener
+            tracker.updateWithRaycastHits(hits)
+            if (hits.any { it.distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS }) {
+                closeCreditSinceLastEvent.value = true
+            }
+        }
         onDispose {
             arOverlay?.setElementObservedListener(null)
             arOverlay?.setCeilingListener(null)
+            arOverlay?.setCoverageHitListener(null)
             arOverlay?.stop()
         }
     }
@@ -385,28 +418,10 @@ private fun CameraPhase(
             gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
         }
     }
-    LaunchedEffect(outdoorState) {
-        DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
-        arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
-        arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
-        CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
-        if (outdoorState == OutdoorState.INDOOR) {
-            val cutoff = (gate.lastIndoorFlipAtMs ?: Clock.System.now().toEpochMilliseconds()) - OutdoorGate.PURGE_WINDOW_MS
-            sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
-            onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
-        }
-        sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
-    }
-
-    // ── Environment-scan session: coverage credit + minimap layers ──
+    // apiClient/coverageQueue/flushScope/retractQueue are hoisted here (ahead of
+    // their other env-scan uses below) so the outdoor-state gate effect's INDOOR
+    // branch can reach them for the purge + server-retraction flow.
     val apiClient = koinInject<GccApiClient>()
-    val scanAreaCache = koinInject<ScanAreaCacheStore>()
-    val tracker = remember { CoverageTracker() }
-    var trackerReady by remember { mutableStateOf(false) }
-    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-    var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-    var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-
     // Ledger emission: environment scans register real coverage (never-scanned
     // completions + 24h recency updates) exactly like the AR modes do.
     val coverageQueue = remember(apiClient) {
@@ -420,9 +435,54 @@ private fun CameraPhase(
         })
     }
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    // Retractions: already-flushed indoor-window events the server must undo.
+    val retractQueue = remember(apiClient) {
+        CoverageRetractionQueue(submitFn = { request ->
+            apiClient.retractCoverageEvents(request).success
+        })
+    }
+
+    LaunchedEffect(outdoorState) {
+        DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
+        arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
+        arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
+        CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
+        if (outdoorState == OutdoorState.INDOOR) {
+            val nowMs = Clock.System.now().toEpochMilliseconds()
+            val cutoff = (gate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
+            sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
+            onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
+            // Coverage companion purges (spec §2): local cells, pending
+            // events, and a server retraction for anything already flushed.
+            tracker.purgeSince(cutoff)
+            flushScope.launch {
+                coverageQueue.purgeSince(cutoff)
+                retractQueue.enqueue(
+                    RetractCoverageRequest(
+                        deviceId = CoverageDeviceId.value,
+                        fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
+                        toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
+                    )
+                )
+                retractQueue.flush()
+            }
+        }
+        sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
+    }
+
+    // ── Environment-scan session: coverage credit + minimap layers ──
+    val scanAreaCache = koinInject<ScanAreaCacheStore>()
+    var trackerReady by remember { mutableStateOf(false) }
+    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    /** Ledger-fresh cells whose best-recorded quality is "close" — the
+     *  minimap's brighter fresh wash (spec §3/§4 two-tier read). */
+    var freshCloseCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+
     DisposableEffect(Unit) {
         onDispose {
-            flushScope.launch { coverageQueue.flush() }
+            flushScope.launch { coverageQueue.flush(); retractQueue.flush() }
             onFlushMarkers()
         }
     }
@@ -430,6 +490,7 @@ private fun CameraPhase(
         while (true) {
             delay(30_000L)
             coverageQueue.flush()
+            retractQueue.flush()
             // Confirmed litter reaches the public map mid-scan on the same
             // cadence route AR markers use (was submit-only before).
             onFlushMarkers()
@@ -481,7 +542,8 @@ private fun CameraPhase(
             val serverCells = apiClient.getMapCoverage(bbox).cells
             fetchedCells = serverCells
             staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
-            freshCells = serverCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
+            freshCells = serverCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
+            freshCloseCells = serverCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
             DiagnosticsLog.info(
                 "env-scan",
@@ -496,7 +558,8 @@ private fun CameraPhase(
             }
             if (cached != null) {
                 staleCells = cached.coverageCells.filter { it.state == "stale" }.map { it.lat to it.lng }
-                freshCells = cached.coverageCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
+                freshCells = cached.coverageCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
+                freshCloseCells = cached.coverageCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
                 fogCells = neverScannedGrid(anchor, cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
@@ -547,12 +610,10 @@ private fun CameraPhase(
                 lastLat = null; lastLng = null
                 return@collect
             }
+            // Grazed floor: the ground you walk over is observed at sweep
+            // quality; everything richer comes from the raycast fan (spec §1).
             val heading = locationProvider.headingDegrees.value
-            if (heading != null) {
-                tracker.updateWithFrustum(lat = loc.lat, lng = loc.lng, headingDegrees = heading)
-            } else {
-                tracker.updatePosition(loc.lat, loc.lng)
-            }
+            tracker.updatePosition(loc.lat, loc.lng)
             sessionRecorder.addSample(
                 lat = loc.lat,
                 lng = loc.lng,
@@ -566,18 +627,27 @@ private fun CameraPhase(
             } ?: 0.0
             lastLat = loc.lat
             lastLng = loc.lng
-            if (getPlatformName() != "desktop") coverageQueue.enqueue(
-                ScanCoverageEventRequest(
-                    deviceId = CoverageDeviceId.value,
-                    platform = getPlatformName(),
-                    lat = loc.lat,
-                    lng = loc.lng,
-                    distanceMeters = segmentMeters,
-                    scanMode = "spot",
-                    deviceTier = deviceCapabilities.deviceClass.coverageTier(),
-                    capturedAt = Clock.System.now().toString(),
+            if (getPlatformName() != "desktop") {
+                coverageQueue.enqueue(
+                    ScanCoverageEventRequest(
+                        deviceId = CoverageDeviceId.value,
+                        platform = getPlatformName(),
+                        lat = loc.lat,
+                        lng = loc.lng,
+                        // NaN/Infinite would throw serializing this event into
+                        // the persisted queue (GccJson has no
+                        // allowSpecialFloatingPointValues) — a bad GPS pair
+                        // (e.g. identical lat/lng at the poles) must not wedge
+                        // the whole queue.
+                        distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                        scanMode = "spot",
+                        deviceTier = deviceCapabilities.deviceClass.coverageTier(),
+                        capturedAt = Clock.System.now().toString(),
+                        quality = if (closeCreditSinceLastEvent.value) "close" else "grazed",
+                    )
                 )
-            )
+                closeCreditSinceLastEvent.value = false
+            }
 
             // Clean-confirm proximity (5m, unresolved only).
             nearbyDirty = expectedDirty
@@ -593,27 +663,46 @@ private fun CameraPhase(
     val scanCellCenters = remember(scannedCells) {
         scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
-    // Vector-scan effect: credited cells render as "digitized" ground quads
-    // in the AR camera view, mirroring the minimap fill. (AR fog over
-    // unswept ground is the session-scoped updateFog below — it dissipates
-    // as cells credit, which also covers never-scanned territory on a first
-    // visit; the ledger's never-scanned picture stays on the minimap+map.)
-    LaunchedEffect(scanCellCenters) {
-        arOverlay?.updateScannedCells(scanCellCenters)
+    val creditedCells by tracker.creditedCells.collectAsState()
+    val closeCellCenters = remember(creditedCells) {
+        creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
+            .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+    }
+    // Vector-scan effect: CLOSE-tier cells render as "digitized" ground quads
+    // in the AR camera view, mirroring the minimap's vivid fill — fog still
+    // lifts on any credit (below), so the AR read becomes: fog = unscanned,
+    // clear ground = grazed, vivid quad = close (spec §4).
+    LaunchedEffect(closeCellCenters) {
+        arOverlay?.updateScannedCells(closeCellCenters)
     }
     // AR fog + steering: uncredited cells render as ground fog on the camera
     // that dissipates as they credit, and the frontier pick aims the minimap
     // ring + AR arrow at the nearest remaining patch (sticky vs GPS jitter).
     var guidanceTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    LaunchedEffect(scanCellCenters, trackerReady, currentLocation) {
+    var guidancePhase by remember { mutableStateOf(GuidancePhase.COVER) }
+    val coveragePercentValue by tracker.coveragePercent.collectAsState()
+    LaunchedEffect(scanCellCenters, closeCellCenters, trackerReady, currentLocation) {
         if (!trackerReady) return@LaunchedEffect
         val uncredited = tracker.getUnscannedCells()
             .map { (row, col) -> tracker.cellCenterLatLng(row, col) }
         arOverlay?.updateFog(uncredited)
+        val grazedNotClose = creditedCells
+            .filterValues { it.quality == CoverageQuality.GRAZED }
+            .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
         val loc = currentLocation
-        val target = loc?.let { EnvScanGuidance.pickFrontier(guidanceTarget, uncredited, it.lat, it.lng) }
-        guidanceTarget = target
+        val pick = loc?.let {
+            EnvScanGuidance.pickTarget(
+                current = guidanceTarget,
+                uncredited = uncredited,
+                grazedNotClose = grazedNotClose,
+                userLat = it.lat, userLng = it.lng,
+                coveragePercent = coveragePercentValue,
+            )
+        }
+        guidanceTarget = pick?.target
+        guidancePhase = pick?.phase ?: GuidancePhase.COVER
         if (arOverlay != null) {
+            val target = pick?.target
             if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
             else arOverlay.clearGuidanceTarget()
         }
@@ -692,6 +781,10 @@ private fun CameraPhase(
                 "Turn toward the highlighted area on the minimap"
             else -> "Environment scan active — sweep the camera slowly"
         }
+        // DETAIL-phase caption is a sibling chip, not a scanStatus branch —
+        // it must not fight the idle nudge for the same status line.
+        val showDetailCaption = guidancePhase == GuidancePhase.DETAIL &&
+            !(idleNudge && guidanceTarget != null)
         if (!showObjectCapture) if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
@@ -711,9 +804,12 @@ private fun CameraPhase(
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
+                closeCellCenters = closeCellCenters,
+                freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
                 statusText = scanStatus,
+                detailPhase = showDetailCaption,
                 arOverlay = arOverlay,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -742,6 +838,8 @@ private fun CameraPhase(
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
+                closeCellCenters = closeCellCenters,
+                freshCloseCellCenters = freshCloseCells,
                 environmentScanMode = true,
                 statusText = scanStatus,
             )
@@ -946,7 +1044,12 @@ private fun CameraPhase(
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
+                // Field feedback (Blake): the dimmed 0.4-alpha fill over a
+                // bright outdoor background (concrete, sky) washed the label
+                // out into an unlabeled green blob. Raised the floor so the
+                // "Complete Scan" text stays legible while still reading
+                // dimmer than the fully-active pill.
+                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
                 .clickable { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {

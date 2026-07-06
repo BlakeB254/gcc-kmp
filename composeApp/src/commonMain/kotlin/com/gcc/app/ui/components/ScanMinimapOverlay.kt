@@ -56,6 +56,10 @@ fun ScanMinimapOverlay(
     /** Cells the ledger marks freshly scanned — punched out of the veil. */
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshnessCellSizeMeters: Double = 10.0,
+    /** Session cells credited at CLOSE tier — drawn vivid over the grazed shade. */
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger-fresh cells whose best quality is close — brighter fresh wash. */
+    freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Block outline (lat, lng ring) — drawn as the minimap's boundary. */
     outerBoundary: List<Pair<Double, Double>> = emptyList(),
     /** Inner exclusion islands (private property) — amber outlines. */
@@ -127,24 +131,32 @@ fun ScanMinimapOverlay(
         }
         for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
         for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
+        for ((lat, lng) in freshCloseCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
         for ((lat, lng) in scanCellCenters) punch(lat, lng, cellSizeMeters, 1.2f)
         val veil = Path.combine(
             PathOperation.Difference,
             Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
             holes,
         )
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.62f))
+        // Field feedback (Blake, TestFlight 124): the veil made the user dot
+        // and the scanned/scanning cells hard to see — lightened from 0.62 to
+        // 0.45 (corridor re-shade below dropped proportionally to keep the
+        // same relative contrast between "assigned" and "everything else").
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.45f))
 
         // Required corridor (block laps): punched out of the heavy veil, then
         // re-shaded lighter so the assignment reads as a distinct region.
         for ((lat, lng) in corridorCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.35f), overscan = 1.15f)
+            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.28f), overscan = 1.15f)
         }
 
-        // Ledger-fresh cells: already scanned by the community — clear sky
-        // with a faint green wash.
+        // Ledger-fresh cells: grazed = whisper (needs detail), close = the
+        // established faint green (already well-scanned by the community).
         for ((lat, lng) in freshCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.14f), overscan = 1.1f)
+            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.07f), overscan = 1.1f)
+        }
+        for ((lat, lng) in freshCloseCellCenters) {
+            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.16f), overscan = 1.1f)
         }
 
         // Stale cells: scanned before, worth re-scanning — amber glow over
@@ -153,9 +165,13 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
         }
 
-        // This session's credited zones: cut clear + vivid green. This is
-        // the live "you just scanned this" feedback.
+        // This session, two shades (spec §4): every credited cell gets the
+        // light grazed wash; close-tier cells re-cover vivid — the live
+        // "you've detail-scanned this" feedback.
         for ((lat, lng) in scanCellCenters) {
+            drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.25f), overscan = 1.2f)
+        }
+        for ((lat, lng) in closeCellCenters) {
             drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.60f), overscan = 1.2f)
         }
 
@@ -222,6 +238,15 @@ fun ScanMinimapOverlay(
             drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
             drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
         }
+
+        // User-position dot, drawn LAST so it always sits above the veil,
+        // fills and every other layer (Blake: "hard to see the user dot").
+        // The minimap is centered on the live GPS fix (centerLat/centerLng),
+        // so the user is always exactly at the canvas center — no projection
+        // needed. Replaces reliance on any MapLibre location puck underneath.
+        val selfCenter = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(color = Color.White, radius = 5.dp.toPx(), center = selfCenter, style = Stroke(width = 2.dp.toPx()))
+        drawCircle(color = GccGreen, radius = 3.5.dp.toPx(), center = selfCenter)
     }
 }
 

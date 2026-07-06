@@ -13,6 +13,7 @@ data class ScanCoverageEventRequest(
     val scanMode: String, // "route" | "spot"
     val deviceTier: String, // "basic" | "scanner" | "pro_scanner"
     val capturedAt: String,
+    val quality: String = "grazed", // "grazed" | "close"
 )
 
 @Serializable
@@ -50,10 +51,27 @@ data class MapCoverageCell(
     val state: String, // "fresh" | "stale"
     val lastScannedAt: String,
     val totalDistanceMeters: Double,
+    val quality: String = "grazed", // best tier on record
 )
 
 @Serializable
 data class MapCoverageResponse(
     val cells: List<MapCoverageCell>,
     val success: Boolean,
+)
+
+/** Undo a device's coverage events in a time window (INDOOR-flip retraction). */
+@Serializable
+data class RetractCoverageRequest(
+    val deviceId: String,
+    val fromCapturedAt: String,
+    val toCapturedAt: String,
+)
+
+@Serializable
+data class RetractCoverageResponse(
+    val deletedEvents: Int = 0,
+    val cellsRecomputed: Int = 0,
+    val success: Boolean,
+    val error: String? = null,
 )

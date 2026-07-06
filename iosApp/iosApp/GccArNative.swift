@@ -31,6 +31,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// Vector-scan overlay caps (mirrors the Kotlin SceneKit path).
     private static let maxVectorCells = 350
 
+    /// Only one ARSession may hold the camera at a time. The Kotlin factory
+    /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
+    /// per scan session with no guarantee the previous session's `pause()`
+    /// (driven by the Compose `UIKitView`'s `onRelease`) has already run —
+    /// dispose ordering across the Kotlin/Native bridge isn't guaranteed.
+    /// Weak so a surface that DID get released properly doesn't leak here.
+    private static weak var liveSurface: RealityKitArSurface?
+
     private var planeEntities: [UUID: PlaneGridEntity] = [:]
     /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
     /// from Kotlin via `setGridPhaseOrigin`). Grid planes snap their bounds
@@ -68,6 +76,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     override init() {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
         super.init()
+
+        // Release the previous session's camera BEFORE running this one — two
+        // live ARSessions fighting over AVCaptureDevice is the crash-on-second-
+        // scan root cause this guards against (see `liveSurface` kdoc above).
+        Self.liveSurface?.pause()
+        Self.liveSurface = self
 
         let config = ARWorldTrackingConfiguration()
         // Compass-true axes — the Kotlin geo-ref math (east = +X, north = -Z)
@@ -108,6 +122,9 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         frameLock.lock()
         lastFrame = nil
         frameLock.unlock()
+        if Self.liveSurface === self {
+            Self.liveSurface = nil
+        }
     }
 
     func currentPixelBufferAddress() -> Int64 {

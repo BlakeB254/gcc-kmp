@@ -75,12 +75,21 @@ fun CameraCapture(
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Session cells credited at CLOSE tier — minimap vivid highlight. */
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger-fresh cells whose best quality is close — minimap brighter wash. */
+    freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering: minimap double-ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
     statusText: String? = null,
+    /** Two-phase guidance: true once coverage has flipped from cover-the-area
+     *  to detail-scan-the-grazed-cells — renders a sibling caption chip
+     *  under the status chip (never both at once; caller gates against the
+     *  idle nudge). */
+    detailPhase: Boolean = false,
     /** When set, the viewfinder is the ARKit env-scan surface (ground grid,
      *  vector-scan overlay, trash lock-on) instead of the AVCapture preview. */
     arOverlay: ArEnvScanOverlay? = null,
@@ -143,26 +152,50 @@ fun CameraCapture(
             }
 
             // Scan status / instructions (top-center, under the status bar,
-            // clear of the corner chrome).
-            Box(
+            // clear of the corner chrome). The DETAIL-phase caption is a
+            // sibling chip stacked below it — same visual treatment, shown
+            // only once guidance has flipped to detail-scanning and the
+            // idle nudge isn't already occupying the status line.
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(top = 52.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = statusText ?: when {
-                        atLimit -> "Max $maxPhotos photos captured"
-                        isCapturing -> "Capturing..."
-                        else -> "Tap an item to capture it"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = statusText ?: when {
+                            atLimit -> "Max $maxPhotos photos captured"
+                            isCapturing -> "Capturing..."
+                            else -> "Tap an item to capture it"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                    )
+                }
+                if (detailPhase) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = "Move closer — detail-scan the light areas",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
             }
 
             // Mini-map: lower-right corner over the feed (Pokémon-GO layout;
@@ -200,6 +233,8 @@ fun CameraCapture(
                         fogCellCenters = fogCellCenters,
                         staleCellCenters = staleCellCenters,
                         freshCellCenters = freshCellCenters,
+                        closeCellCenters = closeCellCenters,
+                        freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
                     )
                     Box(

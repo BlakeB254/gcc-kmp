@@ -3,8 +3,10 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.ArScanner
+import com.gcc.app.platform.CellCredit
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
+import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
@@ -12,6 +14,7 @@ import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.RaycastCoverageHit
 import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.classifyFogAndStale
@@ -173,11 +176,22 @@ class RouteScanViewModel(
             }
         },
     )
+    // Coverage-ledger retractions (design spec §2): undoes already-flushed
+    // events for the trailing purge window on an INDOOR flip. Same api-client
+    // reference coverageEventQueue's submitFn uses above.
+    private val retractionQueue = CoverageRetractionQueue(
+        submitFn = { request -> apiClient.retractCoverageEvents(request).success },
+    )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
     private var lastCoverageFixAtMs: Long? = null
     private var fastFixStreak = 0
     private var coverageFlushJob: Job? = null
+    /** True when any CLOSE-tier fan hit credited since the last coverage event.
+     *  Volatile: written from the main-thread fan listener (onCoverageRayHits),
+     *  read/reset from the Dispatchers.Default location collector. */
+    @kotlin.concurrent.Volatile
+    private var closeCreditSinceLastEvent = false
 
     // AR-detected marker queue: live-detected (CONFIRMED_TRASH) markers from the
     // AR screen queue locally and flush alongside the coverage-ledger events.
@@ -406,6 +420,11 @@ class RouteScanViewModel(
 
     /** Set of scanned coverage-grid cells (row, col). */
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.scannedCells
+
+    /** Per-cell credit (row, col) → tier/timestamp — the source ArRouteScreen
+     *  mirrors to build CLOSE-tier cell centers for the minimap + AR quads
+     *  (spec §4: fog = unscanned, clear = grazed, vivid quad = close). */
+    val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> get() = coverageTracker.creditedCells
 
     /** Real-world (lat, lng) center of a coverage-grid cell. */
     fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =
@@ -1006,6 +1025,16 @@ class RouteScanViewModel(
         _uiState.value = _uiState.value.copy(error = message)
     }
 
+    /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener). */
+    fun onCoverageRayHits(hits: List<RaycastCoverageHit>) {
+        if (!outdoorGate.captureAllowed.value) return
+        if (_uiState.value.phase != ScanPhase.SCOUTING) return
+        coverageTracker.updateWithRaycastHits(hits)
+        if (hits.any { it.distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS }) {
+            closeCreditSinceLastEvent = true
+        }
+    }
+
     // ── Internal: location tracking ──────────────────────────────────
 
     private fun startLocationTracking() {
@@ -1016,6 +1045,7 @@ class RouteScanViewModel(
                 delay(30_000L)
                 coverageEventQueue.flush() // failed flushes keep events queued
                 arMarkerQueue.flush()
+                retractionQueue.flush()
             }
         }
         accuracyJob?.cancel()
@@ -1037,9 +1067,22 @@ class RouteScanViewModel(
                     if (gateState == OutdoorState.INDOOR) {
                         // Privacy purge: drop the trailing walk-inside seconds
                         // recorded just before this flip so they never upload.
-                        lapSessionRecorder.purgeSince(
-                            (outdoorGate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
-                        )
+                        val cutoff = (outdoorGate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
+                        lapSessionRecorder.purgeSince(cutoff)
+                        // Coverage companions (spec §2): local cells, pending
+                        // events, server retraction of flushed ones.
+                        coverageTracker.purgeSince(cutoff)
+                        scope.launch {
+                            coverageEventQueue.purgeSince(cutoff)
+                            retractionQueue.enqueue(
+                                RetractCoverageRequest(
+                                    deviceId = CoverageDeviceId.value,
+                                    fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
+                                    toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
+                                )
+                            )
+                            retractionQueue.flush()
+                        }
                     }
                 }
             }
@@ -1104,18 +1147,25 @@ class RouteScanViewModel(
                         if (_uiState.value.movingTooFast != tooFast) {
                             _uiState.value = _uiState.value.copy(movingTooFast = tooFast)
                         }
-                        if (getPlatformName() != "desktop") coverageEventQueue.enqueue(
-                            ScanCoverageEventRequest(
-                                deviceId = CoverageDeviceId.value,
-                                platform = getPlatformName(),
-                                lat = lat,
-                                lng = lng,
-                                distanceMeters = segmentMeters,
-                                scanMode = "route",
-                                deviceTier = coverageDeviceTier,
-                                capturedAt = Clock.System.now().toString(),
+                        if (getPlatformName() != "desktop") {
+                            coverageEventQueue.enqueue(
+                                ScanCoverageEventRequest(
+                                    deviceId = CoverageDeviceId.value,
+                                    platform = getPlatformName(),
+                                    lat = lat,
+                                    lng = lng,
+                                    // NaN/Infinite would throw serializing this
+                                    // event into the persisted queue (GccJson
+                                    // has no allowSpecialFloatingPointValues).
+                                    distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                                    scanMode = "route",
+                                    deviceTier = coverageDeviceTier,
+                                    capturedAt = Clock.System.now().toString(),
+                                    quality = if (closeCreditSinceLastEvent) "close" else "grazed",
+                                )
                             )
-                        )
+                            closeCreditSinceLastEvent = false
+                        }
 
                         // Live points HUD: estimate what this segment earned.
                         val gridCell = coverageTracker.cellForLatLng(lat, lng)
@@ -1137,18 +1187,11 @@ class RouteScanViewModel(
                             .minByOrNull { (_, dist) -> dist }
                             ?.first
 
-                        // AR tier: use camera frustum for coverage; GPS tier: use radius
+                        // Grazed floor at the walked position; the raycast fan
+                        // (onCoverageRayHits) supplies measured grazed/close
+                        // credit — the blind 15m frustum is gone (spec §1).
                         val heading = arScanner.getArHeading() ?: locationProvider.headingDegrees.value
-                        if (state.deviceType == DeviceType.AR && heading != null) {
-                            coverageTracker.updateWithFrustum(
-                                lat = lat,
-                                lng = lng,
-                                headingDegrees = heading,
-                                fovDegrees = arScanner.getCameraFovDegrees(),
-                            )
-                        } else {
-                            coverageTracker.updatePosition(lat, lng)
-                        }
+                        coverageTracker.updatePosition(lat, lng)
 
                         // Update AI direction engine with unscanned cluster centers
                         aiDirectionEngine.update(

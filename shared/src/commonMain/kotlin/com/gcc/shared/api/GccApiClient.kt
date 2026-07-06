@@ -1196,6 +1196,19 @@ class GccApiClient(
         return response.body<ScanCoverageSubmitResponse>()
     }
 
+    suspend fun retractCoverageEvents(request: RetractCoverageRequest): RetractCoverageResponse {
+        val response = httpClient.post("$baseUrl/api/scans/coverage/retract") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<RetractCoverageResponse>()
+    }
+
     /**
      * Confirm a previously-expected-dirty world observation is actually clean
      * ("rectification"). Flat-JSON endpoint, same pattern as coverage above.

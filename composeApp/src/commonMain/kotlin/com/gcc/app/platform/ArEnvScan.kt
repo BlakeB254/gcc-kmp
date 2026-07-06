@@ -109,6 +109,14 @@ expect class ArEnvScanOverlay() {
      *  Listener is called on the main thread. */
     fun setCeilingListener(listener: ((Boolean) -> Unit)?)
 
+    /**
+     * Fires ~1/sec with the coverage raycast fan's geo-resolved hits (where
+     * rays LANDED, with surface distance) while a geo-reference is paired.
+     * Listener runs on the main thread; iOS only. Feed straight into
+     * [CoverageTracker.updateWithRaycastHits].
+     */
+    fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?)
+
     fun stop()
 }
 

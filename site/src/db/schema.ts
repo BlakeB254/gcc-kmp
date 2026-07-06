@@ -1371,6 +1371,7 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'bug_report',             // Reward for finding a bug in the app/website
   'scan_coverage_new_area', // Distance-tracked: scanned a cell never scanned before
   'scan_coverage_stale',    // Distance-tracked: re-scanned a cell stale >24h
+  'scan_coverage_close_upgrade', // Distance-tracked: grazed->close upgrade on a fresh cell
   'scan_coverage_rectification', // Confirmed a previously-expected-dirty spot is now clean
 ])
 
@@ -1734,6 +1735,7 @@ export const scanCoverageEvents = pgTable('scan_coverage_events', {
   distanceMeters: doublePrecision('distance_meters').notNull(),
   scanMode: varchar('scan_mode', { length: 10 }).notNull(), // 'route' | 'spot'
   deviceTier: varchar('device_tier', { length: 16 }).notNull(), // 'basic' | 'scanner' | 'pro_scanner'
+  quality: varchar('quality', { length: 8 }).default('grazed').notNull(), // 'grazed' | 'close'
   capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -1749,6 +1751,8 @@ export const cellCoverageSummary = pgTable('cell_coverage_summary', {
   lastScannedAt: timestamp('last_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
   totalDistanceMeters: doublePrecision('total_distance_meters').default(0).notNull(),
   scanCount: integer('scan_count').default(0).notNull(),
+  bestQuality: varchar('best_quality', { length: 8 }).default('grazed').notNull(), // 'grazed' | 'close'
+  lastCloseScannedAt: timestamp('last_close_scanned_at', { mode: 'string', withTimezone: true }),
 })
 
 export type CellCoverageSummaryRow = typeof cellCoverageSummary.$inferSelect

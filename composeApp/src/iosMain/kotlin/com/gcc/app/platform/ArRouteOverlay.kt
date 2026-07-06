@@ -11,7 +11,13 @@ import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import platform.ARKit.ARSCNView
 import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
@@ -23,6 +29,8 @@ import platform.SceneKit.SCNPyramid
 import platform.SceneKit.SCNScene
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIColor
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import platform.darwin.simd_float4x4
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -117,6 +125,10 @@ actual class ArRouteOverlay actual constructor() {
     private var refZ = 0f
     private var lngScale = 1.0 // cos(refLat), cached when the reference updates
 
+    private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
+    private var coverageFanJob: Job? = null
+    private val coverageFanScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     // Geographic origin of the CoverageTracker cell lattice — the ground grid
     // (native path) phases its lines to it so AR grid == minimap grid.
     private var latticeLat: Double? = null
@@ -130,6 +142,7 @@ actual class ArRouteOverlay actual constructor() {
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
         frameFeedback.start()
+        startCoverageFanLoopIfNeeded()
     }
 
     /**
@@ -144,6 +157,7 @@ actual class ArRouteOverlay actual constructor() {
         // covers UNscanned cells on top of it, vector quads mark credited ones.
         surface.setGroundGridVisible(true)
         frameFeedback.start()
+        startCoverageFanLoopIfNeeded()
         DiagnosticsLog.info("ar-route", "RealityKit native route surface started")
     }
 
@@ -153,6 +167,8 @@ actual class ArRouteOverlay actual constructor() {
     }
 
     actual fun stop() {
+        coverageFanJob?.cancel()
+        coverageFanJob = null
         frameFeedback.stop()
         nativeSurface?.pause()
         sceneView?.session?.pause()
@@ -164,6 +180,48 @@ actual class ArRouteOverlay actual constructor() {
 
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
         frameFeedback.ceilingListener = listener
+    }
+
+    /**
+     * The fan loop intentionally gates only on [hasGeoRef], not the
+     * frame-analysis flag: raycasts are Vision-free and cheap, and crediting
+     * is gate-checked by the common-code listener anyway.
+     */
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        coverageHitListener = listener
+        if (listener == null) {
+            coverageFanJob?.cancel()
+            coverageFanJob = null
+            return
+        }
+        startCoverageFanLoopIfNeeded()
+    }
+
+    /**
+     * (Re)launch the 1s coverage fan loop when a listener is wired and no
+     * loop is live — called from [setCoverageHitListener] and from
+     * [bind]/[bindNative], so a stop() → rebind cycle restarts the fan
+     * instead of leaving it silently dead.
+     */
+    private fun startCoverageFanLoopIfNeeded() {
+        if (coverageHitListener == null || coverageFanJob != null) return
+        coverageFanJob = coverageFanScope.launch {
+            while (true) {
+                delay(1_000L)
+                if (!hasGeoRef) continue
+                val listenerNow = coverageHitListener ?: continue
+                val frame = if (nativeSurface == null) sceneView?.session?.currentFrame else null
+                val fanHits = try {
+                    CoverageRayFan.cast(nativeSurface, frame) { x, z -> localToLatLng(x, z) }
+                } catch (e: Throwable) {
+                    DiagnosticsLog.error("ar-route", "coverage fan tick failed", e)
+                    emptyList()
+                }
+                if (fanHits.isNotEmpty()) {
+                    dispatch_async(dispatch_get_main_queue()) { listenerNow(fanHits) }
+                }
+            }
+        }
     }
 
     actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {

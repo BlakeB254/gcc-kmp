@@ -185,10 +185,23 @@ actual class ArEnvScanOverlay actual constructor() {
     private var elementObservedListener:
         ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
     private var ceilingListener: ((Boolean) -> Unit)? = null
+    private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
     private var roughGridTexture: UIImage? = null
     private var vectorTexture: UIImage? = null
+
+    /**
+     * The exact closure instance handed to [CameraManager.externalFrameSource]
+     * (see [bind]/[bindNative]). [stop] must only clear the shared slot if it
+     * still holds THIS instance's closure — if dispose ordering ever lets a
+     * stale session's stop() run after a new session's bind() (Koin-singleton
+     * VM + Compose UIKitView release timing aren't strictly ordered), an
+     * unconditional clear would steal the new session's frame source and
+     * captureFrame() would fall through to the UIImagePicker modal over a
+     * live ARView.
+     */
+    private var frameSourceClosure: (suspend () -> CapturedPhoto?)? = null
 
     /** Called by the Compose UIKitView factory once the ARSCNView exists. */
     fun bind(view: ARSCNView) {
@@ -214,7 +227,9 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "ARKit env-scan surface started (plane detection on)")
     }
@@ -228,7 +243,9 @@ actual class ArEnvScanOverlay actual constructor() {
     fun bindNative(surface: ArNativeSurface) {
         nativeSurface = surface
         surface.setGroundGridVisible(true)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
     }
@@ -236,7 +253,14 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun stop() {
         job?.cancel()
         job = null
-        if (CameraManager.externalFrameSource != null) CameraManager.externalFrameSource = null
+        // Identity-checked: only clear the shared slot if it's still THIS
+        // session's closure (see [frameSourceClosure] kdoc) — an unconditional
+        // clear here could steal a newer session's frame source if stop()
+        // ever runs after that session's bind()/bindNative().
+        if (CameraManager.externalFrameSource === frameSourceClosure) {
+            CameraManager.externalFrameSource = null
+        }
+        frameSourceClosure = null
         nativeSurface?.pause()
         sceneView?.session?.pause()
         dispatch_async(dispatch_get_main_queue()) {
@@ -365,6 +389,10 @@ actual class ArEnvScanOverlay actual constructor() {
         ceilingListener = listener
     }
 
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        coverageHitListener = listener
+    }
+
     actual fun setSceneVoteCadence(fast: Boolean) {
         fastSceneVotes = fast
     }
@@ -417,6 +445,20 @@ actual class ArEnvScanOverlay actual constructor() {
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
+        }
+
+        // Coverage raycast fan: cheap (no Vision), runs whenever analysis is
+        // live and a geo-ref exists. Rays stop on real surfaces — this is the
+        // measured "what did the camera actually see" signal (spec §1).
+        if (analysisEnabled && hasGeoRef) {
+            coverageHitListener?.let { listener ->
+                val fanHits = CoverageRayFan.cast(nativeSurface, frame) { x, z ->
+                    localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
+                }
+                if (fanHits.isNotEmpty()) {
+                    dispatch_async(dispatch_get_main_queue()) { listener(fanHits) }
+                }
+            }
         }
 
         // Vote cadence: fastSceneVotes samples every tick; otherwise the
@@ -1127,13 +1169,6 @@ actual class ArEnvScanOverlay actual constructor() {
         transform.place(matrix.ptr)
         val values = matrix.ptr.reinterpret<FloatVar>()
         FloatArray(16) { index -> values[index] }
-    }
-
-    private fun matrixTranslation(transform: CValue<simd_float4x4>): FloatArray = memScoped {
-        val matrix = alloc<simd_float4x4>()
-        transform.place(matrix.ptr)
-        val values = matrix.ptr.reinterpret<FloatVar>()
-        floatArrayOf(values[12], values[13], values[14])
     }
 
     private fun vectorFloats(vector: kotlinx.cinterop.Vector128): FloatArray =

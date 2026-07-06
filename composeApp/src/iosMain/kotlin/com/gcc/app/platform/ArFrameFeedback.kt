@@ -1,13 +1,6 @@
 package com.gcc.app.platform
 
-import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.FloatVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.get
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +33,6 @@ import platform.Vision.VNRectangleObservation
 import platform.Vision.VNSaliencyImageObservation
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
-import platform.darwin.simd_float4x4
 import kotlin.math.sqrt
 
 /**
@@ -228,7 +220,8 @@ internal class ArFrameFeedback(
                 types = ARHitTestResultTypeEstimatedHorizontalPlane or ARHitTestResultTypeFeaturePoint,
             )?.firstOrNull() as? ARHitTestResult
             if (hit != null) {
-                hitWorld = matrixTranslation(hit.worldTransform).toFloatArray()
+                // Shared file-level helper (CoverageRayFan.kt) — returns FloatArray.
+                hitWorld = matrixTranslation(hit.worldTransform)
                 distance = hit.distance.toFloat()
             }
         }
@@ -346,11 +339,4 @@ internal class ArFrameFeedback(
         }
     }
 
-    private fun matrixTranslation(transform: CValue<simd_float4x4>): List<Float> = memScoped {
-        val matrix = alloc<simd_float4x4>()
-        transform.place(matrix.ptr)
-        val values = matrix.ptr.reinterpret<FloatVar>()
-        // Column-major simd_float4x4: translation lives at indices 12..14.
-        listOf(values[12], values[13], values[14])
-    }
 }

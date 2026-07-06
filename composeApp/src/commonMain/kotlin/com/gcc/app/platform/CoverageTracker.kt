@@ -6,9 +6,26 @@ import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.datetime.Clock
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
+
+/** Scan quality tier for a credited cell. Order matters: CLOSE > GRAZED (ordinal upgrade check). */
+enum class CoverageQuality { GRAZED, CLOSE }
+
+/**
+ * Per-cell credit: what tier, when, and (one level deep) what the cell held
+ * before the latest change — so an INDOOR-flip purge can revert an in-window
+ * upgrade instead of erasing pre-window history.
+ */
+data class CellCredit(
+    val quality: CoverageQuality,
+    val creditedAtMs: Long,
+    val prior: CellCredit? = null,
+)
+
+/** One raycast fan hit, already geo-resolved: where the ray LANDED + how far the surface was. */
+data class RaycastCoverageHit(val lat: Double, val lng: Double, val distanceMeters: Double)
 
 /**
  * Grid-based coverage tracker for the Scout lap fog-of-war system.
@@ -24,7 +41,14 @@ class CoverageTracker {
         const val cellSizeMeters = 3.0
         const val scanRadiusMeters = 5.0
         const val corridorWidthMeters = 15.0
+
+        /** Raycast hits at or under this surface distance credit CLOSE (detail-scan tier). */
+        const val CLOSE_RANGE_METERS = 4.0
+        /** Raycast hits beyond this surface distance credit nothing (fan ceiling). */
+        const val GRAZE_RANGE_METERS = 10.0
     }
+
+    private fun nowEpochMs(): Long = Clock.System.now().toEpochMilliseconds()
 
     // Grid dimensions
     private var gridRows = 0
@@ -44,12 +68,20 @@ class CoverageTracker {
     // Total corridor cells — cached to avoid repeated size checks
     private var totalCells = 0
 
-    // Mutable state
+    // Mutable state: quality-aware credit map is the source of truth; the
+    // legacy scanned SET stays as a derived mirror for existing consumers
+    // (fog, minimap punch-out, corridor fill).
+    private val _creditedCells = MutableStateFlow<Map<Pair<Int, Int>, CellCredit>>(emptyMap())
+    val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> = _creditedCells.asStateFlow()
+
     private val _scannedCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> = _scannedCells.asStateFlow()
 
     private val _coveragePercent = MutableStateFlow(0.0)
     val coveragePercent: StateFlow<Double> = _coveragePercent.asStateFlow()
+
+    private val _closePercent = MutableStateFlow(0.0)
+    val closePercent: StateFlow<Double> = _closePercent.asStateFlow()
 
     // ── Initialisation ───────────────────────────────────────────────
 
@@ -96,8 +128,7 @@ class CoverageTracker {
         }
         corridorCells = corridor
         totalCells = corridor.size
-        _scannedCells.value = emptySet()
-        _coveragePercent.value = 0.0
+        publish(emptyMap())
     }
 
     /**
@@ -156,8 +187,7 @@ class CoverageTracker {
         }
         corridorCells = corridor
         totalCells = corridor.size
-        _scannedCells.value = emptySet()
-        _coveragePercent.value = 0.0
+        publish(emptyMap())
     }
 
     /** True when the required area was built from block boundaries (not line proximity). */
@@ -185,7 +215,7 @@ class CoverageTracker {
 
     /**
      * Inverse of the grid projection used throughout this class (see
-     * [updatePosition], [updateWithFrustum], [getUnscannedCenters]) —
+     * [updatePosition], [updateWithRaycastHits], [getUnscannedCenters]) —
      * returns the real-world lat/lng center of a given grid cell, for
      * AR-space anchoring of the fog-of-war overlay (Task 15).
      */
@@ -222,13 +252,83 @@ class CoverageTracker {
     /** Cells already fresh in the production ledger — fog-exempt only. */
     private var preSeededCells: Set<Pair<Int, Int>> = emptySet()
 
+    // ── Quality-aware credit map ──────────────────────────────────────
+
+    /** Recompute all derived flows from a new credit map. */
+    private fun publish(map: Map<Pair<Int, Int>, CellCredit>) {
+        _creditedCells.value = map
+        _scannedCells.value = map.keys
+        if (totalCells > 0) {
+            val scannedCorridor = map.keys.count { it in corridorCells }
+            _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
+            val closeCorridor = map.count { (cell, credit) ->
+                cell in corridorCells && credit.quality == CoverageQuality.CLOSE
+            }
+            _closePercent.value = (closeCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
+        } else {
+            _coveragePercent.value = 0.0
+            _closePercent.value = 0.0
+        }
+    }
+
+    /** Monotonic credit: upgrades keep a one-deep prior for purge revert; equal/lower tiers are no-ops. */
+    private fun creditCell(
+        map: MutableMap<Pair<Int, Int>, CellCredit>,
+        cell: Pair<Int, Int>,
+        quality: CoverageQuality,
+        nowMs: Long,
+    ): Boolean {
+        val existing = map[cell]
+        if (existing != null && existing.quality >= quality) return false
+        map[cell] = CellCredit(quality, nowMs, prior = existing?.copy(prior = null))
+        return true
+    }
+
+    /**
+     * AR tier: credit the cells raycast fan rays actually LANDED in. Rays stop
+     * at real surfaces, so a wall 2m away means nothing beyond it can credit —
+     * the indoor 15m-cone overreach is impossible by construction (spec §1).
+     */
+    fun updateWithRaycastHits(hits: List<RaycastCoverageHit>, nowMs: Long = nowEpochMs()) {
+        if (totalCells == 0 || hits.isEmpty()) return
+        val map = _creditedCells.value.toMutableMap()
+        var changed = false
+        for (hit in hits) {
+            if (hit.distanceMeters > GRAZE_RANGE_METERS) continue
+            val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
+            val quality =
+                if (hit.distanceMeters <= CLOSE_RANGE_METERS) CoverageQuality.CLOSE
+                else CoverageQuality.GRAZED
+            if (creditCell(map, cell, quality, nowMs)) changed = true
+        }
+        if (changed) publish(map)
+    }
+
+    /**
+     * INDOOR-flip purge: undo every credit made at/after [cutoffMs] — in-window
+     * upgrades revert to their pre-window state; cells first credited in the
+     * window disappear entirely. Companion to the recorder/photo purges.
+     */
+    fun purgeSince(cutoffMs: Long) {
+        val map = _creditedCells.value.toMutableMap()
+        var changed = false
+        for ((cell, credit) in _creditedCells.value) {
+            if (credit.creditedAtMs >= cutoffMs) {
+                val prior = credit.prior
+                if (prior != null) map[cell] = prior else map.remove(cell)
+                changed = true
+            }
+        }
+        if (changed) publish(map)
+    }
+
     // ── Position update ──────────────────────────────────────────────
 
     /**
      * Called each time the worker's GPS position changes.
      * Marks all cells within [scanRadiusMeters] as scanned and recomputes coverage %.
      */
-    fun updatePosition(lat: Double, lng: Double) {
+    fun updatePosition(lat: Double, lng: Double, nowMs: Long = nowEpochMs()) {
         if (totalCells == 0) return
 
         // Convert scan radius to grid cell units
@@ -238,90 +338,26 @@ class CoverageTracker {
         val currentRow = ((lat - originLat) / (cellSizeMeters * latPerMeter)).toInt()
         val currentCol = ((lng - originLng) / (cellSizeMeters * lngPerMeter)).toInt()
 
-        val newScanned = _scannedCells.value.toMutableSet()
+        val map = _creditedCells.value.toMutableMap()
+        var changed = false
         for (dr in -radiusRows..radiusRows) {
             for (dc in -radiusCols..radiusCols) {
                 val r = currentRow + dr
                 val c = currentCol + dc
                 if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
-                if (newScanned.contains(Pair(r, c))) continue  // already scanned — skip distance check
+                val cell = Pair(r, c)
+                if (map[cell] != null) continue  // GPS tier can never upgrade — skip credited cells
 
                 val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
                 val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
 
                 val dist = GeofenceVerification.distanceMeters(lat, lng, cellLat, cellLng)
                 if (dist <= scanRadiusMeters) {
-                    newScanned.add(Pair(r, c))
+                    if (creditCell(map, cell, CoverageQuality.GRAZED, nowMs)) changed = true
                 }
             }
         }
-
-        _scannedCells.value = newScanned
-
-        val scannedCorridor = newScanned.count { it in corridorCells }
-        _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
-    }
-
-    // ── Frustum (AR-tier) coverage ───────────────────────────────────
-
-    /**
-     * AR tier: clears fog based on the camera frustum rather than a GPS radius.
-     *
-     * Marks corridor cells that are:
-     *  1. Within [rangeMeters] of the user, AND
-     *  2. Within [fovDegrees]/2 of the [headingDegrees] direction.
-     *
-     * @param lat user latitude
-     * @param lng user longitude
-     * @param headingDegrees camera heading (0=north, 90=east)
-     * @param fovDegrees horizontal field of view (default 63° for iPhone wide lens)
-     * @param rangeMeters maximum frustum reach in metres (default 15m)
-     */
-    fun updateWithFrustum(
-        lat: Double,
-        lng: Double,
-        headingDegrees: Float,
-        fovDegrees: Float = 63f,
-        rangeMeters: Double = 15.0,
-    ) {
-        if (totalCells == 0) return
-
-        val halfFov = fovDegrees / 2.0
-        val radiusRows = (rangeMeters * latPerMeter / (cellSizeMeters * latPerMeter)).toInt() + 1
-        val radiusCols = (rangeMeters * lngPerMeter / (cellSizeMeters * lngPerMeter)).toInt() + 1
-
-        val currentRow = ((lat - originLat) / (cellSizeMeters * latPerMeter)).toInt()
-        val currentCol = ((lng - originLng) / (cellSizeMeters * lngPerMeter)).toInt()
-
-        val newScanned = _scannedCells.value.toMutableSet()
-        for (dr in -radiusRows..radiusRows) {
-            for (dc in -radiusCols..radiusCols) {
-                val r = currentRow + dr
-                val c = currentCol + dc
-                if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
-                if (newScanned.contains(Pair(r, c))) continue  // already scanned — skip
-
-                val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
-                val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
-
-                val dist = GeofenceVerification.distanceMeters(lat, lng, cellLat, cellLng)
-                if (dist > rangeMeters) continue
-
-                // Compute bearing from user to cell and check it's inside the frustum cone
-                val bearing = AiDirectionEngine.bearingTo(lat, lng, cellLat, cellLng)
-                val angularDiff = abs(
-                    AiDirectionEngine.normalizeDegrees(bearing - headingDegrees.toDouble())
-                )
-                if (angularDiff <= halfFov) {
-                    newScanned.add(Pair(r, c))
-                }
-            }
-        }
-
-        _scannedCells.value = newScanned
-
-        val scannedCorridor = newScanned.count { it in corridorCells }
-        _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
+        if (changed) publish(map)
     }
 
     // ── Unscanned cell centers ────────────────────────────────────────
@@ -355,8 +391,10 @@ class CoverageTracker {
     // ── Reset ────────────────────────────────────────────────────────
 
     fun reset() {
+        _creditedCells.value = emptyMap()
         _scannedCells.value = emptySet()
         _coveragePercent.value = 0.0
+        _closePercent.value = 0.0
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
