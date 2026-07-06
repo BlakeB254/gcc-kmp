@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { scanCoverageEvents, cellCoverageSummary, pointsLedger } from '@/db/schema'
 import { gridCell } from '@/lib/world-observations'
-import { sql, eq } from 'drizzle-orm'
+import { sql, eq, and, gte, lte, inArray } from 'drizzle-orm'
 import { POINTS_PER_METER, STALE_AFTER_MS } from '@/lib/points-config'
 
 export interface RecordCoverageEventInput {
@@ -135,4 +135,84 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
   }
 
   return row
+}
+
+const MAX_RETRACT_WINDOW_MS = 10 * 60 * 1000
+
+export interface RetractCoverageInput {
+  deviceId: string
+  workerId: number
+  fromCapturedAt: string
+  toCapturedAt: string
+}
+
+/**
+ * Undo a device's coverage events in a bounded time window (INDOOR-flip
+ * retraction, spec §2/§3): claw back the points those events awarded, delete
+ * the events, and recompute each touched cell's summary from the surviving
+ * event log (deleting the summary row when nothing survives). The event log
+ * is the source of truth; the summary is always derivable — which is what
+ * makes retraction safe.
+ */
+export async function retractCoverageWindow(input: RetractCoverageInput) {
+  const fromMs = new Date(input.fromCapturedAt).getTime()
+  const toMs = new Date(input.toCapturedAt).getTime()
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return { deletedEvents: 0, cellsRecomputed: 0, error: 'invalid window' as const }
+  }
+  if (toMs - fromMs > MAX_RETRACT_WINDOW_MS) {
+    return { deletedEvents: 0, cellsRecomputed: 0, error: 'window too large' as const }
+  }
+
+  const deleted = await db
+    .delete(scanCoverageEvents)
+    .where(and(
+      eq(scanCoverageEvents.deviceId, input.deviceId),
+      eq(scanCoverageEvents.workerId, input.workerId),
+      gte(scanCoverageEvents.capturedAt, input.fromCapturedAt),
+      lte(scanCoverageEvents.capturedAt, input.toCapturedAt),
+    ))
+    .returning({ id: scanCoverageEvents.id, locationCellId: scanCoverageEvents.locationCellId })
+
+  if (deleted.length === 0) return { deletedEvents: 0, cellsRecomputed: 0 }
+
+  await db
+    .delete(pointsLedger)
+    .where(and(
+      eq(pointsLedger.referenceType, 'scan_coverage_event'),
+      inArray(pointsLedger.referenceId, deleted.map((d) => d.id)),
+    ))
+
+  const cellIds = [...new Set(deleted.map((d) => d.locationCellId))]
+  for (const cellId of cellIds) {
+    const [agg] = await db
+      .select({
+        firstScannedAt: sql<string | null>`MIN(${scanCoverageEvents.capturedAt})`,
+        lastScannedAt: sql<string | null>`MAX(${scanCoverageEvents.capturedAt})`,
+        totalDistanceMeters: sql<number>`COALESCE(SUM(${scanCoverageEvents.distanceMeters}), 0)`,
+        scanCount: sql<number>`COUNT(*)::int`,
+        hasClose: sql<boolean>`COALESCE(BOOL_OR(${scanCoverageEvents.quality} = 'close'), false)`,
+        lastCloseScannedAt: sql<string | null>`MAX(${scanCoverageEvents.capturedAt}) FILTER (WHERE ${scanCoverageEvents.quality} = 'close')`,
+      })
+      .from(scanCoverageEvents)
+      .where(eq(scanCoverageEvents.locationCellId, cellId))
+
+    if (!agg || agg.scanCount === 0 || agg.firstScannedAt === null || agg.lastScannedAt === null) {
+      await db.delete(cellCoverageSummary).where(eq(cellCoverageSummary.locationCellId, cellId))
+    } else {
+      await db
+        .update(cellCoverageSummary)
+        .set({
+          firstScannedAt: agg.firstScannedAt,
+          lastScannedAt: agg.lastScannedAt,
+          totalDistanceMeters: agg.totalDistanceMeters,
+          scanCount: agg.scanCount,
+          bestQuality: agg.hasClose ? 'close' : 'grazed',
+          lastCloseScannedAt: agg.lastCloseScannedAt,
+        })
+        .where(eq(cellCoverageSummary.locationCellId, cellId))
+    }
+  }
+
+  return { deletedEvents: deleted.length, cellsRecomputed: cellIds.length }
 }
