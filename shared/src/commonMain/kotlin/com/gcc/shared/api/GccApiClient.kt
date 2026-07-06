@@ -627,6 +627,13 @@ class GccApiClient(
             parameter("limit", limit)
         }
 
+    /** Every worker, across all pages — the admin list must match the
+     *  overview count, so a single capped fetch is not enough. */
+    suspend fun getAllAdminWorkers(verificationStatus: String? = null): List<Worker> =
+        fetchAllPages { page, limit ->
+            getAdminWorkers(page = page, limit = limit, verificationStatus = verificationStatus)
+        }
+
     suspend fun getAdminWorker(workerId: Int): Worker =
         get("/api/admin/workers/$workerId")
 

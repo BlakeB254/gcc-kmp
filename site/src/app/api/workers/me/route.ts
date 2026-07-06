@@ -4,6 +4,7 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { deleteWorkerAccount } from '@/lib/delete-worker'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
 import { cookies } from 'next/headers'
 
@@ -145,23 +146,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Verify the worker exists before deleting
-    const [worker] = await db
-      .select({ id: workers.id })
-      .from(workers)
-      .where(eq(workers.id, workerId))
-      .limit(1)
+    const deleted = await deleteWorkerAccount(workerId)
 
-    if (!worker) {
+    if (!deleted) {
       const isMobileReq = request.headers.get('authorization')?.startsWith('Bearer ')
       if (isMobileReq) {
         return NextResponse.json({ data: null, success: false, message: 'Worker not found' }, { status: 404 })
       }
       return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
     }
-
-    // Delete the worker record
-    await db.delete(workers).where(eq(workers.id, workerId))
 
     // Clear the auth cookie for web users
     const isMobile = request.headers.get('authorization')?.startsWith('Bearer ')

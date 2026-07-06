@@ -92,7 +92,7 @@ class AdminPanelViewModel(
         if (AdminTab.WORKERS in _uiState.value.loadedTabs) return
         scope.launch {
             try {
-                val workers = apiClient.getAdminWorkers()
+                val workers = apiClient.getAllAdminWorkers()
                 _uiState.value = _uiState.value.copy(
                     workers = workers,
                     loadedTabs = _uiState.value.loadedTabs + AdminTab.WORKERS,
@@ -113,7 +113,7 @@ class AdminPanelViewModel(
         if (_uiState.value.verifiedWorkers.isNotEmpty()) return
         scope.launch {
             try {
-                val workers = apiClient.getAdminWorkers(verificationStatus = "approved")
+                val workers = apiClient.getAllAdminWorkers(verificationStatus = "approved")
                 _uiState.value = _uiState.value.copy(verifiedWorkers = workers)
             } catch (_: Exception) {
                 // Don't surface a global error — dropdown handles empty state inline
@@ -162,7 +162,7 @@ class AdminPanelViewModel(
                         _uiState.value = _uiState.value.copy(stats = stats, recentActivity = activity, dailyStats = daily)
                     }
                     AdminTab.WORKERS -> {
-                        val workers = apiClient.getAdminWorkers()
+                        val workers = apiClient.getAllAdminWorkers()
                         _uiState.value = _uiState.value.copy(workers = workers)
                     }
                     AdminTab.ROUTES -> {

@@ -4,6 +4,7 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { deleteWorkerAccount } from '@/lib/delete-worker'
 
 export const runtime = 'nodejs'
 
@@ -98,7 +99,7 @@ export async function DELETE(
   }
 
   try {
-    await db.delete(workers).where(eq(workers.id, workerId))
+    await deleteWorkerAccount(workerId)
     return NextResponse.json({ data: { deleted: true } })
   } catch (error) {
     console.error('Error deleting worker:', error)
