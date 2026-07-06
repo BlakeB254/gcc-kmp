@@ -119,10 +119,12 @@ fun ArRouteScreen(
         overlay.setSceneVoteListener { vote -> viewModel.onSceneVote(vote) }
         overlay.setCeilingListener { detected -> viewModel.onCeilingPlane(detected) }
         overlay.setMarkerPlacedListener { lat, lng, label -> viewModel.onMarkerPlaced(lat, lng, label) }
+        overlay.setCoverageHitListener { hits -> viewModel.onCoverageRayHits(hits) }
         onDispose {
             overlay.setSceneVoteListener(null)
             overlay.setCeilingListener(null)
             overlay.setMarkerPlacedListener(null)
+            overlay.setCoverageHitListener(null)
             overlay.stop()
         }
     }
