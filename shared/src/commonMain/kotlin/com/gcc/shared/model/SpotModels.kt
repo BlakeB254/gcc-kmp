@@ -42,6 +42,12 @@ data class ObservedSpotItem(
      * the scan maps to the grid so future scans expect them.
      */
     val domain: String? = null,
+    /**
+     * Epoch millis when the item was observed. Lets post-processing correlate
+     * the item to the manifest's GPS/heading path samples (which carry atMs);
+     * without it an item can't be matched to where the camera actually was.
+     */
+    val atMs: Long? = null,
 )
 
 /**

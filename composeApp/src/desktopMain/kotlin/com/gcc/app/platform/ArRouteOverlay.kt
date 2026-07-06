@@ -14,6 +14,7 @@ actual class ArRouteOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
     actual fun updateGeoReference(lat: Double, lng: Double) {}
     actual fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>) {}
+    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
     actual fun updateBoundaries(outer: List<Pair<Double, Double>>, islands: List<List<Pair<Double, Double>>>) {}
     actual fun updateBoundaryStatus(isOutside: Boolean) {}
     actual fun start() {}

@@ -53,16 +53,31 @@ fun WorldObservation.toScanMapPin(): CommunityReport {
     return CommunityReport(
         id = SCAN_OBSERVATION_PIN_ID_BASE + id,
         type = CommunityReportType.SIGHTING,
-        coordinates = Coordinates(lat, lng),
-        description = itemType?.let { "Route scan: $it" } ?: "Route scan detection",
+        // NAMED args: the ctor is GeoJSON-ordered (lng, lat) — the positional
+        // call here transposed every scan-observation pin off the map.
+        coordinates = Coordinates(lat = lat, lng = lng),
+        description = run {
+            val source = if (sourceType == "ar_auto_detect") "AR scan" else "Route scan"
+            itemType?.let { "$source: $it" } ?: "$source detection"
+        },
         status = CommunityReportStatus.VERIFIED,
         tags = listOfNotNull(spotTagForItemType(itemType)),
         photoUrl = mediaUrl,
         itemType = itemType,
+        // Severity rides the report's existing AiAnalysis channel so pin
+        // detail UI and heat weighting see it without a new wire field.
+        aiAnalysis = severity?.let { AiAnalysis(severity = severityLabel(it)) },
         affectedRadiusMeters = 10.0, // world-observation grid cell size
         createdAt = now,
         updatedAt = now,
     )
+}
+
+/** Hotspot severity (1–5 stars) → the AiAnalysis low/medium/high vocabulary. */
+fun severityLabel(severity: Int): String = when {
+    severity >= 4 -> "high"
+    severity >= 2 -> "medium"
+    else -> "low"
 }
 
 /** Best-effort mapping from the observation itemType vocabulary to SpotTag. */

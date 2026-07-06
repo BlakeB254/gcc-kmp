@@ -111,7 +111,11 @@ fun DetectionReticleOverlay(
             }
 
             val distanceSuffix = detection.distanceMeters?.let { d ->
-                " · ${(d * 10).roundToInt() / 10.0}m"
+                // Lock-on needs ≤2m (NEAR_DISTANCE_METERS); past that the
+                // streak arc can never fill — say so instead of letting the
+                // user wonder. Also walks them into LiDAR/depth range.
+                val hint = if (d > 2.2) " · move closer" else ""
+                " · ${(d * 10).roundToInt() / 10.0}m$hint"
             } ?: ""
             val label = textMeasurer.measure(detection.label + distanceSuffix, labelStyle)
             drawText(

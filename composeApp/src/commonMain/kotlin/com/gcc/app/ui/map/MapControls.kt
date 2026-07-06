@@ -229,10 +229,11 @@ fun ScaleBar(
 ) {
     val spacing = GccTheme.spacing
 
-    // Approximate meters per pixel at Chicago latitude (~41.86) for given zoom
-    // Formula: metersPerPixel = 156543.03 * cos(lat) / 2^zoom
-    // At lat 41.86: cos(41.86 deg) ≈ 0.7441
-    val metersPerPixel = 156543.03 * 0.7441 / (1 shl zoom.toInt())
+    // Approximate meters per POINT at Chicago latitude (~41.86) for given zoom.
+    // The bar width is in dp (points) and MapLibre zoom is defined against
+    // 512px tiles, one level below the classic 256-tile 156543/2^z formula —
+    // hence 2^(zoom+1). At lat 41.86: cos(41.86 deg) ≈ 0.7441
+    val metersPerPixel = 156543.03 * 0.7441 / (1 shl (zoom.toInt() + 1))
 
     // Choose a round distance for the scale bar
     val (distanceMeters, label) = selectScaleDistance(metersPerPixel)

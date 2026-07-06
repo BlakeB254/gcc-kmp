@@ -41,8 +41,10 @@ import kotlin.math.cos
 import kotlin.math.log2
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
+import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.WorldMarkerKind
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.ui.components.ConfirmingOutdoorsChip
@@ -55,6 +57,7 @@ import com.gcc.app.ui.components.ScanMinimapOverlay
 import com.gcc.app.ui.components.SessionPointsPill
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
@@ -142,10 +145,14 @@ fun ArRouteScreen(
 
     // Pair every GPS fix with the AR camera position, then refresh the fog so
     // it appears as soon as the first pairing exists (fog placement is a no-op
-    // until then — see ArRouteOverlay's geo-reference contract).
+    // until then — see ArRouteOverlay's geo-reference contract). Fixes worse
+    // than MAX_GEO_REF_ACCURACY_METERS must not re-anchor the frame: one wild
+    // fix would drag every fog/vector/wall node with it.
     LaunchedEffect(ui.currentLat, ui.currentLng) {
         if (ui.currentLat != 0.0 || ui.currentLng != 0.0) {
-            overlay.updateGeoReference(ui.currentLat, ui.currentLng)
+            if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
+                overlay.updateGeoReference(ui.currentLat, ui.currentLng)
+            }
             overlay.updateFog(viewModel.unscannedCells()) { row, col ->
                 viewModel.cellCenterLatLng(row, col)
             }
@@ -165,6 +172,11 @@ fun ArRouteScreen(
         overlay.updateFog(viewModel.unscannedCells()) { row, col ->
             viewModel.cellCenterLatLng(row, col)
         }
+        // Positive feedback for credited ground: the same vector-scan quads
+        // the env scan draws, so both modes read as "surveyed graph paper".
+        overlay.updateScannedCells(
+            scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
+        )
     }
 
     // Expected-trash markers from the digital twin. Re-run on GPS ticks:
@@ -279,6 +291,27 @@ fun ArRouteScreen(
             }
         }
 
+        // Walking-pace prompt — same slot as the tracking prompt, which wins
+        // when both apply (degraded tracking already tells them to slow down).
+        if (ui.movingTooFast && trackingState != TrackingState.LIMITED) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Slow down — scanning works best at an easy walking pace.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+            }
+        }
+
         // Expected-observation confirm sheet (rectify flow).
         nearbyExpected?.let { obs ->
             Column(
@@ -373,9 +406,12 @@ fun ArRouteScreen(
                 val spanNorthMeters = (maxLat - minLat) * 111_320.0
                 val spanEastMeters = (maxLng - minLng) * 111_320.0 * cos(centerLat * PI / 180.0)
                 val boxPx = with(density) { minOf(miniMapWidth.toPx(), miniMapHeight.toPx()) }
-                // Invert metersToPixels: find z where the padded span fits the box.
+                // Invert metersToPixels: find z where the padded span fits the box,
+                // then shift into MapLibre point-space (boxPx is PHYSICAL pixels)
+                // so the basemap frames the same extent the overlay draws.
                 val spanMeters = maxOf(spanNorthMeters, spanEastMeters) * 1.2
-                val zoom = log2(156543.03392 * cos(centerLat * PI / 180.0) * boxPx / spanMeters)
+                val zoom = log2(156543.03392 * cos(centerLat * PI / 180.0) * boxPx / spanMeters) -
+                    mapOverlayZoomBias(density.density)
                 Triple(centerLat, centerLng, zoom)
             }
             val mapCenterLat = blockFrame?.first ?: ui.currentLat
@@ -404,7 +440,7 @@ fun ArRouteScreen(
                     centerLng = mapCenterLng,
                     zoom = mapZoom,
                     scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
-                    cellSizeMeters = 3.0,
+                    cellSizeMeters = CoverageTracker.cellSizeMeters,
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
                     fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,

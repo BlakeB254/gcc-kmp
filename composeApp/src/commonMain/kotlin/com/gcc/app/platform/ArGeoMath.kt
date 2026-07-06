@@ -8,6 +8,22 @@ const val METERS_PER_DEG_LAT = 111_320.0
 /** cos(latDegrees), for scaling east-west (longitude) distances at a given latitude. */
 fun lngScaleFor(latDegrees: Double): Double = cos(latDegrees * kotlin.math.PI / 180.0)
 
+/**
+ * Worst GPS horizontal accuracy allowed to (re)anchor the AR geo-reference.
+ * Every fix that pairs re-centers ALL geo-derived AR geometry (fog, vector
+ * cells, walls, marker lat/lng resolution), so a bad fix doesn't just skip
+ * credit — it drags the whole frame. 20m matches the OutdoorGate's
+ * indoor-evidence threshold: fixes worse than this were already treated as
+ * "not trustworthy outdoor GPS" for gating; now they can't move the anchor
+ * either. Null accuracy (invalid/unknown fix) is rejected — deny-by-default,
+ * the next good fix pairs within a second or two outdoors.
+ */
+const val MAX_GEO_REF_ACCURACY_METERS = 20.0
+
+/** True when a fix with this horizontal accuracy may become the AR geo-reference. */
+fun isGeoRefFixUsable(accuracyMeters: Double?): Boolean =
+    accuracyMeters != null && accuracyMeters <= MAX_GEO_REF_ACCURACY_METERS
+
 /** (lat, lng) -> AR-local (x, z) meters, relative to the given geo reference. */
 fun latLngToLocal(
     lat: Double, lng: Double,

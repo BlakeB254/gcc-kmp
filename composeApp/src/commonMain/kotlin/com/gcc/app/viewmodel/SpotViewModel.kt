@@ -1,5 +1,6 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
@@ -113,6 +114,27 @@ class SpotViewModel(
         scope.launch { sessionUploader.flushPending() }
     }
 
+    // Confirmed litter flushes to /api/observations/ar-detected on the same
+    // 30s cadence route scans use (SpotScreen's coverage loop drives it), so
+    // tagged items reach the public map DURING the scan instead of only at
+    // submit — and survive an abandoned session. The spot report submitted at
+    // Complete Scan supersedes these early markers per cell+itemType
+    // server-side, so no duplicate pins result.
+    private val arMarkerQueue = ArMarkerQueue(
+        submitFn = { markers ->
+            try {
+                apiClient.reportArDetectedMarkers(markers)
+            } catch (e: Exception) {
+                DiagnosticsLog.error("ar-marker-flush", "flush of ${markers.size} markers failed (kept queued)", e)
+                throw e
+            }
+        },
+    )
+
+    fun flushArMarkers() {
+        scope.launch { arMarkerQueue.flush() }
+    }
+
     fun addPhoto(photo: CapturedPhoto) {
         val current = _uiState.value
         if (current.capturedPhotos.size >= MAX_PHOTOS) return
@@ -187,9 +209,28 @@ class SpotViewModel(
                 GeofenceVerification.distanceMeters(prior.lat, prior.lng, item.lat, item.lng) < 4.0
         }
         if (duplicate) return
-        _uiState.value = _uiState.value.copy(observedItems = existing + item)
-        observedItemStamps.add(Clock.System.now().toEpochMilliseconds())
+        val nowMs = Clock.System.now().toEpochMilliseconds()
+        // Stamp when the producer didn't: atMs is what lets post-processing
+        // match this item to the manifest's GPS/heading path samples.
+        val stamped = if (item.atMs == null) item.copy(atMs = nowMs) else item
+        _uiState.value = _uiState.value.copy(observedItems = existing + stamped)
+        observedItemStamps.add(nowMs)
         DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
+        // Litter (not landmark elements) also queues for the 30s marker
+        // flush; the 10s indoor trailing purge usually beats the flush, same
+        // accepted trade-off as route markers.
+        if (stamped.domain == null || stamped.domain == "litter") {
+            scope.launch {
+                arMarkerQueue.enqueue(
+                    ArDetectedMarkerRequest(
+                        lat = stamped.lat,
+                        lng = stamped.lng,
+                        label = TrashItemCatalog.canonicalType(stamped.itemType),
+                        capturedAt = Clock.System.now(),
+                    ),
+                )
+            }
+        }
     }
 
     fun removePhoto(index: Int) {

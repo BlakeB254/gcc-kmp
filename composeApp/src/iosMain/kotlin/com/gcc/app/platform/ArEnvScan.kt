@@ -381,15 +381,20 @@ actual class ArEnvScanOverlay actual constructor() {
         if (native != null) {
             // Native path: ALL Vision classification runs in Swift
             // (GccArNative.classifySceneLabels) — Kotlin only scores the
-            // shared "identifier|confidence" packets.
+            // shared "identifier|confidence" packets. Empty + frame present
+            // means Vision failed — back off like the SceneKit path instead
+            // of hot-polling the failure; empty with no frame is just the
+            // session warming up (normal cadence, matches SceneKit no-frame).
             commonObs = parseSceneLabels(native.classifySceneLabels())
-            if (commonObs.isEmpty()) return false
+            if (commonObs.isEmpty()) return native.pixelBufferOrNull() != null
         } else {
             val pixelBuffer = frame?.capturedImage ?: return false
             val classifyRequest = VNClassifyImageRequest()
-            val saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+            // Labels-only ticks (analysis paused, scene vote due) never use
+            // saliency — don't pay for it just to throw it away below.
+            val saliency = if (analysisEnabled) VNGenerateObjectnessBasedSaliencyImageRequest() else null
             val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
-            handler.performRequests(listOf(classifyRequest, saliency), error = null)
+            handler.performRequests(listOfNotNull(classifyRequest, saliency), error = null)
 
             val observations = classifyRequest.results
                 ?.filterIsInstance<VNClassificationObservation>()

@@ -23,6 +23,7 @@ import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.ArEnvScanView
 import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
+import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.decodeImageBitmap
 import com.gcc.app.platform.pickFromLibrary
@@ -191,7 +192,7 @@ fun CameraCapture(
                         centerLng = currentLocation.lng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         scanCellCenters = scanCellCenters,
-                        cellSizeMeters = 3.0,
+                        cellSizeMeters = CoverageTracker.cellSizeMeters,
                         trashItems = trashItems,
                         typedTrashItems = typedTrashItems,
                         fogCellCenters = fogCellCenters,

@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
@@ -29,8 +30,10 @@ private val VeilSlate = Color(0xFF1E293B)
  * around the map's fixed center) the freshness of the surrounding coverage
  * ledger, the zones this scan session has credited, and geo-tagged trash
  * items. Rendered in GccMap's content slot — the minimap has no gestures and
- * a fixed zoom, so a straight Mercator meters→pixels projection matches the
- * map underneath.
+ * a fixed zoom, so a Mercator meters→pixels projection biased into
+ * physical-pixel space (mapOverlayZoomBias) matches the map underneath.
+ * [zoom] is the MapLibre CAMERA zoom (the same value handed to GccMap);
+ * the overlay applies the bias itself.
  *
  * Visual language (mirrors the AR fog): never-scanned = fog dots,
  * stale = amber tint, this session's credited zones = green fill,
@@ -68,13 +71,17 @@ fun ScanMinimapOverlay(
 ) {
     Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
+        // DrawScope works in physical pixels; the basemap camera zoom is
+        // point-space. One biased zoom keeps every layer aligned to the
+        // streets MapLibre actually draws.
+        val overlayZoom = zoom + mapOverlayZoomBias(density)
 
         fun toOffset(lat: Double, lng: Double): Offset {
             val eastMeters = (lng - centerLng) * 111_320.0 * lngScale
             val northMeters = (lat - centerLat) * 111_320.0
             return Offset(
-                size.width / 2f + metersToPixels(eastMeters, centerLat, zoom),
-                size.height / 2f - metersToPixels(northMeters, centerLat, zoom),
+                size.width / 2f + metersToPixels(eastMeters, centerLat, overlayZoom),
+                size.height / 2f - metersToPixels(northMeters, centerLat, overlayZoom),
             )
         }
 
@@ -92,7 +99,7 @@ fun ScanMinimapOverlay(
 
         fun cellRect(lat: Double, lng: Double, sideMeters: Double, overscan: Float): Rect? {
             // Overscan slightly so adjacent cells fuse without hairline seams.
-            val side = metersToPixels(sideMeters, centerLat, zoom).coerceAtLeast(2f) * overscan
+            val side = metersToPixels(sideMeters, centerLat, overlayZoom).coerceAtLeast(2f) * overscan
             val c = toOffset(lat, lng)
             if (c.x < -side || c.x > size.width + side) return null
             if (c.y < -side || c.y > size.height + side) return null
@@ -158,7 +165,7 @@ fun ScanMinimapOverlay(
         // paper" the AR ground grid projects onto the world. Anchored to a
         // real cell center when one exists so lines land on cell EDGES.
         run {
-            var spacing = metersToPixels(cellSizeMeters, centerLat, zoom)
+            var spacing = metersToPixels(cellSizeMeters, centerLat, overlayZoom)
             if (spacing >= 3f) {
                 if (spacing < 8f) spacing *= 2f // drop to every 2nd line when dense
                 val anchorCell = scanCellCenters.firstOrNull()

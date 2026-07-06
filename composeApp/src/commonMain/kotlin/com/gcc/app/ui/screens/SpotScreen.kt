@@ -30,6 +30,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
+import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.arEnvScanSupported
 import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
@@ -55,6 +56,7 @@ import kotlinx.datetime.Clock
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import kotlin.math.cos
 import kotlin.math.pow
@@ -172,6 +174,7 @@ fun SpotScreen(
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
+                    onFlushMarkers = { viewModel.flushArMarkers() },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -264,6 +267,8 @@ private fun CameraPhase(
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
+    /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
+    onFlushMarkers: () -> Unit = {},
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -272,7 +277,7 @@ private fun CameraPhase(
     val isScanMode = deviceCapabilities.deviceClass != DeviceClass.BASIC
     val scanLocation = spotLocation
         ?: currentLocation
-        ?: Coordinates(MapStyles.NORTH_LAWNDALE_CENTER_LAT, MapStyles.NORTH_LAWNDALE_CENTER_LNG)
+        ?: Coordinates(lat = MapStyles.NORTH_LAWNDALE_CENTER_LAT, lng = MapStyles.NORTH_LAWNDALE_CENTER_LNG)
 
     // ARKit environment-scan surface (ground grid + vector-scan overlay +
     // trash lock-on). Null on unsupported hardware → AVCapture viewfinder.
@@ -280,11 +285,15 @@ private fun CameraPhase(
     val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
     // Gate pauses AR frame analysis indoors (same behavior the route AR has),
-    // and geo-references pair every GPS fix with the AR camera position.
+    // and geo-references pair every GPS fix with the AR camera position —
+    // except fixes worse than MAX_GEO_REF_ACCURACY_METERS, which must not
+    // re-anchor the frame (one wild fix drags all geo-derived AR geometry).
     LaunchedEffect(arOverlay) {
         if (arOverlay == null) return@LaunchedEffect
         locationProvider.locationFlow.collect { loc ->
-            arOverlay.updateGeoReference(loc.lat, loc.lng)
+            if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
+                arOverlay.updateGeoReference(loc.lat, loc.lng)
+            }
         }
     }
 
@@ -395,12 +404,18 @@ private fun CameraPhase(
     }
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(Unit) {
-        onDispose { flushScope.launch { coverageQueue.flush() } }
+        onDispose {
+            flushScope.launch { coverageQueue.flush() }
+            onFlushMarkers()
+        }
     }
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000L)
             coverageQueue.flush()
+            // Confirmed litter reaches the public map mid-scan on the same
+            // cadence route AR markers use (was submit-only before).
+            onFlushMarkers()
         }
     }
 
@@ -814,6 +829,12 @@ private fun CameraPhase(
         // scan or submit from inside.)
 
         // Primary action: Complete Scan, bottom-center (the Pokéball spot).
+        // ALWAYS tappable — it is the sole exit (no top ✕ by design), and the
+        // VM handles every state: photos → submit, none → archive + close.
+        // Gating the tap on captureAllowed stranded users whenever the gate
+        // sat in UNCERTAIN (no GoOutside escape there) or no photo was ever
+        // taken; capture itself is already gated upstream, so an always-on
+        // exit leaks no indoor data. Dim = "nothing to submit yet" cue only.
         val canComplete = photos.isNotEmpty() && captureAllowed
         Box(
             modifier = Modifier
@@ -822,7 +843,7 @@ private fun CameraPhase(
                 .padding(bottom = 24.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
-                .clickable(enabled = canComplete) { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
+                .clickable { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
             Text(
@@ -905,6 +926,10 @@ private fun LocationPhase(
     onNext: () -> Unit,
 ) {
     val mapZoom = MapStyles.ZOOM_ACTIVE_JOB
+    // Draw + drag conversions work in physical pixels; the basemap camera
+    // zoom is point-space (see mapOverlayZoomBias). Both directions must use
+    // the SAME biased zoom or the radius ring and drag speed desync from the map.
+    val overlayZoom = mapZoom + mapOverlayZoomBias(androidx.compose.ui.platform.LocalDensity.current.density)
 
     // Track whether user has dragged the spot away from GPS
     val hasMoved = spotLat != gpsLat || spotLng != gpsLng
@@ -973,7 +998,7 @@ private fun LocationPhase(
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             val (dLat, dLng) = pixelDeltaToLatLng(
-                                dragAmount.x, dragAmount.y, spotLat, mapZoom,
+                                dragAmount.x, dragAmount.y, spotLat, overlayZoom,
                             )
                             val maxOffsetDeg = 100.0 / 111320.0
                             val newLat = (spotLat + dLat).coerceIn(
@@ -990,13 +1015,13 @@ private fun LocationPhase(
 
                 when (areaMode) {
                     AreaMode.CIRCLE -> {
-                        val pixelRadius = metersToPixels(radiusMeters, spotLat, mapZoom)
+                        val pixelRadius = metersToPixels(radiusMeters, spotLat, overlayZoom)
                         drawCircle(color = GccSky.copy(alpha = 0.2f), radius = pixelRadius, center = center)
                         drawCircle(color = GccSky, radius = pixelRadius, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
                     }
                     AreaMode.RECTANGLE -> {
-                        val halfPxW = metersToPixels(rectWidth, spotLat, mapZoom) / 2f
-                        val halfPxH = metersToPixels(rectHeight, spotLat, mapZoom) / 2f
+                        val halfPxW = metersToPixels(rectWidth, spotLat, overlayZoom) / 2f
+                        val halfPxH = metersToPixels(rectHeight, spotLat, overlayZoom) / 2f
                         val topLeft = androidx.compose.ui.geometry.Offset(center.x - halfPxW, center.y - halfPxH)
                         val rectSize = androidx.compose.ui.geometry.Size(halfPxW * 2, halfPxH * 2)
                         drawRect(color = GccSky.copy(alpha = 0.2f), topLeft = topLeft, size = rectSize)

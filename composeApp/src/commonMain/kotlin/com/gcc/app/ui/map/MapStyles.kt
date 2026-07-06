@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import com.gcc.app.ui.theme.*
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.log2
 import kotlin.math.pow
 
 /** Style constants for the map layers */
@@ -184,6 +185,20 @@ fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
     val metersPerPixel = 156543.03392 * cos(lat * kotlin.math.PI / 180.0) / 2.0.pow(zoom)
     return (meters / metersPerPixel).toFloat()
 }
+
+/**
+ * Zoom bias that aligns physical-pixel Canvas projections with the MapLibre
+ * basemap underneath. ×density: MapLibre's zoom scale is defined per POINT
+ * while a Compose DrawScope works in PHYSICAL pixels. ×2: MapLibre zoom is
+ * defined against 512px tiles — one full level below the 256-tile
+ * 156543/2^z formula in [metersToPixels]. Any overlay drawn over a GccMap
+ * must call [metersToPixels] (and every inverse pixel→geo conversion) with
+ * `cameraZoom + mapOverlayZoomBias(density)`, while the camera itself keeps
+ * the unbiased zoom; skipping the bias renders geometry concentric but
+ * ~density×2 too small against the basemap (verified empirically against a
+ * MapLibre-rendered underlay in the boundary editor).
+ */
+fun mapOverlayZoomBias(density: Float): Double = log2(density.toDouble() * 2.0)
 
 /** Format a coordinate to 4 decimal places, handling negative values correctly. */
 fun formatCoord(value: Double): String {
