@@ -1170,7 +1170,13 @@ class GccApiClient(
 
     /** PUT a blob straight to a presigned URL (no auth header — it's in the signature). */
     suspend fun uploadToPresignedUrl(url: String, bytes: ByteArray, contentType: String) {
-        val response = httpClient.put {
+        // A presigned URL is fully self-authenticating, and R2 rejects a
+        // request that adds a SECOND auth mechanism: [httpClient]'s
+        // BearerAuth plugin stamps the worker JWT on every request, and that
+        // Authorization header alone makes R2 answer 400 InvalidRequest
+        // ("Missing x-amz-content-sha256") — so this PUT must use the
+        // token-free [siteClient].
+        val response = siteClient.put {
             // Presigned URLs are signature-sensitive: ktor's normal URL
             // parsing DECODES and RE-ENCODES the path and query, changing
             // percent-encoding (e.g. %2F in X-Amz-Credential, %3A in the
@@ -1183,7 +1189,10 @@ class GccApiClient(
             setBody(bytes)
         }
         if (!response.status.isSuccess()) {
-            throw Exception("presigned upload failed: ${response.status.value}")
+            // Surface the storage host's error body — S3-style 400s carry the
+            // decisive code (BadDigest, InvalidRequest, …) only in the XML.
+            val detail = runCatching { response.bodyAsText() }.getOrNull()?.trim().orEmpty()
+            throw Exception("presigned upload failed: ${response.status.value} ${detail.take(300)}".trim())
         }
     }
 

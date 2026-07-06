@@ -80,6 +80,9 @@ data class SpotUiState(
     val observedItems: List<ObservedSpotItem> = emptyList(),
     /** Guided 3D capture of large litter (measured USDZ model), when performed. */
     val objectCapture: ObjectCaptureResult? = null,
+    /** The finished session's track + credited cells — drives the shaded
+     *  coverage map on the Scan Session Complete screen. */
+    val completedSession: EnvScanSessionDraft? = null,
 )
 
 data class DuplicateMatch(
@@ -382,7 +385,17 @@ class SpotViewModel(
             // user on the camera.)
             DiagnosticsLog.info("spot-submit", "Complete Scan with no captures — archiving session, closing")
             sessionDraft?.let { uploadEnvScanSession(it, reportId = null) }
-            _uiState.value = _uiState.value.copy(scanFinishedWithoutReport = true)
+            if (sessionDraft != null && sessionDraft.scannedCells.isNotEmpty()) {
+                // No report to file, but ground WAS covered — show the
+                // session-complete summary with the shaded coverage map
+                // instead of silently dropping the user on the dashboard.
+                _uiState.value = _uiState.value.copy(
+                    phase = SpotPhase.RESULT,
+                    completedSession = sessionDraft,
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(scanFinishedWithoutReport = true)
+            }
             return
         }
         pendingSessionDraft = sessionDraft
@@ -637,6 +650,8 @@ class SpotViewModel(
                     phase = SpotPhase.RESULT,
                     submittedReport = rewardedReport,
                     matchingBounties = spotResponse.data.matchingBounties,
+                    // Session coverage feeds the completion screen's shaded map.
+                    completedSession = pendingSessionDraft,
                 )
 
                 // One session = one capture: archive the full bundle to R2.
@@ -747,6 +762,16 @@ class SpotViewModel(
         _uiState.value = SpotUiState()
         observedItemStamps.clear()
         photoStamps.clear()
+    }
+
+    /**
+     * Consume the one-shot "scan finished without report" close signal. The
+     * view model is a Koin singleton, so without this the flag stayed true
+     * after the screen closed once — and every later Environment Scan open
+     * saw it and instantly closed itself until the app restarted.
+     */
+    fun consumeScanFinishedSignal() {
+        _uiState.value = _uiState.value.copy(scanFinishedWithoutReport = false)
     }
 
     private fun SpotUiState.effectiveAffectedRadiusMeters(): Double {
