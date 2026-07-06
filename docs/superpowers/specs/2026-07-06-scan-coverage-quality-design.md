@@ -149,6 +149,17 @@ Files: `ScanMinimapOverlay.kt`, `SpotScreen.kt` (~:585-605), AR overlays
   saliency bbox — the trash path does this); carry width/extent through
   ObservedSpotItem → world_observations → a close-zoom footprint layer on the map,
   with the cleanliness heatmap remaining the far-zoom representation.
+- **Full-session AR capture to R2 (Blake, same day):** today's manifests ship GPS
+  path (position + heading + timestamps), gate events, items, spot photos, and
+  object-capture USDZ — but NOT continuous video, per-frame camera pose/intrinsics,
+  or LiDAR depth (sceneDepth is enabled on the ARKit config and discarded unread;
+  flagged as the top DGX post-processing gap in the PR #85 recording audit).
+  Recording while LiDAR-scanning IS possible on the same ARSession: encode
+  `capturedImage` via AVAssetWriter + JSONL pose/intrinsics sidecar + sceneDepth
+  keyframes, chunk-uploaded through the existing presigned-PUT queue. Constraints
+  to design for: thermal (existing "serious" shed point), battery, multi-GB
+  sessions (resumable upload, Wi-Fi/charging policy). This is the third leg of the
+  live-world-model follow-up spec alongside the two items above.
 - **Purge-scope guarantee (confirmed in THIS build, recorded for posterity):** the
   INDOOR purge/retraction is windowed to the 10s before the gate flip — a long
   outdoor scan followed by walking indoors keeps everything except the doorway
