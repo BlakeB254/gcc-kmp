@@ -43,6 +43,18 @@ class CoverageEventQueue(
      */
     private var inFlightCount = 0
 
+    /**
+     * Guarded by [mutex]. Set by [purgeSince] when an in-window event was shielded
+     * by [inFlightCount] (i.e. skipped because it was already handed to `submitFn`).
+     * If that in-flight submit later fails, the shielded event is still sitting in
+     * `pending` — but by then the server-side retraction window for it has already
+     * run, so a later flush() must not resubmit it. [flush] applies this deferred
+     * cutoff (full walk, nothing in-flight to protect) on the failure/exception
+     * paths and clears it once the queue fully drains. `maxOf` across repeated
+     * purgeSince calls during the same in-flight window so the widest cutoff wins.
+     */
+    private var pendingPurgeCutoffMs: Long? = null
+
     private fun loadPersisted(): List<ScanCoverageEventRequest> {
         val json = settings.getStringOrNull(KEY_PENDING_EVENTS) ?: return emptyList()
         return try {
@@ -67,6 +79,46 @@ class CoverageEventQueue(
     }
 
     /**
+     * Must be called with `mutex` already held. Removes events at index >=
+     * [fromIndex] whose parseable `capturedAt` is >= [cutoffEpochMs], walking
+     * back-to-front so removals don't shift indices still to be examined.
+     * Unparseable timestamps are kept (the server validates them). Returns the
+     * number of events removed. Shared by [purgeSince] (`fromIndex =
+     * inFlightCount`, protecting the in-flight prefix) and the deferred purge
+     * applied in [flush] (`fromIndex = 0`, a full walk once nothing is in flight).
+     */
+    private fun removeInWindowFrom(fromIndex: Int, cutoffEpochMs: Long): Int {
+        val before = pending.size
+        var i = pending.size - 1
+        while (i >= fromIndex) {
+            val at = try {
+                Instant.parse(pending[i].capturedAt).toEpochMilliseconds()
+            } catch (e: Exception) {
+                i--
+                continue
+            }
+            if (at >= cutoffEpochMs) {
+                pending.removeAt(i)
+            }
+            i--
+        }
+        return before - pending.size
+    }
+
+    /**
+     * Must be called with `mutex` already held. If a deferred purge cutoff is
+     * pending, applies it now (full walk — nothing is in flight at this point)
+     * and clears it. Called from [flush]'s failure/exception paths, where the
+     * shielded in-flight batch is still sitting in `pending` unsent.
+     */
+    private fun applyDeferredPurgeLocked() {
+        val cutoff = pendingPurgeCutoffMs ?: return
+        val dropped = removeInWindowFrom(0, cutoff)
+        if (dropped > 0) persistLocked()
+        pendingPurgeCutoffMs = null
+    }
+
+    /**
      * INDOOR-flip purge: drop still-pending events captured at/after the
      * cutoff so they never reach the server, and re-persist. Returns how many
      * were dropped. Events that already flushed are handled by the retraction
@@ -84,24 +136,30 @@ class CoverageEventQueue(
      * Iterates by explicit index (not removeAll) so the in-flight prefix can
      * be skipped precisely; walks back-to-front so removals don't shift the
      * indices still to be examined.
+     *
+     * Deferred-purge semantics for the shielded in-flight prefix: an in-window
+     * event sitting in that prefix is either (a) delivered — the in-flight
+     * submit succeeds, and whatever server-side retraction ran after its
+     * arrival is the only thing that can still undo it, this queue has nothing
+     * left to do — or (b) dropped — the in-flight submit fails, and [flush]
+     * applies the cutoff recorded here ([pendingPurgeCutoffMs]) via
+     * [applyDeferredPurgeLocked] before returning, once the prefix is no longer
+     * in flight. Either way, a shielded event is never resubmitted after a
+     * failed flush.
      */
     suspend fun purgeSince(cutoffEpochMs: Long): Int {
         mutex.withLock {
-            val before = pending.size
-            var i = pending.size - 1
-            while (i >= inFlightCount) {
-                val at = try {
-                    Instant.parse(pending[i].capturedAt).toEpochMilliseconds()
+            val shielded = (0 until inFlightCount).any { idx ->
+                try {
+                    Instant.parse(pending[idx].capturedAt).toEpochMilliseconds() >= cutoffEpochMs
                 } catch (e: Exception) {
-                    i-- // unparseable timestamp: keep (server validates)
-                    continue
+                    false
                 }
-                if (at >= cutoffEpochMs) {
-                    pending.removeAt(i)
-                }
-                i--
             }
-            val dropped = before - pending.size
+            if (shielded) {
+                pendingPurgeCutoffMs = maxOf(pendingPurgeCutoffMs ?: Long.MIN_VALUE, cutoffEpochMs)
+            }
+            val dropped = removeInWindowFrom(inFlightCount, cutoffEpochMs)
             if (dropped > 0) persistLocked()
             return dropped
         }
@@ -147,12 +205,27 @@ class CoverageEventQueue(
                     inFlightCount = b.size
                     b
                 }
-                if (batch.isEmpty()) return true
+                if (batch.isEmpty()) {
+                    // Fully drained: any shielded in-window events from purgeSince() were
+                    // either submitted in an earlier successful iteration (server has them;
+                    // this queue can do nothing more) or there never was a shielded event.
+                    // Either way there is nothing left to defer-purge.
+                    mutex.withLock { pendingPurgeCutoffMs = null }
+                    return true
+                }
 
                 try {
                     val response = submitFn(batch)
                     if (!response.success) {
-                        mutex.withLock { inFlightCount = 0 }
+                        // Batch rejected: it stays in `pending` unsent. If purgeSince()
+                        // shielded an in-window event inside this exact batch, that event
+                        // is still here — but the retraction window it depended on has
+                        // already run, so it must be dropped now rather than resubmitted
+                        // by a later flush().
+                        mutex.withLock {
+                            inFlightCount = 0
+                            applyDeferredPurgeLocked()
+                        }
                         return false
                     }
                     // Position-based removal, not removeAll(batch): ScanCoverageEventRequest
@@ -169,7 +242,13 @@ class CoverageEventQueue(
                         persistLocked()
                     }
                 } catch (e: Exception) {
-                    mutex.withLock { inFlightCount = 0 }
+                    // Same reasoning as the failure-response branch above: the batch never
+                    // left `pending`, so any shielded in-window event in it must be
+                    // defer-purged now, not left to resubmit later.
+                    mutex.withLock {
+                        inFlightCount = 0
+                        applyDeferredPurgeLocked()
+                    }
                     return false
                 }
             }

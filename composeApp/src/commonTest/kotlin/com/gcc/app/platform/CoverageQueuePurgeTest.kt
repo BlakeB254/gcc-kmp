@@ -135,6 +135,59 @@ class CoverageQueuePurgeTest {
         assertEquals(0, secondFlushCalls) // empty batch — submitFn never invoked
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun deferredPurgeDropsShieldedEventsAfterFailedFlush() = runTest {
+        val settings = FakeSettings()
+        val submitGate = CompletableDeferred<ScanCoverageSubmitResponse>()
+        var submitCallCount = 0
+        var submittedBatchSize = -1
+        val queue = CoverageEventQueue(
+            submitFn = { batch ->
+                submitCallCount++
+                submittedBatchSize = batch.size
+                submitGate.await() // holds flush() mid-submit until the test completes it
+            },
+            settings = settings,
+        )
+        queue.enqueue(event("2026-07-06T14:00:00Z")) // pre-window
+        queue.enqueue(event("2026-07-06T15:00:20Z")) // in-window
+
+        val flushResult = CompletableDeferred<Boolean>()
+        val flushJob = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            flushResult.complete(queue.flush())
+        }
+        assertEquals(1, submitCallCount)
+        assertEquals(2, submittedBatchSize)
+
+        // Both events are in the in-flight prefix, so purgeSince must shield them —
+        // it cannot drop them yet, since flush()'s positional removal still expects
+        // to find exactly this prefix at the front of `pending` once submitFn returns.
+        val cutoff = kotlinx.datetime.Instant.parse("2026-07-06T15:00:00Z").toEpochMilliseconds()
+        val dropped = queue.purgeSince(cutoffEpochMs = cutoff)
+        assertEquals(0, dropped)
+
+        // Fail the in-flight submit: the batch stays queued. The retraction window
+        // for the in-window event has since closed, so a later flush() must never
+        // resubmit it — the deferred purge must drop it now instead.
+        submitGate.complete(ScanCoverageSubmitResponse(inserted = 0, success = false))
+        advanceUntilIdle()
+        flushJob.join()
+
+        assertTrue(!flushResult.await())
+        assertEquals(1, submitCallCount) // no resubmission attempt within this flush() call
+
+        // Reloading from persisted state: only the pre-window event survived: the
+        // shielded in-window event was dropped by the deferred purge on failure.
+        var flushedCount = -1
+        val reloaded = CoverageEventQueue(
+            submitFn = { flushedCount = it.size; ScanCoverageSubmitResponse(it.size, true) },
+            settings = settings,
+        )
+        assertTrue(reloaded.flush())
+        assertEquals(1, flushedCount)
+    }
+
     @Test
     fun retractionQueueFlushesAndRetriesOnFailure() = runTest {
         val settings = FakeSettings()
