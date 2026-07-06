@@ -64,6 +64,7 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.pow
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AreaMode
@@ -461,6 +462,12 @@ private fun CameraPhase(
             ?: locationProvider.currentLocation.filterNotNull().first()
         tracker.initFromRoute(listOf(anchor))
         trackerReady = true
+        // Phase the AR ground grid to the tracker's cell lattice so the
+        // on-camera grid lines register with the minimap's grid (the overlay
+        // re-derives the AR-local phase on every geo-reference re-pair).
+        tracker.latticeOrigin()?.let { (lat0, lng0) ->
+            arOverlay?.setGridLatticeOrigin(lat0, lng0)
+        }
 
         // Ledger freshness around the scan site (display-only; failures fall
         // back to the last cached snapshot of this area).
@@ -2027,24 +2034,32 @@ private fun BountyMatchCard(
 
 
 /**
- * Display-only "never scanned" fog for the minimap: 10m grid points within
- * ~75m of the anchor that have no ledger cell (fresh OR stale) within 7m.
+ * Display-only "never scanned" fog for the minimap: canonical ~10m ledger
+ * cells within ~75m of the anchor that have no ledger cell (fresh OR stale)
+ * within 7m. Cell centers are quantized to the SAME fixed-constant lattice
+ * as [SessionPointsEstimator.gridCell10m] / the server's `gridCell`
+ * (111_000 / 82_300, floor-indexed), so fog tiles sit flush with the
+ * fresh/stale cells the server returns instead of on an anchor-relative
+ * grid that straddles them.
  */
-private fun neverScannedGrid(
+internal fun neverScannedGrid(
     anchor: Coordinates,
     serverCells: List<MapCoverageCell>,
 ): List<Pair<Double, Double>> {
-    val latStep = 10.0 / 111_320.0
-    val lngStep = 10.0 / (111_320.0 * cos(anchor.lat * kotlin.math.PI / 180.0))
+    val latStep = 10.0 / 111_000.0
+    val lngStep = 10.0 / 82_300.0
+    val baseRow = floor(anchor.lat / latStep).toInt()
+    val baseCol = floor(anchor.lng / lngStep).toInt()
+    val cosLat = cos(anchor.lat * kotlin.math.PI / 180.0)
     val out = mutableListOf<Pair<Double, Double>>()
     for (dr in -7..7) {
         for (dc in -7..7) {
             if (dr * dr + dc * dc > 7 * 7) continue
-            val lat = anchor.lat + dr * latStep
-            val lng = anchor.lng + dc * lngStep
+            val lat = (baseRow + dr + 0.5) * latStep
+            val lng = (baseCol + dc + 0.5) * lngStep
             val covered = serverCells.any { cell ->
                 val dLatM = (cell.lat - lat) * 111_320.0
-                val dLngM = (cell.lng - lng) * 111_320.0 * cos(anchor.lat * kotlin.math.PI / 180.0)
+                val dLngM = (cell.lng - lng) * 111_320.0 * cosLat
                 dLatM * dLatM + dLngM * dLngM < 7.0 * 7.0
             }
             if (!covered) out.add(lat to lng)

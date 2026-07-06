@@ -43,3 +43,19 @@ fun localToLatLng(
     val lng = refLng + (x - refX) / (METERS_PER_DEG_LAT * lngScale)
     return lat to lng
 }
+
+/**
+ * Snap a 1-D extent [minV, maxV] OUTWARD to the lattice whose lines sit at
+ * `phase + k * tile` (k integer): the returned endpoints lie exactly on
+ * lattice lines and cover the input range. Used to size AR ground-grid
+ * planes so their edges — and every repeated tile line between them — land
+ * on the CoverageTracker cell lattice the minimap draws, making the
+ * on-camera grid and the minimap grid one geogrid. A degenerate input still
+ * yields at least one full tile.
+ */
+fun snapRangeToLattice(minV: Double, maxV: Double, phase: Double, tile: Double): Pair<Double, Double> {
+    val lo = phase + tile * kotlin.math.floor((minV - phase) / tile)
+    var hi = phase + tile * kotlin.math.ceil((maxV - phase) / tile)
+    if (hi <= lo) hi = lo + tile
+    return lo to hi
+}

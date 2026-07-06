@@ -16,6 +16,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
     actual fun updateGeoReference(lat: Double, lng: Double) {}
+    actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
     actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
     actual fun setGuidanceTarget(lat: Double, lng: Double) {}

@@ -70,6 +70,14 @@ expect class ArEnvScanOverlay() {
     fun clearGuidanceTarget()
 
     /**
+     * Geographic origin of the CoverageTracker cell lattice. The AR ground
+     * grid phases its lines to this point (converted through the live geo
+     * reference, re-derived on every re-pair) so the on-camera geogrid
+     * registers with the cell grid the minimap draws.
+     */
+    fun setGridLatticeOrigin(lat: Double, lng: Double)
+
+    /**
      * Confirm the pending candidate (optionally re-typed by the user); places
      * the world marker and returns the final candidate with weight re-estimated
      * for the chosen type. Null when no candidate is pending.
