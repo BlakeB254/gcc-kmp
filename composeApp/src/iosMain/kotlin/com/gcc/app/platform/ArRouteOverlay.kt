@@ -117,6 +117,11 @@ actual class ArRouteOverlay actual constructor() {
     private var refZ = 0f
     private var lngScale = 1.0 // cos(refLat), cached when the reference updates
 
+    // Geographic origin of the CoverageTracker cell lattice — the ground grid
+    // (native path) phases its lines to it so AR grid == minimap grid.
+    private var latticeLat: Double? = null
+    private var latticeLng: Double? = null
+
     /** Called by the Compose UIKitView factory (Task 16) once the ARSCNView exists. */
     fun bind(view: ARSCNView) {
         sceneView = view
@@ -218,7 +223,29 @@ actual class ArRouteOverlay actual constructor() {
                 }
             )
         }
+        pushGridPhase()
         maybeRebuildWallsOnGeoUpdate()
+    }
+
+    actual fun setGridLatticeOrigin(lat: Double, lng: Double) {
+        latticeLat = lat
+        latticeLng = lng
+        pushGridPhase()
+    }
+
+    /**
+     * Re-derive the AR-local grid phase from the lattice origin + current geo
+     * reference and hand it to the native surface, which snaps its ground-grid
+     * planes onto the lattice. SceneKit fallback renders no ground grid in
+     * route mode (fog/vector quads own the ground there and are already placed
+     * at lattice cell centers), so there is nothing to phase on that path.
+     */
+    private fun pushGridPhase() {
+        val lat = latticeLat ?: return
+        val lng = latticeLng ?: return
+        if (!hasGeoRef) return
+        val local = latLngToLocal(lat, lng)
+        nativeSurface?.setGridPhaseOrigin(local.first, local.second)
     }
 
     /**

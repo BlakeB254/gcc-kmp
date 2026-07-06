@@ -70,6 +70,17 @@ interface ArNativeSurface {
     fun setGroundGridVisible(visible: Boolean)
 
     /**
+     * Phase origin for the ground-grid lattice, in AR-local meters: the
+     * geo-anchored CoverageTracker lattice origin converted through the
+     * current geo reference. Grid planes snap their bounds — and therefore
+     * every repeated tile line — to multiples of the tile size from this
+     * point, so the AR geogrid registers with the minimap's cell lattice.
+     * Re-sent on every geo-reference re-pair; the surface re-phases live
+     * planes when it moves meaningfully.
+     */
+    fun setGridPhaseOrigin(x: Double, z: Double)
+
+    /**
      * Fog-of-war: unscanned cells as a flat [x0, z0, x1, z1, …] AR-local
      * list (Kotlin applies the 35m/600 policy). Removed keys reveal.
      */

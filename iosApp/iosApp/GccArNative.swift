@@ -32,6 +32,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private static let maxVectorCells = 350
 
     private var planeEntities: [UUID: PlaneGridEntity] = [:]
+    /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
+    /// from Kotlin via `setGridPhaseOrigin`). Grid planes snap their bounds
+    /// to multiples of `gridTileMeters` from this point so the on-camera
+    /// geogrid registers with the minimap's cell grid. Nil until the first
+    /// geo-reference pairing — planes phase to the AR world origin until then.
+    private var gridPhaseOrigin: SIMD2<Float>?
     private var vectorCellEntities: [String: AnchorEntity] = [:]
     private var fogCellEntities: [String: AnchorEntity] = [:]
     private var sectorPostEntities: [String: AnchorEntity] = [:]
@@ -263,6 +269,18 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 planeEntities.removeAll()
                 refreshGroundState()
             }
+        }
+    }
+
+    func setGridPhaseOrigin(x: Double, z: Double) {
+        DispatchQueue.main.async { [self] in
+            let phase = SIMD2(Float(x), Float(z))
+            // Geo-ref re-pairs arrive on every GPS fix; skip sub-5cm jitter —
+            // invisible against a 1.5m tile — and re-phase live planes when
+            // the lattice actually moved under them.
+            if let current = gridPhaseOrigin, simd_distance(current, phase) < 0.05 { return }
+            gridPhaseOrigin = phase
+            for (_, entry) in planeEntities { applyPlaneGeometry(entry) }
         }
     }
 
@@ -543,8 +561,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private final class PlaneGridEntity {
         let anchor: AnchorEntity
         let model: ModelEntity
+        /// RAW (unsnapped) world-space AABB of the detected plane — the
+        /// snapped render geometry is re-derived from these + the lattice
+        /// phase in `applyPlaneGeometry`, so a phase change can re-snap
+        /// without waiting for the next ARKit anchor update.
         var lastSize: SIMD2<Float> = .zero
         var lastCenter: SIMD3<Float> = .zero
+        /// Snapped size the current mesh was generated with (mesh regen skip).
+        var lastAppliedSize: SIMD2<Float> = .zero
         var isFloor: Bool
         init(anchor: AnchorEntity, model: ModelEntity, isFloor: Bool) {
             self.anchor = anchor
@@ -596,15 +620,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             guard grew || moved else { return }
             existing.lastSize = size
             existing.lastCenter = centerWorld
-            existing.anchor.position = centerWorld
-            // Regenerating the mesh is the expensive part — only when the
-            // plane has actually grown noticeably; the material update keeps
-            // the UV phase locked to the world lattice as the plane moves.
-            if grew {
-                existing.model.model?.mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
-            }
-            existing.model.model?.materials =
-                [planeMaterial(isFloor: existing.isFloor, size: size, centerWorld: centerWorld)]
+            applyPlaneGeometry(existing)
             return
         }
 
@@ -613,8 +629,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // ARKit's anchor tracking (which would reintroduce the yaw).
         let anchor = AnchorEntity(world: centerWorld)
         let model = ModelEntity(
-            mesh: MeshResource.generatePlane(width: size.x, depth: size.y),
-            materials: [planeMaterial(isFloor: isFloor, size: size, centerWorld: centerWorld)]
+            mesh: MeshResource.generatePlane(width: 1, depth: 1),
+            materials: []
         )
         anchor.addChild(model)
         arView.scene.addAnchor(anchor)
@@ -622,7 +638,46 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         entry.lastSize = size
         entry.lastCenter = centerWorld
         planeEntities[plane.identifier] = entry
+        applyPlaneGeometry(entry)
         refreshGroundState()
+    }
+
+    /// (Re)build a grid plane's render geometry from its RAW world AABB:
+    /// with a lattice phase known, the bounds snap OUTWARD to multiples of
+    /// `gridTileMeters` from the phase origin, so the plane edges — and every
+    /// repeated tile line between them — land exactly on the geo-anchored
+    /// 3m cell lattice the minimap draws. Runs on plane growth/moves AND
+    /// whenever the phase origin shifts (geo-ref re-pair). Mesh regeneration
+    /// is the expensive part — skipped while the snapped size is unchanged.
+    private func applyPlaneGeometry(_ entry: PlaneGridEntity) {
+        let tile = Self.gridTileMeters
+        let raw = entry.lastSize
+        let center = entry.lastCenter
+        var minX = center.x - raw.x / 2, maxX = center.x + raw.x / 2
+        var minZ = center.z - raw.y / 2, maxZ = center.z + raw.y / 2
+        if let phase = gridPhaseOrigin {
+            (minX, maxX) = Self.snapToLattice(minX, maxX, phase: phase.x, tile: tile)
+            (minZ, maxZ) = Self.snapToLattice(minZ, maxZ, phase: phase.y, tile: tile)
+        }
+        let size = SIMD2(maxX - minX, maxZ - minZ)
+        let snappedCenter = SIMD3((minX + maxX) / 2, center.y, (minZ + maxZ) / 2)
+        entry.anchor.position = snappedCenter
+        if entry.lastAppliedSize != size {
+            entry.model.model?.mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
+            entry.lastAppliedSize = size
+        }
+        entry.model.model?.materials =
+            [planeMaterial(isFloor: entry.isFloor, size: size, centerWorld: snappedCenter)]
+    }
+
+    /// Snap a 1-D extent outward to the lattice `phase + k * tile` — both
+    /// returned endpoints lie on lattice lines and cover the input range.
+    /// Mirrors Kotlin's `snapRangeToLattice` (ArGeoMath.kt) exactly.
+    private static func snapToLattice(_ lo: Float, _ hi: Float, phase: Float, tile: Float) -> (Float, Float) {
+        let snappedLo = phase + tile * floor((lo - phase) / tile)
+        var snappedHi = phase + tile * ceil((hi - phase) / tile)
+        if snappedHi <= snappedLo { snappedHi = snappedLo + tile }
+        return (snappedLo, snappedHi)
     }
 
     private func refreshGroundState() {
@@ -640,15 +695,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             : UIColor(white: 1.0, alpha: 0.3)
         var material = gridMaterial(texture, tint: tint, uvScale: 1)
         // Scale keeps tiles a constant gridTileMeters; the offset phases the
-        // repeat so grid LINES land on world multiples of the tile — every
-        // plane shares one seamless world lattice instead of each plane
-        // starting its own grid at its corner.
+        // repeat so grid LINES land on multiples of the tile from the lattice
+        // phase origin (the geo-anchored CoverageTracker lattice once the
+        // geo-ref pairs; the AR world origin before) — every plane shares one
+        // seamless lattice instead of each starting its grid at its corner.
+        // With bounds snapped by applyPlaneGeometry the offset is ~0; it
+        // mops up float residue and covers the unsnapped pre-phase case.
         material.textureCoordinateTransform.scale = SIMD2(
             max(size.x / Self.gridTileMeters, 1),
             max(size.y / Self.gridTileMeters, 1)
         )
-        let originX = (centerWorld.x - size.x / 2) / Self.gridTileMeters
-        let originZ = (centerWorld.z - size.y / 2) / Self.gridTileMeters
+        let phaseX = gridPhaseOrigin?.x ?? 0
+        let phaseZ = gridPhaseOrigin?.y ?? 0
+        let originX = (centerWorld.x - size.x / 2 - phaseX) / Self.gridTileMeters
+        let originZ = (centerWorld.z - size.y / 2 - phaseZ) / Self.gridTileMeters
         material.textureCoordinateTransform.offset = SIMD2(
             originX - floor(originX),
             originZ - floor(originZ)
@@ -658,8 +718,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     // PhysicallyBasedMaterial rather than UnlitMaterial: only PBM has
     // textureCoordinateTransform before iOS 18, and tiling is what keeps
-    // grid squares a constant 0.5m as planes grow. Emissive channel keeps
-    // the glow regardless of scene lighting.
+    // grid squares a constant gridTileMeters as planes grow. Emissive channel
+    // keeps the glow regardless of scene lighting.
     private func gridMaterial(_ texture: TextureResource?, tint: UIColor, uvScale: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         if let texture {
