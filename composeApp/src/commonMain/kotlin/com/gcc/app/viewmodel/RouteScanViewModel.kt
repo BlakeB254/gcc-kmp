@@ -186,7 +186,10 @@ class RouteScanViewModel(
     private var lastCoverageFixAtMs: Long? = null
     private var fastFixStreak = 0
     private var coverageFlushJob: Job? = null
-    /** True when any CLOSE-tier fan hit credited since the last coverage event. */
+    /** True when any CLOSE-tier fan hit credited since the last coverage event.
+     *  Volatile: written from the main-thread fan listener (onCoverageRayHits),
+     *  read/reset from the Dispatchers.Default location collector. */
+    @kotlin.concurrent.Volatile
     private var closeCreditSinceLastEvent = false
 
     // AR-detected marker queue: live-detected (CONFIRMED_TRASH) markers from the
