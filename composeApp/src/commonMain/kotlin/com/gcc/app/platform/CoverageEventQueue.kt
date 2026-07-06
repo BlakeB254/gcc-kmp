@@ -31,6 +31,18 @@ class CoverageEventQueue(
     }
     private var flushInProgress = false
 
+    /**
+     * Guarded by [mutex]. Size of the batch flush() has snapshotted and handed to
+     * `submitFn` but not yet removed from `pending` — i.e. the in-flight prefix.
+     * purgeSince() must never touch indices < inFlightCount: those events are
+     * already "in the mail" to the server, and the server-side retraction window
+     * ([CoverageRetractionQueue]) is what undoes already-accepted events, not this
+     * queue. Treating the in-flight prefix as untouchable here is correct, not
+     * lossy — it mirrors "already flushed" semantics for events that may complete
+     * their flush at any moment while purgeSince runs concurrently.
+     */
+    private var inFlightCount = 0
+
     private fun loadPersisted(): List<ScanCoverageEventRequest> {
         val json = settings.getStringOrNull(KEY_PENDING_EVENTS) ?: return emptyList()
         return try {
@@ -59,17 +71,35 @@ class CoverageEventQueue(
      * cutoff so they never reach the server, and re-persist. Returns how many
      * were dropped. Events that already flushed are handled by the retraction
      * queue instead (spec §2).
+     *
+     * Never touches indices < [inFlightCount]: a concurrent flush() may have
+     * already handed that prefix to `submitFn` and released the mutex while
+     * awaiting the response, so flush()'s later positional `removeAt(0)` must
+     * still see exactly that prefix at the front of `pending`. Removing (or
+     * reordering via removeAll) any of those elements here would desync the
+     * positional removal — wrong elements dropped, or an IndexOutOfBounds
+     * mid-loop, and in-memory/persisted state would diverge from what the
+     * server actually received. In-flight events are treated as "already
+     * flushed" for purge purposes; see [inFlightCount] for why that's safe.
+     * Iterates by explicit index (not removeAll) so the in-flight prefix can
+     * be skipped precisely; walks back-to-front so removals don't shift the
+     * indices still to be examined.
      */
     suspend fun purgeSince(cutoffEpochMs: Long): Int {
         mutex.withLock {
             val before = pending.size
-            pending.removeAll { event ->
+            var i = pending.size - 1
+            while (i >= inFlightCount) {
                 val at = try {
-                    Instant.parse(event.capturedAt).toEpochMilliseconds()
+                    Instant.parse(pending[i].capturedAt).toEpochMilliseconds()
                 } catch (e: Exception) {
-                    return@removeAll false // unparseable timestamp: keep (server validates)
+                    i-- // unparseable timestamp: keep (server validates)
+                    continue
                 }
-                at >= cutoffEpochMs
+                if (at >= cutoffEpochMs) {
+                    pending.removeAt(i)
+                }
+                i--
             }
             val dropped = before - pending.size
             if (dropped > 0) persistLocked()
@@ -106,29 +136,52 @@ class CoverageEventQueue(
             // with a 400, so a backlog built up offline must drain in slices —
             // one oversized POST would fail forever and the queue would only grow.
             while (true) {
-                val batch = mutex.withLock { pending.take(MAX_BATCH_SIZE) }
+                // inFlightCount is set here, under the same lock as the snapshot, so
+                // purgeSince() can never observe a batch size without also observing
+                // that these elements are in flight. It must be reset to 0 on every
+                // exit from this iteration — success, failed response, and exception
+                // alike — before the next snapshot (or return) so purgeSince() never
+                // treats a stale prefix as untouchable.
+                val batch = mutex.withLock {
+                    val b = pending.take(MAX_BATCH_SIZE)
+                    inFlightCount = b.size
+                    b
+                }
                 if (batch.isEmpty()) return true
 
                 try {
                     val response = submitFn(batch)
-                    if (!response.success) return false
+                    if (!response.success) {
+                        mutex.withLock { inFlightCount = 0 }
+                        return false
+                    }
                     // Position-based removal, not removeAll(batch): ScanCoverageEventRequest
                     // is a plain data class with no id field, so structural equality could
                     // match a distinct event enqueued mid-flight and drop that one instead of
                     // the submitted one. The snapshotted batch is always the first
-                    // batch.size elements of `pending` (enqueue only appends, and the
+                    // batch.size elements of `pending` (enqueue only appends, the
                     // single-flight guard above ensures no other flush() is mutating
-                    // `pending` concurrently), so removing by position is safe.
+                    // `pending` concurrently, and purgeSince() leaves the first
+                    // inFlightCount elements untouched), so removing by position is safe.
                     mutex.withLock {
                         repeat(batch.size) { pending.removeAt(0) }
+                        inFlightCount = 0
                         persistLocked()
                     }
                 } catch (e: Exception) {
+                    mutex.withLock { inFlightCount = 0 }
                     return false
                 }
             }
         } finally {
-            mutex.withLock { flushInProgress = false }
+            // Defensive: every explicit exit above already resets inFlightCount, but
+            // reset it here too so an unexpected exit (e.g. coroutine cancellation
+            // propagating past the inner catch) can never leave a stale nonzero
+            // inFlightCount behind to wrongly shield elements from a later purge.
+            mutex.withLock {
+                inFlightCount = 0
+                flushInProgress = false
+            }
         }
     }
 
@@ -162,6 +215,7 @@ class CoverageRetractionQueue(
             }
         }
     }
+    private var flushInProgress = false
 
     private fun persistLocked() {
         settings.putString(KEY_PENDING_RETRACTIONS, GccJson.encodeToString(pending))
@@ -174,20 +228,44 @@ class CoverageRetractionQueue(
         }
     }
 
-    /** True when empty or all retractions were accepted; false leaves the rest queued. */
+    /**
+     * True when empty or all retractions were accepted; false leaves the rest queued.
+     *
+     * Single-flight, same pattern as [CoverageEventQueue.flush]: if a flush is
+     * already in progress when this is called, this call returns `false`
+     * immediately without invoking `submitFn` — it does not wait for the
+     * in-flight flush or retry. Without this guard, two concurrent flush()
+     * calls could both read the same `firstOrNull()` head, both submit it, and
+     * then both race to removeAt(0) — double-submitting a retraction and/or
+     * dropping the wrong element.
+     */
     suspend fun flush(): Boolean {
-        while (true) {
-            val next = mutex.withLock { pending.firstOrNull() } ?: return true
-            val ok = try {
-                submitFn(next)
-            } catch (e: Exception) {
+        val acquiredFlush = mutex.withLock {
+            if (flushInProgress) {
                 false
+            } else {
+                flushInProgress = true
+                true
             }
-            if (!ok) return false
-            mutex.withLock {
-                pending.removeAt(0)
-                persistLocked()
+        }
+        if (!acquiredFlush) return false
+
+        try {
+            while (true) {
+                val next = mutex.withLock { pending.firstOrNull() } ?: return true
+                val ok = try {
+                    submitFn(next)
+                } catch (e: Exception) {
+                    false
+                }
+                if (!ok) return false
+                mutex.withLock {
+                    pending.removeAt(0)
+                    persistLocked()
+                }
             }
+        } finally {
+            mutex.withLock { flushInProgress = false }
         }
     }
 
