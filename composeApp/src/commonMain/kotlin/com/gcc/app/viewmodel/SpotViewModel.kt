@@ -771,10 +771,21 @@ class SpotViewModel(
         _uiState.value = state.copy(observedItems = keptItems, capturedPhotos = keptPhotos)
     }
 
+    /**
+     * Full session reset. The VM is a Koin singleton, so anything left over
+     * from a prior scan session bleeds into the next one unless it's cleared
+     * here — [pendingSessionDraft] and [archivedSessionIds] used to survive a
+     * failed/abandoned session (the submitReport failure path never nulled
+     * pendingSessionDraft, unlike the success and 409 paths), which could
+     * carry stale draft/session-id state into the very next scan. Cross-session
+     * state (arMarkerQueue, the coroutine scope) is intentionally left alone.
+     */
     fun reset() {
         _uiState.value = SpotUiState()
         observedItemStamps.clear()
         photoStamps.clear()
+        pendingSessionDraft = null
+        archivedSessionIds.clear()
     }
 
     /**

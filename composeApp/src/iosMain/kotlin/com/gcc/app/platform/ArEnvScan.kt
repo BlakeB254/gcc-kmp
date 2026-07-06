@@ -183,6 +183,18 @@ actual class ArEnvScanOverlay actual constructor() {
     private var roughGridTexture: UIImage? = null
     private var vectorTexture: UIImage? = null
 
+    /**
+     * The exact closure instance handed to [CameraManager.externalFrameSource]
+     * (see [bind]/[bindNative]). [stop] must only clear the shared slot if it
+     * still holds THIS instance's closure — if dispose ordering ever lets a
+     * stale session's stop() run after a new session's bind() (Koin-singleton
+     * VM + Compose UIKitView release timing aren't strictly ordered), an
+     * unconditional clear would steal the new session's frame source and
+     * captureFrame() would fall through to the UIImagePicker modal over a
+     * live ARView.
+     */
+    private var frameSourceClosure: (suspend () -> CapturedPhoto?)? = null
+
     /** Called by the Compose UIKitView factory once the ARSCNView exists. */
     fun bind(view: ARSCNView) {
         sceneView = view
@@ -207,7 +219,9 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "ARKit env-scan surface started (plane detection on)")
     }
@@ -221,7 +235,9 @@ actual class ArEnvScanOverlay actual constructor() {
     fun bindNative(surface: ArNativeSurface) {
         nativeSurface = surface
         surface.setGroundGridVisible(true)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
     }
@@ -229,7 +245,14 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun stop() {
         job?.cancel()
         job = null
-        if (CameraManager.externalFrameSource != null) CameraManager.externalFrameSource = null
+        // Identity-checked: only clear the shared slot if it's still THIS
+        // session's closure (see [frameSourceClosure] kdoc) — an unconditional
+        // clear here could steal a newer session's frame source if stop()
+        // ever runs after that session's bind()/bindNative().
+        if (CameraManager.externalFrameSource === frameSourceClosure) {
+            CameraManager.externalFrameSource = null
+        }
+        frameSourceClosure = null
         nativeSurface?.pause()
         sceneView?.session?.pause()
         dispatch_async(dispatch_get_main_queue()) {

@@ -1148,7 +1148,10 @@ class RouteScanViewModel(
                                     platform = getPlatformName(),
                                     lat = lat,
                                     lng = lng,
-                                    distanceMeters = segmentMeters,
+                                    // NaN/Infinite would throw serializing this
+                                    // event into the persisted queue (GccJson
+                                    // has no allowSpecialFloatingPointValues).
+                                    distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
                                     scanMode = "route",
                                     deviceTier = coverageDeviceTier,
                                     capturedAt = Clock.System.now().toString(),

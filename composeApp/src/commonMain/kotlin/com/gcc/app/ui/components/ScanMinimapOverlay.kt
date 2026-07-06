@@ -138,12 +138,16 @@ fun ScanMinimapOverlay(
             Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
             holes,
         )
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.62f))
+        // Field feedback (Blake, TestFlight 124): the veil made the user dot
+        // and the scanned/scanning cells hard to see — lightened from 0.62 to
+        // 0.45 (corridor re-shade below dropped proportionally to keep the
+        // same relative contrast between "assigned" and "everything else").
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.45f))
 
         // Required corridor (block laps): punched out of the heavy veil, then
         // re-shaded lighter so the assignment reads as a distinct region.
         for ((lat, lng) in corridorCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.35f), overscan = 1.15f)
+            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.28f), overscan = 1.15f)
         }
 
         // Ledger-fresh cells: grazed = whisper (needs detail), close = the
@@ -234,6 +238,15 @@ fun ScanMinimapOverlay(
             drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
             drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
         }
+
+        // User-position dot, drawn LAST so it always sits above the veil,
+        // fills and every other layer (Blake: "hard to see the user dot").
+        // The minimap is centered on the live GPS fix (centerLat/centerLng),
+        // so the user is always exactly at the canvas center — no projection
+        // needed. Replaces reliance on any MapLibre location puck underneath.
+        val selfCenter = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(color = Color.White, radius = 5.dp.toPx(), center = selfCenter, style = Stroke(width = 2.dp.toPx()))
+        drawCircle(color = GccGreen, radius = 3.5.dp.toPx(), center = selfCenter)
     }
 }
 

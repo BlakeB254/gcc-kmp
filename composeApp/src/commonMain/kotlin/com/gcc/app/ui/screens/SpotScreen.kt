@@ -105,6 +105,19 @@ fun SpotScreen(
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
 
+    // The VM is a Koin singleton: CAMERA (the default SpotUiState phase) is
+    // the only "fresh entry" state. Anything else on first composition means
+    // the previous session never finished cleanly — back button from
+    // LOCATION/DESCRIPTION/RESULT instead of Complete Scan, or a killed
+    // process mid-flow — so force a full reset before this session starts
+    // rather than letting stale photos/items/draft bleed into it (field
+    // report: submitting a second scan after the first crashed).
+    LaunchedEffect(Unit) {
+        if (viewModel.uiState.value.phase != SpotPhase.CAMERA) {
+            viewModel.reset()
+        }
+    }
+
     // Start GPS on entry, stop on leave
     DisposableEffect(Unit) {
         locationProvider.startLocationUpdates()
@@ -614,7 +627,12 @@ private fun CameraPhase(
                         platform = getPlatformName(),
                         lat = loc.lat,
                         lng = loc.lng,
-                        distanceMeters = segmentMeters,
+                        // NaN/Infinite would throw serializing this event into
+                        // the persisted queue (GccJson has no
+                        // allowSpecialFloatingPointValues) — a bad GPS pair
+                        // (e.g. identical lat/lng at the poles) must not wedge
+                        // the whole queue.
+                        distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
                         scanMode = "spot",
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),
@@ -1019,7 +1037,12 @@ private fun CameraPhase(
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.4f))
+                // Field feedback (Blake): the dimmed 0.4-alpha fill over a
+                // bright outdoor background (concrete, sky) washed the label
+                // out into an unlabeled green blob. Raised the floor so the
+                // "Complete Scan" text stays legible while still reading
+                // dimmer than the fully-active pill.
+                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
                 .clickable { onCompleteScan(sessionRecorder.draft(scanCellCenters)) }
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
