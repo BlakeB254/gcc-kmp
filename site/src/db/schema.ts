@@ -57,6 +57,24 @@ export const pendingAddressStatusEnum = pgEnum('enum_workers_pending_address_cha
   'rejected',
 ])
 
+// Shared by workers.payout_method (the worker's preference) and payouts.method
+// (the method snapshotted onto each payout at send time).
+export const payoutMethodEnum = pgEnum('enum_payout_method', [
+  'stripe',
+  'check',
+])
+
+export const payoutStatusEnum = pgEnum('enum_payouts_status', [
+  // Stripe path: processing → completed/failed (reconciled by the payout.paid/
+  // payout.failed webhooks, mirroring jobs.payoutStatus semantics)
+  'processing',
+  'completed',
+  'failed',
+  // Check path: check_pending (in the admin "checks to mail" queue) → check_mailed
+  'check_pending',
+  'check_mailed',
+])
+
 export const waitlistStatusEnum = pgEnum('enum_waitlist_entries_status', [
   'waitlisted',
   'invited',
@@ -136,6 +154,12 @@ export const workers = pgTable('workers', {
   stripeInstantPayoutsEnabled: boolean('stripe_instant_payouts_enabled').default(false),
   stripeDefaultPayoutMethod: varchar('stripe_default_payout_method').default('standard'),
 
+  // Payout preference: how ad-hoc admin payouts reach this worker.
+  // 'check' payouts mail to payoutMailingAddress when set, else the home
+  // address fields above.
+  payoutMethod: payoutMethodEnum('payout_method').default('stripe'),
+  payoutMailingAddress: jsonb('payout_mailing_address'), // { name, street, city, state, zip }
+
   // Stats
   statsJobsCompleted: numeric('stats_jobs_completed').default('0'),
   statsTotalEarnings: numeric('stats_total_earnings').default('0'),
@@ -173,6 +197,20 @@ export const workers = pgTable('workers', {
   resetPasswordExpiration: timestamp('reset_password_expiration', { mode: 'string', withTimezone: true }),
   loginAttempts: numeric('login_attempts').default('0'),
   lockUntil: timestamp('lock_until', { mode: 'string', withTimezone: true }),
+
+  // Pending email change (account settings; email only switches after the new
+  // address confirms a 6-digit code — token column mirrors the
+  // emailVerificationToken "token:code" encoding)
+  pendingEmail: varchar('pending_email'),
+  pendingEmailToken: varchar('pending_email_token'),
+  pendingEmailExpires: timestamp('pending_email_expires', { mode: 'string', withTimezone: true }),
+  pendingEmailAttempts: integer('pending_email_attempts').default(0),
+
+  // Two-factor authentication (TOTP authenticator app + recovery codes)
+  totpSecret: varchar('totp_secret'),
+  twoFactorEnabled: boolean('two_factor_enabled').default(false),
+  twoFactorRecoveryCodes: jsonb('two_factor_recovery_codes'),
+  twoFactorEnabledAt: timestamp('two_factor_enabled_at', { mode: 'string', withTimezone: true }),
 
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -1795,6 +1833,35 @@ export const walletTransactions = pgTable('wallet_transactions', {
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   walletIdx: index('wallet_transactions_wallet_id_idx').on(table.walletId),
+}))
+
+// Ad-hoc admin-initiated payouts to workers (bonuses, corrections, off-platform
+// work). Job payouts are NOT recorded here — their state lives on the jobs row
+// (payoutStatus/payoutStripeTransferId). Amounts are integer cents, matching
+// the wallet tables above.
+export const payouts = pgTable('payouts', {
+  id: serial('id').primaryKey(),
+  workerId: integer('worker_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  note: varchar('note'),
+  method: payoutMethodEnum('method').notNull(),
+  status: payoutStatusEnum('status').notNull(),
+  stripeTransferId: varchar('stripe_transfer_id'),
+  stripePayoutId: varchar('stripe_payout_id'),
+  initiatedByAdminId: integer('initiated_by_admin_id').notNull(),
+  // Client-supplied key so a retried request can never double-send money.
+  idempotencyKey: varchar('idempotency_key').notNull(),
+  // Snapshot of where the check goes, frozen at creation (worker edits to
+  // their address must not retarget an already-queued check).
+  mailingAddress: jsonb('mailing_address'), // { name, street, city, state, zip }
+  checkMailedAt: timestamp('check_mailed_at', { mode: 'string', withTimezone: true }),
+  checkMailedByAdminId: integer('check_mailed_by_admin_id'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  workerIdx: index('payouts_worker_id_idx').on(table.workerId),
+  statusIdx: index('payouts_status_idx').on(table.status),
+  idempotencyUnique: uniqueIndex('payouts_idempotency_key_unique').on(table.idempotencyKey),
 }))
 
 export const bountyPledges = pgTable('bounty_pledges', {

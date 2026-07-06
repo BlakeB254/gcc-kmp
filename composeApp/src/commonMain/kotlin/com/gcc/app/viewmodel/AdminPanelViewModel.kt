@@ -47,6 +47,9 @@ data class AdminPanelUiState(
     val selectedProxyWorkerId: Int? = null,
     val pendingReviews: List<PendingReview> = emptyList(),
     val payoutActionError: String? = null,
+    // Ad-hoc payouts: paper checks waiting to be mailed + recent history
+    val pendingChecks: List<AdminPayout> = emptyList(),
+    val recentPayouts: List<AdminPayout> = emptyList(),
     val blockProposals: List<BlockProposal> = emptyList(),
     val blockProposalActionError: String? = null,
 )
@@ -180,7 +183,19 @@ class AdminPanelViewModel(
                     }
                     AdminTab.PAYOUTS -> {
                         val reviews = apiClient.getPendingPayoutReviews()
-                        _uiState.value = _uiState.value.copy(pendingReviews = reviews)
+                        // Ad-hoc payout endpoints may not be deployed yet — degrade
+                        // to the job-approval queue alone (bounties-tab pattern).
+                        val checks = try {
+                            apiClient.getAdminPayouts(status = "check_pending").payouts
+                        } catch (_: Exception) { emptyList() }
+                        val recent = try {
+                            apiClient.getAdminPayouts(limit = 20).payouts
+                        } catch (_: Exception) { emptyList() }
+                        _uiState.value = _uiState.value.copy(
+                            pendingReviews = reviews,
+                            pendingChecks = checks,
+                            recentPayouts = recent,
+                        )
                     }
                     AdminTab.BLOCK_PROPOSALS -> {
                         val proposals = apiClient.getAdminBlockProposals(status = BlockProposalStatus.PENDING)
@@ -720,6 +735,62 @@ class AdminPanelViewModel(
 
     fun clearPayoutActionError() {
         _uiState.value = _uiState.value.copy(payoutActionError = null)
+    }
+
+    // ── Ad-hoc Payout Actions ──────────────────────────────────────────
+
+    /**
+     * One-off payout to a worker. Server routes by the worker's payout
+     * method (Stripe vs checks-to-mail queue). idempotencyKey is generated
+     * once per dialog open so a retried tap can't double-send money.
+     */
+    fun sendPayout(
+        workerId: Int,
+        amountCents: Int,
+        note: String?,
+        idempotencyKey: String,
+        onResult: (success: Boolean, message: String?) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val response = apiClient.adminCreatePayout(
+                    workerId,
+                    CreatePayoutRequest(
+                        amountCents = amountCents,
+                        note = note?.trim()?.ifBlank { null },
+                        idempotencyKey = idempotencyKey,
+                    ),
+                )
+                invalidateTab(AdminTab.PAYOUTS)
+                val message = when {
+                    response.alreadyProcessed -> "Payout was already sent"
+                    response.payout?.status == "check_pending" ->
+                        "Queued as a check to mail — see Payouts tab"
+                    else -> "Payout sent via Stripe"
+                }
+                onResult(true, message)
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Failed to send payout")
+            }
+        }
+    }
+
+    fun markPayoutMailed(payoutId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            try {
+                apiClient.markPayoutMailed(payoutId)
+                _uiState.value = _uiState.value.copy(
+                    pendingChecks = _uiState.value.pendingChecks.filter { it.id != payoutId },
+                )
+                invalidateTab(AdminTab.PAYOUTS)
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to mark check as mailed"
+                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                onResult(false, msg)
+            }
+        }
     }
 
     // ── Block Proposal Review Actions ────────────────────────────────────

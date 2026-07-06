@@ -108,6 +108,10 @@ class RootComponent(
         navigation.push(Screen.Settings)
     }
 
+    fun navigateToAccountSettings() {
+        navigation.push(Screen.AccountSettings)
+    }
+
     fun navigateToLegal(type: String) {
         navigation.push(Screen.Legal(type))
     }

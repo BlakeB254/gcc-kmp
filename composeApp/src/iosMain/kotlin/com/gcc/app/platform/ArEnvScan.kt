@@ -147,6 +147,14 @@ actual class ArEnvScanOverlay actual constructor() {
     private var refZ = 0f
     private var lngScale = 1.0
 
+    // Geographic origin of the CoverageTracker cell lattice (its padded SW
+    // corner). Converted through the geo reference into [gridPhase] so the
+    // ground grid can snap its lines onto the same lattice the minimap draws.
+    private var latticeLat: Double? = null
+    private var latticeLng: Double? = null
+    /** AR-local lattice phase (x, z) — null until origin AND geo-ref exist. */
+    private var gridPhase: Pair<Double, Double>? = null
+
     // Ground planes: anchor UUID -> rendered grid node.
     private val planeNodes = mutableMapOf<String, SCNNode>()
     /** World Y of the lowest floor-classified plane (vector cells sit on it). */
@@ -283,10 +291,32 @@ actual class ArEnvScanOverlay actual constructor() {
         // Re-pairing shifts the whole geo-derived frame — re-place everything
         // against the new reference so fog/cells/arrow don't lag a fix behind.
         dispatch_async(dispatch_get_main_queue()) {
+            pushGridPhase()
             renderVectorCells()
             renderFogCells()
             renderGuidance()
         }
+    }
+
+    actual fun setGridLatticeOrigin(lat: Double, lng: Double) {
+        latticeLat = lat
+        latticeLng = lng
+        dispatch_async(dispatch_get_main_queue()) { pushGridPhase() }
+    }
+
+    /**
+     * Re-derive the AR-local grid phase from the lattice origin + current geo
+     * reference and hand it to whichever renderer is live (main queue). The
+     * SceneKit path picks [gridPhase] up on the next plane tick; the native
+     * surface re-phases its plane entities immediately.
+     */
+    private fun pushGridPhase() {
+        val lat = latticeLat ?: return
+        val lng = latticeLng ?: return
+        if (!hasGeoRef) return
+        val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+        gridPhase = local
+        nativeSurface?.setGridPhaseOrigin(local.first, local.second)
     }
 
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
@@ -764,24 +794,43 @@ actual class ArEnvScanOverlay actual constructor() {
             node.eulerAngles = SCNVector3Make(0f, 0f, 0f)
             val cosYaw = kotlin.math.cos(yaw)
             val sinYaw = kotlin.math.sin(yaw)
-            val worldW = abs(extent[0] * cosYaw.toFloat()) + abs(extent[2] * sinYaw.toFloat())
-            val worldD = abs(extent[0] * sinYaw.toFloat()) + abs(extent[2] * cosYaw.toFloat())
+            val ex = extent[0].toDouble()
+            val ez = extent[2].toDouble()
+            val worldW = abs(ex * cosYaw) + abs(ez * sinYaw)
+            val worldD = abs(ex * sinYaw) + abs(ez * cosYaw)
             val planeChild = node.childNodes.firstOrNull() as? SCNNode ?: continue
             // Anchor-local center rotated into the world frame (the container
             // no longer carries the anchor's rotation).
+            val centerWorldX = m[12] + (center[0] * cosYaw + center[2] * sinYaw)
+            val centerWorldZ = m[14] + (-center[0] * sinYaw + center[2] * cosYaw)
+            // Snap the plane's world AABB OUTWARD to the coverage lattice once
+            // its phase is known (tracker origin set + geo-ref paired): the
+            // plane edges — and every repeated 1.5m texture line between them —
+            // then land exactly on the 3m cell lattice the minimap draws.
+            // Before the phase exists, the raw AABB keeps today's behavior.
+            val tile = GRID_TILE_METERS.toDouble()
+            val phase = gridPhase
+            val (left, right) = if (phase != null) {
+                snapRangeToLattice(centerWorldX - worldW / 2, centerWorldX + worldW / 2, phase.first, tile)
+            } else (centerWorldX - worldW / 2) to (centerWorldX + worldW / 2)
+            val (nearZ, farZ) = if (phase != null) {
+                snapRangeToLattice(centerWorldZ - worldD / 2, centerWorldZ + worldD / 2, phase.second, tile)
+            } else (centerWorldZ - worldD / 2) to (centerWorldZ + worldD / 2)
             planeChild.position = SCNVector3Make(
-                (center[0] * cosYaw + center[2] * sinYaw).toFloat(),
+                ((left + right) / 2 - m[12]).toFloat(),
                 center[1],
-                (-center[0] * sinYaw + center[2] * cosYaw).toFloat(),
+                ((nearZ + farZ) / 2 - m[14]).toFloat(),
             )
             (planeChild.geometry as? SCNPlane)?.let { plane ->
-                plane.width = worldW.toDouble()
-                plane.height = worldD.toDouble()
-                plane.firstMaterial?.diffuse?.contentsTransform = SCNMatrix4MakeScale(
-                    (worldW / GRID_TILE_METERS).coerceAtLeast(1f),
-                    (worldD / GRID_TILE_METERS).coerceAtLeast(1f),
+                plane.width = right - left
+                plane.height = farZ - nearZ
+                val uv = SCNMatrix4MakeScale(
+                    ((right - left) / tile).toFloat().coerceAtLeast(1f),
+                    ((farZ - nearZ) / tile).toFloat().coerceAtLeast(1f),
                     1f,
                 )
+                plane.firstMaterial?.diffuse?.contentsTransform = uv
+                plane.firstMaterial?.emission?.contentsTransform = uv
             }
             if (isFloor) {
                 val y = m[13] + center[1]
@@ -822,6 +871,8 @@ actual class ArEnvScanOverlay actual constructor() {
         material.diffuse.wrapS = platform.SceneKit.SCNWrapModeRepeat
         material.diffuse.wrapT = platform.SceneKit.SCNWrapModeRepeat
         material.emission.contents = texture
+        material.emission.wrapS = platform.SceneKit.SCNWrapModeRepeat
+        material.emission.wrapT = platform.SceneKit.SCNWrapModeRepeat
         material.doubleSided = true
         material.writesToDepthBuffer = false
         material.transparency = if (isFloor) 0.55 else 0.3

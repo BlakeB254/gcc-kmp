@@ -194,6 +194,15 @@ class CoverageTracker {
     val hasBlockCorridor: Boolean
         get() = totalCells > 0
 
+    /**
+     * Geographic origin (lat, lng) the cell lattice is phased to — the padded
+     * SW corner every [cellCenterLatLng] is derived from. Null before init.
+     * The AR overlays phase the ground grid to this point so the on-camera
+     * grid registers with the minimap's cell grid.
+     */
+    fun latticeOrigin(): Pair<Double, Double>? =
+        if (latPerMeter == 0.0 || lngPerMeter == 0.0) null else originLat to originLng
+
     /** Scanned cells clipped to the required corridor — the minimap fill set. */
     fun getScannedCorridorCells(): Set<Pair<Int, Int>> =
         _scannedCells.value intersect corridorCells

@@ -93,6 +93,18 @@ object Workers : Table("workers") {
     val loginAttempts = varchar("login_attempts", 50).default("0")
     val lockUntil = timestamp("lock_until").nullable()
 
+    // Pending email change (account settings)
+    val pendingEmail = varchar("pending_email", 255).nullable()
+    val pendingEmailToken = varchar("pending_email_token", 255).nullable()
+    val pendingEmailExpires = timestamp("pending_email_expires").nullable()
+    val pendingEmailAttempts = integer("pending_email_attempts").default(0)
+
+    // Two-factor authentication (TOTP + recovery codes)
+    val totpSecret = varchar("totp_secret", 255).nullable()
+    val twoFactorEnabled = bool("two_factor_enabled").default(false)
+    val twoFactorRecoveryCodes = jsonbCol<kotlinx.serialization.json.JsonElement>("two_factor_recovery_codes").nullable()
+    val twoFactorEnabledAt = timestamp("two_factor_enabled_at").nullable()
+
     // Timestamps
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")

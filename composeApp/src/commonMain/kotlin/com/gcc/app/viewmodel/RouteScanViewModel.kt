@@ -433,6 +433,11 @@ class RouteScanViewModel(
     /** Corridor cells (row, col) not yet scanned — the AR fog overlay's node set. */
     fun unscannedCells(): Set<Pair<Int, Int>> = coverageTracker.getUnscannedCells()
 
+    /** Geographic origin of the coverage cell lattice (null before the route
+     *  grid initializes) — phases the AR ground grid onto the same lattice
+     *  the minimap draws. */
+    fun latticeOrigin(): Pair<Double, Double>? = coverageTracker.latticeOrigin()
+
     /** Device compass heading in degrees, or null when unavailable. */
     val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
 

@@ -36,6 +36,8 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       instantPayoutsEnabled: row.stripeInstantPayoutsEnabled ?? false,
       defaultPayoutMethod: row.stripeDefaultPayoutMethod ?? 'standard',
     },
+    // Ad-hoc payout routing preference: 'stripe' | 'check'
+    payoutMethod: row.payoutMethod ?? 'stripe',
     stats: {
       jobsCompleted: Number(row.statsJobsCompleted ?? 0),
       totalEarnings: Number(row.statsTotalEarnings ?? 0),
@@ -44,6 +46,7 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       communityPoints: Number(row.statsCommunityPoints ?? 0),
     },
     earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
+    twoFactorEnabled: row.twoFactorEnabled ?? false,
     role: 'worker',
     referralCode: row.referralCode ?? null,
     displayHandle: row.displayHandle ?? null,

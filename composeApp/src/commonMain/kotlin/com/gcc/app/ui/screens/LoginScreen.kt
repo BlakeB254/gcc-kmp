@@ -130,7 +130,8 @@ fun LoginScreen(
                         TwoFactorSection(
                             code = twoFactorCode,
                             onCodeChange = { input ->
-                                if (input.length <= 6 && input.all { it.isDigit() }) {
+                                // 6-digit TOTP or XXXX-XXXX recovery code.
+                                if (input.length <= 10 && input.all { it.isLetterOrDigit() || it == '-' || it == ' ' }) {
                                     twoFactorCode = input
                                     viewModel.clearError()
                                 }
@@ -138,7 +139,6 @@ fun LoginScreen(
                             error = uiState.error,
                             isLoading = uiState.isLoading,
                             onVerify = { viewModel.verify2FA(twoFactorCode) },
-                            onResend = { twoFactorCode = ""; viewModel.login(email, password) },
                             onCancel = { twoFactorCode = ""; viewModel.cancel2FA() },
                         )
                     } else {
@@ -341,7 +341,6 @@ private fun TwoFactorSection(
     error: String?,
     isLoading: Boolean,
     onVerify: () -> Unit,
-    onResend: () -> Unit,
     onCancel: () -> Unit,
 ) {
     Surface(
@@ -360,7 +359,7 @@ private fun TwoFactorSection(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "We sent a 6-digit code to your email.",
+                "Enter the 6-digit code from your authenticator app, or one of your recovery codes.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
                 textAlign = TextAlign.Center,
@@ -387,18 +386,15 @@ private fun TwoFactorSection(
                 onClick = onVerify,
                 variant = GccButtonVariant.PRIMARY,
                 isLoading = isLoading,
-                enabled = code.length == 6,
+                enabled = com.gcc.shared.auth.AccountValidation.isSecondFactor(code),
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
             ) {
-                TextButton(onClick = onResend) {
-                    Text("Resend Code", color = GccGreen, style = MaterialTheme.typography.bodySmall)
-                }
                 TextButton(onClick = onCancel) {
                     Text("Back to Sign In", color = TextMuted, style = MaterialTheme.typography.bodySmall)
                 }

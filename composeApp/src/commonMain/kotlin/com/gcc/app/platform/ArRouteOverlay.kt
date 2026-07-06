@@ -24,6 +24,15 @@ expect class ArRouteOverlay() {
     /** Pair the worker's latest GPS fix with the AR camera's current position. */
     fun updateGeoReference(lat: Double, lng: Double)
 
+    /**
+     * Geographic origin of the CoverageTracker cell lattice. The AR ground
+     * grid phases its lines to this point (converted through the live geo
+     * reference, re-derived on every re-pair) so the on-camera geogrid
+     * registers with the cell grid the minimap draws. iOS native path only;
+     * no-op on Android/Desktop and on the SceneKit fallback (no grid there).
+     */
+    fun setGridLatticeOrigin(lat: Double, lng: Double)
+
     /** Render fog over [unscannedCells]; cells absent from the set are revealed. */
     fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>)
 

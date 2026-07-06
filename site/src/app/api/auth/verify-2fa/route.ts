@@ -1,85 +1,88 @@
 /**
  * 2FA Verification
- * POST /api/auth/verify-2fa — Verify a 2FA code and return JWT
+ * POST /api/auth/verify-2fa — second step of login for workers with
+ * two-factor enabled.
  *
- * The twoFactorToken is a signed JWT containing the challenge data
- * (worker ID, email, expected code, expiry). This avoids server-side
- * state since Vercel functions are stateless.
+ * Login returns a short-lived challenge JWT (`twoFactorToken`) instead of a
+ * session when 2FA is on. This endpoint validates that challenge, then
+ * accepts either a live TOTP code from the worker's authenticator app or an
+ * unused recovery code (which is consumed), and only then issues the real
+ * session token. Stateless by design — Vercel functions share no memory.
  */
 import { NextRequest } from 'next/server'
-import { jwtVerify, SignJWT } from 'jose'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { createMobileToken } from '@/lib/mobile-auth'
+import { createMobileToken, verifyTwoFactorChallengeToken } from '@/lib/mobile-auth'
+import { verifyTotpCode, consumeRecoveryCode } from '@/lib/totp'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { sendSecurityAlert } from '@/lib/account-settings'
 
 export const runtime = 'nodejs'
-
-const TWO_FA_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'development-secret-change-in-production'
-)
-
-/** Create a 2FA challenge token (called from login when 2FA is enabled) */
-export async function createTwoFactorToken(
-  workerId: number,
-  email: string,
-  code: string,
-): Promise<string> {
-  return new SignJWT({ worker_id: workerId, email, code, purpose: '2fa' })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('5m')
-    .sign(TWO_FA_SECRET)
-}
 
 export async function POST(request: NextRequest) {
   try {
     const { twoFactorToken, code } = await request.json()
 
-    if (!twoFactorToken || !code) {
+    if (!twoFactorToken || typeof code !== 'string' || !code) {
       return Response.json(
-        { data: null, message: 'Missing twoFactorToken or code' },
+        { data: null, success: false, message: 'Missing twoFactorToken or code' },
         { status: 400 },
       )
     }
 
-    // Verify the challenge token
-    let payload: { worker_id: number; email: string; code: string }
-    try {
-      const result = await jwtVerify(twoFactorToken, TWO_FA_SECRET)
-      payload = result.payload as typeof payload
-    } catch {
+    const challenge = await verifyTwoFactorChallengeToken(twoFactorToken)
+    if (!challenge) {
       return Response.json(
-        { data: null, message: 'Invalid or expired verification token' },
+        { data: null, success: false, message: 'Your sign-in expired — please log in again' },
         { status: 401 },
       )
     }
 
-    // Verify the code matches
-    if (payload.code !== code) {
-      return Response.json(
-        { data: null, message: 'Invalid verification code' },
-        { status: 401 },
-      )
-    }
-
-    // Look up worker
     const [worker] = await db
       .select()
       .from(workers)
-      .where(eq(workers.id, payload.worker_id))
+      .where(eq(workers.id, challenge.workerId))
       .limit(1)
 
-    if (!worker) {
+    if (!worker || !worker.twoFactorEnabled || !worker.totpSecret) {
       return Response.json(
-        { data: null, message: 'Worker not found' },
-        { status: 404 },
+        { data: null, success: false, message: 'Two-factor authentication is not enabled' },
+        { status: 400 },
       )
     }
 
-    // Issue JWT
-    const { token, exp } = await createMobileToken(worker.id, payload.email)
-    const mobileWorker = mapWorkerToMobile(worker)
+    // A 6-digit code is checked as TOTP; anything else is tried as a
+    // recovery code (XXXX-XXXX). A used recovery code is removed so it
+    // can never be replayed.
+    let verified = verifyTotpCode(worker.totpSecret, code)
+    if (!verified) {
+      const hashes = (worker.twoFactorRecoveryCodes as string[] | null) ?? []
+      const remaining = consumeRecoveryCode(code, hashes)
+      if (remaining !== null) {
+        verified = true
+        await db
+          .update(workers)
+          .set({ twoFactorRecoveryCodes: remaining, updatedAt: new Date().toISOString() })
+          .where(eq(workers.id, worker.id))
+        await sendSecurityAlert(
+          worker.email,
+          worker.name,
+          'A recovery code was just used to sign in to your GCC account.',
+          `${remaining.length} recovery code${remaining.length === 1 ? '' : 's'} remaining.`,
+        )
+      }
+    }
+
+    if (!verified) {
+      return Response.json(
+        { data: null, success: false, message: 'Invalid verification code' },
+        { status: 400 },
+      )
+    }
+
+    const { token, exp } = await createMobileToken(worker.id, challenge.email)
+    const mobileWorker = mapWorkerToMobile(worker as unknown as Record<string, unknown>)
 
     return Response.json({
       data: { token, worker: mobileWorker, exp, requiresTwoFactor: false, twoFactorToken: null },
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Verify 2FA error:', error)
     return Response.json(
-      { data: null, message: '2FA verification failed' },
+      { data: null, success: false, message: '2FA verification failed' },
       { status: 500 },
     )
   }

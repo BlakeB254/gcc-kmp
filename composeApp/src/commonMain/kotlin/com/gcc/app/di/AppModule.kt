@@ -11,6 +11,7 @@ import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.getApiBaseUrl
+import com.gcc.app.viewmodel.AccountSettingsViewModel
 import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.app.viewmodel.BiometricAuthViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
@@ -92,6 +93,7 @@ val appModule = module {
     singleOf(::ProfileViewModel)
     singleOf(::RouteDetailViewModel)
     singleOf(::SettingsViewModel)
+    singleOf(::AccountSettingsViewModel)
     singleOf(::SpotViewModel)
     singleOf(::VolunteerCleanupViewModel)
     singleOf(::BountyViewModel)

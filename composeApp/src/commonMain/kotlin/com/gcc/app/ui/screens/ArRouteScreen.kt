@@ -159,6 +159,13 @@ fun ArRouteScreen(
     // fix would drag every fog/vector/wall node with it.
     LaunchedEffect(ui.currentLat, ui.currentLng) {
         if (ui.currentLat != 0.0 || ui.currentLng != 0.0) {
+            // Lattice origin first, geo-ref second: updateGeoReference
+            // re-derives the AR-local grid phase, so the origin must already
+            // be known when the pairing lands. Repeat sets are idempotent —
+            // the route grid may not have initialized on the first fixes.
+            viewModel.latticeOrigin()?.let { (lat0, lng0) ->
+                overlay.setGridLatticeOrigin(lat0, lng0)
+            }
             if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
                 overlay.updateGeoReference(ui.currentLat, ui.currentLng)
             }
