@@ -58,6 +58,18 @@ expect class ArEnvScanOverlay() {
     fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
 
     /**
+     * Uncredited cells near the worker — rendered as translucent AR fog planes
+     * on the ground that dissipate as cells get credited (route-scan parity).
+     */
+    fun updateFog(cellCenters: List<Pair<Double, Double>>)
+
+    /** Aim the AR guidance arrow at the next area worth scanning. */
+    fun setGuidanceTarget(lat: Double, lng: Double)
+
+    /** Hide the AR guidance arrow (no frontier left, or no usable geo-ref). */
+    fun clearGuidanceTarget()
+
+    /**
      * Confirm the pending candidate (optionally re-typed by the user); places
      * the world marker and returns the final candidate with weight re-estimated
      * for the chosen type. Null when no candidate is pending.

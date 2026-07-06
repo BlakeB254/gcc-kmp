@@ -75,6 +75,8 @@ fun CameraCapture(
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Steering: minimap double-ring over the next area worth scanning. */
+    guidanceTarget: Coordinates? = null,
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -198,6 +200,7 @@ fun CameraCapture(
                         fogCellCenters = fogCellCenters,
                         staleCellCenters = staleCellCenters,
                         freshCellCenters = freshCellCenters,
+                        guidanceTarget = guidanceTarget,
                     )
                     Box(
                         modifier = Modifier

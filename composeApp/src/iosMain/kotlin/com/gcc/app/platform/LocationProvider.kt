@@ -5,10 +5,12 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import platform.CoreLocation.CLHeading
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
@@ -48,60 +50,66 @@ actual class LocationProvider actual constructor() {
     private var refCount = 0
 
     private val locationManager = CLLocationManager()
-    private var locationDelegate: NSObject? = null
+
+    /** Hot stream of fixes fanned out to every [locationFlow] collector. */
+    private val locationUpdates = MutableSharedFlow<Coordinates>(replay = 1, extraBufferCapacity = 16)
 
     /**
-     * A cold Flow that emits location updates while collected.
-     * Each collector gets its own delegate subscription but shares the
-     * underlying CLLocationManager. The StateFlow is also updated from here.
+     * The ONE CLLocationManager delegate. CLLocationManager has a single
+     * delegate slot and only calls back a delegate that responds to the
+     * selector — a second delegate without didUpdateHeading silently kills
+     * the compass stream (this bug hid the heading cone and frustum-sweep
+     * crediting in the field). Never install another delegate.
+     */
+    private val sharedDelegate = object : NSObject(), CLLocationManagerDelegateProtocol {
+        override fun locationManager(
+            manager: CLLocationManager,
+            didUpdateLocations: List<*>,
+        ) {
+            val clLocation = didUpdateLocations.lastOrNull() as? CLLocation ?: return
+            @OptIn(ExperimentalForeignApi::class)
+            val coords = clLocation.coordinate.useContents {
+                Coordinates(lat = latitude, lng = longitude)
+            }
+            _currentLocation.value = coords
+            recordAccuracy(clLocation)
+            locationUpdates.tryEmit(coords)
+        }
+
+        override fun locationManager(
+            manager: CLLocationManager,
+            didUpdateHeading: CLHeading,
+        ) {
+            val trueHeading = didUpdateHeading.trueHeading
+            val heading = if (trueHeading >= 0) trueHeading else didUpdateHeading.magneticHeading
+            _headingDegrees.value = heading.toFloat()
+        }
+
+        override fun locationManager(
+            manager: CLLocationManager,
+            didFailWithError: platform.Foundation.NSError,
+        ) {
+            // Non-fatal; CLLocationManager retries automatically
+        }
+
+        override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+            handleAuthorizationChange(manager)
+        }
+    }
+
+    /**
+     * A cold Flow that emits location updates while collected. Collectors
+     * share the refcounted CLLocationManager session with [startLocationUpdates]
+     * instead of installing their own delegate.
      */
     actual val locationFlow: Flow<Coordinates> = callbackFlow {
-        val flowDelegate = object : NSObject(), CLLocationManagerDelegateProtocol {
-            override fun locationManager(
-                manager: CLLocationManager,
-                didUpdateLocations: List<*>,
-            ) {
-                val clLocation = didUpdateLocations.lastOrNull() as? CLLocation ?: return
-                @OptIn(ExperimentalForeignApi::class)
-                val coords = clLocation.coordinate.useContents {
-                    Coordinates(lat = latitude, lng = longitude)
-                }
-                _currentLocation.value = coords
-                recordAccuracy(clLocation)
-                trySend(coords)
-            }
-
-            override fun locationManager(
-                manager: CLLocationManager,
-                didFailWithError: platform.Foundation.NSError,
-            ) {
-                // Location errors are non-fatal; CLLocationManager will retry
-                // automatically. We log nothing here to avoid noise.
-            }
-
-            override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
-                // If authorization was just granted, start updates
-                handleAuthorizationChange(manager)
-            }
+        startLocationUpdates()
+        val relay = launch {
+            locationUpdates.collect { trySend(it) }
         }
-
-        dispatch_async(dispatch_get_main_queue()) {
-            locationManager.delegate = flowDelegate
-            locationManager.desiredAccuracy = kCLLocationAccuracyBest
-            // Continuous updates (no distance filter): the OutdoorGate needs a steady
-            // stream of accuracy samples even when the worker is standing still —
-            // with the old 10m filter an indoor (stationary) user produced one fix
-            // and then silence, so the gate could never accumulate evidence.
-            locationManager.distanceFilter = kCLDistanceFilterNone
-            locationManager.requestWhenInUseAuthorization()
-            locationManager.startUpdatingLocation()
-        }
-
         awaitClose {
-            dispatch_async(dispatch_get_main_queue()) {
-                locationManager.stopUpdatingLocation()
-                locationManager.delegate = null
-            }
+            relay.cancel()
+            stopLocationUpdates()
         }
     }
 
@@ -114,44 +122,8 @@ actual class LocationProvider actual constructor() {
         if (_isTracking) return
         _isTracking = true
 
-        val delegate = object : NSObject(), CLLocationManagerDelegateProtocol {
-            override fun locationManager(
-                manager: CLLocationManager,
-                didUpdateLocations: List<*>,
-            ) {
-                val clLocation = didUpdateLocations.lastOrNull() as? CLLocation ?: return
-                @OptIn(ExperimentalForeignApi::class)
-                val coords = clLocation.coordinate.useContents {
-                    Coordinates(lat = latitude, lng = longitude)
-                }
-                _currentLocation.value = coords
-                recordAccuracy(clLocation)
-            }
-
-            override fun locationManager(
-                manager: CLLocationManager,
-                didUpdateHeading: CLHeading,
-            ) {
-                val trueHeading = didUpdateHeading.trueHeading
-                val heading = if (trueHeading >= 0) trueHeading else didUpdateHeading.magneticHeading
-                _headingDegrees.value = heading.toFloat()
-            }
-
-            override fun locationManager(
-                manager: CLLocationManager,
-                didFailWithError: platform.Foundation.NSError,
-            ) {
-                // Non-fatal; CLLocationManager retries automatically
-            }
-
-            override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
-                handleAuthorizationChange(manager)
-            }
-        }
-        locationDelegate = delegate
-
         dispatch_async(dispatch_get_main_queue()) {
-            locationManager.delegate = delegate
+            locationManager.delegate = sharedDelegate
             locationManager.desiredAccuracy = kCLLocationAccuracyBest
             // Continuous updates (no distance filter): the OutdoorGate needs a steady
             // stream of accuracy samples even when the worker is standing still —
@@ -173,7 +145,6 @@ actual class LocationProvider actual constructor() {
         if (refCount > 0) return  // Other screens still need location
         if (!_isTracking) return
         _isTracking = false
-        locationDelegate = null
 
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.stopUpdatingLocation()
@@ -218,6 +189,7 @@ actual class LocationProvider actual constructor() {
         if (_isTracking) {
             dispatch_async(dispatch_get_main_queue()) {
                 manager.startUpdatingLocation()
+                manager.startUpdatingHeading()
             }
         }
     }

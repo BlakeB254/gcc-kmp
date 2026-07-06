@@ -39,10 +39,12 @@ import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
+import platform.SceneKit.SCNLookAtConstraint
 import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNMatrix4MakeScale
 import platform.SceneKit.SCNNode
 import platform.SceneKit.SCNPlane
+import platform.SceneKit.SCNPyramid
 import platform.SceneKit.SCNTorus
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIBezierPath
@@ -95,11 +97,17 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val NEAR_STREAK_TICKS = 2
         /** Don't re-offer a candidate within this range of a dismissed/confirmed one. */
         private const val SUPPRESS_RADIUS_METERS = 2.0
-        /** Grid squares stay this size no matter how large the plane grows. */
-        private const val GRID_TILE_METERS = 0.5f
+        /** Grid squares stay this size no matter how large the plane grows.
+         *  1.5m = a clean divisor of CoverageTracker's 3m cells; with the
+         *  world-axis alignment below, the on-camera lattice reads as the
+         *  same grid the north-up minimap draws. */
+        private const val GRID_TILE_METERS = 1.5f
         /** Vector-scan overlay: cap live cell nodes (fog-node precedent). */
         private const val MAX_VECTOR_NODES = 350
         private const val VECTOR_RENDER_RADIUS_METERS = 30.0
+        /** Fog planes over uncredited cells (route-scan parity, same radius as vector). */
+        private const val MAX_FOG_NODES = 400
+        private const val FOG_RENDER_RADIUS_METERS = 30.0
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -147,6 +155,15 @@ actual class ArEnvScanOverlay actual constructor() {
     // Vector-scan overlay: rounded cell center -> node.
     private val vectorNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
     private var latestScannedCells: List<Pair<Double, Double>> = emptyList()
+
+    // Fog over uncredited cells: rounded cell center -> node (SceneKit path).
+    private val fogNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
+    private var latestFogCells: List<Pair<Double, Double>> = emptyList()
+
+    // Guidance arrow toward the next area worth scanning.
+    private var guidanceLatLng: Pair<Double, Double>? = null
+    private var arrowNode: SCNNode? = null
+    private var frontierTarget: SCNNode? = null
 
     // Trash lock-on state.
     private var nearStreak = 0
@@ -239,6 +256,13 @@ actual class ArEnvScanOverlay actual constructor() {
                 }
             )
         }
+        // Re-pairing shifts the whole geo-derived frame — re-place everything
+        // against the new reference so fog/cells/arrow don't lag a fix behind.
+        dispatch_async(dispatch_get_main_queue()) {
+            renderVectorCells()
+            renderFogCells()
+            renderGuidance()
+        }
     }
 
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {
@@ -251,6 +275,21 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {
         latestScannedCells = cellCenters
         dispatch_async(dispatch_get_main_queue()) { renderVectorCells() }
+    }
+
+    actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {
+        latestFogCells = cellCenters
+        dispatch_async(dispatch_get_main_queue()) { renderFogCells() }
+    }
+
+    actual fun setGuidanceTarget(lat: Double, lng: Double) {
+        guidanceLatLng = lat to lng
+        dispatch_async(dispatch_get_main_queue()) { renderGuidance() }
+    }
+
+    actual fun clearGuidanceTarget() {
+        guidanceLatLng = null
+        dispatch_async(dispatch_get_main_queue()) { renderGuidance() }
     }
 
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? {
@@ -671,20 +710,34 @@ actual class ArEnvScanOverlay actual constructor() {
             val node = planeNodes.getOrPut(id) {
                 makePlaneGridNode(isFloor).also { scene.rootNode.addChildNode(it) }
             }
-            // Anchor pose: translation + yaw (horizontal plane anchors are
-            // gravity-aligned, so yaw is the only rotation that matters).
+            // Anchor pose: translation only — the grid renders WORLD-axis
+            // aligned (compass-true under gravityAndHeading) instead of at the
+            // anchor's arbitrary detected yaw, sized to the world-space AABB
+            // of the rotated extent, so grid lines run north/south–east/west
+            // and register with the north-up minimap lattice.
             val m = matrixFloats(anchor.transform)
             node.position = SCNVector3Make(m[12], m[13], m[14])
             // R_y(θ): col0=(cosθ,0,-sinθ) → θ = atan2(-m[2], m[0]).
-            node.eulerAngles = SCNVector3Make(0f, kotlin.math.atan2(-m[2].toDouble(), m[0].toDouble()).toFloat(), 0f)
+            val yaw = kotlin.math.atan2(-m[2].toDouble(), m[0].toDouble())
+            node.eulerAngles = SCNVector3Make(0f, 0f, 0f)
+            val cosYaw = kotlin.math.cos(yaw)
+            val sinYaw = kotlin.math.sin(yaw)
+            val worldW = abs(extent[0] * cosYaw.toFloat()) + abs(extent[2] * sinYaw.toFloat())
+            val worldD = abs(extent[0] * sinYaw.toFloat()) + abs(extent[2] * cosYaw.toFloat())
             val planeChild = node.childNodes.firstOrNull() as? SCNNode ?: continue
-            planeChild.position = SCNVector3Make(center[0], center[1], center[2])
+            // Anchor-local center rotated into the world frame (the container
+            // no longer carries the anchor's rotation).
+            planeChild.position = SCNVector3Make(
+                (center[0] * cosYaw + center[2] * sinYaw).toFloat(),
+                center[1],
+                (-center[0] * sinYaw + center[2] * cosYaw).toFloat(),
+            )
             (planeChild.geometry as? SCNPlane)?.let { plane ->
-                plane.width = extent[0].toDouble()
-                plane.height = extent[2].toDouble()
+                plane.width = worldW.toDouble()
+                plane.height = worldD.toDouble()
                 plane.firstMaterial?.diffuse?.contentsTransform = SCNMatrix4MakeScale(
-                    (extent[0] / GRID_TILE_METERS).coerceAtLeast(1f),
-                    (extent[2] / GRID_TILE_METERS).coerceAtLeast(1f),
+                    (worldW / GRID_TILE_METERS).coerceAtLeast(1f),
+                    (worldD / GRID_TILE_METERS).coerceAtLeast(1f),
                     1f,
                 )
             }
@@ -764,9 +817,17 @@ actual class ArEnvScanOverlay actual constructor() {
             val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
             wanted.add(key)
             if (key in vectorNodes) {
-                // Keep height synced as floor detection improves.
+                // Keep placement synced as floor detection improves and the
+                // geo reference re-pairs (re-pairing shifts the whole frame).
+                val fresh = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
                 vectorNodes[key]?.position?.useContents {
-                    if (abs(y - groundY) > 0.05f) vectorNodes[key]?.position = SCNVector3Make(x, groundY, z)
+                    if (abs(y - groundY) > 0.05f ||
+                        abs(x - fresh.first.toFloat()) > 0.05f ||
+                        abs(z - fresh.second.toFloat()) > 0.05f
+                    ) {
+                        vectorNodes[key]?.position =
+                            SCNVector3Make(fresh.first.toFloat(), groundY, fresh.second.toFloat())
+                    }
                 }
                 continue
             }
@@ -817,6 +878,144 @@ actual class ArEnvScanOverlay actual constructor() {
             )
         )
         return node
+    }
+
+    // ── Fog over uncredited cells (route-scan parity) ────────────────
+
+    /**
+     * Translucent planes over nearby UNcredited ground; a cell leaving
+     * [latestFogCells] (= it got credited) fades out — the "fog dissipates
+     * as you scan" cue. Native mode ships AR-local centers and lets the
+     * Swift renderer own reveal-by-omission (same policy as route mode).
+     */
+    private fun renderFogCells() {
+        if (!hasGeoRef) return
+        nativeSurface?.let { surface ->
+            val flat = ArrayList<Double>()
+            var shipped = 0
+            for ((lat, lng) in latestFogCells) {
+                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+                val dx = local.first - refX
+                val dz = local.second - refZ
+                if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
+                if (shipped >= MAX_FOG_NODES) break
+                flat.add(local.first)
+                flat.add(local.second)
+                shipped++
+            }
+            surface.updateFogCells(flat, CoverageTracker.cellSizeMeters)
+            return
+        }
+        val scene = sceneView?.scene ?: return
+        val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.01f
+
+        val wanted = mutableSetOf<Pair<Long, Long>>()
+        for ((lat, lng) in latestFogCells) {
+            val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
+            wanted.add(key)
+            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+            if (key in fogNodes) {
+                fogNodes[key]?.position?.useContents {
+                    if (abs(y - groundY) > 0.05f ||
+                        abs(x - local.first.toFloat()) > 0.05f ||
+                        abs(z - local.second.toFloat()) > 0.05f
+                    ) {
+                        fogNodes[key]?.position =
+                            SCNVector3Make(local.first.toFloat(), groundY, local.second.toFloat())
+                    }
+                }
+                continue
+            }
+            if (fogNodes.size >= MAX_FOG_NODES) continue
+            val dx = local.first - refX
+            val dz = local.second - refZ
+            if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
+            fogNodes[key] = makeFogNode(local.first.toFloat(), groundY, local.second.toFloat())
+                .also { scene.rootNode.addChildNode(it) }
+        }
+
+        for ((key, node) in fogNodes.toMap()) {
+            if (key !in wanted) {
+                // Credited: dissipate rather than pop.
+                node.runAction(
+                    SCNAction.sequence(
+                        listOf(
+                            SCNAction.fadeOpacityTo(0.0, duration = 0.35),
+                            SCNAction.removeFromParentNode(),
+                        )
+                    )
+                )
+                fogNodes.remove(key)
+            }
+        }
+    }
+
+    private fun makeFogNode(x: Float, y: Float, z: Float): SCNNode {
+        val plane = SCNPlane.planeWithWidth(CoverageTracker.cellSizeMeters, CoverageTracker.cellSizeMeters)
+        val material = SCNMaterial()
+        material.diffuse.contents = UIColor.grayColor.colorWithAlphaComponent(0.45)
+        material.doubleSided = true
+        material.writesToDepthBuffer = false
+        plane.materials = listOf(material)
+
+        val node = SCNNode.nodeWithGeometry(plane)
+        // SCNPlane is vertical (XY) by default — lay it flat on the ground.
+        node.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
+        node.position = SCNVector3Make(x, y, z)
+        return node
+    }
+
+    // ── Guidance arrow ───────────────────────────────────────────────
+
+    /** Aim (or hide) the camera-attached arrow at the current guidance target. */
+    private fun renderGuidance() {
+        val target = guidanceLatLng
+        if (!hasGeoRef || target == null) {
+            nativeSurface?.clearGuidanceTarget()
+            arrowNode?.hidden = true
+            return
+        }
+        val local = latLngToLocal(target.first, target.second, refLat, refLng, refX, refZ, lngScale)
+        nativeSurface?.let { surface ->
+            surface.setGuidanceTarget(local.first, local.second)
+            return
+        }
+        // SceneKit fallback: pyramid on the camera with a LookAt constraint at
+        // an invisible world node — SceneKit re-aims it every frame for free
+        // (same construction as ArRouteOverlay's frontier arrow).
+        val scene = sceneView?.scene ?: return
+        val groundY = floorY ?: (refY - GROUND_OFFSET_METERS)
+        val targetNode = frontierTarget ?: SCNNode().also {
+            frontierTarget = it
+            scene.rootNode.addChildNode(it)
+        }
+        targetNode.position = SCNVector3Make(local.first.toFloat(), groundY, local.second.toFloat())
+        val arrow = arrowNode ?: makeArrowNode(targetNode) ?: return
+        arrow.hidden = false
+    }
+
+    private fun makeArrowNode(target: SCNNode): SCNNode? {
+        val camera = sceneView?.pointOfView ?: return null
+        val pyramid = SCNPyramid.pyramidWithWidth(0.12, 0.25, 0.12)
+        val material = SCNMaterial()
+        material.diffuse.contents = UIColor.greenColor
+        pyramid.materials = listOf(material)
+
+        // SCNPyramid points +Y; rotate so the tip points -Z, the axis
+        // SCNLookAtConstraint aims at its target.
+        val geometryNode = SCNNode.nodeWithGeometry(pyramid)
+        geometryNode.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
+
+        val container = SCNNode()
+        container.addChildNode(geometryNode)
+        container.position = SCNVector3Make(0f, -0.5f, -1.2f)
+        val constraint = SCNLookAtConstraint.lookAtConstraintWithTarget(target)
+        constraint.gimbalLockEnabled = true
+        container.constraints = listOf(constraint)
+
+        camera.addChildNode(container)
+        arrowNode = container
+        return container
     }
 
     // ── Markers / capture / helpers ──────────────────────────────────

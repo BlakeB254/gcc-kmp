@@ -58,6 +58,12 @@ fun SpotScanCapture(
     trashItems: List<Coordinates> = emptyList(),
     /** Typed pass-through — per-type minimap glyphs. */
     typedTrashItems: List<ObservedSpotItem> = emptyList(),
+    /** Ledger freshness pass-through for the minimap veil/wash. */
+    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
+    staleCellCenters: List<Pair<Double, Double>> = emptyList(),
+    freshCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Steering pass-through: minimap ring over the next area worth scanning. */
+    guidanceTarget: Coordinates? = null,
     environmentScanMode: Boolean = false,
     statusText: String? = null,
     /** ARKit env-scan surface, passed through to the viewfinder. */
@@ -207,6 +213,10 @@ fun SpotScanCapture(
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,
             typedTrashItems = typedTrashItems,
+            fogCellCenters = fogCellCenters,
+            staleCellCenters = staleCellCenters,
+            freshCellCenters = freshCellCenters,
+            guidanceTarget = guidanceTarget,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
             arOverlay = arOverlay,
