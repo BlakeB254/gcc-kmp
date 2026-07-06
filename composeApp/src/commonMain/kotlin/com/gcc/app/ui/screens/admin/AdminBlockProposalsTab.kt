@@ -8,11 +8,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.boundaryFitZoom
+import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.BlockProposal
+import com.gcc.shared.model.Coordinates
 
 /**
  * Review queue for AI-generated block candidates — see the
@@ -157,6 +163,11 @@ private fun BlockProposalCard(
                 )
             }
 
+            ProposalBoundaryPreview(
+                proposal = proposal,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+
             proposal.streetName?.let { streetName ->
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -197,5 +208,66 @@ private fun BlockProposalCard(
                 ) { Text("Approve") }
             }
         }
+    }
+}
+
+/**
+ * Non-interactive minimap framed to the proposal's boundary so the
+ * approve/reject decision isn't blind — the ring renders through
+ * [GccMap.routeCoordinates] with the same styling an approved block gets
+ * on the real map. Per-card `GccMap` in a LazyColumn is the established
+ * minimap pattern (BountyListScreen, WalletScreen); only visible cards
+ * hold a map instance.
+ */
+@Composable
+private fun ProposalBoundaryPreview(
+    proposal: BlockProposal,
+    modifier: Modifier = Modifier,
+) {
+    // GeoJSON Point is [lng, lat] — Coordinates(lng, lat) is positional.
+    val ring = remember(proposal.id) {
+        proposal.boundary.coordinates.firstOrNull().orEmpty()
+            .filter { it.size >= 2 }
+            .map { pt -> Coordinates(pt[0], pt[1]) }
+    }
+    if (ring.size < 3) return
+
+    val loLat = ring.minOf { it.lat }
+    val hiLat = ring.maxOf { it.lat }
+    val loLng = ring.minOf { it.lng }
+    val hiLng = ring.maxOf { it.lng }
+    val centerLat = (loLat + hiLat) / 2.0
+    val centerLng = (loLng + hiLng) / 2.0
+
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clip(RoundedCornerShape(8.dp)),
+    ) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        val zoom = boundaryFitZoom(
+            latSpanDeg = hiLat - loLat,
+            lngSpanDeg = hiLng - loLng,
+            centerLat = centerLat,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            zoomBias = mapOverlayZoomBias(density.density),
+        ).coerceIn(13.0, 17.5)
+
+        GccMap(
+            modifier = Modifier.fillMaxSize(),
+            centerLat = centerLat,
+            centerLng = centerLng,
+            zoom = zoom,
+            enableGestures = false,
+            routeCoordinates = listOf(ring),
+            showBuildings = false,
+            instantCamera = true,
+            innerBoundaryFallback = false,
+            showGridLines = false,
+        )
     }
 }
