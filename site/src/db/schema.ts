@@ -198,6 +198,20 @@ export const workers = pgTable('workers', {
   loginAttempts: numeric('login_attempts').default('0'),
   lockUntil: timestamp('lock_until', { mode: 'string', withTimezone: true }),
 
+  // Pending email change (account settings; email only switches after the new
+  // address confirms a 6-digit code — token column mirrors the
+  // emailVerificationToken "token:code" encoding)
+  pendingEmail: varchar('pending_email'),
+  pendingEmailToken: varchar('pending_email_token'),
+  pendingEmailExpires: timestamp('pending_email_expires', { mode: 'string', withTimezone: true }),
+  pendingEmailAttempts: integer('pending_email_attempts').default(0),
+
+  // Two-factor authentication (TOTP authenticator app + recovery codes)
+  totpSecret: varchar('totp_secret'),
+  twoFactorEnabled: boolean('two_factor_enabled').default(false),
+  twoFactorRecoveryCodes: jsonb('two_factor_recovery_codes'),
+  twoFactorEnabledAt: timestamp('two_factor_enabled_at', { mode: 'string', withTimezone: true }),
+
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),

@@ -25,6 +25,7 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     onNavigateToLegal: (String) -> Unit = {},
     onSignOut: () -> Unit = {},
+    onNavigateToAccountSettings: () -> Unit = {},
 ) {
     val viewModel = koinInject<SettingsViewModel>()
     val profileVm = koinInject<ProfileViewModel>()
@@ -99,7 +100,7 @@ fun SettingsScreen(
         ) {
             // Account Section
             SectionHeader(title = "Account")
-            GccCard {
+            GccCard(onClick = onNavigateToAccountSettings) {
                 if (uiState.isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
@@ -108,22 +109,37 @@ fun SettingsScreen(
                     )
                 } else {
                     uiState.worker?.let { worker ->
-                        Text(
-                            worker.name,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            worker.email,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                        )
-                        worker.phone.takeIf { it.isNotBlank() }?.let { phone ->
-                            Text(
-                                phone,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSubtle,
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    worker.name,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    worker.email,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextMuted,
+                                )
+                                worker.phone.takeIf { it.isNotBlank() }?.let { phone ->
+                                    Text(
+                                        phone,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSubtle,
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "Edit name, email, phone, password & 2FA",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = GccGreen,
+                                )
+                            }
+                            Text("›", style = MaterialTheme.typography.titleLarge, color = TextSubtle)
                         }
                     }
                 }

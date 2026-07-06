@@ -291,6 +291,48 @@ class GccApiClient(
     suspend fun updateDisplayHandle(handle: String): Worker =
         patchJson("/api/workers/me/handle", mapOf("handle" to handle))
 
+    // ── Account Settings ──────────────────────────────────────────────
+    // Sensitive changes re-authenticate with the account password; the
+    // server intentionally returns those failures as 400 (not 401/403) so
+    // they never trip onUnauthorized/logout.
+
+    suspend fun updateProfileName(name: String): UpdateProfileResponse =
+        patchJson("/api/workers/me/profile", UpdateProfileRequest(name = name))
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): AccountActionResponse =
+        postJson(
+            "/api/workers/me/change-password",
+            ChangePasswordRequest(currentPassword = currentPassword, newPassword = newPassword),
+        )
+
+    /** Step 1 of email change: sends a 6-digit code to [newEmail]. */
+    suspend fun requestEmailChange(newEmail: String, password: String): EmailChangeStarted =
+        postJson(
+            "/api/workers/me/email/change-request",
+            EmailChangeRequest(newEmail = newEmail, password = password),
+        )
+
+    /** Step 2 of email change: the account email switches on success. */
+    suspend fun confirmEmailChange(code: String): EmailChangeConfirmed =
+        postJson("/api/workers/me/email/confirm", EmailChangeConfirmRequest(code = code))
+
+    suspend fun changePhone(newPhone: String, password: String): PhoneChangeResponse =
+        postJson(
+            "/api/workers/me/phone/change-request",
+            PhoneChangeRequest(newPhone = newPhone, password = password),
+        )
+
+    /** Begin TOTP enrollment. 2FA stays off until [enableTwoFactor] confirms a code. */
+    suspend fun setupTwoFactor(password: String): TwoFactorSetupResponse =
+        postJson("/api/workers/me/2fa/setup", TwoFactorSetupRequest(password = password))
+
+    /** Confirm enrollment; returns recovery codes (shown exactly once). */
+    suspend fun enableTwoFactor(code: String): TwoFactorEnableResponse =
+        postJson("/api/workers/me/2fa/enable", TwoFactorEnableRequest(code = code))
+
+    suspend fun disableTwoFactor(password: String, code: String): AccountActionResponse =
+        postJson("/api/workers/me/2fa/disable", TwoFactorDisableRequest(password = password, code = code))
+
     // ── Bounties (Public) ─────────────────────────────────────────────
 
     suspend fun getBounties(status: String? = null, limit: Int = 50): List<Bounty> =

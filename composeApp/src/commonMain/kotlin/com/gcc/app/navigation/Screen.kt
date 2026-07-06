@@ -38,6 +38,9 @@ sealed class Screen {
     data object Settings : Screen()
 
     @Serializable
+    data object AccountSettings : Screen()
+
+    @Serializable
     data class Legal(val type: String) : Screen()
 
     @Serializable

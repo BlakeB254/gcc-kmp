@@ -46,6 +46,7 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
       communityPoints: Number(row.statsCommunityPoints ?? 0),
     },
     earlyAdopterTier: row.earlyAdopterTier ?? 'standard',
+    twoFactorEnabled: row.twoFactorEnabled ?? false,
     role: 'worker',
     referralCode: row.referralCode ?? null,
     displayHandle: row.displayHandle ?? null,

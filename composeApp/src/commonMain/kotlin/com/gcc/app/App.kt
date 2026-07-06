@@ -134,6 +134,10 @@ fun App(component: RootComponent) {
                     onBack = component::navigateBack,
                     onNavigateToLegal = component::navigateToLegal,
                     onSignOut = component::signOut,
+                    onNavigateToAccountSettings = component::navigateToAccountSettings,
+                )
+                is Screen.AccountSettings -> AccountSettingsScreen(
+                    onBack = component::navigateBack,
                 )
                 is Screen.Legal -> LegalScreen(
                     type = screen.type,

@@ -30,6 +30,7 @@ data class Worker(
     val payoutMethod: String = "stripe",
     val stats: WorkerStats = WorkerStats(),
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
+    val twoFactorEnabled: Boolean = false,
     val role: String = "worker",
     val referralCode: String? = null,
     val displayHandle: String? = null,
