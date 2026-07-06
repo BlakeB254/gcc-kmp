@@ -137,6 +137,7 @@ actual class ArRouteOverlay actual constructor() {
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
         frameFeedback.start()
+        startCoverageFanLoopIfNeeded()
     }
 
     /**
@@ -151,6 +152,7 @@ actual class ArRouteOverlay actual constructor() {
         // covers UNscanned cells on top of it, vector quads mark credited ones.
         surface.setGroundGridVisible(true)
         frameFeedback.start()
+        startCoverageFanLoopIfNeeded()
         DiagnosticsLog.info("ar-route", "RealityKit native route surface started")
     }
 
@@ -175,6 +177,11 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.ceilingListener = listener
     }
 
+    /**
+     * The fan loop intentionally gates only on [hasGeoRef], not the
+     * frame-analysis flag: raycasts are Vision-free and cheap, and crediting
+     * is gate-checked by the common-code listener anyway.
+     */
     actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
         coverageHitListener = listener
         if (listener == null) {
@@ -182,7 +189,17 @@ actual class ArRouteOverlay actual constructor() {
             coverageFanJob = null
             return
         }
-        if (coverageFanJob != null) return
+        startCoverageFanLoopIfNeeded()
+    }
+
+    /**
+     * (Re)launch the 1s coverage fan loop when a listener is wired and no
+     * loop is live — called from [setCoverageHitListener] and from
+     * [bind]/[bindNative], so a stop() → rebind cycle restarts the fan
+     * instead of leaving it silently dead.
+     */
+    private fun startCoverageFanLoopIfNeeded() {
+        if (coverageHitListener == null || coverageFanJob != null) return
         coverageFanJob = coverageFanScope.launch {
             while (true) {
                 delay(1_000L)
