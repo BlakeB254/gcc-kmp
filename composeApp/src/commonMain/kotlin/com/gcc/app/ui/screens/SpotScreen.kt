@@ -44,7 +44,10 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraSceneVoteBus
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
+import com.gcc.app.platform.CoverageQuality
+import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.RaycastCoverageHit
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
@@ -74,6 +77,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
+import com.gcc.shared.model.RetractCoverageRequest
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
@@ -324,6 +328,14 @@ private fun CameraPhase(
     // Declared here (ahead of its other uses below) so the outdoor-state gate
     // effect can reach it for purge/audit-trail events.
     val sessionRecorder = remember { EnvScanSessionRecorder() }
+    // Coverage tracker: hoisted above the AR-overlay DisposableEffect below
+    // (rather than down with its other env-scan state) because the
+    // raycast-fan listener registered there needs it in scope.
+    val tracker = remember { CoverageTracker() }
+    // Set by the raycast-fan listener when any CLOSE-tier hit credits; read +
+    // reset per coverage event so the event carries the best tier since the
+    // previous fix. Plain holder (not Compose state): mutated off-composition.
+    val closeCreditSinceLastEvent = remember { object { var value = false } }
 
     DisposableEffect(arOverlay) {
         // Landmark elements (trees, fences, gates…) auto-register into the
@@ -345,9 +357,17 @@ private fun CameraPhase(
         arOverlay?.setCeilingListener { detected ->
             gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
         }
+        arOverlay?.setCoverageHitListener { hits ->
+            if (!gate.captureAllowed.value) return@setCoverageHitListener
+            tracker.updateWithRaycastHits(hits)
+            if (hits.any { it.distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS }) {
+                closeCreditSinceLastEvent.value = true
+            }
+        }
         onDispose {
             arOverlay?.setElementObservedListener(null)
             arOverlay?.setCeilingListener(null)
+            arOverlay?.setCoverageHitListener(null)
             arOverlay?.stop()
         }
     }
@@ -384,28 +404,10 @@ private fun CameraPhase(
             gate.onSceneVote(vote, Clock.System.now().toEpochMilliseconds())
         }
     }
-    LaunchedEffect(outdoorState) {
-        DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
-        arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
-        arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
-        CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
-        if (outdoorState == OutdoorState.INDOOR) {
-            val cutoff = (gate.lastIndoorFlipAtMs ?: Clock.System.now().toEpochMilliseconds()) - OutdoorGate.PURGE_WINDOW_MS
-            sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
-            onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
-        }
-        sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
-    }
-
-    // ── Environment-scan session: coverage credit + minimap layers ──
+    // apiClient/coverageQueue/flushScope/retractQueue are hoisted here (ahead of
+    // their other env-scan uses below) so the outdoor-state gate effect's INDOOR
+    // branch can reach them for the purge + server-retraction flow.
     val apiClient = koinInject<GccApiClient>()
-    val scanAreaCache = koinInject<ScanAreaCacheStore>()
-    val tracker = remember { CoverageTracker() }
-    var trackerReady by remember { mutableStateOf(false) }
-    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-    var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-    var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
-
     // Ledger emission: environment scans register real coverage (never-scanned
     // completions + 24h recency updates) exactly like the AR modes do.
     val coverageQueue = remember(apiClient) {
@@ -419,6 +421,48 @@ private fun CameraPhase(
         })
     }
     val flushScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    // Retractions: already-flushed indoor-window events the server must undo.
+    val retractQueue = remember(apiClient) {
+        CoverageRetractionQueue(submitFn = { request ->
+            apiClient.retractCoverageEvents(request).success
+        })
+    }
+
+    LaunchedEffect(outdoorState) {
+        DiagnosticsLog.info("outdoor-gate", "camera gate → $outdoorState")
+        arOverlay?.setFrameAnalysisEnabled(outdoorState != OutdoorState.INDOOR)
+        arOverlay?.setSceneVoteCadence(fast = outdoorState != OutdoorState.OUTDOOR)
+        CameraManager.sceneVoteFastMode = outdoorState != OutdoorState.OUTDOOR
+        if (outdoorState == OutdoorState.INDOOR) {
+            val nowMs = Clock.System.now().toEpochMilliseconds()
+            val cutoff = (gate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
+            sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
+            onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
+            // Coverage companion purges (spec §2): local cells, pending
+            // events, and a server retraction for anything already flushed.
+            tracker.purgeSince(cutoff)
+            flushScope.launch {
+                coverageQueue.purgeSince(cutoff)
+                retractQueue.enqueue(
+                    RetractCoverageRequest(
+                        deviceId = CoverageDeviceId.value,
+                        fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
+                        toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
+                    )
+                )
+                retractQueue.flush()
+            }
+        }
+        sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
+    }
+
+    // ── Environment-scan session: coverage credit + minimap layers ──
+    val scanAreaCache = koinInject<ScanAreaCacheStore>()
+    var trackerReady by remember { mutableStateOf(false) }
+    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+
     DisposableEffect(Unit) {
         onDispose {
             flushScope.launch { coverageQueue.flush() }
@@ -540,12 +584,10 @@ private fun CameraPhase(
                 lastLat = null; lastLng = null
                 return@collect
             }
+            // Grazed floor: the ground you walk over is observed at sweep
+            // quality; everything richer comes from the raycast fan (spec §1).
             val heading = locationProvider.headingDegrees.value
-            if (heading != null) {
-                tracker.updateWithFrustum(lat = loc.lat, lng = loc.lng, headingDegrees = heading)
-            } else {
-                tracker.updatePosition(loc.lat, loc.lng)
-            }
+            tracker.updatePosition(loc.lat, loc.lng)
             sessionRecorder.addSample(
                 lat = loc.lat,
                 lng = loc.lng,
@@ -559,18 +601,22 @@ private fun CameraPhase(
             } ?: 0.0
             lastLat = loc.lat
             lastLng = loc.lng
-            if (getPlatformName() != "desktop") coverageQueue.enqueue(
-                ScanCoverageEventRequest(
-                    deviceId = CoverageDeviceId.value,
-                    platform = getPlatformName(),
-                    lat = loc.lat,
-                    lng = loc.lng,
-                    distanceMeters = segmentMeters,
-                    scanMode = "spot",
-                    deviceTier = deviceCapabilities.deviceClass.coverageTier(),
-                    capturedAt = Clock.System.now().toString(),
+            if (getPlatformName() != "desktop") {
+                coverageQueue.enqueue(
+                    ScanCoverageEventRequest(
+                        deviceId = CoverageDeviceId.value,
+                        platform = getPlatformName(),
+                        lat = loc.lat,
+                        lng = loc.lng,
+                        distanceMeters = segmentMeters,
+                        scanMode = "spot",
+                        deviceTier = deviceCapabilities.deviceClass.coverageTier(),
+                        capturedAt = Clock.System.now().toString(),
+                        quality = if (closeCreditSinceLastEvent.value) "close" else "grazed",
+                    )
                 )
-            )
+                closeCreditSinceLastEvent.value = false
+            }
 
             // Clean-confirm proximity (5m, unresolved only).
             nearbyDirty = expectedDirty
@@ -585,6 +631,11 @@ private fun CameraPhase(
     val scannedCells by tracker.scannedCells.collectAsState()
     val scanCellCenters = remember(scannedCells) {
         scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+    }
+    val creditedCells by tracker.creditedCells.collectAsState()
+    val closeCellCenters = remember(creditedCells) {
+        creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
+            .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
     // Vector-scan effect: credited cells render as "digitized" ground quads
     // in the AR camera view, mirroring the minimap fill. (AR fog over
