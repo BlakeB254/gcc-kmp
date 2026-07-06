@@ -376,19 +376,29 @@ class SpotViewModel(
     fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
-        if (state.capturedPhotos.isEmpty()) {
+        // A scan is a COVERAGE act, not an incident report: every location is
+        // supposed to be scanned, so finishing one only files a report when
+        // the session produced litter evidence (a geo-tagged item or the
+        // on-device analyzer finding trash in a capture). Clean-area scans —
+        // photos or not — archive the full session bundle and land on the
+        // session summary.
+        val litterEvidence = state.observedItems.any { it.domain == null || it.domain == "litter" } ||
+            state.aiAnalysis?.trashTypes?.isNotEmpty() == true
+        if (state.capturedPhotos.isEmpty() || !litterEvidence) {
             // Complete Scan ALWAYS ends the session (product rule: the
-            // bottom button is the only exit). With no captures there is
-            // no report to file, but the session manifest — GPS/heading
-            // track, scanned cells, tagged items — is still archived, and
-            // the view closes. (Silently doing nothing here stranded the
-            // user on the camera.)
-            DiagnosticsLog.info("spot-submit", "Complete Scan with no captures — archiving session, closing")
+            // bottom button is the only exit). The session manifest —
+            // GPS/heading track, scanned cells, photos, tagged items — is
+            // still archived to R2 either way.
+            DiagnosticsLog.info(
+                "spot-submit",
+                "Complete Scan: coverage-only session (${state.capturedPhotos.size} photo(s), " +
+                    "litterEvidence=$litterEvidence) — archiving, no incident report",
+            )
             sessionDraft?.let { uploadEnvScanSession(it, reportId = null) }
             if (sessionDraft != null && sessionDraft.scannedCells.isNotEmpty()) {
-                // No report to file, but ground WAS covered — show the
-                // session-complete summary with the shaded coverage map
-                // instead of silently dropping the user on the dashboard.
+                // Ground WAS covered — show the session-complete summary
+                // with the shaded coverage map instead of silently dropping
+                // the user on the dashboard.
                 _uiState.value = _uiState.value.copy(
                     phase = SpotPhase.RESULT,
                     completedSession = sessionDraft,
@@ -399,7 +409,10 @@ class SpotViewModel(
             return
         }
         pendingSessionDraft = sessionDraft
-        DiagnosticsLog.info("spot-submit", "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s)")
+        DiagnosticsLog.info(
+            "spot-submit",
+            "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s) + litter evidence — filing report",
+        )
         applyAiDescription()
         submitReport()
     }

@@ -58,6 +58,14 @@ expect class ArEnvScanOverlay() {
     fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
 
     /**
+     * Never-scanned ledger cells near the worker (lat/lng centers on the
+     * ~10m server grid) — rendered as grey fog quads on the ground so
+     * unmapped territory is visibly under fog in the camera view. Fog cells
+     * the session has since credited are dropped at render time.
+     */
+    fun updateFogCells(cellCenters: List<Pair<Double, Double>>)
+
+    /**
      * Confirm the pending candidate (optionally re-typed by the user); places
      * the world marker and returns the final candidate with weight re-estimated
      * for the chosen type. Null when no candidate is pending.

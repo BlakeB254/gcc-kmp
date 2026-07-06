@@ -81,6 +81,7 @@ actual fun GccMap(
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
+    onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {

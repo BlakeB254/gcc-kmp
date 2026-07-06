@@ -583,6 +583,12 @@ private fun CameraPhase(
     }
     // Vector-scan effect: credited cells render as "digitized" ground quads
     // in the AR camera view, mirroring the minimap fill.
+    // Never-scanned ledger cells render as grey AR fog on the ground — the
+    // camera view itself shows which territory is unmapped (Blake: "good ar
+    // fog … for areas that have never been scanned before").
+    LaunchedEffect(fogCells, arOverlay) {
+        arOverlay?.updateFogCells(fogCells)
+    }
     LaunchedEffect(scanCellCenters) {
         arOverlay?.updateScannedCells(scanCellCenters)
     }
