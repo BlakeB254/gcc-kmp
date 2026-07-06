@@ -765,6 +765,7 @@ actual fun GccMap(
             // spot-density heat layers above.
             if (coverageStateJsons != null) {
                 val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.clean))
+                val cleanGrazedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.cleanGrazed))
                 val dirtySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.dirty))
                 val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.stale))
                 val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.fog))
@@ -791,6 +792,24 @@ actual fun GccMap(
                 // All scanned tiles are tappable: cellId rides in each
                 // feature's properties (buildCoverageStateGeoJsons) and the
                 // caller resolves it to the cell for the last-scan card.
+                // Grazed-fresh: scanned at sweep quality only — lighter green,
+                // the map-level "come back and detail-scan me" signal.
+                FillLayer(
+                    id = "coverage-clean-grazed",
+                    source = cleanGrazedSrc,
+                    color = const(Color(0xFF22C55E)),
+                    opacity = const(0.10f),
+                    onClick = if (onCoverageCellTap != null) { features ->
+                        val cellId = features.firstOrNull()?.properties?.get("cellId")
+                            ?.toString()?.trim('"')
+                        if (!cellId.isNullOrBlank()) {
+                            onCoverageCellTap(cellId)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
+                )
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,

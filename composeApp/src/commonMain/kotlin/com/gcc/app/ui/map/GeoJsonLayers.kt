@@ -830,6 +830,9 @@ fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Str
  *  for a fresh scan), fog veil = never scanned at all. */
 data class CoverageStateJsons(
     val clean: String,
+    /** Fresh, no-spot cells whose best quality is "grazed" (sweep-only) — the
+     *  lighter green "come back and detail-scan me" tile (spec §3). */
+    val cleanGrazed: String,
     val dirty: String,
     val stale: String,
     val fog: String,
@@ -888,8 +891,14 @@ fun buildCoverageStateGeoJsons(
     }
 
     val fresh = coverageCells.filter { it.state == "fresh" }
-    val clean = fresh
-        .filter { !hasSpotNear(it.lat, it.lng) }
+    val freshNoSpot = fresh.filter { !hasSpotNear(it.lat, it.lng) }
+    // Two-tier clean (spec §3): close-scanned reads full green; grazed reads a
+    // lighter green — "touched, still needs a detail pass".
+    val clean = freshNoSpot
+        .filter { it.quality == "close" }
+        .joinToString(",") { feature(it) }
+    val cleanGrazed = freshNoSpot
+        .filter { it.quality != "close" }
         .joinToString(",") { feature(it) }
     // Scanned recently but litter is still on record — previously these
     // cells were silently DROPPED (no tile at all); now they read red so a
@@ -933,6 +942,7 @@ fun buildCoverageStateGeoJsons(
         if (features.isEmpty()) empty else """{"type":"FeatureCollection","features":[$features]}"""
     return CoverageStateJsons(
         clean = wrap(clean),
+        cleanGrazed = wrap(cleanGrazed),
         dirty = wrap(dirty),
         stale = wrap(stale),
         fog = wrap(fogFeatures.toString()),

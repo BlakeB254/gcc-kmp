@@ -3,6 +3,7 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.ArScanner
+import com.gcc.app.platform.CellCredit
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageRetractionQueue
@@ -419,6 +420,11 @@ class RouteScanViewModel(
 
     /** Set of scanned coverage-grid cells (row, col). */
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.scannedCells
+
+    /** Per-cell credit (row, col) → tier/timestamp — the source ArRouteScreen
+     *  mirrors to build CLOSE-tier cell centers for the minimap + AR quads
+     *  (spec §4: fog = unscanned, clear = grazed, vivid quad = close). */
+    val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> get() = coverageTracker.creditedCells
 
     /** Real-world (lat, lng) center of a coverage-grid cell. */
     fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =

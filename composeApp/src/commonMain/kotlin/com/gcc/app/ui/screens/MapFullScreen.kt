@@ -1648,6 +1648,7 @@ private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
             )
             ScanLegendRow(Color(0xFF22C55E), "Scanned · clean")
+            ScanLegendRow(Color(0xFF22C55E), "Light green · needs detail scan", swatchAlpha = 0.35f)
             ScanLegendRow(Color(0xFFEF4444), "Scanned · litter found")
             ScanLegendRow(Color(0xFFF59E0B), "Stale · re-scan")
             ScanLegendRow(Color(0xFF4B5563), "Never scanned")
@@ -1661,13 +1662,13 @@ private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ScanLegendRow(color: Color, label: String) {
+private fun ScanLegendRow(color: Color, label: String, swatchAlpha: Float = 0.7f) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(12.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(color.copy(alpha = 0.7f)),
+                .background(color.copy(alpha = swatchAlpha)),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)

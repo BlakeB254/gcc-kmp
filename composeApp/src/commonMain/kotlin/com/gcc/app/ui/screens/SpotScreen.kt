@@ -462,6 +462,9 @@ private fun CameraPhase(
     var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
+    /** Ledger-fresh cells whose best-recorded quality is "close" — the
+     *  minimap's brighter fresh wash (spec §3/§4 two-tier read). */
+    var freshCloseCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -518,7 +521,8 @@ private fun CameraPhase(
             val serverCells = apiClient.getMapCoverage(bbox).cells
             fetchedCells = serverCells
             staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
-            freshCells = serverCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
+            freshCells = serverCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
+            freshCloseCells = serverCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
             DiagnosticsLog.info(
                 "env-scan",
@@ -533,7 +537,8 @@ private fun CameraPhase(
             }
             if (cached != null) {
                 staleCells = cached.coverageCells.filter { it.state == "stale" }.map { it.lat to it.lng }
-                freshCells = cached.coverageCells.filter { it.state == "fresh" }.map { it.lat to it.lng }
+                freshCells = cached.coverageCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
+                freshCloseCells = cached.coverageCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
                 fogCells = neverScannedGrid(anchor, cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
@@ -637,13 +642,12 @@ private fun CameraPhase(
         creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
             .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
-    // Vector-scan effect: credited cells render as "digitized" ground quads
-    // in the AR camera view, mirroring the minimap fill. (AR fog over
-    // unswept ground is the session-scoped updateFog below — it dissipates
-    // as cells credit, which also covers never-scanned territory on a first
-    // visit; the ledger's never-scanned picture stays on the minimap+map.)
-    LaunchedEffect(scanCellCenters) {
-        arOverlay?.updateScannedCells(scanCellCenters)
+    // Vector-scan effect: CLOSE-tier cells render as "digitized" ground quads
+    // in the AR camera view, mirroring the minimap's vivid fill — fog still
+    // lifts on any credit (below), so the AR read becomes: fog = unscanned,
+    // clear ground = grazed, vivid quad = close (spec §4).
+    LaunchedEffect(closeCellCenters) {
+        arOverlay?.updateScannedCells(closeCellCenters)
     }
     // AR fog + steering: uncredited cells render as ground fog on the camera
     // that dissipates as they credit, and the frontier pick aims the minimap
@@ -755,6 +759,8 @@ private fun CameraPhase(
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
+                closeCellCenters = closeCellCenters,
+                freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
                 statusText = scanStatus,
@@ -786,6 +792,8 @@ private fun CameraPhase(
                 fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
+                closeCellCenters = closeCellCenters,
+                freshCloseCellCenters = freshCloseCells,
                 environmentScanMode = true,
                 statusText = scanStatus,
             )

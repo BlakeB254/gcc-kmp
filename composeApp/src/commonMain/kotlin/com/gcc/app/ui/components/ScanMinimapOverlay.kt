@@ -56,6 +56,10 @@ fun ScanMinimapOverlay(
     /** Cells the ledger marks freshly scanned — punched out of the veil. */
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshnessCellSizeMeters: Double = 10.0,
+    /** Session cells credited at CLOSE tier — drawn vivid over the grazed shade. */
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger-fresh cells whose best quality is close — brighter fresh wash. */
+    freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Block outline (lat, lng ring) — drawn as the minimap's boundary. */
     outerBoundary: List<Pair<Double, Double>> = emptyList(),
     /** Inner exclusion islands (private property) — amber outlines. */
@@ -127,6 +131,7 @@ fun ScanMinimapOverlay(
         }
         for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
         for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
+        for ((lat, lng) in freshCloseCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
         for ((lat, lng) in scanCellCenters) punch(lat, lng, cellSizeMeters, 1.2f)
         val veil = Path.combine(
             PathOperation.Difference,
@@ -141,10 +146,13 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.35f), overscan = 1.15f)
         }
 
-        // Ledger-fresh cells: already scanned by the community — clear sky
-        // with a faint green wash.
+        // Ledger-fresh cells: grazed = whisper (needs detail), close = the
+        // established faint green (already well-scanned by the community).
         for ((lat, lng) in freshCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.14f), overscan = 1.1f)
+            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.07f), overscan = 1.1f)
+        }
+        for ((lat, lng) in freshCloseCellCenters) {
+            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.16f), overscan = 1.1f)
         }
 
         // Stale cells: scanned before, worth re-scanning — amber glow over
@@ -153,9 +161,13 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
         }
 
-        // This session's credited zones: cut clear + vivid green. This is
-        // the live "you just scanned this" feedback.
+        // This session, two shades (spec §4): every credited cell gets the
+        // light grazed wash; close-tier cells re-cover vivid — the live
+        // "you've detail-scanned this" feedback.
         for ((lat, lng) in scanCellCenters) {
+            drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.25f), overscan = 1.2f)
+        }
+        for ((lat, lng) in closeCellCenters) {
             drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.60f), overscan = 1.2f)
         }
 

@@ -62,6 +62,10 @@ fun SpotScanCapture(
     fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Session cells credited at CLOSE tier — pass-through to the minimap. */
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger-fresh cells whose best quality is close — pass-through to the minimap. */
+    freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering pass-through: minimap ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
     environmentScanMode: Boolean = false,
@@ -216,6 +220,8 @@ fun SpotScanCapture(
             fogCellCenters = fogCellCenters,
             staleCellCenters = staleCellCenters,
             freshCellCenters = freshCellCenters,
+            closeCellCenters = closeCellCenters,
+            freshCloseCellCenters = freshCloseCellCenters,
             guidanceTarget = guidanceTarget,
             environmentScanMode = environmentScanMode,
             statusText = statusText,

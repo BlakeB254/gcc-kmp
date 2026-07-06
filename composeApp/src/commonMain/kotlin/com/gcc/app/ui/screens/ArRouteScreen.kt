@@ -41,6 +41,7 @@ import kotlin.math.cos
 import kotlin.math.log2
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
@@ -87,6 +88,11 @@ fun ArRouteScreen(
     val ui by viewModel.uiState.collectAsState()
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
+    val creditedCells by viewModel.creditedCells.collectAsState()
+    val closeCellCenters = remember(creditedCells) {
+        creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
+            .keys.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
     val fogCellCenters by viewModel.fogCellCenters.collectAsState()
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
@@ -175,11 +181,12 @@ fun ArRouteScreen(
         overlay.updateFog(viewModel.unscannedCells()) { row, col ->
             viewModel.cellCenterLatLng(row, col)
         }
-        // Positive feedback for credited ground: the same vector-scan quads
-        // the env scan draws, so both modes read as "surveyed graph paper".
-        overlay.updateScannedCells(
-            scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
-        )
+    }
+    // Positive feedback for credited ground: CLOSE-tier cells only render as
+    // the vector-scan quads (fog still lifts on any credit above) — fog =
+    // unscanned, clear ground = grazed, vivid quad = close (spec §4).
+    LaunchedEffect(closeCellCenters) {
+        overlay.updateScannedCells(closeCellCenters)
     }
 
     // Expected-trash markers from the digital twin. Re-run on GPS ticks:
@@ -448,6 +455,8 @@ fun ArRouteScreen(
                     fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,
                     freshCellCenters = freshCellCenters,
+                    closeCellCenters = closeCellCenters,
+                    freshCloseCellCenters = emptyList(),
                     outerBoundary = outerRing,
                     innerBoundaries = innerRings,
                     corridorCellCenters = corridorCenters,

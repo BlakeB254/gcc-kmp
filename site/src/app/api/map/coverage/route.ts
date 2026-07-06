@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         lat: center.lat,
         lng: center.lng,
         state: (now - new Date(r.lastScannedAt).getTime() > STALE_AFTER_MS ? 'stale' : 'fresh') as 'fresh' | 'stale',
+        quality: r.bestQuality,
         lastScannedAt: r.lastScannedAt,
         totalDistanceMeters: r.totalDistanceMeters,
       }))
