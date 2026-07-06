@@ -177,6 +177,7 @@ actual class ArEnvScanOverlay actual constructor() {
     private var elementObservedListener:
         ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
     private var ceilingListener: ((Boolean) -> Unit)? = null
+    private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
     private var roughGridTexture: UIImage? = null
@@ -335,6 +336,10 @@ actual class ArEnvScanOverlay actual constructor() {
         ceilingListener = listener
     }
 
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        coverageHitListener = listener
+    }
+
     actual fun setSceneVoteCadence(fast: Boolean) {
         fastSceneVotes = fast
     }
@@ -387,6 +392,20 @@ actual class ArEnvScanOverlay actual constructor() {
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
+        }
+
+        // Coverage raycast fan: cheap (no Vision), runs whenever analysis is
+        // live and a geo-ref exists. Rays stop on real surfaces — this is the
+        // measured "what did the camera actually see" signal (spec §1).
+        if (analysisEnabled && hasGeoRef) {
+            coverageHitListener?.let { listener ->
+                val fanHits = CoverageRayFan.cast(nativeSurface, frame) { x, z ->
+                    localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
+                }
+                if (fanHits.isNotEmpty()) {
+                    dispatch_async(dispatch_get_main_queue()) { listener(fanHits) }
+                }
+            }
         }
 
         // Vote cadence: fastSceneVotes samples every tick; otherwise the
@@ -1076,13 +1095,6 @@ actual class ArEnvScanOverlay actual constructor() {
         transform.place(matrix.ptr)
         val values = matrix.ptr.reinterpret<FloatVar>()
         FloatArray(16) { index -> values[index] }
-    }
-
-    private fun matrixTranslation(transform: CValue<simd_float4x4>): FloatArray = memScoped {
-        val matrix = alloc<simd_float4x4>()
-        transform.place(matrix.ptr)
-        val values = matrix.ptr.reinterpret<FloatVar>()
-        floatArrayOf(values[12], values[13], values[14])
     }
 
     private fun vectorFloats(vector: kotlinx.cinterop.Vector128): FloatArray =

@@ -28,6 +28,9 @@ actual class ArRouteOverlay actual constructor() {
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
     actual fun setSceneVoteCadence(fast: Boolean) {}
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        // No AR raycasting off-iOS — GPS-tier crediting (updatePosition) covers these targets.
+    }
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
 
