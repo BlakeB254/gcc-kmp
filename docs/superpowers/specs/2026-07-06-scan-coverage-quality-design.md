@@ -50,8 +50,10 @@ File: `composeApp/src/commonMain/kotlin/com/gcc/app/platform/CoverageTracker.kt`
 - **Route-lap completion unchanged in difficulty:** `coveragePercent` (and the 95%
   lap auto-advance) counts EITHER tier as covered. New `closePercent` reports the
   CLOSE-tier fraction separately.
-- `seedScannedCells` (ledger-fresh fog exemption) carries the server-provided quality
-  so seeded cells shade correctly on the minimap.
+- `seedScannedCells` (ledger-fresh fog exemption) is unchanged — server-fresh cells
+  shade by quality on the minimap via the fresh-cell lists SpotScreen already passes
+  (split into grazed/close from the new `MapCoverageCell.quality` field), not via
+  tracker seeding.
 
 ## 2. Indoor purge, completed
 
