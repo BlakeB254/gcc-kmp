@@ -24,7 +24,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private let frameLock = NSLock()
 
     /// Grid squares stay this size no matter how large a plane grows.
-    private static let gridTileMeters: Float = 0.5
+    /// 1.5m = a clean divisor of CoverageTracker's 3m cells, and the grid is
+    /// world-axis aligned (compass-true under gravityAndHeading), so the
+    /// on-camera lattice visually registers with the north-up minimap grid.
+    private static let gridTileMeters: Float = 1.5
     /// Vector-scan overlay caps (mirrors the Kotlin SceneKit path).
     private static let maxVectorCells = 350
 
@@ -540,7 +543,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private final class PlaneGridEntity {
         let anchor: AnchorEntity
         let model: ModelEntity
-        var lastExtent: SIMD2<Float> = .zero
+        var lastSize: SIMD2<Float> = .zero
+        var lastCenter: SIMD3<Float> = .zero
         var isFloor: Bool
         init(anchor: AnchorEntity, model: ModelEntity, isFloor: Bool) {
             self.anchor = anchor
@@ -569,27 +573,55 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
         guard groundGridVisible else { return }
 
+        // World-aligned grid: the anchor's yaw is arbitrary (whatever ARKit
+        // detected first), but AR world axes are compass-true. Rendering the
+        // grid world-axis aligned — sized to the world-space AABB of the
+        // rotated extent — keeps grid lines north/south–east/west so they
+        // register with the north-up minimap lattice.
+        let m = plane.transform
+        let yaw = atan2(-m.columns.0.z, m.columns.0.x)
+        let worldW = abs(extent.x * cos(yaw)) + abs(extent.y * sin(yaw))
+        let worldD = abs(extent.x * sin(yaw)) + abs(extent.y * cos(yaw))
+        let size = SIMD2(worldW, worldD)
+        let c = plane.center
+        let centerWorld = SIMD3(
+            m.columns.0.x * c.x + m.columns.1.x * c.y + m.columns.2.x * c.z + m.columns.3.x,
+            m.columns.0.y * c.x + m.columns.1.y * c.y + m.columns.2.y * c.z + m.columns.3.y,
+            m.columns.0.z * c.x + m.columns.1.z * c.y + m.columns.2.z * c.z + m.columns.3.z
+        )
+
         if let existing = planeEntities[plane.identifier] {
-            existing.model.position = plane.center
+            let grew = abs(size.x - existing.lastSize.x) > 0.25 || abs(size.y - existing.lastSize.y) > 0.25
+            let moved = simd_distance(centerWorld, existing.lastCenter) > 0.05
+            guard grew || moved else { return }
+            existing.lastSize = size
+            existing.lastCenter = centerWorld
+            existing.anchor.position = centerWorld
             // Regenerating the mesh is the expensive part — only when the
-            // plane has actually grown noticeably.
-            if abs(extent.x - existing.lastExtent.x) > 0.25 || abs(extent.y - existing.lastExtent.y) > 0.25 {
-                existing.lastExtent = extent
-                existing.model.model?.mesh = MeshResource.generatePlane(width: extent.x, depth: extent.y)
-                existing.model.model?.materials = [planeMaterial(isFloor: existing.isFloor, extent: extent)]
+            // plane has actually grown noticeably; the material update keeps
+            // the UV phase locked to the world lattice as the plane moves.
+            if grew {
+                existing.model.model?.mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
             }
+            existing.model.model?.materials =
+                [planeMaterial(isFloor: existing.isFloor, size: size, centerWorld: centerWorld)]
             return
         }
 
-        let anchor = AnchorEntity(anchor: plane)
+        // AnchorEntity(world:) has identity orientation = world axes; plane
+        // pose updates are re-applied by every didUpdate upsert instead of
+        // ARKit's anchor tracking (which would reintroduce the yaw).
+        let anchor = AnchorEntity(world: centerWorld)
         let model = ModelEntity(
-            mesh: MeshResource.generatePlane(width: extent.x, depth: extent.y),
-            materials: [planeMaterial(isFloor: isFloor, extent: extent)]
+            mesh: MeshResource.generatePlane(width: size.x, depth: size.y),
+            materials: [planeMaterial(isFloor: isFloor, size: size, centerWorld: centerWorld)]
         )
-        model.position = plane.center
         anchor.addChild(model)
         arView.scene.addAnchor(anchor)
-        planeEntities[plane.identifier] = PlaneGridEntity(anchor: anchor, model: model, isFloor: isFloor)
+        let entry = PlaneGridEntity(anchor: anchor, model: model, isFloor: isFloor)
+        entry.lastSize = size
+        entry.lastCenter = centerWorld
+        planeEntities[plane.identifier] = entry
         refreshGroundState()
     }
 
@@ -597,15 +629,29 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         groundLive = !planeEntities.isEmpty
     }
 
-    private func planeMaterial(isFloor: Bool, extent: SIMD2<Float>) -> PhysicallyBasedMaterial {
+    private func planeMaterial(
+        isFloor: Bool,
+        size: SIMD2<Float>,
+        centerWorld: SIMD3<Float>
+    ) -> PhysicallyBasedMaterial {
         let texture = isFloor ? floorGridTexture : roughGridTexture
         let tint = isFloor
             ? UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
             : UIColor(white: 1.0, alpha: 0.3)
         var material = gridMaterial(texture, tint: tint, uvScale: 1)
+        // Scale keeps tiles a constant gridTileMeters; the offset phases the
+        // repeat so grid LINES land on world multiples of the tile — every
+        // plane shares one seamless world lattice instead of each plane
+        // starting its own grid at its corner.
         material.textureCoordinateTransform.scale = SIMD2(
-            max(extent.x / Self.gridTileMeters, 1),
-            max(extent.y / Self.gridTileMeters, 1)
+            max(size.x / Self.gridTileMeters, 1),
+            max(size.y / Self.gridTileMeters, 1)
+        )
+        let originX = (centerWorld.x - size.x / 2) / Self.gridTileMeters
+        let originZ = (centerWorld.z - size.y / 2) / Self.gridTileMeters
+        material.textureCoordinateTransform.offset = SIMD2(
+            originX - floor(originX),
+            originZ - floor(originZ)
         )
         return material
     }

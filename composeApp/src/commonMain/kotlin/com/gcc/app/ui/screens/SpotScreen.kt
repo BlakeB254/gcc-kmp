@@ -31,6 +31,8 @@ import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
 import com.gcc.app.platform.isGeoRefFixUsable
+import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
+import com.gcc.app.platform.EnvScanGuidance
 import com.gcc.app.platform.arEnvScanSupported
 import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
@@ -285,6 +287,7 @@ private fun CameraPhase(
     val deviceCapabilities = koinInject<DeviceCapabilities>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     val gpsHeading by locationProvider.headingDegrees.collectAsState()
+    val gpsAccuracy by locationProvider.horizontalAccuracyMeters.collectAsState()
     val isScanMode = deviceCapabilities.deviceClass != DeviceClass.BASIC
     val scanLocation = spotLocation
         ?: currentLocation
@@ -299,11 +302,13 @@ private fun CameraPhase(
     // and geo-references pair every GPS fix with the AR camera position —
     // except fixes worse than MAX_GEO_REF_ACCURACY_METERS, which must not
     // re-anchor the frame (one wild fix drags all geo-derived AR geometry).
+    var geoRefPaired by remember { mutableStateOf(false) }
     LaunchedEffect(arOverlay) {
         if (arOverlay == null) return@LaunchedEffect
         locationProvider.locationFlow.collect { loc ->
             if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
                 arOverlay.updateGeoReference(loc.lat, loc.lng)
+                geoRefPaired = true
             }
         }
     }
@@ -582,15 +587,38 @@ private fun CameraPhase(
         scannedCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
     // Vector-scan effect: credited cells render as "digitized" ground quads
-    // in the AR camera view, mirroring the minimap fill.
-    // Never-scanned ledger cells render as grey AR fog on the ground — the
-    // camera view itself shows which territory is unmapped (Blake: "good ar
-    // fog … for areas that have never been scanned before").
-    LaunchedEffect(fogCells, arOverlay) {
-        arOverlay?.updateFogCells(fogCells)
-    }
+    // in the AR camera view, mirroring the minimap fill. (AR fog over
+    // unswept ground is the session-scoped updateFog below — it dissipates
+    // as cells credit, which also covers never-scanned territory on a first
+    // visit; the ledger's never-scanned picture stays on the minimap+map.)
     LaunchedEffect(scanCellCenters) {
         arOverlay?.updateScannedCells(scanCellCenters)
+    }
+    // AR fog + steering: uncredited cells render as ground fog on the camera
+    // that dissipates as they credit, and the frontier pick aims the minimap
+    // ring + AR arrow at the nearest remaining patch (sticky vs GPS jitter).
+    var guidanceTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    LaunchedEffect(scanCellCenters, trackerReady, currentLocation) {
+        if (!trackerReady) return@LaunchedEffect
+        val uncredited = tracker.getUnscannedCells()
+            .map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+        arOverlay?.updateFog(uncredited)
+        val loc = currentLocation
+        val target = loc?.let { EnvScanGuidance.pickFrontier(guidanceTarget, uncredited, it.lat, it.lng) }
+        guidanceTarget = target
+        if (arOverlay != null) {
+            if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
+            else arOverlay.clearGuidanceTarget()
+        }
+    }
+    // Idle nudge: no new cell credited for a while → steer via the status chip.
+    // Restarting on scannedCells.size IS the idle timer reset.
+    var idleNudge by remember { mutableStateOf(false) }
+    LaunchedEffect(trackerReady, scannedCells.size, captureAllowed) {
+        idleNudge = false
+        if (!trackerReady || !captureAllowed) return@LaunchedEffect
+        delay(8_000)
+        idleNudge = true
     }
     // Litter vs landmark elements: elements ride the same submission packet
     // but must never read as trash in the UI (dots, toasts, points).
@@ -647,7 +675,14 @@ private fun CameraPhase(
                 "Hold steady — AR tracking is settling"
             trashCandidate != null -> "Item locked — confirm below"
             liveDetections.isNotEmpty() -> "Trash spotted — walk up close to identify it"
+            // Geo-ref can't pair on a >20m fix — AR fog/cells/arrow are all
+            // suppressed until it does, so say WHY instead of failing silently.
+            arOverlay != null && !geoRefPaired &&
+                (gpsAccuracy ?: 0.0) > MAX_GEO_REF_ACCURACY_METERS ->
+                "GPS too weak to anchor the scan — move toward open sky"
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
+            idleNudge && guidanceTarget != null ->
+                "Turn toward the highlighted area on the minimap"
             else -> "Environment scan active — sweep the camera slowly"
         }
         if (!showObjectCapture) if (isScanMode) {
@@ -666,6 +701,10 @@ private fun CameraPhase(
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
                 typedTrashItems = typedMinimapItems,
+                fogCellCenters = fogCells,
+                staleCellCenters = staleCells,
+                freshCellCenters = freshCells,
+                guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
                 statusText = scanStatus,
                 arOverlay = arOverlay,
@@ -787,21 +826,51 @@ private fun CameraPhase(
         ScanToast(message = toast)
 
         if (isScanMode && objectCaptureSupported() && captureAllowed && !showObjectCapture) {
-            Box(
+            // One-time caption so the pill explains itself (field feedback:
+            // "I don't know what the 3D scan button is supposed to do").
+            var captionVisible by remember { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                delay(6_000)
+                captionVisible = false
+            }
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
-                    .padding(start = 12.dp, bottom = 96.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .clickable { showObjectCapture = true }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(start = 12.dp, bottom = 96.dp),
+                horizontalAlignment = Alignment.Start,
             ) {
-                Text(
-                    "◧ 3D scan",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable {
+                            captionVisible = false
+                            showObjectCapture = true
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        "◧ 3D scan",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                }
+                if (captionVisible) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            "Measure a large pile in 3D",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.9f),
+                        )
+                    }
+                }
             }
         }
         // Close-range confirm card: a locked candidate with type + LiDAR

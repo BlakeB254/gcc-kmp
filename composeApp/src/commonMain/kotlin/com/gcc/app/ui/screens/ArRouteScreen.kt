@@ -91,6 +91,7 @@ fun ArRouteScreen(
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+    val gpsHeading by viewModel.headingDegrees.collectAsState()
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
     val sessionPoints by viewModel.sessionPointsEstimate.collectAsState()
@@ -433,7 +434,7 @@ fun ArRouteScreen(
                     centerLng = mapCenterLng,
                     zoom = mapZoom,
                     currentLocation = Coordinates(lat = ui.currentLat, lng = ui.currentLng),
-                    gpsHeading = null,
+                    gpsHeading = gpsHeading,
                 )
                 ScanMinimapOverlay(
                     centerLat = mapCenterLat,

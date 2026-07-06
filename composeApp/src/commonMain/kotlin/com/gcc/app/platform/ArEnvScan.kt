@@ -58,12 +58,16 @@ expect class ArEnvScanOverlay() {
     fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
 
     /**
-     * Never-scanned ledger cells near the worker (lat/lng centers on the
-     * ~10m server grid) — rendered as grey fog quads on the ground so
-     * unmapped territory is visibly under fog in the camera view. Fog cells
-     * the session has since credited are dropped at render time.
+     * Uncredited cells near the worker — rendered as translucent AR fog planes
+     * on the ground that dissipate as cells get credited (route-scan parity).
      */
-    fun updateFogCells(cellCenters: List<Pair<Double, Double>>)
+    fun updateFog(cellCenters: List<Pair<Double, Double>>)
+
+    /** Aim the AR guidance arrow at the next area worth scanning. */
+    fun setGuidanceTarget(lat: Double, lng: Double)
+
+    /** Hide the AR guidance arrow (no frontier left, or no usable geo-ref). */
+    fun clearGuidanceTarget()
 
     /**
      * Confirm the pending candidate (optionally re-typed by the user); places
