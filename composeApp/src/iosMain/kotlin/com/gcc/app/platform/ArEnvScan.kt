@@ -100,6 +100,16 @@ actual class ArEnvScanOverlay actual constructor() {
         /** Vector-scan overlay: cap live cell nodes (fog-node precedent). */
         private const val MAX_VECTOR_NODES = 350
         private const val VECTOR_RENDER_RADIUS_METERS = 30.0
+        /** Fog-of-war over never-scanned ground: env fog cells arrive on the
+         *  ~10m server ledger grid (see SpotScreen.neverScannedGrid), so the
+         *  quad size must match that grid, NOT CoverageTracker's 3m cells.
+         *  Radius/cap mirror ArRouteOverlay's fog policy. */
+        private const val FOG_CELL_METERS = 10.0
+        private const val FOG_RENDER_RADIUS_METERS = 35.0
+        private const val MAX_FOG_NODES = 600
+        /** Hide a fog cell once the session credits ground within this range
+         *  of its center — the sweep visibly "lifts" the fog. */
+        private const val FOG_CLEAR_NEAR_CREDITED_METERS = 6.0
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -147,6 +157,10 @@ actual class ArEnvScanOverlay actual constructor() {
     // Vector-scan overlay: rounded cell center -> node.
     private val vectorNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
     private var latestScannedCells: List<Pair<Double, Double>> = emptyList()
+
+    // Fog-of-war overlay: never-scanned ledger cells (SceneKit fallback nodes).
+    private val fogNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
+    private var latestFogCells: List<Pair<Double, Double>> = emptyList()
 
     // Trash lock-on state.
     private var nearStreak = 0
@@ -227,7 +241,17 @@ actual class ArEnvScanOverlay actual constructor() {
         refY = position[1]
         refZ = position[2]
         lngScale = lngScaleFor(lat)
+        val firstRef = !hasGeoRef
         hasGeoRef = true
+        // Fog/vector data often arrives BEFORE the first GPS↔AR pairing —
+        // without this re-render the first geo-ref would leave both invisible
+        // until the next cell update.
+        if (firstRef) {
+            dispatch_async(dispatch_get_main_queue()) {
+                renderVectorCells()
+                renderFogCells()
+            }
+        }
         // Native mode has no ARSessionDelegate — mirror tracking quality on
         // the same cadence the route/spot overlays do.
         nativeSurface?.let { surface ->
@@ -250,7 +274,16 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {
         latestScannedCells = cellCenters
-        dispatch_async(dispatch_get_main_queue()) { renderVectorCells() }
+        // Newly-credited ground also lifts fog above it.
+        dispatch_async(dispatch_get_main_queue()) {
+            renderVectorCells()
+            renderFogCells()
+        }
+    }
+
+    actual fun updateFogCells(cellCenters: List<Pair<Double, Double>>) {
+        latestFogCells = cellCenters
+        dispatch_async(dispatch_get_main_queue()) { renderFogCells() }
     }
 
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? {
@@ -816,6 +849,82 @@ actual class ArEnvScanOverlay actual constructor() {
                 )
             )
         )
+        return node
+    }
+
+    // ── Fog-of-war overlay ───────────────────────────────────────────
+
+    /**
+     * Grey fog quads over never-scanned ledger ground (main queue). Same
+     * policy as ArRouteOverlay's fog: 35m render radius, 600-node cap,
+     * reveal-by-omission — plus env-specific clearing where THIS session
+     * already credited cells (the sweep visibly lifts the fog).
+     */
+    private fun renderFogCells() {
+        if (!hasGeoRef) return
+        // AR-local positions of credited cells, for fog clearing.
+        val credited = latestScannedCells.map { (lat, lng) ->
+            latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+        }
+        val clearSq = FOG_CLEAR_NEAR_CREDITED_METERS * FOG_CLEAR_NEAR_CREDITED_METERS
+
+        fun isCleared(x: Double, z: Double): Boolean = credited.any { (cx, cz) ->
+            val dx = cx - x
+            val dz = cz - z
+            dx * dx + dz * dz < clearSq
+        }
+
+        nativeSurface?.let { surface ->
+            val flat = ArrayList<Double>(latestFogCells.size * 2)
+            for ((lat, lng) in latestFogCells) {
+                if (flat.size >= MAX_FOG_NODES * 2) break
+                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+                val dx = local.first - refX
+                val dz = local.second - refZ
+                if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
+                if (isCleared(local.first, local.second)) continue
+                flat.add(local.first)
+                flat.add(local.second)
+            }
+            surface.updateFogCells(flat, FOG_CELL_METERS)
+            return
+        }
+
+        val scene = sceneView?.scene ?: return
+        val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.01f
+        val wanted = mutableSetOf<Pair<Long, Long>>()
+        for ((lat, lng) in latestFogCells) {
+            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+            val dx = local.first - refX
+            val dz = local.second - refZ
+            if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
+            if (isCleared(local.first, local.second)) continue
+            val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
+            wanted.add(key)
+            if (key in fogNodes) continue
+            if (fogNodes.size >= MAX_FOG_NODES) continue
+            fogNodes[key] = makeFogCellNode(local.first.toFloat(), groundY, local.second.toFloat())
+                .also { scene.rootNode.addChildNode(it) }
+        }
+        for ((key, node) in fogNodes.toMap()) {
+            if (key !in wanted) {
+                node.removeFromParentNode()
+                fogNodes.remove(key)
+            }
+        }
+    }
+
+    private fun makeFogCellNode(x: Float, y: Float, z: Float): SCNNode {
+        val plane = SCNPlane.planeWithWidth(FOG_CELL_METERS, FOG_CELL_METERS)
+        val material = SCNMaterial()
+        material.diffuse.contents = UIColor.colorWithRed(0.35, 0.38, 0.42, 1.0)
+        material.doubleSided = true
+        material.writesToDepthBuffer = false
+        material.transparency = 0.45
+        plane.materials = listOf(material)
+        val node = SCNNode.nodeWithGeometry(plane)
+        node.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
+        node.position = SCNVector3Make(x, y, z)
         return node
     }
 

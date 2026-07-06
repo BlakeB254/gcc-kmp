@@ -102,6 +102,7 @@ actual fun GccMap(
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((Int) -> Unit)?,
+    onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -763,9 +764,10 @@ actual fun GccMap(
             // faded amber = stale (>24h) — dirty grading stays with the
             // spot-density heat layers above.
             if (coverageStateJsons != null) {
-                val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.first))
-                val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.second))
-                val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.third))
+                val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.clean))
+                val dirtySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.dirty))
+                val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.stale))
+                val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.fog))
                 // Zoom-gated: at overview zooms the bounded fog patch would
                 // read as a broken partial grid — fade it in at street level
                 // where its bounded radius covers the whole viewport.
@@ -783,17 +785,61 @@ actual fun GccMap(
                         16 to const(0.22f),
                     ),
                 )
+                // The tile visual system (one glance = scan status):
+                //   green = scanned clean · red = scanned, litter on record
+                //   amber = stale, ready for re-scan · grey veil = never
+                // All scanned tiles are tappable: cellId rides in each
+                // feature's properties (buildCoverageStateGeoJsons) and the
+                // caller resolves it to the cell for the last-scan card.
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.18f),
+                    opacity = const(0.20f),
+                    onClick = if (onCoverageCellTap != null) { features ->
+                        val cellId = features.firstOrNull()?.properties?.get("cellId")
+                            ?.toString()?.trim('"')
+                        if (!cellId.isNullOrBlank()) {
+                            onCoverageCellTap(cellId)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
                 )
+                FillLayer(
+                    id = "coverage-dirty",
+                    source = dirtySrc,
+                    color = const(Color(0xFFEF4444)),
+                    opacity = const(0.20f),
+                    onClick = if (onCoverageCellTap != null) { features ->
+                        val cellId = features.firstOrNull()?.properties?.get("cellId")
+                            ?.toString()?.trim('"')
+                        if (!cellId.isNullOrBlank()) {
+                            onCoverageCellTap(cellId)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
+                )
+                // Stale is a CALL TO ACTION ("scan me again") — it must not
+                // be the faintest tile on the map (it was 0.10).
                 FillLayer(
                     id = "coverage-stale",
                     source = staleSrc,
                     color = const(Color(0xFFF59E0B)),
-                    opacity = const(0.10f),
+                    opacity = const(0.24f),
+                    onClick = if (onCoverageCellTap != null) { features ->
+                        val cellId = features.firstOrNull()?.properties?.get("cellId")
+                            ?.toString()?.trim('"')
+                        if (!cellId.isNullOrBlank()) {
+                            onCoverageCellTap(cellId)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
                 )
             }
 

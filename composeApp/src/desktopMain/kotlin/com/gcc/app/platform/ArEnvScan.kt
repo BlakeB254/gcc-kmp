@@ -17,6 +17,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
     actual fun updateGeoReference(lat: Double, lng: Double) {}
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
+    actual fun updateFogCells(cellCenters: List<Pair<Double, Double>>) {}
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? = null
     actual fun dismissCandidate() {}
     actual fun setElementObservedListener(

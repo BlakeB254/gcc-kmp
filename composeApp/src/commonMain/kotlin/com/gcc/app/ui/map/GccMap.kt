@@ -103,6 +103,9 @@ expect fun GccMap(
     explorerAreaStates: Map<String, String> = emptyMap(),
     affectedBlocks: List<AffectedBlock> = emptyList(),
     onAffectedBlockTap: ((blockId: Int) -> Unit)? = null,
+    /** Tap on a scanned coverage tile (fresh or stale) — receives the
+     *  locationCellId carried in the tile's feature properties. */
+    onCoverageCellTap: ((locationCellId: String) -> Unit)? = null,
     /** Reports live camera zoom (throttled to actual changes) so callers can
      *  zoom-gate chrome like the heat legend to when the layer is on screen. */
     onZoomChanged: ((Double) -> Unit)? = null,
