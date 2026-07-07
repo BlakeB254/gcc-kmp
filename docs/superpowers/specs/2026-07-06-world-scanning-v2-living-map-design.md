@@ -184,6 +184,27 @@ Scans must yield the still frames that BEST depict each issue area:
   issue), rank by sharpness/framing, and attach the winners to observations.
   GPS+pose in the sidecar ties every extracted frame to map position.
 
+
+## Pillar 10 — Area bounties, peer-to-peer (Blake, 2026-07-07)
+
+The legacy report-seeded bounty flow was never fully implemented — replaced by:
+- **Geographic-area bounties:** a funder (any user, donator, or third party) selects
+  an area on the map — freeform polygon or snapped block — which may encompass one
+  or more litter observations. The area IS the bounty target.
+- **Same cycle as the $100 admin blocks, generalized P2P:** claim → lap-1 scan of the
+  area (coverage %) → clean → lap-2 after-scan (weight-based progress) → scan-based
+  verification (supersede/lifecycle evidence + block completion report as the
+  verification artifact) → Stripe payout to the cleaner.
+- **Funding:** Stripe payment collection from the funder at creation (escrow-style;
+  connect payouts already exist for the worker side); platform fee TBD; refund path
+  when a bounty expires unworked.
+- **Composition:** builds directly on #109's two-lap system (arbitrary-boundary
+  support), P8's observation clusters + lifecycle, P9's completion reports, and the
+  existing Connect payout rails. The P8 observation-seeded bounty is the interim
+  bridge until this lands.
+- Sequenced after P8 + P9 merge; needs its own plan (payment/refund flows warrant
+  the full spec→plan→review cycle).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
