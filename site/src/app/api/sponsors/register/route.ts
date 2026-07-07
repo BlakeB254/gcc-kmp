@@ -6,6 +6,7 @@ import { hashPassword } from '@/lib/auth'
 import { getEarlyAdopterTier, generateReferralCode } from '@/lib/movement-rankings'
 import { sendEmail } from '@/lib/email'
 import { sponsorEmailVerificationEmail } from '@/lib/email/templates/sponsor-email-verification'
+import { appUrl } from '@/lib/env'
 import crypto from 'crypto'
 
 export const runtime = 'nodejs'
@@ -78,12 +79,10 @@ export async function POST(request: NextRequest) {
         )
       }
     } catch (checkError) {
+      // Details stay server-side only.
       console.error('Error checking existing sponsor:', checkError)
       return NextResponse.json(
-        {
-          error: 'Database error during registration. Please try again.',
-          debug: checkError instanceof Error ? checkError.message : 'Unknown check error'
-        },
+        { error: 'Database error during registration. Please try again.' },
         { status: 500 }
       )
     }
@@ -163,8 +162,7 @@ export async function POST(request: NextRequest) {
 
     step = 'send-email'
     // Send verification email
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
-    const verificationUrl = `${appUrl}/sponsor/verify-email?token=${verificationToken}&id=${sponsor.id}`
+    const verificationUrl = `${appUrl()}/sponsor/verify-email?token=${verificationToken}&id=${sponsor.id}`
 
     const emailContent = sponsorEmailVerificationEmail({
       name,
@@ -188,11 +186,15 @@ export async function POST(request: NextRequest) {
       sponsorId: sponsor.id,
     })
   } catch (error) {
-    console.error(`Sponsor registration error at step [${step}]:`, error)
-
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const errorCode = (error as any)?.code || 'unknown'
     const errorDetail = (error as any)?.detail || (error as any)?.hint || ''
+
+    // Full diagnostics stay server-side only; clients get a generic message.
+    console.error(
+      `Sponsor registration error at step [${step}]: ${errorMessage} | code: ${errorCode} | ${errorDetail}`,
+      error
+    )
 
     if (errorMessage.includes('unique') || errorMessage.includes('duplicate') || errorCode === '23505') {
       return NextResponse.json(
@@ -202,10 +204,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      {
-        error: `Registration failed at step: ${step}`,
-        debug: `${errorMessage} | code: ${errorCode} | ${errorDetail}`.slice(0, 200)
-      },
+      { error: 'Registration failed. Please try again later.' },
       { status: 500 }
     )
   }

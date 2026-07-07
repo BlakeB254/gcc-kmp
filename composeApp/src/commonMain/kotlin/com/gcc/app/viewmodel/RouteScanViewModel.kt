@@ -40,6 +40,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,6 +142,16 @@ class RouteScanViewModel(
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** Fire-and-forget work that must SURVIVE [onCleared]'s `scope.cancel()`
+     *  (queue flushes, the once-per-process orphan sweep whose guard is
+     *  consumed even on cancellation, marker enqueues mid-upload). Each call
+     *  runs in its own short-lived scope that self-cancels on completion, so
+     *  nothing leaks while [scope] stays free to be cancelled immediately. */
+    private fun launchDetached(block: suspend () -> Unit) {
+        val detached = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        detached.launch { block() }.invokeOnCompletion { detached.cancel() }
+    }
+
     private val _uiState = MutableStateFlow(RouteScanUiState())
     val uiState: StateFlow<RouteScanUiState> = _uiState.asStateFlow()
 
@@ -222,12 +233,12 @@ class RouteScanViewModel(
         // storage unprovisioned). Spot scans always did this on open; route
         // manifests queued here used to strand until the user happened to
         // open an ENV scan (the only other flushPending caller).
-        scope.launch { sessionUploader.flushPending() }
+        launchDetached { sessionUploader.flushPending() }
         // Same opportunistic catch-up for background capture chunks (Pillar
         // 1) — route scans don't produce them (v1 scope guard: ENV/SPOT
         // only), but any pending from a prior Spot session still deserve a
         // chance to flush whenever ANY scan screen opens.
-        scope.launch { captureUploader.flushPending() }
+        launchDetached { captureUploader.flushPending() }
         // Pillar 6 orphan recovery — same call SpotViewModel makes. This VM
         // is a Koin `factory` (recreated per screen open), but the sweep's
         // internal once-per-process guard means only the FIRST scan-screen VM
@@ -235,7 +246,7 @@ class RouteScanViewModel(
         // later construction is a no-op. Active-session exclusion comes from
         // lazy journal-file creation (the lapSessionRecorder property
         // initializer above creates no file — see the sweep's KDoc).
-        scope.launch { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
+        launchDetached { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
     }
 
     /** Pre-generates the sessionId so [sessionJournalPath] can be resolved
@@ -254,7 +265,11 @@ class RouteScanViewModel(
             DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
             return
         }
-        scope.launch {
+        // Detached (not [scope]): a marker placed right before leaving the
+        // screen must still finish its upload-then-enqueue — onCleared's
+        // scope.cancel() would otherwise drop it before it reaches the
+        // persisted queue.
+        launchDetached {
             // Upload-then-enqueue: the photo is best-effort and must never
             // block the marker, and raw bytes never enter the persisted
             // ArMarkerQueue — only the resolved URL (or null on failure).
@@ -1376,11 +1391,21 @@ class RouteScanViewModel(
         locationJob?.cancel()
         coverageJob?.cancel()
         coverageFlushJob?.cancel()
-        scope.launch { coverageEventQueue.flush(); arMarkerQueue.flush() }
+        accuracyJob?.cancel()
         aiDirectionJob?.cancel()
         aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
         arScanner.stopSession()
+        // Final queue flush must outlive this ViewModel, so it runs detached —
+        // that lets the main [scope] be cancelled immediately, which also
+        // kills the untracked collectors launched in initForRoute/
+        // startLocationTracking (scannedCells, outdoorGate.state) that job
+        // fields never covered.
+        launchDetached {
+            coverageEventQueue.flush()
+            arMarkerQueue.flush()
+        }
+        scope.cancel()
     }
 
     private suspend fun awaitInitialLocation(): Coordinates? {

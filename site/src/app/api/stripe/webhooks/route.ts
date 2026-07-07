@@ -9,8 +9,9 @@ import {
   sponsors,
   sponsorDeliverablePackages,
   payouts,
+  stripeEvents,
 } from '@/db/schema'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import Stripe from 'stripe'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { sendEmail } from '@/lib/email'
@@ -23,15 +24,24 @@ import {
   itemsForTier,
   tierFromAmount,
 } from '@/lib/sponsor-deliverables'
+import { appUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_placeholder'
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
 export async function POST(request: NextRequest) {
   // Return early if Stripe is not configured (demo mode)
   if (!isStripeConfigured) {
     return Response.json({ received: true, demo: true })
+  }
+
+  // Stripe is configured but the webhook secret is missing — a deployment
+  // error. Fail loudly instead of "verifying" against a placeholder (which
+  // would reject every real event while looking like a signature problem).
+  if (!webhookSecret) {
+    console.error('[Webhook] STRIPE_WEBHOOK_SECRET is not set — cannot verify webhook signatures')
+    return Response.json({ error: 'Webhook secret not configured' }, { status: 500 })
   }
 
   const body = await request.text()
@@ -48,6 +58,22 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error('Webhook signature verification failed:', err)
     return Response.json({ error: 'Invalid signature' }, { status: 400 })
+  }
+
+  // Idempotency guard: Stripe delivers events at-least-once, so record the
+  // event id before doing any work. If the insert hits the primary key
+  // (ON CONFLICT DO NOTHING returns no row), we've seen this event before —
+  // ack it without re-running side effects (duplicate transactions rows,
+  // double-incremented stats, duplicate emails).
+  const claimed = await db
+    .insert(stripeEvents)
+    .values({ id: event.id })
+    .onConflictDoNothing()
+    .returning({ id: stripeEvents.id })
+
+  if (claimed.length === 0) {
+    console.log(`[Webhook] Duplicate delivery of event ${event.id} (${event.type}) — skipping`)
+    return Response.json({ received: true, duplicate: true })
   }
 
   try {
@@ -121,16 +147,18 @@ export async function POST(request: NextRequest) {
 
           console.log('[Webhook] Processing block sponsorship:', { blockIds })
 
-          // Create transaction records for each block
-          for (const blockId of blockIds) {
-            await db.insert(transactions).values({
+          // Create transaction records for all blocks in one insert (the
+          // per-row values only differ by blockId, so no need for N round
+          // trips).
+          await db.insert(transactions).values(
+            blockIds.map((blockId) => ({
               sponsorId: Number(sponsorId),
               blockId,
               stripeCheckoutSessionId: session.id,
               stripePaymentIntentId: session.payment_intent as string,
               amount: String(10000), // $100 per block
               currency: session.currency || 'usd',
-              status: 'completed',
+              status: 'completed' as const,
               allocationType: allocationType as 'block' | 'area',
               sponsorType: frequency,
               displayName: displayName || null,
@@ -141,24 +169,24 @@ export async function POST(request: NextRequest) {
               preferredCleaningTimeStart: preferredCleaningTimeStart || null,
               preferredCleaningTimeEnd: preferredCleaningTimeEnd || null,
               completedAt: new Date().toISOString(),
-            })
+            }))
+          )
 
-            // Update block as funded with cleaning schedule
-            await db
-              .update(blocks)
-              .set({
-                status: 'funded',
-                fundedById: Number(sponsorId),
-                fundedAt: new Date().toISOString(),
-                fundingCurrent: '10000',
-                // Cleaning schedule for workers to see
-                preferredCleaningDate: preferredCleaningDate || null,
-                preferredCleaningTimeStart: preferredCleaningTimeStart || null,
-                preferredCleaningTimeEnd: preferredCleaningTimeEnd || null,
-                updatedAt: new Date().toISOString(),
-              })
-              .where(eq(blocks.id, blockId))
-          }
+          // Mark every block funded with the cleaning schedule in one update
+          await db
+            .update(blocks)
+            .set({
+              status: 'funded',
+              fundedById: Number(sponsorId),
+              fundedAt: new Date().toISOString(),
+              fundingCurrent: '10000',
+              // Cleaning schedule for workers to see
+              preferredCleaningDate: preferredCleaningDate || null,
+              preferredCleaningTimeStart: preferredCleaningTimeStart || null,
+              preferredCleaningTimeEnd: preferredCleaningTimeEnd || null,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(inArray(blocks.id, blockIds))
 
           // Get sponsor details
           const [sponsor] = await db
@@ -168,14 +196,13 @@ export async function POST(request: NextRequest) {
             .limit(1)
 
           if (sponsor) {
-            // Update sponsor stats
+            // Update sponsor stats — atomic SQL increments so concurrent
+            // webhooks can't lose updates via read-modify-write races.
             await db
               .update(sponsors)
               .set({
-                statsTotalContributed: String(
-                  Number(sponsor.statsTotalContributed || 0) + amountCents
-                ),
-                statsBlocksFunded: String(Number(sponsor.statsBlocksFunded || 0) + blockCount),
+                statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${amountCents}`,
+                statsBlocksFunded: sql`COALESCE(${sponsors.statsBlocksFunded}, 0) + ${blockCount}`,
                 statsLastContributionAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               })
@@ -240,13 +267,12 @@ export async function POST(request: NextRequest) {
             .limit(1)
 
           if (sponsor) {
-            // Update sponsor stats (contribution but no blocks)
+            // Update sponsor stats (contribution but no blocks) — atomic
+            // increment, same rationale as the block-sponsorship branch.
             await db
               .update(sponsors)
               .set({
-                statsTotalContributed: String(
-                  Number(sponsor.statsTotalContributed || 0) + amountCents
-                ),
+                statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${amountCents}`,
                 statsLastContributionAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               })
@@ -323,9 +349,7 @@ export async function POST(request: NextRequest) {
                     .limit(1)
                   if (s) {
                     const display = s.businessName || s.name
-                    const siteUrl =
-                      process.env.NEXT_PUBLIC_APP_URL ||
-                      'https://globalcommunitycleaners.org'
+                    const siteUrl = appUrl()
                     const content = adminPackageCreatedEmail({
                       sponsorName: display,
                       sponsorEmail: s.email,
@@ -414,9 +438,7 @@ export async function POST(request: NextRequest) {
               await db
                 .update(workers)
                 .set({
-                  statsTotalEarnings: String(
-                    Number(worker.statsTotalEarnings || 0) + payoutRow.amountCents
-                  ),
+                  statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${payoutRow.amountCents}`,
                   updatedAt: new Date().toISOString(),
                 })
                 .where(eq(workers.id, payoutRow.workerId))
@@ -475,10 +497,8 @@ export async function POST(request: NextRequest) {
               await db
                 .update(workers)
                 .set({
-                  statsJobsCompleted: String(Number(worker.statsJobsCompleted || 0) + 1),
-                  statsTotalEarnings: String(
-                    Number(worker.statsTotalEarnings || 0) + Number(job.payoutAmount || 10000)
-                  ),
+                  statsJobsCompleted: sql`COALESCE(${workers.statsJobsCompleted}, 0) + 1`,
+                  statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${Number(job.payoutAmount || 10000)}`,
                   statsLastJobAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 })

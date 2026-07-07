@@ -26,9 +26,10 @@ import {
   getItemSpec,
   type DeliverableKind,
 } from '@/lib/sponsor-deliverables'
+import { appUrl } from '@/lib/env'
 
 function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  return appUrl()
 }
 
 function adminEmail(): string | null {

@@ -1,6 +1,7 @@
 package com.gcc.app.platform
 
-actual fun getApiBaseUrl(): String = "http://localhost:3000"
+// Local Next.js dev server — `cd site && npm run dev` serves on :7350.
+actual fun getApiBaseUrl(): String = "http://localhost:7350"
 
 actual fun getPlatformName(): String = "desktop"
 

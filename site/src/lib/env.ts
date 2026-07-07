@@ -17,7 +17,11 @@ function readPublicUrl(name: string, devFallback: string): string {
 }
 
 export function appUrl(): string {
-  return readPublicUrl('NEXT_PUBLIC_APP_URL', 'http://localhost:7300')
+  // Dev fallback is the canonical production URL — links generated without
+  // local config (emails, share URLs, Stripe return URLs) should point at the
+  // real site rather than a localhost port or a stale domain. Production
+  // still fails fast when the var is unset.
+  return readPublicUrl('NEXT_PUBLIC_APP_URL', 'https://globalcommunitycleaners.org')
 }
 
 export function tileServerUrl(): string {

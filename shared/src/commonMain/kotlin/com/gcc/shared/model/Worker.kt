@@ -11,6 +11,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SignupRankings(
     val global: Int = 0,
+    /** Mirrors `signup_rankings_country`; /api/workers/me sends it as `country`. */
+    val country: Int = 0,
     val state: Int = 0,
     val city: Int = 0,
     val neighborhood: Int = 0,

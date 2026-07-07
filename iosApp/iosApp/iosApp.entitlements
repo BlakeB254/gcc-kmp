@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>production</string>
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>
@@ -11,6 +11,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:globalcommunitycleaners.org</string>
+		<string>applinks:www.globalcommunitycleaners.org</string>
 		<string>webcredentials:globalcommunitycleaners.org</string>
 	</array>
 </dict>

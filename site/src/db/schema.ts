@@ -777,6 +777,15 @@ export const transactions = pgTable('transactions', {
   statusIdx: index('transactions_status_idx').on(table.status),
 }))
 
+// Stripe webhook event ledger — one row per Stripe event id we have accepted
+// for processing. The webhook handler inserts with ON CONFLICT DO NOTHING and
+// treats "no row returned" as "already processed", so Stripe's at-least-once
+// retries can't double-apply payments or double-increment stats.
+export const stripeEvents = pgTable('stripe_events', {
+  id: varchar('id', { length: 255 }).primaryKey(), // Stripe event id (evt_...)
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
 // Bounties are funded progressions of community spot reports. A spot can
 // start as a zero-dollar cleanup opportunity and accumulate pledged bounty
 // value over time.

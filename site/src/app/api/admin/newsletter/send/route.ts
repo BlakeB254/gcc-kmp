@@ -7,6 +7,7 @@ import { sendEmail, EMAIL_FROM, EMAIL_REPLY_TO } from '@/lib/email'
 import { getNewsletterAudience, type AudienceMember } from '@/lib/newsletter-audience'
 import { newsletterIssue1Email } from '@/lib/email/templates/newsletter-issue-1'
 import { unsubscribeUrl } from '@/lib/unsubscribe-token'
+import { appUrl as resolveAppUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 min — Resend sends are sequential
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as SendBody
   const mode = body.mode === 'test' ? 'test' : 'production'
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  const appUrl = resolveAppUrl()
   const logoUrl = `${appUrl}/images/gcc-logo.png`
 
   let audience: AudienceMember[]

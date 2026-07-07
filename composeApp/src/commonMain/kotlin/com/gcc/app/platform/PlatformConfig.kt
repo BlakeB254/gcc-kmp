@@ -3,10 +3,10 @@ package com.gcc.app.platform
 /**
  * Platform-specific API base URL.
  *
- * Each platform resolves to the correct localhost address:
- * - Android emulator: 10.0.2.2 (maps to host machine)
- * - iOS simulator: localhost
- * - Desktop: localhost
+ * - Android & iOS: production `https://api.globalcommunitycleaners.org`
+ *   (served by the Next.js site) — devices always talk to prod.
+ * - Desktop (dev-only): `http://localhost:7350`, the local Next.js dev
+ *   server (`cd site && npm run dev`).
  */
 expect fun getApiBaseUrl(): String
 

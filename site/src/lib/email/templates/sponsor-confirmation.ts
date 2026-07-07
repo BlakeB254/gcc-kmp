@@ -1,3 +1,5 @@
+import { appUrl as resolveAppUrl } from '@/lib/env'
+
 interface SponsorConfirmationData {
   name?: string
   email: string
@@ -8,7 +10,7 @@ interface SponsorConfirmationData {
 }
 
 export function sponsorConfirmationEmail(data: SponsorConfirmationData): { html: string; text: string } {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  const appUrl = resolveAppUrl()
   const wallLink = `${appUrl}/sponsor/wall`
 
   const greeting = data.name ? `Hi ${data.name}` : 'Thank you'

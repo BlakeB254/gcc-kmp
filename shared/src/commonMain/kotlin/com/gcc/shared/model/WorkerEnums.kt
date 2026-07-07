@@ -36,28 +36,6 @@ enum class StripeOnboardingStatus {
 }
 
 @Serializable
-enum class PendingAddressStatus {
-    @SerialName("none") NONE,
-    @SerialName("pending") PENDING,
-    @SerialName("approved") APPROVED,
-    @SerialName("rejected") REJECTED
-}
-
-@Serializable
-enum class WaitlistStatus {
-    @SerialName("waitlisted") WAITLISTED,
-    @SerialName("invited") INVITED,
-    @SerialName("converted") CONVERTED
-}
-
-@Serializable
-enum class UserRole {
-    @SerialName("worker") WORKER,
-    @SerialName("admin") ADMIN,
-    @SerialName("super_admin") SUPER_ADMIN,
-}
-
-@Serializable
 enum class BulkAction {
     @SerialName("verify") VERIFY,
     @SerialName("suspend") SUSPEND,

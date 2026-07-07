@@ -105,8 +105,10 @@ jobs:
       - name: Compile + test shared (JVM target)
         run: ./gradlew :shared:jvmJar :shared:jvmTest --no-daemon --stacktrace
 
-      - name: Build server
-        run: ./gradlew :server:build --no-daemon --stacktrace
+      # :server was removed from settings.gradle.kts (e549c10, "stop building
+      # undeployed :server in CI") but this step survived a later merge and
+      # broke every run with "project 'server' not found". Job name kept
+      # unchanged in case branch protection pins it.
 
       - name: Compile composeApp (desktop target)
         run: ./gradlew :composeApp:compileKotlinDesktop --no-daemon --stacktrace

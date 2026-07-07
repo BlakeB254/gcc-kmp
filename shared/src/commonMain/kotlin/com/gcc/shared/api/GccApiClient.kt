@@ -3,8 +3,10 @@ package com.gcc.shared.api
 import com.gcc.shared.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.api.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
@@ -27,6 +29,11 @@ class GccApiClient(
 
     val httpClient = httpClientOverride ?: HttpClient {
         expectSuccess = false // Don't throw on non-2xx; let callers inspect status
+        install(HttpTimeout) {
+            connectTimeoutMillis = CONNECT_TIMEOUT_MS
+            requestTimeoutMillis = REQUEST_TIMEOUT_MS
+            socketTimeoutMillis = SOCKET_TIMEOUT_MS
+        }
         install(ContentNegotiation) {
             json(this@GccApiClient.json)
         }
@@ -43,7 +50,21 @@ class GccApiClient(
     /** Unauthenticated client for website calls (no Bearer token). */
     private val siteClient = HttpClient {
         expectSuccess = false
+        install(HttpTimeout) {
+            connectTimeoutMillis = CONNECT_TIMEOUT_MS
+            requestTimeoutMillis = REQUEST_TIMEOUT_MS
+            socketTimeoutMillis = SOCKET_TIMEOUT_MS
+        }
         install(ContentNegotiation) { json(this@GccApiClient.json) }
+    }
+
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 15_000L
+        private const val REQUEST_TIMEOUT_MS = 60_000L
+        private const val SOCKET_TIMEOUT_MS = 60_000L
+
+        /** Per-request override for large multipart/presigned uploads on slow cellular links. */
+        private const val UPLOAD_REQUEST_TIMEOUT_MS = 180_000L
     }
 
     // ── HTTP Helpers ───────────────────────────────────────────────────
@@ -269,23 +290,6 @@ class GccApiClient(
     suspend fun submitJobEvidence(jobId: Int, request: JobEvidenceRequest): Job =
         patchJson("/api/jobs/$jobId/evidence", request)
 
-    // ── Route Release Offers ─────────────────────────────────────────
-
-    suspend fun getMyRouteOffers(): List<RouteOffer> =
-        get("/api/workers/me/route-offers")
-
-    suspend fun acceptRouteOffer(offerId: Int, routeId: Int): Job =
-        postJson(
-            "/api/workers/me/route-offers/$offerId/accept",
-            RouteOfferAcceptRequest(routeId = routeId),
-        )
-
-    suspend fun declineRouteOffer(offerId: Int, reason: String? = null): RouteOffer =
-        patchJson(
-            "/api/workers/me/route-offers/$offerId/decline",
-            RouteOfferDeclineRequest(reason = reason),
-        )
-
     // ── Worker Profile ────────────────────────────────────────────────
 
     suspend fun updateDisplayHandle(handle: String): Worker =
@@ -398,11 +402,6 @@ class GccApiClient(
 
     suspend fun optInFeedProfile(feedItemId: String): FeedItem =
         postJson("/api/feed/$feedItemId/opt-in-profile")
-
-    // ── Spot Reports (Public) ─────────────────────────────────────────
-
-    suspend fun createSpotReport(request: Any): CommunityReport =
-        postJson("/api/spots", request)
 
     // ── Auth ──────────────────────────────────────────────────────────
 
@@ -659,20 +658,6 @@ class GccApiClient(
             parameter("jobId", jobId)
         }
 
-    suspend fun createRouteRelease(request: AdminRouteReleaseRequest): RouteReleaseBatch =
-        postJson("/api/admin/route-releases", request)
-
-    suspend fun getRouteReleases(limit: Int = 50): List<RouteReleaseBatch> =
-        get("/api/admin/route-releases") {
-            parameter("limit", limit)
-        }
-
-    suspend fun processRouteRelease(releaseId: Int): RouteReleaseRunResponse =
-        postJson("/api/admin/route-releases/$releaseId/process")
-
-    suspend fun processRouteReleaseNotifications(): RouteReleaseRunResponse =
-        postJson("/api/admin/route-releases/process-notifications")
-
     suspend fun getAdminStats(): AdminStatsResponse =
         get("/api/admin/analytics/stats")
 
@@ -713,10 +698,6 @@ class GccApiClient(
 
     suspend fun deleteWorker(workerId: Int): Unit =
         deleteUnit("/api/admin/workers/$workerId")
-
-    // Jobs
-    suspend fun forceJobStatus(jobId: Int, request: ForceJobStatusRequest): Job =
-        putJson("/api/admin/jobs/$jobId/status", request)
 
     // Routes
     suspend fun getAdminRoutes(): List<Route> =
@@ -907,9 +888,6 @@ class GccApiClient(
     suspend fun getAdminBounties(): List<Bounty> =
         get("/api/admin/bounties")
 
-    suspend fun forceCloseBounty(bountyId: Int): Bounty =
-        postJson("/api/admin/bounties/$bountyId/close")
-
     suspend fun claimBounty(bountyId: Int): Bounty =
         postJson("/api/bounties/$bountyId/claim")
 
@@ -967,11 +945,22 @@ class GccApiClient(
         postJson("/api/observations/ar-detected", ArDetectedMarkerBatchRequest(markers))
 
     // Upload spot photos (multipart form data), returns list of public URLs
-    suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> {
+    suspend fun uploadSpotPhotos(photos: List<ByteArray>): List<String> =
+        uploadPhotosMultipart("$baseUrl/api/spots/upload", photos)
+
+    /**
+     * Upload verification documents (gov ID + proof of address photos) to the
+     * private verification bucket. Same multipart shape as [uploadSpotPhotos];
+     * the returned strings are private R2 object keys, not public URLs.
+     */
+    suspend fun uploadVerificationDocuments(photos: List<ByteArray>): List<String> =
+        uploadPhotosMultipart("$baseUrl/api/workers/me/verification/upload", photos)
+
+    private suspend fun uploadPhotosMultipart(url: String, photos: List<ByteArray>): List<String> {
         if (photos.isEmpty()) return emptyList()
         val token = tokenProvider()
         val response = httpClient.submitFormWithBinaryData(
-            url = "$baseUrl/api/spots/upload",
+            url = url,
             formData = formData {
                 photos.forEachIndexed { index, bytes ->
                     append("photo_$index", bytes, Headers.build {
@@ -981,6 +970,9 @@ class GccApiClient(
                 }
             },
         ) {
+            // Multi-photo multipart bodies on cellular need more than the
+            // default request timeout.
+            timeout { requestTimeoutMillis = UPLOAD_REQUEST_TIMEOUT_MS }
             // Explicitly set auth header for multipart uploads
             if (token != null) {
                 headers[HttpHeaders.Authorization] = "Bearer $token"
@@ -1070,12 +1062,6 @@ class GccApiClient(
     suspend fun verifySpot(spotId: Int, request: VerifySpotRequest): VerifySpotResponse =
         postJson("/api/spots/$spotId/verify", request)
 
-    suspend fun getSpotsNeedingVerification(limit: Int = 50): List<CommunityReport> =
-        get("/api/spots/needs-verification") { parameter("limit", limit) }
-
-    suspend fun getSpotVerifications(spotId: Int): List<SpotVerification> =
-        get("/api/spots/$spotId/verifications")
-
     suspend fun getMyPoints(): PointsSummary =
         get("/api/workers/me/points")
 
@@ -1083,9 +1069,6 @@ class GccApiClient(
 
     suspend fun createScan(req: CreateScanRequest, onBehalfOfWorkerId: Int? = null): RouteScan =
         postJson("/api/scans", if (onBehalfOfWorkerId != null) req.copy(onBehalfOfWorkerId = onBehalfOfWorkerId) else req)
-
-    suspend fun getScan(id: Int): RouteScan =
-        get("/api/scans/$id")
 
     suspend fun advanceScanPhase(scanId: Int, req: AdvancePhaseRequest): RouteScan =
         patchJson("/api/scans/$scanId/phase", req)
@@ -1204,6 +1187,8 @@ class GccApiClient(
             // with the same ticket succeeds; this was why every app-side
             // R2 upload failed while server-side verification passed.)
             url { takeFromRawEncoded(url) }
+            // Session-artifact blobs can be large; allow the longer upload timeout.
+            timeout { requestTimeoutMillis = UPLOAD_REQUEST_TIMEOUT_MS }
             contentType(ContentType.parse(contentType))
             setBody(bytes)
         }
@@ -1233,9 +1218,6 @@ class GccApiClient(
     suspend fun getCityCleanlinessOverview(): CityCleanlinessOverview =
         get("/api/analytics/cleanliness")
 
-    suspend fun getAreaCleanliness(area: String): CleanlinessStats =
-        get("/api/analytics/cleanliness/${area.encodeURLPathPart()}")
-
     // ── Document Verification ──────────────────────────────────────
 
     /** Submit verification documents (gov ID + proof of address URLs) */
@@ -1248,10 +1230,6 @@ class GccApiClient(
             setBody(VerificationDocumentSubmission(governmentIdUrl, proofOfAddressUrl))
         }
     }
-
-    /** Get current verification status */
-    suspend fun getVerificationStatus(): WorkerVerification =
-        get("/api/workers/me/verification")
 
     // ── Worker Connect (Stripe) ────────────────────────────────────────
 

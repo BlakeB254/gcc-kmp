@@ -81,11 +81,19 @@
 
 @layer base {
   * {
-    @apply border-neutral-200;
+    @apply border-border;
   }
 
   body {
-    @apply bg-white text-neutral-900;
+    @apply bg-background text-foreground;
+  }
+
+  /* Display type for headings — Plus Jakarta Sans via --font-display */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
   }
 
   /* Auto-rotate images from EXIF orientation (landscape phone photos) */
@@ -102,17 +110,25 @@
 @layer components {
   /* Primary button */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-brand-green-500 px-6 py-3 text-base font-semibold text-white shadow-sm transition-all hover:bg-brand-green-600 focus:outline-none focus:ring-2 focus:ring-brand-green-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-full bg-brand-green-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-brand-green-600/25 transition-all hover:bg-brand-green-600 hover:shadow-xl hover:shadow-brand-green-600/30 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-green-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
   }
 
   /* Secondary button */
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg border-2 border-brand-blue-600 bg-transparent px-6 py-3 text-base font-semibold text-brand-blue-600 transition-all hover:bg-brand-blue-50 focus:outline-none focus:ring-2 focus:ring-brand-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-full border-2 border-brand-blue-600 bg-transparent px-6 py-3 text-base font-semibold text-brand-blue-600 transition-all hover:bg-brand-blue-50 hover:-translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-brand-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
   }
 
-  /* Secondary button for dark backgrounds */
-  .btn-secondary-dark {
-    @apply inline-flex items-center justify-center rounded-lg border-2 border-white/60 bg-transparent px-6 py-3 text-base font-semibold text-white transition-all hover:bg-white/10 hover:border-white focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-50;
+  /* Section header primitives — one visual rhythm for every landing section */
+  .section-eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs sm:text-sm font-semibold uppercase tracking-[0.14em];
+  }
+
+  .section-title {
+    @apply text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight leading-[1.1];
+  }
+
+  .section-lede {
+    @apply text-lg leading-relaxed;
   }
 
   /* Card */
@@ -135,26 +151,6 @@
     @apply w-full rounded-lg border border-neutral-300 bg-white text-neutral-900 px-4 py-3 text-base transition-colors placeholder:text-neutral-400 focus:border-brand-green-500 focus:outline-none focus:ring-2 focus:ring-brand-green-500/20;
   }
 
-  /* Status badges */
-  .badge {
-    @apply inline-flex items-center rounded-full px-3 py-1 text-sm font-medium;
-  }
-
-  .badge-success {
-    @apply badge bg-brand-green-100 text-brand-green-800;
-  }
-
-  .badge-warning {
-    @apply badge bg-amber-100 text-amber-800;
-  }
-
-  .badge-error {
-    @apply badge bg-red-100 text-red-800;
-  }
-
-  .badge-info {
-    @apply badge bg-brand-blue-100 text-brand-blue-800;
-  }
 }
 
 @layer utilities {
@@ -169,10 +165,6 @@
   .gap-golden-xs { gap: 8px; }      /* Base */
   .gap-golden-sm { gap: 13px; }     /* 8 × φ ≈ 13 */
   .gap-golden-md { gap: 21px; }     /* 13 × φ ≈ 21 */
-  .gap-golden-lg { gap: 34px; }     /* 21 × φ ≈ 34 */
-  .gap-golden-xl { gap: 55px; }     /* 34 × φ ≈ 55 */
-  .gap-golden-2xl { gap: 89px; }    /* 55 × φ ≈ 89 */
-
   .p-golden-xs { padding: 8px; }
   .p-golden-sm { padding: 13px; }
   .p-golden-md { padding: 21px; }
@@ -180,21 +172,17 @@
   .p-golden-xl { padding: 55px; }
 
   .py-golden-xs { padding-top: 8px; padding-bottom: 8px; }
-  .py-golden-sm { padding-top: 13px; padding-bottom: 13px; }
   .py-golden-md { padding-top: 21px; padding-bottom: 21px; }
   .py-golden-lg { padding-top: 34px; padding-bottom: 34px; }
   .py-golden-xl { padding-top: 55px; padding-bottom: 55px; }
   .py-golden-2xl { padding-top: 89px; padding-bottom: 89px; }
 
-  .px-golden-xs { padding-left: 8px; padding-right: 8px; }
   .px-golden-sm { padding-left: 13px; padding-right: 13px; }
   .px-golden-md { padding-left: 21px; padding-right: 21px; }
   .px-golden-lg { padding-left: 34px; padding-right: 34px; }
-  .px-golden-xl { padding-left: 55px; padding-right: 55px; }
 
   /* Golden Ratio Max Widths */
   .max-w-golden-content { max-width: 610px; }   /* Ideal reading width */
-  .max-w-golden-card { max-width: 377px; }      /* Card width */
   .max-w-golden-wide { max-width: 987px; }      /* Wide container */
 
   /* ═══════════════════════════════════════════════════════════════════════════
@@ -221,31 +209,10 @@
     transform: scale(0.98);
   }
 
-  /* Button press effect */
-  .press-effect {
-    @apply transition-all duration-150 ease-out;
-  }
-  .press-effect:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-  .press-effect:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
   /* Glow on focus for accessibility */
   .focus-glow:focus-visible {
     @apply ring-2 ring-brand-green-400 ring-offset-2;
     box-shadow: 0 0 20px rgba(22, 118, 58, 0.3);
-  }
-
-  /* Icon rotation on hover */
-  .hover-rotate {
-    @apply transition-transform duration-300;
-  }
-  .group:hover .hover-rotate {
-    transform: rotate(12deg);
   }
 
   /* Text link underline animation */
@@ -267,44 +234,6 @@
     width: 100%;
   }
 
-  /* Staggered children animation */
-  .stagger-children > * {
-    opacity: 0;
-    animation: fadeInUp 0.4s ease-out forwards;
-  }
-  .stagger-children > *:nth-child(1) { animation-delay: 0.1s; }
-  .stagger-children > *:nth-child(2) { animation-delay: 0.2s; }
-  .stagger-children > *:nth-child(3) { animation-delay: 0.3s; }
-  .stagger-children > *:nth-child(4) { animation-delay: 0.4s; }
-  .stagger-children > *:nth-child(5) { animation-delay: 0.5s; }
-  .stagger-children > *:nth-child(6) { animation-delay: 0.6s; }
-
-  /* Gradient border effect */
-  .gradient-border {
-    position: relative;
-    background: white;
-    border-radius: 16px;
-  }
-  .gradient-border::before {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #16763a, #155b92, #16763a);
-    z-index: -1;
-  }
-
-  /* Number counter animation helper */
-  .counter-animate {
-    display: inline-block;
-    transform-style: preserve-3d;
-  }
-
-  /* Smooth appearance for lazy-loaded content */
-  .appear-smooth {
-    animation: appearSmooth 0.6s ease-out forwards;
-  }
-
   /* Hide scrollbar but keep functionality */
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -313,11 +242,6 @@
 
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
-  }
-
-  /* Text gradient */
-  .text-gradient {
-    @apply bg-gradient-to-r from-brand-green-700 via-brand-blue-500 to-brand-sky-500 bg-clip-text text-transparent;
   }
 
   /* Safe area padding for mobile */
@@ -340,14 +264,6 @@
 
   .animate-scale-in {
     animation: scaleIn 0.3s ease-out;
-  }
-
-  .animate-slide-in-right {
-    animation: slideInRight 0.4s ease-out;
-  }
-
-  .animate-count-up {
-    animation: countUp 1s ease-out;
   }
 }
 
@@ -385,54 +301,11 @@
   }
 }
 
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes countUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.8);
-  }
-  50% {
-    transform: translateY(-5px) scale(1.05);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* Staggered animation delays */
-.stagger-1 { animation-delay: 0.1s; }
-.stagger-2 { animation-delay: 0.2s; }
-.stagger-3 { animation-delay: 0.3s; }
-.stagger-4 { animation-delay: 0.4s; }
-.stagger-5 { animation-delay: 0.5s; }
-
 /* Additional micro-interaction animations */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
   20%, 40%, 60%, 80% { transform: translateX(4px); }
-}
-
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(22, 118, 58, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(22, 118, 58, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(22, 118, 58, 0); }
-}
-
-@keyframes checkmark {
-  0% { stroke-dashoffset: 100; }
-  100% { stroke-dashoffset: 0; }
 }
 
 @keyframes slideUp {
@@ -457,11 +330,6 @@
   }
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 @keyframes bounce-in {
   0% {
     opacity: 0;
@@ -483,14 +351,6 @@
   animation: shake 0.5s ease-in-out;
 }
 
-.animate-pulse-ring {
-  animation: pulse-ring 1.5s infinite;
-}
-
-.animate-checkmark {
-  animation: checkmark 0.4s ease-in-out forwards;
-}
-
 .animate-slide-up {
   animation: slideUp 0.4s ease-out forwards;
 }
@@ -501,12 +361,6 @@
 
 .animate-bounce-in {
   animation: bounce-in 0.5s ease-out forwards;
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
 }
 
 /* MapLibre GL overrides for mobile */
@@ -563,18 +417,6 @@
   animation: hologram-shift 3s ease-in-out infinite;
 }
 
-.holographic-green {
-  background: linear-gradient(135deg,
-    #166534 0%,
-    #22c55e 25%,
-    #16a34a 50%,
-    #22c55e 75%,
-    #166534 100%
-  );
-  background-size: 200% 200%;
-  animation: hologram-shift 3s ease-in-out infinite;
-}
-
 .holographic-standard {
   background: linear-gradient(135deg,
     #374151 0%,
@@ -624,37 +466,6 @@
   }
 }
 
-/* Money animation for celebration screens */
-@keyframes money-rain {
-  0% {
-    transform: translateY(-100%) rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(100vh) rotate(360deg);
-    opacity: 0;
-  }
-}
-
-.animate-money-rain {
-  animation: money-rain 3s ease-in-out forwards;
-}
-
-/* Counter spin animation */
-@keyframes counter-spin {
-  0% {
-    transform: rotateX(0deg);
-  }
-  100% {
-    transform: rotateX(360deg);
-  }
-}
-
-.animate-counter-spin {
-  animation: counter-spin 0.3s ease-out;
-  transform-style: preserve-3d;
-}
-
 /* Celebration pulse */
 @keyframes celebrate-pulse {
   0%, 100% {
@@ -669,21 +480,6 @@
 
 .animate-celebrate-pulse {
   animation: celebrate-pulse 2s ease-in-out infinite;
-}
-
-/* Card flip animation */
-@keyframes card-flip {
-  0% {
-    transform: perspective(1000px) rotateY(0deg);
-  }
-  100% {
-    transform: perspective(1000px) rotateY(360deg);
-  }
-}
-
-.animate-card-flip {
-  animation: card-flip 0.8s ease-in-out;
-  transform-style: preserve-3d;
 }
 
 /* Badge unlock animation */
@@ -778,39 +574,6 @@
   }
 }
 
-/* Text reveal animation */
-@keyframes textReveal {
-  from {
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    clip-path: inset(0 0 0 0);
-  }
-}
-
-.animate-text-reveal {
-  animation: textReveal 0.8s ease-out forwards;
-}
-
-/* Stats counter pop */
-@keyframes statsPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.5) translateY(20px);
-  }
-  60% {
-    transform: scale(1.1) translateY(-5px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.animate-stats-pop {
-  animation: statsPop 0.5s ease-out forwards;
-}
-
 /* Ripple effect on click */
 @keyframes ripple {
   from {
@@ -831,13 +594,4 @@
 
 .group:hover .icon-bounce {
   animation: iconBounce 0.4s ease-out;
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
 }

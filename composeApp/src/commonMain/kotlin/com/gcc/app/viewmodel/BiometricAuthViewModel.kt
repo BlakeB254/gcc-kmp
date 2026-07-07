@@ -61,11 +61,18 @@ class BiometricAuthViewModel(
         return try {
             val (email, password) = credentials
             val authData = apiClient.login(email, password)
+            val token = authData.token
             if (authData.requiresTwoFactor) {
                 _state.value = _state.value.copy(isLoading = false)
                 false
+            } else if (token == null) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = "Unexpected server response — please try again",
+                )
+                false
             } else {
-                tokenManager.saveToken(authData.token!!)
+                tokenManager.saveToken(token)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     isLoggedIn = true,

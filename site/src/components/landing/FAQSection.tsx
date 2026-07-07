@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { FAQAccordion } from '@/components/shared/FAQAccordion'
 import { faqItems } from '@/data/faq'
+import { SectionHeading } from './SectionHeading'
 
 interface FAQSectionProps {
   /** Show only this many items (undefined = show all) */
@@ -14,16 +15,12 @@ export function FAQSection({ limit }: FAQSectionProps) {
     <section id="faq" className="py-golden-2xl bg-white">
       <div className="section-container">
         {/* Section Header */}
-        <div className="text-center mb-golden-xl animate-fade-in-up">
-          <span className="inline-block px-golden-sm py-1 rounded-full bg-brand-green-100 text-brand-green-700 text-sm font-medium mb-golden-sm">
-            Questions?
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-golden-sm">
-            Frequently Asked Questions
-          </h2>
-          <p className="text-lg text-neutral-600 max-w-golden-content mx-auto">
-            Everything you need to know about becoming a worker or sponsoring a block
-          </p>
+        <div className="mb-golden-xl animate-fade-in-up">
+          <SectionHeading
+            eyebrow="Questions?"
+            title="Frequently Asked Questions"
+            description="Everything you need to know about becoming a worker or sponsoring a block"
+          />
         </div>
 
         {/* FAQ Accordion */}

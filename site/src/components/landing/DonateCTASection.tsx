@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import { Users } from 'lucide-react'
 import { DonateCard } from '@/components/shared/DonateCard'
 
 export function DonateCTASection() {
@@ -48,7 +49,7 @@ export function DonateCTASection() {
               <span className="text-sm font-medium text-brand-green-200">General Fund</span>
             </div>
 
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+            <h2 className="section-title mb-4">
               Every Dollar Builds Community
             </h2>
             <p className="text-lg text-brand-green-200 mb-4 max-w-xl mx-auto lg:mx-0">
@@ -59,8 +60,8 @@ export function DonateCTASection() {
               No donation is too small—$1, $5, whatever you can give matters. When hundreds of us each give a little, we move mountains together. Our collective power is our superpower.
             </p>
             {recentDonorCount !== null && recentDonorCount > 0 && (
-              <div className="inline-flex items-center gap-2 bg-brand-green-800/60 rounded-full px-4 py-2 mb-8">
-                <span className="text-2xl">🤝</span>
+              <div className="inline-flex items-center gap-2 bg-brand-green-800/60 rounded-full px-4 py-2 mb-8 ring-1 ring-inset ring-brand-green-700">
+                <Users className="w-4 h-4 text-brand-green-300" aria-hidden="true" />
                 <span className="text-sm text-brand-green-100">
                   <strong>{recentDonorCount} {recentDonorCount === 1 ? 'person' : 'people'}</strong> donated this month — join them
                 </span>

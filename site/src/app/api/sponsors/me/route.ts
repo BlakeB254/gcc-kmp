@@ -1,28 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { sql } from 'drizzle-orm'
-import { verifyToken } from '@/lib/auth'
+import { requireSponsor } from '@/lib/sponsor-auth'
 
 export const runtime = 'nodejs'
 
-// Helper to authenticate and get sponsor ID from JWT
-async function getAuthenticatedSponsorId(request: NextRequest): Promise<number | null> {
-  const token = request.cookies.get('sponsor-token')?.value
-  if (!token) return null
-
-  const payload = await verifyToken(token)
-  if (!payload || payload.type !== 'sponsor') return null
-
-  return payload.id
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const sponsorId = await getAuthenticatedSponsorId(request)
+    const auth = await requireSponsor(request)
 
-    if (!sponsorId) {
+    if (!auth) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
+    const sponsorId = auth.id
 
     // Fetch the sponsor using raw SQL to avoid ORM issues
     const result = await db.execute(sql`
@@ -97,11 +87,9 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    // Log details server-side only — internal error messages must not leak
+    // to clients.
     console.error('Get sponsor profile error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({
-      error: 'Failed to get profile',
-      debug: errorMessage.slice(0, 200)
-    }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to get profile' }, { status: 500 })
   }
 }

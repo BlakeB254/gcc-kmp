@@ -8,6 +8,21 @@ A community-cleanup marketplace. One repo, multiple targets:
 - `composeApp/` — Compose Multiplatform UI (Android, iOS, Desktop)
 - `iosApp/` — Xcode wrapper; only builds on the MacBook via fastlane / `cdx-mobile`
 
+## Which backend actually serves the mobile app (read before touching APIs)
+
+**The mobile app talks to the Next.js API routes, not the Ktor server.** Both
+mobile platforms hardcode `https://api.globalcommunitycleaners.org`
+(`PlatformConfig.kt` in `androidMain`/`iosMain`), and `site/src/middleware.ts`
+shows that subdomain is served by Next.js (passes `/api/*` through, 301s
+everything else to `www`). Every client call in `GccApiClient.kt` has a
+matching route under `site/src/app/api/`. The Ktor `server/` implements only a
+subset, diverges on several paths (`/api/auth/refresh`, `/api/wallet`,
+gamification badges, scan coverage, most admin routes), and its login flow
+2FA-challenges every non-demo account without delivering the code — so it is
+**not currently a viable mobile backend**. Until Ktor is brought to parity or
+formally retired, treat `site/src/app/api/` as the canonical mobile API
+surface: new mobile endpoints go there, and Ktor parity is optional.
+
 ## Schema ownership policy (read this before changing data models)
 
 **Drizzle is the authoritative source of database schema.** Everything else is a
@@ -38,11 +53,11 @@ example of doing it right — three new tables in migrations 0017/0018
 added with matching Exposed table objects and a shared `RouteQueue.kt`
 DTO in the same commit.
 
-`Tables.kt` is being split per-domain for navigability. So far:
-- `IdentityTables.kt` — Workers, Sponsors, WaitlistEntries, MediaTable
-- `Tables.kt` — everything else (still ~1000 LOC; will be split further
-  as `RouteTables.kt`, `FinanceTables.kt`, `EngagementTables.kt`,
-  `ModerationTables.kt`)
+`Tables.kt` has been split per-domain for navigability:
+`IdentityTables.kt`, `RouteTables.kt`, `FinanceTables.kt`,
+`EngagementTables.kt`, `GamificationTables.kt`, `CommunityTables.kt`,
+`FeedTables.kt`, `AdminTables.kt`, `CrashReportTables.kt`,
+`ServerOnlyTables.kt`, with the remainder still in `Tables.kt`.
 
 ### How migrations actually get to production
 
@@ -108,10 +123,13 @@ Symptoms of this divergence:
 - **Public env var fallbacks** go through `site/src/lib/env.ts` so missing
   config fails fast in production instead of silently hitting localhost.
 - **CI runs** the Next.js site (typecheck + build) and Kotlin (`:shared`
-  JVM, `:server` build with tests, `:composeApp` desktop compile) on every
-  PR and main push. Android `assembleDebug` runs only on
-  `workflow_dispatch`. iOS builds happen on the MacBook via `cdx-mobile`,
-  not in GitHub Actions.
+  JVM + tests, `:composeApp` desktop compile) on every PR and main push.
+  Android `assembleDebug` runs only on `workflow_dispatch`. iOS builds
+  happen on the MacBook via `cdx-mobile`, not in GitHub Actions.
+- **`:server` is not part of the Gradle build right now** —
+  `include(":server")` was removed from `settings.gradle.kts` (commit
+  e549c10, "stop building undeployed :server in CI"). `./gradlew
+  :server:*` tasks won't resolve until it's re-included.
 
 ## Working across the two machines (DGX + MacBook)
 
@@ -133,9 +151,9 @@ changes, snapshot the MacBook work to a `wip/...` branch before pulling.
 ```bash
 # DGX
 cd site && npm run dev                                # Next.js on :7350
-./gradlew :server:run                                  # Ktor on :7310
-./gradlew :server:test                                 # Ktor tests
 cd site && npx tsc --noEmit                            # typecheck
+# Ktor server: re-add include(":server") to settings.gradle.kts first;
+# then ./gradlew :server:run (:7310) / :server:test
 
 # MacBook (via SSH)
 cdx-mobile build ios --sync                            # full iOS build
