@@ -123,10 +123,13 @@ Symptoms of this divergence:
 - **Public env var fallbacks** go through `site/src/lib/env.ts` so missing
   config fails fast in production instead of silently hitting localhost.
 - **CI runs** the Next.js site (typecheck + build) and Kotlin (`:shared`
-  JVM, `:server` build with tests, `:composeApp` desktop compile) on every
-  PR and main push. Android `assembleDebug` runs only on
-  `workflow_dispatch`. iOS builds happen on the MacBook via `cdx-mobile`,
-  not in GitHub Actions.
+  JVM + tests, `:composeApp` desktop compile) on every PR and main push.
+  Android `assembleDebug` runs only on `workflow_dispatch`. iOS builds
+  happen on the MacBook via `cdx-mobile`, not in GitHub Actions.
+- **`:server` is not part of the Gradle build right now** —
+  `include(":server")` was removed from `settings.gradle.kts` (commit
+  e549c10, "stop building undeployed :server in CI"). `./gradlew
+  :server:*` tasks won't resolve until it's re-included.
 
 ## Working across the two machines (DGX + MacBook)
 
@@ -148,9 +151,9 @@ changes, snapshot the MacBook work to a `wip/...` branch before pulling.
 ```bash
 # DGX
 cd site && npm run dev                                # Next.js on :7350
-./gradlew :server:run                                  # Ktor on :7310
-./gradlew :server:test                                 # Ktor tests
 cd site && npx tsc --noEmit                            # typecheck
+# Ktor server: re-add include(":server") to settings.gradle.kts first;
+# then ./gradlew :server:run (:7310) / :server:test
 
 # MacBook (via SSH)
 cdx-mobile build ios --sync                            # full iOS build
