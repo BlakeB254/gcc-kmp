@@ -155,16 +155,6 @@ data class CreateBountyRequest(
 )
 
 @Serializable
-data class SponsorBlockRequest(
-    val blockId: Int,
-    val preferredDate: String,
-    val preferredTime: String,
-    val amountCents: Int = 10000,
-    val isAnonymous: Boolean = false,
-    val posterName: String? = null,
-)
-
-@Serializable
 data class CheckoutRequest(
     val amount: Int? = null,
     val blockIds: List<Int>? = null,
