@@ -12,6 +12,8 @@ import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.capture.CaptureChunkUploader
+import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
@@ -26,7 +28,10 @@ import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.retractionOutcome
+import com.gcc.app.platform.runOrphanRecoverySweepOnce
+import com.gcc.app.platform.sessionJournalPath
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.geo.pointInPolygon
@@ -115,6 +120,8 @@ class RouteScanViewModel(
     private val apiClient: GccApiClient,
     private val locationProvider: LocationProvider,
     private val sessionUploader: EnvScanSessionUploader,
+    private val captureUploader: CaptureChunkUploader,
+    private val captureChunkStore: CaptureChunkStore,
 ) {
     companion object {
         /**
@@ -158,8 +165,10 @@ class RouteScanViewModel(
     fun corridorCellCenters(): List<Pair<Double, Double>> = coverageTracker.getCorridorCenters()
 
     // One recorder per lap: the baseline lap and the clean lap each upload as
-    // their own session manifest (route-v2 design step 1/5).
-    private var lapSessionRecorder = EnvScanSessionRecorder()
+    // their own session manifest (route-v2 design step 1/5). journalPath is
+    // computed from a pre-generated sessionId (Pillar 6) — null on desktop/
+    // android, where the recorder stays pure in-memory.
+    private var lapSessionRecorder = newLapSessionRecorder()
     private var lapTransitionFired = false
 
     private val coverageTracker = CoverageTracker()
@@ -214,6 +223,26 @@ class RouteScanViewModel(
         // manifests queued here used to strand until the user happened to
         // open an ENV scan (the only other flushPending caller).
         scope.launch { sessionUploader.flushPending() }
+        // Same opportunistic catch-up for background capture chunks (Pillar
+        // 1) — route scans don't produce them (v1 scope guard: ENV/SPOT
+        // only), but any pending from a prior Spot session still deserve a
+        // chance to flush whenever ANY scan screen opens.
+        scope.launch { captureUploader.flushPending() }
+        // Pillar 6 orphan recovery — same call SpotViewModel makes. This VM
+        // is a Koin `factory` (recreated per screen open), but the sweep's
+        // internal once-per-process guard means only the FIRST scan-screen VM
+        // constructed after launch actually lists the directories; every
+        // later construction is a no-op. Active-session exclusion comes from
+        // lazy journal-file creation (the lapSessionRecorder property
+        // initializer above creates no file — see the sweep's KDoc).
+        scope.launch { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
+    }
+
+    /** Pre-generates the sessionId so [sessionJournalPath] can be resolved
+     *  BEFORE constructing the recorder (journalPath is a constructor arg). */
+    private fun newLapSessionRecorder(): EnvScanSessionRecorder {
+        val sessionId = EnvScanSessionRecorder.generateSessionId()
+        return EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
     }
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng and
@@ -544,7 +573,7 @@ class RouteScanViewModel(
         }
         _minimapBoundaries.value =
             outerRing.map { it.lat to it.lng } to innerRings.map { ring -> ring.map { it.lat to it.lng } }
-        lapSessionRecorder = EnvScanSessionRecorder()
+        lapSessionRecorder = newLapSessionRecorder()
         lapTransitionFired = false
         visitedProblemAreas.clear()
         seedFogFromServerCoverage(waypoints)
@@ -768,7 +797,7 @@ class RouteScanViewModel(
                     AdvancePhaseRequest(phase = ScanPhase.CLEANING)
                 )
                 cleanPath.clear()
-                lapSessionRecorder = EnvScanSessionRecorder() // lap 2 = its own session
+                lapSessionRecorder = newLapSessionRecorder() // lap 2 = its own session
                 val currentState = _uiState.value
                 val areas = currentState.problemAreas
                     .ifEmpty { clusterProblemAreas(currentState.hotspots) }
@@ -996,6 +1025,11 @@ class RouteScanViewModel(
                     coverageTracker.getScannedCorridorCells()
                         .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
                 )
+                // Pillar 6: this recorder's session is done either way (an
+                // empty draft archives nothing below) — its on-disk journal
+                // has no further use. No-op on desktop/android (journalPath
+                // is always null there).
+                sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
                 if (draft.path.isEmpty()) return@launch // nothing recorded — nothing to archive
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,

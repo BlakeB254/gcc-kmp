@@ -92,6 +92,12 @@ fun CameraCapture(
     /** When set, the viewfinder is the ARKit env-scan surface (ground grid,
      *  vector-scan overlay, trash lock-on) instead of the AVCapture preview. */
     arOverlay: ArEnvScanOverlay? = null,
+    /** Background full-session capture indicator (Pillar 1): "rec" (red dot,
+     *  actively writing), "paused" (grey, outdoor-gate/thermal paused), or
+     *  null (no capture this session — non-AR devices, Android/Desktop, or
+     *  capture never started). Rendered as a small chip near the status
+     *  chips; null shows nothing. */
+    captureState: String? = null,
 ) {
     val manager = cameraManager ?: remember { CameraManager() }
     val coroutineScope = rememberCoroutineScope()
@@ -193,6 +199,30 @@ fun CameraCapture(
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White,
                         )
+                    }
+                }
+                if (captureState != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (captureState == "rec") Color.Red else Color.Gray),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (captureState == "rec") "REC" else "REC ⏸",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                            )
+                        }
                     }
                 }
             }

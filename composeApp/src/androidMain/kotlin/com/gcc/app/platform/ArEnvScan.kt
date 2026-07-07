@@ -32,6 +32,11 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
         // No AR raycasting off-iOS — GPS-tier crediting (updatePosition) covers these targets.
     }
+    actual fun startCapture(sessionId: String): Boolean = false
+    actual fun stopCapture(): List<CaptureChunkInfo> = emptyList()
+    actual fun discardCurrentCaptureChunk() {}
+    actual fun setCaptureEnabled(enabled: Boolean) {}
+    actual fun thermalPausedLikely(): Boolean = false
     actual fun stop() {}
 }
 

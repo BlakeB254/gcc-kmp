@@ -31,9 +31,11 @@ import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.cache.ScanAreaCacheStore
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.capture.CaptureChunkUploader
 import app.cash.sqldelight.db.SqlDriver
 import com.gcc.shared.offline.OfflineTokenManager
 import com.gcc.shared.offline.createOfflineApiClient
@@ -53,7 +55,9 @@ val offlineAppModule = module {
     single<SqlDriver> { createSqlDriver() }
     single { RouteCacheStore(get()) }
     single { ScanAreaCacheStore(get()) }
+    single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
+    single { CaptureChunkUploader(get(), get()) }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)
     singleOf(::RegisterViewModel)
@@ -74,6 +78,6 @@ val offlineAppModule = module {
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }
