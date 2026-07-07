@@ -16,6 +16,10 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   heic: 'image/heic',
+  // 16-bit grayscale depth frames from the raw area-capture path (Task 7) —
+  // PNG rather than a custom binary so Open3D/any RGBD tool can read it with
+  // zero GCC-specific tooling, per the data-lake design's open-format goal.
+  png: 'image/png',
   mp4: 'video/mp4',
   bin: 'application/octet-stream',
   ply: 'application/octet-stream',

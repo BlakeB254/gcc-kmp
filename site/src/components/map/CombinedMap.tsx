@@ -9,6 +9,8 @@ import {
   ROUTE_STATUS_COLORS,
   BOUNTY_COLORS,
   SPOT_COLORS,
+  SPOT_SEVERITY_COLORS,
+  VEGETATION_MARKER_COLOR,
   SPOT_STATUS_COLORS,
   SPOT_ZOOM,
   CHICAGO_CENTER_LNG_LAT,
@@ -209,6 +211,11 @@ export function CombinedMap({
           needsVerification: spot.needsVerification ?? false,
           tags: JSON.stringify(spot.tags ?? []),
           itemType: spot.itemType ?? 'general_litter',
+          // worldObservations-derived fields (Task 10) — severity coalesced to
+          // the same neutral default (2) LiveSeverityEstimator uses on-device,
+          // so an unscored spot renders at the same size/color it always has.
+          severity: spot.severity ?? 2,
+          domain: spot.domain ?? 'litter',
         },
         geometry: {
           type: 'Point' as const,
@@ -347,7 +354,16 @@ export function CombinedMap({
     // spot popup
     if (popup.kind === 'spot') {
       const s = popup.data
-      const allPhotos = s.mediaUrls?.length ? s.mediaUrls : s.photoUrl ? [s.photoUrl] : []
+      // Falls back to the observation's derived mediaUrl (Task 11) when the
+      // report itself has no user-submitted photo — covers scan-detected
+      // items nobody explicitly photographed, once one is captured.
+      const allPhotos = s.mediaUrls?.length
+        ? s.mediaUrls
+        : s.photoUrl
+          ? [s.photoUrl]
+          : s.mediaUrl
+            ? [s.mediaUrl]
+            : []
       return (
         <Popup
           longitude={popup.lng}
@@ -740,11 +756,29 @@ export function CombinedMap({
               type="circle"
               minzoom={SPOT_ZOOM.DOTS_MIN}
               paint={{
+                // Base zoom-driven radius (unchanged from before) times a
+                // severity multiplier, so a mattress-sized problem reads
+                // visibly larger than a bottle at the same zoom level.
                 'circle-radius': [
-                  'interpolate', ['linear'], ['zoom'],
-                  14, 2, 14.5, 3, 16, 5, 17, 7,
+                  '*',
+                  ['interpolate', ['linear'], ['zoom'], 14, 2, 14.5, 3, 16, 5, 17, 7],
+                  [
+                    'match', ['coalesce', ['get', 'severity'], 2],
+                    1, 0.7, 2, 0.85, 3, 1.0, 4, 1.3, 5, 1.6,
+                    1.0,
+                  ],
                 ],
-                'circle-color': SPOT_COLORS.MARKER,
+                // Vegetation observations get their own color regardless of
+                // severity (informational, not an urgency signal); litter
+                // steps through the same low/medium/high ramp used elsewhere
+                // for heat-weight and bounty urgency.
+                'circle-color': [
+                  'case',
+                  ['==', ['get', 'domain'], 'vegetation'], VEGETATION_MARKER_COLOR,
+                  ['>=', ['coalesce', ['get', 'severity'], 2], 4], SPOT_SEVERITY_COLORS.HIGH,
+                  ['==', ['coalesce', ['get', 'severity'], 2], 3], SPOT_SEVERITY_COLORS.MEDIUM,
+                  SPOT_SEVERITY_COLORS.LOW,
+                ],
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
                 'circle-opacity': [
