@@ -33,3 +33,32 @@ actual fun deleteLocalFile(path: String) {
 }
 
 actual fun presentUsdzPreview(path: String) {}
+
+// Journal file ops (Pillar 6): Android never sets a journalPath (see
+// sessionJournalPath below — capture/journaling is iOS-only, v1 scope
+// guard), but implements these with plain java.io since it costs nothing and
+// keeps the actual set complete/compiling like every other platform.
+
+actual fun appendLineToFile(path: String, line: String) {
+    val file = File(path)
+    file.parentFile?.mkdirs()
+    java.io.FileWriter(file, /* append = */ true).use { writer ->
+        writer.write(line)
+        writer.write("\n")
+    }
+}
+
+actual fun writeFileLines(path: String, lines: List<String>) {
+    val file = File(path)
+    file.parentFile?.mkdirs()
+    file.writeText(if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+}
+
+actual fun listFilesInDir(dirPath: String): List<String> =
+    runCatching { File(dirPath).listFiles()?.map { it.path } ?: emptyList() }.getOrDefault(emptyList())
+
+actual fun sessionJournalPath(sessionId: String): String? = null
+
+actual fun scanSessionsDirPath(): String? = null
+
+actual fun captureSessionsDirPath(): String? = null

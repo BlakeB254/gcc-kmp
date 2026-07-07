@@ -112,6 +112,6 @@ val appModule = module {
     single { AffectedAreasRepository(get()) }
     singleOf(::AffectedBlocksViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get(), get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }

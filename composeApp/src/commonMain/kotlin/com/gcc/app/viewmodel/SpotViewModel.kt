@@ -9,8 +9,12 @@ import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.bookOrphanCaptureSessions
 import com.gcc.app.platform.capture.CaptureChunkUploader
+import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
+import com.gcc.app.platform.recoverOrphanScanSessions
+import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.cache.CaptureChunkStore
@@ -122,6 +126,19 @@ class SpotViewModel(
         // Same catch-up for background capture chunks (Pillar 1) — opportunistic,
         // policy-gated (Wi-Fi/charging/cellular-opt-in); see CaptureChunkUploader.
         scope.launch { captureUploader.flushPending() }
+        // Pillar 6 orphan recovery: an app kill mid-scan can leave a session
+        // journal (GPS/gate-event track) and/or unbooked capture-chunk files
+        // on disk with no manifest ever built for them. Both sweeps run once
+        // per process (this VM is a Koin single) and are safe by construction
+        // — this constructor always finishes before any recorder/capture
+        // session exists (see recoverOrphanScanSessions's kdoc). Capture-chunk
+        // booking MUST run before journal recovery: it reads the still-present
+        // journal for a best-effort locationCellId before the journal sweep
+        // deletes it.
+        scope.launch {
+            bookOrphanCaptureSessions(captureChunkStore)
+            recoverOrphanScanSessions(sessionUploader, captureChunkStore)
+        }
     }
 
     // Confirmed litter flushes to /api/observations/ar-detected on the same
@@ -525,6 +542,13 @@ class SpotViewModel(
                             "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
                     )
                 }
+                // Pillar 6: the manifest is now durable either in R2 or in
+                // EnvScanSessionUploader's own persistent retry queue — the
+                // on-disk journal's only job (surviving an app kill before
+                // this point) is done, so delete it. A missing journal
+                // (desktop/android — journalPath is always null there) is a
+                // no-op.
+                sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
             }

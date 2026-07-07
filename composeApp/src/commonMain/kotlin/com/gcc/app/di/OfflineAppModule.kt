@@ -78,6 +78,6 @@ val offlineAppModule = module {
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get(), get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }

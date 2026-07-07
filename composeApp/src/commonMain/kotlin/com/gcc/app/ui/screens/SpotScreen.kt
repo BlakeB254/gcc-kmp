@@ -52,6 +52,7 @@ import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
+import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
@@ -343,7 +344,13 @@ private fun CameraPhase(
     // One session = one capture: this recorder's snapshot rides with submit.
     // Declared here (ahead of its other uses below) so the outdoor-state gate
     // effect can reach it for purge/audit-trail events.
-    val sessionRecorder = remember { EnvScanSessionRecorder() }
+    // journalPath (Pillar 6) needs the sessionId up front — generated here
+    // rather than inside the recorder's default constructor arg, since the
+    // path itself is a constructor parameter. Null on desktop/android.
+    val sessionRecorder = remember {
+        val sessionId = EnvScanSessionRecorder.generateSessionId()
+        EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
+    }
     // Coverage tracker: hoisted above the AR-overlay DisposableEffect below
     // (rather than down with its other env-scan state) because the
     // raycast-fan listener registered there needs it in scope.

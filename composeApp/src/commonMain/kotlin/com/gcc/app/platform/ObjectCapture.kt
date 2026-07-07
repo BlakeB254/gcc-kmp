@@ -68,3 +68,52 @@ expect fun deleteLocalFile(path: String)
  * orbit, and place-in-room come free from the OS. No-op off-iOS.
  */
 expect fun presentUsdzPreview(path: String)
+
+// ── Disk-backed session journal utils (Pillar 6) ────────────────────────
+// Extend-beside-readLocalFileBytes/deleteLocalFile home for the small set of
+// file primitives EnvScanSessionRecorder's on-disk journal and the launch-
+// time orphan-recovery sweep need. iOS is the only platform that wires these
+// to a real Documents path; desktop/android keep pure in-memory behavior
+// ([sessionJournalPath] returns null there) but still implement the file ops
+// (java.io) so desktop tests can exercise the real journal read/write path.
+
+/**
+ * Append one line (a trailing "\n" is added) to the file at [path], creating
+ * the file and any missing parent directories on first write. Throws on any
+ * I/O failure — [EnvScanSessionRecorder] is the one place that catches it,
+ * so a broken journal degrades that recorder to memory-only after exactly
+ * one logged failure instead of retrying (and re-logging) on every sample.
+ */
+expect fun appendLineToFile(path: String, line: String)
+
+/**
+ * Truncate-and-rewrite [path] with [lines] (one per line, "\n"-joined) — used
+ * to rewrite a journal after a privacy purge drops some of its samples.
+ * Throws on failure, same convention as [appendLineToFile].
+ */
+expect fun writeFileLines(path: String, lines: List<String>)
+
+/**
+ * Non-recursive listing of [dirPath]'s immediate children (files and
+ * subdirectories) as full paths. Empty when the directory doesn't exist or
+ * isn't readable — callers (orphan recovery) treat "nothing to sweep" and
+ * "directory missing" identically, so this never throws.
+ */
+expect fun listFilesInDir(dirPath: String): List<String>
+
+/** Absolute path for [sessionId]'s on-disk journal
+ *  (Documents/scan-sessions/{sessionId}.jsonl on iOS), or null where session
+ *  journaling isn't wired up (desktop/android — the recorder stays pure
+ *  in-memory, matching pre-Pillar-6 behavior). */
+expect fun sessionJournalPath(sessionId: String): String?
+
+/** Directory [sessionJournalPath] entries live under — the launch-recovery
+ *  sweep lists this directly rather than re-deriving it from a sessionId. */
+expect fun scanSessionsDirPath(): String?
+
+/** Directory each capture session's chunk files live under
+ *  (Documents/capture-sessions/{sessionId}/…, see [ArEnvScanOverlay.startCapture])
+ *  — swept at launch for chunks that finished writing but never reached
+ *  [com.gcc.shared.cache.CaptureChunkStore] (Task 4/5's post-timeout orphan
+ *  case). Null on desktop/android, matching [sessionJournalPath]. */
+expect fun captureSessionsDirPath(): String?

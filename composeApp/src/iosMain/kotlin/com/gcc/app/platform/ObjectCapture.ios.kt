@@ -14,7 +14,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import platform.Foundation.NSData
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.stringByDeletingLastPathComponent
+import platform.Foundation.stringWithContentsOfFile
+import platform.Foundation.writeToFile
 import platform.posix.memcpy
 
 /** iOS Object Capture controller: drives the registered Swift bridge. */
@@ -158,3 +164,67 @@ actual fun readLocalFileBytes(path: String): ByteArray? {
 actual fun deleteLocalFile(path: String) {
     runCatching { platform.Foundation.NSFileManager.defaultManager.removeItemAtPath(path, error = null) }
 }
+
+/** Creates [path]'s parent directory chain if missing — shared by every
+ *  journal file op below (append/write both need it on first write). */
+@OptIn(ExperimentalForeignApi::class)
+private fun ensureParentDirExists(path: String) {
+    val dir = (path as NSString).stringByDeletingLastPathComponent
+    if (dir.isEmpty()) return
+    val fm = NSFileManager.defaultManager
+    if (fm.fileExistsAtPath(dir)) return
+    val created = fm.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+    if (!created && !fm.fileExistsAtPath(dir)) {
+        throw IllegalStateException("mkdir failed: $dir")
+    }
+}
+
+/**
+ * Read-concat-rewrite rather than a true OS-level append: journals are
+ * small (an hour of ~1Hz samples is well under 1MB), this call is off the
+ * live AR/render path (~1Hz from GPS fixes, not per-frame), and it reuses
+ * the exact [NSString.stringWithContentsOfFile]/[writeToFile] pair
+ * [CrashReporting] already relies on elsewhere in this codebase — no new
+ * cinterop (NSFileHandle/NSData byte-buffer building) to get wrong.
+ */
+@OptIn(ExperimentalForeignApi::class)
+actual fun appendLineToFile(path: String, line: String) {
+    ensureParentDirExists(path)
+    val existing = NSString.stringWithContentsOfFile(path, encoding = NSUTF8StringEncoding, error = null) ?: ""
+    writeStringToFile(path, existing + line + "\n")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun writeFileLines(path: String, lines: List<String>) {
+    ensureParentDirExists(path)
+    writeStringToFile(path, if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun writeStringToFile(path: String, content: String) {
+    @Suppress("CAST_NEVER_SUCCEEDS")
+    val ok = (content as NSString).writeToFile(path, atomically = true, encoding = NSUTF8StringEncoding, error = null)
+    if (!ok) throw IllegalStateException("write failed: $path")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun listFilesInDir(dirPath: String): List<String> {
+    return try {
+        NSFileManager.defaultManager.contentsOfDirectoryAtPath(dirPath, error = null)
+            ?.filterIsInstance<String>()
+            ?.map { "$dirPath/$it" }
+            .orEmpty()
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("session-journal", "listFilesInDir failed for $dirPath", e)
+        emptyList()
+    }
+}
+
+actual fun sessionJournalPath(sessionId: String): String? {
+    val dir = scanSessionsDirPath() ?: return null
+    return "$dir/$sessionId.jsonl"
+}
+
+actual fun scanSessionsDirPath(): String? = documentsPath() + "/scan-sessions"
+
+actual fun captureSessionsDirPath(): String? = documentsPath() + "/capture-sessions"
