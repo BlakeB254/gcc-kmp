@@ -747,9 +747,6 @@ class GccApiClient(
         deleteUnit("/api/admin/routes/$routeId")
 
     // Blocks
-    suspend fun getAdminBlocks(): List<Block> =
-        get("/api/admin/blocks")
-
     suspend fun getAvailableBlocks(): List<Block> {
         val siteUrl = "https://www.globalcommunitycleaners.org"
         val primaryBody = runCatching {

@@ -73,7 +73,7 @@ jobs:
         run: npm run build
 
   kotlin:
-    name: Kotlin — shared + server + compose desktop
+    name: Kotlin — shared + compose desktop
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

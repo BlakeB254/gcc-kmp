@@ -51,12 +51,6 @@ enum class WaitlistStatus {
 }
 
 @Serializable
-enum class UserType {
-    @SerialName("worker") WORKER,
-    @SerialName("sponsor") SPONSOR
-}
-
-@Serializable
 enum class UserRole {
     @SerialName("worker") WORKER,
     @SerialName("admin") ADMIN,

@@ -798,30 +798,6 @@ object SeedData {
         )
     }
 
-    // ── Revenue by Area ──────────────────────────────────────────────
-    val revenueByArea: List<RevenueByArea> = listOf(
-        RevenueByArea(serviceAreaId = 1, serviceAreaName = "North Lawndale", totalRevenue = 18500000, jobCount = 1850, workerCount = 89),
-        RevenueByArea(serviceAreaId = 2, serviceAreaName = "East Garfield Park", totalRevenue = 5200000, jobCount = 520, workerCount = 34),
-        RevenueByArea(serviceAreaId = 3, serviceAreaName = "Austin", totalRevenue = 3100000, jobCount = 310, workerCount = 21),
-        RevenueByArea(serviceAreaId = 4, serviceAreaName = "Englewood", totalRevenue = 1670000, jobCount = 167, workerCount = 12),
-    )
-
-    // ── Worker Metrics ───────────────────────────────────────────────
-    val workerMetrics: List<WorkerMetrics> = listOf(
-        WorkerMetrics(workerId = 5, workerName = "Deshawn Williams", jobsCompleted = 62, totalEarnings = 310000, averageRating = 4.8, volunteersCompleted = 15, badgesEarned = 9),
-        WorkerMetrics(workerId = 3, workerName = "Keisha Thompson", jobsCompleted = 55, totalEarnings = 275000, averageRating = 5.0, volunteersCompleted = 22, badgesEarned = 8),
-        WorkerMetrics(workerId = 1, workerName = "Marcus Johnson", jobsCompleted = 47, totalEarnings = 235000, averageRating = 4.9, volunteersCompleted = 12, badgesEarned = 7),
-        WorkerMetrics(workerId = 7, workerName = "Andre Davis", jobsCompleted = 41, totalEarnings = 205000, averageRating = 4.7, volunteersCompleted = 8, badgesEarned = 6),
-        WorkerMetrics(workerId = 2, workerName = "Tanya Robinson", jobsCompleted = 38, totalEarnings = 190000, averageRating = 4.6, volunteersCompleted = 10, badgesEarned = 5),
-    )
-
-    // ── Sponsor Metrics ──────────────────────────────────────────────
-    val sponsorMetrics: List<SponsorMetrics> = listOf(
-        SponsorMetrics(sponsorId = 1, sponsorName = "Chicago Foundation", totalFunded = 1500000, blocksSponsored = 3, bountiesPosted = 12, walletBalance = 350000),
-        SponsorMetrics(sponsorId = 2, sponsorName = "West Side Community Fund", totalFunded = 800000, blocksSponsored = 2, bountiesPosted = 8, walletBalance = 150000),
-        SponsorMetrics(sponsorId = 3, sponsorName = "Maria Garcia", totalFunded = 100000, blocksSponsored = 1, bountiesPosted = 3, walletBalance = 25000),
-    )
-
     // ── Disputes ─────────────────────────────────────────────────────
     val disputeList: List<Dispute> = listOf(
         Dispute(
@@ -850,54 +826,4 @@ object SeedData {
         ),
     )
 
-    // ── Feedback ─────────────────────────────────────────────────────
-    val feedbackList: List<FeedbackTicket> = listOf(
-        FeedbackTicket(
-            id = 1, userId = 1, userType = UserType.WORKER, category = FeedbackCategory.APP_ISSUE,
-            subject = "Map not loading on slow connection",
-            description = "When I'm in areas with poor cell signal, the map tiles don't load and I can't see my route checkpoints.",
-            status = FeedbackStatus.IN_PROGRESS, priority = FeedbackPriority.HIGH,
-            assignedTo = "Engineering",
-            createdAt = Instant.parse("2024-06-09T08:00:00Z"), updatedAt = Instant.parse("2024-06-10T10:00:00Z"),
-        ),
-        FeedbackTicket(
-            id = 2, userId = 3, userType = UserType.WORKER, category = FeedbackCategory.FEATURE_REQUEST,
-            subject = "Add route difficulty ratings",
-            description = "It would be helpful to see difficulty ratings for routes so I can plan my day better. Some routes have steep hills.",
-            status = FeedbackStatus.OPEN, priority = FeedbackPriority.MEDIUM,
-            createdAt = Instant.parse("2024-06-08T14:30:00Z"), updatedAt = Instant.parse("2024-06-08T14:30:00Z"),
-        ),
-        FeedbackTicket(
-            id = 3, userId = 1, userType = UserType.SPONSOR, category = FeedbackCategory.PAYMENT_ISSUE,
-            subject = "Duplicate charge on wallet deposit",
-            description = "I deposited $100 but was charged twice. Please refund the extra charge.",
-            status = FeedbackStatus.RESOLVED, priority = FeedbackPriority.URGENT,
-            assignedTo = "Finance",
-            createdAt = Instant.parse("2024-06-05T09:00:00Z"), updatedAt = Instant.parse("2024-06-06T11:00:00Z"),
-        ),
-    )
-
-    // ── Address Changes ──────────────────────────────────────────────
-    val addressChanges: List<AddressChangeRequest> = listOf(
-        AddressChangeRequest(
-            workerId = 2,
-            newAddress = WorkerAddress(
-                street = "4100 W Roosevelt Rd",
-                city = "Chicago", state = "IL", zip = "60624",
-                neighborhood = "North Lawndale", isNorthLawndale = true,
-                latitude = 41.8665, longitude = -87.7290,
-            ),
-            reason = "Moved to a new apartment within the neighborhood",
-        ),
-        AddressChangeRequest(
-            workerId = 5,
-            newAddress = WorkerAddress(
-                street = "3200 W 16th St",
-                city = "Chicago", state = "IL", zip = "60623",
-                neighborhood = "North Lawndale", isNorthLawndale = true,
-                latitude = 41.8585, longitude = -87.7105,
-            ),
-            reason = "Relocating closer to primary route area",
-        ),
-    )
 }
