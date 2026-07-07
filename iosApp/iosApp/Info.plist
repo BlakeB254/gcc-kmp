@@ -38,7 +38,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>128</string>
+	<string>129</string>
 	<key>GIDClientID</key>
 	<string>674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -53,13 +53,13 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>GCC needs camera access to photograph before and after cleaning evidence at each checkpoint</string>
+	<string>GCC uses the camera to scan your environment for litter and record scan sessions that build the community cleanliness map</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>GCC uses Face ID to securely unlock the app</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion, even when the app is in the background</string>
+	<string>GCC uses your location to map your scans and cleanups to the exact places they happen, and to guide you along cleaning routes, even when the app is in the background</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GCC uses your location to guide you along cleaning routes and verify checkpoint completion</string>
+	<string>GCC uses your location to map your scans and cleanups to the exact places they happen, and to guide you along cleaning routes</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save your GCC profile card to Photos</string>
 	<key>NSPhotoLibraryUsageDescription</key>
