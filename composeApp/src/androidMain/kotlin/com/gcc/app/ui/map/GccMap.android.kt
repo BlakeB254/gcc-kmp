@@ -55,6 +55,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,

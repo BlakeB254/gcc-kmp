@@ -183,7 +183,11 @@ class SpotViewModel(
                                     itemType = TrashItemCatalog.canonicalType(result.trashTypes.first()),
                                     severity = result.severity,
                                     confidence = result.confidence,
-                                )
+                                ),
+                                // The analyzed photo IS the detection frame —
+                                // ride it onto the marker so the map spot
+                                // carries the image that prompted it.
+                                photoBytes = photo.bytes.takeIf { it.isNotEmpty() },
                             )
                         }
                         _uiState.value = _uiState.value.copy(
@@ -223,8 +227,12 @@ class SpotViewModel(
      * against existing items of the same type within ~4m (the scanner path
      * projects along heading, the analyzer fallback tags the user position —
      * both can fire for the same pile).
+     *
+     * [photoBytes], when the caller has a frame available, is uploaded
+     * best-effort before the marker is enqueued (never blocks it — a null or
+     * failed upload just enqueues with no mediaUrl).
      */
-    fun addObservedItem(item: ObservedSpotItem) {
+    fun addObservedItem(item: ObservedSpotItem, photoBytes: ByteArray? = null) {
         val existing = _uiState.value.observedItems
         val duplicate = existing.any { prior ->
             prior.itemType == item.itemType &&
@@ -244,12 +252,23 @@ class SpotViewModel(
         if (stamped.domain == null || stamped.domain == "litter") {
             scope.launch {
                 try {
+                    // Upload-then-enqueue: raw bytes never enter the persisted
+                    // ArMarkerQueue — only the resolved URL (or null on failure).
+                    val mediaUrl = photoBytes?.let { bytes ->
+                        try {
+                            apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                        } catch (e: Exception) {
+                            DiagnosticsLog.error("env-scan", "marker photo upload failed (enqueuing without photo)", e)
+                            null
+                        }
+                    }
                     arMarkerQueue.enqueue(
                         ArDetectedMarkerRequest(
                             lat = stamped.lat,
                             lng = stamped.lng,
                             label = TrashItemCatalog.canonicalType(stamped.itemType),
                             capturedAt = Clock.System.now(),
+                            mediaUrl = mediaUrl,
                         ),
                     )
                 } catch (e: Exception) {
