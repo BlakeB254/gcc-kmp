@@ -1,4 +1,5 @@
-• Sign in with Apple and Google setup for real-device testing.
-• Spot reports now connect into bounties, so reported messes can become funded cleanup opportunities.
-• Dynamic heatmap visuals with calmer clean-zone tinting, clearer hotspot density, tap-to-inspect details, and bountied-spot rings.
-• Admin audit polish for spot attribution, points history, and safer spot creation.
+• Environment scans now measure exactly what your camera saw: close-up detail scans and swept areas shade differently on the map, and indoor moments are automatically excluded.
+• Scans record full session data in the background (video, motion, LiDAR depth) to build the community's 3D world model — uploads wait for Wi-Fi or charging.
+• Trash and landmarks appear on the map at their real size and position at close zoom; the map now updates near-live as scans happen.
+• Big stability round: fixed crashes when completing scans and reopening the scanner, plus map fixes — all block boundaries and exclusion areas show correctly, and scan spots now carry photos of what was found.
+• Cleaner scan UI: one scan button, honest recording indicator, live scan-quality feedback, and clearer scanned-area colors.
