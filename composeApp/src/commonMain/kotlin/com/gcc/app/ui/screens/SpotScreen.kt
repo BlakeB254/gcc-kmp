@@ -35,7 +35,6 @@ import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
 import com.gcc.app.platform.GuidancePhase
 import com.gcc.app.platform.arEnvScanSupported
-import com.gcc.app.platform.objectCaptureSupported
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.DeviceCapabilities
 import com.gcc.app.platform.DeviceClass
@@ -923,54 +922,11 @@ private fun CameraPhase(
         DetectionReticleOverlay(detections = liveDetections)
         ScanToast(message = toast)
 
-        if (isScanMode && objectCaptureSupported() && captureAllowed && !showObjectCapture) {
-            // One-time caption so the pill explains itself (field feedback:
-            // "I don't know what the 3D scan button is supposed to do").
-            var captionVisible by remember { mutableStateOf(true) }
-            LaunchedEffect(Unit) {
-                delay(6_000)
-                captionVisible = false
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 12.dp, bottom = 96.dp),
-                horizontalAlignment = Alignment.Start,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .clickable {
-                            captionVisible = false
-                            showObjectCapture = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        "◧ 3D scan",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                    )
-                }
-                if (captionVisible) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            "Measure a large pile in 3D",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.9f),
-                        )
-                    }
-                }
-            }
-        }
+        // 3D-scan entry pill removed per product direction (Blake: not
+        // needed) — the LiDAR object-capture CAPABILITY below (showObjectCapture
+        // state + ObjectCapturePhase) is intentionally left intact as a
+        // dead-code candidate for a future re-entry point; only the pill UI
+        // and its launch wiring (showObjectCapture = true) were removed.
         // Close-range confirm card: a locked candidate with type + LiDAR
         // size/weight estimates awaits Confirm / Not trash (above the
         // Complete pill, below the rectify sheet's band).
