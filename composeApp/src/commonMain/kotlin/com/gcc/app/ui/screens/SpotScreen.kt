@@ -760,6 +760,10 @@ private fun CameraPhase(
         creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
             .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
+    val seenCells by tracker.seenCells.collectAsState()
+    val seenCellCenters = remember(seenCells) {
+        seenCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+    }
     // Vector-scan effect: CLOSE-tier cells render as "digitized" ground quads
     // in the AR camera view, mirroring the minimap's vivid fill — fog still
     // lifts on any credit (below), so the AR read becomes: fog = unscanned,
@@ -897,6 +901,7 @@ private fun CameraPhase(
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,
+                seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
@@ -932,6 +937,7 @@ private fun CameraPhase(
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,
+                seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 environmentScanMode = true,
                 statusText = scanStatus,

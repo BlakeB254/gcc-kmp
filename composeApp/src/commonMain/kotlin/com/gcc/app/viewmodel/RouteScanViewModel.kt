@@ -480,8 +480,12 @@ class RouteScanViewModel(
     // LocationProvider instances, so ArRouteScreen can drive the overlay without
     // being able to mutate scan/coverage internals.
 
-    /** Set of scanned coverage-grid cells (row, col). */
+    /** Set of scanned (GRAZED+) coverage-grid cells (row, col). */
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.scannedCells
+
+    /** Set of SEEN-only coverage-grid cells (row, col) — sighted at a
+     *  distance via the raycast fan, never walked. */
+    val seenCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.seenCells
 
     /** Per-cell credit (row, col) → tier/timestamp — the source ArRouteScreen
      *  mirrors to build CLOSE-tier cell centers for the minimap + AR quads

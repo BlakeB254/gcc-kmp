@@ -9,17 +9,20 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
+import com.gcc.app.ui.map.traceCoverageOutlines
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 
 private val StaleAmber = Color(0xFFF59E0B)
 private val TrashOrange = Color(0xFFF97316)
@@ -56,6 +59,10 @@ fun ScanMinimapOverlay(
     freshnessCellSizeMeters: Double = 10.0,
     /** Session cells credited at CLOSE tier — drawn vivid over the grazed shade. */
     closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Session cells credited at SEEN tier only (sighted at distance, never
+     *  walked) — the faintest wash, drawn over the veil rather than punched
+     *  out of it (sight still leaves fog on the ground, spec Pillar 7). */
+    seenCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Ledger-fresh cells whose best quality is close — brighter fresh wash. */
     freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Block outline (lat, lng ring) — drawn as the minimap's boundary. */
@@ -113,6 +120,47 @@ fun ScanMinimapOverlay(
             drawRect(color = color, topLeft = r.topLeft, size = r.size)
         }
 
+        // ── Organic session-tier outlines (Pillar 7) ──────────────────
+        // Session-credited cells (this scan's own GRAZED/CLOSE/SEEN sets)
+        // render as smoothed swept-territory outlines instead of a per-cell
+        // rect lattice — "no graph paper" (Blake). Server-fresh ledger cells
+        // (freshCellCenters/freshCloseCellCenters, a different — coarser —
+        // grid) keep the v1 per-cell rect rendering; only THIS session's own
+        // 3m-grid cells trace through marching squares. Lat/lng centers are
+        // re-quantized into integer (row, col) keys around this minimap's own
+        // center — the same fixed-step projection [toOffset] already uses —
+        // so the tracer's grid-corner math lines up with what's drawn.
+        val latPerMeter = 1.0 / 111_320.0
+        val lngPerMeter = 1.0 / (111_320.0 * lngScale)
+        fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
+            ((lat - centerLat) / (cellSizeMeters * latPerMeter)).roundToInt() to
+                ((lng - centerLng) / (cellSizeMeters * lngPerMeter)).roundToInt()
+        fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
+            (centerLat + row * cellSizeMeters * latPerMeter) to (centerLng + col * cellSizeMeters * lngPerMeter)
+
+        fun outlinePath(cellCenters: List<Pair<Double, Double>>): Path {
+            val cells = cellCenters.map { (lat, lng) -> toRowCol(lat, lng) }.toSet()
+            val rings = traceCoverageOutlines(cells, ::rowColCenter, cellSizeMeters)
+            val path = Path().apply { fillType = PathFillType.EvenOdd }
+            for (ring in rings) {
+                if (ring.size < 3) continue
+                ring.forEachIndexed { index, (lat, lng) ->
+                    val p = toOffset(lat, lng)
+                    if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+                }
+                path.close()
+            }
+            return path
+        }
+        // scanCellCenters is already GRAZED+ (CLOSE cells included) — its own
+        // outline IS the full session union the veil needs punched out.
+        val scanOutline = outlinePath(scanCellCenters)
+        val closeOutline = outlinePath(closeCellCenters)
+        // SEEN cells are NOT punched out of the veil (sight alone leaves the
+        // ground still fogged, spec Pillar 7) — only used for the faint wash
+        // drawn on TOP of the veil below.
+        val seenOutline = outlinePath(seenCellCenters)
+
         // ── Fog-of-war veil ──────────────────────────────────────────
         // The WHOLE minimap starts under one heavy dark veil: everything you
         // can see is unscanned world, and that should be unmissable. Cells
@@ -130,7 +178,7 @@ fun ScanMinimapOverlay(
         for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
         for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
         for ((lat, lng) in freshCloseCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
-        for ((lat, lng) in scanCellCenters) punch(lat, lng, cellSizeMeters, 1.2f)
+        holes.addPath(scanOutline)
         val veil = Path.combine(
             PathOperation.Difference,
             Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
@@ -163,42 +211,14 @@ fun ScanMinimapOverlay(
             drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
         }
 
-        // This session, two shades (spec §4): every credited cell gets the
-        // light grazed wash; close-tier cells re-cover vivid — the live
-        // "you've detail-scanned this" feedback.
-        for ((lat, lng) in scanCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.25f), overscan = 1.2f)
-        }
-        for ((lat, lng) in closeCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, GccGreen.copy(alpha = 0.60f), overscan = 1.2f)
-        }
-
-        // ── Scan-cell grid ───────────────────────────────────────────
-        // A faint lattice aligned to the CoverageTracker cell grid, over the
-        // veil and fills: the minimap reads as the same "surveyed graph
-        // paper" the AR ground grid projects onto the world. Anchored to a
-        // real cell center when one exists so lines land on cell EDGES.
-        run {
-            var spacing = metersToPixels(cellSizeMeters, centerLat, overlayZoom)
-            if (spacing >= 3f) {
-                if (spacing < 8f) spacing *= 2f // drop to every 2nd line when dense
-                val anchorCell = scanCellCenters.firstOrNull()
-                    ?: corridorCellCenters.firstOrNull()
-                val anchor = anchorCell?.let { toOffset(it.first, it.second) }
-                    ?: Offset(size.width / 2f, size.height / 2f)
-                val gridColor = Color.White.copy(alpha = 0.14f)
-                var x = (anchor.x - spacing / 2f).mod(spacing)
-                while (x < size.width) {
-                    drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                    x += spacing
-                }
-                var y = (anchor.y - spacing / 2f).mod(spacing)
-                while (y < size.height) {
-                    drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-                    y += spacing
-                }
-            }
-        }
+        // This session, three shades (Pillar 7 rendering hierarchy: SEEN
+        // faintest → GRAZED light → CLOSE vivid) — every credited cell gets
+        // the light grazed wash, close-tier cells re-cover vivid, and SEEN
+        // gets its own faint tint over the still-fogged veil. Alphas bumped
+        // (0.25→0.30, 0.60→0.65) for scanned-vs-unscanned contrast.
+        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.11f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.30f))
+        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.65f))
 
         // Block boundaries over the fills: outer outline in the brand green,
         // inner exclusion islands in amber (the not-required areas).

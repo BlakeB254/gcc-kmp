@@ -138,7 +138,14 @@ actual fun GccMap(
     val activeRouteJson = remember(routeCoordinates, activeRouteIndices) {
         buildRoutesGeoJson(activeRouteIndices.mapNotNull { routeCoordinates.getOrNull(it) })
     }
-    val coverageStateJsons = remember(coverageCells, spots) {
+    // Organic outline mode (Pillar 7) activates at street-level zoom. Gated
+    // on the caller's TARGET zoom (the [zoom] param — what zoom presets/
+    // navigation set), not the live pinch-gesture zoom: re-tracing every
+    // coverage cell into marching-squares rings on every fractional pinch
+    // tick would be expensive Compose churn for a purely cosmetic mode.
+    // Deferred: reacting to live pinch-zoom crossing the threshold.
+    val useOutlineCoverage = zoom >= MapStyles.ZOOM_STREET
+    val coverageStateJsons = remember(coverageCells, spots, useOutlineCoverage) {
         if (coverageCells.isEmpty()) null
         else {
             // WORLDWIDE fog-of-war (product direction): every unscanned place
@@ -148,6 +155,7 @@ actual fun GccMap(
             buildCoverageStateGeoJsons(
                 coverageCells, spots, centerLat, centerLng,
                 fogBounds = doubleArrayOf(-85.0, -180.0, 85.0, 180.0),
+                useOutlines = useOutlineCoverage,
             )
         }
     }
@@ -840,6 +848,7 @@ actual fun GccMap(
             if (coverageStateJsons != null) {
                 val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.clean))
                 val cleanGrazedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.cleanGrazed))
+                val seenSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.seen))
                 val dirtySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.dirty))
                 val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.stale))
                 val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.fog))
@@ -866,6 +875,18 @@ actual fun GccMap(
                 // All scanned tiles are tappable: cellId rides in each
                 // feature's properties (buildCoverageStateGeoJsons) and the
                 // caller resolves it to the cell for the last-scan card.
+                // Seen-fresh (Pillar 7): sighted at a distance, never walked —
+                // the faintest tile of the three, drawn under clean-grazed.
+                // Outline-mode rings (street zoom) carry no cellId, so taps
+                // don't resolve to a cell there — same trade-off as clean/
+                // clean-grazed in that mode.
+                FillLayer(
+                    id = "coverage-seen",
+                    source = seenSrc,
+                    color = const(Color(0xFF22C55E)),
+                    opacity = const(0.05f),
+                    onClick = cellIdClickHandler(onCoverageCellTap),
+                )
                 // Grazed-fresh: scanned at sweep quality only — lighter green,
                 // the map-level "come back and detail-scan me" signal.
                 FillLayer(

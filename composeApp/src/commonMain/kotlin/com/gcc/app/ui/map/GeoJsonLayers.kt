@@ -938,6 +938,10 @@ data class CoverageStateJsons(
     /** Fresh, no-spot cells whose best quality is "grazed" (sweep-only) — the
      *  lighter green "come back and detail-scan me" tile (spec §3). */
     val cleanGrazed: String,
+    /** Fresh, no-spot cells whose best quality is "seen" only (sighted at a
+     *  distance, never walked — Pillar 7) — the faintest tile of the three,
+     *  distinct from cleanGrazed (which implies the ground was walked). */
+    val seen: String,
     val dirty: String,
     val stale: String,
     val fog: String,
@@ -950,11 +954,13 @@ data class CoverageStateJsons(
 
 /**
  * Foundational coverage-state tiles for the map (product direction
- * 2026-07-03; visual system extended 2026-07-06): communicate scan state
- * per ~10m ledger cell at a glance.
+ * 2026-07-03; visual system extended 2026-07-06, SEEN tier added Pillar 7):
+ * communicate scan state per ~10m ledger cell at a glance.
  *  - clean: fresh, no-spot cells whose best-recorded quality is "close" → full green tint
- *  - cleanGrazed: fresh, no-spot cells whose best-recorded quality is NOT
- *    "close" (sweep-only) → lighter green, "come back and detail-scan me"
+ *  - cleanGrazed: fresh, no-spot cells whose best-recorded quality is
+ *    "grazed" (walked, sweep-only) → lighter green, "come back and detail-scan me"
+ *  - seen: fresh, no-spot cells whose best-recorded quality is "seen" only
+ *    (sighted at a distance, never walked) → the faintest tile
  *  - dirty: fresh cells WITH an active spot/litter on record → red tint
  *    (the tile-level "cleanliness readout"; the heat layers still grade
  *    density at overview zooms)
@@ -975,6 +981,16 @@ fun buildCoverageStateGeoJsons(
      */
     fogBounds: DoubleArray? = null,
     cellSizeMeters: Double = 10.0,
+    /**
+     * Street-zoom "organic" mode (Pillar 7): clean/cleanGrazed/seen trace
+     * through marching squares into smoothed swept-territory polygons
+     * instead of a per-cell quad each. Cell taps don't resolve to a specific
+     * cellId in this mode (outline features carry no cellId — a known,
+     * accepted trade-off at this zoom). Dirty/stale/priority are unaffected
+     * (still per-cell quads — dirty needs its own tappable tile, and stale/
+     * priority are rarer, worth-highlighting-individually cells).
+     */
+    useOutlines: Boolean = false,
 ): CoverageStateJsons {
     val empty = EMPTY_GEOJSON_FEATURE_COLLECTION
     val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
@@ -998,6 +1014,27 @@ fun buildCoverageStateGeoJsons(
             """"geometry":{"type":"Polygon","coordinates":[${cellQuad(cell.lat, cell.lng)}]}}"""
     }
 
+    // Outline mode: re-quantize each bucket's cell centers into integer
+    // (row, col) keys around this call's own centerLat/centerLng (a fixed,
+    // consistent lattice — the same trick ScanMinimapOverlay uses for its
+    // session tiers), trace the union, and emit one Feature per smoothed
+    // ring. No cellId (a ring can span many cells) — see [useOutlines] doc.
+    fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
+        kotlin.math.round((lat - centerLat) / latStep).toInt() to
+            kotlin.math.round((lng - centerLng) / lngStep).toInt()
+    fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
+        (centerLat + row * latStep) to (centerLng + col * lngStep)
+    fun outlineFeatures(cells: List<com.gcc.shared.model.MapCoverageCell>): String {
+        val rowCols = cells.map { toRowCol(it.lat, it.lng) }.toSet()
+        val rings = traceCoverageOutlines(rowCols, ::rowColCenter, cellSizeMeters)
+        return rings.filter { it.size >= 3 }.joinToString(",") { ring ->
+            val coords = ring.joinToString(",") { (lat, lng) -> "[$lng,$lat]" }
+            """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$coords]]}}"""
+        }
+    }
+    fun qualityCollection(cells: List<com.gcc.shared.model.MapCoverageCell>): String =
+        if (useOutlines) outlineFeatures(cells) else cells.joinToString(",") { feature(it) }
+
     val spots = activeSpots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
     fun hasSpotNear(lat: Double, lng: Double): Boolean = spots.any { spot ->
         val dLatM = (spot.coordinates.lat - lat) * 111_320.0
@@ -1007,14 +1044,15 @@ fun buildCoverageStateGeoJsons(
 
     val fresh = coverageCells.filter { it.state == "fresh" }
     val freshNoSpot = fresh.filter { !hasSpotNear(it.lat, it.lng) }
-    // Two-tier clean (spec §3): close-scanned reads full green; grazed reads a
-    // lighter green — "touched, still needs a detail pass".
-    val clean = freshNoSpot
-        .filter { it.quality == "close" }
-        .joinToString(",") { feature(it) }
-    val cleanGrazed = freshNoSpot
-        .filter { it.quality != "close" }
-        .joinToString(",") { feature(it) }
+    // Three-tier clean (spec §3, SEEN added Pillar 7): close-scanned reads
+    // full green; grazed (walked, sweep-only) reads lighter green; seen
+    // (sighted at a distance, never walked) reads faintest of all — quality
+    // buckets are now exact-match (a "seen" cell used to fall into
+    // cleanGrazed's `!= "close"` catch-all, which incorrectly read as
+    // "walked" on the map).
+    val clean = qualityCollection(freshNoSpot.filter { it.quality == "close" })
+    val cleanGrazed = qualityCollection(freshNoSpot.filter { it.quality == "grazed" })
+    val seen = qualityCollection(freshNoSpot.filter { it.quality == "seen" })
     // Scanned recently but litter is still on record — previously these
     // cells were silently DROPPED (no tile at all); now they read red so a
     // scanned-but-dirty area is distinguishable from unscanned ground.
@@ -1064,6 +1102,7 @@ fun buildCoverageStateGeoJsons(
     return CoverageStateJsons(
         clean = wrap(clean),
         cleanGrazed = wrap(cleanGrazed),
+        seen = wrap(seen),
         dirty = wrap(dirty),
         stale = wrap(stale),
         fog = wrap(fogFeatures.toString()),
