@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { worldObservations } from '@/db/schema'
-import { and, eq, between } from 'drizzle-orm'
+import { and, eq, between, gte } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +22,16 @@ export async function GET(request: NextRequest) {
         filters.push(between(worldObservations.lng, minLng, maxLng))
         filters.push(between(worldObservations.lat, minLat, maxLat))
       }
+    }
+
+    // Optional delta cursor: unparseable/missing `since` is silently ignored
+    // (full response) so old/broken clients never see a 4xx here.
+    const sinceParam = searchParams.get('since')
+    const sinceDate = sinceParam && Number.isFinite(new Date(sinceParam).getTime())
+      ? new Date(sinceParam).toISOString()
+      : null
+    if (sinceDate) {
+      filters.push(gte(worldObservations.capturedAt, sinceDate))
     }
 
     const rows = await db
