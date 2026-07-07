@@ -128,6 +128,27 @@ shouldn't be squares."
 
 Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
 
+## Pillar 8 — Scan-supersedes-spots + map language + AR focus (Blake, 2026-07-07, product law)
+
+1. **Scanning overwrites spots.** A scan covering an area REMOVES old spot pins there:
+   nothing found → clean scanned area; litter found → accurate close-zoom display
+   (observations/footprints) + heatmap contribution at distance. The PR #65 supersede
+   (15m of anchor + scanned items) must be strengthened to key on the scan's actual
+   COVERED CELLS (grazed+ tiers), and verified working with the current scan flow.
+2. **Spots demoted to an internal layer.** Dots remain only as an owner/dev/early-user
+   indicator of historical problem areas (admin-style toggle, default off for users);
+   the scanned-area display is the product UI in My Area AND Explorer.
+3. **Scanned vs unscanned = unmistakable.** The coverage wash must clearly split the
+   world into "app has been here" vs not (current 0.14-0.20α tints are too subtle —
+   pair with Pillar 7's organic rendering; keep basemap labels legible).
+4. **AR tap-to-focus.** Tapping the camera view heavily biases detection at that
+   region: run Vision/saliency on the tapped ROI + raycast there immediately, lowering
+   the promotion threshold for that area for a few seconds.
+5. **Identify → approach → advanced data.** On litter identification: reticle/circle
+   (exists) + explicit approach prompting ("go up to it — scan around it") escalating
+   to close-scan capture of advanced data (estimated weight, materials — the confirm
+   card's estimators exist; the guided approach flow is the new part).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
