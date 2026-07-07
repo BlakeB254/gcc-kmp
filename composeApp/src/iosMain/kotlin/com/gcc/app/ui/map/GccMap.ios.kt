@@ -1349,11 +1349,24 @@ actual fun GccMap(
                 val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
                 val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
                 val footprintOtherSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintOtherJson))
+                // Zoom hand-off fix (owner follow-up on commit 8bf83fd): with
+                // spot pins removed (Part A), the old 16.5->17 fade-in left a
+                // dead band between IOS_SPOT_HEAT_FADE_ZOOM (14.2, where the
+                // heat texture above finishes fading OUT) and 16.5 — that gap
+                // used to be covered by spot pins/dots, which no longer exist.
+                // The footprint fade-in now starts at IOS_SPOT_HEAT_FADE_ZOOM
+                // itself (not a separate magic number) so the two layers hand
+                // off with zero gap by construction — if MapStyles' heat
+                // fade-out zoom ever moves, this moves with it — and reaches
+                // full legibility by z15.5, well inside the "close zoom"
+                // range where these shapes are meant to read as authoritative.
+                val footprintFadeInStartZoom = IOS_SPOT_HEAT_FADE_ZOOM
+                val footprintFadeInFullZoom = 15.5
                 val footprintOutlineOpacity = interpolate(
                     type = exponential(1.5f),
                     input = zoom(),
-                    16.5 to const(0f),
-                    17 to const(1f),
+                    footprintFadeInStartZoom to const(0f),
+                    footprintFadeInFullZoom to const(1f),
                 )
                 // Part B.3 — diagnostic-state styling stub. WorldObservation
                 // has no diagnosticStatus field yet (Task 4 owns adding that
@@ -1384,7 +1397,8 @@ actual fun GccMap(
                     color = const(Color(0xFF16A34A)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.18f * footprintFillOpacityScale),
+                        footprintFadeInStartZoom to const(0f),
+                        footprintFadeInFullZoom to const(0.18f * footprintFillOpacityScale),
                     ),
                     onClick = footprintTapHandler,
                 )
@@ -1402,7 +1416,8 @@ actual fun GccMap(
                     color = const(Color(0xFF6B7280)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.18f * footprintFillOpacityScale),
+                        footprintFadeInStartZoom to const(0f),
+                        footprintFadeInFullZoom to const(0.18f * footprintFillOpacityScale),
                     ),
                     onClick = footprintTapHandler,
                 )
@@ -1420,7 +1435,8 @@ actual fun GccMap(
                     color = const(Color(0xFFF97316)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.20f * footprintFillOpacityScale),
+                        footprintFadeInStartZoom to const(0f),
+                        footprintFadeInFullZoom to const(0.20f * footprintFillOpacityScale),
                     ),
                     onClick = footprintTapHandler,
                 )
