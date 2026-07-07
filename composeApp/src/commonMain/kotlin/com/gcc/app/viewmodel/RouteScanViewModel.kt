@@ -6,6 +6,7 @@ import com.gcc.app.platform.ArScanner
 import com.gcc.app.platform.CellCredit
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
+import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.purgeAndRetractCoverage
@@ -20,16 +21,19 @@ import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.RaycastCoverageHit
 import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.classifyFogAndStale
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
+import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionJournalPath
+import com.gcc.app.platform.wireQualityString
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.CheckpointGenerator
@@ -209,11 +213,12 @@ class RouteScanViewModel(
     private var lastCoverageFixAtMs: Long? = null
     private var fastFixStreak = 0
     private var coverageFlushJob: Job? = null
-    /** True when any CLOSE-tier fan hit credited since the last coverage event.
+    /** Best fan-hit quality (close > grazed > seen) credited since the last
+     *  coverage event, or null when no fan hit has landed yet this window.
      *  Volatile: written from the main-thread fan listener (onCoverageRayHits),
      *  read/reset from the Dispatchers.Default location collector. */
     @kotlin.concurrent.Volatile
-    private var closeCreditSinceLastEvent = false
+    private var bestFanQualitySinceLastEvent: CoverageQuality? = null
 
     // AR-detected marker queue: live-detected (CONFIRMED_TRASH) markers from the
     // AR screen queue locally and flush alongside the coverage-ledger events.
@@ -1092,8 +1097,10 @@ class RouteScanViewModel(
         if (!outdoorGate.captureAllowed.value) return
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
         coverageTracker.updateWithRaycastHits(hits)
-        if (hits.any { it.distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS }) {
-            closeCreditSinceLastEvent = true
+        val hitBest = fanHitQuality(hits)
+        if (hitBest != null) {
+            val current = bestFanQualitySinceLastEvent
+            if (current == null || hitBest > current) bestFanQualitySinceLastEvent = hitBest
         }
     }
 
@@ -1212,10 +1219,18 @@ class RouteScanViewModel(
                                     scanMode = "route",
                                     deviceTier = coverageDeviceTier,
                                     capturedAt = Clock.System.now().toString(),
-                                    quality = if (closeCreditSinceLastEvent) "close" else "grazed",
+                                    // Walking the segment is at minimum GRAZED
+                                    // (you were standing there) — the fan can
+                                    // only ever upgrade this to CLOSE. SEEN
+                                    // fan hits land on OTHER (distant) cells,
+                                    // so they never surface here, but the
+                                    // ranking stays generic/best-of-three.
+                                    quality = wireQualityString(
+                                        bestOf(CoverageQuality.GRAZED, bestFanQualitySinceLastEvent),
+                                    ),
                                 )
                             )
-                            closeCreditSinceLastEvent = false
+                            bestFanQualitySinceLastEvent = null
                         }
 
                         // Live points HUD: estimate what this segment earned.

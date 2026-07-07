@@ -14,6 +14,9 @@ const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 // (Global Constraints) — deferred, see PR notes.
 const PRIORITY_AGE_FULL_MS = 7 * 24 * 60 * 60 * 1000 // ageFactor saturates at 1.0 after 7d
 const PRIORITY_QUALITY_BOOST: Record<string, number> = {
+  // SEEN is even less "worked" than grazed (sight isn't work — Pillar 7
+  // Global Constraints) — same max urgency boost as grazed.
+  seen: 1.0,
   grazed: 1.0,
   close: 0.6,
 }

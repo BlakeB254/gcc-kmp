@@ -148,6 +148,38 @@ class CoverageTrackerQualityTest {
     }
 
     @Test
+    fun bestOfRanksCloseOverGrazedOverSeenOverNull() {
+        assertEquals(CoverageQuality.CLOSE, bestOf(CoverageQuality.CLOSE, CoverageQuality.SEEN))
+        assertEquals(CoverageQuality.GRAZED, bestOf(CoverageQuality.SEEN, CoverageQuality.GRAZED))
+        assertEquals(CoverageQuality.SEEN, bestOf(null, CoverageQuality.SEEN))
+        assertEquals(CoverageQuality.SEEN, bestOf(CoverageQuality.SEEN, null))
+        assertNull(bestOf(null, null))
+    }
+
+    @Test
+    fun wireQualityStringMapsEachTierAndDefaultsNullToGrazed() {
+        assertEquals("close", wireQualityString(CoverageQuality.CLOSE))
+        assertEquals("grazed", wireQualityString(CoverageQuality.GRAZED))
+        assertEquals("seen", wireQualityString(CoverageQuality.SEEN))
+        assertEquals("grazed", wireQualityString(null))
+    }
+
+    @Test
+    fun fanHitQualityPicksBestAcrossHitsAndDropsBeyondCeiling() {
+        assertEquals(
+            CoverageQuality.CLOSE,
+            fanHitQuality(
+                listOf(
+                    RaycastCoverageHit(0.0, 0.0, 40.0), // SEEN
+                    RaycastCoverageHit(0.0, 0.0, 2.0),  // CLOSE
+                ),
+            ),
+        )
+        assertNull(fanHitQuality(listOf(RaycastCoverageHit(0.0, 0.0, 60.0))))
+        assertNull(fanHitQuality(emptyList()))
+    }
+
+    @Test
     fun closePercentTracksCloseTierOnly() {
         val t = tracker()
         assertEquals(0.0, t.closePercent.value)

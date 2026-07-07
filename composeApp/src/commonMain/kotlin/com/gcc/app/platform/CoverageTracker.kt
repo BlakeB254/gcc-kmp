@@ -36,6 +36,43 @@ data class CellCredit(
 data class RaycastCoverageHit(val lat: Double, val lng: Double, val distanceMeters: Double)
 
 /**
+ * Classifies a raycast surface distance into its would-be credit tier (or
+ * null beyond the fan ceiling) — mirrors the per-hit tiering in
+ * [CoverageTracker.updateWithRaycastHits] so callers (the route/spot
+ * event-quality stampers) can compute "best tier since last event" without
+ * duplicating the threshold logic.
+ */
+fun coverageQualityForDistance(distanceMeters: Double): CoverageQuality? = when {
+    distanceMeters > CoverageTracker.SEEN_RANGE_METERS -> null
+    distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS -> CoverageQuality.CLOSE
+    distanceMeters <= CoverageTracker.GRAZE_RANGE_METERS -> CoverageQuality.GRAZED
+    else -> CoverageQuality.SEEN
+}
+
+/** Best (highest-ranked) quality among a batch of raycast hits, or null if none land within any creditable tier. */
+fun fanHitQuality(hits: List<RaycastCoverageHit>): CoverageQuality? =
+    hits.mapNotNull { coverageQualityForDistance(it.distanceMeters) }.maxOrNull()
+
+/** Higher-ranked (close > grazed > seen) of two possibly-null qualities — null is lowest. */
+fun bestOf(a: CoverageQuality?, b: CoverageQuality?): CoverageQuality? = when {
+    a == null -> b
+    b == null -> a
+    a >= b -> a
+    else -> b
+}
+
+/**
+ * Wire-protocol string for a quality tier ("seen" | "grazed" | "close"),
+ * defaulting to "grazed" (the position-floor tier — you were standing
+ * there) when null.
+ */
+fun wireQualityString(quality: CoverageQuality?): String = when (quality) {
+    CoverageQuality.CLOSE -> "close"
+    CoverageQuality.SEEN -> "seen"
+    CoverageQuality.GRAZED, null -> "grazed"
+}
+
+/**
  * Grid-based coverage tracker for the Scout lap fog-of-war system.
  *
  * The route bounding box is divided into [cellSizeMeters] x [cellSizeMeters] cells.
@@ -325,13 +362,8 @@ class CoverageTracker {
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for (hit in hits) {
-            if (hit.distanceMeters > SEEN_RANGE_METERS) continue
+            val quality = coverageQualityForDistance(hit.distanceMeters) ?: continue
             val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
-            val quality = when {
-                hit.distanceMeters <= CLOSE_RANGE_METERS -> CoverageQuality.CLOSE
-                hit.distanceMeters <= GRAZE_RANGE_METERS -> CoverageQuality.GRAZED
-                else -> CoverageQuality.SEEN
-            }
             if (creditCell(map, cell, quality, nowMs)) changed = true
         }
         if (changed) publish(map)
