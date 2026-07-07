@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { isR2Configured, r2BucketName, r2Client, rawScanKey } from '@/lib/r2'
+import { isR2Configured, r2BucketName, r2Client, rawScanKey, rawSessionArtifactKey } from '@/lib/r2'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -14,9 +14,11 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   jpeg: 'image/jpeg',
   heic: 'image/heic',
   mp4: 'video/mp4',
+  mov: 'video/quicktime',
   bin: 'application/octet-stream',
   ply: 'application/octet-stream',
   json: 'application/json',
+  jsonl: 'application/x-ndjson',
   usdz: 'model/vnd.usdz+zip',
 }
 const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
@@ -54,8 +56,14 @@ export async function POST(request: NextRequest) {
     const deviceId = typeof body?.deviceId === 'string' ? body.deviceId : ''
     const capturedAt = typeof body?.capturedAt === 'string' ? body.capturedAt : ''
     const ext = typeof body?.ext === 'string' ? body.ext.toLowerCase() : ''
+    // Session-artifact path (Pillar 1 capture chunks): both must be present
+    // to opt into the new key shape — otherwise this is byte-identical to
+    // the legacy locationCellId/deviceId/capturedAt behavior.
+    const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : ''
+    const artifactPath = typeof body?.artifactPath === 'string' ? body.artifactPath : ''
+    const useSessionArtifactKey = Boolean(sessionId && artifactPath)
 
-    if (!locationCellId || !deviceId || !capturedAt) {
+    if (!locationCellId || (!useSessionArtifactKey && (!deviceId || !capturedAt))) {
       return NextResponse.json(
         { data: null, success: false, message: 'locationCellId, deviceId, and capturedAt are required' },
         { status: 400 }
@@ -64,7 +72,7 @@ export async function POST(request: NextRequest) {
     if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid locationCellId' }, { status: 400 })
     }
-    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+    if (!useSessionArtifactKey && !DEVICE_ID_PATTERN.test(deviceId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid deviceId' }, { status: 400 })
     }
     const contentType = EXTENSION_CONTENT_TYPES[ext]
@@ -75,7 +83,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+    let r2Key: string
+    if (useSessionArtifactKey) {
+      try {
+        r2Key = rawSessionArtifactKey(locationCellId, sessionId, artifactPath)
+      } catch (validationError) {
+        console.error('[captures/upload-url] invalid session-artifact key components', validationError)
+        return NextResponse.json({ data: null, success: false, message: 'Invalid sessionId or artifactPath' }, { status: 400 })
+      }
+    } else {
+      r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+    }
     const uploadUrl = await getSignedUrl(
       r2Client(),
       new PutObjectCommand({ Bucket: r2BucketName(), Key: r2Key, ContentType: contentType }),

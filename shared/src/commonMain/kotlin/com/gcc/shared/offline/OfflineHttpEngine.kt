@@ -237,12 +237,6 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
         path == "/api/admin/workers" || path == "/api/admin/workers/bulk-verify" ->
             respondApi(json.encodeToString(SeedData.workerList))
 
-        path == "/api/admin/sponsors" ->
-            respondApi(json.encodeToString(SeedData.sponsorList))
-
-        path == "/api/admin/jobs" ->
-            respondApi(json.encodeToString(listOf(SeedData.activeJob)))
-
         path == "/api/admin/routes" ->
             respondApi(json.encodeToString(SeedData.routes))
 
@@ -256,21 +250,9 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
         path == "/api/admin/analytics/daily" ->
             respondApi(json.encodeToString(SeedData.dailyStats))
 
-        path == "/api/admin/analytics/revenue-by-area" ->
-            respondApi(json.encodeToString(SeedData.revenueByArea))
-
-        path == "/api/admin/analytics/worker-metrics" ->
-            respondApi(json.encodeToString(SeedData.workerMetrics))
-
-        path == "/api/admin/analytics/sponsor-metrics" ->
-            respondApi(json.encodeToString(SeedData.sponsorMetrics))
-
         // ── Admin Disputes ──────────────────────────────────────────
         adminDisputeActionPattern.matches(path) ->
             respondApi(json.encodeToString(SeedData.disputeList.first()))
-
-        path == "/api/admin/disputes" ->
-            respondApi(json.encodeToString(SeedData.disputeList))
 
         // ── Admin Route mutations ───────────────────────────────────
         adminRouteIdPattern.matches(path) -> {
@@ -306,18 +288,6 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
             if (sponsor != null) respondApi(json.encodeToString(sponsor))
             else respondNotFound()
         }
-
-        // ── Admin Feedback ──────────────────────────────────────────
-        path == "/api/admin/feedback" ->
-            respondApi(json.encodeToString(SeedData.feedbackList))
-
-        // ── Admin Address Changes ───────────────────────────────────
-        path == "/api/admin/address-changes" ->
-            respondApi(json.encodeToString(SeedData.addressChanges))
-
-        // ── Admin Service Areas (list) ──────────────────────────────
-        path == "/api/admin/service-areas" ->
-            respondApi(json.encodeToString(listOf(SeedData.serviceArea)))
 
         path.startsWith("/api/admin/") ->
             respondApi("""[]""")

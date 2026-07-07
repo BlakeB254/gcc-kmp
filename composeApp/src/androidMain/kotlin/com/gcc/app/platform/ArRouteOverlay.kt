@@ -25,10 +25,13 @@ actual class ArRouteOverlay actual constructor() {
 
     actual val liveDetections: StateFlow<List<LiveDetection>> = MutableStateFlow(emptyList())
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {}
-    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {}
+    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String, photoBytes: ByteArray?) -> Unit)?) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
     actual fun setSceneVoteCadence(fast: Boolean) {}
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        // No AR raycasting off-iOS — GPS-tier crediting (updatePosition) covers these targets.
+    }
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
 }
 

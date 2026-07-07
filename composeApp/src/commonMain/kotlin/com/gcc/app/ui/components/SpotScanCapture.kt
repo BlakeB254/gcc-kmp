@@ -59,15 +59,24 @@ fun SpotScanCapture(
     /** Typed pass-through — per-type minimap glyphs. */
     typedTrashItems: List<ObservedSpotItem> = emptyList(),
     /** Ledger freshness pass-through for the minimap veil/wash. */
-    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Session cells credited at CLOSE tier — pass-through to the minimap. */
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger-fresh cells whose best quality is close — pass-through to the minimap. */
+    freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering pass-through: minimap ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
     environmentScanMode: Boolean = false,
     statusText: String? = null,
+    /** Two-phase guidance: DETAIL phase caption pass-through ("move closer —
+     *  detail-scan the light areas"), shown alongside statusText. */
+    detailPhase: Boolean = false,
     /** ARKit env-scan surface, passed through to the viewfinder. */
     arOverlay: ArEnvScanOverlay? = null,
+    /** Background capture indicator pass-through (Pillar 1) — see
+     *  [CameraCapture]'s `captureState` kdoc. */
+    captureState: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -213,13 +222,16 @@ fun SpotScanCapture(
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,
             typedTrashItems = typedTrashItems,
-            fogCellCenters = fogCellCenters,
             staleCellCenters = staleCellCenters,
             freshCellCenters = freshCellCenters,
+            closeCellCenters = closeCellCenters,
+            freshCloseCellCenters = freshCloseCellCenters,
             guidanceTarget = guidanceTarget,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
+            detailPhase = detailPhase,
             arOverlay = arOverlay,
+            captureState = captureState,
             modifier = Modifier.fillMaxSize(),
         )
 

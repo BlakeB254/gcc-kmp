@@ -36,6 +36,7 @@ import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGSizeMake
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
@@ -68,6 +69,11 @@ import platform.Vision.VNSaliencyImageObservation
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.simd_float4x4
+import com.gcc.shared.cache.CaptureChunkRecord
+import com.gcc.shared.cache.CaptureChunkStore
+import com.gcc.app.platform.capture.CaptureChunkUploader
+import kotlinx.datetime.Clock
+import org.koin.mp.KoinPlatform
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -129,6 +135,22 @@ actual class ArEnvScanOverlay actual constructor() {
      *  slower [TICK_MS] tick. Set via `setSceneVoteCadence`. */
     var fastSceneVotes: Boolean = true
 
+    /**
+     * Session-capture drain hook (Pillar 1): finished capture-chunk packets
+     * ("index|kind|path|sizeBytes", see [ArNativeSurface.drainFinishedCaptureChunks])
+     * polled from the native recorder on the existing tick cadence and handed
+     * here on the tick coroutine (Dispatchers.Default). Task 5 assigns the
+     * listener (bookkeeping insert + upload kick); until then — and always on
+     * the SceneKit fallback path — the drain is skipped entirely.
+     */
+    var captureChunkListener: ((List<String>) -> Unit)? = { packets -> handleFinishedCaptureChunks(packets) }
+
+    /** Session id passed to [startCapture]; null when capture isn't running. */
+    private var captureSessionId: String? = null
+    /** `gridCell10m` of the session anchor at [startCapture] time — the same
+     *  cell id format the R2/world-model layer expects ("int:int"). */
+    private var captureLocationCellId: String? = null
+
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
@@ -182,13 +204,30 @@ actual class ArEnvScanOverlay actual constructor() {
 
     // Landmark elements registered this session: (itemType, x, z) for dedupe.
     private val registeredElements = mutableListOf<Triple<String, Float, Float>>()
-    private var elementObservedListener:
-        ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
+    private var elementObservedListener: (
+        (
+            lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+            widthMeters: Double?, yawDegrees: Double?,
+        ) -> Unit
+    )? = null
     private var ceilingListener: ((Boolean) -> Unit)? = null
+    private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
     private var roughGridTexture: UIImage? = null
     private var vectorTexture: UIImage? = null
+
+    /**
+     * The exact closure instance handed to [CameraManager.externalFrameSource]
+     * (see [bind]/[bindNative]). [stop] must only clear the shared slot if it
+     * still holds THIS instance's closure — if dispose ordering ever lets a
+     * stale session's stop() run after a new session's bind() (Koin-singleton
+     * VM + Compose UIKitView release timing aren't strictly ordered), an
+     * unconditional clear would steal the new session's frame source and
+     * captureFrame() would fall through to the UIImagePicker modal over a
+     * live ARView.
+     */
+    private var frameSourceClosure: (suspend () -> CapturedPhoto?)? = null
 
     /** Called by the Compose UIKitView factory once the ARSCNView exists. */
     fun bind(view: ARSCNView) {
@@ -214,7 +253,9 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         view.session.runWithConfiguration(config)
         sessionHealth.bind(view.session)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "ARKit env-scan surface started (plane detection on)")
     }
@@ -228,17 +269,183 @@ actual class ArEnvScanOverlay actual constructor() {
     fun bindNative(surface: ArNativeSurface) {
         nativeSurface = surface
         surface.setGroundGridVisible(true)
-        CameraManager.externalFrameSource = { captureFrame() }
+        val closure: suspend () -> CapturedPhoto? = { captureFrame() }
+        frameSourceClosure = closure
+        CameraManager.externalFrameSource = closure
         startLoop()
         DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
     }
 
+    // ── Session capture (Pillar 1) ───────────────────────────────────
+
+    actual fun startCapture(sessionId: String): Boolean {
+        // SceneKit fallback: capture unsupported — report honestly so the
+        // caller never shows a REC chip for a recording that isn't happening.
+        val surface = nativeSurface ?: return false
+        return try {
+            val cellId = geoCellIdOrNull()
+            if (cellId == null) {
+                DiagnosticsLog.info("capture", "startCapture($sessionId) skipped — no geo reference yet")
+                return false
+            }
+            val outputDir = documentsPath() + "/capture-sessions/" + sessionId
+            NSFileManager.defaultManager.createDirectoryAtPath(
+                outputDir, withIntermediateDirectories = true, attributes = null, error = null,
+            )
+            captureSessionId = sessionId
+            captureLocationCellId = cellId
+            surface.startCapture(sessionId, outputDir)
+            DiagnosticsLog.info("capture", "session capture started: $sessionId (cell $cellId)")
+            true
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "startCapture($sessionId) failed — capture disabled for this session", e)
+            captureSessionId = null
+            captureLocationCellId = null
+            false
+        }
+    }
+
+    actual fun stopCapture(): List<CaptureChunkInfo> {
+        val surface = nativeSurface
+        val sessionId = captureSessionId
+        val cellId = captureLocationCellId
+        // No more tick-drain once we've asked for the final one below.
+        captureChunkListener = null
+        captureSessionId = null
+        captureLocationCellId = null
+        if (surface == null || sessionId == null || cellId == null) return emptyList()
+        return try {
+            val packets = surface.stopCaptureAndDrain()
+            val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+            if (infos.isNotEmpty()) insertChunksAsync(sessionId, cellId, infos)
+            infos
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "stopCapture failed for $sessionId", e)
+            emptyList()
+        }
+    }
+
+    actual fun discardCurrentCaptureChunk() {
+        try {
+            nativeSurface?.discardCurrentCaptureChunk()
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "discardCurrentCaptureChunk failed", e)
+        }
+    }
+
+    actual fun setCaptureEnabled(enabled: Boolean) {
+        try {
+            nativeSurface?.setCaptureEnabled(enabled)
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "setCaptureEnabled($enabled) failed", e)
+        }
+    }
+
+    /** Advisory only (see the expect kdoc): same thermalState KVO read the
+     *  tick's Vision guard uses (critical = 3, the level Task 4's recorder
+     *  auto-pauses at). The Swift recorder owns the REAL pause decision —
+     *  this just lets the REC chip tint "paused" at the caller's cadence. */
+    actual fun thermalPausedLikely(): Boolean = try {
+        val thermal = (NSProcessInfo.processInfo as platform.darwin.NSObject)
+            .valueForKey("thermalState") as? Long ?: 0L
+        thermal >= 3L
+    } catch (_: Throwable) {
+        false
+    }
+
+    /** `gridCell10m` of the current geo reference (session anchor), formatted
+     *  "int:int" — the server's `LOCATION_CELL_ID_PATTERN`. Null until a geo
+     *  reference has paired ([updateGeoReference]). */
+    private fun geoCellIdOrNull(): String? {
+        if (!hasGeoRef) return null
+        val (latIdx, lngIdx) = SessionPointsEstimator.gridCell10m(refLat, refLng)
+        return "$latIdx:$lngIdx"
+    }
+
+    /**
+     * Tick-drain hook (see [captureChunkListener] kdoc) — parses packets and
+     * inserts rows via [CaptureChunkStore], then kicks [CaptureChunkUploader]
+     * best-effort. Reached through Koin's global context (`KoinPlatform`) —
+     * the same pattern `MainViewController`/`MainActivity` already use to
+     * reach Koin singletons from non-Composable, non-DI-constructed code —
+     * because this overlay is a plain `ArEnvScanOverlay()` instantiated by
+     * `remember { }` in SpotScreen, outside the Koin graph. Every failure is
+     * caught here: chunk bookkeeping must never crash the scan, and worst
+     * case an unrecorded chunk just waits for the next drain/app launch.
+     */
+    private fun handleFinishedCaptureChunks(packets: List<String>) {
+        val sessionId = captureSessionId ?: return
+        val cellId = captureLocationCellId ?: return
+        val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+        if (infos.isEmpty()) return
+        insertChunksAsync(sessionId, cellId, infos)
+    }
+
+    private fun insertChunksAsync(sessionId: String, cellId: String, infos: List<CaptureChunkInfo>) {
+        scope.launch {
+            try {
+                val koin = KoinPlatform.getKoin()
+                val store = koin.getOrNull<CaptureChunkStore>() ?: return@launch
+                val nowMs = Clock.System.now().toEpochMilliseconds()
+                for (info in infos) {
+                    store.insertChunk(
+                        CaptureChunkRecord(
+                            sessionId = sessionId,
+                            chunkIndex = info.index,
+                            kind = info.kind,
+                            filePath = info.filePath,
+                            sizeBytes = info.sizeBytes,
+                            locationCellId = cellId,
+                            r2Key = null,
+                            uploadedAtMs = null,
+                            createdAtMs = nowMs,
+                        )
+                    )
+                }
+                koin.getOrNull<CaptureChunkUploader>()?.flushPending()
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("capture", "chunk bookkeeping failed for $sessionId (${infos.size} chunk(s))", e)
+            }
+        }
+    }
+
     actual fun stop() {
+        // Capture bookkeeping: if the overlay tears down without an explicit
+        // stopCapture() (abandoned/backgrounded scan), just drop the Kotlin-
+        // side session state — native teardown (Task 4) owns finalizing or
+        // discarding whatever the recorder was mid-writing.
+        captureChunkListener = null
+        captureSessionId = null
+        captureLocationCellId = null
         job?.cancel()
         job = null
-        if (CameraManager.externalFrameSource != null) CameraManager.externalFrameSource = null
-        nativeSurface?.pause()
+        // Identity-checked: only clear the shared slot if it's still THIS
+        // session's closure (see [frameSourceClosure] kdoc) — an unconditional
+        // clear here could steal a newer session's frame source if stop()
+        // ever runs after that session's bind()/bindNative().
+        if (CameraManager.externalFrameSource === frameSourceClosure) {
+            CameraManager.externalFrameSource = null
+        }
+        frameSourceClosure = null
+        // Full teardown (not just pause): cancels the native surface's
+        // per-frame scene subscription and releases every created entity —
+        // pause() alone left 750+ potential entities anchored in the scene
+        // holding GPU resources, the Complete Scan crash-on-tap root cause.
+        nativeSurface?.teardown()
+        nativeSurface = null
         sceneView?.session?.pause()
+        // SceneKit fallback: release every node this overlay created — same
+        // "don't just pause, tear down" principle as the native surface.
+        for ((_, node) in planeNodes) node.removeFromParentNode()
+        planeNodes.clear()
+        for ((_, node) in vectorNodes) node.removeFromParentNode()
+        vectorNodes.clear()
+        for ((_, node) in fogNodes) node.removeFromParentNode()
+        fogNodes.clear()
+        arrowNode?.removeFromParentNode()
+        arrowNode = null
+        frontierTarget?.removeFromParentNode()
+        frontierTarget = null
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
         }
@@ -356,13 +563,22 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     actual fun setElementObservedListener(
-        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+        listener: (
+            (
+                lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+                widthMeters: Double?, yawDegrees: Double?,
+            ) -> Unit
+        )?,
     ) {
         elementObservedListener = listener
     }
 
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
         ceilingListener = listener
+    }
+
+    actual fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?) {
+        coverageHitListener = listener
     }
 
     actual fun setSceneVoteCadence(fast: Boolean) {
@@ -414,9 +630,29 @@ actual class ArEnvScanOverlay actual constructor() {
             // only mirror its ground state for the status line.
             val detected = native.groundDetected()
             if (_groundDetected.value != detected) _groundDetected.value = detected
+            // Poll-drain finished capture chunks (Pillar 1) — no-op until a
+            // listener is registered; the drain itself is a locked list swap.
+            captureChunkListener?.let { listener ->
+                val packets = native.drainFinishedCaptureChunks()
+                if (packets.isNotEmpty()) listener(packets)
+            }
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
+        }
+
+        // Coverage raycast fan: cheap (no Vision), runs whenever analysis is
+        // live and a geo-ref exists. Rays stop on real surfaces — this is the
+        // measured "what did the camera actually see" signal (spec §1).
+        if (analysisEnabled && hasGeoRef) {
+            coverageHitListener?.let { listener ->
+                val fanHits = CoverageRayFan.cast(nativeSurface, frame) { x, z ->
+                    localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
+                }
+                if (fanHits.isNotEmpty()) {
+                    dispatch_async(dispatch_get_main_queue()) { listener(fanHits) }
+                }
+            }
         }
 
         // Vote cadence: fastSceneVotes samples every tick; otherwise the
@@ -619,8 +855,13 @@ actual class ArEnvScanOverlay actual constructor() {
         if (suppressed || !hasGeoRef) return
 
         val widthMeters = physicalWidthMeters(bboxWidthFrac, distance.toDouble())
+        val cam = cameraPosition()
+        val yawDegrees = cam?.let { bearingDegrees(hit.x - it[0], hit.z - it[2]) }
         val itemType = TrashItemCatalog.canonicalType(rawIdentifier)
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
+        // Bad AR math (degenerate geo-ref pairing, etc.) must never reach a
+        // candidate/report with a non-finite coordinate downstream.
+        if (!lat.isFinite() || !lng.isFinite()) return
         candidateCounter += 1
         pendingWorld = Triple(world[0], world[1], world[2])
         _trashCandidate.value = TrashCandidate(
@@ -633,6 +874,7 @@ actual class ArEnvScanOverlay actual constructor() {
             estimatedWidthMeters = widthMeters,
             estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, widthMeters),
             confidence = confidence,
+            yawDegrees = yawDegrees,
         )
         DiagnosticsLog.info(
             "env-ar",
@@ -663,6 +905,11 @@ actual class ArEnvScanOverlay actual constructor() {
 
         var visionX = 0.5
         var visionY = 0.5
+        // No default: a real measurement only exists when saliency actually
+        // returns a salient object's bbox. Falling back to a guessed
+        // fraction here would fabricate a widthMeters value for elements
+        // that were never measured — null must propagate instead.
+        var bboxWidthFrac: Double? = null
         saliencyOnDemand(native, saliencyRequest)?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
@@ -672,6 +919,7 @@ actual class ArEnvScanOverlay actual constructor() {
             ?.boundingBox?.useContents {
                 visionX = origin.x + size.width / 2.0
                 visionY = origin.y + size.height / 2.0
+                bboxWidthFrac = size.width
             }
         val hit = raycastImage(frame, visionX, 1.0 - visionY) ?: return
         if (hit.distance > ELEMENT_MAX_DISTANCE_METERS) return
@@ -685,15 +933,22 @@ actual class ArEnvScanOverlay actual constructor() {
             }
         }
         if (duplicate) return
-        registeredElements.add(Triple(element.itemType, world[0], world[2]))
 
+        // Geo-resolve BEFORE registering into the dedupe set: a non-finite
+        // result must not permanently suppress this element for the session.
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
+        if (!lat.isFinite() || !lng.isFinite()) return
+        val widthMeters = bboxWidthFrac?.let { physicalWidthMeters(it, hit.distance.toDouble()) }
+        val cam = cameraPosition()
+        val yawDegrees = cam?.let { bearingDegrees(hit.x - it[0], hit.z - it[2]) }
+        registeredElements.add(Triple(element.itemType, world[0], world[2]))
         DiagnosticsLog.info(
             "env-ar",
-            "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m",
+            "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m " +
+                "width=${widthMeters ?: "?"}m yaw=${yawDegrees ?: "?"}",
         )
         dispatch_async(dispatch_get_main_queue()) {
-            listener(lat, lng, element.itemType, element.domain, confidence)
+            listener(lat, lng, element.itemType, element.domain, confidence, widthMeters, yawDegrees)
         }
     }
 
@@ -704,15 +959,28 @@ actual class ArEnvScanOverlay actual constructor() {
      */
     private fun physicalWidthMeters(bboxWidthFrac: Double, distance: Double): Double? {
         if (bboxWidthFrac <= 0.0 || bboxWidthFrac >= 1.0) return null
-        // Angular size with the iPhone wide lens's ~63° horizontal FOV (the
-        // same approximation ArScanner.getCameraFovDegrees uses) — camera
-        // intrinsics don't bridge cleanly through cinterop, and weight-class
-        // estimation doesn't need per-pixel precision.
+        // Angular size with the iPhone wide lens's ~63° horizontal FOV —
+        // camera intrinsics don't bridge cleanly through cinterop, and
+        // weight-class estimation doesn't need per-pixel precision.
         val hFovRad = 63.0 * kotlin.math.PI / 180.0
         val width = 2.0 * distance * kotlin.math.tan(0.5 * bboxWidthFrac * hFovRad)
         return if (width.isFinite() && width in 0.01..3.0) {
             (width * 100).roundToInt() / 100.0
         } else null
+    }
+
+    /**
+     * AR-local compass bearing from the camera to a hit position: world is
+     * gravityAndHeading-aligned with +X east / -Z north (the same convention
+     * [localToLatLng] uses), so bearing = atan2(east, north) =
+     * atan2(dx, -dz), normalized to [0, 360). Null for a degenerate
+     * (zero-length or non-finite) camera→hit vector.
+     */
+    private fun bearingDegrees(dx: Float, dz: Float): Double? {
+        if (dx == 0f && dz == 0f) return null
+        val radians = kotlin.math.atan2(dx.toDouble(), -dz.toDouble())
+        val degrees = (radians * 180.0 / kotlin.math.PI + 360.0) % 360.0
+        return if (degrees.isFinite()) degrees else null
     }
 
     // ── Ground grid ──────────────────────────────────────────────────
@@ -1127,13 +1395,6 @@ actual class ArEnvScanOverlay actual constructor() {
         transform.place(matrix.ptr)
         val values = matrix.ptr.reinterpret<FloatVar>()
         FloatArray(16) { index -> values[index] }
-    }
-
-    private fun matrixTranslation(transform: CValue<simd_float4x4>): FloatArray = memScoped {
-        val matrix = alloc<simd_float4x4>()
-        transform.place(matrix.ptr)
-        val values = matrix.ptr.reinterpret<FloatVar>()
-        floatArrayOf(values[12], values[13], values[14])
     }
 
     private fun vectorFloats(vector: kotlinx.cinterop.Vector128): FloatArray =

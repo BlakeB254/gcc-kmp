@@ -11,12 +11,20 @@ import kotlin.math.sqrt
  * Pure logic so it unit-tests without AR/GPS; SpotScreen owns the state
  * (current target) and feeds each recomputation back in.
  */
+enum class GuidancePhase { COVER, DETAIL }
+
+data class GuidancePick(val target: Pair<Double, Double>, val phase: GuidancePhase)
+
 object EnvScanGuidance {
 
     /** Switch targets only when a challenger is at least this much closer —
      *  without hysteresis the arrow flaps between equidistant frontiers as
      *  GPS jitters. */
     private const val SWITCH_DISTANCE_RATIO = 0.7
+
+    /** Corridor coverage% at which steering flips from cover-everything to
+     *  detail-scan-the-grazed-areas (spec §4). */
+    const val DETAIL_PHASE_COVERAGE_PERCENT = 80.0
 
     /** Treat a kept target as still-uncredited when a cell center matches
      *  within this distance (cells are [CoverageTracker.cellSizeMeters]). */
@@ -59,6 +67,39 @@ object EnvScanGuidance {
             if (nearestDist >= currentDist * SWITCH_DISTANCE_RATIO) return currentStillOpen
         }
         return nearest
+    }
+
+    /**
+     * Two-phase pick: while coverage is low and uncredited frontier remains,
+     * steer like a coverage scan (phase COVER). Once the area is mostly
+     * grazed — or nothing uncredited remains — steer at the nearest
+     * grazed-but-not-close cluster like a 3D-scan app's "get closer" pass
+     * (phase DETAIL). Same stickiness as [pickFrontier] in both phases.
+     * Returns null only when nothing remains anywhere: falls back to any
+     * remaining uncredited frontier (phase COVER) if the DETAIL pick over
+     * [grazedNotClose] comes up empty (e.g. coverage cleared the threshold
+     * but no cell ever grazed — everything left is still raw fog).
+     */
+    fun pickTarget(
+        current: Pair<Double, Double>?,
+        uncredited: List<Pair<Double, Double>>,
+        grazedNotClose: List<Pair<Double, Double>>,
+        userLat: Double,
+        userLng: Double,
+        coveragePercent: Double,
+    ): GuidancePick? {
+        val coverDone = coveragePercent >= DETAIL_PHASE_COVERAGE_PERCENT || uncredited.isEmpty()
+        if (!coverDone) {
+            pickFrontier(current, uncredited, userLat, userLng)?.let {
+                return GuidancePick(it, GuidancePhase.COVER)
+            }
+        }
+        pickFrontier(current, grazedNotClose, userLat, userLng)?.let {
+            return GuidancePick(it, GuidancePhase.DETAIL)
+        }
+        return pickFrontier(current, uncredited, userLat, userLng)?.let {
+            GuidancePick(it, GuidancePhase.COVER)
+        }
     }
 
     /** Equirectangular distance — plenty at scan-session scale (≤100m). */

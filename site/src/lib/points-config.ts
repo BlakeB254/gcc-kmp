@@ -5,12 +5,21 @@
  * non-goal ("exact numeric point values... not an architecture decision").
  */
 export const POINTS_PER_METER = {
-  NEW_AREA: 10,
+  NEW_AREA: 10,          // first-ever scan of a cell, close quality
+  NEW_AREA_GRAZED: 4,    // first-ever scan, sweep quality — partial award (spec §3)
+  CLOSE_UPGRADE: 6,      // grazed→close upgrade pays the remainder (4 + 6 = 10)
   STALE_RESCAN: 5,
   FRESH_RESCAN: 0, // no incentive to farm the same block repeatedly in one sitting
 } as const
 
 export const RECTIFICATION_BONUS_POINTS = 25
+
+/**
+ * Standard reward for a worker who discovered a spot an admin later records
+ * on their behalf (site/src/app/api/admin/spots/route.ts's
+ * discoveredByWorkerId attribution flow).
+ */
+export const OBSERVER_SPOT_REWARD = 10
 
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 

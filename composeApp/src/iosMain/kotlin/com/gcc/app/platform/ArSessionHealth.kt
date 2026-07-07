@@ -41,7 +41,7 @@ actual class ArSessionHealth actual constructor() {
         _trackingState.value = state
     }
 
-    /** Call once the ARSession exists (from ArRouteOverlay.bind / SpotArOverlay.bind). */
+    /** Call once the ARSession exists (from ArRouteOverlay.bind). */
     fun bind(session: ARSession) {
         session.delegate = delegate
     }

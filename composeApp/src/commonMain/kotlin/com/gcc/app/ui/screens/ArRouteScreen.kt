@@ -41,6 +41,7 @@ import kotlin.math.cos
 import kotlin.math.log2
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.TrackingState
@@ -87,7 +88,11 @@ fun ArRouteScreen(
     val ui by viewModel.uiState.collectAsState()
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
-    val fogCellCenters by viewModel.fogCellCenters.collectAsState()
+    val creditedCells by viewModel.creditedCells.collectAsState()
+    val closeCellCenters = remember(creditedCells) {
+        creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
+            .keys.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
@@ -118,11 +123,13 @@ fun ArRouteScreen(
         overlay.start()
         overlay.setSceneVoteListener { vote -> viewModel.onSceneVote(vote) }
         overlay.setCeilingListener { detected -> viewModel.onCeilingPlane(detected) }
-        overlay.setMarkerPlacedListener { lat, lng, label -> viewModel.onMarkerPlaced(lat, lng, label) }
+        overlay.setMarkerPlacedListener { lat, lng, label, photoBytes -> viewModel.onMarkerPlaced(lat, lng, label, photoBytes) }
+        overlay.setCoverageHitListener { hits -> viewModel.onCoverageRayHits(hits) }
         onDispose {
             overlay.setSceneVoteListener(null)
             overlay.setCeilingListener(null)
             overlay.setMarkerPlacedListener(null)
+            overlay.setCoverageHitListener(null)
             overlay.stop()
         }
     }
@@ -180,11 +187,12 @@ fun ArRouteScreen(
         overlay.updateFog(viewModel.unscannedCells()) { row, col ->
             viewModel.cellCenterLatLng(row, col)
         }
-        // Positive feedback for credited ground: the same vector-scan quads
-        // the env scan draws, so both modes read as "surveyed graph paper".
-        overlay.updateScannedCells(
-            scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
-        )
+    }
+    // Positive feedback for credited ground: CLOSE-tier cells only render as
+    // the vector-scan quads (fog still lifts on any credit above) — fog =
+    // unscanned, clear ground = grazed, vivid quad = close (spec §4).
+    LaunchedEffect(closeCellCenters) {
+        overlay.updateScannedCells(closeCellCenters)
     }
 
     // Expected-trash markers from the digital twin. Re-run on GPS ticks:
@@ -450,9 +458,10 @@ fun ArRouteScreen(
                     scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
                     cellSizeMeters = CoverageTracker.cellSizeMeters,
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
-                    fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,
                     freshCellCenters = freshCellCenters,
+                    closeCellCenters = closeCellCenters,
+                    freshCloseCellCenters = emptyList(),
                     outerBoundary = outerRing,
                     innerBoundaries = innerRings,
                     corridorCellCenters = corridorCenters,

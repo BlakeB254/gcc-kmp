@@ -15,9 +15,5 @@ actual class ArScanner actual constructor() {
     actual fun startSession() { /* no-op */ }
     actual fun stopSession() { /* no-op */ }
 
-    actual fun placeAnchor(lat: Double, lng: Double): ArAnchor? = null
-
-    actual fun getCameraFovDegrees(): Float = 60.0f
-
     actual fun getArHeading(): Float? = null
 }

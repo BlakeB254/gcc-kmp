@@ -53,6 +53,7 @@ import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.ClickResult
+import org.maplibre.compose.util.FeaturesClickHandler
 import kotlin.time.Duration.Companion.milliseconds
 
 // Mirror MapStyles' zoom bands (single source of truth) — heat crossfades out
@@ -76,6 +77,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -104,6 +106,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -124,6 +127,13 @@ actual fun GccMap(
     }
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
+    }
+    // Active-route highlight: a source built from just the assigned routes'
+    // boundaries so they can be drawn with a brighter/thicker outer line on
+    // top of the regular route stack (Fix: active blocks no longer render
+    // exclusively, so they need their own visual emphasis).
+    val activeRouteJson = remember(routeCoordinates, activeRouteIndices) {
+        buildRoutesGeoJson(activeRouteIndices.mapNotNull { routeCoordinates.getOrNull(it) })
     }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
@@ -152,6 +162,29 @@ actual fun GccMap(
     val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
     val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
     val hasHeatActivity = hasActiveSpots
+
+    // Pillar 3 footprints: true-scale oriented shapes at close zoom, split by
+    // domain into three JSON strings so each domain gets its own tinted
+    // fill/outline pair (coverage-tile precedent) — simpler than one shared
+    // source plus a color-match expression for three fixed buckets.
+    val hasFootprintData = remember(observationFootprints) {
+        observationFootprints.any { obs ->
+            val width = obs.widthMeters
+            width != null && width.isFinite() && width > 0.0
+        }
+    }
+    val footprintVegetationJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "vegetation" }, centerLat)
+    }
+    val footprintConstructionJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "construction" }, centerLat)
+    }
+    val footprintOtherJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(
+            observationFootprints.filter { it.domain != "vegetation" && it.domain != "construction" },
+            centerLat,
+        )
+    }
 
     // Per-type litter glyphs for close-zoom pins. Stable instances so the
     // MapLibre image manager registers each drawable once (keyed by painter
@@ -284,11 +317,10 @@ actual fun GccMap(
             val areaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(communityAreasJson))
             val serviceAreaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(serviceAreaJson))
             val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
-            val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
-            val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
-            val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
-            val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
-            val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
+            // routesSrc/routePolygonsSrc/routeInnerSrc/routeCorridorSrc/checkpointsSrc are
+            // remembered further down, inside the route-data-gated groups that use them —
+            // the scan summary card passes an empty routeCoordinates list and must not pay
+            // for these GeoJSON sources at all (Fix 2, r2a).
 
             // --- Layers (bottom to top) ---
             // Boundary lines use zoom-based width: visible at overview, fade at street level
@@ -483,20 +515,23 @@ actual fun GccMap(
             // overview zoom. Opacity ramps to 0 at IOS_SPOT_HEAT_FADE_ZOOM —
             // a real crossfade with the spot dots (which fade in from
             // IOS_SPOT_DOTS_MIN_ZOOM) instead of the old hard clip at 12.99.
-            val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
-            val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
-            val spotDensityHeatMediumSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatMediumJson))
-            val spotDensityHeatHighSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatHighJson))
-            val spotDensityHeatExtremeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatExtremeJson))
-
-            // ── Spot scrim: neutral off-white tint beneath heatmap ──
-            // Planet-spanning fill sourced from the same clean-zone GeoJSON.
-            // Fades from 0.55 opacity at overview zoom to 0 by
-            // IOS_SPOT_HEAT_FADE_ZOOM so it doesn't compete with street
-            // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
-            // Gated on spots being present so toggle-off and zero-report areas
-            // don't show a gray wash (mirrors the web version's guard).
+            // Gated on spots: the scan summary card renders GccMap with no
+            // spots and must not allocate the heatmap sources/layers it never
+            // paints (Fix 2, r2a). The scrim FillLayer below relies on this
+            // same outer guard — toggle-off and zero-report areas never reach
+            // it, so no gray wash (mirrors the web version's guard).
             if (spots.isNotEmpty()) {
+                val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
+                val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
+                val spotDensityHeatMediumSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatMediumJson))
+                val spotDensityHeatHighSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatHighJson))
+                val spotDensityHeatExtremeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatExtremeJson))
+
+                // ── Spot scrim: neutral off-white tint beneath heatmap ──
+                // Planet-spanning fill sourced from the same clean-zone GeoJSON.
+                // Fades from 0.55 opacity at overview zoom to 0 by
+                // IOS_SPOT_HEAT_FADE_ZOOM so it doesn't compete with street
+                // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
                 FillLayer(
                     id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
                     source = spotCleanZoneSrc,
@@ -508,256 +543,292 @@ actual fun GccMap(
                         IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
                     ),
                 )
+
+                // Sampled overview heat over the neutral scrim baseline. These
+                // sources are density field samples, not raw spot points, so the
+                // layers read as one continuous surface at overview zooms.
+                CircleLayer(
+                    id = "spot-density-heat-low-fringe",
+                    source = spotDensityHeatEdgeSrc,
+                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.72f)),
+                    blur = const(1.35f),
+                    radius = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(2.2.dp),
+                        7 to const(5.2.dp),
+                        9 to const(8.8.dp),
+                        11 to const(13.5.dp),
+                        12.5 to const(18.dp),
+                        13.1 to const(15.dp),
+                        13.8 to const(12.dp),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(10.dp),
+                    ),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.1f),
+                        7 to const(0.18f),
+                        9 to const(0.28f),
+                        11 to const(0.34f),
+                        12.5 to const(0.42f),
+                        13.1 to const(0.3f),
+                        13.8 to const(0.16f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
+                CircleLayer(
+                    id = "spot-density-heat-low-core",
+                    source = spotDensityHeatLowSrc,
+                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.82f)),
+                    blur = const(1.25f),
+                    radius = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(1.7.dp),
+                        7 to const(4.2.dp),
+                        9 to const(7.2.dp),
+                        11 to const(11.5.dp),
+                        12.5 to const(16.dp),
+                        13.1 to const(13.dp),
+                        13.8 to const(10.5.dp),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(8.4.dp),
+                    ),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.12f),
+                        7 to const(0.2f),
+                        9 to const(0.32f),
+                        11 to const(0.44f),
+                        12.5 to const(0.54f),
+                        13.1 to const(0.36f),
+                        13.8 to const(0.2f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
+                CircleLayer(
+                    id = "spot-density-heat-mid",
+                    source = spotDensityHeatMediumSrc,
+                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_HEAT_MEDIUM),
+                    blur = const(1.1f),
+                    radius = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(1.2.dp),
+                        7 to const(3.3.dp),
+                        9 to const(6.1.dp),
+                        11 to const(10.dp),
+                        12.5 to const(13.8.dp),
+                        13.1 to const(10.8.dp),
+                        13.8 to const(8.8.dp),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(7.dp),
+                    ),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.08f),
+                        7 to const(0.18f),
+                        9 to const(0.4f),
+                        11 to const(0.62f),
+                        12.5 to const(0.78f),
+                        13.1 to const(0.48f),
+                        13.8 to const(0.26f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
+                CircleLayer(
+                    id = "spot-density-heat-high",
+                    source = spotDensityHeatHighSrc,
+                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_HEAT_HIGH),
+                    blur = const(1.05f),
+                    radius = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.8.dp),
+                        7 to const(2.7.dp),
+                        9 to const(5.6.dp),
+                        11 to const(9.2.dp),
+                        12.5 to const(12.8.dp),
+                        13.1 to const(9.4.dp),
+                        13.8 to const(7.6.dp),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(6.dp),
+                    ),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.06f),
+                        7 to const(0.16f),
+                        9 to const(0.5f),
+                        11 to const(0.84f),
+                        12.5 to const(0.96f),
+                        13.1 to const(0.62f),
+                        13.8 to const(0.3f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
+                CircleLayer(
+                    id = "spot-density-heat-extreme",
+                    source = spotDensityHeatExtremeSrc,
+                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
+                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_HEAT_EXTREME),
+                    blur = const(1.0f),
+                    radius = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0.dp),
+                        7 to const(1.2.dp),
+                        9 to const(2.6.dp),
+                        11 to const(4.4.dp),
+                        12.5 to const(6.dp),
+                        13.1 to const(4.4.dp),
+                        13.8 to const(4.6.dp),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(3.6.dp),
+                    ),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        2 to const(0f),
+                        7 to const(0.12f),
+                        9 to const(0.32f),
+                        11 to const(0.62f),
+                        12.5 to const(0.78f),
+                        13.1 to const(0.48f),
+                        13.8 to const(0.18f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
             }
 
-            // Sampled overview heat over the neutral scrim baseline. These
-            // sources are density field samples, not raw spot points, so the
-            // layers read as one continuous surface at overview zooms.
-            CircleLayer(
-                id = "spot-density-heat-low-fringe",
-                source = spotDensityHeatEdgeSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.72f)),
-                blur = const(1.35f),
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(2.2.dp),
-                    7 to const(5.2.dp),
-                    9 to const(8.8.dp),
-                    11 to const(13.5.dp),
-                    12.5 to const(18.dp),
-                    13.1 to const(15.dp),
-                    13.8 to const(12.dp),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(10.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.1f),
-                    7 to const(0.18f),
-                    9 to const(0.28f),
-                    11 to const(0.34f),
-                    12.5 to const(0.42f),
-                    13.1 to const(0.3f),
-                    13.8 to const(0.16f),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                ),
-            )
-            CircleLayer(
-                id = "spot-density-heat-low-core",
-                source = spotDensityHeatLowSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.82f)),
-                blur = const(1.25f),
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(1.7.dp),
-                    7 to const(4.2.dp),
-                    9 to const(7.2.dp),
-                    11 to const(11.5.dp),
-                    12.5 to const(16.dp),
-                    13.1 to const(13.dp),
-                    13.8 to const(10.5.dp),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(8.4.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.12f),
-                    7 to const(0.2f),
-                    9 to const(0.32f),
-                    11 to const(0.44f),
-                    12.5 to const(0.54f),
-                    13.1 to const(0.36f),
-                    13.8 to const(0.2f),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                ),
-            )
-            CircleLayer(
-                id = "spot-density-heat-mid",
-                source = spotDensityHeatMediumSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_HEAT_MEDIUM),
-                blur = const(1.1f),
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(1.2.dp),
-                    7 to const(3.3.dp),
-                    9 to const(6.1.dp),
-                    11 to const(10.dp),
-                    12.5 to const(13.8.dp),
-                    13.1 to const(10.8.dp),
-                    13.8 to const(8.8.dp),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(7.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.08f),
-                    7 to const(0.18f),
-                    9 to const(0.4f),
-                    11 to const(0.62f),
-                    12.5 to const(0.78f),
-                    13.1 to const(0.48f),
-                    13.8 to const(0.26f),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                ),
-            )
-            CircleLayer(
-                id = "spot-density-heat-high",
-                source = spotDensityHeatHighSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_HEAT_HIGH),
-                blur = const(1.05f),
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.8.dp),
-                    7 to const(2.7.dp),
-                    9 to const(5.6.dp),
-                    11 to const(9.2.dp),
-                    12.5 to const(12.8.dp),
-                    13.1 to const(9.4.dp),
-                    13.8 to const(7.6.dp),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(6.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.06f),
-                    7 to const(0.16f),
-                    9 to const(0.5f),
-                    11 to const(0.84f),
-                    12.5 to const(0.96f),
-                    13.1 to const(0.62f),
-                    13.8 to const(0.3f),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                ),
-            )
-            CircleLayer(
-                id = "spot-density-heat-extreme",
-                source = spotDensityHeatExtremeSrc,
-                minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_HEAT_EXTREME),
-                blur = const(1.0f),
-                radius = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0.dp),
-                    7 to const(1.2.dp),
-                    9 to const(2.6.dp),
-                    11 to const(4.4.dp),
-                    12.5 to const(6.dp),
-                    13.1 to const(4.4.dp),
-                    13.8 to const(4.6.dp),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(3.6.dp),
-                ),
-                opacity = interpolate(
-                    type = org.maplibre.compose.expressions.dsl.linear(),
-                    input = zoom(),
-                    2 to const(0f),
-                    7 to const(0.12f),
-                    9 to const(0.32f),
-                    11 to const(0.62f),
-                    12.5 to const(0.78f),
-                    13.1 to const(0.48f),
-                    13.8 to const(0.18f),
-                    IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                ),
-            )
+            // ── Route polygon fill + 3-layer line stack (glow/casing/core) ──
+            // Gated on routeCoordinates: the scan summary card renders GccMap
+            // with no routes and must not allocate these sources/layers at all
+            // (Fix 2, r2a) — z-order preserved, this whole group stays exactly
+            // where it sat unconditionally before.
+            if (routeCoordinates.isNotEmpty()) {
+                val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
+                val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
 
-            // ── Route polygon fill — invisible tap target ──
-            // Was previously a solid green fill at high opacity, but it
-            // overlapped the affected-block heatmap and the clean-zone base
-            // layer to look like a duplicated heatmap. The line stack below
-            // (glow + casing + core) carries the visual route presence;
-            // this fill is kept ONLY for tap targeting at all zoom levels.
-            FillLayer(
-                id = MapStyles.LAYER_ROUTE_FILL,
-                source = routePolygonsSrc,
-                color = const(MapStyles.ROUTE_FILL_COLOR),
-                opacity = const(0.001f),
-                onClick = if (onRouteTap != null) { features ->
-                    val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
-                    if (idx != null) {
-                        onRouteTap(idx)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
+                // Was previously a solid green fill at high opacity, but it
+                // overlapped the affected-block heatmap and the clean-zone base
+                // layer to look like a duplicated heatmap. The line stack below
+                // (glow + casing + core) carries the visual route presence;
+                // this fill is kept ONLY for tap targeting at all zoom levels.
+                FillLayer(
+                    id = MapStyles.LAYER_ROUTE_FILL,
+                    source = routePolygonsSrc,
+                    color = const(MapStyles.ROUTE_FILL_COLOR),
+                    opacity = const(0.001f),
+                    onClick = routeIndexClickHandler(onRouteTap),
+                )
 
-            // ── Route rendering: 3-layer stack (glow → casing → core) ──
-            // All widths scale with zoom: thin at overview, full at street level.
+                // ── Route rendering: 3-layer stack (glow → casing → core) ──
+                // All widths scale with zoom: thin at overview, full at street level.
 
-            // Route glow — wide semi-transparent halo for emphasis
-            LineLayer(
-                id = MapStyles.LAYER_ROUTE_GLOW,
-                source = routesSrc,
-                color = const(MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY)),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(1.dp),
-                    13 to const(3.dp),
-                    15 to const(8.dp),
-                    17 to const(14.dp),
-                ),
-                cap = const(LineCap.Round),
-                join = const(LineJoin.Round),
-            )
+                // Route glow — wide semi-transparent halo for emphasis
+                LineLayer(
+                    id = MapStyles.LAYER_ROUTE_GLOW,
+                    source = routesSrc,
+                    color = const(MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY)),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(1.dp),
+                        13 to const(3.dp),
+                        15 to const(8.dp),
+                        17 to const(14.dp),
+                    ),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
 
-            // Route casing — dark border for depth and contrast
-            LineLayer(
-                id = MapStyles.LAYER_ROUTE_CASING,
-                source = routesSrc,
-                color = const(MapStyles.ROUTE_CASING_COLOR),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(0.5.dp),
-                    13 to const(2.dp),
-                    15 to const(5.dp),
-                    17 to const(8.dp),
-                ),
-                cap = const(LineCap.Round),
-                join = const(LineJoin.Round),
-            )
+                // Route casing — dark border for depth and contrast
+                LineLayer(
+                    id = MapStyles.LAYER_ROUTE_CASING,
+                    source = routesSrc,
+                    color = const(MapStyles.ROUTE_CASING_COLOR),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(0.5.dp),
+                        13 to const(2.dp),
+                        15 to const(5.dp),
+                        17 to const(8.dp),
+                    ),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
 
-            // Route core — bright green main line
-            LineLayer(
-                id = MapStyles.LAYER_ROUTE_LINE,
-                source = routesSrc,
-                color = const(GccGreen),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(0.5.dp),
-                    13 to const(1.5.dp),
-                    15 to const(3.dp),
-                    17 to const(5.dp),
-                ),
-                cap = const(LineCap.Round),
-                join = const(LineJoin.Round),
-                onClick = if (onRouteTap != null) { features ->
-                    val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
-                    if (idx != null) {
-                        onRouteTap(idx)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
+                // Route core — bright green main line
+                LineLayer(
+                    id = MapStyles.LAYER_ROUTE_LINE,
+                    source = routesSrc,
+                    color = const(GccGreen),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(0.5.dp),
+                        13 to const(1.5.dp),
+                        15 to const(3.dp),
+                        17 to const(5.dp),
+                    ),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                    onClick = routeIndexClickHandler(onRouteTap),
+                )
+
+                // Active-route highlight: brighter/thicker outer lines on top
+                // of the regular stack so the worker's assigned blocks still
+                // read as "the ones to work" now that they render alongside
+                // (not instead of) the rest of the service area. Deliberately
+                // NON-tappable: this source is built from a sublist, so its
+                // feature `routeIndex` properties are sublist-local and would
+                // misreport the union index — taps fall through to the
+                // underlying route core/fill layers, which carry the correct
+                // indices for the same geometry.
+                if (activeRouteIndices.isNotEmpty()) {
+                    val activeRouteSrc = rememberGeoJsonSource(GeoJsonData.JsonString(activeRouteJson))
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-glow",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed.copy(alpha = 0.55f)),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(2.dp),
+                            13 to const(5.dp),
+                            15 to const(11.dp),
+                            17 to const(18.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                    )
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-core",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(1.dp),
+                            13 to const(2.5.dp),
+                            15 to const(4.5.dp),
+                            17 to const(7.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                    )
+                }
+            }
 
             // ── Foundational coverage-state tiles (under heat + markers) ──
             // fog = never scanned (attention), green = scanned clean,
@@ -765,6 +836,7 @@ actual fun GccMap(
             // spot-density heat layers above.
             if (coverageStateJsons != null) {
                 val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.clean))
+                val cleanGrazedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.cleanGrazed))
                 val dirtySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.dirty))
                 val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.stale))
                 val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.fog))
@@ -791,37 +863,28 @@ actual fun GccMap(
                 // All scanned tiles are tappable: cellId rides in each
                 // feature's properties (buildCoverageStateGeoJsons) and the
                 // caller resolves it to the cell for the last-scan card.
+                // Grazed-fresh: scanned at sweep quality only — lighter green,
+                // the map-level "come back and detail-scan me" signal.
+                FillLayer(
+                    id = "coverage-clean-grazed",
+                    source = cleanGrazedSrc,
+                    color = const(Color(0xFF22C55E)),
+                    opacity = const(0.10f),
+                    onClick = cellIdClickHandler(onCoverageCellTap),
+                )
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,
                     color = const(Color(0xFF22C55E)),
                     opacity = const(0.20f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-dirty",
                     source = dirtySrc,
                     color = const(Color(0xFFEF4444)),
                     opacity = const(0.20f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 // Stale is a CALL TO ACTION ("scan me again") — it must not
                 // be the faintest tile on the map (it was 0.10).
@@ -830,280 +893,294 @@ actual fun GccMap(
                     source = staleSrc,
                     color = const(Color(0xFFF59E0B)),
                     opacity = const(0.24f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
+                    onClick = cellIdClickHandler(onCoverageCellTap),
+                )
+            }
+
+            // ── Scan corridor + inner boundary (double-lined routes) + checkpoints ──
+            // Gated on routeCoordinates — same reasoning as the route fill/line
+            // stack above: no route means none of this should allocate a
+            // source or layer (Fix 2, r2a). Kept as its own group (rather than
+            // merged with the fill/line stack) because the coverage-state
+            // tiles sit between them in z-order and must not move.
+            if (routeCoordinates.isNotEmpty()) {
+                val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
+                val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
+                val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
+
+                // The band BETWEEN the two boundaries is the assignment: tinted
+                // so "scan here" is explicit. Inside the inner ring (private
+                // property) and outside the outer ring are excluded.
+                FillLayer(
+                    id = "route-corridor-band",
+                    source = routeCorridorSrc,
+                    color = const(GccGreen),
+                    // Strengthens toward work zoom: the corridor IS the
+                    // opportunity, so it earns more presence as spot detail
+                    // resolves around it — while staying a quiet base at the
+                    // handoff zooms where dots are fading in.
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.06f),
+                        15 to const(0.12f),
+                        16.5 to const(0.18f),
+                    ),
+                )
+                // Exclusion zones (inner boundaries): deliberately NOT the
+                // outer's twin — grey line + grey fill so "excluded from the
+                // scan area" reads at a glance against the green perimeter.
+                FillLayer(
+                    id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-excluded-fill",
+                    source = routeInnerSrc,
+                    color = const(Color(0xFF9E9E9E)),
+                    opacity = const(0.22f),
+                )
+                LineLayer(
+                    id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-casing",
+                    source = routeInnerSrc,
+                    color = const(MapStyles.ROUTE_CASING_COLOR),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(0.5.dp),
+                        13 to const(2.dp),
+                        15 to const(5.dp),
+                        17 to const(8.dp),
+                    ),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
+                LineLayer(
+                    id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
+                    source = routeInnerSrc,
+                    color = const(Color(0xFF757575)),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(0.5.dp),
+                        13 to const(1.5.dp),
+                        15 to const(3.dp),
+                        17 to const(5.dp),
+                    ),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
+
+                CircleLayer(
+                    id = MapStyles.LAYER_CHECKPOINT_OUTER,
+                    source = checkpointsSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color.White),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(3.dp),
+                        17 to const(8.dp),
+                    ),
+                    strokeColor = const(GccGreenDark),
+                    strokeWidth = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(0.5.dp),
+                        17 to const(1.5.dp),
+                    ),
+                )
+
+                CircleLayer(
+                    id = MapStyles.LAYER_CHECKPOINT_INNER,
+                    source = checkpointsSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(GccGreen),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(2.dp),
+                        17 to const(5.5.dp),
+                    ),
+                )
+            }
+
+            // Gated on checkpointPhotos (Fix 2, r2a) — the scan summary card
+            // never has photo checkpoints and must not allocate this source/layers.
+            if (checkpointPhotos.isNotEmpty()) {
+                // ── Photo star markers: gold dots for checkpoints with photos ──
+                val photoStarJson = remember(checkpointPhotos) {
+                    if (checkpointPhotos.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    else {
+                        val features = checkpointPhotos.joinToString(",") { (coord, url) ->
+                            """{"type":"Feature","properties":{"imageUrl":"${url.replace("\"", "\\\"")}"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
+                        }
+                        """{"type":"FeatureCollection","features":[$features]}"""
+                    }
+                }
+                val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
+
+                // Checkpoint photo nodes — green circles matching waypoints
+                CircleLayer(
+                    id = "photo-star-outer",
+                    source = photoStarSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color.White),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(5.dp),
+                        17 to const(11.dp),
+                    ),
+                )
+
+                CircleLayer(
+                    id = "photo-star-inner",
+                    source = photoStarSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color(0xFF22C55E)),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(4.dp),
+                        17 to const(9.dp),
+                    ),
+                    strokeColor = const(Color.White),
+                    strokeWidth = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(0.5.dp),
+                        17 to const(1.5.dp),
+                    ),
+                )
+            }
+
+            // Gated on imageStars (Fix 2, r2a) — the scan summary card never
+            // has image-location stars and must not allocate these sources/layers.
+            if (imageStars.isNotEmpty()) {
+                // ── Image location markers: gold diamond shapes via FillLayer ──
+                val dLat = 0.00006  // ~7m vertical arm
+                val dLng = 0.00008  // ~7m horizontal arm
+                val diamondJson = remember(imageStars) {
+                    if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    else {
+                        val features = imageStars.joinToString(",") { c ->
+                            val top = "[${c.lng},${c.lat + dLat}]"
+                            val right = "[${c.lng + dLng},${c.lat}]"
+                            val bottom = "[${c.lng},${c.lat - dLat}]"
+                            val left = "[${c.lng - dLng},${c.lat}]"
+                            """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
+                        }
+                        """{"type":"FeatureCollection","features":[$features]}"""
+                    }
+                }
+                // Smaller inner diamond for contrast
+                val innerScale = 0.5
+                val innerDiamondJson = remember(imageStars) {
+                    if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    else {
+                        val features = imageStars.joinToString(",") { c ->
+                            val d2Lat = dLat * innerScale
+                            val d2Lng = dLng * innerScale
+                            val top = "[${c.lng},${c.lat + d2Lat}]"
+                            val right = "[${c.lng + d2Lng},${c.lat}]"
+                            val bottom = "[${c.lng},${c.lat - d2Lat}]"
+                            val left = "[${c.lng - d2Lng},${c.lat}]"
+                            """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
+                        }
+                        """{"type":"FeatureCollection","features":[$features]}"""
+                    }
+                }
+                val diamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(diamondJson))
+                val innerDiamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(innerDiamondJson))
+
+                // Outer gold diamond
+                FillLayer(
+                    id = "image-star-fill",
+                    source = diamondSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color(0xFFFFB300)),
+                )
+                // White inner diamond (creates a framed look)
+                FillLayer(
+                    id = "image-star-inner",
+                    source = innerDiamondSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color.White),
+                )
+            }
+
+            // Gated on bounties (Fix 2, r2a) — the scan summary card never has
+            // bounties and must not allocate this source/layers.
+            if (bounties.isNotEmpty()) {
+                // ── Bounty markers: red dots with radius and amount labels ──
+                val bountySrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountyJson))
+
+                // Bounty radius circles (visible at zoom 14+)
+                CircleLayer(
+                    id = MapStyles.LAYER_BOUNTY_RADIUS,
+                    source = bountySrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(MapStyles.BOUNTY_RADIUS_FILL),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        14 to const(5.dp),
+                        17 to const(40.dp),
+                    ),
+                )
+
+                // Bounty dots — red circles, zoom-adaptive
+                CircleLayer(
+                    id = MapStyles.LAYER_BOUNTY_DOTS,
+                    source = bountySrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(MapStyles.BOUNTY_DOT_COLOR),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(3.dp),
+                        12 to const(4.dp),
+                        14 to const(5.dp),
+                    ),
+                    strokeColor = const(Color.White),
+                    strokeWidth = const(1.5.dp),
+                    onClick = if (onBountyTap != null) { features ->
+                        val raw = features.firstOrNull()?.properties?.get("id")
+                        val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
+                        if (id != null) {
+                            onBountyTap(id)
                             ClickResult.Consume
                         } else {
                             ClickResult.Pass
                         }
                     } else null,
                 )
+
+                // Bounty amount labels — "$XX" text above dots
+                @Suppress("UNCHECKED_CAST")
+                val amountExpr = feature["amountLabel"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+                SymbolLayer(
+                    id = MapStyles.LAYER_BOUNTY_LABELS,
+                    source = bountySrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    textField = format(span(amountExpr)),
+                    textSize = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        12 to const(0f).em,
+                        13 to const(0.6f).em,
+                        15 to const(0.8f).em,
+                    ),
+                    textColor = const(MapStyles.BOUNTY_DOT_COLOR),
+                    textHaloColor = const(Color.White),
+                    textHaloWidth = const(1.5.dp),
+                    textAllowOverlap = const(true),
+                    textIgnorePlacement = const(true),
+                )
             }
-
-            // ── Scan corridor + inner boundary (double-lined routes) ──
-            // The band BETWEEN the two boundaries is the assignment: tinted
-            // so "scan here" is explicit. Inside the inner ring (private
-            // property) and outside the outer ring are excluded.
-            FillLayer(
-                id = "route-corridor-band",
-                source = routeCorridorSrc,
-                color = const(GccGreen),
-                // Strengthens toward work zoom: the corridor IS the
-                // opportunity, so it earns more presence as spot detail
-                // resolves around it — while staying a quiet base at the
-                // handoff zooms where dots are fading in.
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.06f),
-                    15 to const(0.12f),
-                    16.5 to const(0.18f),
-                ),
-            )
-            // Exclusion zones (inner boundaries): deliberately NOT the
-            // outer's twin — grey line + grey fill so "excluded from the
-            // scan area" reads at a glance against the green perimeter.
-            FillLayer(
-                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-excluded-fill",
-                source = routeInnerSrc,
-                color = const(Color(0xFF9E9E9E)),
-                opacity = const(0.22f),
-            )
-            LineLayer(
-                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY + "-casing",
-                source = routeInnerSrc,
-                color = const(MapStyles.ROUTE_CASING_COLOR),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(0.5.dp),
-                    13 to const(2.dp),
-                    15 to const(5.dp),
-                    17 to const(8.dp),
-                ),
-                cap = const(LineCap.Round),
-                join = const(LineJoin.Round),
-            )
-            LineLayer(
-                id = MapStyles.LAYER_ROUTE_INNER_BOUNDARY,
-                source = routeInnerSrc,
-                color = const(Color(0xFF757575)),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(0.5.dp),
-                    13 to const(1.5.dp),
-                    15 to const(3.dp),
-                    17 to const(5.dp),
-                ),
-                cap = const(LineCap.Round),
-                join = const(LineJoin.Round),
-            )
-
-            CircleLayer(
-                id = MapStyles.LAYER_CHECKPOINT_OUTER,
-                source = checkpointsSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.White),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(3.dp),
-                    17 to const(8.dp),
-                ),
-                strokeColor = const(GccGreenDark),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(0.5.dp),
-                    17 to const(1.5.dp),
-                ),
-            )
-
-            CircleLayer(
-                id = MapStyles.LAYER_CHECKPOINT_INNER,
-                source = checkpointsSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(GccGreen),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(2.dp),
-                    17 to const(5.5.dp),
-                ),
-            )
-
-            // ── Photo star markers: gold dots for checkpoints with photos ──
-            val photoStarJson = remember(checkpointPhotos) {
-                if (checkpointPhotos.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = checkpointPhotos.joinToString(",") { (coord, url) ->
-                        """{"type":"Feature","properties":{"imageUrl":"${url.replace("\"", "\\\"")}"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
-                }
-            }
-            val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
-
-            // Checkpoint photo nodes — green circles matching waypoints
-            CircleLayer(
-                id = "photo-star-outer",
-                source = photoStarSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.White),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(5.dp),
-                    17 to const(11.dp),
-                ),
-            )
-
-            CircleLayer(
-                id = "photo-star-inner",
-                source = photoStarSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color(0xFF22C55E)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(4.dp),
-                    17 to const(9.dp),
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(0.5.dp),
-                    17 to const(1.5.dp),
-                ),
-            )
-
-            // ── Image location markers: gold diamond shapes via FillLayer ──
-            val dLat = 0.00006  // ~7m vertical arm
-            val dLng = 0.00008  // ~7m horizontal arm
-            val diamondJson = remember(imageStars) {
-                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = imageStars.joinToString(",") { c ->
-                        val top = "[${c.lng},${c.lat + dLat}]"
-                        val right = "[${c.lng + dLng},${c.lat}]"
-                        val bottom = "[${c.lng},${c.lat - dLat}]"
-                        val left = "[${c.lng - dLng},${c.lat}]"
-                        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
-                }
-            }
-            // Smaller inner diamond for contrast
-            val innerScale = 0.5
-            val innerDiamondJson = remember(imageStars) {
-                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = imageStars.joinToString(",") { c ->
-                        val d2Lat = dLat * innerScale
-                        val d2Lng = dLng * innerScale
-                        val top = "[${c.lng},${c.lat + d2Lat}]"
-                        val right = "[${c.lng + d2Lng},${c.lat}]"
-                        val bottom = "[${c.lng},${c.lat - d2Lat}]"
-                        val left = "[${c.lng - d2Lng},${c.lat}]"
-                        """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$top,$right,$bottom,$left,$top]]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
-                }
-            }
-            val diamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(diamondJson))
-            val innerDiamondSrc = rememberGeoJsonSource(data = GeoJsonData.JsonString(innerDiamondJson))
-
-            // Outer gold diamond
-            FillLayer(
-                id = "image-star-fill",
-                source = diamondSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color(0xFFFFB300)),
-            )
-            // White inner diamond (creates a framed look)
-            FillLayer(
-                id = "image-star-inner",
-                source = innerDiamondSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.White),
-            )
-
-            // ── Bounty markers: red dots with radius and amount labels ──
-            val bountySrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountyJson))
-
-            // Bounty radius circles (visible at zoom 14+)
-            CircleLayer(
-                id = MapStyles.LAYER_BOUNTY_RADIUS,
-                source = bountySrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.BOUNTY_RADIUS_FILL),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(5.dp),
-                    17 to const(40.dp),
-                ),
-            )
-
-            // Bounty dots — red circles, zoom-adaptive
-            CircleLayer(
-                id = MapStyles.LAYER_BOUNTY_DOTS,
-                source = bountySrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.BOUNTY_DOT_COLOR),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    10 to const(3.dp),
-                    12 to const(4.dp),
-                    14 to const(5.dp),
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = const(1.5.dp),
-                onClick = if (onBountyTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onBountyTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                } else null,
-            )
-
-            // Bounty amount labels — "$XX" text above dots
-            @Suppress("UNCHECKED_CAST")
-            val amountExpr = feature["amountLabel"] as org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
-            SymbolLayer(
-                id = MapStyles.LAYER_BOUNTY_LABELS,
-                source = bountySrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                textField = format(span(amountExpr)),
-                textSize = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    12 to const(0f).em,
-                    13 to const(0.6f).em,
-                    15 to const(0.8f).em,
-                ),
-                textColor = const(MapStyles.BOUNTY_DOT_COLOR),
-                textHaloColor = const(Color.White),
-                textHaloWidth = const(1.5.dp),
-                textAllowOverlap = const(true),
-                textIgnorePlacement = const(true),
-            )
 
             // ── Affected-block polygon fills ──
             //
@@ -1144,6 +1221,81 @@ actual fun GccMap(
                     } else null,
                 )
 
+            }
+
+            // ── Observation footprints (Pillar 3) ──
+            // True-scale, oriented shapes at close zoom — declared BEFORE the
+            // user-location dot AND the pin/glyph layers below so footprints
+            // render UNDER all of them (z-order = declaration order); a
+            // footprint must never bury the marker that represents it, nor
+            // sit atop the user's own position dot. Gated on non-empty
+            // footprint data (Fix 2, r2a convention) and zoom (>=17 via
+            // opacity interpolate) — heatmap/pins own the far zoom story,
+            // footprints are the close-zoom "what does it actually look
+            // like" detail. Domain-tinted per the geometry-approximation
+            // table: vegetation green, construction grey, everything else
+            // (litter/unspecified) orange.
+            if (hasFootprintData) {
+                val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
+                val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
+                val footprintOtherSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintOtherJson))
+                val footprintOutlineOpacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    16.5 to const(0f),
+                    17 to const(1f),
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-vegetation",
+                    source = footprintVegetationSrc,
+                    color = const(Color(0xFF16A34A)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.18f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-vegetation",
+                    source = footprintVegetationSrc,
+                    color = const(Color(0xFF16A34A)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-construction",
+                    source = footprintConstructionSrc,
+                    color = const(Color(0xFF6B7280)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.18f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-construction",
+                    source = footprintConstructionSrc,
+                    color = const(Color(0xFF6B7280)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-other",
+                    source = footprintOtherSrc,
+                    color = const(Color(0xFFF97316)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.20f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-other",
+                    source = footprintOtherSrc,
+                    color = const(Color(0xFFF97316)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
             }
 
             // ── User location blue dot ──
@@ -1208,283 +1360,289 @@ actual fun GccMap(
                 )
             }
 
-            // ── Spot rectangle area fills — rendered as polygons for rectangle-type spots ──
-            val spotRectSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotRectJson))
-            FillLayer(
-                id = "spot-rect-fill",
-                source = spotRectSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.15f)),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    14 to const(0.7f),
-                ),
-            )
-            LineLayer(
-                id = "spot-rect-outline",
-                source = spotRectSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.6f)),
-                width = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(1.5.dp),
-                    17 to const(2.dp),
-                ),
-            )
+            // Gated on spots (Fix 2, r2a) — the scan summary card renders GccMap
+            // with no spots and must not allocate the spot-rect/marker/verification
+            // sources+layers (rectangles, halos, dots, glyphs, verification rings)
+            // it never paints, right at peak memory after a scan.
+            if (spots.isNotEmpty()) {
+                // ── Spot rectangle area fills — rendered as polygons for rectangle-type spots ──
+                val spotRectSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotRectJson))
+                FillLayer(
+                    id = "spot-rect-fill",
+                    source = spotRectSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.15f)),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0f),
+                        14 to const(0.7f),
+                    ),
+                )
+                LineLayer(
+                    id = "spot-rect-outline",
+                    source = spotRectSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.6f)),
+                    width = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0.dp),
+                        15 to const(1.5.dp),
+                        17 to const(2.dp),
+                    ),
+                )
 
-            // ── Spot report markers ──
-            // (The density-heat surface + scrim moved BELOW the route stack:
-            // heat is texture, routes are structure — green loops must stay
-            // readable over the wash at overview zooms.)
-            val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
+                // ── Spot report markers ──
+                // (The density-heat surface + scrim moved BELOW the route stack:
+                // heat is texture, routes are structure — green loops must stay
+                // readable over the wash at overview zooms.)
+                val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
 
-            // Soft halos are STREET-LEVEL detail only: at neighborhood zoom a
-            // dense scan area would stack dozens of 18dp halos into an opaque
-            // orange blob that buries the route corridor (build-117 field
-            // screenshot). Once pins are sparse on screen they earn the ink.
-            CircleLayer(
-                id = MapStyles.LAYER_SPOT_MARKER_HALOS,
-                source = spotSrc,
-                minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
-                color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.10f)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15.5 to const(8.dp),
-                    17 to const(12.dp),
-                    19 to const(15.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15.5 to const(0f),
-                    16 to const(0.6f),
-                    17 to const(0.8f),
-                ),
-            )
+                // Soft halos are STREET-LEVEL detail only: at neighborhood zoom a
+                // dense scan area would stack dozens of 18dp halos into an opaque
+                // orange blob that buries the route corridor (build-117 field
+                // screenshot). Once pins are sparse on screen they earn the ink.
+                CircleLayer(
+                    id = MapStyles.LAYER_SPOT_MARKER_HALOS,
+                    source = spotSrc,
+                    minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
+                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.10f)),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15.5 to const(8.dp),
+                        17 to const(12.dp),
+                        19 to const(15.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15.5 to const(0f),
+                        16 to const(0.6f),
+                        17 to const(0.8f),
+                    ),
+                )
 
-            val bountiedSpotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountiedSpotJson))
-            CircleLayer(
-                id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
-                source = bountiedSpotSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.Transparent),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(7.dp),
-                    15 to const(12.dp),
-                    17 to const(17.dp),
-                ),
-                strokeColor = const(MapStyles.BOUNTY_DOT_COLOR),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(1.dp),
-                    15 to const(2.dp),
-                    17 to const(3.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    14 to const(0.85f),
-                    17 to const(1f),
-                ),
-            )
+                val bountiedSpotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountiedSpotJson))
+                CircleLayer(
+                    id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
+                    source = bountiedSpotSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color.Transparent),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(7.dp),
+                        15 to const(12.dp),
+                        17 to const(17.dp),
+                    ),
+                    strokeColor = const(MapStyles.BOUNTY_DOT_COLOR),
+                    strokeWidth = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(1.dp),
+                        15 to const(2.dp),
+                        17 to const(3.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0f),
+                        14 to const(0.85f),
+                        17 to const(1f),
+                    ),
+                )
 
-            // Invisible expanded tap target for spots (larger hit area)
-            CircleLayer(
-                id = "${MapStyles.LAYER_SPOT_MARKERS}-tap",
-                source = spotSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.Transparent),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(12.dp),
-                    15 to const(14.dp),
-                    16 to const(16.dp),
-                    18 to const(18.dp),
-                ),
-                onClick = if (onSpotTap != null) { features ->
-                    val raw = features.firstOrNull()?.properties?.get("id")
-                    val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                    if (id != null) {
-                        onSpotTap(id)
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
+                // Invisible expanded tap target for spots (larger hit area)
+                CircleLayer(
+                    id = "${MapStyles.LAYER_SPOT_MARKERS}-tap",
+                    source = spotSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    color = const(Color.Transparent),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        14 to const(12.dp),
+                        15 to const(14.dp),
+                        16 to const(16.dp),
+                        18 to const(18.dp),
+                    ),
+                    onClick = if (onSpotTap != null) { features ->
+                        val raw = features.firstOrNull()?.properties?.get("id")
+                        val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
+                        if (id != null) {
+                            onSpotTap(id)
+                            ClickResult.Consume
+                        } else {
+                            ClickResult.Pass
+                        }
+                    } else null,
+                )
+
+                // Visible spot dots — close zoom only. The overview heatmap uses the
+                // same switch zoom as maxZoom, so markers and heat never render together.
+                // Only UNTYPED pins render as the plain orange dot; pins carrying a
+                // canonical "itemType" are drawn by the per-type glyph SymbolLayer below.
+                // Small ADDITIVE dots: capped below full opacity so overlapping
+                // reports in a dense area sum into visibly darker orange (density
+                // reads without an opaque mass) and the corridor band stays
+                // legible beneath. Fades in across the heat crossfade window
+                // instead of popping at the old hard 13.0 handoff.
+                CircleLayer(
+                    id = MapStyles.LAYER_SPOT_MARKERS,
+                    source = spotSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    filter = !feature.has("itemType"),
+                    color = const(MapStyles.SPOT_MARKER_COLOR),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        14 to const(3.dp),
+                        15 to const(4.5.dp),
+                        16 to const(6.dp),
+                        17 to const(7.dp),
+                        20 to const(9.dp),
+                    ),
+                    strokeColor = const(Color.White),
+                    strokeWidth = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        14 to const(0.8.dp),
+                        16 to const(1.2.dp),
+                        18 to const(1.6.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0f),
+                        13.5 to const(0.35f),
+                        14.5 to const(0.75f),
+                        16 to const(0.9f),
+                    ),
+                )
+
+                // Typed pins render as the same small dot at neighborhood zoom,
+                // then hand off to the glyph badges as street zoom resolves —
+                // 30dp badges at z13-15 were half the blob problem.
+                CircleLayer(
+                    id = "${MapStyles.LAYER_SPOT_MARKERS}-typed-dots",
+                    source = spotSrc,
+                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
+                    maxZoom = 15.2f,
+                    filter = feature.has("itemType"),
+                    color = const(MapStyles.SPOT_MARKER_COLOR),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        14 to const(3.dp),
+                        15 to const(4.5.dp),
+                    ),
+                    strokeColor = const(Color.White),
+                    strokeWidth = const(0.8.dp),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        13 to const(0f),
+                        13.5 to const(0.35f),
+                        14.5 to const(0.75f),
+                        15 to const(0.5f),
+                        15.2 to const(0f),
+                    ),
+                )
+
+                // Per-type litter glyphs — pins with a canonical itemType are drawn
+                // as a small badge depicting WHAT was scanned (bottle, can, bag …)
+                // instead of the uniform dot. The tap target below the halos already
+                // covers these features, so no onClick is needed here.
+                @Suppress("UNCHECKED_CAST")
+                val itemTypeExpr = feature["itemType"] as
+                    org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
+                val glyphSize = DpSize(30.dp, 30.dp)
+                SymbolLayer(
+                    id = "spot-markers-glyphs",
+                    source = spotSrc,
+                    minZoom = IOS_SPOT_GLYPH_MIN_ZOOM.toFloat(),
+                    filter = feature.has("itemType"),
+                    iconImage = switch(
+                        itemTypeExpr,
+                        case("plastic_bottle", image(litterGlyphPainters.getValue("plastic_bottle"), glyphSize)),
+                        case("glass_bottle", image(litterGlyphPainters.getValue("glass_bottle"), glyphSize)),
+                        case("can", image(litterGlyphPainters.getValue("can"), glyphSize)),
+                        case("plastic_bag", image(litterGlyphPainters.getValue("plastic_bag"), glyphSize)),
+                        case("cup", image(litterGlyphPainters.getValue("cup"), glyphSize)),
+                        case("paper", image(litterGlyphPainters.getValue("paper"), glyphSize)),
+                        case("wrapper", image(litterGlyphPainters.getValue("wrapper"), glyphSize)),
+                        case("carton", image(litterGlyphPainters.getValue("carton"), glyphSize)),
+                        case("cigarette", image(litterGlyphPainters.getValue("cigarette"), glyphSize)),
+                        case("food_waste", image(litterGlyphPainters.getValue("food_waste"), glyphSize)),
+                        case("tire", image(litterGlyphPainters.getValue("tire"), glyphSize)),
+                        case("mattress", image(litterGlyphPainters.getValue("mattress"), glyphSize)),
+                        case("debris_pile", image(litterGlyphPainters.getValue("debris_pile"), glyphSize)),
+                        case("tree", image(litterGlyphPainters.getValue("tree"), glyphSize)),
+                        case("bush", image(litterGlyphPainters.getValue("bush"), glyphSize)),
+                        case("fence", image(litterGlyphPainters.getValue("fence"), glyphSize)),
+                        case("gate", image(litterGlyphPainters.getValue("gate"), glyphSize)),
+                        case("pole", image(litterGlyphPainters.getValue("pole"), glyphSize)),
+                        case("hydrant", image(litterGlyphPainters.getValue("hydrant"), glyphSize)),
+                        case("bench", image(litterGlyphPainters.getValue("bench"), glyphSize)),
+                        case("mailbox", image(litterGlyphPainters.getValue("mailbox"), glyphSize)),
+                        case("sign", image(litterGlyphPainters.getValue("sign"), glyphSize)),
+                        fallback = image(litterGlyphPainters.getValue("other"), glyphSize),
+                    ),
+                    iconSize = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15 to const(0.3f),
+                        15.5 to const(0.6f),
+                        16 to const(0.72f),
+                        18 to const(0.9f),
+                    ),
+                    iconAllowOverlap = const(true),
+                    iconIgnorePlacement = const(true),
+                )
+
+                // ── Verification indicator — orange ring on spots needing verification ──
+                val verificationSpots = remember(spots) {
+                    val needsVerif = spots.filter { it.needsVerification && it.status != CommunityReportStatus.RESOLVED }
+                    if (needsVerif.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    else {
+                        val features = needsVerif.joinToString(",") { s ->
+                            """{"type":"Feature","properties":{"id":${s.id}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
+                        }
+                        """{"type":"FeatureCollection","features":[$features]}"""
                     }
-                } else null,
-            )
-
-            // Visible spot dots — close zoom only. The overview heatmap uses the
-            // same switch zoom as maxZoom, so markers and heat never render together.
-            // Only UNTYPED pins render as the plain orange dot; pins carrying a
-            // canonical "itemType" are drawn by the per-type glyph SymbolLayer below.
-            // Small ADDITIVE dots: capped below full opacity so overlapping
-            // reports in a dense area sum into visibly darker orange (density
-            // reads without an opaque mass) and the corridor band stays
-            // legible beneath. Fades in across the heat crossfade window
-            // instead of popping at the old hard 13.0 handoff.
-            CircleLayer(
-                id = MapStyles.LAYER_SPOT_MARKERS,
-                source = spotSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                filter = !feature.has("itemType"),
-                color = const(MapStyles.SPOT_MARKER_COLOR),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(3.dp),
-                    15 to const(4.5.dp),
-                    16 to const(6.dp),
-                    17 to const(7.dp),
-                    20 to const(9.dp),
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(0.8.dp),
-                    16 to const(1.2.dp),
-                    18 to const(1.6.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    13.5 to const(0.35f),
-                    14.5 to const(0.75f),
-                    16 to const(0.9f),
-                ),
-            )
-
-            // Typed pins render as the same small dot at neighborhood zoom,
-            // then hand off to the glyph badges as street zoom resolves —
-            // 30dp badges at z13-15 were half the blob problem.
-            CircleLayer(
-                id = "${MapStyles.LAYER_SPOT_MARKERS}-typed-dots",
-                source = spotSrc,
-                minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                maxZoom = 15.2f,
-                filter = feature.has("itemType"),
-                color = const(MapStyles.SPOT_MARKER_COLOR),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    14 to const(3.dp),
-                    15 to const(4.5.dp),
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = const(0.8.dp),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0f),
-                    13.5 to const(0.35f),
-                    14.5 to const(0.75f),
-                    15 to const(0.5f),
-                    15.2 to const(0f),
-                ),
-            )
-
-            // Per-type litter glyphs — pins with a canonical itemType are drawn
-            // as a small badge depicting WHAT was scanned (bottle, can, bag …)
-            // instead of the uniform dot. The tap target below the halos already
-            // covers these features, so no onClick is needed here.
-            @Suppress("UNCHECKED_CAST")
-            val itemTypeExpr = feature["itemType"] as
-                org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
-            val glyphSize = DpSize(30.dp, 30.dp)
-            SymbolLayer(
-                id = "spot-markers-glyphs",
-                source = spotSrc,
-                minZoom = IOS_SPOT_GLYPH_MIN_ZOOM.toFloat(),
-                filter = feature.has("itemType"),
-                iconImage = switch(
-                    itemTypeExpr,
-                    case("plastic_bottle", image(litterGlyphPainters.getValue("plastic_bottle"), glyphSize)),
-                    case("glass_bottle", image(litterGlyphPainters.getValue("glass_bottle"), glyphSize)),
-                    case("can", image(litterGlyphPainters.getValue("can"), glyphSize)),
-                    case("plastic_bag", image(litterGlyphPainters.getValue("plastic_bag"), glyphSize)),
-                    case("cup", image(litterGlyphPainters.getValue("cup"), glyphSize)),
-                    case("paper", image(litterGlyphPainters.getValue("paper"), glyphSize)),
-                    case("wrapper", image(litterGlyphPainters.getValue("wrapper"), glyphSize)),
-                    case("carton", image(litterGlyphPainters.getValue("carton"), glyphSize)),
-                    case("cigarette", image(litterGlyphPainters.getValue("cigarette"), glyphSize)),
-                    case("food_waste", image(litterGlyphPainters.getValue("food_waste"), glyphSize)),
-                    case("tire", image(litterGlyphPainters.getValue("tire"), glyphSize)),
-                    case("mattress", image(litterGlyphPainters.getValue("mattress"), glyphSize)),
-                    case("debris_pile", image(litterGlyphPainters.getValue("debris_pile"), glyphSize)),
-                    case("tree", image(litterGlyphPainters.getValue("tree"), glyphSize)),
-                    case("bush", image(litterGlyphPainters.getValue("bush"), glyphSize)),
-                    case("fence", image(litterGlyphPainters.getValue("fence"), glyphSize)),
-                    case("gate", image(litterGlyphPainters.getValue("gate"), glyphSize)),
-                    case("pole", image(litterGlyphPainters.getValue("pole"), glyphSize)),
-                    case("hydrant", image(litterGlyphPainters.getValue("hydrant"), glyphSize)),
-                    case("bench", image(litterGlyphPainters.getValue("bench"), glyphSize)),
-                    case("mailbox", image(litterGlyphPainters.getValue("mailbox"), glyphSize)),
-                    case("sign", image(litterGlyphPainters.getValue("sign"), glyphSize)),
-                    fallback = image(litterGlyphPainters.getValue("other"), glyphSize),
-                ),
-                iconSize = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15 to const(0.3f),
-                    15.5 to const(0.6f),
-                    16 to const(0.72f),
-                    18 to const(0.9f),
-                ),
-                iconAllowOverlap = const(true),
-                iconIgnorePlacement = const(true),
-            )
-
-            // ── Verification indicator — orange ring on spots needing verification ──
-            val verificationSpots = remember(spots) {
-                val needsVerif = spots.filter { it.needsVerification && it.status != CommunityReportStatus.RESOLVED }
-                if (needsVerif.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = needsVerif.joinToString(",") { s ->
-                        """{"type":"Feature","properties":{"id":${s.id}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
                 }
+                val verifSrc = rememberGeoJsonSource(GeoJsonData.JsonString(verificationSpots))
+                // Street-level detail tier (with the halos): rings on every pin at
+                // neighborhood zoom doubled the ink of dense areas for a signal
+                // ("needs verification") that is only actionable up close.
+                CircleLayer(
+                    id = "spot-verification-ring",
+                    source = verifSrc,
+                    minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
+                    color = const(Color.Transparent),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15.5 to const(8.dp),
+                        17 to const(10.dp),
+                    ),
+                    strokeColor = const(Color(0xFFFF8C00)),
+                    strokeWidth = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15.5 to const(1.5.dp),
+                        17 to const(2.dp),
+                    ),
+                    opacity = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        15.5 to const(0f),
+                        16 to const(1f),
+                    ),
+                )
             }
-            val verifSrc = rememberGeoJsonSource(GeoJsonData.JsonString(verificationSpots))
-            // Street-level detail tier (with the halos): rings on every pin at
-            // neighborhood zoom doubled the ink of dense areas for a signal
-            // ("needs verification") that is only actionable up close.
-            CircleLayer(
-                id = "spot-verification-ring",
-                source = verifSrc,
-                minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
-                color = const(Color.Transparent),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15.5 to const(8.dp),
-                    17 to const(10.dp),
-                ),
-                strokeColor = const(Color(0xFFFF8C00)),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15.5 to const(1.5.dp),
-                    17 to const(2.dp),
-                ),
-                opacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    15.5 to const(0f),
-                    16 to const(1f),
-                ),
-            )
 
         }
 
@@ -1550,6 +1708,44 @@ actual fun GccMap(
         }
     }
 }
+
+/**
+ * Shared tap handler for the four coverage-state fill layers (clean-grazed,
+ * clean, dirty, stale): every layer's features carry the scanned cell's id
+ * in a `cellId` property (buildCoverageStateGeoJsons) — this reads it and
+ * forwards to [onTap]. Falls back to [ClickResult.Pass] when the tapped
+ * feature has no usable cellId, and returns null (no handler at all) when
+ * the caller passed no [onTap] — matching the layers' `onClick: T? = null`
+ * contract so an absent callback disables hit-testing entirely.
+ */
+private fun cellIdClickHandler(onTap: ((String) -> Unit)?): FeaturesClickHandler? =
+    if (onTap != null) { features ->
+        val cellId = features.firstOrNull()?.properties?.get("cellId")
+            ?.toString()?.trim('"')
+        if (!cellId.isNullOrBlank()) {
+            onTap(cellId)
+            ClickResult.Consume
+        } else {
+            ClickResult.Pass
+        }
+    } else null
+
+/**
+ * Shared tap handler for the route fill/line layers: every feature carries
+ * the tapped route's index in a `routeIndex` property — this reads it and
+ * forwards to [onTap]. Returns null (no handler) when the caller passed no
+ * [onTap], matching the layers' `onClick: T? = null` contract.
+ */
+private fun routeIndexClickHandler(onTap: ((Int) -> Unit)?): FeaturesClickHandler? =
+    if (onTap != null) { features ->
+        val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
+        if (idx != null) {
+            onTap(idx)
+            ClickResult.Consume
+        } else {
+            ClickResult.Pass
+        }
+    } else null
 
 @Composable
 private fun MapZoomControlOverlay(

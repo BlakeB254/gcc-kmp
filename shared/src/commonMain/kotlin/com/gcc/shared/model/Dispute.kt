@@ -38,11 +38,3 @@ data class CreateDisputeRequest(
     val evidence: List<String> = emptyList(),
 )
 
-@Serializable
-data class ResolveDisputeRequest(
-    val resolution: DisputeResolution,
-    val notes: String,
-    val refundAmount: Int? = null,
-    val payoutAmount: Int? = null,
-)
-

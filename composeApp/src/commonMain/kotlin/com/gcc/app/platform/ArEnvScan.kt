@@ -23,6 +23,23 @@ data class TrashCandidate(
     val estimatedWidthMeters: Double?,
     val estimatedWeightGrams: Int,
     val confidence: Float,
+    /** AR-local compass bearing (degrees, [0, 360)) camera→hit; null if unmeasurable. */
+    val yawDegrees: Double? = null,
+)
+
+/**
+ * One finished background-capture artifact chunk (Pillar 1 session capture)
+ * drained from the native recorder. Mirrors the Swift/iosMain
+ * `"index|kind|path|sizeBytes"` packet convention (kind: video|sidecar|
+ * depth) — see `ArNativeSurface.drainFinishedCaptureChunks`/
+ * `stopCaptureAndDrain`. Android/Desktop never produce these (capture is
+ * iOS-only in v1 — the scope guard in the session-capture plan).
+ */
+data class CaptureChunkInfo(
+    val index: Long,
+    val kind: String,
+    val filePath: String,
+    val sizeBytes: Long,
 )
 
 /**
@@ -90,10 +107,17 @@ expect class ArEnvScanOverlay() {
     /**
      * Fires when a landmark element (tree, fence, gate… — see
      * [EnvironmentElementCatalog]) is auto-registered to the grid, with its
-     * raycast world position. Called on the main thread; iOS only.
+     * raycast world position, physical width (from the saliency bbox +
+     * distance; null if unmeasurable) and AR-local compass bearing camera→hit
+     * (null if unmeasurable). Called on the main thread; iOS only.
      */
     fun setElementObservedListener(
-        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+        listener: (
+            (
+                lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+                widthMeters: Double?, yawDegrees: Double?,
+            ) -> Unit
+        )?,
     )
 
     /** Pause/resume frame sampling without tearing down the ARSession. */
@@ -108,6 +132,53 @@ expect class ArEnvScanOverlay() {
      *  (see [OutdoorGate.onCeilingPlane]). iOS only; never invoked elsewhere.
      *  Listener is called on the main thread. */
     fun setCeilingListener(listener: ((Boolean) -> Unit)?)
+
+    /**
+     * Fires ~1/sec with the coverage raycast fan's geo-resolved hits (where
+     * rays LANDED, with surface distance) while a geo-reference is paired.
+     * Listener runs on the main thread; iOS only. Feed straight into
+     * [CoverageTracker.updateWithRaycastHits].
+     */
+    fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?)
+
+    // ── Session capture (Pillar 1) ───────────────────────────────────
+    // iOS-only (native RealityKit surface); no-op everywhere else. Every
+    // failure must be caught by the CALLER (SpotScreen) and treated as
+    // "capture disabled for this session" — never let it interrupt the scan.
+
+    /**
+     * Begin full-session background capture (HEVC video chunks + pose/
+     * intrinsics sidecar + LiDAR depth keyframes) for [sessionId]. Returns
+     * true only when capture GENUINELY started — false on the SceneKit
+     * fallback, before a geo reference pairs, on any native failure, and
+     * always on Android/Desktop. Callers must only flip their recording
+     * state (REC chip) on true.
+     */
+    fun startCapture(sessionId: String): Boolean
+
+    /**
+     * Stop capture, finalize the in-progress chunk, and return every
+     * not-yet-drained finished chunk. Bounded ~5s (video writer finalize) —
+     * callers MUST invoke this from a background/Default coroutine, never
+     * the main thread, and BEFORE tearing the overlay down via [stop].
+     */
+    fun stopCapture(): List<CaptureChunkInfo>
+
+    /** Privacy path (INDOOR gate flip): discard the in-progress chunk
+     *  entirely (~60s over-purge, deliberate) rather than trim it. */
+    fun discardCurrentCaptureChunk()
+
+    /** Pause/resume capture without discarding the in-progress chunk —
+     *  outdoor-gate driven, mirrors [setFrameAnalysisEnabled]. */
+    fun setCaptureEnabled(enabled: Boolean)
+
+    /** Advisory: true when the device thermal state is at/above critical —
+     *  the level at which the native recorder auto-pauses appends (Task 4
+     *  thermal policy). Read on the caller's cadence to tint the REC chip
+     *  "paused"; it does NOT drive capture behavior (the Swift recorder owns
+     *  that) and may lag the recorder's actual pause by a tick. Always false
+     *  off-iOS. */
+    fun thermalPausedLikely(): Boolean
 
     fun stop()
 }

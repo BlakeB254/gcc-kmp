@@ -34,11 +34,6 @@ data class VerifyWorkerRequest(
 )
 
 @Serializable
-data class UpdateWorkerRoleRequest(
-    val role: UserRole,
-)
-
-@Serializable
 data class BulkActionRequest(
     val workerIds: List<Int>,
     val action: BulkAction,
@@ -136,29 +131,6 @@ data class AdminCheckpointRequest(
 )
 
 @Serializable
-data class AdminBlockRequest(
-    val code: String,
-    val name: String,
-    val serviceAreaId: Int? = null,
-    val fundingGoal: Int? = null,
-    val sponsorId: Int? = null,
-    val displayImage: String? = null,
-    val imageLocationLat: Double? = null,
-    val imageLocationLng: Double? = null,
-)
-
-@Serializable
-data class AdminServiceAreaRequest(
-    val name: String,
-    val city: String = "",
-    val state: String = "",
-    val boundary: GeoJSONPolygon? = null,
-    val mapCenter: Coordinates? = null,
-    val mapZoom: Double = 14.0,
-    val status: String = "planning",
-)
-
-@Serializable
 data class AddressChangeRequest(
     val workerId: Int,
     val newAddress: WorkerAddress,
@@ -241,47 +213,4 @@ data class AdminActivityItem(
     val description: String,
     val actorName: String? = null,
     val timestamp: Instant,
-)
-
-// ─── Bounty Analytics Models ────────────────────────────────────────
-
-@Serializable
-data class BountyAnalyticsStats(
-    val totalPosted: Int = 0,
-    val totalValueCents: Long = 0,
-    val avgPriceCents: Int = 0,
-    val completionRate: Double = 0.0,
-    val avgTimeToClaimMinutes: Int = 0,
-    val totalSpotterTipsCents: Long = 0,
-)
-
-@Serializable
-data class BountyTimeseriesPoint(
-    val date: String = "",
-    val posted: Int = 0,
-    val claimed: Int = 0,
-    val completed: Int = 0,
-    val expired: Int = 0,
-    val totalValueCents: Long = 0,
-)
-
-@Serializable
-data class BountyLocationStats(
-    val communityAreaId: Int = 0,
-    val communityAreaName: String = "",
-    val bountyCount: Int = 0,
-    val totalValueCents: Long = 0,
-    val avgPriceCents: Int = 0,
-    val completionRate: Double = 0.0,
-    val avgTimeToClaimMinutes: Int = 0,
-)
-
-@Serializable
-data class BountyPosterStats(
-    val userId: Int = 0,
-    val userName: String = "",
-    val posterType: PosterType = PosterType.WORKER,
-    val bountiesPosted: Int = 0,
-    val totalValueCents: Long = 0,
-    val completionRate: Double = 0.0,
 )

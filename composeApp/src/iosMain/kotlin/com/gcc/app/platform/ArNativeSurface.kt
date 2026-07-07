@@ -32,6 +32,17 @@ interface ArNativeSurface {
     fun pause()
 
     /**
+     * Full teardown: cancel the per-frame scene subscription and remove
+     * EVERY created entity (planes, vector/fog cells, sector posts, walls,
+     * arrow, veil) from the scene graph, then pause the session. `pause()`
+     * alone left the per-frame update subscription live and every entity —
+     * potentially 750+ on a large scan — anchored in the scene holding GPU
+     * resources; that's the scan-end (Complete Scan tap) crash class this
+     * closes. Overlays call this instead of [pause] from `stop()`.
+     */
+    fun teardown()
+
+    /**
      * Latest camera frame's CVPixelBuffer as a raw address (0 = none yet).
      * A Long because cinterop pointer types are silently dropped from the
      * ObjC framework header, taking the whole protocol with them — the Swift
@@ -119,6 +130,49 @@ interface ArNativeSurface {
 
     /** One-shot lock-on effect (particles on iOS 18+, pulse otherwise). */
     fun emitLockEffect(x: Double, y: Double, z: Double)
+
+    // ── Session capture (Pillar 1) ───────────────────────────────────
+    // Poll-drain design, deliberately callback-free: the Swift recorder
+    // spools HEVC chunks + pose sidecar + depth keyframes to disk and
+    // Kotlin polls finished chunks on its existing 1s tick — no
+    // cross-language callback plumbing. Chunk packets are K/N-friendly
+    // "index|kind|path|sizeBytes" strings (kind: video|sidecar|depth),
+    // the classifySceneLabels packet-string precedent. The recorder can
+    // NEVER degrade the live scan: every Swift-side failure is logged
+    // (GCC-DIAG) and disables capture for the session; nothing throws
+    // across this boundary.
+
+    /**
+     * Begin background session capture into [outputDirPath] (created if
+     * needed — a Documents subdirectory owned by Kotlin). Chunks rotate at
+     * 60s / 64MB; thermal `.serious` degrades to sidecar-only appends and
+     * `.critical` auto-pauses until the device cools.
+     */
+    fun startCapture(sessionId: String, outputDirPath: String)
+
+    /**
+     * Take (and clear) the finished-chunk packets — files fully finalized
+     * on disk, safe to hand to the bookkeeping store / uploader.
+     */
+    fun drainFinishedCaptureChunks(): List<String>
+
+    /**
+     * Privacy path (INDOOR gate flip): delete the in-progress chunk's files
+     * entirely (≤60s over-purge, deliberate) — capture resumes into a fresh
+     * chunk index when appends restart.
+     */
+    fun discardCurrentCaptureChunk()
+
+    /**
+     * Stop capture, finalize the in-progress chunk, and return ALL
+     * not-yet-drained packets. Blocks briefly (bounded) for the video
+     * finalize — call from the scan-stop path BEFORE [teardown], never
+     * from a per-frame context.
+     */
+    fun stopCaptureAndDrain(): List<String>
+
+    /** Pause/resume capture without teardown (outdoor-gate driven). */
+    fun setCaptureEnabled(enabled: Boolean)
 }
 
 /**
@@ -149,3 +203,15 @@ internal fun parseSceneLabels(entries: List<String>): List<ClassificationObserva
         val confidence = entry.substring(i + 1).toFloatOrNull() ?: return@mapNotNull null
         ClassificationObservation(entry.substring(0, i), confidence)
     }
+
+/** Parses Swift's `"index|kind|path|sizeBytes"` capture-chunk packets (see
+ *  [ArNativeSurface.drainFinishedCaptureChunks]/[ArNativeSurface.stopCaptureAndDrain])
+ *  into [CaptureChunkInfo]. Malformed entries are dropped rather than
+ *  thrown — capture bookkeeping must never crash the scan. */
+internal fun parseCaptureChunkPacket(packet: String): CaptureChunkInfo? {
+    val parts = packet.split('|')
+    if (parts.size != 4) return null
+    val index = parts[0].toLongOrNull() ?: return null
+    val sizeBytes = parts[3].toLongOrNull() ?: return null
+    return CaptureChunkInfo(index = index, kind = parts[1], filePath = parts[2], sizeBytes = sizeBytes)
+}

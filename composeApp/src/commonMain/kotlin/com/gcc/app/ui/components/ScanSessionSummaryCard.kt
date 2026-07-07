@@ -1,7 +1,9 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +36,7 @@ import com.gcc.app.ui.theme.CardAccentGreen
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.TextMuted
 import com.gcc.app.platform.EnvScanSessionDraft
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
@@ -153,14 +161,32 @@ private fun SessionCoverageMap(
         val cameraZoom = (fitOverlayZoom - bias).coerceIn(14.0, 19.0)
         val overlayZoom = cameraZoom + bias
 
-        GccMap(
-            modifier = Modifier.fillMaxSize(),
-            centerLat = centerLat,
-            centerLng = centerLng,
-            zoom = cameraZoom,
-            enableGestures = false,
-            instantCamera = true,
-        )
+        // Delay mounting the map by one short beat so the AR scene's teardown
+        // (Fix 1, r2a: session pause + entity cleanup on the Complete Scan
+        // transition) finishes before this card asks MapLibre to allocate a
+        // fresh GL surface — mounting both at once is the CAMERA→RESULT
+        // crash window this closes on the composition side.
+        var showMap by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            delay(150)
+            showMap = true
+        }
+        if (showMap) {
+            GccMap(
+                modifier = Modifier.fillMaxSize(),
+                centerLat = centerLat,
+                centerLng = centerLng,
+                zoom = cameraZoom,
+                enableGestures = false,
+                instantCamera = true,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val cellPx = metersToPixels(CoverageTracker.cellSizeMeters, centerLat, overlayZoom)

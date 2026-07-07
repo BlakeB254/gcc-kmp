@@ -7,14 +7,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.UIKitView
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.allocArrayOf
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import platform.Foundation.NSData
+import platform.Foundation.NSFileHandle
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.closeFile
+import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.seekToEndOfFile
+import platform.Foundation.stringByDeletingLastPathComponent
+import platform.Foundation.writeToFile
 import platform.posix.memcpy
 
 /** iOS Object Capture controller: drives the registered Swift bridge. */
@@ -153,3 +166,91 @@ actual fun readLocalFileBytes(path: String): ByteArray? {
     }
     return bytes
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteLocalFile(path: String) {
+    runCatching { platform.Foundation.NSFileManager.defaultManager.removeItemAtPath(path, error = null) }
+}
+
+/** Creates [path]'s parent directory chain if missing — shared by every
+ *  journal file op below (append/write both need it on first write). */
+@OptIn(ExperimentalForeignApi::class)
+private fun ensureParentDirExists(path: String) {
+    val dir = (path as NSString).stringByDeletingLastPathComponent
+    if (dir.isEmpty()) return
+    val fm = NSFileManager.defaultManager
+    if (fm.fileExistsAtPath(dir)) return
+    val created = fm.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+    if (!created && !fm.fileExistsAtPath(dir)) {
+        throw IllegalStateException("mkdir failed: $dir")
+    }
+}
+
+/**
+ * True O(1) append via NSFileHandle (seek-to-end + write): cost is constant
+ * per call regardless of how large the journal has grown, so an hour-long
+ * 1Hz session never pays a growing read-modify-write. Creates the file and
+ * any missing parent directories on first write. Throws on failure —
+ * [EnvScanSessionRecorder]'s single-writer journal coroutine is the one
+ * caller and catches to degrade that session to memory-only.
+ */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+actual fun appendLineToFile(path: String, line: String) {
+    ensureParentDirExists(path)
+    val fm = NSFileManager.defaultManager
+    if (!fm.fileExistsAtPath(path)) {
+        if (!fm.createFileAtPath(path, contents = null, attributes = null)) {
+            throw IllegalStateException("createFile failed: $path")
+        }
+    }
+    val handle = NSFileHandle.fileHandleForWritingAtPath(path)
+        ?: throw IllegalStateException("no writable file handle for $path")
+    try {
+        handle.seekToEndOfFile()
+        val bytes = (line + "\n").encodeToByteArray()
+        val data = memScoped {
+            NSData.create(bytes = allocArrayOf(bytes), length = bytes.size.toULong())
+        }
+        // The interop surfaces the error-returning writeData:error: variant.
+        if (!handle.writeData(data, error = null)) {
+            throw IllegalStateException("journal append write failed: $path")
+        }
+    } finally {
+        handle.closeFile()
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun writeFileLines(path: String, lines: List<String>) {
+    ensureParentDirExists(path)
+    writeStringToFile(path, if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun writeStringToFile(path: String, content: String) {
+    @Suppress("CAST_NEVER_SUCCEEDS")
+    val ok = (content as NSString).writeToFile(path, atomically = true, encoding = NSUTF8StringEncoding, error = null)
+    if (!ok) throw IllegalStateException("write failed: $path")
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun listFilesInDir(dirPath: String): List<String> {
+    return try {
+        NSFileManager.defaultManager.contentsOfDirectoryAtPath(dirPath, error = null)
+            ?.filterIsInstance<String>()
+            ?.map { "$dirPath/$it" }
+            .orEmpty()
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("session-journal", "listFilesInDir failed for $dirPath", e)
+        emptyList()
+    }
+}
+
+actual fun sessionJournalPath(sessionId: String): String? {
+    val dir = scanSessionsDirPath() ?: return null
+    return "$dir/$sessionId.jsonl"
+}
+
+actual fun scanSessionsDirPath(): String? = documentsPath() + "/scan-sessions"
+
+actual fun captureSessionsDirPath(): String? = documentsPath() + "/capture-sessions"

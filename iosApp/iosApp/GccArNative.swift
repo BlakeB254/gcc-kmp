@@ -22,6 +22,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// Kotlin stays valid for the duration of one Vision tick.
     private var lastFrame: ARFrame?
     private let frameLock = NSLock()
+    /// Background session recorder (Pillar 1) — created on the first
+    /// `startCapture`. Lives entirely off the render path: `append(frame:)`
+    /// is allocation-light on the delegate thread and can never throw.
+    private var recorder: ArSessionRecorder?
 
     /// Grid squares stay this size no matter how large a plane grows.
     /// 1.5m = a clean divisor of CoverageTracker's 3m cells, and the grid is
@@ -30,6 +34,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private static let gridTileMeters: Float = 1.5
     /// Vector-scan overlay caps (mirrors the Kotlin SceneKit path).
     private static let maxVectorCells = 350
+
+    /// Only one ARSession may hold the camera at a time. The Kotlin factory
+    /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
+    /// per scan session with no guarantee the previous session's `pause()`
+    /// (driven by the Compose `UIKitView`'s `onRelease`) has already run —
+    /// dispose ordering across the Kotlin/Native bridge isn't guaranteed.
+    /// Weak so a surface that DID get released properly doesn't leak here.
+    private static weak var liveSurface: RealityKitArSurface?
 
     private var planeEntities: [UUID: PlaneGridEntity] = [:]
     /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
@@ -68,6 +80,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     override init() {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
         super.init()
+
+        // Release the previous session's camera BEFORE running this one — two
+        // live ARSessions fighting over AVCaptureDevice is the crash-on-second-
+        // scan root cause this guards against (see `liveSurface` kdoc above).
+        Self.liveSurface?.pause()
+        Self.liveSurface = self
 
         let config = ARWorldTrackingConfiguration()
         // Compass-true axes — the Kotlin geo-ref math (east = +X, north = -Z)
@@ -108,6 +126,54 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         frameLock.lock()
         lastFrame = nil
         frameLock.unlock()
+        if Self.liveSurface === self {
+            Self.liveSurface = nil
+        }
+    }
+
+    /// Full teardown, not just pause: cancels the per-frame scene subscription
+    /// and removes EVERY created entity (planes, vector/fog cells, sector
+    /// posts, walls, arrow, veil) from the RealityKit scene graph. `pause()`
+    /// alone left `updateSubscription` live and every entity — potentially
+    /// 750+ on a large scan — still anchored in the scene holding GPU
+    /// resources, which is the scan-end crash-on-Complete-Scan root cause
+    /// this fixes. Called from Kotlin's `ArEnvScanOverlay.stop()` (and the
+    /// route/spot overlays) instead of `pause()` at composition teardown.
+    func teardown() {
+        // Kotlin's stop order calls stopCaptureAndDrain() BEFORE teardown;
+        // if capture is somehow still live here, finalize + drop silently —
+        // teardown must stay safe regardless of ordering.
+        recorder?.finishSilently()
+        recorder = nil
+
+        updateSubscription?.cancel()
+        updateSubscription = nil
+
+        for (_, entry) in planeEntities { entry.anchor.removeFromParent() }
+        planeEntities.removeAll()
+
+        for (_, anchor) in vectorCellEntities { anchor.removeFromParent() }
+        vectorCellEntities.removeAll()
+
+        for (_, anchor) in fogCellEntities { anchor.removeFromParent() }
+        fogCellEntities.removeAll()
+
+        for (_, anchor) in sectorPostEntities { anchor.removeFromParent() }
+        sectorPostEntities.removeAll()
+
+        for wall in wallEntities { wall.removeFromParent() }
+        wallEntities.removeAll()
+
+        arrowEntity?.removeFromParent()
+        arrowEntity = nil
+        veilEntity?.removeFromParent()
+        veilEntity = nil
+        cameraAnchor.removeFromParent()
+
+        coachingOverlay?.setActive(false, animated: false)
+        coachingOverlay = nil
+
+        pause()
     }
 
     func currentPixelBufferAddress() -> Int64 {
@@ -533,12 +599,36 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
+    // MARK: - Session capture (Pillar 1 — see ArSessionRecorder)
+
+    func startCapture(sessionId: String, outputDirPath: String) {
+        if recorder == nil { recorder = ArSessionRecorder() }
+        recorder?.start(sessionId: sessionId, outputDirPath: outputDirPath)
+    }
+
+    func drainFinishedCaptureChunks() -> [String] {
+        recorder?.drainFinishedChunks() ?? []
+    }
+
+    func discardCurrentCaptureChunk() {
+        recorder?.discardCurrentChunk()
+    }
+
+    func stopCaptureAndDrain() -> [String] {
+        recorder?.stopAndDrain() ?? []
+    }
+
+    func setCaptureEnabled(enabled: Bool) {
+        recorder?.setEnabled(enabled)
+    }
+
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         frameLock.lock()
         lastFrame = frame
         frameLock.unlock()
+        recorder?.append(frame: frame)
     }
 
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {

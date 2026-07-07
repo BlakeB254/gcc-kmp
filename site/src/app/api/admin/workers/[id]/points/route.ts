@@ -148,38 +148,39 @@ export async function POST(
     )
   }
 
-  // Wrap the ledger insert + denormalized-total update in a transaction
-  // so they cannot diverge if the request crashes between statements.
-  const { ledgerRow, updated } = await db.transaction(async (tx) => {
-    const [insertedLedgerRow] = await tx
-      .insert(pointsLedger)
-      .values({
-        workerId: targetWorkerId,
-        action,
-        points: amount,
-        referenceType: action,
-        // Keep the legacy referenceId (admin worker id) for back-compat
-        // with any existing dashboards; the new explicit columns are the
-        // source of truth going forward.
-        referenceId: auth.workerId,
-        reason,
-        grantedByWorkerId: auth.workerId,
-      })
-      .returning()
+  // Sequential, non-transactional writes: the neon-http driver (see
+  // site/src/db/index.ts) has no session-level `db.transaction` support, so
+  // this can't be wrapped atomically. Order is chosen so a mid-request
+  // crash leaves recoverable state: the ledger row is the append-only
+  // source of truth, written first; the denormalized
+  // `workers.statsCommunityPoints` total is derived from it and could be
+  // recomputed from points_ledger if the second statement never runs.
+  const [ledgerRow] = await db
+    .insert(pointsLedger)
+    .values({
+      workerId: targetWorkerId,
+      action,
+      points: amount,
+      referenceType: action,
+      // Keep the legacy referenceId (admin worker id) for back-compat
+      // with any existing dashboards; the new explicit columns are the
+      // source of truth going forward.
+      referenceId: auth.workerId,
+      reason,
+      grantedByWorkerId: auth.workerId,
+    })
+    .returning()
 
-    const [updatedWorker] = await tx
-      .update(workers)
-      .set({
-        statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${amount}`,
-      })
-      .where(eq(workers.id, targetWorkerId))
-      .returning({
-        id: workers.id,
-        statsCommunityPoints: workers.statsCommunityPoints,
-      })
-
-    return { ledgerRow: insertedLedgerRow, updated: updatedWorker }
-  })
+  const [updated] = await db
+    .update(workers)
+    .set({
+      statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${amount}`,
+    })
+    .where(eq(workers.id, targetWorkerId))
+    .returning({
+      id: workers.id,
+      statsCommunityPoints: workers.statsCommunityPoints,
+    })
 
   // Operational log — IDs only. The reason text lives in points_ledger.reason
   // for durable audit; logging free-form user input is a leakage risk.

@@ -682,15 +682,6 @@ class GccApiClient(
     suspend fun getAdminDailyStats(days: Int = 30): List<AdminDailyStats> =
         get("/api/admin/analytics/daily") { parameter("days", days) }
 
-    suspend fun getRevenueByArea(): List<RevenueByArea> =
-        get("/api/admin/analytics/revenue-by-area")
-
-    suspend fun getWorkerMetrics(limit: Int = 20): List<WorkerMetrics> =
-        get("/api/admin/analytics/worker-metrics") { parameter("limit", limit) }
-
-    suspend fun getSponsorMetrics(limit: Int = 20): List<SponsorMetrics> =
-        get("/api/admin/analytics/sponsor-metrics") { parameter("limit", limit) }
-
     // Workers
     suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20, verificationStatus: String? = null): List<Worker> =
         get("/api/admin/workers") {
@@ -717,31 +708,13 @@ class GccApiClient(
     suspend fun verifyWorker(workerId: Int, request: VerifyWorkerRequest): Worker =
         postJson("/api/admin/workers/$workerId/verify", request)
 
-    suspend fun updateWorkerRole(workerId: Int, request: UpdateWorkerRoleRequest): Worker =
-        putJson("/api/admin/workers/$workerId/role", request)
-
     suspend fun bulkWorkerAction(request: BulkActionRequest): List<Worker> =
         postJson("/api/admin/workers/bulk-verify", request)
 
     suspend fun deleteWorker(workerId: Int): Unit =
         deleteUnit("/api/admin/workers/$workerId")
 
-    // Sponsors
-    suspend fun getAdminSponsors(search: String? = null, page: Int = 1, limit: Int = 20): List<Sponsor> =
-        get("/api/admin/sponsors") {
-            search?.let { parameter("search", it) }
-            parameter("page", page)
-            parameter("limit", limit)
-        }
-
     // Jobs
-    suspend fun getAdminJobs(status: String? = null, page: Int = 1, limit: Int = 20): List<Job> =
-        get("/api/admin/jobs") {
-            status?.let { parameter("status", it) }
-            parameter("page", page)
-            parameter("limit", limit)
-        }
-
     suspend fun forceJobStatus(jobId: Int, request: ForceJobStatusRequest): Job =
         putJson("/api/admin/jobs/$jobId/status", request)
 
@@ -774,9 +747,6 @@ class GccApiClient(
         deleteUnit("/api/admin/routes/$routeId")
 
     // Blocks
-    suspend fun getAdminBlocks(): List<Block> =
-        get("/api/admin/blocks")
-
     suspend fun getAvailableBlocks(): List<Block> {
         val siteUrl = "https://www.globalcommunitycleaners.org"
         val primaryBody = runCatching {
@@ -897,15 +867,6 @@ class GccApiClient(
         )
     }
 
-    suspend fun sponsorBlock(request: SponsorBlockRequest): Block =
-        postJson("/api/blocks/${request.blockId}/sponsor", request)
-
-    suspend fun createBlock(request: AdminBlockRequest): Block =
-        postJson("/api/admin/blocks", request)
-
-    suspend fun updateBlock(blockId: Int, request: AdminBlockRequest): Block =
-        putJson("/api/admin/blocks/$blockId", request)
-
     /**
      * Save block boundaries (admin boundary editor). v1 only sends
      * innerBoundary — the endpoint also accepts locationBoundary, but the
@@ -949,45 +910,8 @@ class GccApiClient(
     suspend fun forceCloseBounty(bountyId: Int): Bounty =
         postJson("/api/admin/bounties/$bountyId/close")
 
-    suspend fun getBountyAnalyticsStats(): BountyAnalyticsStats =
-        get("/api/admin/analytics/bounty-stats")
-
-    suspend fun getBountyTimeseries(days: Int = 30): List<BountyTimeseriesPoint> =
-        get("/api/admin/analytics/bounty-timeseries") { parameter("days", days) }
-
-    suspend fun getBountyByLocation(): List<BountyLocationStats> =
-        get("/api/admin/analytics/bounty-by-location")
-
-    suspend fun getBountyLeaderboard(limit: Int = 10): List<BountyPosterStats> =
-        get("/api/admin/analytics/bounty-leaderboard") { parameter("limit", limit) }
-
     suspend fun claimBounty(bountyId: Int): Bounty =
         postJson("/api/bounties/$bountyId/claim")
-
-    suspend fun forceReassignBounty(bountyId: Int): Bounty =
-        putEmpty("/api/admin/bounties/$bountyId/force-reassign")
-
-    // Disputes
-    suspend fun getAdminDisputes(status: String? = null): List<Dispute> =
-        get("/api/admin/disputes") { status?.let { parameter("status", it) } }
-
-    suspend fun resolveDispute(disputeId: Int, request: ResolveDisputeRequest): Dispute =
-        postJson("/api/admin/disputes/$disputeId/resolve", request)
-
-    // Service Areas
-    suspend fun getAdminServiceAreas(): List<ServiceArea> =
-        get("/api/admin/service-areas")
-
-    suspend fun createServiceArea(request: AdminServiceAreaRequest): ServiceArea =
-        postJson("/api/admin/service-areas", request)
-
-    // Feedback
-    suspend fun getAdminFeedback(status: String? = null): List<FeedbackTicket> =
-        get("/api/admin/feedback") { status?.let { parameter("status", it) } }
-
-    // Address Changes
-    suspend fun getAddressChanges(): List<AddressChangeRequest> =
-        get("/api/admin/address-changes")
 
     // Community Spot Reports
     suspend fun getAdminSpotReports(): List<CommunityReport> =
@@ -1194,6 +1118,19 @@ class GccApiClient(
             throw Exception(httpErrorMessage(response.status.value, errorBody))
         }
         return response.body<ScanCoverageSubmitResponse>()
+    }
+
+    suspend fun retractCoverageEvents(request: RetractCoverageRequest): RetractCoverageResponse {
+        val response = httpClient.post("$baseUrl/api/scans/coverage/retract") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<RetractCoverageResponse>()
     }
 
     /**

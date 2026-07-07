@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
       ) {
         continue // skip malformed events rather than fail the whole batch
       }
-      await recordCoverageEvent({ ...event, workerId: auth.workerId })
+      const quality: 'grazed' | 'close' = event.quality === 'close' ? 'close' : 'grazed'
+      await recordCoverageEvent({ ...event, quality, workerId: auth.workerId })
       inserted++
     }
 

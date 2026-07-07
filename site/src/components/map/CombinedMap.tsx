@@ -754,32 +754,24 @@ export function CombinedMap({
               }}
             />
 
-            {/* Per-item-type icons — close-zoom enhancement layered on top of the
+            {/* Per-item-type labels — close-zoom enhancement layered on top of the
                 dots, one zoom level past where dots are already fully opaque.
                 Does NOT touch combined-spot-heatmap/combined-spot-center paint.
-                NOTE: icon-image references ['get', 'itemType'] which requires
-                matching image IDs (tire/couch/branch/etc. sprites) to be loaded
-                into the map style — that's a separate design-asset task. Until
-                then MapLibre renders nothing for unmatched icon-image IDs; the
-                text-field label still renders, so this degrades gracefully. */}
+                icon-image/icon-* keys were removed here (2026-07-06 cleanup
+                audit): the tire/couch/branch/etc. sprites they referenced were
+                never registered in the map style, so MapLibre rendered nothing
+                for them — the text-field label was the only visible output. */}
             <Layer
               id="combined-spot-icons"
               type="symbol"
               minzoom={SPOT_ZOOM.DOTS_MIN + 1}
               layout={{
-                'icon-image': ['get', 'itemType'],
-                'icon-size': 0.6,
-                'icon-allow-overlap': true,
                 'text-field': ['get', 'itemType'],
                 'text-size': 9,
                 'text-offset': [0, 1.2],
                 'text-anchor': 'top',
               }}
               paint={{
-                'icon-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN + 1, 0, SPOT_ZOOM.DOTS_MIN + 1.5, 1,
-                ],
                 'text-opacity': [
                   'interpolate', ['linear'], ['zoom'],
                   SPOT_ZOOM.DOTS_MIN + 1, 0, SPOT_ZOOM.DOTS_MIN + 1.5, 1,

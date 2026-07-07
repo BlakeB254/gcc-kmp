@@ -4,6 +4,7 @@ import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sqrt
@@ -793,6 +794,105 @@ fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
 
+/**
+ * Builds a GeoJSON FeatureCollection of true-scale, oriented footprint
+ * polygons for world observations that carry a physical width (Pillar 3
+ * Task 3 — see docs/superpowers/plans/2026-07-07-pillar3-footprints.md).
+ *
+ * Geometry approximation table (v1):
+ *  - domain == "vegetation" → circle (12-gon) of diameter [WorldObservation.widthMeters]
+ *  - everything else → oriented rectangle widthMeters × (widthMeters × 0.4),
+ *    rotated by [WorldObservation.yawDegrees] (bearing of the observed face;
+ *    defaults to 0 when unmeasured)
+ *
+ * Observations with a null/non-finite/non-positive widthMeters are skipped —
+ * there is no measured footprint to draw. Feature properties carry itemType,
+ * domain, and state so GccMap.ios can filter/color per domain and the tap
+ * target can identify what was scanned.
+ *
+ * [centerLat] anchors the lng/lat meter-scale conversion for the oriented
+ * rectangles (single lngScale for the whole collection, matching
+ * [buildCoverageStateGeoJsons]'s pattern); the circle branch reuses
+ * [circlePolygonRing], which scales per-feature off its own latitude.
+ */
+fun buildObservationFootprintsGeoJson(
+    observations: List<WorldObservation>,
+    centerLat: Double,
+): String {
+    if (observations.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    val metersPerDegreeLat = 111_320.0
+    val metersPerDegreeLng = (metersPerDegreeLat * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
+
+    val features = observations.mapNotNull { obs ->
+        val width = obs.widthMeters
+        if (width == null || !width.isFinite() || width <= 0.0) return@mapNotNull null
+        val yaw = obs.yawDegrees?.takeIf { it.isFinite() } ?: 0.0
+
+        val ring = if (obs.domain == "vegetation") {
+            circlePolygonRing(lat = obs.lat, lng = obs.lng, radiusMeters = width / 2.0, segments = 12)
+        } else {
+            footprintRectRing(
+                lat = obs.lat,
+                lng = obs.lng,
+                widthMeters = width,
+                depthMeters = width * 0.4,
+                yawDegrees = yaw,
+                metersPerDegreeLat = metersPerDegreeLat,
+                metersPerDegreeLng = metersPerDegreeLng,
+            )
+        }
+
+        val itemTypeProp = obs.itemType?.let { """"itemType":"$it",""" } ?: ""
+        val domainProp = obs.domain?.let { """"domain":"$it",""" } ?: ""
+        """{"type":"Feature","properties":{$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+    }.joinToString(",")
+
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
+ * Oriented rectangle ring for [buildObservationFootprintsGeoJson]'s non-
+ * vegetation branch — same corner-rotation idiom as
+ * [buildSpotRectanglePolygonsGeoJson] (rotate ±half-extents around center in
+ * already-degree-converted space), parameterized on a caller-supplied
+ * meters-per-degree pair instead of recomputing per feature.
+ */
+private fun footprintRectRing(
+    lat: Double,
+    lng: Double,
+    widthMeters: Double,
+    depthMeters: Double,
+    yawDegrees: Double,
+    metersPerDegreeLat: Double,
+    metersPerDegreeLng: Double,
+): String {
+    val halfW = widthMeters / 2.0
+    val halfD = depthMeters / 2.0
+    val rad = yawDegrees * PI / 180.0
+    val cosR = cos(rad)
+    val sinR = sin(rad)
+
+    // 4 corners (unrotated: ±halfW, ±halfD) in METER space, rotated with
+    // compass (clockwise-from-north) handedness — yaw is a bearing, not a
+    // CCW math angle, so a plain CCW rotation mirrors the shape and mixes
+    // lat/lng-scaled axes before conversion, both wrong. Rotating in meters
+    // first and converting per-axis afterward (lat: /metersPerDegreeLat,
+    // lng: /metersPerDegreeLng) keeps the footprint's true aspect ratio;
+    // yaw 0 keeps the (long) width axis east-west, yaw 90 swings it to
+    // north-south, yaw 45 to bearing 135 (SE-NW).
+    val corners = listOf(
+        -halfW to -halfD, halfW to -halfD,
+        halfW to halfD, -halfW to halfD,
+    ).map { (dx, dy) ->
+        val rx = dx * cosR + dy * sinR
+        val ry = -dx * sinR + dy * cosR
+        val dLng = rx / metersPerDegreeLng
+        val dLat = ry / metersPerDegreeLat
+        "[${lng + dLng},${lat + dLat}]"
+    }
+    return corners.joinToString(",") + ",${corners.first()}"
+}
+
 fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): String {
     // Aggregate open bounties by community area name
     val areaAggregates = bounties
@@ -825,11 +925,14 @@ fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Str
 }
 
 
-/** The four coverage-state tile collections — one visual system: green =
- *  scanned clean, red = scanned but litter on record, amber = stale (ready
- *  for a fresh scan), fog veil = never scanned at all. */
+/** The five coverage-state tile collections — one visual system: green =
+ *  scanned clean (full or grazed), red = scanned but litter on record,
+ *  amber = stale (ready for a fresh scan), fog veil = never scanned at all. */
 data class CoverageStateJsons(
     val clean: String,
+    /** Fresh, no-spot cells whose best quality is "grazed" (sweep-only) — the
+     *  lighter green "come back and detail-scan me" tile (spec §3). */
+    val cleanGrazed: String,
     val dirty: String,
     val stale: String,
     val fog: String,
@@ -839,7 +942,9 @@ data class CoverageStateJsons(
  * Foundational coverage-state tiles for the map (product direction
  * 2026-07-03; visual system extended 2026-07-06): communicate scan state
  * per ~10m ledger cell at a glance.
- *  - clean: fresh ledger cells with no active spot nearby → green tint
+ *  - clean: fresh, no-spot cells whose best-recorded quality is "close" → full green tint
+ *  - cleanGrazed: fresh, no-spot cells whose best-recorded quality is NOT
+ *    "close" (sweep-only) → lighter green, "come back and detail-scan me"
  *  - dirty: fresh cells WITH an active spot/litter on record → red tint
  *    (the tile-level "cleanliness readout"; the heat layers still grade
  *    density at overview zooms)
@@ -888,8 +993,14 @@ fun buildCoverageStateGeoJsons(
     }
 
     val fresh = coverageCells.filter { it.state == "fresh" }
-    val clean = fresh
-        .filter { !hasSpotNear(it.lat, it.lng) }
+    val freshNoSpot = fresh.filter { !hasSpotNear(it.lat, it.lng) }
+    // Two-tier clean (spec §3): close-scanned reads full green; grazed reads a
+    // lighter green — "touched, still needs a detail pass".
+    val clean = freshNoSpot
+        .filter { it.quality == "close" }
+        .joinToString(",") { feature(it) }
+    val cleanGrazed = freshNoSpot
+        .filter { it.quality != "close" }
         .joinToString(",") { feature(it) }
     // Scanned recently but litter is still on record — previously these
     // cells were silently DROPPED (no tile at all); now they read red so a
@@ -933,6 +1044,7 @@ fun buildCoverageStateGeoJsons(
         if (features.isEmpty()) empty else """{"type":"FeatureCollection","features":[$features]}"""
     return CoverageStateJsons(
         clean = wrap(clean),
+        cleanGrazed = wrap(cleanGrazed),
         dirty = wrap(dirty),
         stale = wrap(stale),
         fog = wrap(fogFeatures.toString()),
