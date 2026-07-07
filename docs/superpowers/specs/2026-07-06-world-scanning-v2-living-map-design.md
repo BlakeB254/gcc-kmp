@@ -102,6 +102,32 @@ zooms and from afar obviously represented by the heatmap rated by cleanliness."
 
 ---
 
+## Pillar 7 — Extended sight coverage + organic rendering (Blake, 2026-07-07, from field screenshot)
+
+**Ask:** "the scan could see the building fronts across the street so it should have a
+lightly shaded depiction… extend the cone to where the user can see… and the squares
+shouldn't be squares."
+
+- **Third tier `SEEN`:** raycast-fan hits beyond GRAZE_RANGE (10m) up to
+  `SEEN_RANGE_METERS` (~55m) credit cells at the lightest tier — "camera observed it,
+  point data exists" — instead of being discarded. Monotonic SEEN<GRAZED<CLOSE.
+  Server quality enum += 'seen' (points: 0/m v1 — sight alone isn't work); minimap +
+  main map get a third, fainter wash; AR fog unchanged (lifts only on grazed+).
+  Physics note: beyond LiDAR range, hits come from estimated planes/feature points —
+  positional error grows with distance; acceptable for a light wash, must stay
+  visually subordinate to grazed/close.
+- **Organic coverage rendering:** replace per-cell squares with smoothed union
+  outlines per contiguous credited cluster, per tier (marching-squares over the 3m
+  cell set → rounded path; drop grid strokes). Session minimap AND main map, so
+  coverage reads as swept territory, not graph paper.
+- **Coverage everywhere at close zoom:** both My Area and Explorer render the
+  coverage layer; fetch follows the viewport (delta polling gives cheap refresh).
+- **Experience arc:** close ground-panning remains the only path to "thoroughly
+  scanned" (trash/grass/plant detail); distant multi-directional scanning feeds the
+  world model and paints SEEN — the shading teaches the difference.
+
+Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
