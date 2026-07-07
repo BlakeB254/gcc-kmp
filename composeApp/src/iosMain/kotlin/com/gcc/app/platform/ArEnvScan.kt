@@ -747,10 +747,12 @@ actual class ArEnvScanOverlay actual constructor() {
             }
         }
         if (duplicate) return
-        registeredElements.add(Triple(element.itemType, world[0], world[2]))
 
+        // Geo-resolve BEFORE registering into the dedupe set: a non-finite
+        // result must not permanently suppress this element for the session.
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
         if (!lat.isFinite() || !lng.isFinite()) return
+        registeredElements.add(Triple(element.itemType, world[0], world[2]))
         DiagnosticsLog.info(
             "env-ar",
             "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m",
