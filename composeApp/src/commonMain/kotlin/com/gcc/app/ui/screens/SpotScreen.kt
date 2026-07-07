@@ -55,6 +55,7 @@ import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +84,7 @@ import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import com.gcc.shared.cache.ScanAreaCacheStore
 import kotlinx.coroutines.SupervisorJob
@@ -438,7 +440,7 @@ private fun CameraPhase(
     // Retractions: already-flushed indoor-window events the server must undo.
     val retractQueue = remember(apiClient) {
         CoverageRetractionQueue(submitFn = { request ->
-            apiClient.retractCoverageEvents(request).success
+            retractionOutcome(request, apiClient::retractCoverageEvents)
         })
     }
 
@@ -482,7 +484,13 @@ private fun CameraPhase(
 
     DisposableEffect(Unit) {
         onDispose {
+            // Final flush on leaving the screen, then tear down flushScope once
+            // that flush completes — cancelling from WITHIN the launch's own
+            // completion handler (not right after launching it) preserves the
+            // exit-flush: cancelling the scope immediately here would race the
+            // just-launched coroutine and could kill it before flush() finishes.
             flushScope.launch { coverageQueue.flush(); retractQueue.flush() }
+                .invokeOnCompletion { flushScope.cancel() }
             onFlushMarkers()
         }
     }

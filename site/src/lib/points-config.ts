@@ -14,6 +14,13 @@ export const POINTS_PER_METER = {
 
 export const RECTIFICATION_BONUS_POINTS = 25
 
+/**
+ * Standard reward for a worker who discovered a spot an admin later records
+ * on their behalf (site/src/app/api/admin/spots/route.ts's
+ * discoveredByWorkerId attribution flow).
+ */
+export const OBSERVER_SPOT_REWARD = 10
+
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 
 /**

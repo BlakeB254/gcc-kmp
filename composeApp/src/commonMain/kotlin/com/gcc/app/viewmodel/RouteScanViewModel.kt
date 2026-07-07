@@ -24,6 +24,7 @@ import com.gcc.app.platform.detectDeviceType
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.platform.retractionOutcome
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
@@ -180,7 +181,7 @@ class RouteScanViewModel(
     // events for the trailing purge window on an INDOOR flip. Same api-client
     // reference coverageEventQueue's submitFn uses above.
     private val retractionQueue = CoverageRetractionQueue(
-        submitFn = { request -> apiClient.retractCoverageEvents(request).success },
+        submitFn = { request -> retractionOutcome(request, apiClient::retractCoverageEvents) },
     )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null

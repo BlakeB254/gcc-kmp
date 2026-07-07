@@ -247,17 +247,76 @@ class CoverageQueuePurgeTest {
     fun retractionQueueFlushesAndRetriesOnFailure() = runTest {
         val settings = FakeSettings()
         var attempts = 0
-        var succeed = false
+        var outcome = RetractionOutcome.RETRY
         val queue = CoverageRetractionQueue(
-            submitFn = { attempts++; succeed },
+            submitFn = { attempts++; outcome },
             settings = settings,
         )
         queue.enqueue(RetractCoverageRequest(deviceId = "dev-1", fromCapturedAt = "2026-07-06T15:00:00Z", toCapturedAt = "2026-07-06T15:00:10Z"))
-        assertEquals(false, queue.flush()) // fails — stays queued
-        succeed = true
+        assertEquals(false, queue.flush()) // RETRY fails — stays queued
+        outcome = RetractionOutcome.DELIVERED
         assertTrue(queue.flush())
         assertEquals(2, attempts)
         assertTrue(queue.flush()) // empty now — no third submit
         assertEquals(2, attempts)
+    }
+
+    @Test
+    fun dropOutcomeRemovesPoisonHeadAndContinuesToNextItem() = runTest {
+        val settings = FakeSettings()
+        val submitted = mutableListOf<RetractCoverageRequest>()
+        val queue = CoverageRetractionQueue(
+            submitFn = { request ->
+                submitted.add(request)
+                // First request is a poison element (server will never accept it);
+                // everything after it is a normal, deliverable request.
+                if (submitted.size == 1) RetractionOutcome.DROP else RetractionOutcome.DELIVERED
+            },
+            settings = settings,
+        )
+        val poison = RetractCoverageRequest(deviceId = "dev-1", fromCapturedAt = "2026-07-06T15:00:00Z", toCapturedAt = "2026-07-06T15:00:10Z")
+        val good = RetractCoverageRequest(deviceId = "dev-1", fromCapturedAt = "2026-07-06T16:00:00Z", toCapturedAt = "2026-07-06T16:00:10Z")
+        queue.enqueue(poison)
+        queue.enqueue(good)
+
+        // DROP on the head must not be treated as a flush failure, and must not
+        // wedge the queue behind the poison element: flush() keeps going and
+        // delivers the rest of the batch.
+        assertTrue(queue.flush())
+        assertEquals(listOf(poison, good), submitted)
+
+        // Nothing left queued (both the dropped and the delivered request are
+        // gone) — a reload has nothing to flush.
+        var reloadCalls = 0
+        val reloaded = CoverageRetractionQueue(
+            submitFn = { reloadCalls++; RetractionOutcome.DELIVERED },
+            settings = settings,
+        )
+        assertTrue(reloaded.flush())
+        assertEquals(0, reloadCalls)
+    }
+
+    @Test
+    fun retryOutcomeKeepsHeadQueuedForNextFlush() = runTest {
+        val settings = FakeSettings()
+        var attempts = 0
+        val queue = CoverageRetractionQueue(
+            submitFn = { attempts++; RetractionOutcome.RETRY },
+            settings = settings,
+        )
+        val request = RetractCoverageRequest(deviceId = "dev-1", fromCapturedAt = "2026-07-06T15:00:00Z", toCapturedAt = "2026-07-06T15:00:10Z")
+        queue.enqueue(request)
+
+        assertEquals(false, queue.flush())
+        assertEquals(1, attempts)
+
+        // Still persisted: a fresh queue on the same settings sees it and retries.
+        var reloadedAttempts = 0
+        val reloaded = CoverageRetractionQueue(
+            submitFn = { reloadedAttempts++; RetractionOutcome.DELIVERED },
+            settings = settings,
+        )
+        assertTrue(reloaded.flush())
+        assertEquals(1, reloadedAttempts)
     }
 }

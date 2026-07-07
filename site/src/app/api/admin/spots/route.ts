@@ -5,6 +5,7 @@ import { and, desc, eq, gt, sql } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { toCommunityReport } from '@/lib/spot-utils'
+import { OBSERVER_SPOT_REWARD } from '@/lib/points-config'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request)
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
       }
       attributedWorkerId = discoverer.id
       attributedWorkerName = discoverer.name
-      pointsAwardedAmount = 10 // standard observer reward
+      pointsAwardedAmount = OBSERVER_SPOT_REWARD
       pointsAwardedTo = discoverer.id
     }
 

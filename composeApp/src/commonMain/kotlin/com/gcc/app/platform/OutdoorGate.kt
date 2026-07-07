@@ -4,7 +4,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Tri-state judgement of whether the worker is outdoors. UNCERTAIN never blocks. */
+/**
+ * Tri-state judgement of whether the worker is outdoors. Deny-by-default:
+ * capture/credit/persistence is allowed ONLY while OUTDOOR — UNCERTAIN
+ * blocks capture just like INDOOR does (see [OutdoorGate.captureAllowed]);
+ * it only leaves the screen itself usable while detection catches up.
+ */
 enum class OutdoorState { OUTDOOR, UNCERTAIN, INDOOR }
 
 /** A single scene-classification vote from the AR camera feed. */

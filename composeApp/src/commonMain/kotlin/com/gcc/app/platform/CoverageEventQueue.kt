@@ -1,6 +1,7 @@
 package com.gcc.app.platform
 
 import com.gcc.shared.model.RetractCoverageRequest
+import com.gcc.shared.model.RetractCoverageResponse
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.ScanCoverageSubmitResponse
 import com.gcc.shared.serialization.GccJson
@@ -292,13 +293,60 @@ class CoverageEventQueue(
 }
 
 /**
+ * Outcome of one [CoverageRetractionQueue.submitFn] attempt — distinguishes
+ * a transient failure (offline, 5xx, 408/429 rate-limit) that should keep
+ * the request queued for retry from a non-retryable rejection (4xx other
+ * than 408/429 — e.g. a malformed or already-expired retraction window)
+ * that will never succeed and must be dropped instead of retried forever
+ * (a "poison" head element that would otherwise wedge the whole queue,
+ * since [CoverageRetractionQueue.flush] only ever advances past the head
+ * once it's resolved one way or the other).
+ */
+enum class RetractionOutcome { DELIVERED, RETRY, DROP }
+
+/**
+ * Matches an "HTTP <code>[: message]" prefix, the format
+ * [com.gcc.shared.api.GccApiClient]'s httpErrorMessage always produces.
+ */
+private val HTTP_STATUS_PREFIX = Regex("""^HTTP (\d+)""")
+
+/**
+ * Bridges [GccApiClient.retractCoverageEvents] (which throws on any non-2xx
+ * response, with the status embedded as text at the front of the exception
+ * message rather than returned structurally — see httpErrorMessage) to
+ * [RetractionOutcome]. Parsing the status back out of the message is the
+ * smallest change that makes a 400 distinguishable from a network failure
+ * here: the alternative (a typed exception carrying the status, or a new
+ * `retractCoverageEventsWithStatus` client method) would touch the shared
+ * API client for a distinction only this one caller needs. If the message
+ * doesn't start with "HTTP <code>" (a genuine network/timeout exception
+ * with no server response at all), that's treated as retryable.
+ */
+suspend fun retractionOutcome(
+    request: RetractCoverageRequest,
+    retract: suspend (RetractCoverageRequest) -> RetractCoverageResponse,
+): RetractionOutcome {
+    return try {
+        val response = retract(request)
+        if (response.success) RetractionOutcome.DELIVERED else RetractionOutcome.RETRY
+    } catch (e: Exception) {
+        val status = HTTP_STATUS_PREFIX.find(e.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+        when {
+            status == null -> RetractionOutcome.RETRY
+            status in 400..499 && status != 408 && status != 429 -> RetractionOutcome.DROP
+            else -> RetractionOutcome.RETRY
+        }
+    }
+}
+
+/**
  * Persistent queue of coverage RETRACTIONS — windows of already-flushed
  * events the server must undo after an INDOOR flip. Same offline-safe
  * pattern as [CoverageEventQueue]: enqueue persists immediately; flush
  * retries until the server accepts.
  */
 class CoverageRetractionQueue(
-    private val submitFn: suspend (RetractCoverageRequest) -> Boolean,
+    private val submitFn: suspend (RetractCoverageRequest) -> RetractionOutcome,
     private val settings: Settings = Settings(),
 ) {
     private val mutex = Mutex()
@@ -350,15 +398,28 @@ class CoverageRetractionQueue(
         try {
             while (true) {
                 val next = mutex.withLock { pending.firstOrNull() } ?: return true
-                val ok = try {
-                    submitFn(next)
-                } catch (e: Exception) {
-                    false
-                }
-                if (!ok) return false
-                mutex.withLock {
-                    pending.removeAt(0)
-                    persistLocked()
+                when (submitFn(next)) {
+                    RetractionOutcome.DELIVERED -> {
+                        mutex.withLock {
+                            pending.removeAt(0)
+                            persistLocked()
+                        }
+                    }
+                    RetractionOutcome.DROP -> {
+                        // Poison element: the server will never accept this one (a
+                        // non-retryable 4xx), so remove it WITHOUT delivering rather than
+                        // wedge every retraction behind it forever. Logged so a dropped
+                        // retraction is at least visible in diagnostics, not silently lost.
+                        DiagnosticsLog.error(
+                            "coverage-retract",
+                            "dropping non-retryable retraction request (poison head): $next",
+                        )
+                        mutex.withLock {
+                            pending.removeAt(0)
+                            persistLocked()
+                        }
+                    }
+                    RetractionOutcome.RETRY -> return false
                 }
             }
         } finally {
