@@ -12,7 +12,7 @@ interface ArDetectedMarker {
   capturedAt: string
   estimatedWeightGrams?: number
   estimatedWidthMeters?: number
-  mediaUrl?: string
+  mediaUrl?: string | null
 }
 
 export async function POST(request: NextRequest) {
@@ -29,8 +29,13 @@ export async function POST(request: NextRequest) {
     // blocks a marker on capture/upload failure), but when present it must
     // be a real, resolvable public URL: bounded length and https:// only, so
     // an unresolvable/garbage string can't ride through to world_observations.
+    // null must validate like undefined: the KMP client serializes no-photo
+    // markers as literal JSON null (kotlinx GccJson encodeDefaults), and
+    // rejecting it would 400 the whole batch forever — ArMarkerQueue keeps
+    // retrying a rejected batch indefinitely.
     const isValidMediaUrl = (mediaUrl: unknown) =>
       mediaUrl === undefined ||
+      mediaUrl === null ||
       (typeof mediaUrl === 'string' && mediaUrl.length <= 500 && mediaUrl.startsWith('https://'))
 
     const isValidMarker = (marker: ArDetectedMarker) =>
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
               ...(estimatedWidthMeters !== undefined ? { estimatedWidthMeters } : {}),
             }
           : undefined,
-        mediaUrl: marker.mediaUrl,
+        mediaUrl: marker.mediaUrl ?? undefined,
         capturedAt: marker.capturedAt,
       })
     }

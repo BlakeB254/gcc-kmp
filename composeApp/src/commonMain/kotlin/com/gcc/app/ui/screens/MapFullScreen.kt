@@ -393,13 +393,19 @@ fun MapFullScreen(
         (selectableRecordCoordinates + assignedRouteBoundaryCoordinates + assignedGuidanceLines).distinct()
     }
 
-    // Index of the assigned route's own boundary within mapRouteCoordinates —
-    // drives a distinct (thicker/brighter) highlight style for the active
-    // block now that it's no longer drawn exclusively.
-    val activeRouteIndex: Int? = remember(mapRouteCoordinates, assignedRouteBoundaryCoordinates) {
-        assignedRouteBoundaryCoordinates.firstOrNull()?.let { boundary ->
-            mapRouteCoordinates.indexOf(boundary).takeIf { it >= 0 }
-        }
+    // Index of EACH assigned route's boundary within mapRouteCoordinates →
+    // its (job, route) pair. Drives both the distinct (thicker/brighter)
+    // highlight for active blocks now that they're no longer drawn
+    // exclusively, and tap routing: only taps that land on an assigned
+    // boundary open the active job — every other block keeps the normal
+    // select/zoom behavior.
+    val activeRouteIndexToPair: Map<Int, Pair<Job, Route>> = remember(
+        mapRouteCoordinates, assignedRouteBoundaryCoordinates, assignedJobRoutePairs,
+    ) {
+        assignedRouteBoundaryCoordinates.mapIndexedNotNull { i, boundary ->
+            val pair = assignedJobRoutePairs.getOrNull(i) ?: return@mapIndexedNotNull null
+            mapRouteCoordinates.indexOf(boundary).takeIf { it >= 0 }?.let { it to pair }
+        }.toMap()
     }
 
     val selectedRouteCoordinates = selectedRecordIndex
@@ -501,18 +507,23 @@ fun MapFullScreen(
             } else emptyList(),
             // Only meaningful against the full union list — a manually
             // selected single record has nothing to highlight against.
-            activeRouteIndex = if (mapMode == MapMode.MY_AREA && selectedRouteCoordinates.isEmpty()) {
-                activeRouteIndex
-            } else null,
+            activeRouteIndices = if (mapMode == MapMode.MY_AREA && selectedRouteCoordinates.isEmpty()) {
+                activeRouteIndexToPair.keys.toList()
+            } else emptyList(),
             imageStars = if (mapMode == MapMode.MY_AREA) imageStars else emptyList(),
             onAreaTap = { /* tooltip handled internally by GccMap */ },
             onRouteTap = if (mapMode == MapMode.MY_AREA) { routeIndex ->
-                val assigned = primaryAssignedPair
-                if (assigned != null && assignedRouteBoundaryCoordinates.isNotEmpty()) {
+                // Tap indices refer to whatever list GccMap is rendering: the
+                // union (mapRouteCoordinates) normally, or the single selected
+                // record when one is zoomed. Only a tap that actually lands on
+                // an assigned route's boundary opens the active job; all other
+                // blocks get the normal select/zoom behavior.
+                val assigned = if (selectedRecordIndex == null) activeRouteIndexToPair[routeIndex] else null
+                if (assigned != null) {
                     onActiveJobClick(assigned.first.id, assigned.second.id)
                 } else {
                     val actualIndex = selectedRecordIndex ?: routeIndex
-                    selectVisualRoute(actualIndex)
+                    if (actualIndex in 0 until routeRecordCount) selectVisualRoute(actualIndex)
                 }
             } else null,
             onSpotTap = { spotId ->

@@ -164,7 +164,11 @@ class SpotViewModel(
                                     itemType = TrashItemCatalog.canonicalType(result.trashTypes.first()),
                                     severity = result.severity,
                                     confidence = result.confidence,
-                                )
+                                ),
+                                // The analyzed photo IS the detection frame —
+                                // ride it onto the marker so the map spot
+                                // carries the image that prompted it.
+                                photoBytes = photo.bytes.takeIf { it.isNotEmpty() },
                             )
                         }
                         _uiState.value = _uiState.value.copy(

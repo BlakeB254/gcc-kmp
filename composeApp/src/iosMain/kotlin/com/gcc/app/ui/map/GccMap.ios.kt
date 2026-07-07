@@ -77,7 +77,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
-    activeRouteIndex: Int?,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -127,13 +127,12 @@ actual fun GccMap(
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
     }
-    // Active-route highlight: a single-feature source built from just the
-    // assigned route's boundary so it can be drawn with a brighter/thicker
-    // outer line on top of the regular route stack (Fix: the active block
-    // no longer renders exclusively, so it needs its own visual emphasis).
-    val activeRouteJson = remember(routeCoordinates, activeRouteIndex) {
-        val activeCoords = activeRouteIndex?.let { routeCoordinates.getOrNull(it) }
-        buildRoutesGeoJson(activeCoords?.let { listOf(it) } ?: emptyList())
+    // Active-route highlight: a source built from just the assigned routes'
+    // boundaries so they can be drawn with a brighter/thicker outer line on
+    // top of the regular route stack (Fix: active blocks no longer render
+    // exclusively, so they need their own visual emphasis).
+    val activeRouteJson = remember(routeCoordinates, activeRouteIndices) {
+        buildRoutesGeoJson(activeRouteIndices.mapNotNull { routeCoordinates.getOrNull(it) })
     }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
@@ -763,11 +762,16 @@ actual fun GccMap(
                     onClick = routeIndexClickHandler(onRouteTap),
                 )
 
-                // Active-route highlight: brighter/thicker outer line on top
-                // of the regular stack so the worker's assigned block still
-                // reads as "the one to work" now that it renders alongside
-                // (not instead of) the rest of the service area.
-                if (activeRouteIndex != null) {
+                // Active-route highlight: brighter/thicker outer lines on top
+                // of the regular stack so the worker's assigned blocks still
+                // read as "the ones to work" now that they render alongside
+                // (not instead of) the rest of the service area. Deliberately
+                // NON-tappable: this source is built from a sublist, so its
+                // feature `routeIndex` properties are sublist-local and would
+                // misreport the union index — taps fall through to the
+                // underlying route core/fill layers, which carry the correct
+                // indices for the same geometry.
+                if (activeRouteIndices.isNotEmpty()) {
                     val activeRouteSrc = rememberGeoJsonSource(GeoJsonData.JsonString(activeRouteJson))
                     LineLayer(
                         id = MapStyles.LAYER_ROUTE_LINE + "-active-glow",
@@ -798,7 +802,6 @@ actual fun GccMap(
                         ),
                         cap = const(LineCap.Round),
                         join = const(LineJoin.Round),
-                        onClick = routeIndexClickHandler(onRouteTap),
                     )
                 }
             }

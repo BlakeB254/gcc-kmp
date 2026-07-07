@@ -69,11 +69,12 @@ expect fun GccMap(
     gpsHeading: Float? = null,
     enableGestures: Boolean = false,
     routeCoordinates: List<List<Coordinates>> = emptyList(),
-    /** Index into [routeCoordinates] of the worker's active assigned route,
-     *  if any — rendered with a distinct (thicker/brighter) highlight so it
-     *  still stands out now that it's drawn as part of the union rather than
-     *  exclusively (see MapFullScreen's mapRouteCoordinates). */
-    activeRouteIndex: Int? = null,
+    /** Indices into [routeCoordinates] of the worker's assigned route
+     *  boundaries, if any — rendered with a distinct (thicker/brighter)
+     *  highlight so they still stand out now that they're drawn as part of
+     *  the union rather than exclusively (see MapFullScreen's
+     *  mapRouteCoordinates). */
+    activeRouteIndices: List<Int> = emptyList(),
     animateRoutes: Boolean = false,
     bountyLocations: List<Coordinates> = emptyList(),
     bounties: List<Bounty> = emptyList(),

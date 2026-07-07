@@ -830,23 +830,31 @@ internal fun cvPixelBufferToPortraitPhoto(pixelBuffer: platform.CoreVideo.CVPixe
  */
 @OptIn(ExperimentalForeignApi::class)
 internal fun cvPixelBufferToMarkerPhotoJpeg(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): ByteArray? {
-    return try {
-        val cgImage = memScoped {
+    val cgImage = try {
+        memScoped {
             val out = alloc<CGImageRefVar>()
             val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
             if (status != 0) null else out.value
-        } ?: return null
+        }
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("camera", "marker frame → CGImage conversion failed", e)
+        null
+    } ?: return null
+    return try {
         val image = UIImage.imageWithCGImage(
             cgImage,
             scale = 1.0,
             orientation = UIImageOrientation.UIImageOrientationRight,
         ).resizedToMax(800.0)
         val jpeg = UIImageJPEGRepresentation(image, 0.7)
-        CGImageRelease(cgImage)
         jpeg?.bytes?.readBytes(jpeg.length.toInt())
     } catch (e: Throwable) {
         DiagnosticsLog.error("camera", "marker frame → JPEG conversion failed", e)
         null
+    } finally {
+        // finally, not inline: a throw between CGImage creation and the old
+        // inline release leaked the image (review r2).
+        CGImageRelease(cgImage)
     }
 }
 

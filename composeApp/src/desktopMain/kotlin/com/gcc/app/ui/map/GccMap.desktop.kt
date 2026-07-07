@@ -49,7 +49,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
-    activeRouteIndex: Int?,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -467,7 +467,7 @@ actual fun GccMap(
                 // top of the regular stack so the worker's assigned block
                 // still stands out now that it renders alongside (not
                 // instead of) the rest of the service area.
-                if (routeCoordsIndex == activeRouteIndex) {
+                if (routeCoordsIndex in activeRouteIndices) {
                     drawPath(
                         path = path,
                         color = GccClaimed.copy(alpha = 0.55f),
