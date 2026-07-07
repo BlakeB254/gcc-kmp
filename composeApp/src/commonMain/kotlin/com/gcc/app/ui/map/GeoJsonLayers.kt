@@ -4,6 +4,7 @@ import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sqrt
@@ -791,6 +792,105 @@ fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
         """{"type":"Feature","properties":{"id":${s.id},"needsVerification":${s.needsVerification}},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
     }.joinToString(",")
     return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
+ * Builds a GeoJSON FeatureCollection of true-scale, oriented footprint
+ * polygons for world observations that carry a physical width (Pillar 3
+ * Task 3 — see docs/superpowers/plans/2026-07-07-pillar3-footprints.md).
+ *
+ * Geometry approximation table (v1):
+ *  - domain == "vegetation" → circle (12-gon) of diameter [WorldObservation.widthMeters]
+ *  - everything else → oriented rectangle widthMeters × (widthMeters × 0.4),
+ *    rotated by [WorldObservation.yawDegrees] (bearing of the observed face;
+ *    defaults to 0 when unmeasured)
+ *
+ * Observations with a null/non-finite/non-positive widthMeters are skipped —
+ * there is no measured footprint to draw. Feature properties carry itemType,
+ * domain, and state so GccMap.ios can filter/color per domain and the tap
+ * target can identify what was scanned.
+ *
+ * [centerLat] anchors the lng/lat meter-scale conversion for the oriented
+ * rectangles (single lngScale for the whole collection, matching
+ * [buildCoverageStateGeoJsons]'s pattern); the circle branch reuses
+ * [circlePolygonRing], which scales per-feature off its own latitude.
+ */
+fun buildObservationFootprintsGeoJson(
+    observations: List<WorldObservation>,
+    centerLat: Double,
+): String {
+    if (observations.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    val metersPerDegreeLat = 111_320.0
+    val metersPerDegreeLng = (metersPerDegreeLat * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
+
+    val features = observations.mapNotNull { obs ->
+        val width = obs.widthMeters
+        if (width == null || !width.isFinite() || width <= 0.0) return@mapNotNull null
+        val yaw = obs.yawDegrees?.takeIf { it.isFinite() } ?: 0.0
+
+        val ring = if (obs.domain == "vegetation") {
+            circlePolygonRing(lat = obs.lat, lng = obs.lng, radiusMeters = width / 2.0, segments = 12)
+        } else {
+            footprintRectRing(
+                lat = obs.lat,
+                lng = obs.lng,
+                widthMeters = width,
+                depthMeters = width * 0.4,
+                yawDegrees = yaw,
+                metersPerDegreeLat = metersPerDegreeLat,
+                metersPerDegreeLng = metersPerDegreeLng,
+            )
+        }
+
+        val itemTypeProp = obs.itemType?.let { """"itemType":"$it",""" } ?: ""
+        val domainProp = obs.domain?.let { """"domain":"$it",""" } ?: ""
+        """{"type":"Feature","properties":{$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+    }.joinToString(",")
+
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
+ * Oriented rectangle ring for [buildObservationFootprintsGeoJson]'s non-
+ * vegetation branch — same corner-rotation idiom as
+ * [buildSpotRectanglePolygonsGeoJson] (rotate ±half-extents around center in
+ * already-degree-converted space), parameterized on a caller-supplied
+ * meters-per-degree pair instead of recomputing per feature.
+ */
+private fun footprintRectRing(
+    lat: Double,
+    lng: Double,
+    widthMeters: Double,
+    depthMeters: Double,
+    yawDegrees: Double,
+    metersPerDegreeLat: Double,
+    metersPerDegreeLng: Double,
+): String {
+    val halfW = widthMeters / 2.0
+    val halfD = depthMeters / 2.0
+    val rad = yawDegrees * PI / 180.0
+    val cosR = cos(rad)
+    val sinR = sin(rad)
+
+    // 4 corners (unrotated: ±halfW, ±halfD) in METER space, rotated with
+    // compass (clockwise-from-north) handedness — yaw is a bearing, not a
+    // CCW math angle, so a plain CCW rotation mirrors the shape and mixes
+    // lat/lng-scaled axes before conversion, both wrong. Rotating in meters
+    // first and converting per-axis afterward (lat: /metersPerDegreeLat,
+    // lng: /metersPerDegreeLng) keeps the footprint's true aspect ratio;
+    // yaw 0 keeps the (long) width axis east-west, yaw 90 swings it to
+    // north-south, yaw 45 to bearing 135 (SE-NW).
+    val corners = listOf(
+        -halfW to -halfD, halfW to -halfD,
+        halfW to halfD, -halfW to halfD,
+    ).map { (dx, dy) ->
+        val rx = dx * cosR + dy * sinR
+        val ry = -dx * sinR + dy * cosR
+        val dLng = rx / metersPerDegreeLng
+        val dLat = ry / metersPerDegreeLat
+        "[${lng + dLng},${lat + dLat}]"
+    }
+    return corners.joinToString(",") + ",${corners.first()}"
 }
 
 fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): String {

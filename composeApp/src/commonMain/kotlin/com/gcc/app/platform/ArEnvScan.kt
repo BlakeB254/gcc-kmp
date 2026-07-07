@@ -23,6 +23,8 @@ data class TrashCandidate(
     val estimatedWidthMeters: Double?,
     val estimatedWeightGrams: Int,
     val confidence: Float,
+    /** AR-local compass bearing (degrees, [0, 360)) camera→hit; null if unmeasurable. */
+    val yawDegrees: Double? = null,
 )
 
 /**
@@ -105,10 +107,17 @@ expect class ArEnvScanOverlay() {
     /**
      * Fires when a landmark element (tree, fence, gate… — see
      * [EnvironmentElementCatalog]) is auto-registered to the grid, with its
-     * raycast world position. Called on the main thread; iOS only.
+     * raycast world position, physical width (from the saliency bbox +
+     * distance; null if unmeasurable) and AR-local compass bearing camera→hit
+     * (null if unmeasurable). Called on the main thread; iOS only.
      */
     fun setElementObservedListener(
-        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+        listener: (
+            (
+                lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+                widthMeters: Double?, yawDegrees: Double?,
+            ) -> Unit
+        )?,
     )
 
     /** Pause/resume frame sampling without tearing down the ARSession. */

@@ -48,6 +48,13 @@ data class ObservedSpotItem(
      * without it an item can't be matched to where the camera actually was.
      */
     val atMs: Long? = null,
+    /**
+     * AR-local compass bearing (degrees, [0, 360)) from the camera to the
+     * observed face at capture time — the orientation a true-scale footprint
+     * should render at. Null when unmeasurable (no geo-ref, no camera
+     * position, or a degenerate camera/hit position).
+     */
+    val yawDegrees: Double? = null,
 )
 
 /**

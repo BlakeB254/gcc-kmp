@@ -497,6 +497,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
+            observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
             explorerAreaStates = explorerAreaStates,
             enableGestures = true,
