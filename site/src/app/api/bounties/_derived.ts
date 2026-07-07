@@ -1,4 +1,4 @@
-import type { BountyRow, CommunityReport } from '@/db/schema'
+import type { BountyRow, CommunityReport, WorldObservationRow } from '@/db/schema'
 
 export const BOUNTY_MINIMUM_CENTS = 1000
 
@@ -78,6 +78,72 @@ export function reportToBountySource(report: CommunityReport) {
   }
 }
 
+/**
+ * Amendment 2 / Task 1b, Change 3: seed a bounty from a `worldObservations`
+ * row instead of a `communityReports` row (bounty continuity — scan
+ * submissions no longer produce reports, but a bounty still needs
+ * somewhere to seed from). Caller is responsible for validating the
+ * observation is eligible (isCurrent/state/excludedPrivateProperty) before
+ * calling this — this function only derives field values.
+ *
+ * `radiusMeters: 15` (not the report path's 200 default): an observation is
+ * a single ~10m grid cell, a much tighter location signal than a report's
+ * affectedRadiusMeters — a wide 200m radius would overstate the bounty's
+ * actual coverage. `observerId`/`city`/`communityArea`/`neighborhood` have
+ * no source column on worldObservations, so they're left null/defaulted;
+ * the caller's insert defaults `city` the same way the schema column does.
+ */
+export function observationToBountySource(observation: WorldObservationRow) {
+  const label = observation.itemType ? titleCase(observation.itemType) : 'Litter'
+
+  return {
+    title: `Cleanup opportunity: ${label}`,
+    description: observation.itemType ? `Scan-detected ${label.toLowerCase()}` : null,
+    locationLat: observation.lat,
+    locationLng: observation.lng,
+    radiusMeters: 15,
+    city: 'Chicago',
+    communityArea: null as string | null,
+    neighborhood: null as string | null,
+    mediaUrls: observation.mediaUrl ? [observation.mediaUrl] : [],
+    aiAnalysis: null as { estimatedWeightLbs: number | null; trashTypes: string[]; confidence: number | null; severity: string | null } | null,
+  }
+}
+
+export type BountyTriggerValidation =
+  | { ok: true; triggerReportId: number | null; triggerObservationId: number | null }
+  | { ok: false; message: string }
+
+/**
+ * Amendment 2 / Task 1b, Change 3: validate the "exactly one of
+ * triggerReportId/triggerObservationId, and it must be a positive integer"
+ * rule for POST /api/bounties. Pulled out as a pure function (no DB access)
+ * so the rule is directly unit-testable.
+ */
+export function resolveBountyTrigger(body: { triggerReportId?: unknown; triggerObservationId?: unknown }): BountyTriggerValidation {
+  const hasReportId = body.triggerReportId !== undefined && body.triggerReportId !== null
+  const hasObservationId = body.triggerObservationId !== undefined && body.triggerObservationId !== null
+
+  if (hasReportId === hasObservationId) {
+    // Both present, or neither present.
+    return { ok: false, message: 'Provide exactly one of triggerReportId or triggerObservationId' }
+  }
+
+  if (hasReportId) {
+    const triggerReportId = Number(body.triggerReportId)
+    if (!Number.isInteger(triggerReportId) || triggerReportId <= 0) {
+      return { ok: false, message: 'Choose an active spot report before posting a bounty' }
+    }
+    return { ok: true, triggerReportId, triggerObservationId: null }
+  }
+
+  const triggerObservationId = Number(body.triggerObservationId)
+  if (!Number.isInteger(triggerObservationId) || triggerObservationId <= 0) {
+    return { ok: false, message: 'Choose a valid observation before posting a bounty' }
+  }
+  return { ok: true, triggerReportId: null, triggerObservationId }
+}
+
 /** Postgres timestamp values arrive as "2026-07-03 15:35:28.218012+00" —
  *  the mobile client parses kotlinx Instant, which requires ISO-8601. */
 function toIso(value: unknown): string | null {
@@ -103,6 +169,11 @@ export function bountyRowToApiBounty(row: BountyRow) {
     communityArea: row.communityArea,
     neighborhood: row.neighborhood,
     triggerReportId: row.triggerReportId,
+    // Additive field (Amendment 2 / Task 1b, Change 3) — wire-safe for old
+    // clients: the shared Kotlin `Bounty` model deserializes via `GccJson`
+    // (ignoreUnknownKeys = true, see shared/.../serialization/GccJson.kt),
+    // so a client that predates this field simply ignores it.
+    triggerObservationId: row.triggerObservationId,
     observerId: row.observerId,
     firstRefusalExpiresAt: toIso(row.firstRefusalExpiresAt),
     claimedBy: row.claimedBy,

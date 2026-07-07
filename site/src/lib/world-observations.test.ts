@@ -161,3 +161,17 @@ test('resolveByCoveredCells: a report in a re-confirmed cell (excluded from stal
   assert.deepEqual(result.resolvedReportIds, [])
   assert.notEqual(reconfirmedCell, staleCell)
 })
+
+// Amendment 2 / Task 1b: scan submissions no longer insert a communityReports
+// row, so there is nothing for the sweep to exclude by id — callers on that
+// path pass `undefined` instead of a real report id.
+test('resolveByCoveredCells: excludeReportId is optional (undefined) — scan-path callers with no report row still work', async () => {
+  const staleCell = gridCell(41.8, -87.7)
+  const { fakeDb } = makeFakeDb({
+    candidateReports: [{ id: 10, coordinates: { lat: 41.8, lng: -87.7 } }],
+    invalidatedObservationIds: [501],
+  })
+  const result = await resolveByCoveredCells([staleCell], undefined, 'Superseded by scan sweep', fakeDb as any)
+  assert.deepEqual(result.resolvedReportIds, [10])
+  assert.equal(result.invalidatedObservationCount, 1)
+})

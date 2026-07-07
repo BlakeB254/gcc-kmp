@@ -816,6 +816,11 @@ export const bounties = pgTable('bounties', {
 
   // Source spot and optional worker/job linkage
   triggerReportId: integer('trigger_report_id'),
+  // Amendment 2 (litter-truth): a bounty can instead be seeded from a
+  // worldObservations row when the triggering scan produced no report row.
+  // Exactly one of triggerReportId/triggerObservationId is set — enforced
+  // at the API layer, not the schema (both stay nullable).
+  triggerObservationId: integer('trigger_observation_id'),
   observerId: integer('observer_id'),
   firstRefusalExpiresAt: timestamp('first_refusal_expires_at', { mode: 'string', withTimezone: true }),
   claimedBy: integer('claimed_by'),
@@ -1386,6 +1391,7 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'scan_coverage_stale',    // Distance-tracked: re-scanned a cell stale >24h
   'scan_coverage_close_upgrade', // Distance-tracked: grazed->close upgrade on a fresh cell
   'scan_coverage_rectification', // Confirmed a previously-expected-dirty spot is now clean
+  'observation_logged',     // Scan recorded world observations (no spot report row) — 10 pts
 ])
 
 // Spot verifications table (audit trail of each verification event)

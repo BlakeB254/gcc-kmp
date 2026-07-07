@@ -270,10 +270,15 @@ export interface CellSupersedeResult {
  *
  * `dbClient` is an injectable seam for unit tests (defaults to the real
  * `db`); production callers should never pass it.
+ *
+ * `excludeReportId` is optional (Amendment 2 / Task 1b): scan submissions
+ * no longer insert a `communityReports` row, so there's nothing to exclude
+ * from the sweep — callers on that path pass `undefined` and every
+ * pending/verified report becomes an eligible candidate.
  */
 export async function resolveByCoveredCells(
   staleCells: string[],
-  excludeReportId: number,
+  excludeReportId: number | undefined,
   reason: string,
   dbClient: typeof db = db
 ): Promise<CellSupersedeResult> {
@@ -286,7 +291,7 @@ export async function resolveByCoveredCells(
     .from(communityReports)
     .where(and(
       inArray(communityReports.status, ['pending', 'verified']),
-      ne(communityReports.id, excludeReportId)
+      excludeReportId != null ? ne(communityReports.id, excludeReportId) : undefined
     ))
 
   const resolvedReportIds = selectReportsInStaleCells(candidates, staleCells)
