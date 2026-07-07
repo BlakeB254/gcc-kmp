@@ -170,6 +170,20 @@ Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
    wired into the rescan-priority lens (Pillar 5) and in-scan phase-2 steering; a
    completing scan either upgrades the observation or supersedes it (gone/cleaned).
 
+
+## Pillar 8/9 addendum — Best-frame extraction for issue areas (Blake, 2026-07-07)
+
+Scans must yield the still frames that BEST depict each issue area:
+- **Near term (client, shipped/shipping):** detection-frame JPEGs are captured at
+  marker promotion (#99) and analyzer photos flow on env scans; per issue-area
+  cluster, "best" = closest capture distance, then highest confidence, then most
+  recent — selection logic server-side at read time.
+- **Deep path (DGX, backlog):** the capture sidecar timestamps every frame and the
+  detection events carry timestamps — the fusion pipeline can extract the exact
+  video frames at detection moments from the HEVC chunks (multiple angles per
+  issue), rank by sharpness/framing, and attach the winners to observations.
+  GPS+pose in the sidecar ties every extracted frame to map position.
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
