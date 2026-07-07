@@ -20,7 +20,6 @@ enum class VolunteerPhase {
     TRASH_HEAP_PHOTO,
     SUBMITTING,
     COMPLETE,
-    ALREADY_CLEAN_COMPLETE,
 }
 
 data class VolunteerCleanupUiState(
@@ -175,41 +174,6 @@ class VolunteerCleanupViewModel(
         }
     }
 
-    fun reportAlreadyClean() {
-        val state = _uiState.value
-        scope.launch {
-            _uiState.value = state.copy(
-                isSubmitting = true,
-                error = null,
-                phase = VolunteerPhase.SUBMITTING,
-            )
-            try {
-                val beforeUrls = if (state.capturedBeforePhotos.isNotEmpty()) {
-                    apiClient.uploadSpotPhotos(state.capturedBeforePhotos.map { it.bytes })
-                } else { emptyList() }
-
-                val cleanup = apiClient.reportSpotAlreadyClean(
-                    state.reportId,
-                    beforeUrls,
-                )
-                _uiState.value = _uiState.value.copy(
-                    cleanup = cleanup,
-                    beforePhotoUrls = beforeUrls,
-                    isSubmitting = false,
-                    isCompleted = true,
-                    pointsAwarded = cleanup.pointsAwarded,
-                    phase = VolunteerPhase.ALREADY_CLEAN_COMPLETE,
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSubmitting = false,
-                    phase = VolunteerPhase.BEFORE_PHOTOS,
-                    error = e.message ?: "Failed to report spot as clean",
-                )
-            }
-        }
-    }
-
     fun addAfterPhoto(url: String) {
         _uiState.value = _uiState.value.copy(
             afterPhotoUrls = _uiState.value.afterPhotoUrls + url,
@@ -233,7 +197,7 @@ class VolunteerCleanupViewModel(
 
     fun advancePhase() {
         val next = when (_uiState.value.phase) {
-            VolunteerPhase.BEFORE_PHOTOS -> return // handled by startCleanup/reportAlreadyClean
+            VolunteerPhase.BEFORE_PHOTOS -> return // handled by startCleanup
             VolunteerPhase.IN_PROGRESS -> VolunteerPhase.AFTER_PHOTOS
             VolunteerPhase.AFTER_PHOTOS -> VolunteerPhase.TRASH_HEAP_PHOTO
             VolunteerPhase.TRASH_HEAP_PHOTO -> {
@@ -242,7 +206,6 @@ class VolunteerCleanupViewModel(
             }
             VolunteerPhase.SUBMITTING -> return
             VolunteerPhase.COMPLETE -> return
-            VolunteerPhase.ALREADY_CLEAN_COMPLETE -> return
         }
         _uiState.value = _uiState.value.copy(phase = next, error = null)
     }
