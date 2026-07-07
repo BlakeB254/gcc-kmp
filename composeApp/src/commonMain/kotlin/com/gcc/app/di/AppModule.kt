@@ -10,6 +10,7 @@ import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.ShareManager
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.getApiBaseUrl
 import com.gcc.app.viewmodel.AccountSettingsViewModel
 import com.gcc.app.viewmodel.ActiveJobViewModel
@@ -73,6 +74,7 @@ val appModule = module {
     single { ScanAreaCacheStore(get()) }
     single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
+    single { CaptureChunkUploader(get(), get()) }
     single {
         val tokenManager = get<TokenManager>()
         lateinit var apiClient: GccApiClient
@@ -110,6 +112,6 @@ val appModule = module {
     single { AffectedAreasRepository(get()) }
     singleOf(::AffectedBlocksViewModel)
     singleOf(::ArticlesViewModel)
-    factory { RouteScanViewModel(get(), get(), get()) }
+    factory { RouteScanViewModel(get(), get(), get(), get()) }
     factory { DocumentUploadViewModel(get(), get()) }
 }

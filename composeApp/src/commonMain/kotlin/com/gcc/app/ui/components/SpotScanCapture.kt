@@ -74,6 +74,9 @@ fun SpotScanCapture(
     detailPhase: Boolean = false,
     /** ARKit env-scan surface, passed through to the viewfinder. */
     arOverlay: ArEnvScanOverlay? = null,
+    /** Background capture indicator pass-through (Pillar 1) — see
+     *  [CameraCapture]'s `captureState` kdoc. */
+    captureState: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -228,6 +231,7 @@ fun SpotScanCapture(
             statusText = statusText,
             detailPhase = detailPhase,
             arOverlay = arOverlay,
+            captureState = captureState,
             modifier = Modifier.fillMaxSize(),
         )
 

@@ -12,6 +12,7 @@ import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
@@ -115,6 +116,7 @@ class RouteScanViewModel(
     private val apiClient: GccApiClient,
     private val locationProvider: LocationProvider,
     private val sessionUploader: EnvScanSessionUploader,
+    private val captureUploader: CaptureChunkUploader,
 ) {
     companion object {
         /**
@@ -214,6 +216,11 @@ class RouteScanViewModel(
         // manifests queued here used to strand until the user happened to
         // open an ENV scan (the only other flushPending caller).
         scope.launch { sessionUploader.flushPending() }
+        // Same opportunistic catch-up for background capture chunks (Pillar
+        // 1) — route scans don't produce them (v1 scope guard: ENV/SPOT
+        // only), but any pending from a prior Spot session still deserve a
+        // chance to flush whenever ANY scan screen opens.
+        scope.launch { captureUploader.flushPending() }
     }
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */

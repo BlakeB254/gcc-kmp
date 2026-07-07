@@ -58,6 +58,11 @@ expect fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
 /** Read a local file produced by the capture flow (USDZ upload path). */
 expect fun readLocalFileBytes(path: String): ByteArray?
 
+/** Delete a local file once its bytes are durably uploaded (capture-chunk
+ *  upload path, [com.gcc.app.platform.capture.CaptureChunkUploader]). A
+ *  missing file is not an error — never throws. */
+expect fun deleteLocalFile(path: String)
+
 /**
  * Present the system AR Quick Look preview for a local USDZ file — pinch,
  * orbit, and place-in-room come free from the OS. No-op off-iOS.

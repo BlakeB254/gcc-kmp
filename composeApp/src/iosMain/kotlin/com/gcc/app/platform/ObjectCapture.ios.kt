@@ -153,3 +153,8 @@ actual fun readLocalFileBytes(path: String): ByteArray? {
     }
     return bytes
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteLocalFile(path: String) {
+    runCatching { platform.Foundation.NSFileManager.defaultManager.removeItemAtPath(path, error = null) }
+}

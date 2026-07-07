@@ -26,6 +26,21 @@ data class TrashCandidate(
 )
 
 /**
+ * One finished background-capture artifact chunk (Pillar 1 session capture)
+ * drained from the native recorder. Mirrors the Swift/iosMain
+ * `"index|kind|path|sizeBytes"` packet convention (kind: video|sidecar|
+ * depth) — see `ArNativeSurface.drainFinishedCaptureChunks`/
+ * `stopCaptureAndDrain`. Android/Desktop never produce these (capture is
+ * iOS-only in v1 — the scope guard in the session-capture plan).
+ */
+data class CaptureChunkInfo(
+    val index: Long,
+    val kind: String,
+    val filePath: String,
+    val sizeBytes: Long,
+)
+
+/**
  * ARKit-backed environment-scan surface (iOS): replaces the plain AVCapture
  * viewfinder with an `ARSCNView` so the scan gets true world tracking —
  *
@@ -116,6 +131,34 @@ expect class ArEnvScanOverlay() {
      * [CoverageTracker.updateWithRaycastHits].
      */
     fun setCoverageHitListener(listener: ((List<RaycastCoverageHit>) -> Unit)?)
+
+    // ── Session capture (Pillar 1) ───────────────────────────────────
+    // iOS-only (native RealityKit surface); no-op everywhere else. Every
+    // failure must be caught by the CALLER (SpotScreen) and treated as
+    // "capture disabled for this session" — never let it interrupt the scan.
+
+    /**
+     * Begin full-session background capture (HEVC video chunks + pose/
+     * intrinsics sidecar + LiDAR depth keyframes) for [sessionId]. No-op on
+     * the SceneKit fallback / Android / Desktop.
+     */
+    fun startCapture(sessionId: String)
+
+    /**
+     * Stop capture, finalize the in-progress chunk, and return every
+     * not-yet-drained finished chunk. Bounded ~5s (video writer finalize) —
+     * callers MUST invoke this from a background/Default coroutine, never
+     * the main thread, and BEFORE tearing the overlay down via [stop].
+     */
+    fun stopCapture(): List<CaptureChunkInfo>
+
+    /** Privacy path (INDOOR gate flip): discard the in-progress chunk
+     *  entirely (~60s over-purge, deliberate) rather than trim it. */
+    fun discardCurrentCaptureChunk()
+
+    /** Pause/resume capture without discarding the in-progress chunk —
+     *  outdoor-gate driven, mirrors [setFrameAnalysisEnabled]. */
+    fun setCaptureEnabled(enabled: Boolean)
 
     fun stop()
 }

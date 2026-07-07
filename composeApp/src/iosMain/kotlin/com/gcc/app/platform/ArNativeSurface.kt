@@ -203,3 +203,15 @@ internal fun parseSceneLabels(entries: List<String>): List<ClassificationObserva
         val confidence = entry.substring(i + 1).toFloatOrNull() ?: return@mapNotNull null
         ClassificationObservation(entry.substring(0, i), confidence)
     }
+
+/** Parses Swift's `"index|kind|path|sizeBytes"` capture-chunk packets (see
+ *  [ArNativeSurface.drainFinishedCaptureChunks]/[ArNativeSurface.stopCaptureAndDrain])
+ *  into [CaptureChunkInfo]. Malformed entries are dropped rather than
+ *  thrown — capture bookkeeping must never crash the scan. */
+internal fun parseCaptureChunkPacket(packet: String): CaptureChunkInfo? {
+    val parts = packet.split('|')
+    if (parts.size != 4) return null
+    val index = parts[0].toLongOrNull() ?: return null
+    val sizeBytes = parts[3].toLongOrNull() ?: return null
+    return CaptureChunkInfo(index = index, kind = parts[1], filePath = parts[2], sizeBytes = sizeBytes)
+}
