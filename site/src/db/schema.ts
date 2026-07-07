@@ -1917,3 +1917,29 @@ export const volunteerCleanups = pgTable('volunteer_cleanups', {
   reportIdx: index('volunteer_cleanups_report_id_idx').on(table.reportId),
   workerIdx: index('volunteer_cleanups_worker_id_idx').on(table.workerId),
 }))
+
+// Feed comments — see migrations/0030_add_feed_comments.sql. feedItemId is a
+// synthetic composite id like "spot_123" / "bounty_created_45" (the feed
+// itself is an in-memory union of several tables, not a materialized one),
+// so there's no FK to a feed_items table — just an indexed varchar.
+export const feedComments = pgTable('feed_comments', {
+  id: serial('id').primaryKey(),
+  feedItemId: varchar('feed_item_id', { length: 255 }).notNull(),
+  authorId: integer('author_id').notNull(),
+  authorName: varchar('author_name', { length: 255 }).notNull(),
+  text: text('text').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  feedItemIdx: index('idx_feed_comments_feed_item').on(table.feedItemId),
+  authorIdx: index('idx_feed_comments_author').on(table.authorId),
+}))
+
+// Per-feed-item profile opt-in (one worker reveals identity on one event).
+export const feedProfileOptIns = pgTable('feed_profile_opt_ins', {
+  id: serial('id').primaryKey(),
+  feedItemId: varchar('feed_item_id', { length: 255 }).notNull().unique(),
+  workerId: integer('worker_id').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  workerIdx: index('idx_feed_profile_opt_ins_worker').on(table.workerId),
+}))
