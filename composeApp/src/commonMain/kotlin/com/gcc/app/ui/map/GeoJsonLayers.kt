@@ -762,46 +762,6 @@ fun buildCommunityAreaLabelsGeoJson(): String {
  * The subtitle is a pre-formatted string like "3 bounties · $150" for display on map labels.
  */
 /**
- * Builds a GeoJSON FeatureCollection of Polygon features for rectangle-type spot areas.
- * Computes 4 rotated corner coordinates from center, width/height in meters, and rotation.
- * Circle-type spots are excluded (rendered by CircleLayer instead).
- */
-fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
-    val rectSpots = spots.filter {
-        it.status != CommunityReportStatus.RESOLVED && it.affectedArea is AffectedArea.Rectangle
-    }
-    if (rectSpots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
-
-    val features = rectSpots.map { s ->
-        val rect = s.affectedArea as AffectedArea.Rectangle
-        val lat = s.coordinates.lat
-        val lng = s.coordinates.lng
-        // Convert meters to degrees (approximate at this latitude)
-        val metersPerDegreeLat = 111320.0
-        val metersPerDegreeLng = 111320.0 * cos(lat * kotlin.math.PI / 180.0)
-        val halfW = (rect.widthMeters / 2.0) / metersPerDegreeLng
-        val halfH = (rect.heightMeters / 2.0) / metersPerDegreeLat
-        val rad = rect.rotationDeg * kotlin.math.PI / 180.0
-        val cosR = cos(rad)
-        val sinR = sin(rad)
-
-        // 4 corners (unrotated: ±halfW, ±halfH), then rotate around center
-        val corners = listOf(
-            -halfW to -halfH, halfW to -halfH,
-            halfW to halfH, -halfW to halfH,
-        ).map { (dx, dy) ->
-            val rx = dx * cosR - dy * sinR
-            val ry = dx * sinR + dy * cosR
-            "[${lng + rx},${lat + ry}]"
-        }
-        // Close the ring
-        val ring = corners.joinToString(",") + ",${corners.first()}"
-        """{"type":"Feature","properties":{"id":${s.id},"needsVerification":${s.needsVerification}},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
-    }.joinToString(",")
-    return """{"type":"FeatureCollection","features":[$features]}"""
-}
-
-/**
  * Web Mercator meters-per-pixel constant: Earth's circumference (~40,075,017m)
  * spread across a 256px tile at zoom 0 → 156543.03392 m/px at the equator;
  * halves every zoom level and scales by cos(latitude) elsewhere. Standard
@@ -815,30 +775,43 @@ private const val WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR = 156543.03392
  *  app operates today). */
 private const val CHICAGO_REPRESENTATIVE_LAT_COS = 0.7447
 
-/** 2^17 — the zoom level where the footprint layer fades in (see
- *  `footprintOutlineOpacity` in GccMap.ios.kt, z16.5→17). */
-private const val FOOTPRINT_FADE_IN_ZOOM_POW2 = 131_072.0
+/** 2^15.5 — the zoom level where the footprint layer reaches FULL opacity
+ *  (see `footprintFadeInFullZoom` in GccMap.ios.kt). The fade-in BAND runs
+ *  IOS_SPOT_HEAT_FADE_ZOOM (14.2) → 15.5 (moved from the old z16.5→17 band
+ *  by commit adbef27, closing the dead zoom gap left after spot pins were
+ *  removed); the visibility floor below is anchored to the END of that
+ *  band — where the shapes are fully legible — not the start. */
+private const val FOOTPRINT_FULL_OPACITY_ZOOM_POW2 = 46_340.95 // 2^15.5
 
-/** meters/px at z17 for a representative Chicago latitude:
- *  156543.03392 * 0.7447 / 131072 ≈ 0.8894 m/px. */
-private const val METERS_PER_PIXEL_AT_FOOTPRINT_FADE_IN =
-    WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR * CHICAGO_REPRESENTATIVE_LAT_COS / FOOTPRINT_FADE_IN_ZOOM_POW2
+/** meters/px at z15.5 for a representative Chicago latitude:
+ *  156543.03392 * 0.7447 / 46340.95 ≈ 2.5156 m/px. */
+private const val METERS_PER_PIXEL_AT_FOOTPRINT_FULL_OPACITY =
+    WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR * CHICAGO_REPRESENTATIVE_LAT_COS / FOOTPRINT_FULL_OPACITY_ZOOM_POW2
 
 /**
  * Visibility floor (spec: "min 2.5px at render zoom, color carries
  * noticeability, size carries truth"): the minimum world-space width/
  * diameter a footprint may render at, so a true-scale tiny item (a 0.03m
  * cigarette butt, a 0.22m chip bag) never shrinks under 2.5 screen pixels
- * at the zoom where this layer fades in and functionally vanishes.
+ * at the zoom where this layer reaches full opacity (z15.5 — see
+ * `footprintFadeInFullZoom` in GccMap.ios.kt; the fade-in band that leads
+ * up to it starts at z14.2, where the item is even smaller on screen and
+ * only reads via color, not shape).
  *
- * 2.5px * 0.8894 m/px ≈ 2.22m. This means most typical litter items render
- * at this floor size (larger than true scale) right as they fade in at
- * z17 — the spec's explicit accepted trade-off. Zooming in further only
- * makes them relatively larger on screen (same world-space size, smaller
- * meters/px), never smaller — the floor is a one-way guarantee anchored to
- * the fade-in zoom, not a moving target.
+ * 2.5px * 2.5156 m/px ≈ 6.29m. That's deliberately generous at z15.5 — most
+ * typical litter items (well under a meter) render at several times their
+ * true size right as the layer becomes fully legible, the spec's explicit
+ * accepted trade-off. It also means the floor is LARGE relative to true
+ * item size at deeper zooms (z18+, standing right on top of the item) —
+ * but on-screen size only ever GROWS from there (same world-space size,
+ * smaller meters/px), so the 2.5px guarantee always holds; the trade-off is
+ * that the floor looks increasingly oversized (not undersized) the closer
+ * you get. The floor is a fixed world-space constant — the GeoJSON geometry
+ * is zoom-static, not recomputed per frame — anchored to the full-opacity
+ * zoom rather than expressed as zoom-dependent: a one-way guarantee, not a
+ * moving target.
  */
-private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_FOOTPRINT_FADE_IN
+private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_FOOTPRINT_FULL_OPACITY
 
 /**
  * Builds a GeoJSON FeatureCollection of true-scale, oriented footprint
@@ -863,7 +836,8 @@ private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_
  *     the feature entirely (every observation gets a footprint now; see
  *     Part B.4 — there is still no clustering step).
  *  3. Floored to [FOOTPRINT_VISIBILITY_FLOOR_METERS] either way, so nothing
- *     ever renders sub-2.5px at the fade-in zoom.
+ *     ever renders sub-2.5px at the zoom where this layer reaches full
+ *     opacity (z15.5).
  *
  * Feature properties carry id (Part C — tap resolution back to a
  * [WorldObservation]), itemType, domain, and state so GccMap.ios can filter/
@@ -893,7 +867,8 @@ fun buildObservationFootprintsGeoJson(
         val rawWidth = measuredWidth
             ?: TrashItemCatalog.infoFor(obs.itemType ?: TrashItemCatalog.FALLBACK_TYPE).typicalWidthMeters
         // Part B.2: visibility floor, applied after resolving the real/
-        // type-default width so nothing renders sub-2.5px at fade-in zoom.
+        // type-default width so nothing renders sub-2.5px at the z15.5
+        // full-opacity zoom.
         val width = max(rawWidth, FOOTPRINT_VISIBILITY_FLOOR_METERS)
         val yaw = obs.yawDegrees?.takeIf { it.isFinite() } ?: 0.0
 
@@ -923,9 +898,8 @@ fun buildObservationFootprintsGeoJson(
 
 /**
  * Oriented rectangle ring for [buildObservationFootprintsGeoJson]'s non-
- * vegetation branch — same corner-rotation idiom as
- * [buildSpotRectanglePolygonsGeoJson] (rotate ±half-extents around center in
- * already-degree-converted space), parameterized on a caller-supplied
+ * vegetation branch: rotate ±half-extents around center in
+ * already-degree-converted space, parameterized on a caller-supplied
  * meters-per-degree pair instead of recomputing per feature.
  */
 private fun footprintRectRing(

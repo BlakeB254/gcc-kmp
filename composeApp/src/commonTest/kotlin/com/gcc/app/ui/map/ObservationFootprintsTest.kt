@@ -146,8 +146,9 @@ class ObservationFootprintsTest {
     @Test
     fun typeDefaultWidthIsFlooredToTheVisibilityMinimum() {
         // "other"'s typicalWidthMeters (0.15m, see TrashItemCatalog) is far
-        // below the ~2.22m visibility floor computed for z17 — the rendered
-        // rectangle's width axis must reflect the floor, not the raw 0.15m.
+        // below the ~6.29m visibility floor computed for the z15.5
+        // full-opacity zoom — the rendered rectangle's width axis must
+        // reflect the floor, not the raw 0.15m.
         val json = buildObservationFootprintsGeoJson(
             listOf(observation(domain = "litter", widthMeters = null, yawDegrees = 0.0)),
             centerLat = lat0,
@@ -156,13 +157,13 @@ class ObservationFootprintsTest {
         val lngExtent = coords.maxOf { it.first } - coords.minOf { it.first }
         val metersPerDegreeLng = 111_320.0 * cos(lat0 * PI / 180.0)
         val widthMeters = lngExtent * metersPerDegreeLng
-        assertTrue(widthMeters > 2.0, "expected floored width > 2.0m, got $widthMeters")
+        assertTrue(widthMeters > 5.0, "expected floored width > 5.0m, got $widthMeters")
     }
 
     @Test
     fun measuredWidthAboveTheFloorIsUnaffectedByIt() {
         // The existing orientedRectRingCloses/bounds tests already use a
-        // real (non-null) widthMeters=10.0, well above the ~2.22m floor —
+        // real (non-null) widthMeters=10.0, well above the ~6.29m floor —
         // this just pins that the floor is a MINIMUM, not a rescale, once a
         // real measurement clears it.
         val json = buildObservationFootprintsGeoJson(

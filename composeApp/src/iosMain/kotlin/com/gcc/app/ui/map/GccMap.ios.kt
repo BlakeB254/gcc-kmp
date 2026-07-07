@@ -74,6 +74,11 @@ actual fun GccMap(
     spots: List<CommunityReport>,
     onAreaTap: ((CommunityArea) -> Unit)?,
     onRouteTap: ((routeIndex: Int) -> Unit)?,
+    // Unused inside this file as of Pillar 8 Task 2 (spot tap targets were
+    // removed along with the pin/glyph layers) — kept only for wire/caller
+    // compat, since MapFullScreen.kt still passes it and the SpotInfoCard
+    // flow it feeds still exists. Candidate for removal once that flow is
+    // retired.
     onSpotTap: ((spotId: Int) -> Unit)?,
     onBountyTap: ((bountyId: Int) -> Unit)?,
     onContextPin: ((lat: Double, lng: Double) -> Unit)?,
