@@ -7,6 +7,24 @@ export const dynamic = 'force-dynamic'
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 
+// Rescan priority (P5): ageFactor x qualityBoost, computed at read time from
+// existing summary columns only — no schema migration, no extra join.
+// Dirty-observation weighting (nearby unresolved litter) was scoped for v1
+// too but skipped: the observations join isn't cheap at this table's scale
+// (Global Constraints) — deferred, see PR notes.
+const PRIORITY_AGE_FULL_MS = 7 * 24 * 60 * 60 * 1000 // ageFactor saturates at 1.0 after 7d
+const PRIORITY_QUALITY_BOOST: Record<string, number> = {
+  grazed: 1.0,
+  close: 0.6,
+}
+
+function computePriority(lastScannedAt: string, bestQuality: string, now: number): number {
+  const ageMs = now - new Date(lastScannedAt).getTime()
+  const ageFactor = Math.min(1, ageMs / PRIORITY_AGE_FULL_MS)
+  const qualityBoost = PRIORITY_QUALITY_BOOST[bestQuality] ?? PRIORITY_QUALITY_BOOST.grazed
+  return ageFactor * qualityBoost
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -51,6 +69,7 @@ export async function GET(request: NextRequest) {
         quality: r.bestQuality,
         lastScannedAt: r.lastScannedAt,
         totalDistanceMeters: r.totalDistanceMeters,
+        priority: computePriority(r.lastScannedAt, r.bestQuality, now),
       }))
 
     return NextResponse.json({ cells, success: true })

@@ -26,6 +26,7 @@ import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.MyLocationButton
+import com.gcc.app.ui.map.NeedsScanningToggleChip
 import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
@@ -136,6 +137,11 @@ fun MapFullScreen(
 
     // Precipitation overlay visibility (legend + heat + scrim + dots)
     var heatmapVisible by remember { mutableStateOf(true) }
+
+    // Explorer "Needs scanning" lens (P5) — Explorer-only, so it resets when
+    // leaving the mode (MapModeToggle's onModeChange below) rather than
+    // silently persisting a lens the My Area toggle chip can't reach.
+    var needsScanningLensOn by remember { mutableStateOf(false) }
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -576,6 +582,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
+            showNeedsScanningLens = mapMode == MapMode.EXPLORER && needsScanningLensOn,
             observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
             explorerAreaStates = explorerAreaStates,
@@ -676,8 +683,18 @@ fun MapFullScreen(
                         overrideZoom = null
                         selectedSpot = null
                         selectedRecordIndex = null
+                        needsScanningLensOn = false
                     },
                 )
+
+                // Explorer-only "Needs scanning" lens toggle (P5) — sits
+                // beside MapModeToggle, same chip family (MapModeToggle.kt).
+                if (mapMode == MapMode.EXPLORER) {
+                    NeedsScanningToggleChip(
+                        active = needsScanningLensOn,
+                        onToggle = { needsScanningLensOn = !needsScanningLensOn },
+                    )
+                }
 
                 // Heatmap layer toggle — sits beside MapModeToggle, inherits Row's statusBarsPadding
                 FilledTonalIconButton(

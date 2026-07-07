@@ -10,6 +10,11 @@ import kotlin.math.cos
 import kotlin.math.sqrt
 import kotlin.math.sin
 
+/** Empty GeoJSON FeatureCollection — shared so callers can cheaply check
+ *  "does this source have anything to render" by string equality instead of
+ *  re-parsing JSON. */
+const val EMPTY_GEOJSON_FEATURE_COLLECTION = """{"type":"FeatureCollection","features":[]}"""
+
 /**
  * Builds a GeoJSON FeatureCollection string for community area polygons.
  *
@@ -925,7 +930,7 @@ fun buildExplorerLabelsGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Str
 }
 
 
-/** The five coverage-state tile collections — one visual system: green =
+/** The coverage-state tile collections — one visual system: green =
  *  scanned clean (full or grazed), red = scanned but litter on record,
  *  amber = stale (ready for a fresh scan), fog veil = never scanned at all. */
 data class CoverageStateJsons(
@@ -936,6 +941,11 @@ data class CoverageStateJsons(
     val dirty: String,
     val stale: String,
     val fog: String,
+    /** P5 Explorer "Needs scanning" lens: every cell with `priority` > 0, one
+     *  FeatureCollection with a numeric "priority" property per feature (0..1)
+     *  for a data-driven amber→red ramp — a single opt-in FillLayer, not a
+     *  bucketed set like the tiles above. Empty when no cell has priority. */
+    val priority: String,
 )
 
 /**
@@ -966,7 +976,7 @@ fun buildCoverageStateGeoJsons(
     fogBounds: DoubleArray? = null,
     cellSizeMeters: Double = 10.0,
 ): CoverageStateJsons {
-    val empty = """{"type":"FeatureCollection","features":[]}"""
+    val empty = EMPTY_GEOJSON_FEATURE_COLLECTION
     val lngScale = kotlin.math.cos(centerLat * kotlin.math.PI / 180.0)
     val latStep = cellSizeMeters / 111_320.0
     val lngStep = cellSizeMeters / (111_320.0 * lngScale)
@@ -1012,6 +1022,16 @@ fun buildCoverageStateGeoJsons(
         .filter { it.state == "stale" }
         .joinToString(",") { feature(it) }
 
+    // P5 "Needs scanning" lens: one feature per cell with priority > 0,
+    // carrying BOTH cellId (tap-through, same as every other tile) and a
+    // numeric "priority" property the FillLayer ramps color/opacity from.
+    fun priorityFeature(cell: com.gcc.shared.model.MapCoverageCell): String =
+        """{"type":"Feature","properties":{"cellId":"${cell.locationCellId}","priority":${cell.priority}},""" +
+            """"geometry":{"type":"Polygon","coordinates":[${cellQuad(cell.lat, cell.lng)}]}}"""
+    val priority = coverageCells
+        .filter { it.priority > 0.0 }
+        .joinToString(",") { priorityFeature(it) }
+
     // Never-scanned fog: ONE smooth veil polygon over the bounded area with
     // holes punched where the ledger has coverage. Rendering discrete cell
     // quads produced a "broken grid lines" look at every attempt (three
@@ -1048,6 +1068,7 @@ fun buildCoverageStateGeoJsons(
         dirty = wrap(dirty),
         stale = wrap(stale),
         fog = wrap(fogFeatures.toString()),
+        priority = wrap(priority),
     )
 }
 

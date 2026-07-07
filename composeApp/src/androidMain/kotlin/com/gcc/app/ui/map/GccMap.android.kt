@@ -85,6 +85,11 @@ actual fun GccMap(
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
+    // Unused on this platform: Android's GccMap actual doesn't render the
+    // coverage-tile FillLayer stack at all yet (pre-existing gap, out of
+    // scope here — see iOS actual for the implementation this lens sits
+    // alongside).
+    @Suppress("UNUSED_PARAMETER") showNeedsScanningLens: Boolean,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()

@@ -62,3 +62,42 @@ fun MapModeToggle(
         }
     }
 }
+
+/**
+ * Explorer-lens toggle (P5): "Needs scanning" — same pill/Surface language as
+ * [MapModeToggle] (white surface, rounded, bold-white-on-fill when active) so
+ * the two chips read as one family in the map's top chrome, just amber
+ * (matching the priority lens's low→high color ramp) instead of green when on.
+ */
+@Composable
+fun NeedsScanningToggleChip(
+    active: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 4.dp,
+        color = Color.White,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(17.dp))
+                .background(if (active) GccClaimed else Color.Transparent)
+                .clickable { onToggle() }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Needs scanning",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                ),
+                color = if (active) Color.White else TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
