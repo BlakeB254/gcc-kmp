@@ -990,10 +990,13 @@ fun buildCoverageStateGeoJsons(
 
     // cellId rides in feature properties so the fill layers are tappable —
     // MapFullScreen resolves the id back to the full MapCoverageCell for the
-    // last-scan info card.
-    fun feature(cell: com.gcc.shared.model.MapCoverageCell): String =
-        """{"type":"Feature","properties":{"cellId":"${cell.locationCellId}"},""" +
+    // last-scan info card. Priority-lens features additionally carry a numeric
+    // "priority" (0..1) the lens FillLayer ramps color/opacity from.
+    fun feature(cell: com.gcc.shared.model.MapCoverageCell, withPriority: Boolean = false): String {
+        val priorityProp = if (withPriority) ""","priority":${cell.priority}""" else ""
+        return """{"type":"Feature","properties":{"cellId":"${cell.locationCellId}"$priorityProp},""" +
             """"geometry":{"type":"Polygon","coordinates":[${cellQuad(cell.lat, cell.lng)}]}}"""
+    }
 
     val spots = activeSpots.filter { it.status != com.gcc.shared.model.CommunityReportStatus.RESOLVED }
     fun hasSpotNear(lat: Double, lng: Double): Boolean = spots.any { spot ->
@@ -1022,15 +1025,11 @@ fun buildCoverageStateGeoJsons(
         .filter { it.state == "stale" }
         .joinToString(",") { feature(it) }
 
-    // P5 "Needs scanning" lens: one feature per cell with priority > 0,
-    // carrying BOTH cellId (tap-through, same as every other tile) and a
-    // numeric "priority" property the FillLayer ramps color/opacity from.
-    fun priorityFeature(cell: com.gcc.shared.model.MapCoverageCell): String =
-        """{"type":"Feature","properties":{"cellId":"${cell.locationCellId}","priority":${cell.priority}},""" +
-            """"geometry":{"type":"Polygon","coordinates":[${cellQuad(cell.lat, cell.lng)}]}}"""
+    // P5 "Needs scanning" lens: one feature per cell with priority > 0 —
+    // same tappable cellId as every other tile, plus the priority property.
     val priority = coverageCells
         .filter { it.priority > 0.0 }
-        .joinToString(",") { priorityFeature(it) }
+        .joinToString(",") { feature(it, withPriority = true) }
 
     // Never-scanned fog: ONE smooth veil polygon over the bounded area with
     // holes punched where the ledger has coverage. Rendering discrete cell

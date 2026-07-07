@@ -18,8 +18,7 @@ const PRIORITY_QUALITY_BOOST: Record<string, number> = {
   close: 0.6,
 }
 
-function computePriority(lastScannedAt: string, bestQuality: string, now: number): number {
-  const ageMs = now - new Date(lastScannedAt).getTime()
+function computePriority(ageMs: number, bestQuality: string): number {
   const ageFactor = Math.min(1, ageMs / PRIORITY_AGE_FULL_MS)
   const qualityBoost = PRIORITY_QUALITY_BOOST[bestQuality] ?? PRIORITY_QUALITY_BOOST.grazed
   return ageFactor * qualityBoost
@@ -61,16 +60,19 @@ export async function GET(request: NextRequest) {
         center.lat >= minLat && center.lat <= maxLat
       )
       .filter(({ r }) => since === null || new Date(r.lastScannedAt).getTime() >= since)
-      .map(({ r, center }) => ({
-        locationCellId: r.locationCellId,
-        lat: center.lat,
-        lng: center.lng,
-        state: (now - new Date(r.lastScannedAt).getTime() > STALE_AFTER_MS ? 'stale' : 'fresh') as 'fresh' | 'stale',
-        quality: r.bestQuality,
-        lastScannedAt: r.lastScannedAt,
-        totalDistanceMeters: r.totalDistanceMeters,
-        priority: computePriority(r.lastScannedAt, r.bestQuality, now),
-      }))
+      .map(({ r, center }) => {
+        const ageMs = now - new Date(r.lastScannedAt).getTime()
+        return {
+          locationCellId: r.locationCellId,
+          lat: center.lat,
+          lng: center.lng,
+          state: (ageMs > STALE_AFTER_MS ? 'stale' : 'fresh') as 'fresh' | 'stale',
+          quality: r.bestQuality,
+          lastScannedAt: r.lastScannedAt,
+          totalDistanceMeters: r.totalDistanceMeters,
+          priority: computePriority(ageMs, r.bestQuality),
+        }
+      })
 
     return NextResponse.json({ cells, success: true })
   } catch (error) {

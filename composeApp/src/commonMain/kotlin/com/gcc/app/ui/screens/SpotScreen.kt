@@ -340,7 +340,7 @@ private fun CameraPhase(
     // "fraction of the session spent NORMAL" without a full sample history.
     // Stays at its default (1.0, all-NORMAL) on platforms/sessions with no
     // AR overlay — absence isn't a steadiness failure (Global Constraints).
-    val trackingTickCounts = remember { object { var normal = 0; var total = 0 } }
+    val trackingTickCounts = remember { TrackingTickCounts() }
     LaunchedEffect(arOverlay) {
         if (arOverlay == null) return@LaunchedEffect
         while (true) {
@@ -1107,14 +1107,11 @@ private fun CameraPhase(
                 // dimmer than the fully-active pill.
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
                 .clickable {
-                    val steadinessFraction = trackingTickCounts.total.takeIf { it > 0 }
-                        ?.let { total -> trackingTickCounts.normal.toDouble() / total }
-                        ?: 1.0
                     val draft = sessionRecorder.draft(
                         scanCellCenters,
                         coveragePercent = coveragePercentValue,
                         closePercent = closePercentValue,
-                        steadinessFraction = steadinessFraction,
+                        steadinessFraction = trackingTickCounts.steadinessFraction(),
                     )
                     if (arOverlay != null && captureStarted) {
                         // Stop+drain capture BEFORE the overlay tears down: the
@@ -2267,4 +2264,16 @@ internal fun neverScannedGrid(
         }
     }
     return out
+}
+
+/** Plain (non-Compose) counter pair for the ScanScore steadiness signal —
+ *  mutated off-composition by CameraPhase's once-per-second sampling loop. */
+private class TrackingTickCounts {
+    var normal = 0
+    var total = 0
+
+    /** Fraction of sampled ticks spent NORMAL; 1.0 when nothing was sampled
+     *  (no AR overlay / instant completion — absence isn't a failure). */
+    fun steadinessFraction(): Double =
+        if (total > 0) normal.toDouble() / total else 1.0
 }

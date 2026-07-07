@@ -25,39 +25,21 @@ fun MapModeToggle(
     onModeChange: (MapMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        shadowElevation = 4.dp,
-        color = Color.White,
-    ) {
+    PillChipSurface(modifier = modifier) {
         Row(
             modifier = Modifier.padding(3.dp),
         ) {
             MapMode.entries.forEach { mode ->
-                val isSelected = mode == currentMode
                 val label = when (mode) {
                     MapMode.MY_AREA -> "My Area"
                     MapMode.EXPLORER -> "Explorer"
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(17.dp))
-                        .background(if (isSelected) GccGreen else Color.Transparent)
-                        .clickable { onModeChange(mode) }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        ),
-                        color = if (isSelected) Color.White else TextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                PillChipItem(
+                    label = label,
+                    selected = mode == currentMode,
+                    activeColor = GccGreen,
+                    onClick = { onModeChange(mode) },
+                )
             }
         }
     }
@@ -65,9 +47,9 @@ fun MapModeToggle(
 
 /**
  * Explorer-lens toggle (P5): "Needs scanning" — same pill/Surface language as
- * [MapModeToggle] (white surface, rounded, bold-white-on-fill when active) so
- * the two chips read as one family in the map's top chrome, just amber
- * (matching the priority lens's low→high color ramp) instead of green when on.
+ * [MapModeToggle] (shared [PillChipSurface]/[PillChipItem]) so the two chips
+ * read as one family in the map's top chrome, just amber (matching the
+ * priority lens's low→high color ramp) instead of green when on.
  */
 @Composable
 fun NeedsScanningToggleChip(
@@ -75,29 +57,59 @@ fun NeedsScanningToggleChip(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    PillChipSurface(modifier = modifier) {
+        Box(modifier = Modifier.padding(3.dp)) {
+            PillChipItem(
+                label = "Needs scanning",
+                selected = active,
+                activeColor = GccClaimed,
+                onClick = onToggle,
+            )
+        }
+    }
+}
+
+/** The white rounded elevated container shared by every pill chip in the map
+ *  top chrome. */
+@Composable
+private fun PillChipSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 4.dp,
         color = Color.White,
+        content = content,
+    )
+}
+
+/** One segment of the map top chrome's pill-chip family: bold white text on
+ *  [activeColor] when selected, muted on transparent otherwise. */
+@Composable
+private fun PillChipItem(
+    label: String,
+    selected: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(17.dp))
+            .background(if (selected) activeColor else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(17.dp))
-                .background(if (active) GccClaimed else Color.Transparent)
-                .clickable { onToggle() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "Needs scanning",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                ),
-                color = if (active) Color.White else TextMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            ),
+            color = if (selected) Color.White else TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
