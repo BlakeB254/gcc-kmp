@@ -53,6 +53,7 @@ fun RouteScanScreen(
     val apiClient = koinInject<GccApiClient>()
     val uiState by viewModel.uiState.collectAsState()
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
+    val lap2WeightStats by viewModel.lap2WeightStats.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     // Scout-phase: whether the ScoutCaptureDialog is open
@@ -103,6 +104,7 @@ fun RouteScanScreen(
 
             ScanPhase.CLEANING -> CleanScreen(
                 uiState = uiState,
+                lap2Weight = lap2WeightStats,
                 onCompleteScan = { viewModel.completeScan() },
                 onCleanHotspot = { hotspot ->
                     // Fallback (no capture sheet) — mark cleaned with placeholder
