@@ -63,7 +63,9 @@ class DocumentUploadViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isUploading = true, error = null)
             try {
-                val urls = apiClient.uploadSpotPhotos(listOf(govPhoto.bytes, addressPhoto.bytes))
+                // Verification documents go to the private R2 bucket via the
+                // dedicated endpoint — never the public spot-photo bucket.
+                val urls = apiClient.uploadVerificationDocuments(listOf(govPhoto.bytes, addressPhoto.bytes))
                 if (urls.size >= 2) {
                     apiClient.submitVerificationDocuments(
                         governmentIdUrl = urls[0],

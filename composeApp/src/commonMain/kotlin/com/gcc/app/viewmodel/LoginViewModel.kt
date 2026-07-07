@@ -60,7 +60,15 @@ class LoginViewModel(
                         twoFactorToken = authData.twoFactorToken,
                     )
                 } else {
-                    tokenManager.saveToken(authData.token!!)
+                    val token = authData.token
+                    if (token == null) {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = "Unexpected server response — please try again",
+                        )
+                        return@launch
+                    }
+                    tokenManager.saveToken(token)
                     // Save credentials in Keychain for Face ID re-login
                     tokenManager.saveCredentials(normalizedEmail, password)
                     // Offer to save in iOS Passwords app for AutoFill
@@ -90,7 +98,15 @@ class LoginViewModel(
             try {
                 val twoFactorToken = _uiState.value.twoFactorToken ?: return@launch
                 val authData = apiClient.verify2FA(twoFactorToken, code)
-                tokenManager.saveToken(authData.token!!)
+                val token = authData.token
+                if (token == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Unexpected server response — please try again",
+                    )
+                    return@launch
+                }
+                tokenManager.saveToken(token)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoggedIn = true,
@@ -136,7 +152,15 @@ class LoginViewModel(
                     email = result.email,
                     nonce = result.nonce,
                 )
-                tokenManager.saveToken(authData.token!!)
+                val token = authData.token
+                if (token == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Unexpected server response — please try again",
+                    )
+                    return@launch
+                }
+                tokenManager.saveToken(token)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     isLoggedIn = true,
@@ -195,7 +219,15 @@ class LoginViewModel(
 
     private suspend fun exchangeGoogleIdToken(idToken: String) {
         val authData = apiClient.loginWithGoogle(idToken)
-        tokenManager.saveToken(authData.token!!)
+        val token = authData.token
+        if (token == null) {
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = "Unexpected server response — please try again",
+            )
+            return
+        }
+        tokenManager.saveToken(token)
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             isLoggedIn = true,

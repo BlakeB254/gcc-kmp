@@ -21,23 +21,6 @@ enum class RouteStatus {
 }
 
 @Serializable
-enum class RouteSessionStatus {
-    @SerialName("active") ACTIVE,
-    @SerialName("paused") PAUSED,
-    @SerialName("completed") COMPLETED,
-    @SerialName("abandoned") ABANDONED,
-}
-
-@Serializable
-enum class RouteMarkerType {
-    @SerialName("note") NOTE,
-    @SerialName("photo") PHOTO,
-    @SerialName("video") VIDEO,
-    @SerialName("issue") ISSUE,
-    @SerialName("bounty_response") BOUNTY_RESPONSE,
-}
-
-@Serializable
 enum class CheckpointType {
     @SerialName("route_start") ROUTE_START,
     @SerialName("photo_point") PHOTO_POINT,

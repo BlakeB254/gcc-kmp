@@ -28,6 +28,14 @@
 				<string>com.googleusercontent.apps.674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.globalcommunitycleaners.worker.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gcc</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>128</string>

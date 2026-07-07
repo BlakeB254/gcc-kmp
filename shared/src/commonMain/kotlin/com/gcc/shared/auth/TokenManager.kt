@@ -10,10 +10,17 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 /**
  * Manages JWT auth tokens with persistent storage.
  *
- * Uses `multiplatform-settings` for persistence:
- * - Android: SharedPreferences
- * - iOS: NSUserDefaults
- * - Desktop: java.util.prefs.Preferences
+ * Persistence is whatever [Settings] implementation is injected. In the real
+ * app this MUST be the platform secure store from
+ * `com.gcc.app.platform.createSecureStorage()`:
+ * - Android: EncryptedSharedPreferences (AES-256, Android Keystore-backed)
+ * - iOS: Keychain Services
+ * - Desktop: java.util.prefs.Preferences (dev-only; no OS keystore equivalent)
+ *
+ * WARNING: the no-arg `Settings()` default exists only so tests can construct
+ * a TokenManager without platform wiring. It is PLAINTEXT storage
+ * (SharedPreferences / NSUserDefaults). Production code paths must always
+ * pass `createSecureStorage()` — see `composeApp/.../di/AppModule.kt`.
  *
  * Token survives app restarts. On construction, loads any saved token.
  */
@@ -92,7 +99,12 @@ open class TokenManager(private val settings: Settings = Settings()) {
     }
 
     /** Save login credentials for biometric re-authentication.
-     *  On iOS, SecureStorage is Keychain-backed, so credentials are encrypted by the Secure Enclave. */
+     *  On iOS, SecureStorage is Keychain-backed, so credentials are encrypted by the Secure Enclave.
+     *
+     *  WARNING: this stores the user's RAW PASSWORD at rest (albeit in the
+     *  platform secure store). It should migrate to refresh-token-based
+     *  re-auth so the password never persists on device — flow change needs
+     *  on-device testing before removal, so it survives for now. */
     fun saveCredentials(email: String, password: String) {
         settings.putString(KEY_CREDENTIAL_EMAIL, email)
         settings.putString(KEY_CREDENTIAL_PASSWORD, password)

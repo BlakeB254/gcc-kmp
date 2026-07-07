@@ -28,26 +28,6 @@ enum class SponsorFrequency {
 }
 
 @Serializable
-enum class SponsorPackageStatus {
-    @SerialName("draft") DRAFT,
-    @SerialName("quoted") QUOTED,
-    @SerialName("paid") PAID,
-    @SerialName("active") ACTIVE,
-    @SerialName("completed") COMPLETED,
-    @SerialName("cancelled") CANCELLED
-}
-
-@Serializable
-enum class EnterpriseTier {
-    @SerialName("community_champion") COMMUNITY_CHAMPION,
-    @SerialName("impact_partner") IMPACT_PARTNER,
-    @SerialName("documentary_sponsor") DOCUMENTARY_SPONSOR,
-    @SerialName("movement_partner") MOVEMENT_PARTNER,
-    @SerialName("legacy_sponsor") LEGACY_SPONSOR,
-    @SerialName("founding_partner") FOUNDING_PARTNER
-}
-
-@Serializable
 enum class SponsorMilestoneType {
     @SerialName("total_funded") TOTAL_FUNDED,
     @SerialName("jobs_funded") JOBS_FUNDED,

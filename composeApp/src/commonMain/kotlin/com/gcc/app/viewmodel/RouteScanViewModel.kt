@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1328,11 +1329,22 @@ class RouteScanViewModel(
         locationJob?.cancel()
         coverageJob?.cancel()
         coverageFlushJob?.cancel()
-        scope.launch { coverageEventQueue.flush(); arMarkerQueue.flush() }
+        accuracyJob?.cancel()
         aiDirectionJob?.cancel()
         aiDirectionEngine.clear()
         locationProvider.stopLocationUpdates()
         arScanner.stopSession()
+        // Final queue flush must outlive this ViewModel, so it runs in its own
+        // short-lived scope (self-cancelling on completion) — that lets the
+        // main [scope] be cancelled immediately, which also kills the
+        // untracked collectors launched in initForRoute/startLocationTracking
+        // (scannedCells, outdoorGate.state) that job fields never covered.
+        val flushScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        flushScope.launch {
+            coverageEventQueue.flush()
+            arMarkerQueue.flush()
+        }.invokeOnCompletion { flushScope.cancel() }
+        scope.cancel()
     }
 
     private suspend fun awaitInitialLocation(): Coordinates? {

@@ -84,20 +84,12 @@ class RootComponent(
         navigation.push(Screen.ActiveJob(jobId, routeId))
     }
 
-    fun navigateToProfile() {
-        navigation.push(Screen.Profile)
-    }
-
     fun navigateToAchievements() {
         navigation.push(Screen.Achievements)
     }
 
     fun navigateToUserCard() {
         navigation.push(Screen.UserCard)
-    }
-
-    fun navigateToMap() {
-        navigation.push(Screen.MapFullScreen)
     }
 
     fun navigateToRegister() {
@@ -142,11 +134,6 @@ class RootComponent(
 
     fun navigateToFeed() {
         navigation.push(Screen.Feed)
-    }
-
-    fun navigateToAdminPanel() {
-        if (tokenManager?.isAdmin() != true) return
-        navigation.push(Screen.AdminPanel)
     }
 
     fun navigateToAdminWorkerDetail(workerId: Int) {
@@ -225,6 +212,10 @@ class RootComponent(
     }
 
     fun switchToTab(screen: Screen) {
+        // Client-side admin gate for the tab path every screen actually uses.
+        // The server independently re-checks the JWT role claim on every
+        // /api/admin call — this just keeps non-admins out of the admin UI.
+        if (screen is Screen.AdminPanel && tokenManager?.isAdmin() != true) return
         navigation.replaceAll(screen)
     }
 

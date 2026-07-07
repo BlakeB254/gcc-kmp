@@ -32,7 +32,7 @@ import platform.Security.errSecDuplicateItem
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
-import platform.Security.kSecAttrAccessibleAfterFirstUnlock
+import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
@@ -129,7 +129,7 @@ private class KeychainStorage : Settings {
                 kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
                 kSecAttrAccount to CFBridgingRetain(key as NSString),
                 kSecValueData to dataRef,
-                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlock,
+                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             )
             val addStatus = SecItemAdd(addQuery, null)
             if (addStatus == errSecDuplicateItem) {
@@ -146,7 +146,7 @@ private class KeychainStorage : Settings {
                 kSecAttrService to CFBridgingRetain(SERVICE_NAME as NSString),
                 kSecAttrAccount to CFBridgingRetain(key as NSString),
                 kSecValueData to dataRef,
-                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlock,
+                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             )
             SecItemAdd(addQuery, null)
         }
