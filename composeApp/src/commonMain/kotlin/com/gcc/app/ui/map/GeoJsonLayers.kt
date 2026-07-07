@@ -866,22 +866,29 @@ private fun footprintRectRing(
     metersPerDegreeLat: Double,
     metersPerDegreeLng: Double,
 ): String {
-    val halfW = (widthMeters / 2.0) / metersPerDegreeLng
-    val halfD = (depthMeters / 2.0) / metersPerDegreeLat
+    val halfW = widthMeters / 2.0
+    val halfD = depthMeters / 2.0
     val rad = yawDegrees * PI / 180.0
     val cosR = cos(rad)
     val sinR = sin(rad)
 
-    // 4 corners (unrotated: ±halfW, ±halfD), then rotate around center —
-    // yaw 0 keeps the (long) width axis east-west; yaw 90 swings it to
-    // north-south.
+    // 4 corners (unrotated: ±halfW, ±halfD) in METER space, rotated with
+    // compass (clockwise-from-north) handedness — yaw is a bearing, not a
+    // CCW math angle, so a plain CCW rotation mirrors the shape and mixes
+    // lat/lng-scaled axes before conversion, both wrong. Rotating in meters
+    // first and converting per-axis afterward (lat: /metersPerDegreeLat,
+    // lng: /metersPerDegreeLng) keeps the footprint's true aspect ratio;
+    // yaw 0 keeps the (long) width axis east-west, yaw 90 swings it to
+    // north-south, yaw 45 to bearing 135 (SE-NW).
     val corners = listOf(
         -halfW to -halfD, halfW to -halfD,
         halfW to halfD, -halfW to halfD,
     ).map { (dx, dy) ->
-        val rx = dx * cosR - dy * sinR
-        val ry = dx * sinR + dy * cosR
-        "[${lng + rx},${lat + ry}]"
+        val rx = dx * cosR + dy * sinR
+        val ry = -dx * sinR + dy * cosR
+        val dLng = rx / metersPerDegreeLng
+        val dLat = ry / metersPerDegreeLat
+        "[${lng + dLng},${lat + dLat}]"
     }
     return corners.joinToString(",") + ",${corners.first()}"
 }

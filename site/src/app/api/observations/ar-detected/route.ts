@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
       const estimatedWeightGrams = Number.isFinite(Number(marker.estimatedWeightGrams))
         ? Math.round(Number(marker.estimatedWeightGrams))
         : undefined
-      const estimatedWidthMeters = Number.isFinite(Number(marker.estimatedWidthMeters))
-        ? Number(marker.estimatedWidthMeters)
+      const estimatedWidthMeters = typeof marker.estimatedWidthMeters === 'number' && Number.isFinite(marker.estimatedWidthMeters)
+        ? marker.estimatedWidthMeters
         : undefined
       await recordWorldObservation({
         sourceType: 'ar_auto_detect',

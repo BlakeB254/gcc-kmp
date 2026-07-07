@@ -275,8 +275,8 @@ export async function POST(request: NextRequest) {
               severity: Number.isFinite(Number(it.severity)) ? Number(it.severity) : undefined,
               confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
               estimatedWeightGrams: Number.isFinite(Number(it.estimatedWeightGrams)) ? Math.round(Number(it.estimatedWeightGrams)) : undefined,
-              estimatedWidthMeters: Number.isFinite(Number(it.estimatedWidthMeters)) ? Number(it.estimatedWidthMeters) : undefined,
-              yawDegrees: Number.isFinite(Number(it.yawDegrees)) ? Number(it.yawDegrees) : undefined,
+              estimatedWidthMeters: typeof it.estimatedWidthMeters === 'number' && Number.isFinite(it.estimatedWidthMeters) ? it.estimatedWidthMeters : undefined,
+              yawDegrees: typeof it.yawDegrees === 'number' && Number.isFinite(it.yawDegrees) ? it.yawDegrees : undefined,
               domain: OBSERVATION_DOMAINS.includes(it.domain) ? (it.domain as (typeof OBSERVATION_DOMAINS)[number]) : undefined,
             }))
         : []

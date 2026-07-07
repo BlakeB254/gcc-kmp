@@ -1,6 +1,10 @@
 package com.gcc.app.ui.map
 
 import com.gcc.shared.model.WorldObservation
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -80,6 +84,38 @@ class ObservationFootprintsTest {
         assertTrue(lngExtent0 > latExtent0, "yaw0 expected lng>lat, got lng=$lngExtent0 lat=$latExtent0")
         // yaw 90: the long axis swings to north-south -> lat extent is bigger.
         assertTrue(latExtent90 > lngExtent90, "yaw90 expected lat>lng, got lng=$lngExtent90 lat=$latExtent90")
+    }
+
+    @Test
+    fun orientedRectWidthAxisMatchesCompassBearingAtYaw45() {
+        // Compass yaw is bearing (clockwise from north), not a CCW math
+        // angle — the width axis at yaw must land on bearing yaw+90 (135
+        // here), never the mirrored 90-yaw (45) a plain CCW rotation of
+        // already-degree-scaled deltas would produce.
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(domain = "litter", widthMeters = 10.0, yawDegrees = 45.0)),
+            centerLat = lat0,
+        )
+        val coords = ringCoordinates(json)
+        // Ring order is [(-halfW,-halfD), (halfW,-halfD), (halfW,halfD), (-halfW,halfD), close].
+        // Corner 0 -> corner 2 is the rectangle's diagonal; its local (pre-
+        // rotation) offset is exactly (width, depth), so its bearing sits
+        // atan(depth/width) = ~21.8 deg off the pure width-axis bearing —
+        // expected ~113.2 deg here, not the ~90 deg-away 23.2 deg the mirror
+        // bug would produce.
+        val metersPerDegreeLat = 111_320.0
+        val metersPerDegreeLng = metersPerDegreeLat * cos(lat0 * PI / 180.0)
+        val (lng0, lat0v) = coords[0]
+        val (lng2, lat2) = coords[2]
+        val dLngMeters = (lng2 - lng0) * metersPerDegreeLng
+        val dLatMeters = (lat2 - lat0v) * metersPerDegreeLat
+        val bearing = (Math.toDegrees(atan2(dLngMeters, dLatMeters)) + 360.0) % 360.0
+
+        val expectedBearing = 113.2
+        assertTrue(
+            abs(bearing - expectedBearing) < 5.0,
+            "expected diagonal bearing near $expectedBearing (width axis ~135), got $bearing",
+        )
     }
 
     @Test

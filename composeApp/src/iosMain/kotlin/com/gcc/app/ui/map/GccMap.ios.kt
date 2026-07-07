@@ -1172,78 +1172,18 @@ actual fun GccMap(
 
             }
 
-            // ── User location blue dot ──
-            if (currentLocation != null) {
-                val userLocationJson = remember(currentLocation) {
-                    """{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[${currentLocation.lng},${currentLocation.lat}]},"properties":{}}]}"""
-                }
-                val userLocationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(userLocationJson))
-
-                // Directional cone showing which way the user is facing.
-                // Replaces the accuracy halo whenever a compass heading exists.
-                if (gpsHeading != null) {
-                    val headingConeJson = remember(currentLocation, gpsHeading) {
-                        headingConeGeoJson(currentLocation.lat, currentLocation.lng, gpsHeading)
-                    }
-                    val headingConeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(headingConeJson))
-                    FillLayer(
-                        id = "user-location-heading-cone",
-                        source = headingConeSrc,
-                        color = const(Color(0xFF007AFF).copy(alpha = 0.30f)),
-                    )
-                } else {
-                    // Accuracy halo — semi-transparent blue circle
-                    CircleLayer(
-                        id = "user-location-halo",
-                        source = userLocationSrc,
-                        color = const(Color(0xFF007AFF).copy(alpha = 0.12f)),
-                        radius = interpolate(
-                            type = exponential(1.5f),
-                            input = zoom(),
-                            10 to const(8.dp),
-                            14 to const(24.dp),
-                            17 to const(48.dp),
-                        ),
-                    )
-                }
-                // White border ring
-                CircleLayer(
-                    id = "user-location-border",
-                    source = userLocationSrc,
-                    color = const(Color.White),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        10 to const(5.dp),
-                        14 to const(7.dp),
-                        17 to const(9.dp),
-                    ),
-                )
-                // Blue dot center
-                CircleLayer(
-                    id = "user-location-dot",
-                    source = userLocationSrc,
-                    color = const(Color(0xFF007AFF)),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        10 to const(3.5.dp),
-                        14 to const(5.dp),
-                        17 to const(7.dp),
-                    ),
-                )
-            }
-
             // ── Observation footprints (Pillar 3) ──
             // True-scale, oriented shapes at close zoom — declared BEFORE the
-            // pin/glyph layers below so footprints render UNDER them (z-order
-            // = declaration order); a footprint must never bury the marker
-            // that represents it. Gated on non-empty footprint data (Fix 2,
-            // r2a convention) and zoom (>=17 via opacity interpolate) —
-            // heatmap/pins own the far zoom story, footprints are the
-            // close-zoom "what does it actually look like" detail. Domain-
-            // tinted per the geometry-approximation table: vegetation green,
-            // construction grey, everything else (litter/unspecified) orange.
+            // user-location dot AND the pin/glyph layers below so footprints
+            // render UNDER all of them (z-order = declaration order); a
+            // footprint must never bury the marker that represents it, nor
+            // sit atop the user's own position dot. Gated on non-empty
+            // footprint data (Fix 2, r2a convention) and zoom (>=17 via
+            // opacity interpolate) — heatmap/pins own the far zoom story,
+            // footprints are the close-zoom "what does it actually look
+            // like" detail. Domain-tinted per the geometry-approximation
+            // table: vegetation green, construction grey, everything else
+            // (litter/unspecified) orange.
             if (hasFootprintData) {
                 val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
                 val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
@@ -1304,6 +1244,68 @@ actual fun GccMap(
                     color = const(Color(0xFFF97316)),
                     width = const(0.5.dp),
                     opacity = footprintOutlineOpacity,
+                )
+            }
+
+            // ── User location blue dot ──
+            if (currentLocation != null) {
+                val userLocationJson = remember(currentLocation) {
+                    """{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[${currentLocation.lng},${currentLocation.lat}]},"properties":{}}]}"""
+                }
+                val userLocationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(userLocationJson))
+
+                // Directional cone showing which way the user is facing.
+                // Replaces the accuracy halo whenever a compass heading exists.
+                if (gpsHeading != null) {
+                    val headingConeJson = remember(currentLocation, gpsHeading) {
+                        headingConeGeoJson(currentLocation.lat, currentLocation.lng, gpsHeading)
+                    }
+                    val headingConeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(headingConeJson))
+                    FillLayer(
+                        id = "user-location-heading-cone",
+                        source = headingConeSrc,
+                        color = const(Color(0xFF007AFF).copy(alpha = 0.30f)),
+                    )
+                } else {
+                    // Accuracy halo — semi-transparent blue circle
+                    CircleLayer(
+                        id = "user-location-halo",
+                        source = userLocationSrc,
+                        color = const(Color(0xFF007AFF).copy(alpha = 0.12f)),
+                        radius = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(8.dp),
+                            14 to const(24.dp),
+                            17 to const(48.dp),
+                        ),
+                    )
+                }
+                // White border ring
+                CircleLayer(
+                    id = "user-location-border",
+                    source = userLocationSrc,
+                    color = const(Color.White),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(5.dp),
+                        14 to const(7.dp),
+                        17 to const(9.dp),
+                    ),
+                )
+                // Blue dot center
+                CircleLayer(
+                    id = "user-location-dot",
+                    source = userLocationSrc,
+                    color = const(Color(0xFF007AFF)),
+                    radius = interpolate(
+                        type = exponential(1.5f),
+                        input = zoom(),
+                        10 to const(3.5.dp),
+                        14 to const(5.dp),
+                        17 to const(7.dp),
+                    ),
                 )
             }
 

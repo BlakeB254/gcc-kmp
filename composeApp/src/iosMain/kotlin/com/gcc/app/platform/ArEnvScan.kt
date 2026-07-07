@@ -737,7 +737,11 @@ actual class ArEnvScanOverlay actual constructor() {
 
         var visionX = 0.5
         var visionY = 0.5
-        var bboxWidthFrac = 0.2
+        // No default: a real measurement only exists when saliency actually
+        // returns a salient object's bbox. Falling back to a guessed
+        // fraction here would fabricate a widthMeters value for elements
+        // that were never measured — null must propagate instead.
+        var bboxWidthFrac: Double? = null
         saliencyOnDemand(native, saliencyRequest)?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
@@ -766,7 +770,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // result must not permanently suppress this element for the session.
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
         if (!lat.isFinite() || !lng.isFinite()) return
-        val widthMeters = physicalWidthMeters(bboxWidthFrac, hit.distance.toDouble())
+        val widthMeters = bboxWidthFrac?.let { physicalWidthMeters(it, hit.distance.toDouble()) }
         val cam = cameraPosition()
         val yawDegrees = cam?.let { bearingDegrees(hit.x - it[0], hit.z - it[2]) }
         registeredElements.add(Triple(element.itemType, world[0], world[2]))
