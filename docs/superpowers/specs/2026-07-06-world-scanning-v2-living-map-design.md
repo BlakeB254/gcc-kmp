@@ -135,9 +135,16 @@ Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
    (observations/footprints) + heatmap contribution at distance. The PR #65 supersede
    (15m of anchor + scanned items) must be strengthened to key on the scan's actual
    COVERED CELLS (grazed+ tiers), and verified working with the current scan flow.
-2. **Spots demoted to an internal layer.** Dots remain only as an owner/dev/early-user
-   indicator of historical problem areas (admin-style toggle, default off for users);
-   the scanned-area display is the product UI in My Area AND Explorer.
+2. **Spots removed entirely — replaced by honest litter visualization (Blake
+   revision, same day: no internal dot layer either).** Close-zoom tiles on BOTH the
+   app map and the website render the actual nature + positioning of litter from
+   world observations: per-item positions/types/extents (Pillar 3 footprints are the
+   foundation) with distribution-aware rendering — a fenceline scatter reads as a
+   linear cluster, dispersed litter reads as spread marks, a genuine pile reads as a
+   pile. NOT one generic pill at the block bookend. The best mess photos (detection
+   frames + report media) are preserved per observation/cluster and surface on tap,
+   alongside weight/material estimates from close scans. Spot-pin layers get removed
+   from mobile GccMap and web CombinedMap; the heatmap remains the far-zoom language.
 3. **Scanned vs unscanned = unmistakable.** The coverage wash must clearly split the
    world into "app has been here" vs not (current 0.14-0.20α tints are too subtle —
    pair with Pillar 7's organic rendering; keep basemap labels legible).
