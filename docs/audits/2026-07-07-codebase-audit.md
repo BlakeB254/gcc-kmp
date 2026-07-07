@@ -202,23 +202,27 @@ queue, image compression before upload (1920px / JPEG 0.8), the presigned-R2 upl
 
 ## 6. Prioritized master list
 
-| # | Fix | Area | Value / Effort |
-|---|---|---|---|
-| 1 | Private storage for verification documents | mobile+site | Critical / S |
-| 2 | Stripe webhook idempotency (event guard + unique index) | site | Critical / S |
-| 3 | Atomic SQL increments for stats/money counters | site | High / S |
-| 4 | `aps-environment=production` for release builds | iosApp | High / XS |
-| 5 | Register `gcc://` scheme + `www.` applinks | iosApp | High / XS |
-| 6 | HTTP timeouts + bounded retry in `GccApiClient` | shared | High / S |
-| 7 | Decide Ktor-vs-Next backend story; document; fix or retire Ktor login | server | High / M |
-| 8 | Neon-serverless driver for transactional flows | site | High / M |
-| 9 | `scope.cancel()` in `RouteScanViewModel.onCleared()` | composeApp | Med / XS |
-| 10 | Stop persisting raw password for biometrics; `…ThisDeviceOnly` | shared | Med / S |
-| 11 | Per-environment base-URL config; kill 6 hardcoded hosts | shared | Med / S |
-| 12 | Remove `token!!` force-unwraps in login/biometric VMs | composeApp | Med / XS |
-| 13 | Delete CERTAIN dead code (26 components, dead routes, deps, CSS) | site | Med / M |
-| 14 | Delete dead API-client methods + DTO enums; add `SignupRankings.country` | shared | Med / S |
-| 15 | `requireSponsor()` / `adminFetch()` / `appUrl()` consolidation | site | Med / S |
-| 16 | zod validation on checkout + auth routes, expand outward | site | Med / M |
-| 17 | Rate limiting on auth/code endpoints | site | Med / M |
-| 18 | Admin auth off localStorage onto httpOnly cookie | site | Med / M |
+Status column updated 2026-07-07 on branch `claude/codebase-review-site-design-z7kn9t`.
+
+| # | Fix | Area | Value / Effort | Status |
+|---|---|---|---|---|
+| 1 | Private storage for verification documents | mobile+site | Critical / S | ✅ Fixed — new private R2 endpoint `/api/workers/me/verification/upload`, admin presign endpoint, mobile client switched. Old public-blob docs need an ops migration/deletion. |
+| 2 | Stripe webhook idempotency (event guard) | site | Critical / S | ✅ Fixed — `stripe_events` claim table (migration 0028). Composite unique index deliberately skipped (NULL blockId on donations gets no protection; prod dupes could break `db:push`). |
+| 3 | Atomic SQL increments for stats/money counters | site | High / S | ✅ Fixed — sponsor + worker stat paths, plus batched the per-block N+1. |
+| 4 | `aps-environment=production` for release builds | iosApp | High / XS | ✅ Fixed |
+| 5 | Register `gcc://` scheme + `www.` applinks | iosApp | High / XS | ✅ Fixed |
+| 6 | HTTP timeouts + bounded retry in `GccApiClient` | shared | High / S | ✅ Timeouts added (15s/60s/60s; 180s for uploads). Retry/backoff deferred. |
+| 7 | Decide Ktor-vs-Next backend story; document; fix or retire Ktor login | server | High / M | ◐ Documented in CLAUDE.md (Next.js is canonical mobile API). Ktor parity/retirement still an open decision. |
+| 8 | Neon-serverless driver for transactional flows | site | High / M | ⏳ Deferred — needs prod-adjacent testing; idempotency + atomic increments mitigate the worst cases. |
+| 9 | `scope.cancel()` in `RouteScanViewModel.onCleared()` | composeApp | Med / XS | ✅ Fixed — scope cancelled; final flush runs in a self-cancelling scope. |
+| 10 | Stop persisting raw password for biometrics; `…ThisDeviceOnly` | shared | Med / S | ◐ Keychain accessibility tightened to ThisDeviceOnly; Android fallback fails closed. Password→refresh-token migration deferred (needs device testing). |
+| 11 | Per-environment base-URL config; kill 6 hardcoded hosts | shared | Med / S | ◐ Desktop port fixed, false docs corrected. Env-switchable config + 6 hardcoded site-hosts deferred. |
+| 12 | Remove `token!!` force-unwraps in login/biometric VMs | composeApp | Med / XS | ✅ Fixed |
+| 13 | Delete CERTAIN dead code (components, dead routes, deps, CSS) | site | Med / M | ✅ Done — 40 files (~4.6k LOC), 6 packages, ~260 CSS lines. LIKELY items (community-reports, phone verification, seed scripts, orphaned pages, lib exports) kept pending owner confirmation. |
+| 14 | Delete dead API-client methods + DTO enums; add `SignupRankings.country` | shared | Med / S | ✅ Done — 15 methods + 7 enums removed (`retractCoverageEvents` kept: live callers), `country` added. |
+| 15 | `requireSponsor()` / `adminFetch()` / `appUrl()` consolidation | site | Med / S | ◐ `requireSponsor()` (7 sites) + `appUrl()` (all ~15 sites, wrong `gcc.app` fallbacks fixed) done. `adminFetch()` deferred (pairs with #18). |
+| 16 | zod validation on checkout + auth routes, expand outward | site | Med / M | ⏳ Deferred |
+| 17 | Rate limiting on auth/code endpoints | site | Med / M | ⏳ Deferred |
+| 18 | Admin auth off localStorage onto httpOnly cookie | site | Med / M | ⏳ Deferred |
+
+Also fixed alongside: webhook `whsec_placeholder` fallback removed (fail-fast), `debug:` error leaks in sponsors/me + register removed, `/api/workers/me/verification` now actually persists document references (previously dropped them), TokenManager/PlatformConfig stale docs corrected, admin tab navigation now passes the `isAdmin()` gate.

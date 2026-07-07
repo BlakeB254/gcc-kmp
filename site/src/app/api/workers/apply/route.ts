@@ -5,6 +5,7 @@ import { eq, sql } from 'drizzle-orm'
 import { sendEmail } from '@/lib/email'
 import { emailVerificationEmail } from '@/lib/email/templates/email-verification'
 import { getEarlyAdopterTier, generateReferralCode } from '@/lib/movement-rankings'
+import { appUrl as resolveAppUrl } from '@/lib/env'
 import crypto from 'crypto'
 
 export const runtime = 'nodejs'
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
       .returning({ id: workers.id })
 
     // Send verification email
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+    const appUrl = resolveAppUrl()
     const verificationUrl = `${appUrl}/worker/verify-email?token=${verificationToken}&id=${worker.id}`
 
     const emailContent = emailVerificationEmail({

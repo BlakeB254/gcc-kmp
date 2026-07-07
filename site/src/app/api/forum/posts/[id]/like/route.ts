@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { forumPosts, forumReplies, forumLikes, workers, sponsors } from '@/db/schema'
+import { forumPosts, forumReplies, forumLikes } from '@/db/schema'
 import { eq, sql, and } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
+import { requireSponsor } from '@/lib/sponsor-auth'
 
 export const runtime = 'nodejs'
 
@@ -21,12 +22,9 @@ async function getCurrentUser(request: NextRequest): Promise<{
   }
 
   // Check sponsor token
-  const sponsorToken = request.cookies.get('sponsor-token')?.value
-  if (sponsorToken) {
-    const payload = await verifyToken(sponsorToken)
-    if (payload && payload.type === 'sponsor') {
-      return { type: 'sponsor', id: payload.id }
-    }
+  const sponsor = await requireSponsor(request)
+  if (sponsor) {
+    return { type: 'sponsor' as const, id: sponsor.id }
   }
 
   return null

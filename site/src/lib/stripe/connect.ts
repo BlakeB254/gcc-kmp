@@ -1,4 +1,5 @@
 import { stripe, STRIPE_CONFIG, isStripeConfigured } from './client'
+import { appUrl } from '@/lib/env'
 
 /**
  * Create a Stripe Connect Express account for a worker
@@ -20,7 +21,7 @@ export async function createConnectAccount(workerId: string, email: string) {
     business_type: 'individual',
     business_profile: {
       mcc: '7349', // Building cleaning and maintenance services
-      url: process.env.NEXT_PUBLIC_APP_URL,
+      url: appUrl(),
     },
     metadata: {
       workerId,

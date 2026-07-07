@@ -3,6 +3,7 @@
  *
  * Pre-populated share messages and URL generation for viral growth.
  */
+import { appUrl } from '@/lib/env'
 
 export interface ShareData {
   globalRank: number
@@ -11,13 +12,13 @@ export interface ShareData {
   name?: string
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
-
 /**
  * Generate the referral URL
  */
 export function getReferralUrl(referralCode: string): string {
-  return `${APP_URL}/join?ref=${referralCode}`
+  // Resolved lazily (not at module scope) so importing this file never
+  // throws at build time when NEXT_PUBLIC_APP_URL is unset.
+  return `${appUrl()}/join?ref=${referralCode}`
 }
 
 /**

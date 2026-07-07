@@ -7,6 +7,7 @@ import {
   JWTPayload,
   SignJWT,
 } from 'jose'
+import { appUrl } from '@/lib/env'
 
 export type OAuthProvider = 'google' | 'apple'
 export type OAuthRole = 'worker'
@@ -44,9 +45,7 @@ export function getBaseUrl(request: NextRequest) {
     return request.nextUrl.origin
   }
 
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '')
-  if (configured) return configured
-  return request.nextUrl.origin
+  return appUrl().replace(/\/+$/, '')
 }
 
 export function callbackUrl(request: NextRequest, provider: OAuthProvider) {

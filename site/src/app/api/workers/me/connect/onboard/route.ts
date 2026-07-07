@@ -9,6 +9,7 @@ import {
   createConnectAccount,
   createOnboardingLink,
 } from '@/lib/stripe/connect'
+import { appUrl as resolveAppUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
         .where(eq(workers.id, workerId))
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gcc.app'
+    const appUrl = resolveAppUrl()
     const returnUrl = `${appUrl}/workers/connect/return`
     const refreshUrl = `${appUrl}/workers/connect/refresh`
 

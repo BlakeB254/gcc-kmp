@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { materialDonations } from '@/db/schema'
 import { sendEmail } from '@/lib/email'
+import { appUrl as resolveAppUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
 }
 
 function materialDonationConfirmationEmail(data: MaterialDonationRequest): { html: string; text: string } {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  const appUrl = resolveAppUrl()
 
   const html = `
 <!DOCTYPE html>

@@ -1,3 +1,5 @@
+import { appUrl as resolveAppUrl } from '@/lib/env'
+
 interface WaitlistConfirmationData {
   name?: string
   email: string
@@ -9,7 +11,7 @@ interface WaitlistConfirmationData {
 }
 
 export function waitlistConfirmationEmail(data: WaitlistConfirmationData): { html: string; text: string } {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  const appUrl = resolveAppUrl()
   const referralLink = `${appUrl}/join?ref=${data.referralCode}`
   const profileLink = `${appUrl}/join/success?email=${encodeURIComponent(data.email)}`
 

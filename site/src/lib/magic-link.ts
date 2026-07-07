@@ -7,6 +7,7 @@
 
 import crypto from 'crypto'
 import { Resend } from 'resend'
+import { appUrl } from '@/lib/env'
 
 // Defer Resend instantiation until first use so a missing key doesn't crash
 // at module-eval time (e.g. during `next build` page-data collection).
@@ -115,7 +116,7 @@ export async function sendMagicLinkEmail(
     baseUrl?: string
   }
 ): Promise<{ success: boolean; error?: string }> {
-  const baseUrl = options?.baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  const baseUrl = options?.baseUrl || appUrl()
   const appType = options?.appType || 'web'
 
   // For mobile app, use deep link; for web, use regular URL

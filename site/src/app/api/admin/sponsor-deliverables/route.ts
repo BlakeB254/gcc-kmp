@@ -17,11 +17,12 @@ import {
 } from '@/lib/sponsor-deliverables'
 import { sendEmail } from '@/lib/email'
 import { adminPackageCreatedEmail } from '@/lib/email/templates/sponsor-deliverable'
+import { appUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
 
 function siteUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://globalcommunitycleaners.org'
+  return appUrl()
 }
 
 function adminEmail(): string | null {
