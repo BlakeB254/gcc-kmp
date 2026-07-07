@@ -83,6 +83,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()

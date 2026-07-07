@@ -109,6 +109,10 @@ expect fun GccMap(
     /** Reports live camera zoom (throttled to actual changes) so callers can
      *  zoom-gate chrome like the heat legend to when the layer is on screen. */
     onZoomChanged: ((Double) -> Unit)? = null,
+    /** World observations carrying widthMeters/yawDegrees (Pillar 3) — driven
+     *  into true-scale oriented footprint polygons at close zoom (>=17),
+     *  rendered under the pin/glyph layers. Empty → no footprint layer. */
+    observationFootprints: List<com.gcc.shared.model.WorldObservation> = emptyList(),
     content: @Composable BoxScope.() -> Unit = {},
 )
 
