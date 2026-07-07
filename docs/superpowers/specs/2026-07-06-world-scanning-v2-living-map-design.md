@@ -210,6 +210,27 @@ The legacy report-seeded bounty flow was never fully implemented — replaced by
 - Sequenced after P8 + P9 merge; needs its own plan (payment/refund flows warrant
   the full spec→plan→review cycle).
 
+
+## Pillar 11 — AR scan overlay: four systems only (Blake, 2026-07-07)
+
+The env-scan AR overlay reduces to exactly these, everything else audited out:
+1. **Fog = never scanned in OUR SYSTEM.** Fog keys on the ledger (server coverage
+   + session credits), not session-only state — ground anyone has scanned stays
+   clear; grazed+ lifts it as today.
+2. **Solid stationary ground grid.** Once placed, the grid NEVER moves — locked to
+   the map lattice (geogrid phase work) and immune to GPS re-pair re-phasing;
+   stability beats accuracy (drift correction may re-anchor CONTENT, not the grid).
+3. **Vector-scan analysis effect.** Any identified world feature not yet on the map
+   (litter, landmarks) gets the vector-scan effect over it — "being analyzed and
+   added." Litter posts to the map in REAL TIME (immediate flush on confirm), and
+   ALL scan data streams incrementally (marker queue, observations, capture chunks,
+   journal) so a disconnect loses seconds, never the session.
+4. **Close-scan guidance.** Edge arrows + directional prompts (move left/right/up,
+   hold still, closer) driving high-quality captures — Object-Capture-style UX
+   feeding the quality scorer's signals.
+
+Sequenced after P8 (same ArEnvScan/fog/grid files as its tap-to-focus work).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
