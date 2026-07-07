@@ -170,6 +170,46 @@ Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
    wired into the rescan-priority lens (Pillar 5) and in-scan phase-2 steering; a
    completing scan either upgrades the observation or supersedes it (gone/cleaned).
 
+
+## Pillar 8/9 addendum — Best-frame extraction for issue areas (Blake, 2026-07-07)
+
+Scans must yield the still frames that BEST depict each issue area:
+- **Near term (client, shipped/shipping):** detection-frame JPEGs are captured at
+  marker promotion (#99) and analyzer photos flow on env scans; per issue-area
+  cluster, "best" = closest capture distance, then highest confidence, then most
+  recent — selection logic server-side at read time.
+- **Deep path (DGX, backlog):** the capture sidecar timestamps every frame and the
+  detection events carry timestamps — the fusion pipeline can extract the exact
+  video frames at detection moments from the HEVC chunks (multiple angles per
+  issue), rank by sharpness/framing, and attach the winners to observations.
+  GPS+pose in the sidecar ties every extracted frame to map position.
+
+
+## Pillar 10 — Area bounties, peer-to-peer (Blake, 2026-07-07)
+
+The legacy report-seeded bounty flow was never fully implemented — replaced by:
+- **Geographic-area bounties:** the issuer (any user, donator, or third party)
+  DRAWS A CIRCLE on the map around all the messes they want included (center +
+  radius drag). The circle is the bounty's contract geometry: stored server-side
+  and ENFORCED on the cleaner at completion — lap-1 scan coverage is computed
+  against the circle's area (intersected with authored exclusions where they
+  overlap), and verification requires the observations inside the circle to be
+  resolved/superseded by the after-scan. The circle renders on the cleaner's
+  minimap exactly like a block boundary.
+- **Same cycle as the $100 admin blocks, generalized P2P:** claim → lap-1 scan of the
+  area (coverage %) → clean → lap-2 after-scan (weight-based progress) → scan-based
+  verification (supersede/lifecycle evidence + block completion report as the
+  verification artifact) → Stripe payout to the cleaner.
+- **Funding:** Stripe payment collection from the funder at creation (escrow-style;
+  connect payouts already exist for the worker side); platform fee TBD; refund path
+  when a bounty expires unworked.
+- **Composition:** builds directly on #109's two-lap system (arbitrary-boundary
+  support), P8's observation clusters + lifecycle, P9's completion reports, and the
+  existing Connect payout rails. The P8 observation-seeded bounty is the interim
+  bridge until this lands.
+- Sequenced after P8 + P9 merge; needs its own plan (payment/refund flows warrant
+  the full spec→plan→review cycle).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
