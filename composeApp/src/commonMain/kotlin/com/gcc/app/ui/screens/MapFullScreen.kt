@@ -648,28 +648,12 @@ fun MapFullScreen(
                 }
             }
 
-            // Explorer scan: the free-form scan, open anywhere on the map —
-            // no route, no boundary, coverage credit wherever you stand.
-            if (mapMode == MapMode.EXPLORER && selectedSpot == null) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = if (hasBottomRecords) 84.dp else 20.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(GccGreen)
-                        .clickable { onNavigateToSpot() }
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("📷", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = "Explorer Scan",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                    )
-                }
-            }
+            // Single scan button for the map tab, regardless of mode: this used
+            // to sit alongside a second "Explorer Scan" pill that only showed
+            // in EXPLORER mode — same destination, same callback, redundant
+            // side-by-side buttons (Blake). SpotCreateButton below already
+            // launches the env scan in both MY_AREA and EXPLORER, so the
+            // EXPLORER-only pill was pure duplication; removed.
 
             // Bottom-right map actions: keep Spot and Location peers in one row.
             if (selectedSpot == null) {
