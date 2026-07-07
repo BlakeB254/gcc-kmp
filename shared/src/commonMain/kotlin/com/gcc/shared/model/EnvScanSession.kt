@@ -74,12 +74,6 @@ data class EnvScanManifest(
     val observedItems: List<ObservedSpotItem>,
     /** R2 keys of the photos uploaded alongside this manifest. */
     val photoKeys: List<String>,
-    /** Periodic raw color+depth frames captured during the session for the
-     *  DGX reconstruction pipeline (Task 7). Empty for sessions recorded
-     *  before this field existed, or when every frame upload attempt failed
-     *  -- frames are best-effort like [photoKeys], never queued/retried, so
-     *  this list only ever contains frames actually confirmed in R2. */
-    val capturedFrames: List<CapturedFrame> = emptyList(),
     /** The community report this session produced, when submission succeeded. */
     val communityReportId: Int? = null,
     /** Guided 3D capture (measured USDZ model), when performed — rides the
@@ -99,6 +93,21 @@ data class EnvScanManifest(
      *  unchanged. Null for sessions recorded before this field existed. */
     val gateEvents: List<String>? = null,
     val schemaVersion: Int = 1,
+    /** R2 keys of background-capture chunks (HEVC video + pose/depth
+     *  sidecars) uploaded so far for this session, per the session-capture
+     *  plan — additive/optional so older manifests deserialize unchanged.
+     *  Late-uploaded chunks are still keyed by sessionId in R2 regardless
+     *  of whether they made it into this snapshot. */
+    val captureChunks: List<String>? = null,
+    /** Sidecar/chunk format version for `captureChunks` (currently 1). Null
+     *  for manifests recorded before background capture existed. */
+    val captureSchema: Int? = null,
+    /** Periodic raw color+depth frames captured during the session for the
+     *  DGX reconstruction pipeline (Task 7). Empty for sessions recorded
+     *  before this field existed, or when every frame upload attempt failed
+     *  -- frames are best-effort like [photoKeys], never queued/retried, so
+     *  this list only ever contains frames actually confirmed in R2. */
+    val capturedFrames: List<CapturedFrame> = emptyList(),
 )
 
 @Serializable
@@ -114,4 +123,11 @@ data class CaptureUploadUrlRequest(
     val deviceId: String,
     val capturedAt: String,
     val ext: String,
+    /** Session-artifact path (Pillar 1 background capture chunks): when both
+     *  this and [artifactPath] are set, the server keys the object under
+     *  raw/{locationCellId}/{sessionId}/{artifactPath} instead of the legacy
+     *  raw/{locationCellId}/{deviceId}/{capturedAt}.{ext} layout. Last params,
+     *  defaulted, so existing callers are unaffected. */
+    val sessionId: String? = null,
+    val artifactPath: String? = null,
 )

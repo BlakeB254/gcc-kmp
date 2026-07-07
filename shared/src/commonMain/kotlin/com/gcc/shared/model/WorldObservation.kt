@@ -27,6 +27,17 @@ data class WorldObservation(
     val capturedAt: String? = null,
     val scanHotspotId: Int? = null,
     val communityReportId: Int? = null,
+    /**
+     * Physical width in meters (footprint diameter for vegetation circles,
+     * footprint width for oriented rectangles). Null when unmeasured — older
+     * observations and clients predate width capture (Pillar 3 Task 1).
+     */
+    val widthMeters: Double? = null,
+    /**
+     * Compass bearing (degrees, [0, 360)) of the observed face, used to
+     * orient a true-scale footprint on the map. Null when unmeasured.
+     */
+    val yawDegrees: Double? = null,
 )
 
 @Serializable

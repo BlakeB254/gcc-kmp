@@ -69,6 +69,12 @@ expect fun GccMap(
     gpsHeading: Float? = null,
     enableGestures: Boolean = false,
     routeCoordinates: List<List<Coordinates>> = emptyList(),
+    /** Indices into [routeCoordinates] of the worker's assigned route
+     *  boundaries, if any — rendered with a distinct (thicker/brighter)
+     *  highlight so they still stand out now that they're drawn as part of
+     *  the union rather than exclusively (see MapFullScreen's
+     *  mapRouteCoordinates). */
+    activeRouteIndices: List<Int> = emptyList(),
     animateRoutes: Boolean = false,
     bountyLocations: List<Coordinates> = emptyList(),
     bounties: List<Bounty> = emptyList(),
@@ -109,6 +115,10 @@ expect fun GccMap(
     /** Reports live camera zoom (throttled to actual changes) so callers can
      *  zoom-gate chrome like the heat legend to when the layer is on screen. */
     onZoomChanged: ((Double) -> Unit)? = null,
+    /** World observations carrying widthMeters/yawDegrees (Pillar 3) — driven
+     *  into true-scale oriented footprint polygons at close zoom (>=17),
+     *  rendered under the pin/glyph layers. Empty → no footprint layer. */
+    observationFootprints: List<com.gcc.shared.model.WorldObservation> = emptyList(),
     content: @Composable BoxScope.() -> Unit = {},
 )
 

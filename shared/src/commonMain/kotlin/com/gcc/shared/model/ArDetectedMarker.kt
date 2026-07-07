@@ -9,6 +9,10 @@ data class ArDetectedMarkerRequest(
     val lng: Double,
     val label: String,
     val capturedAt: Instant,
+    /** Public URL of a best-effort photo captured at marker promotion time
+     *  (uploaded before enqueueing — never null bytes persisted here). Null
+     *  when no photo was captured or the upload failed. */
+    val mediaUrl: String? = null,
 )
 
 @Serializable

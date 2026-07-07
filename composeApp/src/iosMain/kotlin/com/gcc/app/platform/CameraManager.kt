@@ -820,6 +820,44 @@ internal fun cvPixelBufferToPortraitPhoto(pixelBuffer: platform.CoreVideo.CVPixe
     }
 }
 
+/**
+ * CVPixelBuffer → downscaled JPEG bytes for AR auto-detect marker photos
+ * (Fix: route-scan/env-scan spots that were auto-promoted from an AR
+ * detection used to enqueue with no photo at all). Deliberately smaller than
+ * [cvPixelBufferToPortraitPhoto] — this is a best-effort thumbnail for a map
+ * spot, not a full-resolution scan photo, and it fires on every promoted
+ * marker: ~800px long edge at 0.7 quality keeps the upload small.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun cvPixelBufferToMarkerPhotoJpeg(pixelBuffer: platform.CoreVideo.CVPixelBufferRef): ByteArray? {
+    val cgImage = try {
+        memScoped {
+            val out = alloc<CGImageRefVar>()
+            val status = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, null, out.ptr)
+            if (status != 0) null else out.value
+        }
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("camera", "marker frame → CGImage conversion failed", e)
+        null
+    } ?: return null
+    return try {
+        val image = UIImage.imageWithCGImage(
+            cgImage,
+            scale = 1.0,
+            orientation = UIImageOrientation.UIImageOrientationRight,
+        ).resizedToMax(800.0)
+        val jpeg = UIImageJPEGRepresentation(image, 0.7)
+        jpeg?.bytes?.readBytes(jpeg.length.toInt())
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("camera", "marker frame → JPEG conversion failed", e)
+        null
+    } finally {
+        // finally, not inline: a throw between CGImage creation and the old
+        // inline release leaked the image (review r2).
+        CGImageRelease(cgImage)
+    }
+}
+
 @Composable
 private fun CameraPreviewFallback(modifier: Modifier) {
     Box(
