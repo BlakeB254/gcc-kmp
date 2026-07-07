@@ -76,6 +76,20 @@ export async function POST(request: Request) {
         }).where(eq(workers.id, id))
         updated.push(id)
       } else if (action === 'suspend') {
+        // suspend -> 'rejected' is DELIBERATE, not a typo:
+        // (a) verificationStatusEnum has NO 'suspended' value — its only
+        //     values are pending/approved/rejected/needs_info (schema.ts).
+        // (b) Job claiming gates on verificationStatus === 'approved', so
+        //     setting any non-approved value blocks the worker from claiming
+        //     jobs — the practical effect suspension wants. 'rejected' is the
+        //     closest terminal state. Note AdminWorkersTab's "Suspend All"
+        //     button is LIVE in the shipped app (it previously 404'd against
+        //     this missing endpoint), so these semantics are load-bearing.
+        // (c) FOLLOW-UP: suspended workers are indistinguishable from
+        //     genuinely rejected ones — they appear mixed into the 'rejected'
+        //     review queue. A dedicated 'suspended' enum value needs a schema
+        //     change (enum alter + Tables.kt mirror + shared DTO), out of
+        //     this task's scope.
         await db.update(workers).set({
           verificationStatus: 'rejected',
           verificationReviewedAt: now.toISOString(),
