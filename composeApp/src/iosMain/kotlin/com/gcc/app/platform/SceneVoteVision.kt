@@ -72,9 +72,9 @@ internal fun SceneVoteVision.analyzeViewfinderFrame(pixelBuffer: CVPixelBufferRe
         "${it.identifier}(${(it.confidence * 100).toInt()}%)"
     }
 
-    val trashLabel = TrashDetectionRules.trashLabelFrom(
-        observations.map { ClassificationObservation(it.identifier, it.confidence) }
-    ) ?: return ViewfinderFrameResult(vote, null, topLabels)
+    val commonObs = observations.map { ClassificationObservation(it.identifier, it.confidence) }
+    val trashLabel = TrashDetectionRules.trashLabelFrom(commonObs)
+        ?: return ViewfinderFrameResult(vote, null, topLabels)
 
     // Salient region → reticle position; fall back to frame center.
     var visionX = 0.5
@@ -101,6 +101,8 @@ internal fun SceneVoteVision.analyzeViewfinderFrame(pixelBuffer: CVPixelBufferRe
         r = radius,
         label = trashLabel,
         distanceMeters = null,
+        severity = LiveSeverityEstimator.estimate(trashLabel, radius),
+        confidence = TrashDetectionRules.trashConfidenceFor(trashLabel, commonObs),
     )
     return ViewfinderFrameResult(vote, detection, topLabels)
 }

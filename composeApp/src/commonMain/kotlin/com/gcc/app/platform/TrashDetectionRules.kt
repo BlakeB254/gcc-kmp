@@ -70,4 +70,15 @@ object TrashDetectionRules {
             if (obs.confidence < TRASH_CONFIDENCE) return@firstNotNullOfOrNull null
             tokensOf(obs.identifier).firstNotNullOfOrNull { TRASH_TOKENS[it] }
         }
+
+    /** Confidence of whichever observation actually produced [label] via
+     *  [trashLabelFrom] -- callers that already have the label (rather than
+     *  re-deriving it) use this to feed a live severity/quality estimate
+     *  without threading a second value through every call site by hand. */
+    fun trashConfidenceFor(label: String, observations: List<ClassificationObservation>): Float =
+        observations
+            .filter { it.confidence >= TRASH_CONFIDENCE }
+            .filter { obs -> tokensOf(obs.identifier).any { TRASH_TOKENS[it] == label } }
+            .maxOfOrNull { it.confidence }
+            ?: TRASH_CONFIDENCE
 }

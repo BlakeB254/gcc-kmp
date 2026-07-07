@@ -1,6 +1,6 @@
 import { db } from '@/db'
-import { worldObservations, blockExclusionZones } from '@/db/schema'
-import { eq, and, isNull } from 'drizzle-orm'
+import { worldObservations, blockExclusionZones, communityReports } from '@/db/schema'
+import { eq, and, isNull, inArray } from 'drizzle-orm'
 import { pointInPolygon, METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
 
 const CELL_SIZE_METERS = 10
@@ -71,6 +71,14 @@ export async function recordWorldObservation(input: RecordObservationInput) {
   if (input.state === 'clean') {
     // A clean re-scan supersedes ALL currently-dirty items in this cell,
     // regardless of their itemType — a clean scan means "nothing dirty here now."
+    const superseded = await db
+      .select({ communityReportId: worldObservations.communityReportId })
+      .from(worldObservations)
+      .where(and(
+        eq(worldObservations.locationCellId, cellId),
+        eq(worldObservations.state, 'dirty'),
+        eq(worldObservations.isCurrent, true)
+      ))
     await db
       .update(worldObservations)
       .set({ isCurrent: false })
@@ -79,6 +87,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         eq(worldObservations.state, 'dirty'),
         eq(worldObservations.isCurrent, true)
       ))
+    await resolveSupersededReports(superseded.map((row) => row.communityReportId))
   } else {
     // A new dirty observation of the same itemType in the same cell supersedes
     // only the prior observation of that itemType (a couch and glass 1m apart
@@ -142,6 +151,29 @@ export async function recordWorldObservation(input: RecordObservationInput) {
     .returning()
 
   return row
+}
+
+/**
+ * When a clean observation supersedes prior dirty rows, any of those rows
+ * that trace back to a `communityReports` submission need that report
+ * resolved too — otherwise the legacy report keeps showing on any map
+ * surface that still reads `communityReports` directly (both current map
+ * implementations do, for their primary marker layer) even though the
+ * canonical `worldObservations` record correctly shows it superseded.
+ * Only 'pending'/'verified' reports are touched — 'rejected' is a moderator
+ * call this shouldn't silently overwrite, and 'resolved'/'acknowledged' are
+ * already settled.
+ */
+async function resolveSupersededReports(communityReportIds: (number | null)[]) {
+  const ids = [...new Set(communityReportIds.filter((id): id is number => id != null))]
+  if (ids.length === 0) return
+  await db
+    .update(communityReports)
+    .set({ status: 'resolved', showOnMap: false })
+    .where(and(
+      inArray(communityReports.id, ids),
+      inArray(communityReports.status, ['pending', 'verified'])
+    ))
 }
 
 /**

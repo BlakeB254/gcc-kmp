@@ -990,6 +990,22 @@ private fun CameraPhase(
         }
         EnvironmentScanEffects(active = captureAllowed, creditTick = creditTick)
         DetectionReticleOverlay(detections = liveDetections)
+        if (isScanMode) {
+            // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
+            // live detection confidence into one glanceable tier. Never gates
+            // capture or Complete Scan.
+            ScanQualityBadge(
+                signal = com.gcc.app.platform.ScanQualitySignal(
+                    trackingState = arTracking,
+                    gpsAccuracyMeters = gpsAccuracy,
+                    detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, end = 16.dp),
+            )
+        }
         ScanToast(message = toast)
 
         // 3D-scan entry pill removed per product direction (Blake: not

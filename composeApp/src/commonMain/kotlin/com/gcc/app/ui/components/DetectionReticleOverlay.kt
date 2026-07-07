@@ -19,9 +19,20 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gcc.app.platform.LiveDetection
+import com.gcc.app.ui.theme.GccClaimed
+import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/** Same 1-5 scale as [com.gcc.app.platform.LiveSeverityEstimator] and
+ *  OnDeviceAnalyzer's post-capture severity -- low reuses the existing brand
+ *  green so a low-severity reticle still reads as "unchanged" at a glance. */
+private fun reticleColorFor(severity: Int): Color = when {
+    severity >= 4 -> GccError
+    severity == 3 -> GccClaimed
+    else -> GccGreen
+}
 
 /**
  * Draws a circle reticle + label over each live trash detection from the AR
@@ -66,19 +77,19 @@ fun DetectionReticleOverlay(
         for (detection in detections) {
             val center = Offset(detection.cx * size.width, detection.cy * size.height)
             val radius = (detection.r * minDim).coerceIn(28.dp.toPx(), minDim * 0.45f)
+            val reticleColor = reticleColorFor(detection.severity)
 
-            // Base circle -- unchanged from its pre-promotion-feature appearance,
-            // regardless of streak progress. The progress arc below is drawn as a
-            // visually distinct overlay on top rather than relying on dimming
-            // this base for contrast.
+            // Base circle -- color now carries the live severity estimate
+            // (green/amber/red); shape/position/animation are otherwise
+            // unchanged from the pre-severity-coding appearance.
             drawCircle(
-                color = GccGreen,
+                color = reticleColor,
                 radius = radius,
                 center = center,
                 style = Stroke(width = 3.dp.toPx()),
             )
             drawCircle(
-                color = GccGreen.copy(alpha = 0.15f),
+                color = reticleColor.copy(alpha = 0.15f),
                 radius = radius,
                 center = center,
             )

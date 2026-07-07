@@ -838,6 +838,8 @@ actual class ArEnvScanOverlay actual constructor() {
                         distanceMeters = distance,
                         streakProgress = nearStreak.coerceAtMost(NEAR_STREAK_TICKS),
                         streakTicks = NEAR_STREAK_TICKS,
+                        severity = LiveSeverityEstimator.estimate(trashLabel, radius),
+                        confidence = confidence,
                     )
                 )
             )

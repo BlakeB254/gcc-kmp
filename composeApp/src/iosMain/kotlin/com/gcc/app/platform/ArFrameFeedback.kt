@@ -233,11 +233,14 @@ internal class ArFrameFeedback(
         // Called before building this tick's LiveDetection so the reticle can
         // show this tick's progress, not last tick's.
         val progress = promotionTracker.onTick(distance?.toDouble())
+        val trashConfidence = TrashDetectionRules.trashConfidenceFor(trashLabel, commonObs)
         _liveDetections.value = listOf(
             LiveDetection(
                 cx = viewX, cy = viewY, r = radius, label = trashLabel, distanceMeters = distance,
                 streakProgress = progress.streak, streakTicks = progress.streakTicks,
                 justPromoted = progress.promoted,
+                severity = LiveSeverityEstimator.estimate(trashLabel, radius),
+                confidence = trashConfidence,
             )
         )
         if (progress.promoted && hitWorld != null) {

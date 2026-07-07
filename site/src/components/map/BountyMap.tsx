@@ -44,6 +44,14 @@ interface SpotReport {
   bountyId?: string | number | null
   observerRewardPoints?: number
   itemType?: string | null
+  /** 1-5, from the backing worldObservations row when one matched (Task 10). */
+  severity?: number | null
+  /** worldObservations.domain — 'litter' | 'vegetation' | 'construction' | 'land_use'. */
+  domain?: string | null
+  /** Derived/representative image for this observation, when one exists —
+   *  may come from a user's spot photo OR an auto-captured detection frame,
+   *  even when the report itself has no `photoUrl`/`mediaUrls` (Task 11). */
+  mediaUrl?: string | null
 }
 
 interface BountyMapProps {
