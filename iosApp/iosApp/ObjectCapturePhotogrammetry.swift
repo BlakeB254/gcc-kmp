@@ -194,12 +194,24 @@ final class ObjectCaptureBridgeImpl: NSObject, ObjectCaptureBridgeSurface {
 
     /// Reports the USDZ path and measured bbox; volume assumes a loose-pile
     /// fill factor since a bounding box overstates irregular heaps.
+    ///
+    /// `.bounds` can hand back a degenerate box (NaN/inf/non-positive extents)
+    /// when photogrammetry couldn't resolve real geometry — feeding that into
+    /// the volume math and onward to Kotlin is worse than just reporting no
+    /// dimensions, so a bad box is treated exactly like the `.zero`/no-bounds
+    /// failure paths above (dims reported as 0, which Kotlin's
+    /// `attachObjectCapture` already treats as "no dimensions").
     private func emitResult(_ path: String?, _ extents: SIMD3<Float>) {
         guard !finished else { return }
         finished = true
-        let width = Double(extents.x)
-        let height = Double(extents.y)
-        let depth = Double(extents.z)
+        let rawWidth = Double(extents.x)
+        let rawHeight = Double(extents.y)
+        let rawDepth = Double(extents.z)
+        let extentsValid = rawWidth.isFinite && rawHeight.isFinite && rawDepth.isFinite &&
+            rawWidth > 0 && rawHeight > 0 && rawDepth > 0
+        let width = extentsValid ? rawWidth : 0
+        let height = extentsValid ? rawHeight : 0
+        let depth = extentsValid ? rawDepth : 0
         let volumeLiters = width * height * depth * Self.bboxFillFactor * 1000.0
         DispatchQueue.main.async {
             self.onResult?(

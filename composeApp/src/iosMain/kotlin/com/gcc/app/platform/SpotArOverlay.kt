@@ -101,8 +101,20 @@ actual class SpotArOverlay actual constructor() {
 
     actual fun stop() {
         frameFeedback.stop()
-        nativeSurface?.pause()
+        // Full teardown (not just pause): cancels the native surface's
+        // per-frame scene subscription and releases every created entity —
+        // pause() alone left every entity anchored in the scene holding GPU
+        // resources (the Complete Scan crash-on-tap root cause).
+        nativeSurface?.teardown()
+        nativeSurface = null
         sceneView?.session?.pause()
+        // SceneKit fallback: release every node this overlay created.
+        for ((_, node) in sectorNodes) node.removeFromParentNode()
+        sectorNodes.clear()
+        arrowNode?.removeFromParentNode()
+        arrowNode = null
+        guideTarget?.removeFromParentNode()
+        guideTarget = null
     }
 
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {

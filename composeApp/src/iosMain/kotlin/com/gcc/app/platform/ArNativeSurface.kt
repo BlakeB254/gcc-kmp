@@ -32,6 +32,17 @@ interface ArNativeSurface {
     fun pause()
 
     /**
+     * Full teardown: cancel the per-frame scene subscription and remove
+     * EVERY created entity (planes, vector/fog cells, sector posts, walls,
+     * arrow, veil) from the scene graph, then pause the session. `pause()`
+     * alone left the per-frame update subscription live and every entity —
+     * potentially 750+ on a large scan — anchored in the scene holding GPU
+     * resources; that's the scan-end (Complete Scan tap) crash class this
+     * closes. Overlays call this instead of [pause] from `stop()`.
+     */
+    fun teardown()
+
+    /**
      * Latest camera frame's CVPixelBuffer as a raw address (0 = none yet).
      * A Long because cinterop pointer types are silently dropped from the
      * ObjC framework header, taking the whole protocol with them — the Swift

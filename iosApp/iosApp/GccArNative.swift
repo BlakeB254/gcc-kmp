@@ -127,6 +127,53 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
+    /// Full teardown, not just pause: cancels the per-frame scene subscription
+    /// and removes EVERY created entity (planes, vector/fog cells, sector
+    /// posts, walls, arrow, veil) from the RealityKit scene graph. `pause()`
+    /// alone left `updateSubscription` live and every entity — potentially
+    /// 750+ on a large scan — still anchored in the scene holding GPU
+    /// resources, which is the scan-end crash-on-Complete-Scan root cause
+    /// this fixes. Called from Kotlin's `ArEnvScanOverlay.stop()` (and the
+    /// route/spot overlays) instead of `pause()` at composition teardown.
+    func teardown() {
+        updateSubscription?.cancel()
+        updateSubscription = nil
+
+        for (_, entry) in planeEntities { entry.anchor.removeFromParent() }
+        planeEntities.removeAll()
+
+        for (_, anchor) in vectorCellEntities { anchor.removeFromParent() }
+        vectorCellEntities.removeAll()
+
+        for (_, anchor) in fogCellEntities { anchor.removeFromParent() }
+        fogCellEntities.removeAll()
+
+        for (_, anchor) in sectorPostEntities { anchor.removeFromParent() }
+        sectorPostEntities.removeAll()
+
+        for wall in wallEntities { wall.removeFromParent() }
+        wallEntities.removeAll()
+
+        arrowEntity?.removeFromParent()
+        arrowEntity = nil
+        veilEntity?.removeFromParent()
+        veilEntity = nil
+        cameraAnchor.removeFromParent()
+
+        coachingOverlay?.setActive(false, animated: false)
+        coachingOverlay = nil
+
+        frameLock.lock()
+        lastFrame = nil
+        frameLock.unlock()
+
+        arView.session.pause()
+
+        if Self.liveSurface === self {
+            Self.liveSurface = nil
+        }
+    }
+
     func currentPixelBufferAddress() -> Int64 {
         frameLock.lock()
         defer { frameLock.unlock() }
