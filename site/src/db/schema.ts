@@ -1949,3 +1949,45 @@ export const feedProfileOptIns = pgTable('feed_profile_opt_ins', {
   itemWorkerUnique: uniqueIndex('feed_profile_opt_ins_item_worker_unique').on(table.feedItemId, table.workerId),
   workerIdx: index('idx_feed_profile_opt_ins_worker').on(table.workerId),
 }))
+
+// Pillar 9 — block completion reports. Auto-generated when a worker's job
+// completion PATCH (site/src/app/api/jobs/[id]/complete) fires, from the
+// job's linked route_scans session (see site/src/lib/block-completion-report.ts).
+// One report per job; regenerable by admin (upsert on jobId) if generation
+// failed or needs a re-run after a v1 heuristic upgrade. `sessionId` is the
+// route_scans.id the report was built from, kept for traceability/debugging
+// even though jobId is the stable lookup key clients use.
+export const blockCompletionReports = pgTable('block_completion_reports', {
+  id: serial('id').primaryKey(),
+  jobId: integer('job_id').notNull(),
+  routeId: integer('route_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  sessionId: integer('session_id').notNull(), // route_scans.id this report was built from
+
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  durationSeconds: integer('duration_seconds'),
+
+  // GeoJSON-ish track data: { scout: LineString | null, clean: LineString | null }
+  gpsTrack: jsonb('gps_track'),
+  // Array of { locationCellId, lat, lng, domain, observationCount } — see
+  // queryAreasCleaned in block-completion-report.ts.
+  areasCleaned: jsonb('areas_cleaned'),
+  // Array of { locationCellId, itemType, before, after } before/after photo pairs
+  // — see pairBeforeAfterPhotos in block-completion-report.ts.
+  imagePairs: jsonb('image_pairs'),
+
+  totalEstimatedWeightLbs: doublePrecision('total_estimated_weight_lbs'),
+  cleanedEstimatedWeightLbs: doublePrecision('cleaned_estimated_weight_lbs'),
+  // { byType: Record<string, number>, bySeverity: Record<string, number> }
+  countsByType: jsonb('counts_by_type'),
+
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  jobIdx: uniqueIndex('block_completion_reports_job_id_idx').on(table.jobId),
+  routeIdx: index('block_completion_reports_route_id_idx').on(table.routeId),
+  workerIdx: index('block_completion_reports_worker_id_idx').on(table.workerId),
+}))
+
+export type BlockCompletionReportRow = typeof blockCompletionReports.$inferSelect
+export type NewBlockCompletionReportRow = typeof blockCompletionReports.$inferInsert

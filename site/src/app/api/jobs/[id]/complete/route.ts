@@ -4,6 +4,7 @@ import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { generateBlockCompletionReport } from '@/lib/block-completion-report'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -46,6 +47,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
       .where(eq(jobs.id, jobId))
       .returning()
+
+    // Pillar 9 — auto-generate the block completion report from the job's
+    // linked route_scans session. Non-fatal by design: report generation
+    // can fail (e.g. no matching scan session yet) without failing job
+    // completion. Admin can re-run via POST /api/admin/reports/[id]/regenerate.
+    try {
+      await generateBlockCompletionReport(jobId)
+    } catch (reportError) {
+      console.error(
+        `PATCH /api/jobs/[id]/complete: completion report generation failed for job ${jobId}:`,
+        reportError
+      )
+    }
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({
