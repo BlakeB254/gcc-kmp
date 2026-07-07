@@ -12,7 +12,6 @@ import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
-import com.gcc.app.platform.bookOrphanCaptureSessions
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.LocationProvider
@@ -28,8 +27,8 @@ import com.gcc.app.platform.detectDeviceType
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
-import com.gcc.app.platform.recoverOrphanScanSessions
 import com.gcc.app.platform.retractionOutcome
+import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
@@ -229,15 +228,14 @@ class RouteScanViewModel(
         // only), but any pending from a prior Spot session still deserve a
         // chance to flush whenever ANY scan screen opens.
         scope.launch { captureUploader.flushPending() }
-        // Pillar 6 orphan recovery — same sweep SpotViewModel runs, see its
-        // kdoc/init comment for the active-session-exclusion reasoning. This
-        // VM is a Koin `factory` (recreated per screen open, not a process
-        // singleton), so this can re-run more than once per launch; that's
-        // harmless — a completed sweep just finds nothing left.
-        scope.launch {
-            bookOrphanCaptureSessions(captureChunkStore)
-            recoverOrphanScanSessions(sessionUploader, captureChunkStore)
-        }
+        // Pillar 6 orphan recovery — same call SpotViewModel makes. This VM
+        // is a Koin `factory` (recreated per screen open), but the sweep's
+        // internal once-per-process guard means only the FIRST scan-screen VM
+        // constructed after launch actually lists the directories; every
+        // later construction is a no-op. Active-session exclusion comes from
+        // lazy journal-file creation (the lapSessionRecorder property
+        // initializer above creates no file — see the sweep's KDoc).
+        scope.launch { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
     }
 
     /** Pre-generates the sessionId so [sessionJournalPath] can be resolved

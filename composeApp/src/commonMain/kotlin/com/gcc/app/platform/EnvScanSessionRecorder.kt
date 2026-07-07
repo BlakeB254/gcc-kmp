@@ -3,9 +3,15 @@ package com.gcc.app.platform
 import com.gcc.shared.model.EnvScanCell
 import com.gcc.shared.model.EnvScanPathSample
 import com.gcc.shared.serialization.GccJson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlin.concurrent.Volatile
 import kotlin.random.Random
 
 /**
@@ -31,12 +37,27 @@ data class EnvScanJournalEntry(
  * matching pre-Pillar-6 behavior) every [addSample]/[noteGateEvent] call also
  * appends one JSONL line to that file, so an app kill mid-scan doesn't lose
  * the track — [recoverOrphanScanSessions] rebuilds and uploads it from the
- * journal at next launch. A journal write failure never reaches the caller:
- * it's caught here, logged exactly once, and [journalHealthy] flips off —
- * every later call degrades silently to memory-only (today's behavior)
- * instead of retrying (and re-logging) a broken path on every sample for the
- * rest of an hour-long scan.
+ * journal at next launch.
+ *
+ * Threading: journal I/O never runs on the caller's thread (SpotScreen calls
+ * addSample from a main-thread coroutine). Appends and rewrites are enqueued
+ * onto [journalScope] — a private single-writer executor
+ * (`limitedParallelism(1)`, so lines land in enqueue order) on
+ * Dispatchers.Default. The journal file therefore only comes into existence
+ * once the first sample/gate event is recorded AND its async write has run —
+ * never at recorder construction (launch recovery relies on this; see
+ * [recoverOrphanScanSessions]). The scope is deliberately never cancelled:
+ * writes are tiny, and process death mid-line is the accepted crash window
+ * (the recovery parser skips a torn last line).
+ *
+ * A journal write failure never reaches the caller: it's caught on the
+ * writer coroutine, logged exactly once (sequential single-writer execution
+ * guarantees every later queued write observes the flipped [journalHealthy]
+ * flag), and the recorder degrades silently to memory-only — pre-Pillar-6
+ * behavior — instead of retrying (and re-logging) a broken path on every
+ * sample for the rest of an hour-long scan.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class EnvScanSessionRecorder(
     val sessionId: String = generateSessionId(),
     private val journalPath: String? = null,
@@ -45,7 +66,13 @@ class EnvScanSessionRecorder(
 
     private val samples = mutableListOf<EnvScanPathSample>()
     private val gateEvents = mutableListOf<String>()
+
+    @Volatile
     private var journalHealthy = journalPath != null
+
+    /** Single-writer journal executor — see the class KDoc's threading note. */
+    private val journalScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
 
     fun addSample(lat: Double, lng: Double, headingDegrees: Float?, accuracyMeters: Double?) {
         if (samples.size >= MAX_SAMPLES) return
@@ -57,7 +84,7 @@ class EnvScanSessionRecorder(
             atMs = Clock.System.now().toEpochMilliseconds(),
         )
         samples.add(sample)
-        appendJournalLine(EnvScanJournalEntry(type = "sample", sample = sample))
+        enqueueJournalAppend(EnvScanJournalEntry(type = "sample", sample = sample))
     }
 
     /** Privacy purge: drop everything recorded at/after [cutoffMs] — called on
@@ -65,17 +92,21 @@ class EnvScanSessionRecorder(
     fun purgeSince(cutoffMs: Long) {
         val before = samples.size
         samples.removeAll { it.atMs >= cutoffMs }
-        noteGateEvent("purge@${Clock.System.now().toEpochMilliseconds()} dropped=${before - samples.size}")
+        // The purge audit event goes to MEMORY only here — the full rewrite
+        // below carries it to disk, so also appending it would double-write.
+        val purgeEvent = "purge@${Clock.System.now().toEpochMilliseconds()} dropped=${before - samples.size}"
+        if (gateEvents.size < MAX_GATE_EVENTS) gateEvents.add(purgeEvent)
         // Rare event: rewrite the whole journal from what survived rather
         // than trying to selectively delete lines — a purged sample must
         // never linger on disk for orphan recovery to resurrect later.
-        rewriteJournal()
+        enqueueJournalRewrite()
     }
 
     /** Audit trail: gate flips, override presses/yields, purges. */
     fun noteGateEvent(event: String) {
-        if (gateEvents.size < 200) gateEvents.add(event)
-        appendJournalLine(EnvScanJournalEntry(type = "gate", gate = event))
+        if (gateEvents.size >= MAX_GATE_EVENTS) return // memory capped ⇒ skip the journal too
+        gateEvents.add(event)
+        enqueueJournalAppend(EnvScanJournalEntry(type = "gate", gate = event))
     }
 
     fun draft(scannedCellCenters: List<Pair<Double, Double>>): EnvScanSessionDraft =
@@ -87,35 +118,62 @@ class EnvScanSessionRecorder(
             gateEvents = gateEvents.toList(),
         )
 
-    private fun appendJournalLine(entry: EnvScanJournalEntry) {
+    /**
+     * Waits until every journal write enqueued so far has executed. Tests
+     * only: the single-writer executor runs jobs in FIFO order, so joining a
+     * fresh no-op job proves everything queued before it has finished.
+     */
+    internal suspend fun awaitJournalIdle() {
+        journalScope.launch { }.join()
+    }
+
+    private fun enqueueJournalAppend(entry: EnvScanJournalEntry) {
         val path = journalPath ?: return
         if (!journalHealthy) return
-        try {
-            appendLineToFile(path, GccJson.encodeToString(entry))
-        } catch (e: Throwable) {
-            journalHealthy = false
-            DiagnosticsLog.error("env-capture", "session journal degraded to memory-only ($sessionId)", e)
+        journalScope.launch {
+            if (!journalHealthy) return@launch // degraded while this was queued
+            try {
+                appendLineToFile(path, GccJson.encodeToString(entry))
+            } catch (e: Throwable) {
+                degradeJournal("session journal degraded to memory-only", e)
+            }
         }
     }
 
-    private fun rewriteJournal() {
+    private fun enqueueJournalRewrite() {
         val path = journalPath ?: return
         if (!journalHealthy) return
-        try {
-            val lines = buildList {
-                samples.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "sample", sample = it))) }
-                gateEvents.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "gate", gate = it))) }
-            }
-            writeFileLines(path, lines)
-        } catch (e: Throwable) {
-            journalHealthy = false
-            DiagnosticsLog.error("env-capture", "session journal rewrite failed, degraded to memory-only ($sessionId)", e)
+        // Snapshot into serialized lines ON the caller's thread — the mutable
+        // lists belong to the recorder's owning thread, so the writer
+        // coroutine must not read them later. NOTE: the rewrite groups all
+        // samples first, then all gate events (the append path interleaves
+        // them chronologically) — deliberate; [parseSessionJournal] buckets
+        // by entry type and never depends on line order.
+        val lines = buildList {
+            samples.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "sample", sample = it))) }
+            gateEvents.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "gate", gate = it))) }
         }
+        journalScope.launch {
+            if (!journalHealthy) return@launch
+            try {
+                writeFileLines(path, lines)
+            } catch (e: Throwable) {
+                degradeJournal("session journal rewrite failed, degraded to memory-only", e)
+            }
+        }
+    }
+
+    /** Only ever runs on the single-writer coroutine, so the flag flip is
+     *  observed by every later queued write — exactly one log per recorder. */
+    private fun degradeJournal(message: String, e: Throwable) {
+        journalHealthy = false
+        DiagnosticsLog.error("env-capture", "$message ($sessionId)", e)
     }
 
     companion object {
         /** ~1Hz for an hour — nobody scans longer in one session. */
         private const val MAX_SAMPLES = 3600
+        private const val MAX_GATE_EVENTS = 200
 
         /**
          * Same format the primary constructor used to generate inline.

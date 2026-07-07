@@ -9,11 +9,10 @@ import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.TrashItemCatalog
-import com.gcc.app.platform.bookOrphanCaptureSessions
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
-import com.gcc.app.platform.recoverOrphanScanSessions
+import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
@@ -128,17 +127,13 @@ class SpotViewModel(
         scope.launch { captureUploader.flushPending() }
         // Pillar 6 orphan recovery: an app kill mid-scan can leave a session
         // journal (GPS/gate-event track) and/or unbooked capture-chunk files
-        // on disk with no manifest ever built for them. Both sweeps run once
-        // per process (this VM is a Koin single) and are safe by construction
-        // — this constructor always finishes before any recorder/capture
-        // session exists (see recoverOrphanScanSessions's kdoc). Capture-chunk
-        // booking MUST run before journal recovery: it reads the still-present
-        // journal for a best-effort locationCellId before the journal sweep
-        // deletes it.
-        scope.launch {
-            bookOrphanCaptureSessions(captureChunkStore)
-            recoverOrphanScanSessions(sessionUploader, captureChunkStore)
-        }
+        // on disk with no manifest ever built for them. Guarded to at most
+        // once per process inside runOrphanRecoverySweepOnce (RouteScanViewModel
+        // calls it too, and either VM may construct first); active sessions
+        // are excluded because journal files are created lazily on the first
+        // recorded sample, never at recorder construction — see the sweep's
+        // KDoc for the full reasoning and internal ordering.
+        scope.launch { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
     }
 
     // Confirmed litter flushes to /api/observations/ar-detected on the same

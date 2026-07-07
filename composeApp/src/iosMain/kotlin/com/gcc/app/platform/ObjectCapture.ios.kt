@@ -7,19 +7,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.UIKitView
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.allocArrayOf
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import platform.Foundation.NSData
+import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.closeFile
+import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.seekToEndOfFile
 import platform.Foundation.stringByDeletingLastPathComponent
-import platform.Foundation.stringWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.posix.memcpy
 
@@ -180,18 +187,37 @@ private fun ensureParentDirExists(path: String) {
 }
 
 /**
- * Read-concat-rewrite rather than a true OS-level append: journals are
- * small (an hour of ~1Hz samples is well under 1MB), this call is off the
- * live AR/render path (~1Hz from GPS fixes, not per-frame), and it reuses
- * the exact [NSString.stringWithContentsOfFile]/[writeToFile] pair
- * [CrashReporting] already relies on elsewhere in this codebase — no new
- * cinterop (NSFileHandle/NSData byte-buffer building) to get wrong.
+ * True O(1) append via NSFileHandle (seek-to-end + write): cost is constant
+ * per call regardless of how large the journal has grown, so an hour-long
+ * 1Hz session never pays a growing read-modify-write. Creates the file and
+ * any missing parent directories on first write. Throws on failure —
+ * [EnvScanSessionRecorder]'s single-writer journal coroutine is the one
+ * caller and catches to degrade that session to memory-only.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual fun appendLineToFile(path: String, line: String) {
     ensureParentDirExists(path)
-    val existing = NSString.stringWithContentsOfFile(path, encoding = NSUTF8StringEncoding, error = null) ?: ""
-    writeStringToFile(path, existing + line + "\n")
+    val fm = NSFileManager.defaultManager
+    if (!fm.fileExistsAtPath(path)) {
+        if (!fm.createFileAtPath(path, contents = null, attributes = null)) {
+            throw IllegalStateException("createFile failed: $path")
+        }
+    }
+    val handle = NSFileHandle.fileHandleForWritingAtPath(path)
+        ?: throw IllegalStateException("no writable file handle for $path")
+    try {
+        handle.seekToEndOfFile()
+        val bytes = (line + "\n").encodeToByteArray()
+        val data = memScoped {
+            NSData.create(bytes = allocArrayOf(bytes), length = bytes.size.toULong())
+        }
+        // The interop surfaces the error-returning writeData:error: variant.
+        if (!handle.writeData(data, error = null)) {
+            throw IllegalStateException("journal append write failed: $path")
+        }
+    } finally {
+        handle.closeFile()
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)

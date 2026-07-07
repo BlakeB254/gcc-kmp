@@ -5,8 +5,41 @@ import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.model.EnvScanManifest
 import com.gcc.shared.model.EnvScanPathSample
 import com.gcc.shared.serialization.GccJson
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.serialization.decodeFromString
+
+/** Once-per-process guard for [runOrphanRecoverySweepOnce] — see its KDoc. */
+private val sweepGuard = Mutex()
+private var sweepLaunchedThisProcess = false
+
+/**
+ * Runs the two Pillar-6 recovery sweeps ([bookOrphanCaptureSessions] then
+ * [recoverOrphanScanSessions] — that order matters, see the latter's KDoc)
+ * at most ONCE per process launch. Both scan-screen ViewModels call this
+ * from their `init` (SpotViewModel is a Koin single, RouteScanViewModel a
+ * factory recreated per screen open, and either can be constructed first) —
+ * without this guard two VM instances could race the same directories:
+ * double-recovering a journal (duplicate "recovered" manifests) or
+ * double-booking chunk rows. The flag flips before the sweep body runs, so
+ * a mid-sweep failure is NOT retried until the next process launch — same
+ * at-most-once semantics as a launch hook.
+ */
+suspend fun runOrphanRecoverySweepOnce(
+    sessionUploader: EnvScanSessionUploader,
+    captureChunkStore: CaptureChunkStore,
+) {
+    sweepGuard.withLock {
+        if (sweepLaunchedThisProcess) return
+        sweepLaunchedThisProcess = true
+    }
+    // Chunk booking MUST precede journal recovery: it reads the (still
+    // present) scan-session journal for a best-effort locationCellId, and
+    // recovery deletes that journal once uploaded/queued.
+    bookOrphanCaptureSessions(captureChunkStore)
+    recoverOrphanScanSessions(sessionUploader, captureChunkStore)
+}
 
 /**
  * Parses a session journal's surviving lines into (samples, gateEvents).
@@ -47,26 +80,33 @@ private fun readJournal(sessionId: String): Pair<List<EnvScanPathSample>, List<S
  * never ran and the journal never got deleted (see [SpotViewModel]'s
  * `uploadEnvScanSession` / [RouteScanViewModel]'s `uploadLapSession`, which
  * both delete their session's journal right after handing the manifest to
- * `uploadOrQueue`). Call this at the SAME point
- * [EnvScanSessionUploader.flushPending] runs (both ViewModels' `init`).
+ * `uploadOrQueue`). Reached only through [runOrphanRecoverySweepOnce] (both
+ * ViewModels' `init`, the same point [EnvScanSessionUploader.flushPending]
+ * runs).
  *
- * **Active-session exclusion, by construction rather than a marker file:**
- * both call sites run inside a ViewModel constructor, which always finishes
- * before that ViewModel's screen composes and creates an
- * [EnvScanSessionRecorder] (SpotScreen's `remember { }`, or a lap-transition
- * reassignment in RouteScanViewModel) — so no journal a live scan is
- * currently writing can exist yet when this sweep lists the directory. A
- * "session started" marker file would encode the exact same guarantee with
- * more state to keep in sync; the constructor-before-recorder ordering
- * already gives it for free. (RouteScanViewModel is a Koin `factory`, so
- * this can re-run on every route-scan screen open, not just process launch —
- * harmless, since a completed sweep just finds nothing left the next time.)
+ * **Active-session exclusion — lazy journal-file creation, not a marker
+ * file.** Constructing an [EnvScanSessionRecorder] creates NO file: the
+ * journal only appears on disk once the first `addSample`/`noteGateEvent`
+ * fires AND its asynchronous single-writer append has executed (see the
+ * recorder's threading KDoc). So a recorder that merely exists — including
+ * RouteScanViewModel's `lapSessionRecorder` property initializer, which runs
+ * BEFORE the `init` block that launches this sweep — is invisible to the
+ * directory listing here. Samples can't arrive until a scan actually starts
+ * (user navigation + gate OUTDOOR + a GPS fix), which is far after the sweep
+ * launched at VM construction; and [runOrphanRecoverySweepOnce]'s
+ * once-per-process guard means later VM constructions never re-list the
+ * directory at all. Residual race — a first sample landing between VM
+ * construction and this coroutine's directory listing — is theoretical
+ * (sub-second sweep vs. many-second scan start) and non-destructive if it
+ * ever hit: the live session would upload once as a truncated "recovered"
+ * manifest and again, completely, at Complete Scan; nothing is lost.
  *
- * IMPORTANT: call [bookOrphanCaptureSessions] BEFORE this — it reads the
+ * IMPORTANT: [bookOrphanCaptureSessions] must run BEFORE this — it reads the
  * same journal (for a best-effort `locationCellId`) that this function
- * deletes once it's uploaded/queued.
+ * deletes once it's uploaded/queued. [runOrphanRecoverySweepOnce] owns that
+ * ordering.
  */
-suspend fun recoverOrphanScanSessions(
+internal suspend fun recoverOrphanScanSessions(
     sessionUploader: EnvScanSessionUploader,
     captureChunkStore: CaptureChunkStore,
 ) {
@@ -149,11 +189,13 @@ private const val UNKNOWN_LOCATION_CELL_ID = "0:0"
  * missing or already gone, chunks book under [UNKNOWN_LOCATION_CELL_ID]
  * rather than blocking the upload entirely.
  *
- * Same launch-ordering guard as [recoverOrphanScanSessions]: runs before any
- * capture session starts, so it can never race a directory a live capture is
- * still writing into.
+ * Same exclusion story as [recoverOrphanScanSessions]: capture-session
+ * directories are only created by `ArEnvScanOverlay.startCapture` (a live
+ * scan actually starting — far after VM construction launches this sweep),
+ * and [runOrphanRecoverySweepOnce]'s once-per-process guard prevents any
+ * later VM construction from re-listing while a capture runs.
  */
-suspend fun bookOrphanCaptureSessions(captureChunkStore: CaptureChunkStore) {
+internal suspend fun bookOrphanCaptureSessions(captureChunkStore: CaptureChunkStore) {
     val root = captureSessionsDirPath() ?: return
     for (sessionDir in listFilesInDir(root)) {
         val sessionId = sessionDir.substringAfterLast('/')

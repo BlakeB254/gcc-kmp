@@ -1,5 +1,6 @@
 package com.gcc.app.platform
 
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +13,13 @@ import kotlin.test.assertTrue
  * ObjectCapture.desktop.kt) purely so this suite can exercise the real
  * on-disk format even though desktop itself never sets a journalPath in the
  * app (sessionJournalPath returns null there).
+ *
+ * Determinism with the async writer: recorder journal writes run on a
+ * private single-writer (FIFO) coroutine, so tests call the internal
+ * [EnvScanSessionRecorder.awaitJournalIdle] (join a fresh no-op job — FIFO
+ * means everything enqueued before it has executed) before asserting on
+ * file contents. No test dispatcher needed; the real dispatcher stays in
+ * play, matching production.
  */
 class EnvScanSessionJournalTest {
 
@@ -28,6 +36,19 @@ class EnvScanSessionJournalTest {
         appendLineToFile(path, "line-two")
         val lines = File(path).readLines()
         assertEquals(listOf("line-one", "line-two"), lines)
+    }
+
+    @Test
+    fun appendLineToFileGrowsByExactlyOneLinePerCall() {
+        // Semantic O(1)-append check: each call adds exactly one line and
+        // leaves every previously-written line untouched — the contract a
+        // true seek-to-end append satisfies and a lossy rewrite would break.
+        val path = tempJournalPath()
+        for (i in 1..5) {
+            appendLineToFile(path, "line-$i")
+            assertEquals(i, File(path).readLines().size)
+        }
+        assertEquals((1..5).map { "line-$it" }, File(path).readLines())
     }
 
     @Test
@@ -51,12 +72,26 @@ class EnvScanSessionJournalTest {
     }
 
     @Test
-    fun recorderJournalsSamplesAndGateEventsRoundTrip() {
+    fun recorderCreatesNoFileUntilFirstRecordedEvent() = runBlocking {
+        // Launch recovery's active-session exclusion rests on this: a merely
+        // constructed recorder must be invisible to the sweep's dir listing.
+        val path = tempJournalPath()
+        val recorder = EnvScanSessionRecorder(journalPath = path)
+        recorder.awaitJournalIdle()
+        assertTrue(!File(path).exists())
+        recorder.addSample(41.0, -87.0, null, 5.0)
+        recorder.awaitJournalIdle()
+        assertTrue(File(path).exists())
+    }
+
+    @Test
+    fun recorderJournalsSamplesAndGateEventsRoundTrip() = runBlocking {
         val path = tempJournalPath()
         val recorder = EnvScanSessionRecorder(journalPath = path)
         recorder.addSample(41.85, -87.68, 90f, 5.0)
         recorder.addSample(41.851, -87.681, null, 4.0)
         recorder.noteGateEvent("indoor@123 reason=ceiling")
+        recorder.awaitJournalIdle()
 
         val lines = File(path).readLines()
         assertEquals(3, lines.size)
@@ -68,14 +103,16 @@ class EnvScanSessionJournalTest {
     }
 
     @Test
-    fun corruptLineIsSkippedByRecoveryParser() {
+    fun corruptLineIsSkippedByRecoveryParser() = runBlocking {
         val path = tempJournalPath()
         val recorder = EnvScanSessionRecorder(journalPath = path)
         recorder.addSample(41.0, -87.0, null, 5.0)
+        recorder.awaitJournalIdle()
         // Simulate an app-kill-mid-write / on-disk corruption: an unparsable
         // line landed between two good ones.
         File(path).appendText("{not valid json\n")
         recorder.addSample(41.001, -87.001, null, 5.0)
+        recorder.awaitJournalIdle()
 
         val lines = File(path).readLines()
         assertEquals(3, lines.size) // 2 good + 1 corrupt
@@ -86,7 +123,7 @@ class EnvScanSessionJournalTest {
     }
 
     @Test
-    fun purgeSinceRewritesJournalToSurvivingEntriesOnly() {
+    fun purgeSinceRewritesJournalToSurvivingEntriesOnly() = runBlocking {
         val path = tempJournalPath()
         val recorder = EnvScanSessionRecorder(journalPath = path)
         recorder.addSample(41.0, -87.0, null, 5.0)
@@ -94,20 +131,24 @@ class EnvScanSessionJournalTest {
         recorder.addSample(41.001, -87.001, null, 5.0) // recorded after cutoffAt below
 
         recorder.purgeSince(cutoffAt)
+        recorder.awaitJournalIdle()
 
         val draftAfter = recorder.draft(emptyList())
         assertEquals(0, draftAfter.path.size) // both samples are at/after cutoffAt
 
-        val (samples, gateEvents) = parseSessionJournal(File(path).readLines())
+        val diskLines = File(path).readLines()
+        val (samples, gateEvents) = parseSessionJournal(diskLines)
         assertEquals(0, samples.size)
-        // The purge itself is recorded as a gate event, and rewriteJournal
-        // persists it — the journal on disk must match the in-memory draft.
+        // The purge itself is recorded as ONE gate event carried by the
+        // rewrite (not double-written by an extra append) — disk must match
+        // the in-memory draft exactly, line-for-entry.
         assertEquals(draftAfter.gateEvents, gateEvents)
+        assertEquals(draftAfter.gateEvents.size, diskLines.size)
         assertTrue(gateEvents.any { it.startsWith("purge@") })
     }
 
     @Test
-    fun journalFailureDegradesToMemoryOnlyAfterExactlyOneLoggedError() {
+    fun journalFailureDegradesToMemoryOnlyAfterExactlyOneLoggedError() = runBlocking {
         // A path whose "directory" is actually a plain file: mkdirs()/write
         // must fail every time, exercising the recorder's degrade-once path.
         val blockerFile = File.createTempFile("gcc-journal-blocker", "").apply { writeText("not a dir") }
@@ -118,11 +159,13 @@ class EnvScanSessionJournalTest {
         recorder.addSample(41.0, -87.0, null, 5.0)
         recorder.addSample(41.001, -87.001, null, 5.0)
         recorder.noteGateEvent("gate@1")
+        recorder.awaitJournalIdle()
         val errorsAfter = DiagnosticsLog.entries.value.count { it.tag == "env-capture" }
 
         // In-memory recording must be unaffected by the disk failure.
         assertEquals(3, recorder.draft(emptyList()).path.size + recorder.draft(emptyList()).gateEvents.size)
-        // Exactly one failure logged, not one per call.
+        // Exactly one failure logged (the single-writer coroutine flips the
+        // degrade flag before the next queued write runs), not one per call.
         assertEquals(1, errorsAfter - errorsBefore)
     }
 }
