@@ -188,9 +188,14 @@ Scans must yield the still frames that BEST depict each issue area:
 ## Pillar 10 — Area bounties, peer-to-peer (Blake, 2026-07-07)
 
 The legacy report-seeded bounty flow was never fully implemented — replaced by:
-- **Geographic-area bounties:** a funder (any user, donator, or third party) selects
-  an area on the map — freeform polygon or snapped block — which may encompass one
-  or more litter observations. The area IS the bounty target.
+- **Geographic-area bounties:** the issuer (any user, donator, or third party)
+  DRAWS A CIRCLE on the map around all the messes they want included (center +
+  radius drag). The circle is the bounty's contract geometry: stored server-side
+  and ENFORCED on the cleaner at completion — lap-1 scan coverage is computed
+  against the circle's area (intersected with authored exclusions where they
+  overlap), and verification requires the observations inside the circle to be
+  resolved/superseded by the after-scan. The circle renders on the cleaner's
+  minimap exactly like a block boundary.
 - **Same cycle as the $100 admin blocks, generalized P2P:** claim → lap-1 scan of the
   area (coverage %) → clean → lap-2 after-scan (weight-based progress) → scan-based
   verification (supersede/lifecycle evidence + block completion report as the
