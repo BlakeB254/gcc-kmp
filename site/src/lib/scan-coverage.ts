@@ -150,7 +150,7 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
       category === 'new_area_grazed' ? POINTS_PER_METER.NEW_AREA_GRAZED :
       category === 'close_upgrade' ? POINTS_PER_METER.CLOSE_UPGRADE :
       category === 'stale_rescan' ? POINTS_PER_METER.STALE_RESCAN :
-      category === 'seen_only' ? 0 : // sight isn't work (Global Constraints)
+      category === 'seen_only' ? POINTS_PER_METER.SEEN :
       POINTS_PER_METER.FRESH_RESCAN
     const points = Math.round(perMeter * input.distanceMeters)
 
@@ -224,7 +224,18 @@ export async function retractCoverageWindow(input: RetractCoverageInput) {
     const [agg] = await db
       .select({
         firstScannedAt: sql<string | null>`MIN(${scanCoverageEvents.capturedAt})`,
-        lastScannedAt: sql<string | null>`MAX(${scanCoverageEvents.capturedAt})`,
+        // lastScannedAt is the staleness clock categorizeCoverageEvent reads
+        // for the NEXT event on this cell — 'seen' events (sight isn't work)
+        // must not set it, mirroring the live upsert's guard above, or a
+        // retraction on a cell with a surviving later 'seen' glance would
+        // advance the clock and miscategorize the next real rescan as
+        // fresh_rescan (0 pts) instead of stale_rescan. COALESCE falls back
+        // to the unfiltered MAX for a seen-only cell, which still needs a
+        // timestamp (its bestQuality 'seen' already reads as unworked).
+        lastScannedAt: sql<string | null>`COALESCE(
+          MAX(${scanCoverageEvents.capturedAt}) FILTER (WHERE ${scanCoverageEvents.quality} != 'seen'),
+          MAX(${scanCoverageEvents.capturedAt})
+        )`,
         totalDistanceMeters: sql<number>`COALESCE(SUM(${scanCoverageEvents.distanceMeters}), 0)`,
         scanCount: sql<number>`COUNT(*)::int`,
         // Ranked the same way the live upsert ranks it — see qualityRankCase.

@@ -10,6 +10,7 @@ export const POINTS_PER_METER = {
   CLOSE_UPGRADE: 6,      // grazed→close upgrade pays the remainder (4 + 6 = 10)
   STALE_RESCAN: 5,
   FRESH_RESCAN: 0, // no incentive to farm the same block repeatedly in one sitting
+  SEEN: 0, // sight isn't work (Pillar 7) — sighted-at-distance cells never pay
 } as const
 
 export const RECTIFICATION_BONUS_POINTS = 25
