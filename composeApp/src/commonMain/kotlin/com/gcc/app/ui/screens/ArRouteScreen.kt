@@ -93,7 +93,6 @@ fun ArRouteScreen(
         creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
             .keys.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
     }
-    val fogCellCenters by viewModel.fogCellCenters.collectAsState()
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
@@ -459,7 +458,6 @@ fun ArRouteScreen(
                     scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
                     cellSizeMeters = CoverageTracker.cellSizeMeters,
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
-                    fogCellCenters = fogCellCenters,
                     staleCellCenters = staleCellCenters,
                     freshCellCenters = freshCellCenters,
                     closeCellCenters = closeCellCenters,

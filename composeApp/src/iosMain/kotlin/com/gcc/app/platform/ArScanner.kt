@@ -11,7 +11,6 @@ import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
-import platform.ARKit.ARAnchor
 import platform.ARKit.ARFrameSemanticSceneDepth
 import platform.ARKit.ARFrameSemanticSmoothedSceneDepth
 import platform.ARKit.ARSession
@@ -59,26 +58,6 @@ actual class ArScanner actual constructor() {
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    actual fun placeAnchor(lat: Double, lng: Double): ArAnchor? {
-        val activeSession = session ?: return null
-        val cameraTransform = activeSession.currentFrame?.camera?.transform ?: return null
-        val anchor = ARAnchor(cameraTransform)
-        activeSession.addAnchor(anchor)
-        return ArAnchor(
-            id = anchor.identifier.UUIDString,
-            lat = lat,
-            lng = lng,
-            worldTransform = buildAnchorMetadata(anchor.identifier.UUIDString),
-        )
-    }
-
-    /**
-     * iPhone wide camera horizontal FOV ≈ 63°.
-     * This matches the standard iPhone 12/13/14/15 wide lens.
-     */
-    actual fun getCameraFovDegrees(): Float = 63.0f
-
-    @OptIn(ExperimentalForeignApi::class)
     actual fun getArHeading(): Float? {
         val transform = session?.currentFrame?.camera?.transform ?: return null
         val matrix = matrixFloats(transform)
@@ -96,18 +75,5 @@ actual class ArScanner actual constructor() {
         transform.place(matrix.ptr)
         val values = matrix.ptr.reinterpret<FloatVar>()
         List(16) { index -> values[index] }
-    }
-
-    private fun buildAnchorMetadata(anchorId: String): String {
-        val heading = getArHeading()
-        return buildString {
-            append("{\"type\":\"arkit_anchor\",\"anchorId\":\"")
-            append(anchorId)
-            append("\",\"headingDegrees\":")
-            if (heading != null) append(heading) else append("null")
-            append(",\"hasSceneDepth\":")
-            append(ARWorldTrackingConfiguration.supportsFrameSemantics(ARFrameSemanticSceneDepth))
-            append("}")
-        }
     }
 }

@@ -769,10 +769,9 @@ actual class ArEnvScanOverlay actual constructor() {
      */
     private fun physicalWidthMeters(bboxWidthFrac: Double, distance: Double): Double? {
         if (bboxWidthFrac <= 0.0 || bboxWidthFrac >= 1.0) return null
-        // Angular size with the iPhone wide lens's ~63° horizontal FOV (the
-        // same approximation ArScanner.getCameraFovDegrees uses) — camera
-        // intrinsics don't bridge cleanly through cinterop, and weight-class
-        // estimation doesn't need per-pixel precision.
+        // Angular size with the iPhone wide lens's ~63° horizontal FOV —
+        // camera intrinsics don't bridge cleanly through cinterop, and
+        // weight-class estimation doesn't need per-pixel precision.
         val hFovRad = 63.0 * kotlin.math.PI / 180.0
         val width = 2.0 * distance * kotlin.math.tan(0.5 * bboxWidthFrac * hFovRad)
         return if (width.isFinite() && width in 0.01..3.0) {

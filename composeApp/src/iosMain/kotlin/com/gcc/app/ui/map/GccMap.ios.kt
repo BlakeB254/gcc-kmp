@@ -53,6 +53,7 @@ import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.ClickResult
+import org.maplibre.compose.util.FeaturesClickHandler
 import kotlin.time.Duration.Companion.milliseconds
 
 // Mirror MapStyles' zoom bands (single source of truth) — heat crossfades out
@@ -484,8 +485,9 @@ actual fun GccMap(
             // IOS_SPOT_DOTS_MIN_ZOOM) instead of the old hard clip at 12.99.
             // Gated on spots: the scan summary card renders GccMap with no
             // spots and must not allocate the heatmap sources/layers it never
-            // paints (Fix 2, r2a). The scrim FillLayer inside already had its own
-            // `spots.isNotEmpty()` guard — left untouched, now just nested.
+            // paints (Fix 2, r2a). The scrim FillLayer below relies on this
+            // same outer guard — toggle-off and zero-report areas never reach
+            // it, so no gray wash (mirrors the web version's guard).
             if (spots.isNotEmpty()) {
                 val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
                 val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
@@ -498,21 +500,17 @@ actual fun GccMap(
                 // Fades from 0.55 opacity at overview zoom to 0 by
                 // IOS_SPOT_HEAT_FADE_ZOOM so it doesn't compete with street
                 // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
-                // Gated on spots being present so toggle-off and zero-report areas
-                // don't show a gray wash (mirrors the web version's guard).
-                if (spots.isNotEmpty()) {
-                    FillLayer(
-                        id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                        source = spotCleanZoneSrc,
-                        color = const(MapStyles.SPOT_SCRIM_COLOR),
-                        opacity = interpolate(
-                            type = org.maplibre.compose.expressions.dsl.linear(),
-                            input = zoom(),
-                            MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
-                            IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                        ),
-                    )
-                }
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    color = const(MapStyles.SPOT_SCRIM_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
 
                 // Sampled overview heat over the neutral scrim baseline. These
                 // sources are density field samples, not raw spot points, so the
@@ -698,15 +696,7 @@ actual fun GccMap(
                     source = routePolygonsSrc,
                     color = const(MapStyles.ROUTE_FILL_COLOR),
                     opacity = const(0.001f),
-                    onClick = if (onRouteTap != null) { features ->
-                        val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
-                        if (idx != null) {
-                            onRouteTap(idx)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = routeIndexClickHandler(onRouteTap),
                 )
 
                 // ── Route rendering: 3-layer stack (glow → casing → core) ──
@@ -761,15 +751,7 @@ actual fun GccMap(
                     ),
                     cap = const(LineCap.Round),
                     join = const(LineJoin.Round),
-                    onClick = if (onRouteTap != null) { features ->
-                        val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
-                        if (idx != null) {
-                            onRouteTap(idx)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = routeIndexClickHandler(onRouteTap),
                 )
             }
 
@@ -813,48 +795,21 @@ actual fun GccMap(
                     source = cleanGrazedSrc,
                     color = const(Color(0xFF22C55E)),
                     opacity = const(0.10f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,
                     color = const(Color(0xFF22C55E)),
                     opacity = const(0.20f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-dirty",
                     source = dirtySrc,
                     color = const(Color(0xFFEF4444)),
                     opacity = const(0.20f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 // Stale is a CALL TO ACTION ("scan me again") — it must not
                 // be the faintest tile on the map (it was 0.10).
@@ -863,16 +818,7 @@ actual fun GccMap(
                     source = staleSrc,
                     color = const(Color(0xFFF59E0B)),
                     opacity = const(0.24f),
-                    onClick = if (onCoverageCellTap != null) { features ->
-                        val cellId = features.firstOrNull()?.properties?.get("cellId")
-                            ?.toString()?.trim('"')
-                        if (!cellId.isNullOrBlank()) {
-                            onCoverageCellTap(cellId)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
+                    onClick = cellIdClickHandler(onCoverageCellTap),
                 )
             }
 
@@ -1612,6 +1558,44 @@ actual fun GccMap(
         }
     }
 }
+
+/**
+ * Shared tap handler for the four coverage-state fill layers (clean-grazed,
+ * clean, dirty, stale): every layer's features carry the scanned cell's id
+ * in a `cellId` property (buildCoverageStateGeoJsons) — this reads it and
+ * forwards to [onTap]. Falls back to [ClickResult.Pass] when the tapped
+ * feature has no usable cellId, and returns null (no handler at all) when
+ * the caller passed no [onTap] — matching the layers' `onClick: T? = null`
+ * contract so an absent callback disables hit-testing entirely.
+ */
+private fun cellIdClickHandler(onTap: ((String) -> Unit)?): FeaturesClickHandler? =
+    if (onTap != null) { features ->
+        val cellId = features.firstOrNull()?.properties?.get("cellId")
+            ?.toString()?.trim('"')
+        if (!cellId.isNullOrBlank()) {
+            onTap(cellId)
+            ClickResult.Consume
+        } else {
+            ClickResult.Pass
+        }
+    } else null
+
+/**
+ * Shared tap handler for the route fill/line layers: every feature carries
+ * the tapped route's index in a `routeIndex` property — this reads it and
+ * forwards to [onTap]. Returns null (no handler) when the caller passed no
+ * [onTap], matching the layers' `onClick: T? = null` contract.
+ */
+private fun routeIndexClickHandler(onTap: ((Int) -> Unit)?): FeaturesClickHandler? =
+    if (onTap != null) { features ->
+        val idx = (features.firstOrNull()?.properties?.get("routeIndex") as? Number)?.toInt()
+        if (idx != null) {
+            onTap(idx)
+            ClickResult.Consume
+        } else {
+            ClickResult.Pass
+        }
+    } else null
 
 @Composable
 private fun MapZoomControlOverlay(

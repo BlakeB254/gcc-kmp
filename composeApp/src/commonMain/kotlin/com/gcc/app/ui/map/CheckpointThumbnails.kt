@@ -18,38 +18,6 @@ import com.gcc.shared.ui.drawPhotoPointScene
 import com.gcc.shared.ui.drawStartScene
 
 /**
- * Procedural location thumbnail for checkpoint visual identification.
- *
- * Draws a scene-based Canvas illustration representing the checkpoint type:
- * START (green road + flag), END (red checkered finish), PHOTO (teal camera),
- * ALLEY (brown perspective alley).
- */
-@Composable
-fun CheckpointThumbnail(
-    type: CheckpointType,
-    sequenceNumber: Int,
-    totalCheckpoints: Int,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.clip(RoundedCornerShape(6.dp)),
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            when (type) {
-                CheckpointType.ROUTE_START -> drawStartScene()
-                CheckpointType.ROUTE_END -> drawEndScene()
-                CheckpointType.PHOTO_POINT -> drawPhotoPointScene()
-                CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
-                CheckpointType.RECORD -> drawPhotoPointScene()
-                CheckpointType.CLEAN -> drawStartScene()
-                CheckpointType.VERIFY -> drawEndScene()
-                CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene()
-            }
-        }
-    }
-}
-
-/**
  * Route-level thumbnail showing either the route's cover image (if set via admin)
  * or a procedural start scene as a visual preview.
  *

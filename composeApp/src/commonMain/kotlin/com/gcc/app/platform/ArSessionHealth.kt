@@ -9,8 +9,8 @@ enum class TrackingState {
 }
 
 /**
- * Wraps the platform AR session's tracking-quality signal so both
- * ArRouteOverlay and SpotArOverlay can show a consistent "hold steady" /
+ * Wraps the platform AR session's tracking-quality signal so
+ * ArRouteOverlay can show a consistent "hold steady" /
  * "find more light" recovery prompt and suspend guidance updates during
  * degraded tracking, per design spec §1.4.
  *

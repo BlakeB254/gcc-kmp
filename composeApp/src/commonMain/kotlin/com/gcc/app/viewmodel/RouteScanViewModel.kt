@@ -8,6 +8,7 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
@@ -24,6 +25,7 @@ import com.gcc.app.platform.detectDeviceType
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
+import com.gcc.app.platform.retractionOutcome
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
@@ -180,7 +182,7 @@ class RouteScanViewModel(
     // events for the trailing purge window on an INDOOR flip. Same api-client
     // reference coverageEventQueue's submitFn uses above.
     private val retractionQueue = CoverageRetractionQueue(
-        submitFn = { request -> apiClient.retractCoverageEvents(request).success },
+        submitFn = { request -> retractionOutcome(request, apiClient::retractCoverageEvents) },
     )
     private val coverageDeviceTier by lazy { detectDeviceCapabilities().deviceClass.coverageTier() }
     private var lastCoverageFix: Pair<Double, Double>? = null
@@ -278,8 +280,6 @@ class RouteScanViewModel(
     // anyone; stale = scanned before, ledger says re-visit. Both recompute
     // whenever either the server priors arrive or a cell gets scanned this
     // session (see the coverageJob collector in initForRoute).
-    private val _fogCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
-    val fogCellCenters: StateFlow<List<Pair<Double, Double>>> = _fogCellCenters.asStateFlow()
     private val _staleCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
     val staleCellCenters: StateFlow<List<Pair<Double, Double>>> = _staleCellCenters.asStateFlow()
     private val _freshCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
@@ -287,7 +287,6 @@ class RouteScanViewModel(
 
     private fun refreshFogAndStaleCenters() {
         val classification = classifyFogAndStale(coverageTracker.getUnscannedCells(), cellPriorStates)
-        _fogCellCenters.value = classification.fogCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         // Ledger-fresh cells punch out of the minimap veil (already-scanned sky).
         _freshCellCenters.value = cellPriorStates
@@ -1073,15 +1072,7 @@ class RouteScanViewModel(
                         // events, server retraction of flushed ones.
                         coverageTracker.purgeSince(cutoff)
                         scope.launch {
-                            coverageEventQueue.purgeSince(cutoff)
-                            retractionQueue.enqueue(
-                                RetractCoverageRequest(
-                                    deviceId = CoverageDeviceId.value,
-                                    fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
-                                    toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
-                                )
-                            )
-                            retractionQueue.flush()
+                            purgeAndRetractCoverage(cutoff, nowMs, coverageEventQueue, retractionQueue)
                         }
                     }
                 }
@@ -1154,10 +1145,7 @@ class RouteScanViewModel(
                                     platform = getPlatformName(),
                                     lat = lat,
                                     lng = lng,
-                                    // NaN/Infinite would throw serializing this
-                                    // event into the persisted queue (GccJson
-                                    // has no allowSpecialFloatingPointValues).
-                                    distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                                    distanceMeters = segmentMeters,
                                     scanMode = "route",
                                     deviceTier = coverageDeviceTier,
                                     capturedAt = Clock.System.now().toString(),

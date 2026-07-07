@@ -56,36 +56,6 @@ enum class CameraMode {
     @SerialName("video") VIDEO,
 }
 
-// ─── Feedback Enums ──────────────────────────────────────────────────
-
-@Serializable
-enum class FeedbackCategory {
-    @SerialName("safety_concern") SAFETY_CONCERN,
-    @SerialName("app_issue") APP_ISSUE,
-    @SerialName("verification_problem") VERIFICATION_PROBLEM,
-    @SerialName("payment_issue") PAYMENT_ISSUE,
-    @SerialName("general_improvement") GENERAL_IMPROVEMENT,
-    @SerialName("feature_request") FEATURE_REQUEST,
-    @SerialName("other") OTHER
-}
-
-@Serializable
-enum class FeedbackStatus {
-    @SerialName("open") OPEN,
-    @SerialName("in_progress") IN_PROGRESS,
-    @SerialName("waiting_response") WAITING_RESPONSE,
-    @SerialName("resolved") RESOLVED,
-    @SerialName("closed") CLOSED
-}
-
-@Serializable
-enum class FeedbackPriority {
-    @SerialName("low") LOW,
-    @SerialName("medium") MEDIUM,
-    @SerialName("high") HIGH,
-    @SerialName("urgent") URGENT
-}
-
 // ─── Admin Enums ─────────────────────────────────────────────────────
 
 @Serializable

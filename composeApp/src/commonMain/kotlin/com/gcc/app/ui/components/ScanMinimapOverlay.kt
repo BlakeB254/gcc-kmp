@@ -50,8 +50,6 @@ fun ScanMinimapOverlay(
     /** Typed items (env-scan confirmed trash) — drawn as per-type glyphs
      *  instead of the generic orange dot. */
     typedTrashItems: List<ObservedSpotItem> = emptyList(),
-    /** Legacy fog dots — superseded by the full veil; kept for call-site compat. */
-    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Cells the ledger marks freshly scanned — punched out of the veil. */
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),

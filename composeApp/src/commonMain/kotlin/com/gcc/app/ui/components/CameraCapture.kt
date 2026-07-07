@@ -71,8 +71,7 @@ fun CameraCapture(
     trashItems: List<Coordinates> = emptyList(),
     /** Typed trash items — minimap per-type glyphs (win over plain dots). */
     typedTrashItems: List<com.gcc.shared.model.ObservedSpotItem> = emptyList(),
-    /** Ledger freshness for the minimap: never-scanned (fog) / stale (amber) / fresh (clear). */
-    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Ledger freshness for the minimap: stale (amber) / fresh (clear). */
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Session cells credited at CLOSE tier — minimap vivid highlight. */
@@ -230,7 +229,6 @@ fun CameraCapture(
                         cellSizeMeters = CoverageTracker.cellSizeMeters,
                         trashItems = trashItems,
                         typedTrashItems = typedTrashItems,
-                        fogCellCenters = fogCellCenters,
                         staleCellCenters = staleCellCenters,
                         freshCellCenters = freshCellCenters,
                         closeCellCenters = closeCellCenters,

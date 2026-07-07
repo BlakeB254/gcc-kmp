@@ -66,7 +66,6 @@ actual class ArRouteOverlay actual constructor() {
         private const val MAX_FOG_NODES = 600
         /** Fog planes sit this far below the camera (approx. phone-at-chest ground offset). */
         private const val GROUND_OFFSET_METERS = 1.4f
-        private const val METERS_PER_DEG_LAT = 111_320.0
 
         /** Only build wall strips for boundary edges within this radius of the camera. */
         private const val WALL_RENDER_RADIUS_METERS = 45.0

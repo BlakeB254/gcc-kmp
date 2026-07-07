@@ -48,6 +48,7 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
@@ -55,6 +56,7 @@ import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,11 +80,11 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
-import com.gcc.shared.model.RetractCoverageRequest
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import com.gcc.shared.cache.ScanAreaCacheStore
 import kotlinx.coroutines.SupervisorJob
@@ -438,7 +440,7 @@ private fun CameraPhase(
     // Retractions: already-flushed indoor-window events the server must undo.
     val retractQueue = remember(apiClient) {
         CoverageRetractionQueue(submitFn = { request ->
-            apiClient.retractCoverageEvents(request).success
+            retractionOutcome(request, apiClient::retractCoverageEvents)
         })
     }
 
@@ -456,15 +458,7 @@ private fun CameraPhase(
             // events, and a server retraction for anything already flushed.
             tracker.purgeSince(cutoff)
             flushScope.launch {
-                coverageQueue.purgeSince(cutoff)
-                retractQueue.enqueue(
-                    RetractCoverageRequest(
-                        deviceId = CoverageDeviceId.value,
-                        fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
-                        toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
-                    )
-                )
-                retractQueue.flush()
+                purgeAndRetractCoverage(cutoff, nowMs, coverageQueue, retractQueue)
             }
         }
         sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
@@ -482,7 +476,13 @@ private fun CameraPhase(
 
     DisposableEffect(Unit) {
         onDispose {
+            // Final flush on leaving the screen, then tear down flushScope once
+            // that flush completes — cancelling from WITHIN the launch's own
+            // completion handler (not right after launching it) preserves the
+            // exit-flush: cancelling the scope immediately here would race the
+            // just-launched coroutine and could kill it before flush() finishes.
             flushScope.launch { coverageQueue.flush(); retractQueue.flush() }
+                .invokeOnCompletion { flushScope.cancel() }
             onFlushMarkers()
         }
     }
@@ -634,12 +634,7 @@ private fun CameraPhase(
                         platform = getPlatformName(),
                         lat = loc.lat,
                         lng = loc.lng,
-                        // NaN/Infinite would throw serializing this event into
-                        // the persisted queue (GccJson has no
-                        // allowSpecialFloatingPointValues) — a bad GPS pair
-                        // (e.g. identical lat/lng at the poles) must not wedge
-                        // the whole queue.
-                        distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                        distanceMeters = segmentMeters,
                         scanMode = "spot",
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),
@@ -801,7 +796,6 @@ private fun CameraPhase(
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
                 typedTrashItems = typedMinimapItems,
-                fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,
@@ -835,7 +829,6 @@ private fun CameraPhase(
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
                 typedTrashItems = typedMinimapItems,
-                fogCellCenters = fogCells,
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,

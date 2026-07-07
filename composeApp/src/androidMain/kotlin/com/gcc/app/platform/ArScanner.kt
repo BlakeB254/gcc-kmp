@@ -16,10 +16,5 @@ actual class ArScanner actual constructor() {
     actual fun startSession() { /* ARCore not yet integrated */ }
     actual fun stopSession() { /* no-op */ }
 
-    actual fun placeAnchor(lat: Double, lng: Double): ArAnchor? = null
-
-    /** Default camera horizontal FOV for mid-range Android devices. */
-    actual fun getCameraFovDegrees(): Float = 60.0f
-
     actual fun getArHeading(): Float? = null
 }

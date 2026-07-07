@@ -5,6 +5,7 @@ import { and, desc, eq, gt, sql } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { toCommunityReport } from '@/lib/spot-utils'
+import { OBSERVER_SPOT_REWARD } from '@/lib/points-config'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request)
@@ -114,11 +115,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The rate-limit count + the create are run inside a SERIALIZABLE
-    // transaction so two concurrent requests can't both pass the count
-    // check at 29 and end up creating 31. SERIALIZABLE forces one of the
-    // racing transactions to abort with a serialization error if the
-    // pre-image they read is no longer valid at commit.
+    // Rate-limit window for the plain-select check below. Note: the
+    // neon-http driver (site/src/db/index.ts) has no `db.transaction`
+    // support, so unlike a SERIALIZABLE-wrapped check this can no longer
+    // guarantee two concurrent admin POSTs can't both observe count=29 and
+    // both pass (ending up with 31 in the hour). Accepted as a best-effort
+    // limit for this low-volume admin-only endpoint rather than switching
+    // drivers.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
 
     // Resolve attribution. If discoveredByWorkerId is provided and points
@@ -160,75 +163,69 @@ export async function POST(request: NextRequest) {
       }
       attributedWorkerId = discoverer.id
       attributedWorkerName = discoverer.name
-      pointsAwardedAmount = 10 // standard observer reward
+      pointsAwardedAmount = OBSERVER_SPOT_REWARD
       pointsAwardedTo = discoverer.id
     }
 
-    // Atomic rate-limit + create + ledger update. Without the transaction
-    // two concurrent admin POSTs could both observe count=29 and both
-    // pass, ending up with 31 spots in the hour.
-    const txResult = await db.transaction(async (tx) => {
-      const [recentCreateCount] = await tx
-        .select({ count: sql<number>`count(*)` })
-        .from(communityReports)
-        .where(
-          and(
-            eq(communityReports.reporterId, auth.workerId),
-            gt(communityReports.createdAt, oneHourAgo),
-          ),
-        )
+    // Sequential, non-transactional statements (see note above re:
+    // neon-http). Ordered so a mid-request crash leaves recoverable state:
+    // rate-limit check first (plain select, no writes), then the report
+    // insert, then — only if points are owed — the ledger row (append-only
+    // source of truth) BEFORE the denormalized total it derives from.
+    const [recentCreateCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(communityReports)
+      .where(
+        and(
+          eq(communityReports.reporterId, auth.workerId),
+          gt(communityReports.createdAt, oneHourAgo),
+        ),
+      )
 
-      if ((Number(recentCreateCount?.count) || 0) >= 30) {
-        return { rateLimited: true as const }
-      }
-
-      const [insertedReport] = await tx
-        .insert(communityReports)
-        .values({
-          reporterType: 'worker',
-          reporterId: attributedWorkerId,
-          reporterName: attributedWorkerName,
-          type: type === 'sighting' ? 'sighting' : 'volunteer_cleanup',
-          description: description || null,
-          coordinates: [numericLng, numericLat],
-          mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
-          affectedRadiusMeters: String(effectiveRadius),
-          affectedArea: affectedArea || null,
-          tags: tags && tags.length > 0 ? tags : null,
-          status: 'pending',
-          showOnMap: true,
-          capturedAt: new Date().toISOString(),
-          source: pointsAwardedTo != null ? 'user' : 'admin',
-        })
-        .returning()
-
-      if (pointsAwardedTo != null && pointsAwardedAmount > 0) {
-        await tx.insert(pointsLedger).values({
-          workerId: pointsAwardedTo,
-          action: 'spot_created',
-          points: pointsAwardedAmount,
-          referenceType: 'spot',
-          referenceId: insertedReport.id,
-        })
-        await tx
-          .update(workers)
-          .set({
-            statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${pointsAwardedAmount}`,
-          })
-          .where(eq(workers.id, pointsAwardedTo))
-      }
-
-      return { rateLimited: false as const, newReport: insertedReport }
-    })
-
-    if (txResult.rateLimited) {
+    if ((Number(recentCreateCount?.count) || 0) >= 30) {
       return NextResponse.json(
         { data: null, success: false, message: 'Rate limit exceeded: maximum 30 admin-created spots per hour' },
         { status: 429 },
       )
     }
 
-    const report = toCommunityReport(txResult.newReport)
+    const [insertedReport] = await db
+      .insert(communityReports)
+      .values({
+        reporterType: 'worker',
+        reporterId: attributedWorkerId,
+        reporterName: attributedWorkerName,
+        type: type === 'sighting' ? 'sighting' : 'volunteer_cleanup',
+        description: description || null,
+        coordinates: [numericLng, numericLat],
+        mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
+        affectedRadiusMeters: String(effectiveRadius),
+        affectedArea: affectedArea || null,
+        tags: tags && tags.length > 0 ? tags : null,
+        status: 'pending',
+        showOnMap: true,
+        capturedAt: new Date().toISOString(),
+        source: pointsAwardedTo != null ? 'user' : 'admin',
+      })
+      .returning()
+
+    if (pointsAwardedTo != null && pointsAwardedAmount > 0) {
+      await db.insert(pointsLedger).values({
+        workerId: pointsAwardedTo,
+        action: 'spot_created',
+        points: pointsAwardedAmount,
+        referenceType: 'spot',
+        referenceId: insertedReport.id,
+      })
+      await db
+        .update(workers)
+        .set({
+          statsCommunityPoints: sql`COALESCE(${workers.statsCommunityPoints}, 0) + ${pointsAwardedAmount}`,
+        })
+        .where(eq(workers.id, pointsAwardedTo))
+    }
+
+    const report = toCommunityReport(insertedReport)
 
     return NextResponse.json({
       data: {
