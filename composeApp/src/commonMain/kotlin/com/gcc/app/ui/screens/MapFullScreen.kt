@@ -26,7 +26,6 @@ import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.MyLocationButton
-import com.gcc.app.ui.map.NeedsScanningToggleChip
 import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
@@ -136,12 +135,13 @@ fun MapFullScreen(
     var selectedRecordIndex by remember { mutableStateOf<Int?>(null) }
 
     // Precipitation overlay visibility (legend + heat + scrim + dots)
-    var heatmapVisible by remember { mutableStateOf(true) }
+    // Heatmap is always on (owner direction 2026-07-07; zoom gating governs visibility).
+    val heatmapVisible = true
 
     // Explorer "Needs scanning" lens (P5) — Explorer-only, so it resets when
     // leaving the mode (MapModeToggle's onModeChange below) rather than
     // silently persisting a lens the My Area toggle chip can't reach.
-    var needsScanningLensOn by remember { mutableStateOf(false) }
+    // needs-scanning lens UI removed (owner direction 2026-07-07); layer stays dormant.
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -582,7 +582,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
-            showNeedsScanningLens = mapMode == MapMode.EXPLORER && needsScanningLensOn,
+            showNeedsScanningLens = false,
             observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
             explorerAreaStates = explorerAreaStates,
@@ -683,28 +683,13 @@ fun MapFullScreen(
                         overrideZoom = null
                         selectedSpot = null
                         selectedRecordIndex = null
-                        needsScanningLensOn = false
                     },
                 )
 
-                // Explorer-only "Needs scanning" lens toggle (P5) — sits
-                // beside MapModeToggle, same chip family (MapModeToggle.kt).
-                if (mapMode == MapMode.EXPLORER) {
-                    NeedsScanningToggleChip(
-                        active = needsScanningLensOn,
-                        onToggle = { needsScanningLensOn = !needsScanningLensOn },
-                    )
-                }
-
-                // Heatmap layer toggle — sits beside MapModeToggle, inherits Row's statusBarsPadding
-                FilledTonalIconButton(
-                    onClick = { heatmapVisible = !heatmapVisible },
-                ) {
-                    Text(
-                        if (heatmapVisible) "●" else "○",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
+                // Owner direction 2026-07-07: no extra chrome beside the mode
+                // toggle — the needs-scanning lens chip (crashed in the field)
+                // and the heatmap dot toggle are both removed; the heatmap is
+                // always on and speaks through its own zoom gating.
             }
 
             // Precipitation intensity legend — right edge, vertically centered so it
