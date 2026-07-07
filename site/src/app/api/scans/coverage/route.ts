@@ -42,7 +42,13 @@ export async function POST(request: NextRequest) {
       ) {
         continue // skip malformed events rather than fail the whole batch
       }
-      const quality: 'grazed' | 'close' = event.quality === 'close' ? 'close' : 'grazed'
+      // Deploy-order note (Pillar 7): this normalizer ships in the same PR
+      // that starts sending 'seen' from new clients — the server deploys on
+      // merge, so it already accepts 'seen' before any client does. Any
+      // OTHER unrecognized value (old clients, which never send 'seen'
+      // anyway; or a corrupt payload) coerces to 'grazed', same as before.
+      const quality: 'seen' | 'grazed' | 'close' =
+        event.quality === 'close' ? 'close' : event.quality === 'seen' ? 'seen' : 'grazed'
       await recordCoverageEvent({ ...event, quality, workerId: auth.workerId })
       inserted++
     }

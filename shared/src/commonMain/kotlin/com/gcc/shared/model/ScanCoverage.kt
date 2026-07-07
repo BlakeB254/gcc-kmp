@@ -13,7 +13,7 @@ data class ScanCoverageEventRequest(
     val scanMode: String, // "route" | "spot"
     val deviceTier: String, // "basic" | "scanner" | "pro_scanner"
     val capturedAt: String,
-    val quality: String = "grazed", // "grazed" | "close"
+    val quality: String = "grazed", // "seen" | "grazed" | "close"
 )
 
 @Serializable
@@ -51,7 +51,7 @@ data class MapCoverageCell(
     val state: String, // "fresh" | "stale"
     val lastScannedAt: String,
     val totalDistanceMeters: Double,
-    val quality: String = "grazed", // best tier on record
+    val quality: String = "grazed", // best tier on record: "seen" | "grazed" | "close"
     // Rescan priority, 0..1 — ageFactor x qualityBoost, computed server-side
     // at read time (no schema migration). Defaulted so legacy/cached
     // responses without it still decode; 0.0 renders as "no urgency".

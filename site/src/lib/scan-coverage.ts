@@ -13,26 +13,51 @@ export interface RecordCoverageEventInput {
   distanceMeters: number
   scanMode: 'route' | 'spot'
   deviceTier: 'basic' | 'scanner' | 'pro_scanner'
-  quality: 'grazed' | 'close'
+  quality: 'seen' | 'grazed' | 'close'
   capturedAt: string
 }
 
-type CoverageCategory = 'new_area' | 'new_area_grazed' | 'close_upgrade' | 'stale_rescan' | 'fresh_rescan'
+type CoverageCategory =
+  | 'new_area'
+  | 'new_area_grazed'
+  | 'close_upgrade'
+  | 'stale_rescan'
+  | 'fresh_rescan'
+  | 'seen_only'
+
+/**
+ * Raw-SQL CASE expression ranking two boolean conditions (whichever passes
+ * for the highest tier wins): pass `isClose`/`isGrazed` SQL fragments that
+ * evaluate true when a close/grazed record is present; the result is
+ * 'close' | 'grazed' | 'seen'. Shared by both the live upsert's conflict-
+ * resolution and the retraction recompute's aggregate, so the tier ranking
+ * (close > grazed > seen) can never drift apart between the two paths.
+ */
+function qualityRankCase(isClose: any, isGrazed: any) {
+  return sql<string>`CASE WHEN ${isClose} THEN 'close' WHEN ${isGrazed} THEN 'grazed' ELSE 'seen' END`
+}
 
 /**
  * Classifies against the cell's PRIOR state (read before any write this call
  * makes). Quality split (spec §3): grazed first-scan pays partial, a
  * grazed→close upgrade on a fresh cell pays the remainder, straight-to-close
  * pays full. Stale rescans pay the flat stale rate at either quality.
+ *
+ * SEEN never pays (Pillar 7 Global Constraints: "sight isn't work") — it
+ * short-circuits to its own category regardless of prior state. A prior
+ * bestQuality of 'seen' reads as UNWORKED here: seeing a cell from across
+ * the street doesn't discount the reward for later actually walking it.
  */
 function categorizeCoverageEvent(
   priorLastScannedAt: string | null,
   priorBestQuality: string | null,
   capturedAt: string,
-  quality: 'grazed' | 'close'
+  quality: 'seen' | 'grazed' | 'close'
 ): CoverageCategory {
-  if (priorLastScannedAt === null) return quality === 'close' ? 'new_area' : 'new_area_grazed'
-  const ageMs = new Date(capturedAt).getTime() - new Date(priorLastScannedAt).getTime()
+  if (quality === 'seen') return 'seen_only'
+  const priorWorked = priorLastScannedAt !== null && priorBestQuality !== 'seen'
+  if (!priorWorked) return quality === 'close' ? 'new_area' : 'new_area_grazed'
+  const ageMs = new Date(capturedAt).getTime() - new Date(priorLastScannedAt!).getTime()
   if (ageMs > STALE_AFTER_MS) return 'stale_rescan'
   if (quality === 'close' && priorBestQuality !== 'close') return 'close_upgrade'
   return 'fresh_rescan'
@@ -98,11 +123,21 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
     .onConflictDoUpdate({
       target: cellCoverageSummary.locationCellId,
       set: {
-        lastScannedAt: sql`GREATEST(${cellCoverageSummary.lastScannedAt}, EXCLUDED.last_scanned_at)`,
+        // lastScannedAt is the staleness clock categorizeCoverageEvent reads
+        // for the NEXT event on this cell — a 'seen' event (sight isn't
+        // work) must not refresh it, or a stale rescan could land as
+        // fresh_rescan (0 pts) just because someone glanced at the cell
+        // from across the street in between.
+        lastScannedAt: sql`CASE WHEN EXCLUDED.best_quality = 'seen'
+          THEN ${cellCoverageSummary.lastScannedAt}
+          ELSE GREATEST(${cellCoverageSummary.lastScannedAt}, EXCLUDED.last_scanned_at) END`,
         firstScannedAt: sql`LEAST(${cellCoverageSummary.firstScannedAt}, EXCLUDED.first_scanned_at)`,
         totalDistanceMeters: sql`${cellCoverageSummary.totalDistanceMeters} + EXCLUDED.total_distance_meters`,
         scanCount: sql`${cellCoverageSummary.scanCount} + 1`,
-        bestQuality: sql`CASE WHEN ${cellCoverageSummary.bestQuality} = 'close' OR EXCLUDED.best_quality = 'close' THEN 'close' ELSE 'grazed' END`,
+        bestQuality: qualityRankCase(
+          sql`${cellCoverageSummary.bestQuality} = 'close' OR EXCLUDED.best_quality = 'close'`,
+          sql`${cellCoverageSummary.bestQuality} = 'grazed' OR EXCLUDED.best_quality = 'grazed'`,
+        ),
         lastCloseScannedAt: sql`CASE WHEN EXCLUDED.best_quality = 'close'
           THEN GREATEST(COALESCE(${cellCoverageSummary.lastCloseScannedAt}, EXCLUDED.last_scanned_at), EXCLUDED.last_scanned_at)
           ELSE ${cellCoverageSummary.lastCloseScannedAt} END`,
@@ -115,6 +150,7 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
       category === 'new_area_grazed' ? POINTS_PER_METER.NEW_AREA_GRAZED :
       category === 'close_upgrade' ? POINTS_PER_METER.CLOSE_UPGRADE :
       category === 'stale_rescan' ? POINTS_PER_METER.STALE_RESCAN :
+      category === 'seen_only' ? POINTS_PER_METER.SEEN :
       POINTS_PER_METER.FRESH_RESCAN
     const points = Math.round(perMeter * input.distanceMeters)
 
@@ -188,10 +224,25 @@ export async function retractCoverageWindow(input: RetractCoverageInput) {
     const [agg] = await db
       .select({
         firstScannedAt: sql<string | null>`MIN(${scanCoverageEvents.capturedAt})`,
-        lastScannedAt: sql<string | null>`MAX(${scanCoverageEvents.capturedAt})`,
+        // lastScannedAt is the staleness clock categorizeCoverageEvent reads
+        // for the NEXT event on this cell — 'seen' events (sight isn't work)
+        // must not set it, mirroring the live upsert's guard above, or a
+        // retraction on a cell with a surviving later 'seen' glance would
+        // advance the clock and miscategorize the next real rescan as
+        // fresh_rescan (0 pts) instead of stale_rescan. COALESCE falls back
+        // to the unfiltered MAX for a seen-only cell, which still needs a
+        // timestamp (its bestQuality 'seen' already reads as unworked).
+        lastScannedAt: sql<string | null>`COALESCE(
+          MAX(${scanCoverageEvents.capturedAt}) FILTER (WHERE ${scanCoverageEvents.quality} != 'seen'),
+          MAX(${scanCoverageEvents.capturedAt})
+        )`,
         totalDistanceMeters: sql<number>`COALESCE(SUM(${scanCoverageEvents.distanceMeters}), 0)`,
         scanCount: sql<number>`COUNT(*)::int`,
-        hasClose: sql<boolean>`COALESCE(BOOL_OR(${scanCoverageEvents.quality} = 'close'), false)`,
+        // Ranked the same way the live upsert ranks it — see qualityRankCase.
+        bestQuality: qualityRankCase(
+          sql`BOOL_OR(${scanCoverageEvents.quality} = 'close')`,
+          sql`BOOL_OR(${scanCoverageEvents.quality} = 'grazed')`,
+        ),
         lastCloseScannedAt: sql<string | null>`MAX(${scanCoverageEvents.capturedAt}) FILTER (WHERE ${scanCoverageEvents.quality} = 'close')`,
       })
       .from(scanCoverageEvents)
@@ -207,7 +258,7 @@ export async function retractCoverageWindow(input: RetractCoverageInput) {
           lastScannedAt: agg.lastScannedAt,
           totalDistanceMeters: agg.totalDistanceMeters,
           scanCount: agg.scanCount,
-          bestQuality: agg.hasClose ? 'close' : 'grazed',
+          bestQuality: agg.bestQuality,
           lastCloseScannedAt: agg.lastCloseScannedAt,
         })
         .where(eq(cellCoverageSummary.locationCellId, cellId))

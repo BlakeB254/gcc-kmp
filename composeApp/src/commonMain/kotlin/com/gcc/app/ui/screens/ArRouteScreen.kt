@@ -93,6 +93,10 @@ fun ArRouteScreen(
         creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
             .keys.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
     }
+    val seenCells by viewModel.seenCells.collectAsState()
+    val seenCellCenters = remember(seenCells) {
+        seenCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
@@ -461,6 +465,7 @@ fun ArRouteScreen(
                     staleCellCenters = staleCellCenters,
                     freshCellCenters = freshCellCenters,
                     closeCellCenters = closeCellCenters,
+                    seenCellCenters = seenCellCenters,
                     freshCloseCellCenters = emptyList(),
                     outerBoundary = outerRing,
                     innerBoundaries = innerRings,

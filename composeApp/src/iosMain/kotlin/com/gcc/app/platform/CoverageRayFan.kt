@@ -64,8 +64,10 @@ internal object CoverageRayFan {
     /**
      * Cast the full fan and geo-resolve the hits. [toLatLng] is the caller's
      * geo-ref conversion (localToLatLng bound to its reference frame).
-     * Hits beyond [CoverageTracker.GRAZE_RANGE_METERS] are dropped here so
-     * listeners only ever see creditable hits.
+     * Hits beyond [CoverageTracker.SEEN_RANGE_METERS] are dropped here so
+     * listeners only ever see creditable hits — raised from the old GRAZE
+     * ceiling so cross-street storefronts the camera looked at (but the
+     * worker never walked to) can credit at SEEN tier (Pillar 7).
      */
     fun cast(
         surface: ArNativeSurface?,
@@ -75,7 +77,7 @@ internal object CoverageRayFan {
         val hits = mutableListOf<RaycastCoverageHit>()
         for ((ix, iy) in SAMPLE_POINTS) {
             val hit = raycastPoint(surface, frame, ix, iy) ?: continue
-            if (hit.distance > CoverageTracker.GRAZE_RANGE_METERS) continue
+            if (hit.distance > CoverageTracker.SEEN_RANGE_METERS) continue
             val (lat, lng) = toLatLng(hit.x, hit.z)
             hits.add(RaycastCoverageHit(lat, lng, hit.distance.toDouble()))
         }

@@ -76,6 +76,8 @@ fun CameraCapture(
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Session cells credited at CLOSE tier — minimap vivid highlight. */
     closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    /** Session cells credited at SEEN tier only — minimap faintest wash. */
+    seenCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Ledger-fresh cells whose best quality is close — minimap brighter wash. */
     freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering: minimap double-ring over the next area worth scanning. */
@@ -262,6 +264,7 @@ fun CameraCapture(
                         staleCellCenters = staleCellCenters,
                         freshCellCenters = freshCellCenters,
                         closeCellCenters = closeCellCenters,
+                        seenCellCenters = seenCellCenters,
                         freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
                     )

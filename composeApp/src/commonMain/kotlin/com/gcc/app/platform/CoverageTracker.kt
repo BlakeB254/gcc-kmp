@@ -10,13 +10,23 @@ import kotlinx.datetime.Clock
 import kotlin.math.PI
 import kotlin.math.cos
 
-/** Scan quality tier for a credited cell. Order matters: CLOSE > GRAZED (ordinal upgrade check). */
-enum class CoverageQuality { GRAZED, CLOSE }
+/**
+ * Scan quality tier for a credited cell. Order matters: SEEN < GRAZED < CLOSE
+ * (ordinal upgrade check via `>=` in [CoverageTracker.creditCell]) — SEEN
+ * MUST stay ordinal 0. CellCredit/this enum are in-memory only (never
+ * persisted or serialized — verified: no @Serializable on either type, no
+ * DB/wire encoding references CoverageQuality), so this reorder carries no
+ * migration risk; the wire protocol's quality strings ('seen'|'grazed'|
+ * 'close') are a separate, independently-versioned representation.
+ */
+enum class CoverageQuality { SEEN, GRAZED, CLOSE }
 
 /**
- * Per-cell credit: what tier, when, and (one level deep) what the cell held
- * before the latest change — so an INDOOR-flip purge can revert an in-window
- * upgrade instead of erasing pre-window history.
+ * Per-cell credit: what tier, when, and the FULL chain of what the cell held
+ * before each upgrade — so an INDOOR-flip purge ([CoverageTracker.purgeSince])
+ * can revert past every in-window upgrade instead of stopping one hop short.
+ * The chain is self-bounding (max depth 2: SEEN → GRAZED → CLOSE, CLOSE being
+ * terminal), so keeping it in full never grows unbounded over a session.
  */
 data class CellCredit(
     val quality: CoverageQuality,
@@ -26,6 +36,50 @@ data class CellCredit(
 
 /** One raycast fan hit, already geo-resolved: where the ray LANDED + how far the surface was. */
 data class RaycastCoverageHit(val lat: Double, val lng: Double, val distanceMeters: Double)
+
+/**
+ * Classifies a raycast surface distance into its would-be credit tier (or
+ * null beyond the fan ceiling) — mirrors the per-hit tiering in
+ * [CoverageTracker.updateWithRaycastHits] so callers (the route/spot
+ * event-quality stampers) can compute "best tier since last event" without
+ * duplicating the threshold logic.
+ */
+fun coverageQualityForDistance(distanceMeters: Double): CoverageQuality? = when {
+    distanceMeters > CoverageTracker.SEEN_RANGE_METERS -> null
+    distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS -> CoverageQuality.CLOSE
+    distanceMeters <= CoverageTracker.GRAZE_RANGE_METERS -> CoverageQuality.GRAZED
+    else -> CoverageQuality.SEEN
+}
+
+/** Best (highest-ranked) quality among a batch of raycast hits, or null if none land within any creditable tier. */
+fun fanHitQuality(hits: List<RaycastCoverageHit>): CoverageQuality? =
+    hits.mapNotNull { coverageQualityForDistance(it.distanceMeters) }.maxOrNull()
+
+/** Higher-ranked (close > grazed > seen) of two possibly-null qualities — null is lowest. */
+fun bestOf(a: CoverageQuality?, b: CoverageQuality?): CoverageQuality? =
+    listOfNotNull(a, b).maxOrNull()
+
+/**
+ * Wire-protocol string for a quality tier ("seen" | "grazed" | "close"),
+ * defaulting to "grazed" (the position-floor tier — you were standing
+ * there) when null.
+ */
+fun wireQualityString(quality: CoverageQuality?): String = when (quality) {
+    CoverageQuality.CLOSE -> "close"
+    CoverageQuality.SEEN -> "seen"
+    CoverageQuality.GRAZED, null -> "grazed"
+}
+
+/**
+ * Wire-protocol quality string for a walked route/spot segment: the walk
+ * itself is at minimum GRAZED (you were standing there), which the fan can
+ * only ever upgrade to CLOSE — [fanBestSinceLastEvent] never surfaces "seen"
+ * from this call (SEEN fan hits land on OTHER, distant cells), but the
+ * ranking stays generic via [bestOf] rather than a hand-rolled comparison.
+ * Shared by both the route and spot coverage-event stampers.
+ */
+fun wireQualityForSegment(fanBestSinceLastEvent: CoverageQuality?): String =
+    wireQualityString(bestOf(CoverageQuality.GRAZED, fanBestSinceLastEvent))
 
 /**
  * Grid-based coverage tracker for the Scout lap fog-of-war system.
@@ -44,8 +98,15 @@ class CoverageTracker {
 
         /** Raycast hits at or under this surface distance credit CLOSE (detail-scan tier). */
         const val CLOSE_RANGE_METERS = 4.0
-        /** Raycast hits beyond this surface distance credit nothing (fan ceiling). */
+        /** Raycast hits at or under this surface distance (and beyond CLOSE) credit GRAZED. */
         const val GRAZE_RANGE_METERS = 10.0
+        /**
+         * Raycast hits at or under this surface distance (and beyond GRAZE)
+         * credit SEEN — the camera looked at it (a cross-street storefront
+         * face) even though the worker never walked there. Beyond this, the
+         * fan drops the hit entirely (fan ceiling).
+         */
+        const val SEEN_RANGE_METERS = 55.0
     }
 
     private fun nowEpochMs(): Long = Clock.System.now().toEpochMilliseconds()
@@ -74,8 +135,17 @@ class CoverageTracker {
     private val _creditedCells = MutableStateFlow<Map<Pair<Int, Int>, CellCredit>>(emptyMap())
     val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> = _creditedCells.asStateFlow()
 
+    // GRAZED+ keys only (SEEN excluded — sight isn't "scanned" for fog/lap
+    // purposes, spec Pillar 7 §AR fog). Existing consumers (fog reveal via
+    // getUnscannedCells, minimap punch-out, corridor fill) all key off this.
     private val _scannedCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> = _scannedCells.asStateFlow()
+
+    // SEEN-only cells (credited but not GRAZED+) — their own accessor so
+    // renderers can draw the faintest "sighted at a distance" wash without
+    // it counting as scanned anywhere fog/coverage% is computed.
+    private val _seenCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
+    val seenCells: StateFlow<Set<Pair<Int, Int>>> = _seenCells.asStateFlow()
 
     private val _coveragePercent = MutableStateFlow(0.0)
     val coveragePercent: StateFlow<Double> = _coveragePercent.asStateFlow()
@@ -254,12 +324,19 @@ class CoverageTracker {
 
     // ── Quality-aware credit map ──────────────────────────────────────
 
-    /** Recompute all derived flows from a new credit map. */
+    /**
+     * Recompute all derived flows from a new credit map. GRAZED+ defines
+     * "scanned" everywhere (fog, coveragePercent, lap-advance) — SEEN cells
+     * never inflate lap completion (spec Pillar 7: sight-at-distance still
+     * needs walking). closePercent is unchanged (CLOSE-only, as before).
+     */
     private fun publish(map: Map<Pair<Int, Int>, CellCredit>) {
         _creditedCells.value = map
-        _scannedCells.value = map.keys
+        val grazedPlus = map.filterValues { it.quality >= CoverageQuality.GRAZED }.keys
+        _scannedCells.value = grazedPlus
+        _seenCells.value = map.filterValues { it.quality == CoverageQuality.SEEN }.keys
         if (totalCells > 0) {
-            val scannedCorridor = map.keys.count { it in corridorCells }
+            val scannedCorridor = grazedPlus.count { it in corridorCells }
             _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
             val closeCorridor = map.count { (cell, credit) ->
                 cell in corridorCells && credit.quality == CoverageQuality.CLOSE
@@ -271,7 +348,18 @@ class CoverageTracker {
         }
     }
 
-    /** Monotonic credit: upgrades keep a one-deep prior for purge revert; equal/lower tiers are no-ops. */
+    /**
+     * Monotonic credit: upgrades keep the FULL prior chain for purge revert
+     * (see [purgeSince]); equal/lower tiers are no-ops. The chain is
+     * self-bounding, not unbounded: a cell can only ever progress through
+     * SEEN → GRAZED → CLOSE once (CLOSE is terminal — no further credit()
+     * call can upgrade past it), so the deepest possible chain is 2 links
+     * regardless of session length. Retaining the whole chain (rather than
+     * truncating to one level, as before SEEN existed) matters now that a
+     * cell can be upgraded TWICE inside one purge window — a single-level
+     * revert would land on a credit that itself falls inside the window and
+     * should also be discarded.
+     */
     private fun creditCell(
         map: MutableMap<Pair<Int, Int>, CellCredit>,
         cell: Pair<Int, Int>,
@@ -280,7 +368,7 @@ class CoverageTracker {
     ): Boolean {
         val existing = map[cell]
         if (existing != null && existing.quality >= quality) return false
-        map[cell] = CellCredit(quality, nowMs, prior = existing?.copy(prior = null))
+        map[cell] = CellCredit(quality, nowMs, prior = existing)
         return true
     }
 
@@ -294,11 +382,8 @@ class CoverageTracker {
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for (hit in hits) {
-            if (hit.distanceMeters > GRAZE_RANGE_METERS) continue
+            val quality = coverageQualityForDistance(hit.distanceMeters) ?: continue
             val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
-            val quality =
-                if (hit.distanceMeters <= CLOSE_RANGE_METERS) CoverageQuality.CLOSE
-                else CoverageQuality.GRAZED
             if (creditCell(map, cell, quality, nowMs)) changed = true
         }
         if (changed) publish(map)
@@ -308,14 +393,23 @@ class CoverageTracker {
      * INDOOR-flip purge: undo every credit made at/after [cutoffMs] — in-window
      * upgrades revert to their pre-window state; cells first credited in the
      * window disappear entirely. Companion to the recorder/photo purges.
+     *
+     * Walks the FULL prior chain (not just one hop): with three tiers a cell
+     * can be upgraded twice inside a single short purge window (e.g. SEEN
+     * pre-window, then GRAZED and CLOSE both inside it) — stopping at the
+     * first prior, as a single-level revert would, could land on a credit
+     * that ALSO falls inside the window and should itself be discarded.
      */
     fun purgeSince(cutoffMs: Long) {
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for ((cell, credit) in _creditedCells.value) {
             if (credit.creditedAtMs >= cutoffMs) {
-                val prior = credit.prior
-                if (prior != null) map[cell] = prior else map.remove(cell)
+                var walked: CellCredit? = credit
+                while (walked != null && walked.creditedAtMs >= cutoffMs) {
+                    walked = walked.prior
+                }
+                if (walked != null) map[cell] = walked else map.remove(cell)
                 changed = true
             }
         }
@@ -393,6 +487,7 @@ class CoverageTracker {
     fun reset() {
         _creditedCells.value = emptyMap()
         _scannedCells.value = emptySet()
+        _seenCells.value = emptySet()
         _coveragePercent.value = 0.0
         _closePercent.value = 0.0
     }

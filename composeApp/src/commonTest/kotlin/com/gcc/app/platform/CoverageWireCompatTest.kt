@@ -33,6 +33,28 @@ class CoverageWireCompatTest {
     }
 
     @Test
+    fun seenQualityRoundTripsOnEventAndMapCell() {
+        // Pillar 7: 'seen' is a new wire value old servers/clients never
+        // produced — new clients/servers must round-trip it cleanly.
+        val event = ScanCoverageEventRequest(
+            deviceId = "d", platform = "ios", lat = 41.0, lng = -87.0,
+            distanceMeters = 1.0, scanMode = "route", deviceTier = "basic",
+            capturedAt = "2026-07-06T15:00:00Z", quality = "seen",
+        )
+        val decodedEvent = GccJson.decodeFromString<ScanCoverageEventRequest>(
+            GccJson.encodeToString(event),
+        )
+        assertEquals("seen", decodedEvent.quality)
+
+        val cell = MapCoverageCell(
+            locationCellId = "c", lat = 41.0, lng = -87.0, state = "fresh",
+            lastScannedAt = "2026-07-06T15:00:00Z", totalDistanceMeters = 5.0, quality = "seen",
+        )
+        val decodedCell = GccJson.decodeFromString<MapCoverageCell>(GccJson.encodeToString(cell))
+        assertEquals("seen", decodedCell.quality)
+    }
+
+    @Test
     fun legacyMapCellJsonDefaultsPriorityToZero() {
         // Deployed builds/cached responses predate the P5 rescan-priority
         // field entirely — no `priority` key on the wire at all.

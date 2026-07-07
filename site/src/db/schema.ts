@@ -1748,7 +1748,7 @@ export const scanCoverageEvents = pgTable('scan_coverage_events', {
   distanceMeters: doublePrecision('distance_meters').notNull(),
   scanMode: varchar('scan_mode', { length: 10 }).notNull(), // 'route' | 'spot'
   deviceTier: varchar('device_tier', { length: 16 }).notNull(), // 'basic' | 'scanner' | 'pro_scanner'
-  quality: varchar('quality', { length: 8 }).default('grazed').notNull(), // 'grazed' | 'close'
+  quality: varchar('quality', { length: 8 }).default('grazed').notNull(), // 'seen' | 'grazed' | 'close'
   capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -1764,7 +1764,7 @@ export const cellCoverageSummary = pgTable('cell_coverage_summary', {
   lastScannedAt: timestamp('last_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
   totalDistanceMeters: doublePrecision('total_distance_meters').default(0).notNull(),
   scanCount: integer('scan_count').default(0).notNull(),
-  bestQuality: varchar('best_quality', { length: 8 }).default('grazed').notNull(), // 'grazed' | 'close'
+  bestQuality: varchar('best_quality', { length: 8 }).default('grazed').notNull(), // 'seen' | 'grazed' | 'close'
   lastCloseScannedAt: timestamp('last_close_scanned_at', { mode: 'string', withTimezone: true }),
 })
 

@@ -47,6 +47,9 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.bestOf
+import com.gcc.app.platform.fanHitQuality
+import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
@@ -373,10 +376,11 @@ private fun CameraPhase(
     // (rather than down with its other env-scan state) because the
     // raycast-fan listener registered there needs it in scope.
     val tracker = remember { CoverageTracker() }
-    // Set by the raycast-fan listener when any CLOSE-tier hit credits; read +
-    // reset per coverage event so the event carries the best tier since the
-    // previous fix. Plain holder (not Compose state): mutated off-composition.
-    val closeCreditSinceLastEvent = remember { object { var value = false } }
+    // Set by the raycast-fan listener to the best fan-hit quality (close >
+    // grazed > seen); read + reset per coverage event so the event carries
+    // the best tier since the previous fix. Plain holder (not Compose
+    // state): mutated off-composition.
+    val bestFanQualitySinceLastEvent = remember { object { var value: CoverageQuality? = null } }
 
     // ── Background full-session capture (Pillar 1) ───────────────────
     // Every call here is wrapped so a capture failure only ever disables
@@ -452,8 +456,9 @@ private fun CameraPhase(
         arOverlay?.setCoverageHitListener { hits ->
             if (!gate.captureAllowed.value) return@setCoverageHitListener
             tracker.updateWithRaycastHits(hits)
-            if (hits.any { it.distanceMeters <= CoverageTracker.CLOSE_RANGE_METERS }) {
-                closeCreditSinceLastEvent.value = true
+            val hitBest = fanHitQuality(hits)
+            if (hitBest != null) {
+                bestFanQualitySinceLastEvent.value = bestOf(bestFanQualitySinceLastEvent.value, hitBest)
             }
         }
         onDispose {
@@ -724,10 +729,10 @@ private fun CameraPhase(
                         scanMode = "spot",
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),
-                        quality = if (closeCreditSinceLastEvent.value) "close" else "grazed",
+                        quality = wireQualityForSegment(bestFanQualitySinceLastEvent.value),
                     )
                 )
-                closeCreditSinceLastEvent.value = false
+                bestFanQualitySinceLastEvent.value = null
             }
 
             // Clean-confirm proximity (5m, unresolved only).
@@ -748,6 +753,10 @@ private fun CameraPhase(
     val closeCellCenters = remember(creditedCells) {
         creditedCells.filterValues { it.quality == CoverageQuality.CLOSE }
             .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
+    }
+    val seenCells by tracker.seenCells.collectAsState()
+    val seenCellCenters = remember(seenCells) {
+        seenCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
     // Vector-scan effect: CLOSE-tier cells render as "digitized" ground quads
     // in the AR camera view, mirroring the minimap's vivid fill — fog still
@@ -886,6 +895,7 @@ private fun CameraPhase(
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,
+                seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
@@ -921,6 +931,7 @@ private fun CameraPhase(
                 staleCellCenters = staleCells,
                 freshCellCenters = freshCells,
                 closeCellCenters = closeCellCenters,
+                seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 environmentScanMode = true,
                 statusText = scanStatus,
