@@ -332,6 +332,25 @@ private fun CameraPhase(
             }
         }
     }
+    // Steadiness accumulator for the end-of-session A-F score (ScanScore):
+    // a plain (non-Compose) counter pair, not state — sampled once/sec so a
+    // steady session doesn't recompose per sample. ArSessionHealth's
+    // trackingState only emits on ARKit transitions (rare), so a periodic
+    // sample of its current .value is the cheap, time-weighted way to get
+    // "fraction of the session spent NORMAL" without a full sample history.
+    // Stays at its default (1.0, all-NORMAL) on platforms/sessions with no
+    // AR overlay — absence isn't a steadiness failure (Global Constraints).
+    val trackingTickCounts = remember { object { var normal = 0; var total = 0 } }
+    LaunchedEffect(arOverlay) {
+        if (arOverlay == null) return@LaunchedEffect
+        while (true) {
+            delay(1_000)
+            trackingTickCounts.total++
+            if (arOverlay.trackingState.value == com.gcc.app.platform.TrackingState.NORMAL) {
+                trackingTickCounts.normal++
+            }
+        }
+    }
 
     // "Go outside" gate — fused from GPS accuracy, mapped-building containment,
     // AR/AVCapture camera scene votes, and ARKit ceiling-plane evidence; capture,
@@ -743,6 +762,7 @@ private fun CameraPhase(
     var guidanceTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var guidancePhase by remember { mutableStateOf(GuidancePhase.COVER) }
     val coveragePercentValue by tracker.coveragePercent.collectAsState()
+    val closePercentValue by tracker.closePercent.collectAsState()
     LaunchedEffect(scanCellCenters, closeCellCenters, trackerReady, currentLocation) {
         if (!trackerReady) return@LaunchedEffect
         val uncredited = tracker.getUnscannedCells()
@@ -1087,7 +1107,15 @@ private fun CameraPhase(
                 // dimmer than the fully-active pill.
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
                 .clickable {
-                    val draft = sessionRecorder.draft(scanCellCenters)
+                    val steadinessFraction = trackingTickCounts.total.takeIf { it > 0 }
+                        ?.let { total -> trackingTickCounts.normal.toDouble() / total }
+                        ?: 1.0
+                    val draft = sessionRecorder.draft(
+                        scanCellCenters,
+                        coveragePercent = coveragePercentValue,
+                        closePercent = closePercentValue,
+                        steadinessFraction = steadinessFraction,
+                    )
                     if (arOverlay != null && captureStarted) {
                         // Stop+drain capture BEFORE the overlay tears down: the
                         // native writer finalize is bounded ~5s and must run off

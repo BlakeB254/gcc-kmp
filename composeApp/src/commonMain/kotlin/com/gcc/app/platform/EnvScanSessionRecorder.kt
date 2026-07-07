@@ -109,13 +109,30 @@ class EnvScanSessionRecorder(
         enqueueJournalAppend(EnvScanJournalEntry(type = "gate", gate = event))
     }
 
-    fun draft(scannedCellCenters: List<Pair<Double, Double>>): EnvScanSessionDraft =
+    /**
+     * @param coveragePercent [CoverageTracker.coveragePercent] at completion — rides
+     *   the draft so downstream summary UI (see [ScanScore]) doesn't need its own
+     *   plumbing back to the live tracker. Defaulted for callers that don't score
+     *   (route laps, tests).
+     * @param closePercent [CoverageTracker.closePercent] at completion.
+     * @param steadinessFraction fraction of session tracking ticks that were
+     *   NORMAL; 1.0 default (no penalty) when the caller doesn't track it.
+     */
+    fun draft(
+        scannedCellCenters: List<Pair<Double, Double>>,
+        coveragePercent: Double = 0.0,
+        closePercent: Double = 0.0,
+        steadinessFraction: Double = 1.0,
+    ): EnvScanSessionDraft =
         EnvScanSessionDraft(
             sessionId = sessionId,
             startedAtMs = startedAtMs,
             path = samples.toList(),
             scannedCells = scannedCellCenters.map { (lat, lng) -> EnvScanCell(lat, lng) },
             gateEvents = gateEvents.toList(),
+            coveragePercent = coveragePercent,
+            closePercent = closePercent,
+            steadinessFraction = steadinessFraction,
         )
 
     /**
@@ -191,11 +208,22 @@ class EnvScanSessionRecorder(
     }
 }
 
-/** Immutable snapshot handed to the ViewModel at Complete Scan. */
+/**
+ * Immutable snapshot handed to the ViewModel at Complete Scan.
+ *
+ * [coveragePercent]/[closePercent]/[steadinessFraction] are the session's
+ * final [CoverageTracker] + tracking-steadiness readings, defaulted so every
+ * existing caller (route laps, tests) that doesn't score keeps compiling
+ * unchanged — see [ScanScore.compute] for how the summary card's A-F grade
+ * is derived from them.
+ */
 data class EnvScanSessionDraft(
     val sessionId: String,
     val startedAtMs: Long,
     val path: List<EnvScanPathSample>,
     val scannedCells: List<EnvScanCell>,
     val gateEvents: List<String> = emptyList(),
+    val coveragePercent: Double = 0.0,
+    val closePercent: Double = 0.0,
+    val steadinessFraction: Double = 1.0,
 )

@@ -29,10 +29,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.ScanScore
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.theme.CardAccentGreen
+import com.gcc.app.ui.theme.GccAvailable
+import com.gcc.app.ui.theme.GccClaimed
+import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.TextMuted
 import com.gcc.app.platform.EnvScanSessionDraft
@@ -94,6 +98,49 @@ fun ScanSessionSummaryCard(
             SessionStat(value = sessionDurationLabel(session), label = "Duration")
             SessionStat(value = "$itemCount", label = "Items tagged")
             SessionStat(value = "$photoCount", label = "Photos")
+        }
+
+        // A-F scan score (ScanScore — the completion-time sibling of the live
+        // ScanQualityBadge; see ScanQualityScorer.kt for the unification
+        // note). Only rendered once a session exists to score.
+        if (session != null) {
+            val score = remember(session) {
+                ScanScore.compute(
+                    coveragePercent = session.coveragePercent,
+                    closePercent = session.closePercent,
+                    steadinessFraction = session.steadinessFraction,
+                )
+            }
+            val gradeColor = when (score.grade) {
+                'A', 'B' -> GccAvailable
+                'C' -> GccClaimed
+                else -> GccError
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    score.grade.toString(),
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    color = gradeColor,
+                )
+                Column {
+                    Text(
+                        score.headline,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                    if (score.advice != null) {
+                        Text(
+                            score.advice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
+            }
         }
     }
 }
