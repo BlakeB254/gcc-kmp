@@ -124,7 +124,16 @@ fun CameraCapture(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(atLimit) {
-                    detectTapGestures {
+                    detectTapGestures { offset ->
+                        // AR tap-to-focus (Task 5): bias detection toward
+                        // whatever the user tapped before the existing
+                        // tap-anywhere-to-capture behavior runs. The Box is
+                        // full-size, so the tap normalizes directly against
+                        // this pointerInput scope's size. No-op when there's
+                        // no AR overlay (non-AR camera / off-iOS).
+                        if (arOverlay != null) {
+                            arOverlay.focusAt(offset.x / size.width, offset.y / size.height)
+                        }
                         if (!isCapturing && !atLimit) {
                             isCapturing = true
                             coroutineScope.launch {
