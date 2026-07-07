@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteScanSectionStatus
 import com.gcc.shared.geo.CheckpointGenerator
@@ -72,6 +73,12 @@ fun ScoutScreen(
         uiState.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) }
     }
 
+    // Authored per-building inner-exclusion islands; the synthetic 8m inset
+    // may only render when the block has none.
+    val authoredInnerRings = remember(uiState.route) {
+        uiState.route?.innerBoundary.authoredInnerRings()
+    }
+
     // Map centre: user position if available, otherwise route start, otherwise Chicago default
     val mapCenterLat = currentLocation?.lat
         ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lat
@@ -91,6 +98,8 @@ fun ScoutScreen(
             enableGestures = true,
             routeCoordinates = routeCoords,
             bountyLocations = hotspotLocations,
+            innerBoundaryRings = authoredInnerRings,
+            innerBoundaryFallback = authoredInnerRings.isEmpty(),
             showBuildings = true,
             showGridLines = true,
             showControls = true,

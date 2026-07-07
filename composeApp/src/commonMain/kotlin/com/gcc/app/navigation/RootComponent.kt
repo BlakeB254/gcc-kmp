@@ -164,8 +164,8 @@ class RootComponent(
         navigation.push(Screen.SpotVerification(reportId))
     }
 
-    fun navigateToRouteScan(routeId: Int, allowUnpublished: Boolean = false) {
-        navigation.push(Screen.RouteScan(routeId, allowUnpublished))
+    fun navigateToRouteScan(routeId: Int, allowUnpublished: Boolean = false, completeJobId: Int? = null) {
+        navigation.push(Screen.RouteScan(routeId, allowUnpublished, completeJobId = completeJobId))
     }
 
     fun navigateToRouteScanAsUser(routeId: Int, onBehalfOfWorkerId: Int, workerName: String) {

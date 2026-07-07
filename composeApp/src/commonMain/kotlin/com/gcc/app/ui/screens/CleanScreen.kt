@@ -19,7 +19,10 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
+import com.gcc.app.util.fmt
+import com.gcc.app.viewmodel.Lap2WeightProgress
 import com.gcc.app.viewmodel.RouteScanSectionStatus
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.api.GccApiClient
@@ -48,6 +51,7 @@ fun CleanScreen(
     onSkipHotspot: (ScanHotspot) -> Unit,
     onBack: () -> Unit,
     onConfirmCleaned: ((hotspotId: Int, afterPhotoUrl: String, score: Float) -> Unit)? = null,
+    lap2Weight: Lap2WeightProgress = Lap2WeightProgress(),
 ) {
     val apiClient = koinInject<GccApiClient>()
     val coroutineScope = rememberCoroutineScope()
@@ -91,6 +95,12 @@ fun CleanScreen(
     var captureHotspot by remember { mutableStateOf<ScanHotspot?>(null) }
     var captureError by remember { mutableStateOf<String?>(null) }
 
+    // Authored per-building inner-exclusion islands; the synthetic 8m inset
+    // may only render when the block has none.
+    val authoredInnerRings = remember(uiState.route) {
+        uiState.route?.innerBoundary.authoredInnerRings()
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
 
@@ -107,6 +117,8 @@ fun CleanScreen(
                     bountyLocations = uiState.hotspots
                         .filter { it.status == HotspotStatus.DETECTED }
                         .map { Coordinates(lat = it.lat, lng = it.lng) },
+                    innerBoundaryRings = authoredInnerRings,
+                    innerBoundaryFallback = authoredInnerRings.isEmpty(),
                     showBuildings = true,
                     showGridLines = true,
                     showControls = true,
@@ -177,7 +189,9 @@ fun CleanScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Progress row
+                    // Progress row — lap-2 progress is weight-based: confirmed-
+                    // cleaned estimated lbs ÷ total estimated lbs identified in
+                    // lap 1 (cleaning submissions + "Already clean" rectifies).
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -188,7 +202,7 @@ fun CleanScreen(
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         )
                         Text(
-                            text = "$cleaned / $totalCleanupTargets cleaned",
+                            text = "cleaned ${lap2Weight.cleanedLbs.fmt(1)} of ${lap2Weight.totalLbs.fmt(1)} lbs est.",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = GccGreen,
                         )
@@ -196,9 +210,10 @@ fun CleanScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Progress bar
-                    val progressFraction = if (totalCleanupTargets > 0) {
-                        cleaned.toFloat() / totalCleanupTargets
+                    // Weight-progress bar (falls back to full when lap 1
+                    // identified nothing — there is no weight left to clean).
+                    val progressFraction = if (lap2Weight.totalLbs > 0.0) {
+                        (lap2Weight.percent / 100.0).toFloat()
                     } else {
                         1f
                     }
@@ -212,13 +227,14 @@ fun CleanScreen(
                         trackColor = GccGreen.copy(alpha = 0.15f),
                     )
 
-                    if (documentedOnly > 0) {
-                        Text(
-                            text = "$documentedOnly documented only",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
+                    Text(
+                        text = buildString {
+                            append("$cleaned / $totalCleanupTargets targets cleaned")
+                            if (documentedOnly > 0) append(" · $documentedOnly documented only")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
 
                     captureError?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
