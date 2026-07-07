@@ -216,14 +216,27 @@ class RouteScanViewModel(
         scope.launch { sessionUploader.flushPending() }
     }
 
-    /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng. */
-    fun onMarkerPlaced(lat: Double, lng: Double, label: String) {
+    /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng and
+     *  a best-effort JPEG captured at promotion time (null if capture/upload
+     *  wasn't possible — the marker is never blocked on the photo). */
+    fun onMarkerPlaced(lat: Double, lng: Double, label: String, photoBytes: ByteArray? = null) {
         if (!outdoorGate.captureAllowed.value) return
         if (!lat.isFinite() || !lng.isFinite() || label.isBlank()) {
             DiagnosticsLog.error("ar-marker", "dropping invalid marker: lat=$lat lng=$lng label='$label'")
             return
         }
         scope.launch {
+            // Upload-then-enqueue: the photo is best-effort and must never
+            // block the marker, and raw bytes never enter the persisted
+            // ArMarkerQueue — only the resolved URL (or null on failure).
+            val mediaUrl = photoBytes?.let { bytes ->
+                try {
+                    apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("ar-marker", "marker photo upload failed (enqueuing without photo)", e)
+                    null
+                }
+            }
             arMarkerQueue.enqueue(
                 ArDetectedMarkerRequest(
                     lat = lat, lng = lng,
@@ -231,6 +244,7 @@ class RouteScanViewModel(
                     // stores this verbatim as world_observations.itemType.
                     label = com.gcc.app.platform.TrashItemCatalog.canonicalType(label),
                     capturedAt = Clock.System.now(),
+                    mediaUrl = mediaUrl,
                 ),
             )
         }

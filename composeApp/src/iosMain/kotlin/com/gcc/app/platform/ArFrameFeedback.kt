@@ -86,7 +86,7 @@ internal class ArFrameFeedback(
 
     var sceneVoteListener: ((SceneVote) -> Unit)? = null
     var ceilingListener: ((Boolean) -> Unit)? = null
-    var markerPlacedListener: ((x: Float, y: Float, z: Float, label: String) -> Unit)? = null
+    var markerPlacedListener: ((x: Float, y: Float, z: Float, label: String, photoBytes: ByteArray?) -> Unit)? = null
 
     fun setEnabled(value: Boolean) {
         enabled = value
@@ -241,7 +241,14 @@ internal class ArFrameFeedback(
             )
         )
         if (progress.promoted && hitWorld != null) {
-            addMarkerAt(hitWorld[0], hitWorld[1], hitWorld[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel)
+            // Best-effort: capture the frame that prompted this promotion as a
+            // downscaled JPEG so the map spot it becomes carries the photo
+            // that triggered it (Fix: AR auto-detect markers used to enqueue
+            // with no photo at all). Never blocks the marker — a conversion
+            // failure just yields a null photo below.
+            val photoBytes = (native?.pixelBufferOrNull() ?: frame?.capturedImage)
+                ?.let { cvPixelBufferToMarkerPhotoJpeg(it) }
+            addMarkerAt(hitWorld[0], hitWorld[1], hitWorld[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel, photoBytes)
         }
         return false
     }
@@ -282,7 +289,10 @@ internal class ArFrameFeedback(
      * Add a persistent ring marker at an AR world position (main queue),
      * unless one already exists within [MARKER_DEDUPE_METERS] horizontally.
      */
-    fun addMarkerAt(x: Float, y: Float, z: Float, kind: WorldMarkerKind, label: String = "") {
+    fun addMarkerAt(
+        x: Float, y: Float, z: Float, kind: WorldMarkerKind, label: String = "",
+        photoBytes: ByteArray? = null,
+    ) {
         val exists = markerPositions.any { (mx, _, mz) ->
             val dx = (mx - x).toDouble()
             val dz = (mz - z).toDouble()
@@ -295,7 +305,7 @@ internal class ArFrameFeedback(
         if (kind == WorldMarkerKind.CONFIRMED_TRASH) {
             val listener = markerPlacedListener
             if (listener != null) {
-                dispatch_async(dispatch_get_main_queue()) { listener(x, y, z, label) }
+                dispatch_async(dispatch_get_main_queue()) { listener(x, y, z, label, photoBytes) }
             }
         }
 

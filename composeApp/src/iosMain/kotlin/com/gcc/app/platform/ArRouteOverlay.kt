@@ -241,11 +241,11 @@ actual class ArRouteOverlay actual constructor() {
         }
     }
 
-    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {
-        frameFeedback.markerPlacedListener = if (listener == null) null else { x, _, z, label ->
+    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String, photoBytes: ByteArray?) -> Unit)?) {
+        frameFeedback.markerPlacedListener = if (listener == null) null else { x, _, z, label, photoBytes ->
             if (hasGeoRef) {
                 val (lat, lng) = localToLatLng(x, z)
-                listener(lat, lng, label)
+                listener(lat, lng, label, photoBytes)
             }
             // else: no geo reference yet (GPS hasn't paired with the AR camera).
             // Silently drop this promotion event rather than persist garbage

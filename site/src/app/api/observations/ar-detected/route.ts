@@ -12,6 +12,7 @@ interface ArDetectedMarker {
   capturedAt: string
   estimatedWeightGrams?: number
   estimatedWidthMeters?: number
+  mediaUrl?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -24,13 +25,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const markers: ArDetectedMarker[] = body?.markers ?? []
 
+    // mediaUrl is optional (best-effort marker photo — the client never
+    // blocks a marker on capture/upload failure), but when present it must
+    // be a real, resolvable public URL: bounded length and https:// only, so
+    // an unresolvable/garbage string can't ride through to world_observations.
+    const isValidMediaUrl = (mediaUrl: unknown) =>
+      mediaUrl === undefined ||
+      (typeof mediaUrl === 'string' && mediaUrl.length <= 500 && mediaUrl.startsWith('https://'))
+
     const isValidMarker = (marker: ArDetectedMarker) =>
       Number.isFinite(marker?.lat) &&
       Number.isFinite(marker?.lng) &&
       typeof marker?.label === 'string' &&
       marker.label.length > 0 &&
       typeof marker?.capturedAt === 'string' &&
-      marker.capturedAt.length > 0
+      marker.capturedAt.length > 0 &&
+      isValidMediaUrl(marker?.mediaUrl)
 
     if (!markers.every(isValidMarker)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid marker data' }, { status: 400 })
@@ -55,6 +65,7 @@ export async function POST(request: NextRequest) {
               ...(estimatedWidthMeters !== undefined ? { estimatedWidthMeters } : {}),
             }
           : undefined,
+        mediaUrl: marker.mediaUrl,
         capturedAt: marker.capturedAt,
       })
     }
