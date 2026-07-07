@@ -704,6 +704,17 @@ class SpotViewModel(
                     // rejected with 'already exists within 15m'.
                     observedItems = state.observedItems,
                     objectCapture = state.objectCapture,
+                    // Pillar 8 task 1: scan submissions can additionally carry
+                    // every GRAZED+ cell a scan's CoverageTracker swept, so the
+                    // server can supersede stale reports across the whole
+                    // sweep (not just the anchor + observedItems radius). This
+                    // ViewModel has no CoverageTracker instance today (only
+                    // RouteScanViewModel does) — it enqueues ArDetectedMarkerRequests
+                    // and dedupes observedItems directly, with no coverage-grid
+                    // tracking of its own. Omitted (null) here rather than
+                    // inventing a new CoverageTracker wiring path; the server
+                    // treats an absent field identically to an old client.
+                    coveredCellIds = null,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)

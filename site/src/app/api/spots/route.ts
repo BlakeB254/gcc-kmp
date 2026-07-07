@@ -10,7 +10,7 @@ import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { autoTagFromDescription, resolveSpotTags, toCommunityReport } from '@/lib/spot-utils'
 import { reverseGeocode } from '@/lib/geo-lookup'
-import { recordWorldObservation } from '@/lib/world-observations'
+import { recordWorldObservation, gridCell, parseCoveredCellIds, resolveByCoveredCells } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 
@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
       duplicateOverrideReason,
       observedItems,
       objectCapture,
+      coveredCellIds: rawCoveredCellIds,
     } = body
 
     // Validate coordinates
@@ -319,6 +320,40 @@ export async function POST(request: NextRequest) {
         .returning({ id: communityReports.id })
       if (superseded.length > 0) {
         console.log(`Scan report ${newReport.id} superseded stale reports: ${superseded.map((r) => r.id).join(', ')}`)
+      }
+    }
+
+    // Broader cell-coverage supersede: a scan's coverage tracker sweeps far
+    // more ground than just the anchor + item radius above (every GRAZED+
+    // cell the camera/GPS actually covered). `coveredCellIds` is optional
+    // and only ever sent by scan submissions — old clients never send it,
+    // so this whole block is a no-op for them (wire-compat). Gated on
+    // isScanSubmission defensively even though a non-scan submission would
+    // never carry this field in practice.
+    if (isScanSubmission) {
+      const coveredCellIds = parseCoveredCellIds(rawCoveredCellIds)
+      if (coveredCellIds.length > 0) {
+        // Cells this very submission just re-confirmed (the anchor or a
+        // detected item lives there) must survive even if the scan's
+        // coverage sweep also covered them — "items re-confirmed by the
+        // scan survive."
+        const confirmedCells = new Set([
+          gridCell(lat, lng),
+          ...clientItems.map((it) => gridCell(it.lat, it.lng)),
+        ])
+        const staleCells = [...new Set(coveredCellIds)].filter((c) => !confirmedCells.has(c))
+        if (staleCells.length > 0) {
+          const { resolvedReportIds, invalidatedObservationCount } = await resolveByCoveredCells(
+            staleCells,
+            newReport.id,
+            `Superseded by scan report #${newReport.id} — covered by scan sweep`
+          )
+          if (resolvedReportIds.length > 0 || invalidatedObservationCount > 0) {
+            console.log(
+              `Scan report ${newReport.id} cell-sweep superseded reports [${resolvedReportIds.join(', ')}] and invalidated ${invalidatedObservationCount} world observation(s) across ${staleCells.length} stale cell(s)`
+            )
+          }
+        }
       }
     }
 

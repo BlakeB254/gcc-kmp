@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { worldObservations, blockExclusionZones, communityReports } from '@/db/schema'
-import { eq, and, isNull, inArray } from 'drizzle-orm'
+import { eq, and, isNull, inArray, ne } from 'drizzle-orm'
 import { pointInPolygon, METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
 
 const CELL_SIZE_METERS = 10
@@ -174,6 +174,141 @@ async function resolveSupersededReports(communityReportIds: (number | null)[]) {
       inArray(communityReports.id, ids),
       inArray(communityReports.status, ['pending', 'verified'])
     ))
+}
+
+/** Shape a `coveredCellIds` entry must match to be treated as a `gridCell()` id — same `${latIdx}:${lngIdx}` shape gridCell() produces. */
+const CELL_ID_PATTERN = /^-?\d+:-?\d+$/
+
+/**
+ * Cap on how many `coveredCellIds` a single scan submission can carry. A
+ * scan session's coverage tracker could in principle accumulate far more
+ * cells than any one report needs to sweep; this bounds the per-request
+ * work (both the truncation itself and the downstream community-reports
+ * full-table scan in `resolveByCoveredCells`) without rejecting the
+ * request — oversized input is silently truncated to the first N entries,
+ * not treated as an error.
+ */
+const MAX_COVERED_CELL_IDS = 2000
+
+/**
+ * Validate + normalize the optional `coveredCellIds` field on a scan
+ * submission (POST /api/spots). Old clients never send this field, so any
+ * non-array value (including `undefined`/`null`) is treated as "no extra
+ * cells to sweep" rather than a validation error — this is what keeps old
+ * clients wire-compatible: they get exactly the legacy point-radius
+ * supersede behavior and nothing else. Entries that aren't strings, or
+ * don't match the gridCell id shape, are dropped rather than failing the
+ * whole request.
+ */
+export function parseCoveredCellIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((v): v is string => typeof v === 'string' && CELL_ID_PATTERN.test(v))
+    .slice(0, MAX_COVERED_CELL_IDS)
+}
+
+/**
+ * Pure decision function: given raw community-report candidates (id +
+ * whatever shape `coordinates` happens to be — object `{lat,lng}` or array
+ * `[lng,lat]`, the same dual-shape handling the GET handler in
+ * `api/spots/route.ts` already does for this same column) and a set of
+ * stale cell ids, returns the ids of the candidates whose `gridCell()`
+ * falls inside `staleCells`. Kept side-effect-free (no DB access) so the
+ * cell-matching logic is unit-testable without a database.
+ */
+export function selectReportsInStaleCells(
+  candidates: { id: number; coordinates: unknown }[],
+  staleCells: Iterable<string>
+): number[] {
+  const staleCellSet = staleCells instanceof Set ? staleCells : new Set(staleCells)
+  const matched: number[] = []
+  for (const candidate of candidates) {
+    const coords = candidate.coordinates as any
+    let lat: number | undefined
+    let lng: number | undefined
+    if (Array.isArray(coords)) {
+      lng = Number(coords[0])
+      lat = Number(coords[1])
+    } else if (coords && typeof coords === 'object') {
+      lat = Number(coords.lat)
+      lng = Number(coords.lng ?? coords.lon)
+    }
+    if (Number.isFinite(lat) && Number.isFinite(lng) && staleCellSet.has(gridCell(lat as number, lng as number))) {
+      matched.push(candidate.id)
+    }
+  }
+  return matched
+}
+
+export interface CellSupersedeResult {
+  resolvedReportIds: number[]
+  invalidatedObservationCount: number
+}
+
+/**
+ * Broader "the scan swept this cell" supersede pass — a second, independent
+ * supersede driven by the full list of cells a scan's coverage tracker
+ * actually swept (GRAZED+ quality tier), not just the point-radius supersede
+ * around the scan's anchor + detected items (that legacy behavior in
+ * `api/spots/route.ts` is unchanged). `staleCells` are cells the scan
+ * covered but did NOT re-confirm this submission (no anchor/detected item
+ * landed there) — the caller is responsible for excluding re-confirmed
+ * cells before calling this. A covered-but-not-reconfirmed cell means the
+ * scan swept it and found nothing there: any pending/verified community
+ * report there is resolved, and any currently-current dirty world
+ * observation there is marked non-current.
+ *
+ * - Community reports: `coordinates` is untyped jsonb (object or array
+ *   shape depending on submission source), so `gridCell()` can't be
+ *   expressed as a SQL predicate. This table is small — the same scale as
+ *   the other near-full-table scans already in this file/route — so
+ *   candidates are fetched in bulk and filtered in JS via
+ *   `selectReportsInStaleCells`, favoring correctness/simplicity over a
+ *   fragile SQL json-path expression.
+ * - World observations: `locationCellId` is a real stored column, so this
+ *   half is a direct SQL `inArray` filter — no JS filtering needed.
+ *
+ * `dbClient` is an injectable seam for unit tests (defaults to the real
+ * `db`); production callers should never pass it.
+ */
+export async function resolveByCoveredCells(
+  staleCells: string[],
+  excludeReportId: number,
+  reason: string,
+  dbClient: typeof db = db
+): Promise<CellSupersedeResult> {
+  if (staleCells.length === 0) {
+    return { resolvedReportIds: [], invalidatedObservationCount: 0 }
+  }
+
+  const candidates = await dbClient
+    .select({ id: communityReports.id, coordinates: communityReports.coordinates })
+    .from(communityReports)
+    .where(and(
+      inArray(communityReports.status, ['pending', 'verified']),
+      ne(communityReports.id, excludeReportId)
+    ))
+
+  const resolvedReportIds = selectReportsInStaleCells(candidates, staleCells)
+
+  if (resolvedReportIds.length > 0) {
+    await dbClient
+      .update(communityReports)
+      .set({ status: 'resolved', reviewNotes: reason })
+      .where(inArray(communityReports.id, resolvedReportIds))
+  }
+
+  const invalidated = await dbClient
+    .update(worldObservations)
+    .set({ isCurrent: false })
+    .where(and(
+      eq(worldObservations.isCurrent, true),
+      eq(worldObservations.state, 'dirty'),
+      inArray(worldObservations.locationCellId, staleCells)
+    ))
+    .returning({ id: worldObservations.id })
+
+  return { resolvedReportIds, invalidatedObservationCount: invalidated.length }
 }
 
 /**
