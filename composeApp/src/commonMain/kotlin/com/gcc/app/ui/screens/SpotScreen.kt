@@ -358,7 +358,7 @@ private fun CameraPhase(
         // same observed-items packet as trash — domain-tagged, so the server
         // records them as vegetation/construction world observations and the
         // grid expects them next scan.
-        arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence ->
+        arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence, widthMeters, yawDegrees ->
             if (!gate.captureAllowed.value) return@setElementObservedListener
             onTrashObserved(
                 ObservedSpotItem(
@@ -366,7 +366,9 @@ private fun CameraPhase(
                     lng = lng,
                     itemType = itemType,
                     confidence = confidence,
+                    estimatedWidthMeters = widthMeters,
                     domain = domain,
+                    yawDegrees = yawDegrees,
                 )
             )
         }
@@ -990,6 +992,7 @@ private fun CameraPhase(
                                 confidence = final.confidence,
                                 estimatedWeightGrams = final.estimatedWeightGrams,
                                 estimatedWidthMeters = final.estimatedWidthMeters,
+                                yawDegrees = final.yawDegrees,
                             )
                         )
                     }

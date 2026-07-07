@@ -182,8 +182,12 @@ actual class ArEnvScanOverlay actual constructor() {
 
     // Landmark elements registered this session: (itemType, x, z) for dedupe.
     private val registeredElements = mutableListOf<Triple<String, Float, Float>>()
-    private var elementObservedListener:
-        ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)? = null
+    private var elementObservedListener: (
+        (
+            lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+            widthMeters: Double?, yawDegrees: Double?,
+        ) -> Unit
+    )? = null
     private var ceilingListener: ((Boolean) -> Unit)? = null
     private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
@@ -397,7 +401,12 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     actual fun setElementObservedListener(
-        listener: ((lat: Double, lng: Double, itemType: String, domain: String, confidence: Float) -> Unit)?,
+        listener: (
+            (
+                lat: Double, lng: Double, itemType: String, domain: String, confidence: Float,
+                widthMeters: Double?, yawDegrees: Double?,
+            ) -> Unit
+        )?,
     ) {
         elementObservedListener = listener
     }
@@ -678,6 +687,8 @@ actual class ArEnvScanOverlay actual constructor() {
         if (suppressed || !hasGeoRef) return
 
         val widthMeters = physicalWidthMeters(bboxWidthFrac, distance.toDouble())
+        val cam = cameraPosition()
+        val yawDegrees = cam?.let { bearingDegrees(hit.x - it[0], hit.z - it[2]) }
         val itemType = TrashItemCatalog.canonicalType(rawIdentifier)
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
         // Bad AR math (degenerate geo-ref pairing, etc.) must never reach a
@@ -695,6 +706,7 @@ actual class ArEnvScanOverlay actual constructor() {
             estimatedWidthMeters = widthMeters,
             estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, widthMeters),
             confidence = confidence,
+            yawDegrees = yawDegrees,
         )
         DiagnosticsLog.info(
             "env-ar",
@@ -725,6 +737,7 @@ actual class ArEnvScanOverlay actual constructor() {
 
         var visionX = 0.5
         var visionY = 0.5
+        var bboxWidthFrac = 0.2
         saliencyOnDemand(native, saliencyRequest)?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
@@ -734,6 +747,7 @@ actual class ArEnvScanOverlay actual constructor() {
             ?.boundingBox?.useContents {
                 visionX = origin.x + size.width / 2.0
                 visionY = origin.y + size.height / 2.0
+                bboxWidthFrac = size.width
             }
         val hit = raycastImage(frame, visionX, 1.0 - visionY) ?: return
         if (hit.distance > ELEMENT_MAX_DISTANCE_METERS) return
@@ -752,13 +766,17 @@ actual class ArEnvScanOverlay actual constructor() {
         // result must not permanently suppress this element for the session.
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
         if (!lat.isFinite() || !lng.isFinite()) return
+        val widthMeters = physicalWidthMeters(bboxWidthFrac, hit.distance.toDouble())
+        val cam = cameraPosition()
+        val yawDegrees = cam?.let { bearingDegrees(hit.x - it[0], hit.z - it[2]) }
         registeredElements.add(Triple(element.itemType, world[0], world[2]))
         DiagnosticsLog.info(
             "env-ar",
-            "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m",
+            "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m " +
+                "width=${widthMeters ?: "?"}m yaw=${yawDegrees ?: "?"}",
         )
         dispatch_async(dispatch_get_main_queue()) {
-            listener(lat, lng, element.itemType, element.domain, confidence)
+            listener(lat, lng, element.itemType, element.domain, confidence, widthMeters, yawDegrees)
         }
     }
 
@@ -777,6 +795,20 @@ actual class ArEnvScanOverlay actual constructor() {
         return if (width.isFinite() && width in 0.01..3.0) {
             (width * 100).roundToInt() / 100.0
         } else null
+    }
+
+    /**
+     * AR-local compass bearing from the camera to a hit position: world is
+     * gravityAndHeading-aligned with +X east / -Z north (the same convention
+     * [localToLatLng] uses), so bearing = atan2(east, north) =
+     * atan2(dx, -dz), normalized to [0, 360). Null for a degenerate
+     * (zero-length or non-finite) camera→hit vector.
+     */
+    private fun bearingDegrees(dx: Float, dz: Float): Double? {
+        if (dx == 0f && dz == 0f) return null
+        val radians = kotlin.math.atan2(dx.toDouble(), -dz.toDouble())
+        val degrees = (radians * 180.0 / kotlin.math.PI + 360.0) % 360.0
+        return if (degrees.isFinite()) degrees else null
     }
 
     // ── Ground grid ──────────────────────────────────────────────────
