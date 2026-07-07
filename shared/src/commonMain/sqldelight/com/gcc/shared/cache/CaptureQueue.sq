@@ -1,3 +1,5 @@
+-- keep in sync — upgraded installs create this table via
+-- CaptureChunkStore.ensureTable, fresh installs via Schema.create.
 CREATE TABLE captureChunk (
   sessionId TEXT NOT NULL,
   chunkIndex INTEGER NOT NULL,

@@ -27,8 +27,48 @@ data class CaptureChunkRecord(
  * thread (`Dispatchers.Default`) since capture-chunk bookkeeping must never
  * block the live AR/recording path.
  */
-class CaptureChunkStore(driver: SqlDriver) {
+class CaptureChunkStore(private val driver: SqlDriver) {
     private val queries = GccDatabase(driver).captureQueueQueries
+
+    init {
+        ensureTable()
+    }
+
+    /**
+     * keep in sync — upgraded installs create this table via
+     * CaptureChunkStore.ensureTable, fresh installs via Schema.create.
+     *
+     * SQLDelight's `GccDatabase.Schema.create()` only runs against a brand
+     * new "gcc.db" file (NativeSqliteDriver/AndroidSqliteDriver skip it once
+     * `PRAGMA user_version` is already at the schema's version, and this
+     * table's addition never bumped that version) — so a TestFlight upgrade
+     * lands on a gcc.db that has scanAreaCache/routeCache but NOT
+     * captureChunk, and the first [insertChunk] would throw. Running this
+     * idempotent DDL here (every store construction, i.e. every process
+     * launch) is the cheapest way to backfill the table on upgraded installs
+     * without a real SQLDelight migration file. The DDL must stay
+     * byte-consistent with CaptureQueue.sq's `CREATE TABLE captureChunk`.
+     */
+    private fun ensureTable() {
+        driver.execute(
+            null,
+            """
+            |CREATE TABLE IF NOT EXISTS captureChunk (
+            |  sessionId TEXT NOT NULL,
+            |  chunkIndex INTEGER NOT NULL,
+            |  kind TEXT NOT NULL,
+            |  filePath TEXT NOT NULL,
+            |  sizeBytes INTEGER NOT NULL,
+            |  locationCellId TEXT NOT NULL,
+            |  r2Key TEXT,
+            |  uploadedAtMs INTEGER,
+            |  createdAtMs INTEGER NOT NULL,
+            |  PRIMARY KEY(sessionId, chunkIndex, kind)
+            |)
+            """.trimMargin(),
+            0,
+        )
+    }
 
     suspend fun insertChunk(chunk: CaptureChunkRecord) = withContext(Dispatchers.Default) {
         queries.insertChunk(

@@ -105,6 +105,24 @@ class CaptureChunkStoreTest {
     }
 
     @Test
+    fun ensureTableBackfillsCaptureChunkOnAnUpgradedInstallWithoutSchemaCreate() = runTest {
+        // Simulates a TestFlight upgrade: an existing gcc.db whose
+        // PRAGMA user_version already matches the schema version, so
+        // GccDatabase.Schema.create() never ran and captureChunk is missing
+        // (see CaptureChunkStore.ensureTable kdoc). Deliberately do NOT call
+        // GccDatabase.Schema.create(driver) here — the store's own init must
+        // self-heal the missing table.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val store = CaptureChunkStore(driver)
+
+        store.insertChunk(sampleChunk(chunkIndex = 0L))
+        val pending = store.pendingChunks()
+
+        assertEquals(1, pending.size)
+        assertEquals("session-1", pending.single().sessionId)
+    }
+
+    @Test
     fun orphanSessionsFindsDistinctSessionsWithStalePendingChunks() = runTest {
         val store = freshInMemoryStore()
         store.insertChunk(sampleChunk(sessionId = "stale-session", chunkIndex = 0L, createdAtMs = 100L))
