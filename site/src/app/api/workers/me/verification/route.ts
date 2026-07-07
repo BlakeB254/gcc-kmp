@@ -60,6 +60,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Document URLs must be strings' }, { status: 400 })
   }
 
+  // IDOR guard: a document reference must be a private R2 key THIS worker's
+  // upload route minted (verification/{ownWorkerId}/{ts}-{idx}.jpg) or a
+  // legacy public blob URL from the pre-R2 flow. Anything else — notably
+  // another worker's verification/* key, or any arbitrary bucket key — is
+  // rejected; otherwise a client could link someone else's government ID
+  // into their own review flow.
+  const ownKeyPattern = new RegExp(`^verification/${user.workerId}/\\d+-\\d+\\.jpg$`)
+  const isLegacyBlobUrl = (v: string) =>
+    v.startsWith('https://') && new URL(v).hostname.endsWith('.public.blob.vercel-storage.com')
+  const isValidDocRef = (v: string) => {
+    if (ownKeyPattern.test(v)) return true
+    try {
+      return isLegacyBlobUrl(v)
+    } catch {
+      return false
+    }
+  }
+  if (!isValidDocRef(governmentIdUrl) || !isValidDocRef(proofOfAddressUrl)) {
+    return NextResponse.json({ error: 'Invalid document reference' }, { status: 400 })
+  }
+
   const now = new Date().toISOString()
 
   // Persist the submitted document references as media rows and link them on
