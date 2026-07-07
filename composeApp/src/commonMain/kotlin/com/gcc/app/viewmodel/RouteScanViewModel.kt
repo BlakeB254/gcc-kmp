@@ -510,6 +510,10 @@ class RouteScanViewModel(
     private var allowUnpublishedRoute = false
     private var onBehalfOfWorkerId: Int? = null
 
+    // Assignment path: job to mark COMPLETED once the scan submits. Null on
+    // the free-scan path (route detail / admin proxy).
+    private var completeJobId: Int? = null
+
     // Coroutine jobs
     private var locationJob: Job? = null
     private var timerJob: Job? = null
@@ -518,9 +522,15 @@ class RouteScanViewModel(
 
     // ── Initialisation ───────────────────────────────────────────────
 
-    fun initForRoute(route: Route, allowUnpublished: Boolean = false, onBehalfOfWorkerId: Int? = null) {
+    fun initForRoute(
+        route: Route,
+        allowUnpublished: Boolean = false,
+        onBehalfOfWorkerId: Int? = null,
+        completeJobId: Int? = null,
+    ) {
         allowUnpublishedRoute = allowUnpublished
         this.onBehalfOfWorkerId = onBehalfOfWorkerId
+        this.completeJobId = completeJobId
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
@@ -956,6 +966,21 @@ class RouteScanViewModel(
                     pointsAwarded = response.pointsAwarded,
                 )
                 uploadLapSession(lapKind = "clean")
+
+                // Assignment path: the submitted scan IS the job's work —
+                // flip the job to COMPLETED. Non-fatal on failure: the scan
+                // stays COMPLETE and an admin can complete the job manually.
+                completeJobId?.let { jobId ->
+                    try {
+                        apiClient.completeJob(jobId)
+                    } catch (e: Exception) {
+                        DiagnosticsLog.error(
+                            "scan-submit",
+                            "scan $scanId submitted but completing job $jobId failed",
+                            e,
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
                 _uiState.value = _uiState.value.copy(

@@ -45,6 +45,7 @@ fun RouteScanScreen(
     allowUnpublished: Boolean = false,
     onBehalfOfWorkerId: Int? = null,
     onBehalfOfWorkerName: String? = null,
+    completeJobId: Int? = null,
     onBack: () -> Unit = {},
     onComplete: () -> Unit = {},
 ) {
@@ -58,7 +59,12 @@ fun RouteScanScreen(
     var showScoutCapture by remember { mutableStateOf(false) }
 
     LaunchedEffect(route.id, allowUnpublished) {
-        viewModel.initForRoute(route, allowUnpublished = allowUnpublished, onBehalfOfWorkerId = onBehalfOfWorkerId)
+        viewModel.initForRoute(
+            route,
+            allowUnpublished = allowUnpublished,
+            onBehalfOfWorkerId = onBehalfOfWorkerId,
+            completeJobId = completeJobId,
+        )
     }
 
     DisposableEffect(Unit) {

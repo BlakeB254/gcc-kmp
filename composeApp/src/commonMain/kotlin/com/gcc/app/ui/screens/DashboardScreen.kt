@@ -874,7 +874,7 @@ private fun AssignedRouteDashboardCard(
                         }
                     }
                     Text(
-                        route.description?.takeIf { it.isNotBlank() } ?: "Start from any checkpoint along the assigned boundary.",
+                        route.description?.takeIf { it.isNotBlank() } ?: "Start from anywhere along the assigned boundary.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                         maxLines = 2,
@@ -905,7 +905,7 @@ private fun AssignedRouteDashboardCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RouteFact(
-                    label = "Checkpoints",
+                    label = "Scan sections",
                     value = route.checkpoints.size.toString(),
                     modifier = Modifier.weight(1f),
                 )
@@ -1094,7 +1094,7 @@ private fun AvailableRouteOpportunityCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "Review boundary, checkpoints, and start flow",
+                            "Review boundary, scan sections, and start flow",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted,
                             maxLines = 1,
