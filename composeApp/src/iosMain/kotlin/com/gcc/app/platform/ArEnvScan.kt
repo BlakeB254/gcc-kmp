@@ -36,6 +36,7 @@ import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGSizeMake
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
@@ -68,6 +69,11 @@ import platform.Vision.VNSaliencyImageObservation
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.simd_float4x4
+import com.gcc.shared.cache.CaptureChunkRecord
+import com.gcc.shared.cache.CaptureChunkStore
+import com.gcc.app.platform.capture.CaptureChunkUploader
+import kotlinx.datetime.Clock
+import org.koin.mp.KoinPlatform
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -128,6 +134,22 @@ actual class ArEnvScanOverlay actual constructor() {
      *  [SCENE_VOTE_EVERY_TICKS]/[DISABLED_VOTE_EVERY_TICKS] cadence at the
      *  slower [TICK_MS] tick. Set via `setSceneVoteCadence`. */
     var fastSceneVotes: Boolean = true
+
+    /**
+     * Session-capture drain hook (Pillar 1): finished capture-chunk packets
+     * ("index|kind|path|sizeBytes", see [ArNativeSurface.drainFinishedCaptureChunks])
+     * polled from the native recorder on the existing tick cadence and handed
+     * here on the tick coroutine (Dispatchers.Default). Task 5 assigns the
+     * listener (bookkeeping insert + upload kick); until then — and always on
+     * the SceneKit fallback path — the drain is skipped entirely.
+     */
+    var captureChunkListener: ((List<String>) -> Unit)? = { packets -> handleFinishedCaptureChunks(packets) }
+
+    /** Session id passed to [startCapture]; null when capture isn't running. */
+    private var captureSessionId: String? = null
+    /** `gridCell10m` of the session anchor at [startCapture] time — the same
+     *  cell id format the R2/world-model layer expects ("int:int"). */
+    private var captureLocationCellId: String? = null
 
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
@@ -254,7 +276,147 @@ actual class ArEnvScanOverlay actual constructor() {
         DiagnosticsLog.info("env-ar", "RealityKit native env-scan surface started")
     }
 
+    // ── Session capture (Pillar 1) ───────────────────────────────────
+
+    actual fun startCapture(sessionId: String): Boolean {
+        // SceneKit fallback: capture unsupported — report honestly so the
+        // caller never shows a REC chip for a recording that isn't happening.
+        val surface = nativeSurface ?: return false
+        return try {
+            val cellId = geoCellIdOrNull()
+            if (cellId == null) {
+                DiagnosticsLog.info("capture", "startCapture($sessionId) skipped — no geo reference yet")
+                return false
+            }
+            val outputDir = documentsPath() + "/capture-sessions/" + sessionId
+            NSFileManager.defaultManager.createDirectoryAtPath(
+                outputDir, withIntermediateDirectories = true, attributes = null, error = null,
+            )
+            captureSessionId = sessionId
+            captureLocationCellId = cellId
+            surface.startCapture(sessionId, outputDir)
+            DiagnosticsLog.info("capture", "session capture started: $sessionId (cell $cellId)")
+            true
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "startCapture($sessionId) failed — capture disabled for this session", e)
+            captureSessionId = null
+            captureLocationCellId = null
+            false
+        }
+    }
+
+    actual fun stopCapture(): List<CaptureChunkInfo> {
+        val surface = nativeSurface
+        val sessionId = captureSessionId
+        val cellId = captureLocationCellId
+        // No more tick-drain once we've asked for the final one below.
+        captureChunkListener = null
+        captureSessionId = null
+        captureLocationCellId = null
+        if (surface == null || sessionId == null || cellId == null) return emptyList()
+        return try {
+            val packets = surface.stopCaptureAndDrain()
+            val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+            if (infos.isNotEmpty()) insertChunksAsync(sessionId, cellId, infos)
+            infos
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "stopCapture failed for $sessionId", e)
+            emptyList()
+        }
+    }
+
+    actual fun discardCurrentCaptureChunk() {
+        try {
+            nativeSurface?.discardCurrentCaptureChunk()
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "discardCurrentCaptureChunk failed", e)
+        }
+    }
+
+    actual fun setCaptureEnabled(enabled: Boolean) {
+        try {
+            nativeSurface?.setCaptureEnabled(enabled)
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "setCaptureEnabled($enabled) failed", e)
+        }
+    }
+
+    /** Advisory only (see the expect kdoc): same thermalState KVO read the
+     *  tick's Vision guard uses (critical = 3, the level Task 4's recorder
+     *  auto-pauses at). The Swift recorder owns the REAL pause decision —
+     *  this just lets the REC chip tint "paused" at the caller's cadence. */
+    actual fun thermalPausedLikely(): Boolean = try {
+        val thermal = (NSProcessInfo.processInfo as platform.darwin.NSObject)
+            .valueForKey("thermalState") as? Long ?: 0L
+        thermal >= 3L
+    } catch (_: Throwable) {
+        false
+    }
+
+    /** `gridCell10m` of the current geo reference (session anchor), formatted
+     *  "int:int" — the server's `LOCATION_CELL_ID_PATTERN`. Null until a geo
+     *  reference has paired ([updateGeoReference]). */
+    private fun geoCellIdOrNull(): String? {
+        if (!hasGeoRef) return null
+        val (latIdx, lngIdx) = SessionPointsEstimator.gridCell10m(refLat, refLng)
+        return "$latIdx:$lngIdx"
+    }
+
+    /**
+     * Tick-drain hook (see [captureChunkListener] kdoc) — parses packets and
+     * inserts rows via [CaptureChunkStore], then kicks [CaptureChunkUploader]
+     * best-effort. Reached through Koin's global context (`KoinPlatform`) —
+     * the same pattern `MainViewController`/`MainActivity` already use to
+     * reach Koin singletons from non-Composable, non-DI-constructed code —
+     * because this overlay is a plain `ArEnvScanOverlay()` instantiated by
+     * `remember { }` in SpotScreen, outside the Koin graph. Every failure is
+     * caught here: chunk bookkeeping must never crash the scan, and worst
+     * case an unrecorded chunk just waits for the next drain/app launch.
+     */
+    private fun handleFinishedCaptureChunks(packets: List<String>) {
+        val sessionId = captureSessionId ?: return
+        val cellId = captureLocationCellId ?: return
+        val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+        if (infos.isEmpty()) return
+        insertChunksAsync(sessionId, cellId, infos)
+    }
+
+    private fun insertChunksAsync(sessionId: String, cellId: String, infos: List<CaptureChunkInfo>) {
+        scope.launch {
+            try {
+                val koin = KoinPlatform.getKoin()
+                val store = koin.getOrNull<CaptureChunkStore>() ?: return@launch
+                val nowMs = Clock.System.now().toEpochMilliseconds()
+                for (info in infos) {
+                    store.insertChunk(
+                        CaptureChunkRecord(
+                            sessionId = sessionId,
+                            chunkIndex = info.index,
+                            kind = info.kind,
+                            filePath = info.filePath,
+                            sizeBytes = info.sizeBytes,
+                            locationCellId = cellId,
+                            r2Key = null,
+                            uploadedAtMs = null,
+                            createdAtMs = nowMs,
+                        )
+                    )
+                }
+                koin.getOrNull<CaptureChunkUploader>()?.flushPending()
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("capture", "chunk bookkeeping failed for $sessionId (${infos.size} chunk(s))", e)
+            }
+        }
+    }
+
     actual fun stop() {
+        // Capture bookkeeping: if the overlay tears down without an explicit
+        // stopCapture() (abandoned/backgrounded scan), just drop the Kotlin-
+        // side session state — native teardown (Task 4) owns finalizing or
+        // discarding whatever the recorder was mid-writing.
+        captureChunkListener = null
+        captureSessionId = null
+        captureLocationCellId = null
         job?.cancel()
         job = null
         // Identity-checked: only clear the shared slot if it's still THIS
@@ -468,6 +630,12 @@ actual class ArEnvScanOverlay actual constructor() {
             // only mirror its ground state for the status line.
             val detected = native.groundDetected()
             if (_groundDetected.value != detected) _groundDetected.value = detected
+            // Poll-drain finished capture chunks (Pillar 1) — no-op until a
+            // listener is registered; the drain itself is a locked list swap.
+            captureChunkListener?.let { listener ->
+                val packets = native.drainFinishedCaptureChunks()
+                if (packets.isNotEmpty()) listener(packets)
+            }
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }

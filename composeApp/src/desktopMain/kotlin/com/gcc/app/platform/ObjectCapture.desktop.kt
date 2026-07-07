@@ -28,4 +28,36 @@ actual fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
 actual fun readLocalFileBytes(path: String): ByteArray? =
     runCatching { File(path).takeIf { it.exists() }?.readBytes() }.getOrNull()
 
+actual fun deleteLocalFile(path: String) {
+    runCatching { File(path).delete() }
+}
+
 actual fun presentUsdzPreview(path: String) {}
+
+// Journal file ops (Pillar 6): desktop never sets a journalPath (see
+// sessionJournalPath below), but implements these with plain java.io so
+// desktopTest can exercise the real recorder journal read/write path.
+
+actual fun appendLineToFile(path: String, line: String) {
+    val file = File(path)
+    file.parentFile?.mkdirs()
+    java.io.FileWriter(file, /* append = */ true).use { writer ->
+        writer.write(line)
+        writer.write("\n")
+    }
+}
+
+actual fun writeFileLines(path: String, lines: List<String>) {
+    val file = File(path)
+    file.parentFile?.mkdirs()
+    file.writeText(if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+}
+
+actual fun listFilesInDir(dirPath: String): List<String> =
+    runCatching { File(dirPath).listFiles()?.map { it.path } ?: emptyList() }.getOrDefault(emptyList())
+
+actual fun sessionJournalPath(sessionId: String): String? = null
+
+actual fun scanSessionsDirPath(): String? = null
+
+actual fun captureSessionsDirPath(): String? = null
