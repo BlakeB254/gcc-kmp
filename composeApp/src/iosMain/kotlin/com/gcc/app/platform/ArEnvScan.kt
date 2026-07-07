@@ -129,6 +129,16 @@ actual class ArEnvScanOverlay actual constructor() {
      *  slower [TICK_MS] tick. Set via `setSceneVoteCadence`. */
     var fastSceneVotes: Boolean = true
 
+    /**
+     * Session-capture drain hook (Pillar 1): finished capture-chunk packets
+     * ("index|kind|path|sizeBytes", see [ArNativeSurface.drainFinishedCaptureChunks])
+     * polled from the native recorder on the existing tick cadence and handed
+     * here on the tick coroutine (Dispatchers.Default). Task 5 assigns the
+     * listener (bookkeeping insert + upload kick); until then — and always on
+     * the SceneKit fallback path — the drain is skipped entirely.
+     */
+    var captureChunkListener: ((List<String>) -> Unit)? = null
+
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
 
@@ -459,6 +469,12 @@ actual class ArEnvScanOverlay actual constructor() {
             // only mirror its ground state for the status line.
             val detected = native.groundDetected()
             if (_groundDetected.value != detected) _groundDetected.value = detected
+            // Poll-drain finished capture chunks (Pillar 1) — no-op until a
+            // listener is registered; the drain itself is a locked list swap.
+            captureChunkListener?.let { listener ->
+                val packets = native.drainFinishedCaptureChunks()
+                if (packets.isNotEmpty()) listener(packets)
+            }
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }
