@@ -3,6 +3,7 @@ package com.gcc.app.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -78,6 +79,32 @@ fun ScanMinimapOverlay(
     guidanceTarget: Coordinates? = null,
     modifier: Modifier = Modifier,
 ) {
+    // Stable lattice anchor for the session-tier outline tracer (Pillar 7):
+    // locked to whatever centerLat/Lng were at FIRST composition, never the
+    // live/continuously-moving GPS fix `centerLat`/`centerLng` become on
+    // every location tick. Using a moving anchor would shift the (row, col)
+    // quantization's rounding boundary every frame, snapping the WHOLE
+    // traced outline by a cell width relative to every other (directly
+    // lat/lng-projected, non-quantized) element on the canvas as the user
+    // walks — a visible jitter bug, not just an aesthetic nit.
+    val latticeAnchorLat = remember { centerLat }
+    val latticeAnchorLng = remember { centerLng }
+
+    // Marching-squares + Chaikin smoothing (traceCoverageOutlines) is the
+    // expensive part of this overlay; hoisted out of the Canvas draw scope
+    // (which reruns on every recomposition — every GPS tick, since the live
+    // centerLat/Lng feed toOffset below) and memoized on the actual
+    // credited-cell sets, so it only reruns when scan state changes.
+    val scanRings = remember(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        tracedRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+    val closeRings = remember(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        tracedRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+    val seenRings = remember(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        tracedRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
         // DrawScope works in physical pixels; the basemap camera zoom is
@@ -126,21 +153,11 @@ fun ScanMinimapOverlay(
         // rect lattice — "no graph paper" (Blake). Server-fresh ledger cells
         // (freshCellCenters/freshCloseCellCenters, a different — coarser —
         // grid) keep the v1 per-cell rect rendering; only THIS session's own
-        // 3m-grid cells trace through marching squares. Lat/lng centers are
-        // re-quantized into integer (row, col) keys around this minimap's own
-        // center — the same fixed-step projection [toOffset] already uses —
-        // so the tracer's grid-corner math lines up with what's drawn.
-        val latPerMeter = 1.0 / 111_320.0
-        val lngPerMeter = 1.0 / (111_320.0 * lngScale)
-        fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
-            ((lat - centerLat) / (cellSizeMeters * latPerMeter)).roundToInt() to
-                ((lng - centerLng) / (cellSizeMeters * lngPerMeter)).roundToInt()
-        fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
-            (centerLat + row * cellSizeMeters * latPerMeter) to (centerLng + col * cellSizeMeters * lngPerMeter)
-
-        fun outlinePath(cellCenters: List<Pair<Double, Double>>): Path {
-            val cells = cellCenters.map { (lat, lng) -> toRowCol(lat, lng) }.toSet()
-            val rings = traceCoverageOutlines(cells, ::rowColCenter, cellSizeMeters)
+        // 3m-grid cells trace through marching squares. The rings themselves
+        // (scanRings/closeRings/seenRings) are already traced+smoothed above
+        // (outside this draw scope, off the stable lattice anchor) — only
+        // the cheap lat/lng→screen projection happens here, every frame.
+        fun ringsToPath(rings: List<List<Pair<Double, Double>>>): Path {
             val path = Path().apply { fillType = PathFillType.EvenOdd }
             for (ring in rings) {
                 if (ring.size < 3) continue
@@ -154,12 +171,12 @@ fun ScanMinimapOverlay(
         }
         // scanCellCenters is already GRAZED+ (CLOSE cells included) — its own
         // outline IS the full session union the veil needs punched out.
-        val scanOutline = outlinePath(scanCellCenters)
-        val closeOutline = outlinePath(closeCellCenters)
+        val scanOutline = ringsToPath(scanRings)
+        val closeOutline = ringsToPath(closeRings)
         // SEEN cells are NOT punched out of the veil (sight alone leaves the
         // ground still fogged, spec Pillar 7) — only used for the faint wash
         // drawn on TOP of the veil below.
-        val seenOutline = outlinePath(seenCellCenters)
+        val seenOutline = ringsToPath(seenRings)
 
         // ── Fog-of-war veil ──────────────────────────────────────────
         // The WHOLE minimap starts under one heavy dark veil: everything you
@@ -339,4 +356,33 @@ private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
             drawCircle(color = outline, radius = u * 1.15f, center = c, style = stroke)
         }
     }
+}
+
+/**
+ * Re-quantizes lat/lng cell centers into integer (row, col) keys around a
+ * STABLE [anchorLat]/[anchorLng] and traces them into smoothed outline rings
+ * (still in lat/lng space — projection to screen space happens separately,
+ * per-frame, in the Canvas draw scope). The anchor MUST be stable across
+ * calls for a given cell set — passing a continuously-moving reference (like
+ * a live GPS fix) would shift every cell's rounded bucket in lockstep every
+ * frame, snapping the whole traced shape relative to anything drawn from
+ * raw, non-quantized lat/lng.
+ */
+private fun tracedRings(
+    cellCenters: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+    anchorLat: Double,
+    anchorLng: Double,
+): List<List<Pair<Double, Double>>> {
+    if (cellCenters.isEmpty()) return emptyList()
+    val lngScale = cos(anchorLat * PI / 180.0)
+    val latPerMeter = 1.0 / 111_320.0
+    val lngPerMeter = 1.0 / (111_320.0 * lngScale)
+    fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
+        ((lat - anchorLat) / (cellSizeMeters * latPerMeter)).roundToInt() to
+            ((lng - anchorLng) / (cellSizeMeters * lngPerMeter)).roundToInt()
+    fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
+        (anchorLat + row * cellSizeMeters * latPerMeter) to (anchorLng + col * cellSizeMeters * lngPerMeter)
+    val cells = cellCenters.map { (lat, lng) -> toRowCol(lat, lng) }.toSet()
+    return traceCoverageOutlines(cells, ::rowColCenter, cellSizeMeters)
 }

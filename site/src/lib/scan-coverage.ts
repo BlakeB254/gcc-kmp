@@ -123,7 +123,14 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
     .onConflictDoUpdate({
       target: cellCoverageSummary.locationCellId,
       set: {
-        lastScannedAt: sql`GREATEST(${cellCoverageSummary.lastScannedAt}, EXCLUDED.last_scanned_at)`,
+        // lastScannedAt is the staleness clock categorizeCoverageEvent reads
+        // for the NEXT event on this cell — a 'seen' event (sight isn't
+        // work) must not refresh it, or a stale rescan could land as
+        // fresh_rescan (0 pts) just because someone glanced at the cell
+        // from across the street in between.
+        lastScannedAt: sql`CASE WHEN EXCLUDED.best_quality = 'seen'
+          THEN ${cellCoverageSummary.lastScannedAt}
+          ELSE GREATEST(${cellCoverageSummary.lastScannedAt}, EXCLUDED.last_scanned_at) END`,
         firstScannedAt: sql`LEAST(${cellCoverageSummary.firstScannedAt}, EXCLUDED.first_scanned_at)`,
         totalDistanceMeters: sql`${cellCoverageSummary.totalDistanceMeters} + EXCLUDED.total_distance_meters`,
         scanCount: sql`${cellCoverageSummary.scanCount} + 1`,

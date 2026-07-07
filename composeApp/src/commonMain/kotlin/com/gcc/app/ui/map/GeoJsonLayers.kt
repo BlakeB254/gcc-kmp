@@ -1015,15 +1015,25 @@ fun buildCoverageStateGeoJsons(
     }
 
     // Outline mode: re-quantize each bucket's cell centers into integer
-    // (row, col) keys around this call's own centerLat/centerLng (a fixed,
-    // consistent lattice — the same trick ScanMinimapOverlay uses for its
-    // session tiers), trace the union, and emit one Feature per smoothed
-    // ring. No cellId (a ring can span many cells) — see [useOutlines] doc.
+    // (row, col) keys around a STABLE anchor, trace the union, and emit one
+    // Feature per smoothed ring. No cellId (a ring can span many cells) —
+    // see [useOutlines] doc.
+    //
+    // The anchor is the first coverage cell's own lat/lng, NOT centerLat/
+    // centerLng — those are the live MAP CAMERA center, which moves on
+    // every pan/zoom. Anchoring the quantization lattice to a moving
+    // reference would shift every cell's rounded (row, col) bucket in
+    // lockstep as the camera moves, snapping the whole traced outline by a
+    // cell width relative to the still-raw-coordinate dirty/stale tiles
+    // drawn alongside it (same bug class ScanMinimapOverlay's tracer had to
+    // avoid — see its tracedRings doc).
+    val anchorLat = coverageCells.firstOrNull()?.lat ?: centerLat
+    val anchorLng = coverageCells.firstOrNull()?.lng ?: centerLng
     fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
-        kotlin.math.round((lat - centerLat) / latStep).toInt() to
-            kotlin.math.round((lng - centerLng) / lngStep).toInt()
+        kotlin.math.round((lat - anchorLat) / latStep).toInt() to
+            kotlin.math.round((lng - anchorLng) / lngStep).toInt()
     fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
-        (centerLat + row * latStep) to (centerLng + col * lngStep)
+        (anchorLat + row * latStep) to (anchorLng + col * lngStep)
     fun outlineFeatures(cells: List<com.gcc.shared.model.MapCoverageCell>): String {
         val rowCols = cells.map { toRowCol(it.lat, it.lng) }.toSet()
         val rings = traceCoverageOutlines(rowCols, ::rowColCenter, cellSizeMeters)

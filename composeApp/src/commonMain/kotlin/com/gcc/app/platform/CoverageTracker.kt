@@ -22,9 +22,11 @@ import kotlin.math.cos
 enum class CoverageQuality { SEEN, GRAZED, CLOSE }
 
 /**
- * Per-cell credit: what tier, when, and (one level deep) what the cell held
- * before the latest change — so an INDOOR-flip purge can revert an in-window
- * upgrade instead of erasing pre-window history.
+ * Per-cell credit: what tier, when, and the FULL chain of what the cell held
+ * before each upgrade — so an INDOOR-flip purge ([CoverageTracker.purgeSince])
+ * can revert past every in-window upgrade instead of stopping one hop short.
+ * The chain is self-bounding (max depth 2: SEEN → GRAZED → CLOSE, CLOSE being
+ * terminal), so keeping it in full never grows unbounded over a session.
  */
 data class CellCredit(
     val quality: CoverageQuality,
@@ -339,7 +341,18 @@ class CoverageTracker {
         }
     }
 
-    /** Monotonic credit: upgrades keep a one-deep prior for purge revert; equal/lower tiers are no-ops. */
+    /**
+     * Monotonic credit: upgrades keep the FULL prior chain for purge revert
+     * (see [purgeSince]); equal/lower tiers are no-ops. The chain is
+     * self-bounding, not unbounded: a cell can only ever progress through
+     * SEEN → GRAZED → CLOSE once (CLOSE is terminal — no further credit()
+     * call can upgrade past it), so the deepest possible chain is 2 links
+     * regardless of session length. Retaining the whole chain (rather than
+     * truncating to one level, as before SEEN existed) matters now that a
+     * cell can be upgraded TWICE inside one purge window — a single-level
+     * revert would land on a credit that itself falls inside the window and
+     * should also be discarded.
+     */
     private fun creditCell(
         map: MutableMap<Pair<Int, Int>, CellCredit>,
         cell: Pair<Int, Int>,
@@ -348,7 +361,7 @@ class CoverageTracker {
     ): Boolean {
         val existing = map[cell]
         if (existing != null && existing.quality >= quality) return false
-        map[cell] = CellCredit(quality, nowMs, prior = existing?.copy(prior = null))
+        map[cell] = CellCredit(quality, nowMs, prior = existing)
         return true
     }
 
@@ -373,14 +386,23 @@ class CoverageTracker {
      * INDOOR-flip purge: undo every credit made at/after [cutoffMs] — in-window
      * upgrades revert to their pre-window state; cells first credited in the
      * window disappear entirely. Companion to the recorder/photo purges.
+     *
+     * Walks the FULL prior chain (not just one hop): with three tiers a cell
+     * can be upgraded twice inside a single short purge window (e.g. SEEN
+     * pre-window, then GRAZED and CLOSE both inside it) — stopping at the
+     * first prior, as a single-level revert would, could land on a credit
+     * that ALSO falls inside the window and should itself be discarded.
      */
     fun purgeSince(cutoffMs: Long) {
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for ((cell, credit) in _creditedCells.value) {
             if (credit.creditedAtMs >= cutoffMs) {
-                val prior = credit.prior
-                if (prior != null) map[cell] = prior else map.remove(cell)
+                var walked: CellCredit? = credit
+                while (walked != null && walked.creditedAtMs >= cutoffMs) {
+                    walked = walked.prior
+                }
+                if (walked != null) map[cell] = walked else map.remove(cell)
                 changed = true
             }
         }

@@ -105,6 +105,41 @@ class CoverageTrackerQualityTest {
     }
 
     @Test
+    fun purgeWalksPastTwoInWindowUpgradesToThePreWindowCredit() {
+        // Regression test: a single-level prior revert (the pre-SEEN
+        // design) would stop at the first prior even when THAT credit is
+        // also inside the purge window — three tiers make a two-hop
+        // in-window upgrade chain realistic (SEEN pre-window, then both
+        // GRAZED and CLOSE land inside one short indoor-flip window).
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 1_000L) // SEEN, pre-window
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 7.0)), nowMs = 5_000L)  // GRAZED, in-window
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), nowMs = 6_000L)  // CLOSE, in-window
+        t.purgeSince(cutoffMs = 4_000L)
+        // Must walk past BOTH in-window credits, all the way back to SEEN —
+        // not stop at GRAZED (which is itself >= the cutoff).
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell !in t.scannedCells.value)
+    }
+
+    @Test
+    fun purgeRemovesACellWhoseEntireUpgradeChainIsInsideTheWindow() {
+        // No pre-window credit at all: SEEN, GRAZED, and CLOSE all land
+        // inside the window — the cell must disappear entirely, not settle
+        // on some intermediate in-window tier.
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 5_000L)
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 7.0)), nowMs = 5_500L)
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), nowMs = 6_000L)
+        t.purgeSince(cutoffMs = 4_000L)
+        assertNull(t.creditedCells.value[cell])
+        assertTrue(cell !in t.scannedCells.value)
+        assertTrue(cell !in t.seenCells.value)
+    }
+
+    @Test
     fun upgradeIsMonotonic() {
         val t = tracker()
         val hitClose = RaycastCoverageHit(41.8600, -87.7200, 2.0)

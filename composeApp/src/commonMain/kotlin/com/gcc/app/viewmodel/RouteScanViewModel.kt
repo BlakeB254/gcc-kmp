@@ -1101,11 +1101,7 @@ class RouteScanViewModel(
         if (!outdoorGate.captureAllowed.value) return
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
         coverageTracker.updateWithRaycastHits(hits)
-        val hitBest = fanHitQuality(hits)
-        if (hitBest != null) {
-            val current = bestFanQualitySinceLastEvent
-            if (current == null || hitBest > current) bestFanQualitySinceLastEvent = hitBest
-        }
+        bestFanQualitySinceLastEvent = bestOf(bestFanQualitySinceLastEvent, fanHitQuality(hits))
     }
 
     // ── Internal: location tracking ──────────────────────────────────
