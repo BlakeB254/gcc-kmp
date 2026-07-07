@@ -274,13 +274,15 @@ actual class ArEnvScanOverlay actual constructor() {
 
     // ── Session capture (Pillar 1) ───────────────────────────────────
 
-    actual fun startCapture(sessionId: String) {
-        val surface = nativeSurface ?: return // SceneKit fallback: capture unsupported
-        try {
+    actual fun startCapture(sessionId: String): Boolean {
+        // SceneKit fallback: capture unsupported — report honestly so the
+        // caller never shows a REC chip for a recording that isn't happening.
+        val surface = nativeSurface ?: return false
+        return try {
             val cellId = geoCellIdOrNull()
             if (cellId == null) {
                 DiagnosticsLog.info("capture", "startCapture($sessionId) skipped — no geo reference yet")
-                return
+                return false
             }
             val outputDir = documentsPath() + "/capture-sessions/" + sessionId
             NSFileManager.defaultManager.createDirectoryAtPath(
@@ -290,10 +292,12 @@ actual class ArEnvScanOverlay actual constructor() {
             captureLocationCellId = cellId
             surface.startCapture(sessionId, outputDir)
             DiagnosticsLog.info("capture", "session capture started: $sessionId (cell $cellId)")
+            true
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "startCapture($sessionId) failed — capture disabled for this session", e)
             captureSessionId = null
             captureLocationCellId = null
+            false
         }
     }
 
@@ -331,6 +335,18 @@ actual class ArEnvScanOverlay actual constructor() {
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "setCaptureEnabled($enabled) failed", e)
         }
+    }
+
+    /** Advisory only (see the expect kdoc): same thermalState KVO read the
+     *  tick's Vision guard uses (critical = 3, the level Task 4's recorder
+     *  auto-pauses at). The Swift recorder owns the REAL pause decision —
+     *  this just lets the REC chip tint "paused" at the caller's cadence. */
+    actual fun thermalPausedLikely(): Boolean = try {
+        val thermal = (NSProcessInfo.processInfo as platform.darwin.NSObject)
+            .valueForKey("thermalState") as? Long ?: 0L
+        thermal >= 3L
+    } catch (_: Throwable) {
+        false
     }
 
     /** `gridCell10m` of the current geo reference (session anchor), formatted

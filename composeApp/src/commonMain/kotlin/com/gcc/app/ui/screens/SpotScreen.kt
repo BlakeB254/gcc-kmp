@@ -372,9 +372,13 @@ private fun CameraPhase(
     LaunchedEffect(arOverlay, captureAllowed, geoRefPaired) {
         if (arOverlay == null || captureStarted || !captureAllowed || !geoRefPaired) return@LaunchedEffect
         try {
-            arOverlay.startCapture(sessionRecorder.sessionId)
-            captureStarted = true
-            captureRecState = "rec"
+            // Honest start: startCapture returns false when capture did NOT
+            // begin (SceneKit fallback, native failure, no geo-ref) — the
+            // REC chip must never claim a recording that isn't happening.
+            if (arOverlay.startCapture(sessionRecorder.sessionId)) {
+                captureStarted = true
+                captureRecState = "rec"
+            }
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "startCapture failed — capture disabled for this session", e)
             captureRecState = null
@@ -384,10 +388,24 @@ private fun CameraPhase(
         if (arOverlay == null || !captureStarted) return@LaunchedEffect
         try {
             arOverlay.setCaptureEnabled(captureAllowed)
-            captureRecState = if (captureAllowed) "rec" else "paused"
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "setCaptureEnabled failed", e)
             captureRecState = null
+            return@LaunchedEffect
+        }
+        // Chip state loop: gate pause is authoritative; the thermal read is
+        // ADVISORY only (same KVO the Vision guard uses) — the Swift recorder
+        // owns the real thermal pause, this just tints the chip so a
+        // thermally-paused capture doesn't read as recording. Re-polled on a
+        // slow cadence; the loop dies with the effect on key change/dispose.
+        while (true) {
+            val thermalPaused = try {
+                arOverlay.thermalPausedLikely()
+            } catch (_: Throwable) {
+                false
+            }
+            captureRecState = if (captureAllowed && !thermalPaused) "rec" else "paused"
+            delay(3_000L)
         }
     }
 
@@ -1102,19 +1120,27 @@ private fun CameraPhase(
                         // sequencing note. onCompleteScan (which flips the VM
                         // phase and eventually disposes/tears down the overlay)
                         // fires from INSIDE this coroutine so it can't race
-                        // ahead of the drain.
+                        // ahead of the drain. NonCancellable: the dispose path
+                        // cancels flushScope (invokeOnCompletion after its exit
+                        // flush) — a mid-window disposal could otherwise cancel
+                        // AFTER stopCapture but BEFORE onCompleteScan, stranding
+                        // the scan with no completion. Once this sequence
+                        // starts it always reaches onCompleteScan (bounded
+                        // ~5s finalize + network — acceptable).
                         flushScope.launch {
-                            try {
-                                arOverlay.stopCapture()
-                            } catch (e: Throwable) {
-                                DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
+                            withContext(kotlinx.coroutines.NonCancellable) {
+                                try {
+                                    arOverlay.stopCapture()
+                                } catch (e: Throwable) {
+                                    DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
+                                }
+                                try {
+                                    captureUploader.flushPending()
+                                } catch (e: Throwable) {
+                                    DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
+                                }
+                                onCompleteScan(draft)
                             }
-                            try {
-                                captureUploader.flushPending()
-                            } catch (e: Throwable) {
-                                DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
-                            }
-                            onCompleteScan(draft)
                         }
                     } else {
                         onCompleteScan(draft)

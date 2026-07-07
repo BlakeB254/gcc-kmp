@@ -139,10 +139,13 @@ expect class ArEnvScanOverlay() {
 
     /**
      * Begin full-session background capture (HEVC video chunks + pose/
-     * intrinsics sidecar + LiDAR depth keyframes) for [sessionId]. No-op on
-     * the SceneKit fallback / Android / Desktop.
+     * intrinsics sidecar + LiDAR depth keyframes) for [sessionId]. Returns
+     * true only when capture GENUINELY started — false on the SceneKit
+     * fallback, before a geo reference pairs, on any native failure, and
+     * always on Android/Desktop. Callers must only flip their recording
+     * state (REC chip) on true.
      */
-    fun startCapture(sessionId: String)
+    fun startCapture(sessionId: String): Boolean
 
     /**
      * Stop capture, finalize the in-progress chunk, and return every
@@ -159,6 +162,14 @@ expect class ArEnvScanOverlay() {
     /** Pause/resume capture without discarding the in-progress chunk —
      *  outdoor-gate driven, mirrors [setFrameAnalysisEnabled]. */
     fun setCaptureEnabled(enabled: Boolean)
+
+    /** Advisory: true when the device thermal state is at/above critical —
+     *  the level at which the native recorder auto-pauses appends (Task 4
+     *  thermal policy). Read on the caller's cadence to tint the REC chip
+     *  "paused"; it does NOT drive capture behavior (the Swift recorder owns
+     *  that) and may lag the recorder's actual pause by a tick. Always false
+     *  off-iOS. */
+    fun thermalPausedLikely(): Boolean
 
     fun stop()
 }

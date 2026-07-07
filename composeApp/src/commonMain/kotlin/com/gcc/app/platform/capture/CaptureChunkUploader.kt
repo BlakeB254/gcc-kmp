@@ -95,7 +95,7 @@ class CaptureChunkUploader(
             )
         } catch (e: Exception) {
             if (e !is CaptureStorageNotConfiguredException && isClientErrorMessage(e.message)) {
-                store.markUploaded(chunk.sessionId, chunk.chunkIndex, chunk.kind, r2Key = null, uploadedAtMs = -1)
+                poisonChunk(chunk)
                 DiagnosticsLog.error("capture-upload", "chunk presign 4xx — skipped permanently", e)
                 return
             }
@@ -105,7 +105,7 @@ class CaptureChunkUploader(
             apiClient.uploadToPresignedUrl(ticket.uploadUrl, bytes, contentTypeFor(ext))
         } catch (e: Exception) {
             if (isClientErrorMessage(e.message)) {
-                store.markUploaded(chunk.sessionId, chunk.chunkIndex, chunk.kind, r2Key = null, uploadedAtMs = -1)
+                poisonChunk(chunk)
                 DiagnosticsLog.error("capture-upload", "chunk PUT 4xx — skipped permanently", e)
                 return
             }
@@ -118,6 +118,14 @@ class CaptureChunkUploader(
             r2Key = ticket.r2Key,
             uploadedAtMs = Clock.System.now().toEpochMilliseconds(),
         )
+        deleteLocalFile(chunk.filePath)
+    }
+
+    /** Permanently skip a chunk (4xx poison): sentinel-mark the row AND
+     *  delete the file — a skipped chunk will never upload, so keeping its
+     *  bytes on disk would leak storage forever. */
+    private suspend fun poisonChunk(chunk: CaptureChunkRecord) {
+        store.markUploaded(chunk.sessionId, chunk.chunkIndex, chunk.kind, r2Key = null, uploadedAtMs = -1)
         deleteLocalFile(chunk.filePath)
     }
 
