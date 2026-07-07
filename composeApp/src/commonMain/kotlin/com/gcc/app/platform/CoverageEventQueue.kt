@@ -328,6 +328,9 @@ suspend fun retractionOutcome(
 ): RetractionOutcome {
     return try {
         val response = retract(request)
+        // Defensive: today the server only sends success:false with a non-2xx
+        // status, which throws inside retract() before reaching here — so the
+        // RETRY branch is unreachable until a 200-with-success:false appears.
         if (response.success) RetractionOutcome.DELIVERED else RetractionOutcome.RETRY
     } catch (e: Exception) {
         val status = HTTP_STATUS_PREFIX.find(e.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
