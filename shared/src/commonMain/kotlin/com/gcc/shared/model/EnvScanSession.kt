@@ -23,6 +23,40 @@ data class EnvScanPathSample(
 @Serializable
 data class EnvScanCell(val lat: Double, val lng: Double)
 
+/**
+ * One periodically-captured color+depth frame pair from an active
+ * environment scan, for the DGX reconstruction pipeline (Task 7 — before
+ * this, a session uploaded only detection metadata and a couple of manual
+ * photos, nothing usable as raw multi-view input). Depth is optional: it's
+ * only present on PRO_SCANNER (LiDAR) devices, and even there capture can
+ * fail/skip a given tick — a color-only frame is still valid raw input for
+ * classical structure-from-motion, just not depth-fused reconstruction.
+ */
+@Serializable
+data class CapturedFrame(
+    /** R2 key of the JPEG color frame. */
+    val colorKey: String,
+    /** R2 key of the 16-bit grayscale PNG depth frame, when captured.
+     *  Values are millimeters (see [DEPTH_PNG_SCALE_MM_PER_UNIT]), matching
+     *  the common RGBD-dataset convention so any generic tool can read it
+     *  without GCC-specific documentation. */
+    val depthKey: String? = null,
+    val lat: Double,
+    val lng: Double,
+    val headingDegrees: Float? = null,
+    /** Camera-to-world transform, row-major 4x4 (16 floats), when ARKit
+     *  tracking was healthy at capture time -- the registration step of the
+     *  DGX fusion pipeline needs this per frame, not just per session. */
+    val cameraTransform: List<Float>? = null,
+    /** fx, fy, cx, cy in pixels. */
+    val intrinsics: List<Float>? = null,
+    val capturedAtMs: Long,
+) {
+    companion object {
+        const val DEPTH_PNG_SCALE_MM_PER_UNIT = 1000.0
+    }
+}
+
 @Serializable
 data class EnvScanManifest(
     val sessionId: String,
@@ -59,6 +93,21 @@ data class EnvScanManifest(
      *  unchanged. Null for sessions recorded before this field existed. */
     val gateEvents: List<String>? = null,
     val schemaVersion: Int = 1,
+    /** R2 keys of background-capture chunks (HEVC video + pose/depth
+     *  sidecars) uploaded so far for this session, per the session-capture
+     *  plan — additive/optional so older manifests deserialize unchanged.
+     *  Late-uploaded chunks are still keyed by sessionId in R2 regardless
+     *  of whether they made it into this snapshot. */
+    val captureChunks: List<String>? = null,
+    /** Sidecar/chunk format version for `captureChunks` (currently 1). Null
+     *  for manifests recorded before background capture existed. */
+    val captureSchema: Int? = null,
+    /** Periodic raw color+depth frames captured during the session for the
+     *  DGX reconstruction pipeline (Task 7). Empty for sessions recorded
+     *  before this field existed, or when every frame upload attempt failed
+     *  -- frames are best-effort like [photoKeys], never queued/retried, so
+     *  this list only ever contains frames actually confirmed in R2. */
+    val capturedFrames: List<CapturedFrame> = emptyList(),
 )
 
 @Serializable
@@ -74,4 +123,11 @@ data class CaptureUploadUrlRequest(
     val deviceId: String,
     val capturedAt: String,
     val ext: String,
+    /** Session-artifact path (Pillar 1 background capture chunks): when both
+     *  this and [artifactPath] are set, the server keys the object under
+     *  raw/{locationCellId}/{sessionId}/{artifactPath} instead of the legacy
+     *  raw/{locationCellId}/{deviceId}/{capturedAt}.{ext} layout. Last params,
+     *  defaulted, so existing callers are unaffected. */
+    val sessionId: String? = null,
+    val artifactPath: String? = null,
 )

@@ -1,0 +1,33 @@
+-- keep in sync — upgraded installs create this table via
+-- CaptureChunkStore.ensureTable, fresh installs via Schema.create.
+CREATE TABLE captureChunk (
+  sessionId TEXT NOT NULL,
+  chunkIndex INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  filePath TEXT NOT NULL,
+  sizeBytes INTEGER NOT NULL,
+  locationCellId TEXT NOT NULL,
+  r2Key TEXT,
+  uploadedAtMs INTEGER,
+  createdAtMs INTEGER NOT NULL,
+  PRIMARY KEY(sessionId, chunkIndex, kind)
+);
+
+insertChunk:
+INSERT OR REPLACE INTO captureChunk(sessionId, chunkIndex, kind, filePath, sizeBytes, locationCellId, r2Key, uploadedAtMs, createdAtMs)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+markUploaded:
+UPDATE captureChunk SET r2Key = ?, uploadedAtMs = ? WHERE sessionId = ? AND chunkIndex = ? AND kind = ?;
+
+pendingChunks:
+SELECT * FROM captureChunk WHERE uploadedAtMs IS NULL ORDER BY createdAtMs;
+
+chunksForSession:
+SELECT * FROM captureChunk WHERE sessionId = ? ORDER BY chunkIndex;
+
+deleteSession:
+DELETE FROM captureChunk WHERE sessionId = ?;
+
+orphanSessions:
+SELECT DISTINCT sessionId FROM captureChunk WHERE uploadedAtMs IS NULL AND createdAtMs < ?;

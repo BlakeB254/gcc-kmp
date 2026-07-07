@@ -60,7 +60,9 @@ actual fun installCrashReporting() {
     }
 }
 
-private fun documentsPath(): String =
+/** Shared Documents-dir path (also used by [ArEnvScanOverlay]'s capture
+ *  output dir — same NSFileManager pattern, one implementation). */
+internal fun documentsPath(): String =
     (NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true)
         .firstOrNull() as? String) ?: NSTemporaryDirectory()
 

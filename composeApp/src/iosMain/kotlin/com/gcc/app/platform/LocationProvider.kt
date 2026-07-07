@@ -15,8 +15,9 @@ import platform.CoreLocation.CLHeading
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
+import platform.CoreLocation.CLActivityTypeFitness
 import platform.CoreLocation.kCLDistanceFilterNone
-import platform.CoreLocation.kCLLocationAccuracyBest
+import platform.CoreLocation.kCLLocationAccuracyBestForNavigation
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -124,7 +125,13 @@ actual class LocationProvider actual constructor() {
 
         dispatch_async(dispatch_get_main_queue()) {
             locationManager.delegate = sharedDelegate
-            locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            // BestForNavigation adds sensor-fusion (accelerometer/gyro dead
+            // reckoning between GNSS fixes); worth the battery cost since
+            // location only streams during active scan/tracking sessions.
+            locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+            // Pedestrian model: keeps CoreLocation from road-snapping or
+            // assuming vehicle speeds while workers walk a block.
+            locationManager.activityType = CLActivityTypeFitness
             // Continuous updates (no distance filter): the OutdoorGate needs a steady
             // stream of accuracy samples even when the worker is standing still —
             // with the old 10m filter an indoor (stationary) user produced one fix

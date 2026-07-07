@@ -25,7 +25,7 @@ actual class ArRouteOverlay actual constructor() {
 
     actual val liveDetections: StateFlow<List<LiveDetection>> = MutableStateFlow(emptyList())
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {}
-    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String) -> Unit)?) {}
+    actual fun setMarkerPlacedListener(listener: ((lat: Double, lng: Double, label: String, photoBytes: ByteArray?) -> Unit)?) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
     actual fun setSceneVoteCadence(fast: Boolean) {}

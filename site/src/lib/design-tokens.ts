@@ -66,6 +66,21 @@ export const SPOT_COLORS = {
   HEATMAP_PEAK: '#FFFFFF',
 } as const
 
+// Per-item severity coloring for the close-zoom marker layer (Task 10) — LOW
+// reuses SPOT_COLORS.MARKER so the common case is visually unchanged; MEDIUM/
+// HIGH step through the same amber/red vocabulary already used for heat-weight
+// (getSpotHeatWeight) and bounty urgency (BOUNTY_COLORS.OPEN) elsewhere here.
+export const SPOT_SEVERITY_COLORS = {
+  LOW: SPOT_COLORS.MARKER,
+  MEDIUM: '#F59E0B',
+  HIGH: '#EF4444',
+} as const
+
+// Vegetation-domain observations (trees/bushes/etc, auto-registered from a
+// scan's landmark pass) render distinctly from litter — informational, not
+// an urgency signal, so it gets the brand green rather than the litter ramp.
+export const VEGETATION_MARKER_COLOR = '#16763A'
+
 // Zoom thresholds for the heatmap↔dots crossfade. Heatmap owns z<14.5
 // (intensity ramping up then fading out by 14.5). Dots fade in over 14→15
 // via opacity (0→0.8→1). The map's minZoom=14 + fitBounds maxZoom=15

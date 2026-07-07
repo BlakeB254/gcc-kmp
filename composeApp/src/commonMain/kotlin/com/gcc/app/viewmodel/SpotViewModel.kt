@@ -9,9 +9,14 @@ import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.capture.CaptureChunkUploader
+import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
+import com.gcc.app.platform.runOrphanRecoverySweepOnce
+import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.serialization.GccJson
 import kotlinx.datetime.Clock
 import kotlinx.serialization.encodeToString
@@ -96,6 +101,8 @@ class SpotViewModel(
     private val tokenManager: TokenManager,
     private val analyzer: OnDeviceAnalyzer,
     private val sessionUploader: EnvScanSessionUploader,
+    private val captureChunkStore: CaptureChunkStore,
+    private val captureUploader: CaptureChunkUploader,
 ) {
     companion object {
         const val MAX_PHOTOS = 3
@@ -115,6 +122,18 @@ class SpotViewModel(
         // Catch up any session manifests that couldn't reach R2 last time
         // (offline, or storage not provisioned yet).
         scope.launch { sessionUploader.flushPending() }
+        // Same catch-up for background capture chunks (Pillar 1) — opportunistic,
+        // policy-gated (Wi-Fi/charging/cellular-opt-in); see CaptureChunkUploader.
+        scope.launch { captureUploader.flushPending() }
+        // Pillar 6 orphan recovery: an app kill mid-scan can leave a session
+        // journal (GPS/gate-event track) and/or unbooked capture-chunk files
+        // on disk with no manifest ever built for them. Guarded to at most
+        // once per process inside runOrphanRecoverySweepOnce (RouteScanViewModel
+        // calls it too, and either VM may construct first); active sessions
+        // are excluded because journal files are created lazily on the first
+        // recorded sample, never at recorder construction — see the sweep's
+        // KDoc for the full reasoning and internal ordering.
+        scope.launch { runOrphanRecoverySweepOnce(sessionUploader, captureChunkStore) }
     }
 
     // Confirmed litter flushes to /api/observations/ar-detected on the same
@@ -164,7 +183,11 @@ class SpotViewModel(
                                     itemType = TrashItemCatalog.canonicalType(result.trashTypes.first()),
                                     severity = result.severity,
                                     confidence = result.confidence,
-                                )
+                                ),
+                                // The analyzed photo IS the detection frame —
+                                // ride it onto the marker so the map spot
+                                // carries the image that prompted it.
+                                photoBytes = photo.bytes.takeIf { it.isNotEmpty() },
                             )
                         }
                         _uiState.value = _uiState.value.copy(
@@ -204,8 +227,12 @@ class SpotViewModel(
      * against existing items of the same type within ~4m (the scanner path
      * projects along heading, the analyzer fallback tags the user position —
      * both can fire for the same pile).
+     *
+     * [photoBytes], when the caller has a frame available, is uploaded
+     * best-effort before the marker is enqueued (never blocks it — a null or
+     * failed upload just enqueues with no mediaUrl).
      */
-    fun addObservedItem(item: ObservedSpotItem) {
+    fun addObservedItem(item: ObservedSpotItem, photoBytes: ByteArray? = null) {
         val existing = _uiState.value.observedItems
         val duplicate = existing.any { prior ->
             prior.itemType == item.itemType &&
@@ -225,12 +252,23 @@ class SpotViewModel(
         if (stamped.domain == null || stamped.domain == "litter") {
             scope.launch {
                 try {
+                    // Upload-then-enqueue: raw bytes never enter the persisted
+                    // ArMarkerQueue — only the resolved URL (or null on failure).
+                    val mediaUrl = photoBytes?.let { bytes ->
+                        try {
+                            apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                        } catch (e: Exception) {
+                            DiagnosticsLog.error("env-scan", "marker photo upload failed (enqueuing without photo)", e)
+                            null
+                        }
+                    }
                     arMarkerQueue.enqueue(
                         ArDetectedMarkerRequest(
                             lat = stamped.lat,
                             lng = stamped.lng,
                             label = TrashItemCatalog.canonicalType(stamped.itemType),
                             capturedAt = Clock.System.now(),
+                            mediaUrl = mediaUrl,
                         ),
                     )
                 } catch (e: Exception) {
@@ -482,6 +520,17 @@ class SpotViewModel(
                     DiagnosticsLog.error("env-capture", "photo upload to R2 failed — manifest continues without", e)
                 }
 
+                // Uploaded-so-far capture-chunk R2 keys (Pillar 1): late
+                // uploads (still-pending chunks, or ones the policy gate
+                // hasn't cleared yet) are keyed by sessionId in R2 regardless
+                // of whether they made it into this manifest snapshot.
+                val captureChunkKeys = try {
+                    captureChunkStore.chunksForSession(draft.sessionId).mapNotNull { it.r2Key }
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("env-capture", "captureChunks lookup failed (manifest continues without)", e)
+                    emptyList()
+                }
+
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,
                     deviceId = deviceId,
@@ -497,6 +546,8 @@ class SpotViewModel(
                     communityReportId = reportId,
                     objectCapture = state.objectCapture,
                     gateEvents = draft.gateEvents,
+                    captureChunks = captureChunkKeys.ifEmpty { null },
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 1 else null,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(
@@ -505,6 +556,13 @@ class SpotViewModel(
                             "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
                     )
                 }
+                // Pillar 6: the manifest is now durable either in R2 or in
+                // EnvScanSessionUploader's own persistent retry queue — the
+                // on-disk journal's only job (surviving an app kill before
+                // this point) is done, so delete it. A missing journal
+                // (desktop/android — journalPath is always null there) is a
+                // no-op.
+                sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
             }

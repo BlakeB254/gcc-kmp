@@ -1,0 +1,10 @@
+# DGX-side fusion pipeline (Task 8) — registration/fusion half only.
+# gsplat + torch are intentionally NOT here: no real multi-session depth data
+# exists yet to train against (see README §"Status"), so pulling in a CUDA
+# torch stack now would be dead weight. Add them when splat_train.py moves
+# past its current stub.
+open3d==0.18.0
+numpy
+pillow
+boto3
+psycopg2-binary

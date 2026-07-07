@@ -137,7 +137,16 @@ export default function BountiesPage() {
           )
           if (!match) return s
           usedObservationIds.add(match.id)
-          return { ...s, itemType: match.itemType ?? undefined }
+          return {
+            ...s,
+            itemType: match.itemType ?? undefined,
+            severity: match.severity ?? undefined,
+            domain: match.domain ?? undefined,
+            // Only fall back to the observation's own mediaUrl when the report
+            // has no photo of its own — a user-submitted photo is always the
+            // richer image when both exist.
+            mediaUrl: (s.photoUrl || s.mediaUrls?.[0]) ? undefined : match.mediaUrl ?? undefined,
+          }
         })
 
         const scanOnlySpots: SpotReport[] = observations
@@ -149,6 +158,9 @@ export default function BountiesPage() {
             label: o.itemType ?? 'Reported',
             tags: o.itemType ? [o.itemType] : [],
             itemType: o.itemType ?? undefined,
+            severity: o.severity ?? undefined,
+            domain: o.domain ?? undefined,
+            mediaUrl: o.mediaUrl ?? undefined,
             needsVerification: false,
           }))
 

@@ -55,6 +55,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -83,6 +84,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
