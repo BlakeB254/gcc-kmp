@@ -49,6 +49,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndex: Int?,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -414,8 +415,8 @@ actual fun GccMap(
             }
 
             // --- Draw route path lines (3-layer: glow → casing → core) ---
-            for (routeCoords in routeCoordinates) {
-                if (routeCoords.size < 2) continue
+            routeCoordinates.forEachIndexed { routeCoordsIndex, routeCoords ->
+                if (routeCoords.size < 2) return@forEachIndexed
                 // Close the loop
                 val closed = if (routeCoords.first().lat == routeCoords.last().lat &&
                     routeCoords.first().lng == routeCoords.last().lng) routeCoords
@@ -459,6 +460,23 @@ actual fun GccMap(
                         path = path,
                         color = GccGreen,
                         style = Stroke(width = MapStyles.ROUTE_LINE_WIDTH, pathEffect = PathEffect.cornerPathEffect(8f)),
+                    )
+                }
+
+                // Active-route highlight: brighter/thicker outer stroke on
+                // top of the regular stack so the worker's assigned block
+                // still stands out now that it renders alongside (not
+                // instead of) the rest of the service area.
+                if (routeCoordsIndex == activeRouteIndex) {
+                    drawPath(
+                        path = path,
+                        color = GccClaimed.copy(alpha = 0.55f),
+                        style = Stroke(width = MapStyles.ROUTE_GLOW_WIDTH * 1.6f, pathEffect = PathEffect.cornerPathEffect(8f)),
+                    )
+                    drawPath(
+                        path = path,
+                        color = GccClaimed,
+                        style = Stroke(width = MapStyles.ROUTE_LINE_WIDTH * 1.5f, pathEffect = PathEffect.cornerPathEffect(8f)),
                     )
                 }
 

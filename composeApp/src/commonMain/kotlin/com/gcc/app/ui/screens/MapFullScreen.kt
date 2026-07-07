@@ -329,17 +329,21 @@ fun MapFullScreen(
     val availableRouteCoordinates: List<List<Coordinates>> = remember(uiState.routes) {
         uiState.routes.map { it.routePathCoordinates() }
     }
-    val assignedRouteCoordinates: List<List<Coordinates>> = remember(assignedJobRoutePairs, currentLocation) {
-        val assignedRoutes = assignedJobRoutePairs.map { (_, route) -> route.routePathCoordinates() }
+    // The assigned route's own boundary, kept separate from its GPS guidance
+    // line so the boundary can be located by value inside mapRouteCoordinates
+    // below (drives the active-route highlight index).
+    val assignedRouteBoundaryCoordinates: List<List<Coordinates>> = remember(assignedJobRoutePairs) {
+        assignedJobRoutePairs.map { (_, route) -> route.routePathCoordinates() }
+    }
+    val assignedGuidanceLines: List<List<Coordinates>> = remember(assignedJobRoutePairs, currentLocation) {
         val location = currentLocation
-        val guidanceLines = if (location != null) {
+        if (location != null) {
             assignedJobRoutePairs.mapNotNull { (_, route) ->
                 route.routePathCoordinates().firstOrNull()?.let { start -> listOf(location, start) }
             }
         } else {
             emptyList()
         }
-        guidanceLines + assignedRoutes
     }
     val blockRecordCoordinates: List<List<Coordinates>> = remember(displayBlocks) {
         displayBlocks.mapNotNull { block ->
@@ -368,18 +372,41 @@ fun MapFullScreen(
             .distinct()
     }
 
-    val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {
-        assignedRouteCoordinates
-    } else if (availableRouteCoordinates.isNotEmpty()) {
-        availableRouteCoordinates
-    } else {
-        blockRecordCoordinates
+    // Selectable record set: every block/route boundary the < > controls and
+    // bottom inventory chips page through. Available (published) routes take
+    // priority; block records fill in the rest of the service area.
+    val selectableRecordCoordinates: List<List<Coordinates>> =
+        availableRouteCoordinates.ifEmpty { blockRecordCoordinates }
+
+    // What actually renders on the map: the UNION of every selectable
+    // boundary PLUS the worker's assigned route and its GPS guidance line.
+    // Previously this was an exclusive if/else where an active assignment's
+    // coordinates won outright over everything else, hiding the rest of the
+    // worker's ~10-block service area and the inner exclusion rings that
+    // only pair up (by centroid containment) against a boundary that is
+    // actually present in this list (Blake: "only see that one block
+    // instead of all 10"; "1500 S Millard St block isn't displaying the
+    // correct internal exclusion areas").
+    val mapRouteCoordinates: List<List<Coordinates>> = remember(
+        selectableRecordCoordinates, assignedRouteBoundaryCoordinates, assignedGuidanceLines,
+    ) {
+        (selectableRecordCoordinates + assignedRouteBoundaryCoordinates + assignedGuidanceLines).distinct()
     }
+
+    // Index of the assigned route's own boundary within mapRouteCoordinates —
+    // drives a distinct (thicker/brighter) highlight style for the active
+    // block now that it's no longer drawn exclusively.
+    val activeRouteIndex: Int? = remember(mapRouteCoordinates, assignedRouteBoundaryCoordinates) {
+        assignedRouteBoundaryCoordinates.firstOrNull()?.let { boundary ->
+            mapRouteCoordinates.indexOf(boundary).takeIf { it >= 0 }
+        }
+    }
+
     val selectedRouteCoordinates = selectedRecordIndex
-        ?.let { mapRouteCoordinates.getOrNull(it) }
+        ?.let { selectableRecordCoordinates.getOrNull(it) }
         ?.let { listOf(it) }
         ?: emptyList()
-    val routeRecordCount = mapRouteCoordinates.size
+    val routeRecordCount = selectableRecordCoordinates.size
 
     LaunchedEffect(routeRecordCount) {
         val selected = selectedRecordIndex
@@ -472,11 +499,16 @@ fun MapFullScreen(
             routeCoordinates = if (mapMode == MapMode.MY_AREA) {
                 selectedRouteCoordinates.ifEmpty { mapRouteCoordinates }
             } else emptyList(),
+            // Only meaningful against the full union list — a manually
+            // selected single record has nothing to highlight against.
+            activeRouteIndex = if (mapMode == MapMode.MY_AREA && selectedRouteCoordinates.isEmpty()) {
+                activeRouteIndex
+            } else null,
             imageStars = if (mapMode == MapMode.MY_AREA) imageStars else emptyList(),
             onAreaTap = { /* tooltip handled internally by GccMap */ },
             onRouteTap = if (mapMode == MapMode.MY_AREA) { routeIndex ->
                 val assigned = primaryAssignedPair
-                if (assigned != null && assignedRouteCoordinates.isNotEmpty()) {
+                if (assigned != null && assignedRouteBoundaryCoordinates.isNotEmpty()) {
                     onActiveJobClick(assigned.first.id, assigned.second.id)
                 } else {
                     val actualIndex = selectedRecordIndex ?: routeIndex

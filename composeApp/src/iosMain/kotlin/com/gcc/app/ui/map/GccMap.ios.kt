@@ -77,6 +77,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndex: Int?,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -125,6 +126,14 @@ actual fun GccMap(
     }
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
+    }
+    // Active-route highlight: a single-feature source built from just the
+    // assigned route's boundary so it can be drawn with a brighter/thicker
+    // outer line on top of the regular route stack (Fix: the active block
+    // no longer renders exclusively, so it needs its own visual emphasis).
+    val activeRouteJson = remember(routeCoordinates, activeRouteIndex) {
+        val activeCoords = activeRouteIndex?.let { routeCoordinates.getOrNull(it) }
+        buildRoutesGeoJson(activeCoords?.let { listOf(it) } ?: emptyList())
     }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
@@ -753,6 +762,45 @@ actual fun GccMap(
                     join = const(LineJoin.Round),
                     onClick = routeIndexClickHandler(onRouteTap),
                 )
+
+                // Active-route highlight: brighter/thicker outer line on top
+                // of the regular stack so the worker's assigned block still
+                // reads as "the one to work" now that it renders alongside
+                // (not instead of) the rest of the service area.
+                if (activeRouteIndex != null) {
+                    val activeRouteSrc = rememberGeoJsonSource(GeoJsonData.JsonString(activeRouteJson))
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-glow",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed.copy(alpha = 0.55f)),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(2.dp),
+                            13 to const(5.dp),
+                            15 to const(11.dp),
+                            17 to const(18.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                    )
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-core",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(1.dp),
+                            13 to const(2.5.dp),
+                            15 to const(4.5.dp),
+                            17 to const(7.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                        onClick = routeIndexClickHandler(onRouteTap),
+                    )
+                }
             }
 
             // ── Foundational coverage-state tiles (under heat + markers) ──
