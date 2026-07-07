@@ -1917,3 +1917,35 @@ export const volunteerCleanups = pgTable('volunteer_cleanups', {
   reportIdx: index('volunteer_cleanups_report_id_idx').on(table.reportId),
   workerIdx: index('volunteer_cleanups_worker_id_idx').on(table.workerId),
 }))
+
+// Feed comments — see migrations/0030_add_feed_comments.sql. feedItemId is a
+// synthetic composite id like "spot_123" / "bounty_created_45" (the feed
+// itself is an in-memory union of several tables, not a materialized one),
+// so there's no FK to a feed_items table — just an indexed varchar.
+export const feedComments = pgTable('feed_comments', {
+  id: serial('id').primaryKey(),
+  feedItemId: varchar('feed_item_id', { length: 255 }).notNull(),
+  authorId: integer('author_id').notNull(),
+  authorName: varchar('author_name', { length: 255 }).notNull(),
+  text: text('text').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  feedItemIdx: index('idx_feed_comments_feed_item').on(table.feedItemId),
+  authorIdx: index('idx_feed_comments_author').on(table.authorId),
+}))
+
+// Per-feed-item, per-worker profile opt-in CONSENT row: "worker X consents
+// to be visible on item Y". Uniqueness is composite (feedItemId, workerId) —
+// unique on feedItemId alone would let any worker squat another actor's
+// opt-in slot (IDOR). Render contract for the future feed GET: an item's
+// actorProfileVisible = a row exists WHERE workerId == the item's actor id —
+// never any-row-exists; a stranger's consent row is inert.
+export const feedProfileOptIns = pgTable('feed_profile_opt_ins', {
+  id: serial('id').primaryKey(),
+  feedItemId: varchar('feed_item_id', { length: 255 }).notNull(),
+  workerId: integer('worker_id').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  itemWorkerUnique: uniqueIndex('feed_profile_opt_ins_item_worker_unique').on(table.feedItemId, table.workerId),
+  workerIdx: index('idx_feed_profile_opt_ins_worker').on(table.workerId),
+}))
