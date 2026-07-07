@@ -31,6 +31,7 @@ import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.cache.ScanAreaCacheStore
 import com.gcc.app.platform.EnvScanSessionUploader
@@ -53,6 +54,7 @@ val offlineAppModule = module {
     single<SqlDriver> { createSqlDriver() }
     single { RouteCacheStore(get()) }
     single { ScanAreaCacheStore(get()) }
+    single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
     singleOf(::BiometricAuthViewModel)
     singleOf(::LoginViewModel)

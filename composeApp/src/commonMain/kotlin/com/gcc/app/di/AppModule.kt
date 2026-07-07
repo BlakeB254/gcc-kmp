@@ -39,6 +39,7 @@ import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.AuthTokenProvider
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.cache.ScanAreaCacheStore
 import app.cash.sqldelight.db.SqlDriver
@@ -70,6 +71,7 @@ val appModule = module {
     single<SqlDriver> { createSqlDriver() }
     single { RouteCacheStore(get()) }
     single { ScanAreaCacheStore(get()) }
+    single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
     single {
         val tokenManager = get<TokenManager>()
