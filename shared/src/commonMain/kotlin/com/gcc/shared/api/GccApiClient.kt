@@ -949,9 +949,10 @@ class GccApiClient(
      * (non-superseded, non-excluded) observations from both route scans and
      * spot reports. Optional [bbox] is "minLng,minLat,maxLng,maxLat".
      */
-    suspend fun getMapObservations(bbox: String? = null): List<WorldObservation> {
+    suspend fun getMapObservations(bbox: String? = null, since: String? = null): List<WorldObservation> {
         val response = httpClient.get("$baseUrl/api/map/observations") {
             bbox?.let { parameter("bbox", it) }
+            since?.let { parameter("since", it) }
         }
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)
@@ -1214,9 +1215,10 @@ class GccApiClient(
         }
     }
 
-    suspend fun getMapCoverage(bbox: String): MapCoverageResponse {
+    suspend fun getMapCoverage(bbox: String, since: String? = null): MapCoverageResponse {
         val response = httpClient.get("$baseUrl/api/map/coverage") {
             parameter("bbox", bbox)
+            since?.let { parameter("since", it) }
         }
         if (!response.status.isSuccess()) {
             checkUnauthorized(response.status.value)

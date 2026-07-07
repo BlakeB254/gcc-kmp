@@ -29,7 +29,11 @@ import com.gcc.app.ui.map.MyLocationButton
 import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
+import com.gcc.app.ui.map.latestIsoTimestamp
+import com.gcc.app.ui.map.mergeCoverageCells
+import com.gcc.app.ui.map.mergeObservations
 import com.gcc.app.ui.map.resolveMapCenter
+import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.components.GccBottomNavBar
 import com.gcc.app.ui.components.GccButton
@@ -202,6 +206,15 @@ fun MapFullScreen(
     var mapObservations by remember { mutableStateOf(listOf<com.gcc.shared.model.WorldObservation>()) }
     // Coverage tile the user tapped (fresh/stale) — shows the last-scan card.
     var selectedCoverageCell by remember { mutableStateOf<com.gcc.shared.model.MapCoverageCell?>(null) }
+    // Delta-poll cursors (Pillar 2 live map): SERVER clock authority, never
+    // the device clock — each is the max timestamp seen in that endpoint's
+    // OWN responses and is passed back as `since` on that endpoint's next
+    // poll. The two are deliberately separate: coverage advances on
+    // lastScannedAt while observations advance on capturedAt, and a shared
+    // max would starve whichever endpoint updates less often (its rows would
+    // fall behind the artificially-advanced cursor and never return).
+    var coverageSinceCursor by remember { mutableStateOf<String?>(null) }
+    var observationSinceCursor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(centerLat, centerLng, mapMode) {
         val pad = if (mapMode == MapMode.EXPLORER) 0.02 else 0.006 // ~2.2km vs ~650m
         val west = centerLng - pad
@@ -228,13 +241,27 @@ fun MapFullScreen(
         try {
             val bbox = listOf(west, south, east, north).joinToString(",")
             val fetched = gccApiClient.getMapCoverage(bbox).cells
-            coverageCells = fetched
+            // Merge (not wholesale-assign) so a slow-resolving initial load
+            // can never stomp newer rows the 20s poll already merged in.
+            coverageCells = mergeCoverageCells(coverageCells, fetched)
             val observations = try {
                 gccApiClient.getMapObservations(bbox)
             } catch (_: Exception) {
                 emptyList()
             }
-            if (observations.isNotEmpty()) mapObservations = observations
+            if (observations.isNotEmpty()) {
+                mapObservations = mergeObservations(mapObservations, observations)
+            }
+            // Seed each poll cursor from ITS OWN endpoint's response so the
+            // first 20s poll only asks for what changed since this load.
+            coverageSinceCursor = latestIsoTimestamp(
+                coverageSinceCursor,
+                fetched.map { it.lastScannedAt },
+            )
+            observationSinceCursor = latestIsoTimestamp(
+                observationSinceCursor,
+                observations.map { it.capturedAt },
+            )
             withContext(Dispatchers.Default) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 scanAreaCache.put(
@@ -247,6 +274,58 @@ fun MapFullScreen(
             }
         } catch (_: Exception) {
             // Non-fatal: the cached snapshot (if any) stays on screen.
+        }
+    }
+
+    // Live-map delta polling (Pillar 2): while this screen stays composed,
+    // fetch only what changed since the last fetch (server-clock `since`
+    // cursor) every 20s and upsert it into the SAME coverageCells/
+    // mapObservations state the effect above fills — never replace
+    // wholesale, and never fight that initial-load effect (this loop is
+    // keyed on Unit so it survives center/mode changes; it just reads the
+    // latest viewport via rememberUpdatedState on each tick). Errors are
+    // logged and the loop keeps polling — no user-facing noise.
+    val latestViewport = rememberUpdatedState(Triple(centerLat, centerLng, mapMode))
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000L)
+            val (pollLat, pollLng, pollMode) = latestViewport.value
+            try {
+                val pad = if (pollMode == MapMode.EXPLORER) 0.02 else 0.006
+                val bbox = listOf(
+                    pollLng - pad,
+                    pollLat - pad,
+                    pollLng + pad,
+                    pollLat + pad,
+                ).joinToString(",")
+
+                val coverageDelta = gccApiClient.getMapCoverage(bbox, since = coverageSinceCursor).cells
+                if (coverageDelta.isNotEmpty()) {
+                    coverageCells = mergeCoverageCells(coverageCells, coverageDelta)
+                }
+                val observationDelta = try {
+                    gccApiClient.getMapObservations(bbox, since = observationSinceCursor)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (observationDelta.isNotEmpty()) {
+                    mapObservations = mergeObservations(mapObservations, observationDelta)
+                }
+
+                // Advance each cursor ONLY from its own endpoint's timestamps.
+                coverageSinceCursor = latestIsoTimestamp(
+                    coverageSinceCursor,
+                    coverageDelta.map { it.lastScannedAt },
+                )
+                observationSinceCursor = latestIsoTimestamp(
+                    observationSinceCursor,
+                    observationDelta.map { it.capturedAt },
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // leaving composition is not an error — let the loop die
+            } catch (e: Exception) {
+                DiagnosticsLog.error("live-map-poll", "20s delta poll failed (will retry)", e)
+            }
         }
     }
 

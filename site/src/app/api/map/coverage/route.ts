@@ -21,6 +21,12 @@ export async function GET(request: NextRequest) {
     }
     const [minLng, minLat, maxLng, maxLat] = parts
 
+    // Optional delta cursor: unparseable/missing `since` is silently ignored
+    // (full response) so old/broken clients never see a 4xx here.
+    const sinceParam = searchParams.get('since')
+    const sinceMs = sinceParam ? new Date(sinceParam).getTime() : NaN
+    const since = Number.isFinite(sinceMs) ? sinceMs : null
+
     const rows = await db
       .select()
       .from(cellCoverageSummary)
@@ -36,6 +42,7 @@ export async function GET(request: NextRequest) {
         center.lng >= minLng && center.lng <= maxLng &&
         center.lat >= minLat && center.lat <= maxLat
       )
+      .filter(({ r }) => since === null || new Date(r.lastScannedAt).getTime() >= since)
       .map(({ r, center }) => ({
         locationCellId: r.locationCellId,
         lat: center.lat,

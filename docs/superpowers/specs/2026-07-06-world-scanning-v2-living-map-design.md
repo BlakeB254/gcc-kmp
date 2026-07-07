@@ -102,6 +102,74 @@ zooms and from afar obviously represented by the heatmap rated by cleanliness."
 
 ---
 
+## Pillar 7 — Extended sight coverage + organic rendering (Blake, 2026-07-07, from field screenshot)
+
+**Ask:** "the scan could see the building fronts across the street so it should have a
+lightly shaded depiction… extend the cone to where the user can see… and the squares
+shouldn't be squares."
+
+- **Third tier `SEEN`:** raycast-fan hits beyond GRAZE_RANGE (10m) up to
+  `SEEN_RANGE_METERS` (~55m) credit cells at the lightest tier — "camera observed it,
+  point data exists" — instead of being discarded. Monotonic SEEN<GRAZED<CLOSE.
+  Server quality enum += 'seen' (points: 0/m v1 — sight alone isn't work); minimap +
+  main map get a third, fainter wash; AR fog unchanged (lifts only on grazed+).
+  Physics note: beyond LiDAR range, hits come from estimated planes/feature points —
+  positional error grows with distance; acceptable for a light wash, must stay
+  visually subordinate to grazed/close.
+- **Organic coverage rendering:** replace per-cell squares with smoothed union
+  outlines per contiguous credited cluster, per tier (marching-squares over the 3m
+  cell set → rounded path; drop grid strokes). Session minimap AND main map, so
+  coverage reads as swept territory, not graph paper.
+- **Coverage everywhere at close zoom:** both My Area and Explorer render the
+  coverage layer; fetch follows the viewport (delta polling gives cheap refresh).
+- **Experience arc:** close ground-panning remains the only path to "thoroughly
+  scanned" (trash/grass/plant detail); distant multi-directional scanning feeds the
+  world model and paints SEEN — the shading teaches the difference.
+
+Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
+
+## Pillar 8 — Scan-supersedes-spots + map language + AR focus (Blake, 2026-07-07, product law)
+
+1. **Scanning overwrites spots.** A scan covering an area REMOVES old spot pins there:
+   nothing found → clean scanned area; litter found → accurate close-zoom display
+   (observations/footprints) + heatmap contribution at distance. The PR #65 supersede
+   (15m of anchor + scanned items) must be strengthened to key on the scan's actual
+   COVERED CELLS (grazed+ tiers), and verified working with the current scan flow.
+2. **Spots removed entirely — replaced by honest litter visualization (Blake
+   revision, same day: no internal dot layer either).** Close-zoom tiles on BOTH the
+   app map and the website render the actual nature + positioning of litter from
+   world observations: per-item positions/types/extents (Pillar 3 footprints are the
+   foundation) with distribution-aware rendering — a fenceline scatter reads as a
+   linear cluster, dispersed litter reads as spread marks, a genuine pile reads as a
+   pile. NOT one generic pill at the block bookend. The best mess photos (detection
+   frames + report media) are preserved per observation/cluster and surface on tap,
+   alongside weight/material estimates from close scans. Spot-pin layers get removed
+   from mobile GccMap and web CombinedMap; the heatmap remains the far-zoom language.
+3. **Scanned vs unscanned = unmistakable.** The coverage wash must clearly split the
+   world into "app has been here" vs not (current 0.14-0.20α tints are too subtle —
+   pair with Pillar 7's organic rendering; keep basemap labels legible).
+4. **AR tap-to-focus.** Tapping the camera view heavily biases detection at that
+   region: run Vision/saliency on the tapped ROI + raycast there immediately, lowering
+   the promotion threshold for that area for a few seconds.
+5. **Identify → approach → advanced data.** On litter identification: reticle/circle
+   (exists) + explicit approach prompting ("go up to it — scan around it") escalating
+   to close-scan capture of advanced data (estimated weight, materials — the confirm
+   card's estimators exist; the guided approach flow is the new part).
+6. **Proportional truth at close zoom (Blake, same day).** Litter renders at its
+   REAL size and position: a lone chip bag = a tiny-but-noticeable colored spec
+   (visibility floor by zoom so small-real litter never vanishes; color carries
+   noticeability, size carries truth); a trash bag reads larger; lot-scale
+   dumping renders at lot-scale footprint. One system spans all of it.
+7. **Observation lifecycle: OBSERVED → DIAGNOSED → resolved/superseded.**
+   Identify-from-afar without close capture persists: the distant still frame
+   (detection photo) + position/type at OBSERVED completeness; close 360°/weight/
+   materials capture upgrades to DIAGNOSED. Map renders the states distinctly
+   (hollow/outlined = observed-only, solid = diagnosed) on app + web.
+8. **Completion flows.** Incomplete (OBSERVED-only) items become guidance/priority
+   targets so other users can finish the diagnosis ("still there? get up on it") —
+   wired into the rescan-priority lens (Pillar 5) and in-scan phase-2 steering; a
+   completing scan either upgrades the observation or supersedes it (gone/cleaned).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).
