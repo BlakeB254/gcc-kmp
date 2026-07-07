@@ -65,8 +65,8 @@ export function HeroSection() {
 
       <div className="section-container relative z-10 h-full flex items-center py-[clamp(1rem,3vh,2rem)]">
         <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-[clamp(1rem,3vh,2.5rem)] lg:gap-8 items-center max-w-6xl mx-auto w-full">
-          {/* Left column: copy */}
-          <div className="text-center lg:text-left bg-black/40 backdrop-blur-[2px] rounded-3xl p-5 sm:p-6 lg:p-7">
+          {/* Left column: copy — glass card with a real border + blur so it reads as a surface, not a gray slab */}
+          <div className="text-center lg:text-left bg-black/45 backdrop-blur-md rounded-3xl p-5 sm:p-6 lg:p-8 border border-white/10 shadow-2xl shadow-black/40">
             {/* Full brand name for recognition */}
             <p
               className={`text-xs sm:text-sm font-semibold text-brand-green-300 uppercase tracking-[0.2em] mb-[clamp(0.5rem,1.5vh,1rem)] transition-all duration-700 ${
@@ -87,7 +87,7 @@ export function HeroSection() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
               </span>
               <span className="text-xs sm:text-sm font-medium text-white tracking-wide">
-                🔥 Launching in Chicago • Expanding Worldwide
+                Now live in Chicago &middot; Expanding worldwide
               </span>
             </div>
 
@@ -97,7 +97,10 @@ export function HeroSection() {
                 isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
               }`}
             >
-              Clean Streets. <span className="text-brand-green-400 animate-glow">Real Money.</span>{' '}
+              Clean Streets.{' '}
+              <span className="bg-gradient-to-r from-brand-green-300 via-emerald-300 to-brand-sky-300 bg-clip-text text-transparent">
+                Real Money.
+              </span>{' '}
               Your Neighborhood.
             </h1>
 
@@ -123,10 +126,10 @@ export function HeroSection() {
               <div className="flex justify-center lg:justify-start w-full">
                 <Link
                   href="/worker/signup"
-                  className="group btn-primary w-full sm:w-auto text-base sm:text-lg py-3 sm:py-4 px-8 sm:px-10 animate-breathe hover:animate-none relative overflow-hidden"
+                  className="group btn-primary w-full sm:w-auto text-base sm:text-lg py-3 sm:py-4 px-8 sm:px-10 relative overflow-hidden"
                 >
                   <span className="relative z-10 flex items-center justify-center gap-2">
-                    🧹 Start Earning — Sign Up
+                    Start Earning — Sign Up
                     <svg
                       className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1"
                       fill="none"
@@ -148,7 +151,7 @@ export function HeroSection() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
-                  Or sponsor a block ($100 → worker)
+                  Or sponsor a block — $100 goes straight to a worker
                 </span>
               </Link>
             </div>
@@ -162,7 +165,7 @@ export function HeroSection() {
               <div className="grid grid-cols-3 gap-4 sm:gap-6">
                 {/* Earnings */}
                 <div className="text-center group hover-scale cursor-default">
-                  <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-brand-green-400 mb-1 transition-transform duration-300 group-hover:scale-110">
+                  <p className="font-display text-xl sm:text-2xl lg:text-3xl font-bold text-brand-green-400 mb-1 transition-transform duration-300 group-hover:scale-110">
                     $100
                   </p>
                   <p className="text-xs sm:text-sm text-neutral-300 font-medium">Minimum</p>
@@ -171,7 +174,7 @@ export function HeroSection() {
 
                 {/* Time */}
                 <div className="text-center border-x border-white/10 px-2 group hover-scale cursor-default">
-                  <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-brand-green-400 mb-1 transition-transform duration-300 group-hover:scale-110">
+                  <p className="font-display text-xl sm:text-2xl lg:text-3xl font-bold text-brand-green-400 mb-1 transition-transform duration-300 group-hover:scale-110">
                     2-3h
                   </p>
                   <p className="text-xs sm:text-sm text-neutral-300 font-medium">Typical</p>
@@ -180,7 +183,7 @@ export function HeroSection() {
 
                 {/* Payout */}
                 <div className="text-center group hover-scale cursor-default">
-                  <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-brand-blue-400 mb-1 transition-transform duration-300 group-hover:scale-110">
+                  <p className="font-display text-xl sm:text-2xl lg:text-3xl font-bold text-brand-sky-300 mb-1 transition-transform duration-300 group-hover:scale-110">
                     15-30m
                   </p>
                   <p className="text-xs sm:text-sm text-neutral-300 font-medium">Payout</p>

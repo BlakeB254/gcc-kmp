@@ -30,6 +30,8 @@ export function FooterSection() {
 
   return (
     <footer className="bg-neutral-900 text-white">
+      {/* Brand accent line */}
+      <div className="h-1 bg-gradient-to-r from-brand-green-500 via-brand-blue-500 to-brand-sky-500" />
       <div className="section-container py-16">
         <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-12 lg:gap-8">
           {/* Brand Section */}

@@ -81,11 +81,19 @@
 
 @layer base {
   * {
-    @apply border-neutral-200;
+    @apply border-border;
   }
 
   body {
-    @apply bg-white text-neutral-900;
+    @apply bg-background text-foreground;
+  }
+
+  /* Display type for headings — Plus Jakarta Sans via --font-display */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
   }
 
   /* Auto-rotate images from EXIF orientation (landscape phone photos) */
@@ -102,12 +110,25 @@
 @layer components {
   /* Primary button */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-brand-green-500 px-6 py-3 text-base font-semibold text-white shadow-sm transition-all hover:bg-brand-green-600 focus:outline-none focus:ring-2 focus:ring-brand-green-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-full bg-brand-green-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-brand-green-600/25 transition-all hover:bg-brand-green-600 hover:shadow-xl hover:shadow-brand-green-600/30 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-green-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
   }
 
   /* Secondary button */
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg border-2 border-brand-blue-600 bg-transparent px-6 py-3 text-base font-semibold text-brand-blue-600 transition-all hover:bg-brand-blue-50 focus:outline-none focus:ring-2 focus:ring-brand-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-full border-2 border-brand-blue-600 bg-transparent px-6 py-3 text-base font-semibold text-brand-blue-600 transition-all hover:bg-brand-blue-50 hover:-translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-brand-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
+  }
+
+  /* Section header primitives — one visual rhythm for every landing section */
+  .section-eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs sm:text-sm font-semibold uppercase tracking-[0.14em];
+  }
+
+  .section-title {
+    @apply text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight leading-[1.1];
+  }
+
+  .section-lede {
+    @apply text-lg leading-relaxed;
   }
 
   /* Secondary button for dark backgrounds */
@@ -831,13 +852,4 @@
 
 .group:hover .icon-bounce {
   animation: iconBounce 0.4s ease-out;
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
 }

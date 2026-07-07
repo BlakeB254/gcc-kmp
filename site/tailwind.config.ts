@@ -96,7 +96,8 @@ const config: Config = {
   				'sans-serif'
   			],
   			display: [
-  				'var(--font-cal-sans)',
+  				'var(--font-display)',
+  				'var(--font-inter)',
   				'system-ui',
   				'sans-serif'
   			]

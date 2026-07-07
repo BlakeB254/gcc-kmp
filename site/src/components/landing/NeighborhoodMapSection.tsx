@@ -9,6 +9,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLE_URL, BLOCK_STATUS_COLORS, ROUTE_COLORS as DESIGN_ROUTE_COLORS, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, BOUNTY_COLORS, SPOT_COLORS, SPOT_STATUS_COLORS, SPOT_ZOOM, SPOT_SCRIM_PAINT, SPOT_HEATMAP_PAINT, getSpotHeatWeight } from '@/lib/design-tokens'
 import { NORTH_LAWNDALE_BLOCKS, MAP_BOUNDS, type BlockDefinition } from '@/data/blocks'
 import type { FallbackGeoJSONLayer } from '@/components/map/BaseMap'
+import { SectionHeading } from './SectionHeading'
 
 const LeafletFallback = dynamic(() => import('@/components/map/LeafletFallback'), { ssr: false })
 
@@ -42,10 +43,10 @@ const STATUS_COLORS = {
 
 // Simplified legend for the map key - colors from design tokens
 const LEGEND_STATUSES = {
-  unfunded: { label: 'Needs Sponsor', icon: '💰', color: BLOCK_STATUS_COLORS.unfunded.fill },
-  available: { label: 'Available Now', icon: '✅', color: BLOCK_STATUS_COLORS.available.fill },
-  not_available: { label: 'Not Available', icon: '🚫', color: BLOCK_STATUS_COLORS.claimed.fill },
-  completed: { label: 'Completed', icon: '🏆', color: BLOCK_STATUS_COLORS.completed.fill },
+  unfunded: { label: 'Needs Sponsor', color: BLOCK_STATUS_COLORS.unfunded.fill },
+  available: { label: 'Available Now', color: BLOCK_STATUS_COLORS.available.fill },
+  not_available: { label: 'Not Available', color: BLOCK_STATUS_COLORS.claimed.fill },
+  completed: { label: 'Completed', color: BLOCK_STATUS_COLORS.completed.fill },
 } as const
 
 // Full label map for popups and detail views
@@ -57,16 +58,6 @@ const STATUS_LABELS = {
   in_progress: 'Not Available',
   pending_review: 'Under Review',
   completed: 'Completed',
-} as const
-
-const STATUS_ICONS = {
-  unfunded: '💰',
-  available: '✅',
-  funded: '✅',
-  claimed: '🚫',
-  in_progress: '🧹',
-  pending_review: '⏳',
-  completed: '🏆',
 } as const
 
 /**
@@ -529,11 +520,12 @@ export function NeighborhoodMapSection() {
     return (
       <section className="py-24 bg-neutral-50">
         <div className="section-container">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-4">
-              Our Launch Area: Roosevelt Road
-            </h2>
-            <p className="text-lg text-neutral-600">Loading blocks...</p>
+          <div className="mb-12">
+            <SectionHeading
+              eyebrow="Pilot neighborhood"
+              title="Our Launch Area: Roosevelt Road"
+              description="Loading blocks..."
+            />
           </div>
           <div className="h-[500px] bg-neutral-200 rounded-2xl animate-pulse" />
         </div>
@@ -545,22 +537,25 @@ export function NeighborhoodMapSection() {
     <section className="py-24 bg-neutral-50">
       <div className="section-container">
         {/* Section header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-4">
-            Our Launch Area: Roosevelt Road
-          </h2>
-          <p className="text-lg text-neutral-600 max-w-2xl mx-auto">
-            10 blocks along Roosevelt Road from Kedzie Ave to Lawndale Ave.
-            <span className="block mt-2 font-medium text-brand-green-600">
-              Click any block to see details or take action.
-            </span>
-          </p>
+        <div className="mb-12">
+          <SectionHeading
+            eyebrow="Pilot neighborhood"
+            title="Our Launch Area: Roosevelt Road"
+            description={
+              <>
+                10 blocks along Roosevelt Road from Kedzie Ave to Lawndale Ave.
+                <span className="block mt-2 font-medium text-brand-green-600">
+                  Click any block to see details or take action.
+                </span>
+              </>
+            }
+          />
         </div>
 
         {/* Legend — Blocks */}
         <div className="flex flex-wrap justify-center gap-3 mb-4">
           <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider self-center mr-1">Blocks:</span>
-          {Object.entries(LEGEND_STATUSES).map(([status, { label, icon, color }]) => (
+          {Object.entries(LEGEND_STATUSES).map(([status, { label, color }]) => (
             <div
               key={status}
               className={`
@@ -569,7 +564,6 @@ export function NeighborhoodMapSection() {
                 shadow-sm
               `}
             >
-              <span>{icon}</span>
               <span
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: color }}
@@ -584,13 +578,12 @@ export function NeighborhoodMapSection() {
         <div className="flex flex-wrap justify-center gap-3 mb-8">
           <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider self-center mr-1">Spots:</span>
           {[
-            { color: '#F59E0B', label: 'Pending', icon: '⏳' },
-            { color: '#EF4444', label: 'Confirmed Dirty', icon: '🔴' },
-            { color: '#3B82F6', label: 'Being Cleaned', icon: '🧹' },
-            { color: '#22C55E', label: 'Resolved', icon: '✅' },
-          ].map(({ color, label, icon }) => (
+            { color: '#F59E0B', label: 'Pending' },
+            { color: '#EF4444', label: 'Confirmed Dirty' },
+            { color: '#3B82F6', label: 'Being Cleaned' },
+            { color: '#22C55E', label: 'Resolved' },
+          ].map(({ color, label }) => (
             <div key={label} className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white shadow-sm">
-              <span>{icon}</span>
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-neutral-600">{label}</span>
             </div>
@@ -914,7 +907,7 @@ export function NeighborhoodMapSection() {
                     </h3>
                     {selectedBlock.streetName && (
                       <p className="text-xs text-neutral-500 mt-0.5">
-                        📍 {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North' : 'South'} side
+                        {formatStreetName(selectedBlock.streetName)} • {selectedBlock.side === 'north' ? 'North' : 'South'} side
                       </p>
                     )}
                   </div>
@@ -923,7 +916,7 @@ export function NeighborhoodMapSection() {
                       className="text-xs px-2.5 py-1 rounded-full text-white font-semibold flex items-center gap-1"
                       style={{ backgroundColor: STATUS_COLORS[selectedBlock.status] }}
                     >
-                      {STATUS_ICONS[selectedBlock.status]} {STATUS_LABELS[selectedBlock.status]}
+                      {STATUS_LABELS[selectedBlock.status]}
                     </span>
                     <button
                       onClick={() => { setSelectedBlock(null); resetMapView() }}
@@ -939,22 +932,22 @@ export function NeighborhoodMapSection() {
 
                 {selectedBlock.status === 'available' && (
                   <Link href="/worker/signup" className="btn-primary w-full text-sm py-2 text-center block font-semibold mt-2">
-                    🧹 Claim This Block — Earn $100
+                    Claim This Block — Earn $100
                   </Link>
                 )}
                 {selectedBlock.status === 'unfunded' && (
                   <Link href={`/sponsor?block=${selectedBlock.id}`} className="btn-secondary w-full text-sm py-2 text-center block font-semibold mt-2">
-                    💰 Fund This Block — $100
+                    Fund This Block — $100
                   </Link>
                 )}
                 {selectedBlock.status === 'completed' && (
                   <p className="text-sm text-blue-700 font-medium bg-blue-50 rounded-lg px-3 py-1.5 mt-2 text-center">
-                    🏆 Recently cleaned!
+                    Recently cleaned
                   </p>
                 )}
                 {(selectedBlock.status === 'claimed' || selectedBlock.status === 'in_progress' || selectedBlock.status === 'pending_review') && (
                   <p className="text-sm text-red-700 font-medium bg-red-50 rounded-lg px-3 py-1.5 mt-2 text-center">
-                    🚫 Currently being handled
+                    Currently being handled
                   </p>
                 )}
                 </div>{/* end p-4 */}
@@ -1112,13 +1105,13 @@ export function NeighborhoodMapSection() {
               href="/worker/signup"
               className="btn-primary px-8 py-3 text-lg font-semibold"
             >
-              🧹 Become a Worker
+              Become a Worker
             </Link>
             <Link
               href="/sponsor"
               className="btn-secondary px-8 py-3 text-lg font-semibold"
             >
-              💰 Sponsor a Block
+              Sponsor a Block
             </Link>
           </div>
         </div>

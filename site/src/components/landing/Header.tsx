@@ -18,7 +18,10 @@ export function Header() {
   const [session, setSession] = useState<SessionState>({ loaded: false, authenticated: false })
   const pathname = usePathname()
 
-  // Don't render header on authenticated pages or special themed pages
+  // Don't render header on authenticated pages or special themed pages.
+  // Evaluated here but applied after the hooks below — returning early
+  // before useEffect would change the hook count between renders when the
+  // pathname changes client-side, which violates the Rules of Hooks.
   const isAuthenticatedPage =
     pathname.includes('/dashboard') ||
     pathname.includes('/pending') ||
@@ -30,10 +33,6 @@ export function Header() {
     pathname === '/support' ||
     pathname.startsWith('/support/') ||
     pathname.startsWith('/community')
-
-  if (isAuthenticatedPage) {
-    return null
-  }
 
   // Track scroll position for header styling
   useEffect(() => {
@@ -70,6 +69,10 @@ export function Header() {
     }
   }, [])
 
+  if (isAuthenticatedPage) {
+    return null
+  }
+
   const navLinks = [
     { label: 'How It Works', href: '/how-it-works' },
     { label: 'Bounties', href: '/bounties' },
@@ -88,7 +91,7 @@ export function Header() {
         }
       `}
     >
-      <nav className="section-container flex h-24 items-center justify-between">
+      <nav className="section-container flex h-20 items-center justify-between">
         {/* Logo */}
         <div className="hover-scale">
           <Logo size="md" variant="full" />
@@ -134,14 +137,14 @@ export function Header() {
           )}
           <Link
             href="/donate"
-            className="text-sm font-semibold py-2 px-5 rounded-lg bg-brand-green-600 text-white hover:bg-brand-green-700 transition-colors flex items-center gap-1.5"
+            className="text-sm font-semibold py-2 px-5 rounded-full bg-brand-green-600 text-white hover:bg-brand-green-700 shadow-sm shadow-brand-green-600/25 transition-all hover:shadow-md flex items-center gap-1.5"
           >
             <Heart className="w-4 h-4" />
             Donate
           </Link>
           <Link
             href="/worker/signup"
-            className="text-sm font-medium py-2 px-4 rounded-lg border-2 border-brand-green-500 text-brand-green-700 hover:bg-brand-green-50 transition-colors"
+            className="text-sm font-semibold py-2 px-4 rounded-full border-2 border-brand-green-500 text-brand-green-700 hover:bg-brand-green-50 transition-colors"
           >
             Start Earning
           </Link>
