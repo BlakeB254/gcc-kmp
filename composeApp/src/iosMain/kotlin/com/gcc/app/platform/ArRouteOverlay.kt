@@ -170,8 +170,26 @@ actual class ArRouteOverlay actual constructor() {
         coverageFanJob?.cancel()
         coverageFanJob = null
         frameFeedback.stop()
-        nativeSurface?.pause()
+        // Full teardown (not just pause): cancels the native surface's
+        // per-frame scene subscription and releases every created entity —
+        // pause() alone left every entity anchored in the scene holding GPU
+        // resources (the Complete Scan crash-on-tap root cause).
+        nativeSurface?.teardown()
+        nativeSurface = null
         sceneView?.session?.pause()
+        // SceneKit fallback: release every node this overlay created.
+        for ((_, node) in fogNodes) node.removeFromParentNode()
+        fogNodes.clear()
+        for ((_, node) in vectorNodes) node.removeFromParentNode()
+        vectorNodes.clear()
+        for (node in boundaryWallNodes) node.removeFromParentNode()
+        boundaryWallNodes.clear()
+        boundaryVeil?.removeFromParentNode()
+        boundaryVeil = null
+        arrowNode?.removeFromParentNode()
+        arrowNode = null
+        frontierTarget?.removeFromParentNode()
+        frontierTarget = null
     }
 
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {

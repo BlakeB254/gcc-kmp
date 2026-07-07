@@ -261,8 +261,25 @@ actual class ArEnvScanOverlay actual constructor() {
             CameraManager.externalFrameSource = null
         }
         frameSourceClosure = null
-        nativeSurface?.pause()
+        // Full teardown (not just pause): cancels the native surface's
+        // per-frame scene subscription and releases every created entity —
+        // pause() alone left 750+ potential entities anchored in the scene
+        // holding GPU resources, the Complete Scan crash-on-tap root cause.
+        nativeSurface?.teardown()
+        nativeSurface = null
         sceneView?.session?.pause()
+        // SceneKit fallback: release every node this overlay created — same
+        // "don't just pause, tear down" principle as the native surface.
+        for ((_, node) in planeNodes) node.removeFromParentNode()
+        planeNodes.clear()
+        for ((_, node) in vectorNodes) node.removeFromParentNode()
+        vectorNodes.clear()
+        for ((_, node) in fogNodes) node.removeFromParentNode()
+        fogNodes.clear()
+        arrowNode?.removeFromParentNode()
+        arrowNode = null
+        frontierTarget?.removeFromParentNode()
+        frontierTarget = null
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
         }
@@ -663,6 +680,9 @@ actual class ArEnvScanOverlay actual constructor() {
         val widthMeters = physicalWidthMeters(bboxWidthFrac, distance.toDouble())
         val itemType = TrashItemCatalog.canonicalType(rawIdentifier)
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
+        // Bad AR math (degenerate geo-ref pairing, etc.) must never reach a
+        // candidate/report with a non-finite coordinate downstream.
+        if (!lat.isFinite() || !lng.isFinite()) return
         candidateCounter += 1
         pendingWorld = Triple(world[0], world[1], world[2])
         _trashCandidate.value = TrashCandidate(
@@ -730,6 +750,7 @@ actual class ArEnvScanOverlay actual constructor() {
         registeredElements.add(Triple(element.itemType, world[0], world[2]))
 
         val (lat, lng) = localToLatLng(world[0], world[2], refLat, refLng, refX, refZ, lngScale)
+        if (!lat.isFinite() || !lng.isFinite()) return
         DiagnosticsLog.info(
             "env-ar",
             "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m",

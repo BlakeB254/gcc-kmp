@@ -224,14 +224,22 @@ class SpotViewModel(
         // accepted trade-off as route markers.
         if (stamped.domain == null || stamped.domain == "litter") {
             scope.launch {
-                arMarkerQueue.enqueue(
-                    ArDetectedMarkerRequest(
-                        lat = stamped.lat,
-                        lng = stamped.lng,
-                        label = TrashItemCatalog.canonicalType(stamped.itemType),
-                        capturedAt = Clock.System.now(),
-                    ),
-                )
+                try {
+                    arMarkerQueue.enqueue(
+                        ArDetectedMarkerRequest(
+                            lat = stamped.lat,
+                            lng = stamped.lng,
+                            label = TrashItemCatalog.canonicalType(stamped.itemType),
+                            capturedAt = Clock.System.now(),
+                        ),
+                    )
+                } catch (e: Exception) {
+                    // Unguarded launch precedent (r2a): a SerializationException
+                    // or similar failure here must not kill the process — this
+                    // marker enqueue is best-effort, not required for the scan
+                    // to complete.
+                    DiagnosticsLog.error("env-scan", "arMarkerQueue.enqueue failed", e)
+                }
             }
         }
     }
@@ -326,6 +334,22 @@ class SpotViewModel(
      * when the model upload fails or R2 is unprovisioned).
      */
     fun attachObjectCapture(outcome: ObjectCaptureOutcome) {
+        // ObjectCaptureResult's dims are non-nullable @Serializable Doubles —
+        // a NaN/infinite measurement (degenerate photogrammetry bounds) would
+        // throw on JSON encode at submit time (kotlinx.serialization rejects
+        // special floating-point values by default) rather than failing here
+        // where it's recoverable. Treat non-finite dims as "no measurement":
+        // skip attaching them (and the USDZ upload below) entirely.
+        if (!outcome.widthMeters.isFinite() || !outcome.heightMeters.isFinite() ||
+            !outcome.depthMeters.isFinite() || !outcome.volumeLiters.isFinite()
+        ) {
+            DiagnosticsLog.error(
+                "object-capture",
+                "non-finite capture dims (w=${outcome.widthMeters} h=${outcome.heightMeters} " +
+                    "d=${outcome.depthMeters} vol=${outcome.volumeLiters}) — skipping dimension attach",
+            )
+            return
+        }
         val result = ObjectCaptureResult(
             r2Key = null,
             widthMeters = outcome.widthMeters,
