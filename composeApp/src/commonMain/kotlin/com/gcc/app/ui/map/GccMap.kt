@@ -119,6 +119,11 @@ expect fun GccMap(
      *  into true-scale oriented footprint polygons at close zoom (>=17),
      *  rendered under the pin/glyph layers. Empty → no footprint layer. */
     observationFootprints: List<com.gcc.shared.model.WorldObservation> = emptyList(),
+    /** Explorer "Needs scanning" lens (P5): renders [coverageCells] whose
+     *  `priority` > 0 as one amber→red choropleth FillLayer atop the
+     *  standard coverage tint, instead of it (spec Pillar 5). False by
+     *  default — an opt-in toggle in Explorer mode, not automatic. */
+    showNeedsScanningLens: Boolean = false,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

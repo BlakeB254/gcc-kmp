@@ -72,3 +72,84 @@ object ScanQualityScorer {
         else -> null
     }
 }
+
+/** A–F grade + one advice line for a *completed* scan session. */
+data class ScanScoreResult(
+    val grade: Char,
+    val headline: String,
+    val advice: String?,
+)
+
+/**
+ * The end-of-session sibling of [ScanQualityScorer]: same file, same
+ * philosophy (weighted-sum composite → banded verdict → single
+ * lowest-component advice line, mirroring [ScanQualityScorer.limitingFactor]),
+ * deliberately kept as ONE scoring system rather than a second, parallel
+ * implementation of scan quality.
+ *
+ * The two differ in what they fuse and when: [ScanQualityScorer] fuses
+ * instantaneous per-tick signals (tracking state, GPS accuracy, detection
+ * confidence) into a live in-scan badge. [ScanScore] fuses session-aggregate
+ * outcomes — [CoverageTracker]'s final `coveragePercent`/`closePercent`, and
+ * `steadinessFraction` (the fraction of the session's tracking ticks that
+ * were [TrackingState.NORMAL], i.e. the session-long counterpart of the same
+ * trackingState signal [ScanQualityScorer] weights highest per-tick) — into
+ * the one-time completion grade. A session with a mostly-POOR live badge
+ * (frequent LIMITED/NOT_AVAILABLE ticks) necessarily posts a low
+ * steadinessFraction here too, so the live badge and the completion grade
+ * agree in spirit even though neither literally calls the other.
+ */
+object ScanScore {
+
+    private const val COVERAGE_WEIGHT = 0.45
+    private const val CLOSE_WEIGHT = 0.35
+    private const val STEADINESS_WEIGHT = 0.20
+
+    /**
+     * @param coveragePercent [CoverageTracker.coveragePercent], 0..100.
+     * @param closePercent [CoverageTracker.closePercent], 0..100.
+     * @param steadinessFraction fraction (0..1) of session tracking ticks
+     *   that were [TrackingState.NORMAL]. Sessions with no AR tracking
+     *   history (desktop/Android, or an AR-less session) should pass 1.0 —
+     *   absence isn't a steadiness failure.
+     */
+    fun compute(coveragePercent: Double, closePercent: Double, steadinessFraction: Double): ScanScoreResult {
+        val coverageNorm = (coveragePercent / 100.0).coerceIn(0.0, 1.0)
+        val closeNorm = (closePercent / 100.0).coerceIn(0.0, 1.0)
+        val steadinessNorm = steadinessFraction.coerceIn(0.0, 1.0)
+
+        val composite = coverageNorm * COVERAGE_WEIGHT +
+            closeNorm * CLOSE_WEIGHT +
+            steadinessNorm * STEADINESS_WEIGHT
+        val compositePercent = composite * 100.0
+
+        val grade = when {
+            compositePercent >= 90.0 -> 'A'
+            compositePercent >= 80.0 -> 'B'
+            compositePercent >= 65.0 -> 'C'
+            compositePercent >= 50.0 -> 'D'
+            else -> 'F'
+        }
+        val headline = when (grade) {
+            'A' -> "Excellent scan"
+            'B' -> "Good scan"
+            'C' -> "Decent scan"
+            'D' -> "Rough scan"
+            else -> "Incomplete scan"
+        }
+        // Lowest-scoring component drives the advice, same shape as
+        // ScanQualityScorer.limitingFactor — one reason, not a checklist.
+        // Order (close, coverage, steadiness) breaks ties deterministically.
+        val advice = if (grade == 'A') {
+            null
+        } else {
+            listOf(
+                closeNorm to "Walk closer — most of your area was sweep-only",
+                coverageNorm to "Cover more of the area next time",
+                steadinessNorm to "Hold the phone steadier while scanning",
+            ).minByOrNull { it.first }?.second
+        }
+
+        return ScanScoreResult(grade = grade, headline = headline, advice = advice)
+    }
+}

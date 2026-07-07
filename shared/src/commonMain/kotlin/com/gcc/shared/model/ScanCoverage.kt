@@ -52,6 +52,10 @@ data class MapCoverageCell(
     val lastScannedAt: String,
     val totalDistanceMeters: Double,
     val quality: String = "grazed", // best tier on record
+    // Rescan priority, 0..1 — ageFactor x qualityBoost, computed server-side
+    // at read time (no schema migration). Defaulted so legacy/cached
+    // responses without it still decode; 0.0 renders as "no urgency".
+    val priority: Double = 0.0,
 )
 
 @Serializable

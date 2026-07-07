@@ -33,6 +33,16 @@ class CoverageWireCompatTest {
     }
 
     @Test
+    fun legacyMapCellJsonDefaultsPriorityToZero() {
+        // Deployed builds/cached responses predate the P5 rescan-priority
+        // field entirely — no `priority` key on the wire at all.
+        val json = """{"locationCellId":"c","lat":41.0,"lng":-87.0,"state":"fresh",
+            "lastScannedAt":"2026-07-06T15:00:00Z","totalDistanceMeters":5.0,"quality":"close"}"""
+        val cell = GccJson.decodeFromString<MapCoverageCell>(json)
+        assertEquals(0.0, cell.priority)
+    }
+
+    @Test
     fun retractRequestRoundTrips() {
         val request = RetractCoverageRequest("d", "2026-07-06T15:00:00Z", "2026-07-06T15:00:10Z")
         val json = GccJson.encodeToString<RetractCoverageRequest>(request)

@@ -35,6 +35,8 @@ import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.dsl.interpolate
+import org.maplibre.compose.expressions.dsl.interpolateHcl
+import org.maplibre.compose.expressions.dsl.linear
 import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.switch
@@ -107,6 +109,7 @@ actual fun GccMap(
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
+    showNeedsScanningLens: Boolean,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -895,6 +898,36 @@ actual fun GccMap(
                     opacity = const(0.24f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
+
+                // P5 "Needs scanning" lens: an opt-in single FillLayer atop the
+                // tint above, data-driven off each feature's "priority"
+                // property (0..1) rather than a bucketed set like the tiles
+                // above it — amber (low urgency) to red (high urgency).
+                // Toggle-gated AND non-empty-gated (Global Constraints: no
+                // source/layer allocation when there's nothing to show).
+                if (showNeedsScanningLens && coverageStateJsons.priority != EMPTY_GEOJSON_FEATURE_COLLECTION) {
+                    val prioritySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.priority))
+                    @Suppress("UNCHECKED_CAST")
+                    val priorityExpr = feature["priority"] as org.maplibre.compose.expressions.ast.Expression<
+                        org.maplibre.compose.expressions.value.NumberValue<Number>>
+                    FillLayer(
+                        id = "coverage-needs-scanning",
+                        source = prioritySrc,
+                        color = interpolateHcl(
+                            type = linear(),
+                            input = priorityExpr,
+                            0f to const(Color(0xFFF59E0B)), // amber — just crossed the age threshold
+                            1f to const(Color(0xFFDC2626)), // red — long overdue / grazed-only
+                        ),
+                        opacity = interpolate(
+                            type = linear(),
+                            input = priorityExpr,
+                            0f to const(0.20f),
+                            1f to const(0.50f),
+                        ),
+                        onClick = cellIdClickHandler(onCoverageCellTap),
+                    )
+                }
             }
 
             // ── Scan corridor + inner boundary (double-lined routes) + checkpoints ──
