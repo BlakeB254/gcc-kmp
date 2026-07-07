@@ -17,13 +17,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
-import com.gcc.app.ui.map.traceCoverageOutlines
+import com.gcc.app.ui.map.quantizeAndTraceOutlines
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 
 private val StaleAmber = Color(0xFFF59E0B)
 private val TrashOrange = Color(0xFFF97316)
@@ -96,13 +95,13 @@ fun ScanMinimapOverlay(
     // centerLat/Lng feed toOffset below) and memoized on the actual
     // credited-cell sets, so it only reruns when scan state changes.
     val scanRings = remember(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        tracedRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+        quantizeAndTraceOutlines(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     }
     val closeRings = remember(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        tracedRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+        quantizeAndTraceOutlines(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     }
     val seenRings = remember(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        tracedRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+        quantizeAndTraceOutlines(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -356,33 +355,4 @@ private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
             drawCircle(color = outline, radius = u * 1.15f, center = c, style = stroke)
         }
     }
-}
-
-/**
- * Re-quantizes lat/lng cell centers into integer (row, col) keys around a
- * STABLE [anchorLat]/[anchorLng] and traces them into smoothed outline rings
- * (still in lat/lng space — projection to screen space happens separately,
- * per-frame, in the Canvas draw scope). The anchor MUST be stable across
- * calls for a given cell set — passing a continuously-moving reference (like
- * a live GPS fix) would shift every cell's rounded bucket in lockstep every
- * frame, snapping the whole traced shape relative to anything drawn from
- * raw, non-quantized lat/lng.
- */
-private fun tracedRings(
-    cellCenters: List<Pair<Double, Double>>,
-    cellSizeMeters: Double,
-    anchorLat: Double,
-    anchorLng: Double,
-): List<List<Pair<Double, Double>>> {
-    if (cellCenters.isEmpty()) return emptyList()
-    val lngScale = cos(anchorLat * PI / 180.0)
-    val latPerMeter = 1.0 / 111_320.0
-    val lngPerMeter = 1.0 / (111_320.0 * lngScale)
-    fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
-        ((lat - anchorLat) / (cellSizeMeters * latPerMeter)).roundToInt() to
-            ((lng - anchorLng) / (cellSizeMeters * lngPerMeter)).roundToInt()
-    fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
-        (anchorLat + row * cellSizeMeters * latPerMeter) to (anchorLng + col * cellSizeMeters * lngPerMeter)
-    val cells = cellCenters.map { (lat, lng) -> toRowCol(lat, lng) }.toSet()
-    return traceCoverageOutlines(cells, ::rowColCenter, cellSizeMeters)
 }

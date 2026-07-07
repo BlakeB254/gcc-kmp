@@ -33,7 +33,7 @@ import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionJournalPath
-import com.gcc.app.platform.wireQualityString
+import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.CheckpointGenerator
@@ -1219,15 +1219,7 @@ class RouteScanViewModel(
                                     scanMode = "route",
                                     deviceTier = coverageDeviceTier,
                                     capturedAt = Clock.System.now().toString(),
-                                    // Walking the segment is at minimum GRAZED
-                                    // (you were standing there) — the fan can
-                                    // only ever upgrade this to CLOSE. SEEN
-                                    // fan hits land on OTHER (distant) cells,
-                                    // so they never surface here, but the
-                                    // ranking stays generic/best-of-three.
-                                    quality = wireQualityString(
-                                        bestOf(CoverageQuality.GRAZED, bestFanQualitySinceLastEvent),
-                                    ),
+                                    quality = wireQualityForSegment(bestFanQualitySinceLastEvent),
                                 )
                             )
                             bestFanQualitySinceLastEvent = null

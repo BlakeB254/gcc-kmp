@@ -1,7 +1,8 @@
 package com.gcc.app.ui.map
 
-import kotlin.math.PI
-import kotlin.math.cos
+import com.gcc.app.platform.METERS_PER_DEG_LAT
+import com.gcc.app.platform.lngScaleFor
+import kotlin.math.roundToInt
 
 /**
  * Traces the OUTLINE(S) of a set of coverage-grid cells as closed, smoothed
@@ -53,8 +54,8 @@ fun traceCoverageOutlines(
     // that cell is credited.
     fun vertexLatLng(vr: Int, vc: Int): Pair<Double, Double> {
         val (lat, lng) = cellCenter(vr, vc)
-        val latPerMeter = 1.0 / 111_320.0
-        val lngPerMeter = 1.0 / (111_320.0 * cos(lat * PI / 180.0))
+        val latPerMeter = 1.0 / METERS_PER_DEG_LAT
+        val lngPerMeter = 1.0 / (METERS_PER_DEG_LAT * lngScaleFor(lat))
         val halfLat = cellSizeMeters / 2.0 * latPerMeter
         val halfLng = cellSizeMeters / 2.0 * lngPerMeter
         return (lat - halfLat) to (lng - halfLng)
@@ -119,4 +120,50 @@ internal fun chaikinSmooth(ring: List<Pair<Double, Double>>): List<Pair<Double, 
     }
     smoothed.add(smoothed.first())
     return smoothed
+}
+
+/**
+ * A fixed quantization lattice anchored at ([anchorLat], [anchorLng]) with
+ * [cellSizeMeters] spacing — shared by every caller that re-quantizes lat/lng
+ * cell centers into integer (row, col) keys for [traceCoverageOutlines]
+ * (ScanMinimapOverlay's session-tier tracer, GeoJsonLayers' outline mode).
+ *
+ * The anchor MUST be stable across repeated calls for a given cell set: it
+ * does not have to be a real cell center or aligned to any particular grid,
+ * but if it moves between calls (e.g. a live GPS fix or a panning map camera
+ * center), every cell's rounded (row, col) bucket shifts in lockstep, which
+ * snaps the whole traced shape by up to a cell width relative to anything
+ * drawn from raw, non-quantized lat/lng. Callers own picking a stable anchor
+ * (e.g. the first credited cell, or a value locked at first composition).
+ */
+class CellLattice(private val anchorLat: Double, private val anchorLng: Double, private val cellSizeMeters: Double) {
+    private val latPerMeter = 1.0 / METERS_PER_DEG_LAT
+    private val lngPerMeter = 1.0 / (METERS_PER_DEG_LAT * lngScaleFor(anchorLat))
+
+    fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
+        ((lat - anchorLat) / (cellSizeMeters * latPerMeter)).roundToInt() to
+            ((lng - anchorLng) / (cellSizeMeters * lngPerMeter)).roundToInt()
+
+    fun cellCenter(row: Int, col: Int): Pair<Double, Double> =
+        (anchorLat + row * cellSizeMeters * latPerMeter) to (anchorLng + col * cellSizeMeters * lngPerMeter)
+}
+
+/**
+ * Convenience combining [CellLattice] quantization with [traceCoverageOutlines]:
+ * re-quantizes [cellCenters] into integer (row, col) keys around the given
+ * stable anchor and traces the union into smoothed rings. See [CellLattice]
+ * for the anchor-stability requirement — every caller of this function
+ * (ScanMinimapOverlay's session tiers, GeoJsonLayers' outline mode) shares
+ * this one quantize-then-trace path instead of reimplementing it.
+ */
+fun quantizeAndTraceOutlines(
+    cellCenters: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+    anchorLat: Double,
+    anchorLng: Double,
+): List<List<Pair<Double, Double>>> {
+    if (cellCenters.isEmpty()) return emptyList()
+    val lattice = CellLattice(anchorLat, anchorLng, cellSizeMeters)
+    val cells = cellCenters.map { (lat, lng) -> lattice.toRowCol(lat, lng) }.toSet()
+    return traceCoverageOutlines(cells, lattice::cellCenter, cellSizeMeters)
 }

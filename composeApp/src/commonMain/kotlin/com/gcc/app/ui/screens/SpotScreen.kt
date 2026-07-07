@@ -49,7 +49,7 @@ import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.fanHitQuality
-import com.gcc.app.platform.wireQualityString
+import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
@@ -729,13 +729,7 @@ private fun CameraPhase(
                         scanMode = "spot",
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),
-                        // Walking the segment is at minimum GRAZED — the fan
-                        // can only ever upgrade this to CLOSE (SEEN fan hits
-                        // land on other, distant cells, so they never
-                        // surface here — the ranking stays generic).
-                        quality = wireQualityString(
-                            bestOf(CoverageQuality.GRAZED, bestFanQualitySinceLastEvent.value),
-                        ),
+                        quality = wireQualityForSegment(bestFanQualitySinceLastEvent.value),
                     )
                 )
                 bestFanQualitySinceLastEvent.value = null

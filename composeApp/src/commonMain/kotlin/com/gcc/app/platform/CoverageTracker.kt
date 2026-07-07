@@ -56,12 +56,8 @@ fun fanHitQuality(hits: List<RaycastCoverageHit>): CoverageQuality? =
     hits.mapNotNull { coverageQualityForDistance(it.distanceMeters) }.maxOrNull()
 
 /** Higher-ranked (close > grazed > seen) of two possibly-null qualities — null is lowest. */
-fun bestOf(a: CoverageQuality?, b: CoverageQuality?): CoverageQuality? = when {
-    a == null -> b
-    b == null -> a
-    a >= b -> a
-    else -> b
-}
+fun bestOf(a: CoverageQuality?, b: CoverageQuality?): CoverageQuality? =
+    listOfNotNull(a, b).maxOrNull()
 
 /**
  * Wire-protocol string for a quality tier ("seen" | "grazed" | "close"),
@@ -73,6 +69,17 @@ fun wireQualityString(quality: CoverageQuality?): String = when (quality) {
     CoverageQuality.SEEN -> "seen"
     CoverageQuality.GRAZED, null -> "grazed"
 }
+
+/**
+ * Wire-protocol quality string for a walked route/spot segment: the walk
+ * itself is at minimum GRAZED (you were standing there), which the fan can
+ * only ever upgrade to CLOSE — [fanBestSinceLastEvent] never surfaces "seen"
+ * from this call (SEEN fan hits land on OTHER, distant cells), but the
+ * ranking stays generic via [bestOf] rather than a hand-rolled comparison.
+ * Shared by both the route and spot coverage-event stampers.
+ */
+fun wireQualityForSegment(fanBestSinceLastEvent: CoverageQuality?): String =
+    wireQualityString(bestOf(CoverageQuality.GRAZED, fanBestSinceLastEvent))
 
 /**
  * Grid-based coverage tracker for the Scout lap fog-of-war system.

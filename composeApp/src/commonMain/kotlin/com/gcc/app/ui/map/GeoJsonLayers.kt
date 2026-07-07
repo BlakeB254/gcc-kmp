@@ -1025,18 +1025,12 @@ fun buildCoverageStateGeoJsons(
     // reference would shift every cell's rounded (row, col) bucket in
     // lockstep as the camera moves, snapping the whole traced outline by a
     // cell width relative to the still-raw-coordinate dirty/stale tiles
-    // drawn alongside it (same bug class ScanMinimapOverlay's tracer had to
-    // avoid — see its tracedRings doc).
+    // drawn alongside it (same bug class quantizeAndTraceOutlines' own doc
+    // warns about).
     val anchorLat = coverageCells.firstOrNull()?.lat ?: centerLat
     val anchorLng = coverageCells.firstOrNull()?.lng ?: centerLng
-    fun toRowCol(lat: Double, lng: Double): Pair<Int, Int> =
-        kotlin.math.round((lat - anchorLat) / latStep).toInt() to
-            kotlin.math.round((lng - anchorLng) / lngStep).toInt()
-    fun rowColCenter(row: Int, col: Int): Pair<Double, Double> =
-        (anchorLat + row * latStep) to (anchorLng + col * lngStep)
     fun outlineFeatures(cells: List<com.gcc.shared.model.MapCoverageCell>): String {
-        val rowCols = cells.map { toRowCol(it.lat, it.lng) }.toSet()
-        val rings = traceCoverageOutlines(rowCols, ::rowColCenter, cellSizeMeters)
+        val rings = quantizeAndTraceOutlines(cells.map { it.lat to it.lng }, cellSizeMeters, anchorLat, anchorLng)
         return rings.filter { it.size >= 3 }.joinToString(",") { ring ->
             val coords = ring.joinToString(",") { (lat, lng) -> "[$lng,$lat]" }
             """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[$coords]]}}"""
