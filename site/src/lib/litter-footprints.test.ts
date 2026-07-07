@@ -174,6 +174,27 @@ test('buildFootprintFeature: feature properties carry id/itemType/domain/state f
   assert.equal(feature.properties.state, 'dirty')
 })
 
+// ── diagnosticStatus -> diagnosed property (Pillar 8 Task 4) ─────────────
+
+test('buildFootprintFeature: diagnosticStatus "observed" -> diagnosed false (hollow)', () => {
+  const obs = baseObservation({ diagnosticStatus: 'observed' })
+  const feature = buildFootprintFeature(obs, 0)
+  assert.equal(feature.properties.diagnosed, false)
+})
+
+test('buildFootprintFeature: diagnosticStatus "diagnosed" -> diagnosed true (solid)', () => {
+  const obs = baseObservation({ diagnosticStatus: 'diagnosed' })
+  const feature = buildFootprintFeature(obs, 0)
+  assert.equal(feature.properties.diagnosed, true)
+})
+
+test('buildFootprintFeature: null/undefined diagnosticStatus (legacy row/server) -> diagnosed true (solid), not observed', () => {
+  const nullObs = baseObservation({ diagnosticStatus: null })
+  assert.equal(buildFootprintFeature(nullObs, 0).properties.diagnosed, true)
+  const undefinedObs = baseObservation({})
+  assert.equal(buildFootprintFeature(undefinedObs, 0).properties.diagnosed, true)
+})
+
 // ── buildObservationFootprintsGeoJson: state handling (matches mobile) ───
 //
 // Mobile (GccMap.ios.kt / MapFullScreen.kt) renders every observation

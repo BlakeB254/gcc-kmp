@@ -1729,6 +1729,14 @@ export const worldObservations = pgTable('world_observations', {
   locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
   itemType: varchar('item_type', { length: 50 }), // null when state='clean' (nothing dirty found)
   state: varchar('state', { length: 10 }).notNull(), // 'dirty' | 'clean'
+  // Litter-truth lifecycle (Pillar 8 Task 4): 'observed' (identified from
+  // afar — distant detection photo + position/type, no close capture) or
+  // 'diagnosed' (a close-range capture — weight+width from a close confirm,
+  // or Object Capture — upgraded it). Computed in recordWorldObservation
+  // from the POST-MERGE attributes (see that function's comment for why),
+  // so a later close-confirm on the same cell+itemType upgrades the row.
+  // MERGE ACTION: migration 0029 adds this column — see that file's header.
+  diagnosticStatus: varchar('diagnostic_status', { length: 10 }).default('observed').notNull(),
   attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedVolumeLiters, estimatedWeightLbs}
   confidence: doublePrecision('confidence'),
   mediaUrl: varchar('media_url', { length: 500 }),

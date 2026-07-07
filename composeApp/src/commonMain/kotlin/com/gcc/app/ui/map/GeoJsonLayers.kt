@@ -840,11 +840,14 @@ private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_
  *     opacity (z15.5).
  *
  * Feature properties carry id (Part C — tap resolution back to a
- * [WorldObservation]), itemType, domain, and state so GccMap.ios can filter/
- * color per domain and the tap target can identify what was scanned. (Part
- * B.3's diagnostic-state styling stub lives entirely in GccMap.ios.kt's
- * layer styling, not here — see the `isDiagnosed` doc there — since there is
- * no per-observation data to key it on yet; it's a flat stub, not per-feature.)
+ * [WorldObservation]), itemType, domain, state, and (Pillar 8 Task 4)
+ * diagnosed so GccMap.ios can filter/color per domain, identify what was
+ * scanned, and render the observed/diagnosed litter-truth split (solid vs
+ * hollow/outlined) as a real per-feature `filter`, not the flat
+ * `isDiagnosed` stub Task 2 left in place. `diagnosed` = `obs.diagnosticStatus
+ * != "observed"` — true for both a real "diagnosed" value AND null (legacy
+ * rows predating this field render solid; see [WorldObservation.diagnosticStatus]'s
+ * KDoc for why).
  *
  * [centerLat] anchors the lng/lat meter-scale conversion for the oriented
  * rectangles (single lngScale for the whole collection, matching
@@ -888,9 +891,14 @@ fun buildObservationFootprintsGeoJson(
 
         val itemTypeProp = obs.itemType?.let { """"itemType":"$it",""" } ?: ""
         val domainProp = obs.domain?.let { """"domain":"$it",""" } ?: ""
+        // Pillar 8 Task 4: diagnosticStatus != "observed" -> diagnosed
+        // (true). Covers both the real "diagnosed" string AND null (legacy/
+        // pre-lifecycle rows) — see WorldObservation.diagnosticStatus's
+        // KDoc for why null renders solid, not hollow.
+        val diagnosed = obs.diagnosticStatus != "observed"
         // Part C: id rides along so GccMap.ios's onClick can resolve the
         // tapped feature back to a specific WorldObservation.
-        """{"type":"Feature","properties":{"id":${obs.id},$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+        """{"type":"Feature","properties":{"id":${obs.id},$itemTypeProp$domainProp"diagnosed":$diagnosed,"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
     }.joinToString(",")
 
     return """{"type":"FeatureCollection","features":[$features]}"""

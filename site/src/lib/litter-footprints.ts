@@ -172,11 +172,35 @@ export interface MapObservation {
   mediaUrl?: string | null
   estimatedWeightGrams?: number | null
   capturedAt?: string | null
+  /**
+   * Litter-truth lifecycle (Pillar 8 Task 4): 'observed' | 'diagnosed' | null.
+   * Null covers both a genuinely absent value and rows from a server that
+   * predates this field. See FootprintFeature.properties.diagnosed for the
+   * null-handling contract this module applies.
+   */
+  diagnosticStatus?: string | null
 }
 
 export interface FootprintFeature {
   type: 'Feature'
-  properties: { id: number; itemType: string | null; domain: string | null; state: string }
+  properties: {
+    id: number
+    itemType: string | null
+    domain: string | null
+    state: string
+    /**
+     * Pillar 8 Task 4: true unless diagnosticStatus === 'observed'. Null/
+     * legacy diagnosticStatus (predates this field) renders diagnosed
+     * (true/solid) — deliberately NOT the "unknown defaults to the lesser
+     * claim" symmetry: legacy data was never tagged observed-only, and
+     * observed-only is a "needs completion" priority signal (see
+     * GET /api/map/coverage's observedOnlyCells boost). Treating null as
+     * observed would falsely spam that signal on every pre-Task-4 row.
+     * Mirrors GeoJsonLayers.kt's buildObservationFootprintsGeoJson (mobile)
+     * exactly, so both platforms render the same rows the same way.
+     */
+    diagnosed: boolean
+  }
   geometry: { type: 'Polygon'; coordinates: LngLat[][] }
 }
 
@@ -234,6 +258,7 @@ export function buildFootprintFeature(obs: MapObservation, centerLat: number): F
       itemType: obs.itemType ?? null,
       domain: obs.domain ?? null,
       state: obs.state,
+      diagnosed: obs.diagnosticStatus !== 'observed',
     },
     geometry: { type: 'Polygon', coordinates: [ring] },
   }

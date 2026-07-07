@@ -780,9 +780,14 @@ export function CombinedMap({
                   'construction', LITTER_FOOTPRINT_COLORS.construction,
                   LITTER_FOOTPRINT_COLORS.other,
                 ],
-                // Zoom fade-in (0 -> full) times a per-domain full-opacity
-                // target — mirrors GccMap.ios.kt's footprintFillOpacityScale
-                // values (vegetation/construction 0.18, other 0.20).
+                // Zoom fade-in (0 -> full) times a diagnosed/observed target
+                // (Pillar 8 Task 4 — mirrors GccMap.ios.kt's diagnosed/
+                // observed split): diagnosed (solid, true OR the property
+                // missing/legacy — see litter-footprints.ts's `diagnosed`
+                // KDoc) uses the same per-domain full-opacity target as
+                // before (vegetation/construction 0.18, other 0.20);
+                // observed-only (hollow) drops to a flat 0.05 — faint fill,
+                // full-strength outline below carries the "ring" signal.
                 'fill-opacity': [
                   '*',
                   [
@@ -791,10 +796,15 @@ export function CombinedMap({
                     LITTER_FOOTPRINT_ZOOM.FADE_IN_FULL, 1,
                   ],
                   [
-                    'match', ['get', 'domain'],
-                    'vegetation', 0.18,
-                    'construction', 0.18,
-                    0.20,
+                    'case',
+                    ['==', ['get', 'diagnosed'], false],
+                    0.05,
+                    [
+                      'match', ['get', 'domain'],
+                      'vegetation', 0.18,
+                      'construction', 0.18,
+                      0.20,
+                    ],
                   ],
                 ],
               }}
@@ -809,7 +819,15 @@ export function CombinedMap({
                   'construction', LITTER_FOOTPRINT_COLORS.construction,
                   LITTER_FOOTPRINT_COLORS.other,
                 ],
-                'line-width': 1,
+                // Observed-only (hollow) gets a heavier outline than
+                // diagnosed (solid) — same intent as GccMap.ios.kt's
+                // 0.5dp/1.2dp split, so the ring reads as deliberate.
+                'line-width': [
+                  'case',
+                  ['==', ['get', 'diagnosed'], false],
+                  1.75,
+                  1,
+                ],
                 'line-opacity': [
                   'interpolate', ['exponential', 1.5], ['zoom'],
                   LITTER_FOOTPRINT_ZOOM.FADE_IN_START, 0,

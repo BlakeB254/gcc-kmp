@@ -6,6 +6,8 @@ import {
   parseCoveredCellIds,
   selectReportsInStaleCells,
   resolveByCoveredCells,
+  mergeObservationAttributes,
+  computeDiagnosticStatus,
 } from './world-observations'
 
 // These tests exercise the Task 1 "supersede by covered cells" logic added
@@ -174,4 +176,69 @@ test('resolveByCoveredCells: excludeReportId is optional (undefined) — scan-pa
   const result = await resolveByCoveredCells([staleCell], undefined, 'Superseded by scan sweep', fakeDb as any)
   assert.deepEqual(result.resolvedReportIds, [10])
   assert.equal(result.invalidatedObservationCount, 1)
+})
+
+// ── computeDiagnosticStatus / mergeObservationAttributes: Task 4 litter-
+// truth lifecycle (observed -> diagnosed, completion upgrades). These are
+// the pure functions recordWorldObservation composes — merge THEN compute
+// diagnosticStatus from the merged result — kept side-effect-free (no DB
+// access) so the CRITICAL ordering/persistence semantics are directly
+// unit-testable, same rationale as selectReportsInStaleCells above.
+
+test('computeDiagnosticStatus: weight + width attrs together -> diagnosed', () => {
+  assert.equal(
+    computeDiagnosticStatus({ estimatedWeightGrams: 500, estimatedWidthMeters: 0.3 }),
+    'diagnosed'
+  )
+})
+
+test('computeDiagnosticStatus: weight OR width alone (not both) -> observed', () => {
+  assert.equal(computeDiagnosticStatus({ estimatedWeightGrams: 500 }), 'observed')
+  assert.equal(computeDiagnosticStatus({ estimatedWidthMeters: 0.3 }), 'observed')
+})
+
+test('computeDiagnosticStatus: any objectCapture* attribute -> diagnosed', () => {
+  assert.equal(computeDiagnosticStatus({ objectCaptureWeightGrams: 900 }), 'diagnosed')
+  assert.equal(computeDiagnosticStatus({ objectCaptureR2Key: 'r2/foo.ply' }), 'diagnosed')
+})
+
+test('computeDiagnosticStatus: bare detection (severity only, or no attrs) -> observed', () => {
+  assert.equal(computeDiagnosticStatus({ severity: 3 }), 'observed')
+  assert.equal(computeDiagnosticStatus(null), 'observed')
+  assert.equal(computeDiagnosticStatus(undefined), 'observed')
+  assert.equal(computeDiagnosticStatus({}), 'observed')
+})
+
+test('computeDiagnosticStatus: non-finite weight/width does not count as a close-range measurement', () => {
+  assert.equal(
+    computeDiagnosticStatus({ estimatedWeightGrams: NaN, estimatedWidthMeters: 0.3 }),
+    'observed'
+  )
+})
+
+test('mergeObservationAttributes: completion upgrade — prior observed-only row + new close-confirm merges weight+width in, then computes diagnosed', () => {
+  const prior = { severity: 3 }
+  const incoming = { estimatedWeightGrams: 450, estimatedWidthMeters: 0.22 }
+  const merged = mergeObservationAttributes(prior, incoming)
+  assert.deepEqual(merged, { severity: 3, estimatedWeightGrams: 450, estimatedWidthMeters: 0.22 })
+  assert.equal(computeDiagnosticStatus(merged), 'diagnosed')
+})
+
+test('mergeObservationAttributes: persistence — prior diagnosed row + new lean re-scan retains old weight+width, stays diagnosed', () => {
+  const prior = { estimatedWeightGrams: 450, estimatedWidthMeters: 0.22 }
+  const incoming = { severity: 4 } // lean re-scan: no size data, just a fresher severity
+  const merged = mergeObservationAttributes(prior, incoming)
+  assert.deepEqual(merged, { estimatedWeightGrams: 450, estimatedWidthMeters: 0.22, severity: 4 })
+  assert.equal(computeDiagnosticStatus(merged), 'diagnosed')
+})
+
+test('mergeObservationAttributes: new keys win over inherited ones', () => {
+  const prior = { estimatedWeightGrams: 100 }
+  const incoming = { estimatedWeightGrams: 200 }
+  assert.deepEqual(mergeObservationAttributes(prior, incoming), { estimatedWeightGrams: 200 })
+})
+
+test('mergeObservationAttributes: no prior row (first observation at this cell+itemType) — incoming attributes pass through unchanged', () => {
+  assert.deepEqual(mergeObservationAttributes(null, { severity: 2 }), { severity: 2 })
+  assert.deepEqual(mergeObservationAttributes(undefined, undefined), undefined)
 })

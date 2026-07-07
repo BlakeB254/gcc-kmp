@@ -27,6 +27,7 @@ import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.interpolate
 import org.maplibre.compose.expressions.dsl.interpolateHcl
 import org.maplibre.compose.expressions.dsl.linear
+import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
@@ -1373,85 +1374,83 @@ actual fun GccMap(
                     footprintFadeInStartZoom to const(0f),
                     footprintFadeInFullZoom to const(1f),
                 )
-                // Part B.3 — diagnostic-state styling stub. WorldObservation
-                // has no diagnosticStatus field yet (Task 4 owns adding that
-                // real lifecycle/schema column; Constraints: no schema
-                // changes in this task). We deliberately do NOT invent a
-                // proxy off data that doesn't reliably mean "has closer-
-                // range diagnostic data" — e.g. mediaUrl == null can happen
-                // for reasons unrelated to diagnosis quality (a failed
-                // upload, an offline capture) and would misleadingly render
-                // a well-diagnosed observation as merely "sighted". This is
-                // a documented no-op instead: isDiagnosed is hardcoded true,
-                // so every footprint renders SOLID today. It's the ONE line
-                // Task 4 should replace with a real per-observation check;
-                // the solid/outlined split below (fill opacity scaled down,
-                // outline width bumped up when NOT diagnosed) is already
-                // wired to react to it, so Task 4 doesn't need to re-derive
-                // the styling — solid = higher fill opacity relative to
-                // outline (filled look), outlined = lower fill / thicker,
-                // more prominent outline (hollow look).
-                val isDiagnosed = true
-                val footprintFillOpacityScale = if (isDiagnosed) 1.0f else 0.35f
-                val footprintOutlineWidth = if (isDiagnosed) const(0.5.dp) else const(1.2.dp)
+                // Part B.3 — diagnostic-state styling, now wired to the real
+                // per-feature signal (Pillar 8 Task 4 adds diagnosticStatus
+                // end to end). buildObservationFootprintsGeoJson
+                // (GeoJsonLayers.kt) emits a "diagnosed" boolean property per
+                // feature (diagnosticStatus != "observed" — true for both a
+                // real diagnosed value AND null/legacy rows, see
+                // WorldObservation.diagnosticStatus's KDoc). maplibre-compose
+                // exposes boolean feature properties the same way string/
+                // number ones are already used elsewhere in this file
+                // (`feature["priority"] as Expression<NumberValue<...>>`,
+                // `feature["itemType"] as Expression<StringValue>`) — cast to
+                // Expression<BooleanValue> and use directly as a layer
+                // `filter`, the exact pattern this file used pre-Task-2 for
+                // `filter = feature.has("itemType")` / `filter =
+                // !feature.has(...)` (see git history on this file, e.g.
+                // commit 8bf83fdc's parent). So each domain's footprint layer
+                // pair is split into a diagnosed-filtered (solid) pair and an
+                // observed-filtered (hollow) pair instead of a single flat
+                // isDiagnosed constant — solid = full fill opacity + thin
+                // outline, hollow = fill scaled down (~35%) + thicker outline
+                // so it reads as a deliberate ring, not a bug.
+                @Suppress("UNCHECKED_CAST")
+                val diagnosedExpr = feature["diagnosed"] as org.maplibre.compose.expressions.ast.Expression<
+                    org.maplibre.compose.expressions.value.BooleanValue>
+                val observedExpr = !diagnosedExpr
+                val footprintOutlineWidthDiagnosed = const(0.5.dp)
+                val footprintOutlineWidthObserved = const(1.2.dp)
                 val footprintTapHandler = observationIdClickHandler(onObservationTap)
 
-                FillLayer(
-                    id = "observation-footprint-fill-vegetation",
-                    source = footprintVegetationSrc,
-                    color = const(Color(0xFF16A34A)),
-                    opacity = interpolate(
-                        type = exponential(1.5f), input = zoom(),
-                        footprintFadeInStartZoom to const(0f),
-                        footprintFadeInFullZoom to const(0.18f * footprintFillOpacityScale),
-                    ),
-                    onClick = footprintTapHandler,
-                )
-                LineLayer(
-                    id = "observation-footprint-outline-vegetation",
-                    source = footprintVegetationSrc,
-                    color = const(Color(0xFF16A34A)),
-                    width = footprintOutlineWidth,
-                    opacity = footprintOutlineOpacity,
+                fun fullOpacityExpr(target: Float) = interpolate(
+                    type = exponential(1.5f), input = zoom(),
+                    footprintFadeInStartZoom to const(0f),
+                    footprintFadeInFullZoom to const(target),
                 )
 
-                FillLayer(
-                    id = "observation-footprint-fill-construction",
-                    source = footprintConstructionSrc,
-                    color = const(Color(0xFF6B7280)),
-                    opacity = interpolate(
-                        type = exponential(1.5f), input = zoom(),
-                        footprintFadeInStartZoom to const(0f),
-                        footprintFadeInFullZoom to const(0.18f * footprintFillOpacityScale),
-                    ),
-                    onClick = footprintTapHandler,
+                val footprintDomains = listOf(
+                    Triple("vegetation", footprintVegetationSrc, Color(0xFF16A34A)) to 0.18f,
+                    Triple("construction", footprintConstructionSrc, Color(0xFF6B7280)) to 0.18f,
+                    Triple("other", footprintOtherSrc, Color(0xFFF97316)) to 0.20f,
                 )
-                LineLayer(
-                    id = "observation-footprint-outline-construction",
-                    source = footprintConstructionSrc,
-                    color = const(Color(0xFF6B7280)),
-                    width = footprintOutlineWidth,
-                    opacity = footprintOutlineOpacity,
-                )
+                for ((domainInfo, fullOpacityTarget) in footprintDomains) {
+                    val (domainName, domainSrc, domainColor) = domainInfo
 
-                FillLayer(
-                    id = "observation-footprint-fill-other",
-                    source = footprintOtherSrc,
-                    color = const(Color(0xFFF97316)),
-                    opacity = interpolate(
-                        type = exponential(1.5f), input = zoom(),
-                        footprintFadeInStartZoom to const(0f),
-                        footprintFadeInFullZoom to const(0.20f * footprintFillOpacityScale),
-                    ),
-                    onClick = footprintTapHandler,
-                )
-                LineLayer(
-                    id = "observation-footprint-outline-other",
-                    source = footprintOtherSrc,
-                    color = const(Color(0xFFF97316)),
-                    width = footprintOutlineWidth,
-                    opacity = footprintOutlineOpacity,
-                )
+                    FillLayer(
+                        id = "observation-footprint-fill-$domainName-diagnosed",
+                        source = domainSrc,
+                        filter = diagnosedExpr,
+                        color = const(domainColor),
+                        opacity = fullOpacityExpr(fullOpacityTarget),
+                        onClick = footprintTapHandler,
+                    )
+                    LineLayer(
+                        id = "observation-footprint-outline-$domainName-diagnosed",
+                        source = domainSrc,
+                        filter = diagnosedExpr,
+                        color = const(domainColor),
+                        width = footprintOutlineWidthDiagnosed,
+                        opacity = footprintOutlineOpacity,
+                    )
+
+                    FillLayer(
+                        id = "observation-footprint-fill-$domainName-observed",
+                        source = domainSrc,
+                        filter = observedExpr,
+                        color = const(domainColor),
+                        opacity = fullOpacityExpr(fullOpacityTarget * 0.35f),
+                        onClick = footprintTapHandler,
+                    )
+                    LineLayer(
+                        id = "observation-footprint-outline-$domainName-observed",
+                        source = domainSrc,
+                        filter = observedExpr,
+                        color = const(domainColor),
+                        width = footprintOutlineWidthObserved,
+                        opacity = footprintOutlineOpacity,
+                    )
+                }
             }
 
             // ── User location blue dot ──

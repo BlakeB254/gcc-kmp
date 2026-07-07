@@ -56,6 +56,62 @@ export interface RecordObservationInput {
 }
 
 /**
+ * Merges a prior observation's attributes forward into a new observation's
+ * attributes — new keys win over inherited ones, matching the supersede
+ * comment in `recordWorldObservation`. Pure/side-effect-free (no DB access)
+ * so the litter-truth completion-upgrade and diagnosis-persistence
+ * semantics (see `computeDiagnosticStatus`) are unit-testable without a
+ * database, the same pattern `selectReportsInStaleCells` uses below.
+ */
+export function mergeObservationAttributes(
+  prior: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined
+): Record<string, unknown> | undefined {
+  if (prior && typeof prior === 'object') {
+    return { ...prior, ...(incoming ?? {}) }
+  }
+  return incoming ?? undefined
+}
+
+/**
+ * Litter-truth lifecycle (Pillar 8 items 7-8): determine 'diagnosed' vs
+ * 'observed' from an observation's attributes. OBSERVED = identified from
+ * afar (distant detection photo + position/type), no close capture.
+ * DIAGNOSED = a close-range capture upgraded it — `estimatedWeightGrams`
+ * AND `estimatedWidthMeters` together (a close confirm measured both), OR
+ * any `objectCapture*` attribute (a full photogrammetry capture, always
+ * close-range by construction). Anything else is 'observed'.
+ *
+ * CRITICAL: callers MUST pass the POST-MERGE attributes (i.e. after
+ * `mergeObservationAttributes` has folded the prior current row's
+ * attributes forward), not the raw per-request input. Computing from the
+ * merged attributes — rather than from the new request alone — gives the
+ * completion-upgrade semantics for free in both directions:
+ *  (a) prior observed-only row (no size attrs) + new close-confirm (weight
+ *      + width) in the same cell+itemType -> the merge folds the new
+ *      weight+width in -> the new current row is 'diagnosed' (upgrade ✓).
+ *  (b) prior diagnosed row (weight+width already recorded) + a new LEAN
+ *      re-scan (auto-detect, no size data) -> the merge retains the prior
+ *      weight+width (new keys win, but the re-scan supplies none) -> the
+ *      new current row STAYS 'diagnosed'. This is deliberate: diagnosis is
+ *      a fact about the litter itself (it WAS close-range measured, at
+ *      some point), not a property of the latest scan's instrument — a
+ *      later drive-by glance must not un-diagnose it.
+ */
+export function computeDiagnosticStatus(
+  attributes: Record<string, unknown> | null | undefined
+): 'observed' | 'diagnosed' {
+  if (!attributes) return 'observed'
+  const weight = attributes.estimatedWeightGrams
+  const width = attributes.estimatedWidthMeters
+  const hasWeightAndWidth =
+    typeof weight === 'number' && Number.isFinite(weight) &&
+    typeof width === 'number' && Number.isFinite(width)
+  const hasObjectCapture = Object.keys(attributes).some((key) => key.startsWith('objectCapture'))
+  return hasWeightAndWidth || hasObjectCapture ? 'diagnosed' : 'observed'
+}
+
+/**
  * Record a new observation, superseding whatever was previously "current"
  * at the same physical spot. Nothing is ever deleted or updated in place
  * except the isCurrent flag — every insert is a new immutable row, so the
@@ -110,11 +166,12 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         eq(worldObservations.isCurrent, true)
       ))
       .limit(1)
-    if (prior?.attributes && typeof prior.attributes === 'object') {
-      input = {
-        ...input,
-        attributes: { ...(prior.attributes as Record<string, unknown>), ...(input.attributes ?? {}) },
-      }
+    input = {
+      ...input,
+      attributes: mergeObservationAttributes(
+        prior?.attributes as Record<string, unknown> | null | undefined,
+        input.attributes
+      ),
     }
 
     await db
@@ -126,6 +183,15 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         eq(worldObservations.isCurrent, true)
       ))
   }
+
+  // Computed from input.attributes AFTER the dirty-path merge above (see
+  // computeDiagnosticStatus's CRITICAL note) — this placement is what gives
+  // both upgrade and persistence semantics. The insert sets this
+  // explicitly rather than relying on the DB default: schema.ts now names
+  // the column, so drizzle includes it in every generated INSERT
+  // regardless (MERGE ACTION: migration 0029 adds this column — see that
+  // file's header).
+  const diagnosticStatus = computeDiagnosticStatus(input.attributes)
 
   const [row] = await db
     .insert(worldObservations)
@@ -139,6 +205,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       itemType: input.itemType,
       state: input.state,
       domain: input.domain ?? 'litter',
+      diagnosticStatus,
       attributes: input.attributes ?? null,
       confidence: input.confidence ?? null,
       mediaUrl: input.mediaUrl ?? null,

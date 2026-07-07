@@ -15,4 +15,8 @@
 ALTER TYPE "enum_points_ledger_action" ADD VALUE IF NOT EXISTS 'observation_logged';
 ALTER TABLE "bounties" ADD COLUMN IF NOT EXISTS "trigger_observation_id" integer;
 
--- (diagnostic_status added by Task 4 below)
+-- Task 4 (observed->diagnosed lifecycle): every insert through drizzle now
+-- names this column explicitly (schema.ts), so this is a HARD deploy
+-- dependency for EVERY world_observations insert/select, not just the scan
+-- path — apply by hand via psql at merge time, same as the rest of this file.
+ALTER TABLE "world_observations" ADD COLUMN IF NOT EXISTS "diagnostic_status" varchar(10) DEFAULT 'observed' NOT NULL;

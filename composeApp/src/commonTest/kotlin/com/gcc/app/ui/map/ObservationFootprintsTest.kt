@@ -18,6 +18,7 @@ class ObservationFootprintsTest {
         domain: String? = "litter",
         widthMeters: Double? = 10.0,
         yawDegrees: Double? = null,
+        diagnosticStatus: String? = null,
     ) = WorldObservation(
         id = 1,
         lat = lat0,
@@ -28,6 +29,7 @@ class ObservationFootprintsTest {
         sourceType = "route_scan",
         widthMeters = widthMeters,
         yawDegrees = yawDegrees,
+        diagnosticStatus = diagnosticStatus,
     )
 
     /** Pulls every "[lng,lat]" pair out of a built GeoJSON ring, in order. */
@@ -186,5 +188,38 @@ class ObservationFootprintsTest {
         assertTrue(json.contains(""""itemType":"debris_pile""""))
         assertTrue(json.contains(""""domain":"construction""""))
         assertTrue(json.contains(""""state":"dirty""""))
+    }
+
+    // ── diagnosticStatus -> "diagnosed" property (Pillar 8 Task 4) ───────
+
+    @Test
+    fun diagnosticStatusObservedEmitsDiagnosedFalse() {
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = "observed")),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":false"""))
+    }
+
+    @Test
+    fun diagnosticStatusDiagnosedEmitsDiagnosedTrue() {
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = "diagnosed")),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":true"""))
+    }
+
+    @Test
+    fun nullDiagnosticStatusEmitsDiagnosedTrueNotObserved() {
+        // Legacy rows / servers that predate this field must render solid
+        // (diagnosed), not hollow (observed) — see WorldObservation.
+        // diagnosticStatus's KDoc for the full rationale (observed-only is
+        // a "needs completion" priority signal; null must not spam it).
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = null)),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":true"""))
     }
 }
