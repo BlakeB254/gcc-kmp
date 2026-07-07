@@ -23,6 +23,22 @@ class WorldObservationWireCompatTest {
         val observation = GccJson.decodeFromString<WorldObservation>(json)
         assertNull(observation.widthMeters)
         assertNull(observation.yawDegrees)
+        assertNull(observation.estimatedWeightGrams)
+    }
+
+    @Test
+    fun estimatedWeightGramsDecodesFromTheServerFieldNameAndRoundTrips() {
+        // Pillar 8 Task 2, Part C: /api/map/observations already returns
+        // estimatedWeightGrams in every row (site/src/app/api/map/observations/
+        // route.ts) — this pins that @Serializable + the matching field name
+        // is enough, no custom SerialName needed.
+        val json = """{"id":9,"lat":41.8603,"lng":-87.7228,"itemType":"tire",
+            "state":"dirty","sourceType":"ar_auto_detect","estimatedWeightGrams":9000}"""
+        val observation = GccJson.decodeFromString<WorldObservation>(json)
+        assertEquals(9000, observation.estimatedWeightGrams)
+
+        val roundTripped = GccJson.decodeFromString<WorldObservation>(GccJson.encodeToString(observation))
+        assertEquals(observation, roundTripped)
     }
 
     @Test

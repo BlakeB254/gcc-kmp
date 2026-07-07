@@ -47,6 +47,16 @@ object TrashItemCatalog {
         TrashItemInfo("food_waste", "Food waste", 80, 0.12, 3.0),
         TrashItemInfo("tire", "Tire", 9_000, 0.60, 3.0),
         TrashItemInfo("mattress", "Mattress", 25_000, 1.50, 2.0),
+        // Crinkly foil snack bag: light, sheet-like mass scaling (linear, not
+        // area/volume — it's a flat wrapper, not a hollow container), ~0.20-
+        // 0.25m across (Pillar 8 litter-truth spec example size).
+        TrashItemInfo("chip_bag", "Chip bag", 4, 0.22, 1.0),
+        // Distinct from plastic_bag (0.30m, shopping-bag sized): a full
+        // kitchen/lawn trash bag is both bigger (~0.6m, the spec's other
+        // example size) and made of thicker-gauge film, so it's heavier per
+        // unit area too — still sheet-like (linear) scaling since it's a
+        // flexible bag, not a rigid hollow container.
+        TrashItemInfo("trash_bag", "Trash bag", 60, 0.60, 1.0),
         TrashItemInfo(FALLBACK_TYPE, "Litter", 25, 0.15, 2.0),
     )
 
@@ -67,6 +77,10 @@ object TrashItemCatalog {
             has("cigarette", "cigarettes", "butt") -> "cigarette"
             has("bottle", "bottles") -> if (has("glass")) "glass_bottle" else "plastic_bottle"
             has("can", "cans", "tin", "aluminum") -> "can"
+            // Chip/trash bag both carry a "bag" token — must be checked
+            // before the generic bag branch below or they'd be swallowed by it.
+            has("chip", "chips") -> "chip_bag"
+            has("trash", "garbage", "lawn") && has("bag", "bags", "sack") -> "trash_bag"
             has("bag", "bags", "sack") -> "plastic_bag"
             has("cup", "cups", "mug") -> "cup"
             has("paper", "cardboard", "newspaper", "document") -> "paper"

@@ -119,21 +119,61 @@ class ObservationFootprintsTest {
     }
 
     @Test
-    fun nullWidthObservationIsSkipped() {
+    fun nullWidthObservationFallsBackToTypeDefaultInsteadOfBeingSkipped() {
+        // Pillar 8 Task 2, Part B.1: unmeasured observations no longer get
+        // dropped — they fall back to TrashItemCatalog's typical width for
+        // the observation's itemType (here "debris_pile", which has no
+        // dedicated catalog entry and falls back further to "other").
         val json = buildObservationFootprintsGeoJson(
             listOf(observation(widthMeters = null)),
             centerLat = lat0,
         )
-        assertEquals("""{"type":"FeatureCollection","features":[]}""", json)
+        assertTrue(json.contains(""""id":1"""))
+        val coords = ringCoordinates(json)
+        assertEquals(5, coords.size) // still a closed 4-corner rect (non-vegetation domain)
     }
 
     @Test
-    fun nonFiniteWidthObservationIsSkipped() {
+    fun nonFiniteWidthObservationFallsBackToTypeDefaultInsteadOfBeingSkipped() {
         val json = buildObservationFootprintsGeoJson(
             listOf(observation(widthMeters = Double.NaN)),
             centerLat = lat0,
         )
-        assertEquals("""{"type":"FeatureCollection","features":[]}""", json)
+        assertTrue(json.contains(""""id":1"""))
+        assertEquals(5, ringCoordinates(json).size)
+    }
+
+    @Test
+    fun typeDefaultWidthIsFlooredToTheVisibilityMinimum() {
+        // "other"'s typicalWidthMeters (0.15m, see TrashItemCatalog) is far
+        // below the ~2.22m visibility floor computed for z17 — the rendered
+        // rectangle's width axis must reflect the floor, not the raw 0.15m.
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(domain = "litter", widthMeters = null, yawDegrees = 0.0)),
+            centerLat = lat0,
+        )
+        val coords = ringCoordinates(json)
+        val lngExtent = coords.maxOf { it.first } - coords.minOf { it.first }
+        val metersPerDegreeLng = 111_320.0 * cos(lat0 * PI / 180.0)
+        val widthMeters = lngExtent * metersPerDegreeLng
+        assertTrue(widthMeters > 2.0, "expected floored width > 2.0m, got $widthMeters")
+    }
+
+    @Test
+    fun measuredWidthAboveTheFloorIsUnaffectedByIt() {
+        // The existing orientedRectRingCloses/bounds tests already use a
+        // real (non-null) widthMeters=10.0, well above the ~2.22m floor —
+        // this just pins that the floor is a MINIMUM, not a rescale, once a
+        // real measurement clears it.
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(domain = "litter", widthMeters = 10.0, yawDegrees = 0.0)),
+            centerLat = lat0,
+        )
+        val coords = ringCoordinates(json)
+        val lngExtent = coords.maxOf { it.first } - coords.minOf { it.first }
+        val metersPerDegreeLng = 111_320.0 * cos(lat0 * PI / 180.0)
+        val widthMeters = lngExtent * metersPerDegreeLng
+        assertTrue(abs(widthMeters - 10.0) < 0.01, "expected ~10.0m unaffected by floor, got $widthMeters")
     }
 
     @Test

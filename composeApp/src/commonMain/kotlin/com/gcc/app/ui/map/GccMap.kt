@@ -124,6 +124,9 @@ expect fun GccMap(
      *  standard coverage tint, instead of it (spec Pillar 5). False by
      *  default — an opt-in toggle in Explorer mode, not automatic. */
     showNeedsScanningLens: Boolean = false,
+    /** Tap on a close-zoom litter footprint (Pillar 8 Task 2, Part C) —
+     *  receives the tapped [com.gcc.shared.model.WorldObservation.id]. */
+    onObservationTap: ((observationId: Int) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {},
 )
 

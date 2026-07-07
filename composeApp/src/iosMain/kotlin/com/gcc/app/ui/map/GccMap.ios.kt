@@ -8,16 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
@@ -27,19 +19,15 @@ import org.maplibre.spatialk.geojson.Position
 import kotlinx.coroutines.launch
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
-import org.maplibre.compose.expressions.dsl.case
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.em
 import org.maplibre.compose.expressions.dsl.exponential
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
-import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.dsl.interpolate
 import org.maplibre.compose.expressions.dsl.interpolateHcl
 import org.maplibre.compose.expressions.dsl.linear
-import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
-import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
@@ -59,12 +47,12 @@ import org.maplibre.compose.util.FeaturesClickHandler
 import kotlin.time.Duration.Companion.milliseconds
 
 // Mirror MapStyles' zoom bands (single source of truth) — heat crossfades out
-// while dots fade in between DOTS_MIN and HEAT_FADE; halos/rings/badges are
-// street-level detail so dense areas stay readable as additive dots.
+// while dots fade in between DOTS_MIN and HEAT_FADE. (SPOT_DETAIL_MIN_ZOOM/
+// SPOT_GLYPH_MIN_ZOOM mirrors were dropped here — Pillar 8 Task 2 removed the
+// street-level halo/glyph/verification-ring layers they fed; MapStyles still
+// keeps the constants for the Android actual, which still uses them.)
 private val IOS_SPOT_HEAT_FADE_ZOOM = MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM
 private val IOS_SPOT_DOTS_MIN_ZOOM = MapStyles.SPOT_DOTS_MIN_ZOOM
-private val IOS_SPOT_DETAIL_MIN_ZOOM = MapStyles.SPOT_DETAIL_MIN_ZOOM
-private val IOS_SPOT_GLYPH_MIN_ZOOM = MapStyles.SPOT_GLYPH_MIN_ZOOM
 
 /**
  * iOS actual implementation of GccMap — MapLibre Compose with real tile-based maps.
@@ -110,6 +98,7 @@ actual fun GccMap(
     onZoomChanged: ((Double) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     showNeedsScanningLens: Boolean,
+    onObservationTap: ((observationId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -170,20 +159,19 @@ actual fun GccMap(
     val spotDensityHeatMediumJson = remember(spots) { buildSpotDensityHeatMediumGeoJson(spots) }
     val spotDensityHeatHighJson = remember(spots) { buildSpotDensityHeatHighGeoJson(spots) }
     val spotDensityHeatExtremeJson = remember(spots) { buildSpotDensityHeatExtremeGeoJson(spots) }
-    val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
-    val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
     val hasHeatActivity = hasActiveSpots
 
     // Pillar 3 footprints: true-scale oriented shapes at close zoom, split by
     // domain into three JSON strings so each domain gets its own tinted
     // fill/outline pair (coverage-tile precedent) — simpler than one shared
     // source plus a color-match expression for three fixed buckets.
-    val hasFootprintData = remember(observationFootprints) {
-        observationFootprints.any { obs ->
-            val width = obs.widthMeters
-            width != null && width.isFinite() && width > 0.0
-        }
-    }
+    //
+    // Pillar 8 Task 2, Part B.1: buildObservationFootprintsGeoJson no longer
+    // skips observations with a null/non-finite widthMeters — it falls back
+    // to a type-default width instead, so gating on "has a real measurement"
+    // would wrongly hide the footprint layer when every observation in view
+    // is unmeasured (the common case). Gate on non-empty input instead.
+    val hasFootprintData = observationFootprints.isNotEmpty()
     val footprintVegetationJson = remember(observationFootprints, centerLat) {
         buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "vegetation" }, centerLat)
     }
@@ -195,13 +183,6 @@ actual fun GccMap(
             observationFootprints.filter { it.domain != "vegetation" && it.domain != "construction" },
             centerLat,
         )
-    }
-
-    // Per-type litter glyphs for close-zoom pins. Stable instances so the
-    // MapLibre image manager registers each drawable once (keyed by painter
-    // identity) instead of re-uploading on every recomposition.
-    val litterGlyphPainters = remember {
-        LITTER_GLYPH_TYPES.associateWith { LitterGlyphPainter(it) }
     }
 
     // Area tap state for tooltip overlay
@@ -855,6 +836,24 @@ actual fun GccMap(
                 // Zoom-gated: at overview zooms the bounded fog patch would
                 // read as a broken partial grid — fade it in at street level
                 // where its bounded radius covers the whole viewport.
+                // ── Delineation mandate (Pillar 8 Task 2, Part D3 — owner
+                // amendment): "the map must clearly communicate scanned-in-
+                // the-past vs never-scanned... unmistakable, without burying
+                // basemap labels." Two changes from the previous 0.05-0.24
+                // range (called out as "too subtle"):
+                //  1. Fog stays gentle (0.08-0.16, was 0.08-0.22) — it must
+                //     never compete with the basemap over the vast unscanned
+                //     majority of the map.
+                //  2. Scanned tiles (clean/grazed/dirty/stale) all move up
+                //     meaningfully (clean 0.20->0.36, dirty 0.20->0.34, stale
+                //     0.24->0.36, grazed 0.10->0.16) so ANY color reads as
+                //     "this has been scanned" at a glance against fog/
+                //     basemap — the FOG-VS-SCANNED contrast is what needs to
+                //     read instantly, not any single value in isolation.
+                //  Applies identically in MY_AREA and EXPLORER — coverageCells/
+                //  coverageStateJsons are never mode-gated (MapFullScreen
+                //  fetches coverage for both modes; only the separate opt-in
+                //  "needs scanning" lens below is Explorer-only).
                 FillLayer(
                     id = "coverage-fog",
                     source = fogSrc,
@@ -865,8 +864,8 @@ actual fun GccMap(
                         type = exponential(1.5f),
                         input = zoom(),
                         10 to const(0.08f),
-                        14 to const(0.18f),
-                        16 to const(0.22f),
+                        14 to const(0.14f),
+                        16 to const(0.16f),
                     ),
                 )
                 // The tile visual system (one glance = scan status):
@@ -877,6 +876,9 @@ actual fun GccMap(
                 // caller resolves it to the cell for the last-scan card.
                 // Seen-fresh (Pillar 7): sighted at a distance, never walked —
                 // the faintest tile of the three, drawn under clean-grazed.
+                // Left deliberately faint/unchanged — it's an explicitly
+                // lower-confidence tier (sighted, never walked), not part of
+                // the "unmistakable scanned" contrast the owner asked for.
                 // Outline-mode rings (street zoom) carry no cellId, so taps
                 // don't resolve to a cell there — same trade-off as clean/
                 // clean-grazed in that mode.
@@ -893,31 +895,83 @@ actual fun GccMap(
                     id = "coverage-clean-grazed",
                     source = cleanGrazedSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.10f),
+                    opacity = const(0.16f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.20f),
+                    opacity = const(0.36f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-dirty",
                     source = dirtySrc,
                     color = const(Color(0xFFEF4444)),
-                    opacity = const(0.20f),
+                    opacity = const(0.34f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 // Stale is a CALL TO ACTION ("scan me again") — it must not
-                // be the faintest tile on the map (it was 0.10).
+                // be the faintest tile on the map (it was 0.10, then 0.24).
                 FillLayer(
                     id = "coverage-stale",
                     source = staleSrc,
                     color = const(Color(0xFFF59E0B)),
-                    opacity = const(0.24f),
+                    opacity = const(0.36f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
+                )
+
+                // ── Boundary line treatment (Part D3) ──
+                // The organic outline tracing from PR #108 (CoverageOutline.kt's
+                // traceCoverageOutlines, wired in via useOutlineCoverage/
+                // qualityCollection above) already produces clean boundary
+                // geometry for clean/cleanGrazed at street zoom — nothing
+                // previously drew a LINE along it (only filled polygons).
+                // A crisp edge reads clearly without raising fill opacity to
+                // the point of obscuring basemap labels — likely the single
+                // highest-leverage change for "unmistakable... without
+                // burying labels", so it's added independent of (and on top
+                // of) the fill-opacity bump above. Dirty/stale stay per-cell
+                // quads even at street zoom (see buildCoverageStateGeoJsons
+                // doc), so their boundary line traces blockier cell edges —
+                // still a real, visible edge, just less smooth than clean's.
+                // Reuses the SAME sources as the fills above (no extra
+                // source/layer allocation beyond the line layer itself).
+                val coverageBoundaryWidth = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    13 to const(0.5.dp),
+                    16 to const(1.2.dp),
+                    18 to const(1.8.dp),
+                )
+                LineLayer(
+                    id = "coverage-clean-grazed-boundary",
+                    source = cleanGrazedSrc,
+                    color = const(Color(0xFF16A34A)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.45f),
+                )
+                LineLayer(
+                    id = "coverage-clean-boundary",
+                    source = cleanSrc,
+                    color = const(Color(0xFF15803D)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.65f),
+                )
+                LineLayer(
+                    id = "coverage-dirty-boundary",
+                    source = dirtySrc,
+                    color = const(Color(0xFFB91C1C)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.55f),
+                )
+                LineLayer(
+                    id = "coverage-stale-boundary",
+                    source = staleSrc,
+                    color = const(Color(0xFFB45309)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.55f),
                 )
 
                 // P5 "Needs scanning" lens: an opt-in single FillLayer atop the
@@ -1277,18 +1331,20 @@ actual fun GccMap(
 
             }
 
-            // ── Observation footprints (Pillar 3) ──
+            // ── Observation footprints (Pillar 3; THE close-zoom litter-truth
+            // layer as of Pillar 8 Task 2 — replaces the removed spot pins) ──
             // True-scale, oriented shapes at close zoom — declared BEFORE the
-            // user-location dot AND the pin/glyph layers below so footprints
-            // render UNDER all of them (z-order = declaration order); a
-            // footprint must never bury the marker that represents it, nor
-            // sit atop the user's own position dot. Gated on non-empty
-            // footprint data (Fix 2, r2a convention) and zoom (>=17 via
-            // opacity interpolate) — heatmap/pins own the far zoom story,
-            // footprints are the close-zoom "what does it actually look
-            // like" detail. Domain-tinted per the geometry-approximation
-            // table: vegetation green, construction grey, everything else
-            // (litter/unspecified) orange.
+            // user-location dot AND (formerly) the pin/glyph layers below so
+            // footprints render UNDER them (z-order = declaration order); a
+            // footprint must never sit atop the user's own position dot.
+            // Gated on non-empty footprint data (Fix 2, r2a convention) and
+            // zoom (>=17 via opacity interpolate) — heatmap owns the far
+            // zoom story, footprints are the close-zoom "what does it
+            // actually look like" detail. Domain-tinted per the geometry-
+            // approximation table: vegetation green, construction grey,
+            // everything else (litter/unspecified) orange. No clustering —
+            // buildObservationFootprintsGeoJson maps every observation to
+            // its own feature (Part B.4); nothing to remove or add here.
             if (hasFootprintData) {
                 val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
                 val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
@@ -1299,6 +1355,28 @@ actual fun GccMap(
                     16.5 to const(0f),
                     17 to const(1f),
                 )
+                // Part B.3 — diagnostic-state styling stub. WorldObservation
+                // has no diagnosticStatus field yet (Task 4 owns adding that
+                // real lifecycle/schema column; Constraints: no schema
+                // changes in this task). We deliberately do NOT invent a
+                // proxy off data that doesn't reliably mean "has closer-
+                // range diagnostic data" — e.g. mediaUrl == null can happen
+                // for reasons unrelated to diagnosis quality (a failed
+                // upload, an offline capture) and would misleadingly render
+                // a well-diagnosed observation as merely "sighted". This is
+                // a documented no-op instead: isDiagnosed is hardcoded true,
+                // so every footprint renders SOLID today. It's the ONE line
+                // Task 4 should replace with a real per-observation check;
+                // the solid/outlined split below (fill opacity scaled down,
+                // outline width bumped up when NOT diagnosed) is already
+                // wired to react to it, so Task 4 doesn't need to re-derive
+                // the styling — solid = higher fill opacity relative to
+                // outline (filled look), outlined = lower fill / thicker,
+                // more prominent outline (hollow look).
+                val isDiagnosed = true
+                val footprintFillOpacityScale = if (isDiagnosed) 1.0f else 0.35f
+                val footprintOutlineWidth = if (isDiagnosed) const(0.5.dp) else const(1.2.dp)
+                val footprintTapHandler = observationIdClickHandler(onObservationTap)
 
                 FillLayer(
                     id = "observation-footprint-fill-vegetation",
@@ -1306,14 +1384,15 @@ actual fun GccMap(
                     color = const(Color(0xFF16A34A)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.18f),
+                        16.5 to const(0f), 17 to const(0.18f * footprintFillOpacityScale),
                     ),
+                    onClick = footprintTapHandler,
                 )
                 LineLayer(
                     id = "observation-footprint-outline-vegetation",
                     source = footprintVegetationSrc,
                     color = const(Color(0xFF16A34A)),
-                    width = const(0.5.dp),
+                    width = footprintOutlineWidth,
                     opacity = footprintOutlineOpacity,
                 )
 
@@ -1323,14 +1402,15 @@ actual fun GccMap(
                     color = const(Color(0xFF6B7280)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.18f),
+                        16.5 to const(0f), 17 to const(0.18f * footprintFillOpacityScale),
                     ),
+                    onClick = footprintTapHandler,
                 )
                 LineLayer(
                     id = "observation-footprint-outline-construction",
                     source = footprintConstructionSrc,
                     color = const(Color(0xFF6B7280)),
-                    width = const(0.5.dp),
+                    width = footprintOutlineWidth,
                     opacity = footprintOutlineOpacity,
                 )
 
@@ -1340,14 +1420,15 @@ actual fun GccMap(
                     color = const(Color(0xFFF97316)),
                     opacity = interpolate(
                         type = exponential(1.5f), input = zoom(),
-                        16.5 to const(0f), 17 to const(0.20f),
+                        16.5 to const(0f), 17 to const(0.20f * footprintFillOpacityScale),
                     ),
+                    onClick = footprintTapHandler,
                 )
                 LineLayer(
                     id = "observation-footprint-outline-other",
                     source = footprintOtherSrc,
                     color = const(Color(0xFFF97316)),
-                    width = const(0.5.dp),
+                    width = footprintOutlineWidth,
                     opacity = footprintOutlineOpacity,
                 )
             }
@@ -1414,289 +1495,16 @@ actual fun GccMap(
                 )
             }
 
-            // Gated on spots (Fix 2, r2a) — the scan summary card renders GccMap
-            // with no spots and must not allocate the spot-rect/marker/verification
-            // sources+layers (rectangles, halos, dots, glyphs, verification rings)
-            // it never paints, right at peak memory after a scan.
-            if (spots.isNotEmpty()) {
-                // ── Spot rectangle area fills — rendered as polygons for rectangle-type spots ──
-                val spotRectSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotRectJson))
-                FillLayer(
-                    id = "spot-rect-fill",
-                    source = spotRectSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.15f)),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0f),
-                        14 to const(0.7f),
-                    ),
-                )
-                LineLayer(
-                    id = "spot-rect-outline",
-                    source = spotRectSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.6f)),
-                    width = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(1.5.dp),
-                        17 to const(2.dp),
-                    ),
-                )
-
-                // ── Spot report markers ──
-                // (The density-heat surface + scrim moved BELOW the route stack:
-                // heat is texture, routes are structure — green loops must stay
-                // readable over the wash at overview zooms.)
-                val spotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotJson))
-
-                // Soft halos are STREET-LEVEL detail only: at neighborhood zoom a
-                // dense scan area would stack dozens of 18dp halos into an opaque
-                // orange blob that buries the route corridor (build-117 field
-                // screenshot). Once pins are sparse on screen they earn the ink.
-                CircleLayer(
-                    id = MapStyles.LAYER_SPOT_MARKER_HALOS,
-                    source = spotSrc,
-                    minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_MARKER_COLOR.copy(alpha = 0.10f)),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15.5 to const(8.dp),
-                        17 to const(12.dp),
-                        19 to const(15.dp),
-                    ),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15.5 to const(0f),
-                        16 to const(0.6f),
-                        17 to const(0.8f),
-                    ),
-                )
-
-                val bountiedSpotSrc = rememberGeoJsonSource(GeoJsonData.JsonString(bountiedSpotJson))
-                CircleLayer(
-                    id = MapStyles.LAYER_BOUNTIED_SPOT_HALOS,
-                    source = bountiedSpotSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(Color.Transparent),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(7.dp),
-                        15 to const(12.dp),
-                        17 to const(17.dp),
-                    ),
-                    strokeColor = const(MapStyles.BOUNTY_DOT_COLOR),
-                    strokeWidth = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(1.dp),
-                        15 to const(2.dp),
-                        17 to const(3.dp),
-                    ),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0f),
-                        14 to const(0.85f),
-                        17 to const(1f),
-                    ),
-                )
-
-                // Invisible expanded tap target for spots (larger hit area)
-                CircleLayer(
-                    id = "${MapStyles.LAYER_SPOT_MARKERS}-tap",
-                    source = spotSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(Color.Transparent),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        14 to const(12.dp),
-                        15 to const(14.dp),
-                        16 to const(16.dp),
-                        18 to const(18.dp),
-                    ),
-                    onClick = if (onSpotTap != null) { features ->
-                        val raw = features.firstOrNull()?.properties?.get("id")
-                        val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-                        if (id != null) {
-                            onSpotTap(id)
-                            ClickResult.Consume
-                        } else {
-                            ClickResult.Pass
-                        }
-                    } else null,
-                )
-
-                // Visible spot dots — close zoom only. The overview heatmap uses the
-                // same switch zoom as maxZoom, so markers and heat never render together.
-                // Only UNTYPED pins render as the plain orange dot; pins carrying a
-                // canonical "itemType" are drawn by the per-type glyph SymbolLayer below.
-                // Small ADDITIVE dots: capped below full opacity so overlapping
-                // reports in a dense area sum into visibly darker orange (density
-                // reads without an opaque mass) and the corridor band stays
-                // legible beneath. Fades in across the heat crossfade window
-                // instead of popping at the old hard 13.0 handoff.
-                CircleLayer(
-                    id = MapStyles.LAYER_SPOT_MARKERS,
-                    source = spotSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    filter = !feature.has("itemType"),
-                    color = const(MapStyles.SPOT_MARKER_COLOR),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        14 to const(3.dp),
-                        15 to const(4.5.dp),
-                        16 to const(6.dp),
-                        17 to const(7.dp),
-                        20 to const(9.dp),
-                    ),
-                    strokeColor = const(Color.White),
-                    strokeWidth = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        14 to const(0.8.dp),
-                        16 to const(1.2.dp),
-                        18 to const(1.6.dp),
-                    ),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0f),
-                        13.5 to const(0.35f),
-                        14.5 to const(0.75f),
-                        16 to const(0.9f),
-                    ),
-                )
-
-                // Typed pins render as the same small dot at neighborhood zoom,
-                // then hand off to the glyph badges as street zoom resolves —
-                // 30dp badges at z13-15 were half the blob problem.
-                CircleLayer(
-                    id = "${MapStyles.LAYER_SPOT_MARKERS}-typed-dots",
-                    source = spotSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    maxZoom = 15.2f,
-                    filter = feature.has("itemType"),
-                    color = const(MapStyles.SPOT_MARKER_COLOR),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        14 to const(3.dp),
-                        15 to const(4.5.dp),
-                    ),
-                    strokeColor = const(Color.White),
-                    strokeWidth = const(0.8.dp),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0f),
-                        13.5 to const(0.35f),
-                        14.5 to const(0.75f),
-                        15 to const(0.5f),
-                        15.2 to const(0f),
-                    ),
-                )
-
-                // Per-type litter glyphs — pins with a canonical itemType are drawn
-                // as a small badge depicting WHAT was scanned (bottle, can, bag …)
-                // instead of the uniform dot. The tap target below the halos already
-                // covers these features, so no onClick is needed here.
-                @Suppress("UNCHECKED_CAST")
-                val itemTypeExpr = feature["itemType"] as
-                    org.maplibre.compose.expressions.ast.Expression<org.maplibre.compose.expressions.value.StringValue>
-                val glyphSize = DpSize(30.dp, 30.dp)
-                SymbolLayer(
-                    id = "spot-markers-glyphs",
-                    source = spotSrc,
-                    minZoom = IOS_SPOT_GLYPH_MIN_ZOOM.toFloat(),
-                    filter = feature.has("itemType"),
-                    iconImage = switch(
-                        itemTypeExpr,
-                        case("plastic_bottle", image(litterGlyphPainters.getValue("plastic_bottle"), glyphSize)),
-                        case("glass_bottle", image(litterGlyphPainters.getValue("glass_bottle"), glyphSize)),
-                        case("can", image(litterGlyphPainters.getValue("can"), glyphSize)),
-                        case("plastic_bag", image(litterGlyphPainters.getValue("plastic_bag"), glyphSize)),
-                        case("cup", image(litterGlyphPainters.getValue("cup"), glyphSize)),
-                        case("paper", image(litterGlyphPainters.getValue("paper"), glyphSize)),
-                        case("wrapper", image(litterGlyphPainters.getValue("wrapper"), glyphSize)),
-                        case("carton", image(litterGlyphPainters.getValue("carton"), glyphSize)),
-                        case("cigarette", image(litterGlyphPainters.getValue("cigarette"), glyphSize)),
-                        case("food_waste", image(litterGlyphPainters.getValue("food_waste"), glyphSize)),
-                        case("tire", image(litterGlyphPainters.getValue("tire"), glyphSize)),
-                        case("mattress", image(litterGlyphPainters.getValue("mattress"), glyphSize)),
-                        case("debris_pile", image(litterGlyphPainters.getValue("debris_pile"), glyphSize)),
-                        case("tree", image(litterGlyphPainters.getValue("tree"), glyphSize)),
-                        case("bush", image(litterGlyphPainters.getValue("bush"), glyphSize)),
-                        case("fence", image(litterGlyphPainters.getValue("fence"), glyphSize)),
-                        case("gate", image(litterGlyphPainters.getValue("gate"), glyphSize)),
-                        case("pole", image(litterGlyphPainters.getValue("pole"), glyphSize)),
-                        case("hydrant", image(litterGlyphPainters.getValue("hydrant"), glyphSize)),
-                        case("bench", image(litterGlyphPainters.getValue("bench"), glyphSize)),
-                        case("mailbox", image(litterGlyphPainters.getValue("mailbox"), glyphSize)),
-                        case("sign", image(litterGlyphPainters.getValue("sign"), glyphSize)),
-                        fallback = image(litterGlyphPainters.getValue("other"), glyphSize),
-                    ),
-                    iconSize = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15 to const(0.3f),
-                        15.5 to const(0.6f),
-                        16 to const(0.72f),
-                        18 to const(0.9f),
-                    ),
-                    iconAllowOverlap = const(true),
-                    iconIgnorePlacement = const(true),
-                )
-
-                // ── Verification indicator — orange ring on spots needing verification ──
-                val verificationSpots = remember(spots) {
-                    val needsVerif = spots.filter { it.needsVerification && it.status != CommunityReportStatus.RESOLVED }
-                    if (needsVerif.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                    else {
-                        val features = needsVerif.joinToString(",") { s ->
-                            """{"type":"Feature","properties":{"id":${s.id}},"geometry":{"type":"Point","coordinates":[${s.coordinates.lng},${s.coordinates.lat}]}}"""
-                        }
-                        """{"type":"FeatureCollection","features":[$features]}"""
-                    }
-                }
-                val verifSrc = rememberGeoJsonSource(GeoJsonData.JsonString(verificationSpots))
-                // Street-level detail tier (with the halos): rings on every pin at
-                // neighborhood zoom doubled the ink of dense areas for a signal
-                // ("needs verification") that is only actionable up close.
-                CircleLayer(
-                    id = "spot-verification-ring",
-                    source = verifSrc,
-                    minZoom = IOS_SPOT_DETAIL_MIN_ZOOM.toFloat(),
-                    color = const(Color.Transparent),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15.5 to const(8.dp),
-                        17 to const(10.dp),
-                    ),
-                    strokeColor = const(Color(0xFFFF8C00)),
-                    strokeWidth = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15.5 to const(1.5.dp),
-                        17 to const(2.dp),
-                    ),
-                    opacity = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        15.5 to const(0f),
-                        16 to const(1f),
-                    ),
-                )
-            }
+            // Spot pin/marker/verification-ring layers removed (Pillar 8 Task 2,
+            // Part A): the observation-footprint layer above ("Observation
+            // footprints" block) is now THE close-zoom litter-truth visualization,
+            // replacing what spot-rect-fill/spot-rect-outline, LAYER_SPOT_MARKER_HALOS,
+            // LAYER_BOUNTIED_SPOT_HALOS, the spot-markers tap target, LAYER_SPOT_MARKERS,
+            // "${LAYER_SPOT_MARKERS}-typed-dots", the spot-markers-glyphs SymbolLayer, and
+            // spot-verification-ring used to show. Heat layers (spot-density-heat-*,
+            // above) and spot-rect/bountied-spot JSON builders untouched — `spots` still
+            // feeds those. See composeApp/src/commonMain/kotlin/com/gcc/app/ui/map/
+            // GeoJsonLayers.kt's buildObservationFootprintsGeoJson for the replacement.
 
         }
 
@@ -1785,6 +1593,26 @@ private fun cellIdClickHandler(onTap: ((String) -> Unit)?): FeaturesClickHandler
     } else null
 
 /**
+ * Shared tap handler for the three observation-footprint fill layers
+ * (vegetation/construction/other, Pillar 8 Task 2 Part C): every feature
+ * carries the source observation's id in an `id` property
+ * (buildObservationFootprintsGeoJson) — this reads it and forwards to
+ * [onTap]. Mirrors [cellIdClickHandler]/onAffectedBlockTap's exact
+ * structure. Returns null (no handler) when the caller passed no [onTap].
+ */
+private fun observationIdClickHandler(onTap: ((Int) -> Unit)?): FeaturesClickHandler? =
+    if (onTap != null) { features ->
+        val raw = features.firstOrNull()?.properties?.get("id")
+        val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
+        if (id != null) {
+            onTap(id)
+            ClickResult.Consume
+        } else {
+            ClickResult.Pass
+        }
+    } else null
+
+/**
  * Shared tap handler for the route fill/line layers: every feature carries
  * the tapped route's index in a `routeIndex` property — this reads it and
  * forwards to [onTap]. Returns null (no handler) when the caller passed no
@@ -1817,234 +1645,3 @@ private fun MapZoomControlOverlay(
     }
 }
 
-/**
- * Canonical litter types that get a per-type close-zoom map glyph. Mirrors
- * [com.gcc.app.platform.TrashItemCatalog]; "other" is the catch-all and also
- * the [switch] fallback for any unexpected type string.
- */
-private val LITTER_GLYPH_TYPES = listOf(
-    "plastic_bottle", "glass_bottle", "can", "plastic_bag", "cup", "paper",
-    "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress",
-    // Object-capture piles + landmark elements (world-model context):
-    "debris_pile", "tree", "bush", "fence", "gate", "pole", "hydrant",
-    "bench", "mailbox", "sign", "other",
-)
-
-/**
- * Badge tint for each litter glyph. The whole set stays in the orange/amber
- * litter family with a per-type hue nudge so the markers read as one system;
- * glass_bottle breaks to teal to echo its real-world color cue.
- */
-private fun litterBadgeColor(itemType: String): Color = when (itemType) {
-    "plastic_bottle" -> Color(0xFFF97316)
-    "glass_bottle" -> Color(0xFF0E9F9A)
-    "can" -> Color(0xFFEA580C)
-    "plastic_bag" -> Color(0xFFFB923C)
-    "cup" -> Color(0xFFF59E0B)
-    "paper" -> Color(0xFFF6B740)
-    "wrapper" -> Color(0xFFEF6A16)
-    "carton" -> Color(0xFFD97706)
-    "cigarette" -> Color(0xFFFBBF24)
-    "food_waste" -> Color(0xFFB45309)
-    "tire" -> Color(0xFF9A3412)
-    "mattress" -> Color(0xFFF08A3C)
-    "debris_pile" -> Color(0xFF92400E)
-    // Landmark elements: greens for vegetation, greys for structures, so
-    // scenery reads as scenery next to the orange litter family.
-    "tree" -> Color(0xFF16A34A)
-    "bush" -> Color(0xFF22C55E)
-    "fence", "gate", "pole", "bench", "mailbox", "sign" -> Color(0xFF6B7280)
-    "hydrant" -> Color(0xFFDC2626)
-    else -> Color(0xFFF97316)
-}
-
-/**
- * Draws a small white-stroked circular badge tinted per litter type with a
- * simple white glyph depicting the item. Rasterized once by the MapLibre image
- * manager and referenced from the spot-markers-glyphs SymbolLayer. Kept simple
- * and flat so shapes stay legible at ~15-27dp on the map.
- */
-private class LitterGlyphPainter(private val itemType: String) : Painter() {
-    override val intrinsicSize: Size = Size(30f, 30f)
-
-    override fun DrawScope.onDraw() {
-        val w = size.width
-        val h = size.height
-        val cx = w / 2f
-        val cy = h / 2f
-        val r = minOf(w, h) / 2f
-        val ring = r * 0.13f
-        val badge = litterBadgeColor(itemType)
-        // White badge ring + tinted fill — the "dot that shows what it is".
-        drawCircle(color = Color.White, radius = r, center = Offset(cx, cy))
-        drawCircle(color = badge, radius = r - ring, center = Offset(cx, cy))
-
-        val ink = Color.White
-        when (itemType) {
-            "plastic_bottle" -> {
-                val bw = w * 0.20f
-                val bh = h * 0.46f
-                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f + h * 0.04f), Size(bw, bh), CornerRadius(bw * 0.5f))
-                drawRoundRect(ink, Offset(cx - bw * 0.28f, cy - bh / 2f - h * 0.02f), Size(bw * 0.56f, h * 0.09f), CornerRadius(bw * 0.15f))
-            }
-            "glass_bottle" -> {
-                val bw = w * 0.22f
-                val bh = h * 0.50f
-                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f + h * 0.04f), Size(bw, bh), CornerRadius(bw * 0.28f))
-                drawRoundRect(ink, Offset(cx - bw * 0.22f, cy - bh / 2f - h * 0.03f), Size(bw * 0.44f, h * 0.10f), CornerRadius(bw * 0.1f))
-            }
-            "can" -> {
-                val bw = w * 0.42f
-                val bh = h * 0.34f
-                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bw * 0.16f))
-            }
-            "plastic_bag" -> {
-                val d = w * 0.28f
-                val p = Path().apply {
-                    moveTo(cx, cy - d)
-                    lineTo(cx + d, cy)
-                    lineTo(cx, cy + d)
-                    lineTo(cx - d, cy)
-                    close()
-                }
-                drawPath(p, ink)
-            }
-            "cup" -> {
-                val topHalf = w * 0.24f
-                val botHalf = w * 0.15f
-                val hh = h * 0.24f
-                val p = Path().apply {
-                    moveTo(cx - topHalf, cy - hh)
-                    lineTo(cx + topHalf, cy - hh)
-                    lineTo(cx + botHalf, cy + hh)
-                    lineTo(cx - botHalf, cy + hh)
-                    close()
-                }
-                drawPath(p, ink)
-            }
-            "paper" -> {
-                val s = w * 0.42f
-                val half = s / 2f
-                val fold = s * 0.34f
-                val p = Path().apply {
-                    moveTo(cx - half, cy - half)
-                    lineTo(cx + half - fold, cy - half)
-                    lineTo(cx + half, cy - half + fold)
-                    lineTo(cx + half, cy + half)
-                    lineTo(cx - half, cy + half)
-                    close()
-                }
-                drawPath(p, ink)
-                val fp = Path().apply {
-                    moveTo(cx + half - fold, cy - half)
-                    lineTo(cx + half, cy - half + fold)
-                    lineTo(cx + half - fold, cy - half + fold)
-                    close()
-                }
-                drawPath(fp, badge)
-            }
-            "wrapper" -> {
-                val bw = w * 0.42f
-                val bh = h * 0.24f
-                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bh * 0.3f))
-                val left = Path().apply {
-                    moveTo(cx - bw / 2f, cy - bh / 2f)
-                    lineTo(cx - bw / 2f - w * 0.08f, cy)
-                    lineTo(cx - bw / 2f, cy + bh / 2f)
-                    close()
-                }
-                drawPath(left, ink)
-                val right = Path().apply {
-                    moveTo(cx + bw / 2f, cy - bh / 2f)
-                    lineTo(cx + bw / 2f + w * 0.08f, cy)
-                    lineTo(cx + bw / 2f, cy + bh / 2f)
-                    close()
-                }
-                drawPath(right, ink)
-            }
-            "carton" -> {
-                val s = w * 0.40f
-                drawRoundRect(ink, Offset(cx - s / 2f, cy - s / 2f), Size(s, s), CornerRadius(s * 0.14f))
-                drawLine(badge, Offset(cx, cy - s / 2f), Offset(cx, cy + s / 2f), strokeWidth = w * 0.03f)
-            }
-            "cigarette" -> {
-                rotate(degrees = -35f, pivot = Offset(cx, cy)) {
-                    val bw = w * 0.5f
-                    val bh = h * 0.14f
-                    drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw * 0.7f, bh), CornerRadius(bh * 0.2f))
-                    drawRoundRect(Color(0xFFB45309), Offset(cx + bw * 0.2f, cy - bh / 2f), Size(bw * 0.3f, bh), CornerRadius(bh * 0.2f))
-                }
-            }
-            "food_waste" -> {
-                val fr = w * 0.20f
-                drawCircle(ink, radius = fr, center = Offset(cx, cy))
-                drawCircle(badge, radius = fr * 0.62f, center = Offset(cx + fr * 0.9f, cy - fr * 0.2f))
-                drawLine(ink, Offset(cx, cy - fr), Offset(cx + fr * 0.3f, cy - fr * 1.4f), strokeWidth = w * 0.03f)
-            }
-            "tire" -> {
-                val outer = w * 0.24f
-                drawCircle(ink, radius = outer, center = Offset(cx, cy), style = Stroke(width = w * 0.11f))
-            }
-            "mattress" -> {
-                val bw = w * 0.5f
-                val bh = h * 0.3f
-                drawRoundRect(ink, Offset(cx - bw / 2f, cy - bh / 2f), Size(bw, bh), CornerRadius(bh * 0.35f))
-                val dot = w * 0.025f
-                drawCircle(badge, radius = dot, center = Offset(cx - bw * 0.22f, cy))
-                drawCircle(badge, radius = dot, center = Offset(cx, cy))
-                drawCircle(badge, radius = dot, center = Offset(cx + bw * 0.22f, cy))
-            }
-            "debris_pile" -> {
-                val d = w * 0.30f
-                val p = Path().apply {
-                    moveTo(cx - d, cy + d * 0.6f)
-                    lineTo(cx - d * 0.3f, cy - d * 0.5f)
-                    lineTo(cx + d * 0.15f, cy + d * 0.05f)
-                    lineTo(cx + d * 0.45f, cy - d * 0.35f)
-                    lineTo(cx + d, cy + d * 0.6f)
-                    close()
-                }
-                drawPath(p, ink)
-            }
-            "tree" -> {
-                drawCircle(ink, radius = w * 0.20f, center = Offset(cx, cy - h * 0.08f))
-                drawRoundRect(ink, Offset(cx - w * 0.04f, cy + h * 0.06f), Size(w * 0.08f, h * 0.20f), CornerRadius(w * 0.02f))
-            }
-            "bush" -> {
-                drawCircle(ink, radius = w * 0.16f, center = Offset(cx - w * 0.08f, cy + h * 0.02f))
-                drawCircle(ink, radius = w * 0.14f, center = Offset(cx + w * 0.10f, cy + h * 0.04f))
-            }
-            "fence" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.24f, cy - h * 0.03f), Size(w * 0.48f, h * 0.06f), CornerRadius(w * 0.01f))
-                drawRoundRect(ink, Offset(cx - w * 0.18f, cy - h * 0.16f), Size(w * 0.06f, h * 0.32f), CornerRadius(w * 0.01f))
-                drawRoundRect(ink, Offset(cx + w * 0.12f, cy - h * 0.16f), Size(w * 0.06f, h * 0.32f), CornerRadius(w * 0.01f))
-            }
-            "gate" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.18f, cy - h * 0.18f), Size(w * 0.36f, h * 0.36f), CornerRadius(w * 0.03f))
-                drawRoundRect(badge, Offset(cx - w * 0.10f, cy - h * 0.10f), Size(w * 0.20f, h * 0.28f), CornerRadius(w * 0.02f))
-            }
-            "pole", "sign" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.035f, cy - h * 0.20f), Size(w * 0.07f, h * 0.40f), CornerRadius(w * 0.02f))
-                if (itemType == "sign") {
-                    drawRoundRect(ink, Offset(cx - w * 0.14f, cy - h * 0.22f), Size(w * 0.28f, h * 0.14f), CornerRadius(w * 0.02f))
-                }
-            }
-            "hydrant" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.10f, cy - h * 0.10f), Size(w * 0.20f, h * 0.28f), CornerRadius(w * 0.05f))
-                drawCircle(ink, radius = w * 0.10f, center = Offset(cx, cy - h * 0.12f))
-            }
-            "bench" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.22f, cy - h * 0.04f), Size(w * 0.44f, h * 0.08f), CornerRadius(w * 0.02f))
-                drawRoundRect(ink, Offset(cx - w * 0.18f, cy + h * 0.04f), Size(w * 0.05f, h * 0.14f), CornerRadius(w * 0.01f))
-                drawRoundRect(ink, Offset(cx + w * 0.13f, cy + h * 0.04f), Size(w * 0.05f, h * 0.14f), CornerRadius(w * 0.01f))
-            }
-            "mailbox" -> {
-                drawRoundRect(ink, Offset(cx - w * 0.15f, cy - h * 0.14f), Size(w * 0.30f, h * 0.18f), CornerRadius(w * 0.06f))
-                drawRoundRect(ink, Offset(cx - w * 0.03f, cy + h * 0.04f), Size(w * 0.06f, h * 0.16f), CornerRadius(w * 0.01f))
-            }
-            else -> {
-                // "other" / unknown: plain tinted badge, matching the legacy dot.
-            }
-        }
-    }
-}

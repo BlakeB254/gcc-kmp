@@ -38,6 +38,16 @@ data class WorldObservation(
      * orient a true-scale footprint on the map. Null when unmeasured.
      */
     val yawDegrees: Double? = null,
+    /**
+     * Estimated item weight in grams (TrashItemCatalog.estimateWeightGrams,
+     * computed server-side from itemType + widthMeters and stored in
+     * attributes.estimatedWeightGrams). Already returned by every row of
+     * `GET /api/map/observations` (site/src/app/api/map/observations/route.ts)
+     * — added here so the client can actually read it (Pillar 8 Task 2,
+     * Part C: the litter-footprint detail card shows this). Null when
+     * absent/unestimated.
+     */
+    val estimatedWeightGrams: Int? = null,
 )
 
 @Serializable

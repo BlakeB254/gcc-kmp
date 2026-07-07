@@ -33,6 +33,35 @@ class TrashItemCatalogTest {
     }
 
     @Test
+    fun `chip bag tokens route to chip_bag ahead of the generic bag branch`() {
+        assertEquals("chip_bag", TrashItemCatalog.canonicalType("chip_bag"))
+        assertEquals("chip_bag", TrashItemCatalog.canonicalType("chips"))
+        assertEquals("chip_bag", TrashItemCatalog.canonicalType("Chip Bag"))
+    }
+
+    @Test
+    fun `trash or garbage bag tokens route to trash_bag ahead of the generic bag branch`() {
+        assertEquals("trash_bag", TrashItemCatalog.canonicalType("trash_bag"))
+        assertEquals("trash_bag", TrashItemCatalog.canonicalType("garbage bag"))
+        // "bag" alone (no trash/garbage/lawn qualifier) still routes to the
+        // generic shopping-bag-sized type.
+        assertEquals("plastic_bag", TrashItemCatalog.canonicalType("plastic bag"))
+    }
+
+    @Test
+    fun `chip_bag and trash_bag catalog entries have expected physical estimates`() {
+        val chip = TrashItemCatalog.infoFor("chip_bag")
+        assertEquals("Chip bag", chip.displayName)
+        assertEquals(0.22, chip.typicalWidthMeters)
+        assertEquals(4, chip.typicalWeightGrams)
+
+        val trashBag = TrashItemCatalog.infoFor("trash_bag")
+        assertEquals("Trash bag", trashBag.displayName)
+        assertEquals(0.60, trashBag.typicalWidthMeters)
+        assertEquals(60, trashBag.typicalWeightGrams)
+    }
+
+    @Test
     fun `typical width returns typical weight`() {
         val info = TrashItemCatalog.infoFor("plastic_bottle")
         assertEquals(
@@ -84,7 +113,8 @@ class TrashItemCatalogTest {
     fun `every catalog type resolves to itself via infoFor`() {
         for (type in listOf(
             "plastic_bottle", "glass_bottle", "can", "plastic_bag", "cup", "paper",
-            "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress", "other",
+            "wrapper", "carton", "cigarette", "food_waste", "tire", "mattress",
+            "chip_bag", "trash_bag", "other",
         )) {
             assertEquals(type, TrashItemCatalog.infoFor(type).itemType)
         }

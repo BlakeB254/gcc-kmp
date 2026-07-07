@@ -1,5 +1,6 @@
 package com.gcc.app.ui.map
 
+import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
@@ -7,6 +8,7 @@ import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sqrt
 import kotlin.math.sin
 
@@ -800,20 +802,75 @@ fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
 }
 
 /**
+ * Web Mercator meters-per-pixel constant: Earth's circumference (~40,075,017m)
+ * spread across a 256px tile at zoom 0 → 156543.03392 m/px at the equator;
+ * halves every zoom level and scales by cos(latitude) elsewhere. Standard
+ * formula, shared source of truth for [FOOTPRINT_VISIBILITY_FLOOR_METERS].
+ */
+private const val WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR = 156543.03392
+
+/** cos(41.85°) — a representative Chicago latitude, used only to derive the
+ *  visibility floor below (a fixed constant, not per-observation latitude,
+ *  since the floor just needs to be "in the right ballpark" everywhere the
+ *  app operates today). */
+private const val CHICAGO_REPRESENTATIVE_LAT_COS = 0.7447
+
+/** 2^17 — the zoom level where the footprint layer fades in (see
+ *  `footprintOutlineOpacity` in GccMap.ios.kt, z16.5→17). */
+private const val FOOTPRINT_FADE_IN_ZOOM_POW2 = 131_072.0
+
+/** meters/px at z17 for a representative Chicago latitude:
+ *  156543.03392 * 0.7447 / 131072 ≈ 0.8894 m/px. */
+private const val METERS_PER_PIXEL_AT_FOOTPRINT_FADE_IN =
+    WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR * CHICAGO_REPRESENTATIVE_LAT_COS / FOOTPRINT_FADE_IN_ZOOM_POW2
+
+/**
+ * Visibility floor (spec: "min 2.5px at render zoom, color carries
+ * noticeability, size carries truth"): the minimum world-space width/
+ * diameter a footprint may render at, so a true-scale tiny item (a 0.03m
+ * cigarette butt, a 0.22m chip bag) never shrinks under 2.5 screen pixels
+ * at the zoom where this layer fades in and functionally vanishes.
+ *
+ * 2.5px * 0.8894 m/px ≈ 2.22m. This means most typical litter items render
+ * at this floor size (larger than true scale) right as they fade in at
+ * z17 — the spec's explicit accepted trade-off. Zooming in further only
+ * makes them relatively larger on screen (same world-space size, smaller
+ * meters/px), never smaller — the floor is a one-way guarantee anchored to
+ * the fade-in zoom, not a moving target.
+ */
+private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_FOOTPRINT_FADE_IN
+
+/**
  * Builds a GeoJSON FeatureCollection of true-scale, oriented footprint
- * polygons for world observations that carry a physical width (Pillar 3
- * Task 3 — see docs/superpowers/plans/2026-07-07-pillar3-footprints.md).
+ * polygons for world observations (Pillar 3 Task 3 — see
+ * docs/superpowers/plans/2026-07-07-pillar3-footprints.md — extended into
+ * the close-zoom litter-truth visualization by Pillar 8 Task 2, replacing
+ * the removed spot pin/glyph layers).
  *
  * Geometry approximation table (v1):
- *  - domain == "vegetation" → circle (12-gon) of diameter [WorldObservation.widthMeters]
- *  - everything else → oriented rectangle widthMeters × (widthMeters × 0.4),
- *    rotated by [WorldObservation.yawDegrees] (bearing of the observed face;
- *    defaults to 0 when unmeasured)
+ *  - domain == "vegetation" → circle (12-gon) of diameter [effective width]
+ *  - everything else → oriented rectangle [effective width] × ([effective
+ *    width] × 0.4), rotated by [WorldObservation.yawDegrees] (bearing of the
+ *    observed face; defaults to 0 when unmeasured)
  *
- * Observations with a null/non-finite/non-positive widthMeters are skipped —
- * there is no measured footprint to draw. Feature properties carry itemType,
- * domain, and state so GccMap.ios can filter/color per domain and the tap
- * target can identify what was scanned.
+ * "Effective width" (Pillar 8 Task 2, Part B):
+ *  1. [WorldObservation.widthMeters] when it's a usable measurement (finite,
+ *     positive) — a real close-range capture.
+ *  2. Otherwise [TrashItemCatalog.infoFor]'s typicalWidthMeters for the
+ *     observation's itemType (falling back to [TrashItemCatalog.FALLBACK_TYPE]
+ *     when itemType itself is null) — most detections never get a close-
+ *     range width capture, and a type-appropriate default beats skipping
+ *     the feature entirely (every observation gets a footprint now; see
+ *     Part B.4 — there is still no clustering step).
+ *  3. Floored to [FOOTPRINT_VISIBILITY_FLOOR_METERS] either way, so nothing
+ *     ever renders sub-2.5px at the fade-in zoom.
+ *
+ * Feature properties carry id (Part C — tap resolution back to a
+ * [WorldObservation]), itemType, domain, and state so GccMap.ios can filter/
+ * color per domain and the tap target can identify what was scanned. (Part
+ * B.3's diagnostic-state styling stub lives entirely in GccMap.ios.kt's
+ * layer styling, not here — see the `isDiagnosed` doc there — since there is
+ * no per-observation data to key it on yet; it's a flat stub, not per-feature.)
  *
  * [centerLat] anchors the lng/lat meter-scale conversion for the oriented
  * rectangles (single lngScale for the whole collection, matching
@@ -828,9 +885,16 @@ fun buildObservationFootprintsGeoJson(
     val metersPerDegreeLat = 111_320.0
     val metersPerDegreeLng = (metersPerDegreeLat * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
 
-    val features = observations.mapNotNull { obs ->
-        val width = obs.widthMeters
-        if (width == null || !width.isFinite() || width <= 0.0) return@mapNotNull null
+    val features = observations.map { obs ->
+        // Part B.1: a null/non-finite/non-positive measurement is not a
+        // usable close-range capture — fall back to the type's typical
+        // width instead of skipping the observation.
+        val measuredWidth = obs.widthMeters?.takeIf { it.isFinite() && it > 0.0 }
+        val rawWidth = measuredWidth
+            ?: TrashItemCatalog.infoFor(obs.itemType ?: TrashItemCatalog.FALLBACK_TYPE).typicalWidthMeters
+        // Part B.2: visibility floor, applied after resolving the real/
+        // type-default width so nothing renders sub-2.5px at fade-in zoom.
+        val width = max(rawWidth, FOOTPRINT_VISIBILITY_FLOOR_METERS)
         val yaw = obs.yawDegrees?.takeIf { it.isFinite() } ?: 0.0
 
         val ring = if (obs.domain == "vegetation") {
@@ -849,7 +913,9 @@ fun buildObservationFootprintsGeoJson(
 
         val itemTypeProp = obs.itemType?.let { """"itemType":"$it",""" } ?: ""
         val domainProp = obs.domain?.let { """"domain":"$it",""" } ?: ""
-        """{"type":"Feature","properties":{$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+        // Part C: id rides along so GccMap.ios's onClick can resolve the
+        // tapped feature back to a specific WorldObservation.
+        """{"type":"Feature","properties":{"id":${obs.id},$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
     }.joinToString(",")
 
     return """{"type":"FeatureCollection","features":[$features]}"""
