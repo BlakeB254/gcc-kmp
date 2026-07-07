@@ -54,5 +54,10 @@
 - [ ] `site/src/lib` → auth/, geo/, sponsor/, scan/, mobile/ per audit C3 (imports via IDE-free sed + tsc verification).
 - [ ] Commits: `chore(hardening): delete undeployed server module` + one per package move.
 
+### Task 8b: Missing-endpoint resolution (owner decision 2026-07-07)
+- [ ] IMPLEMENT: feed comments (POST /api/feed/[id]/comments — small table `feed_comments` via hand-written migration file, GET included), feed profile opt-in (POST /api/feed/[id]/opt-in-profile or the shape the client calls — read FeedViewModel first), admin analytics activity+daily (read-only aggregates over existing tables matching the admin tabs' parsing), admin bulk-verify (batch update, admin-auth). Match each client call shape EXACTLY (the deployed app can't change).
+- [ ] REMOVE: the "already clean" spot-volunteer UI path + its client method (superseded by scan rectify; spots are being removed in P8).
+- [ ] Commits: `feat(hardening): implement feed comments/opt-in + admin analytics/bulk-verify` and `chore(hardening): remove superseded already-clean volunteer path`.
+
 ### Task 9: Sweep + PR
 - [ ] Merge origin/main, full gates incl. xcodebuild, /simplify 2-angle pass, PR. Body: per-task summary, the 400-instead-of-403 route list (follow-up), deferred items (file splits for SpotScreen/GccMap.ios — NEXT round; ARGeoAnchor v3; CommunityAreaData codegen; missing-endpoints product decision for Blake: feed comments/opt-in + already-clean + admin analytics/bulk-verify — implement or remove?).
