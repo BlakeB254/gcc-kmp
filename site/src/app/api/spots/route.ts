@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
     // its own coordinates so the map/heatmap layers place items accurately.
     // Sanity-gated to 150m of the report location to keep junk out of the twin.
     const OBSERVATION_DOMAINS = ['litter', 'vegetation', 'construction', 'land_use'] as const
-    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number; estimatedWeightGrams?: number; estimatedWidthMeters?: number; domain?: (typeof OBSERVATION_DOMAINS)[number] }[] =
+    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number; estimatedWeightGrams?: number; estimatedWidthMeters?: number; yawDegrees?: number; domain?: (typeof OBSERVATION_DOMAINS)[number] }[] =
       Array.isArray(observedItems)
         ? observedItems
             .filter((it: any) =>
@@ -276,6 +276,7 @@ export async function POST(request: NextRequest) {
               confidence: Number.isFinite(Number(it.confidence)) ? Number(it.confidence) : undefined,
               estimatedWeightGrams: Number.isFinite(Number(it.estimatedWeightGrams)) ? Math.round(Number(it.estimatedWeightGrams)) : undefined,
               estimatedWidthMeters: Number.isFinite(Number(it.estimatedWidthMeters)) ? Number(it.estimatedWidthMeters) : undefined,
+              yawDegrees: Number.isFinite(Number(it.yawDegrees)) ? Number(it.yawDegrees) : undefined,
               domain: OBSERVATION_DOMAINS.includes(it.domain) ? (it.domain as (typeof OBSERVATION_DOMAINS)[number]) : undefined,
             }))
         : []
@@ -330,11 +331,12 @@ export async function POST(request: NextRequest) {
         itemType: item.itemType,
         state: 'dirty',
         domain: item.domain,
-        attributes: (item.severity !== undefined || item.estimatedWeightGrams !== undefined || item.estimatedWidthMeters !== undefined)
+        attributes: (item.severity !== undefined || item.estimatedWeightGrams !== undefined || item.estimatedWidthMeters !== undefined || item.yawDegrees !== undefined)
           ? {
               ...(item.severity !== undefined ? { severity: item.severity } : {}),
               ...(item.estimatedWeightGrams !== undefined ? { estimatedWeightGrams: item.estimatedWeightGrams } : {}),
               ...(item.estimatedWidthMeters !== undefined ? { estimatedWidthMeters: item.estimatedWidthMeters } : {}),
+              ...(item.yawDegrees !== undefined ? { yawDegrees: item.yawDegrees } : {}),
             }
           : undefined,
         confidence: item.confidence,
