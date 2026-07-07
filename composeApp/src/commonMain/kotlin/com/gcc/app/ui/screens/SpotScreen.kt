@@ -48,6 +48,7 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
@@ -79,7 +80,6 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
-import com.gcc.shared.model.RetractCoverageRequest
 import com.gcc.shared.model.ScanCoverageEventRequest
 import com.gcc.shared.model.WorldObservation
 import kotlinx.coroutines.CoroutineScope
@@ -458,15 +458,7 @@ private fun CameraPhase(
             // events, and a server retraction for anything already flushed.
             tracker.purgeSince(cutoff)
             flushScope.launch {
-                coverageQueue.purgeSince(cutoff)
-                retractQueue.enqueue(
-                    RetractCoverageRequest(
-                        deviceId = CoverageDeviceId.value,
-                        fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
-                        toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
-                    )
-                )
-                retractQueue.flush()
+                purgeAndRetractCoverage(cutoff, nowMs, coverageQueue, retractQueue)
             }
         }
         sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
@@ -642,12 +634,7 @@ private fun CameraPhase(
                         platform = getPlatformName(),
                         lat = loc.lat,
                         lng = loc.lng,
-                        // NaN/Infinite would throw serializing this event into
-                        // the persisted queue (GccJson has no
-                        // allowSpecialFloatingPointValues) — a bad GPS pair
-                        // (e.g. identical lat/lng at the poles) must not wedge
-                        // the whole queue.
-                        distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                        distanceMeters = segmentMeters,
                         scanMode = "spot",
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),

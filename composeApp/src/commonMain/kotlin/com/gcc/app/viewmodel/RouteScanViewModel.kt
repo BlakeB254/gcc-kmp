@@ -8,6 +8,7 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
@@ -1071,15 +1072,7 @@ class RouteScanViewModel(
                         // events, server retraction of flushed ones.
                         coverageTracker.purgeSince(cutoff)
                         scope.launch {
-                            coverageEventQueue.purgeSince(cutoff)
-                            retractionQueue.enqueue(
-                                RetractCoverageRequest(
-                                    deviceId = CoverageDeviceId.value,
-                                    fromCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(cutoff).toString(),
-                                    toCapturedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(nowMs).toString(),
-                                )
-                            )
-                            retractionQueue.flush()
+                            purgeAndRetractCoverage(cutoff, nowMs, coverageEventQueue, retractionQueue)
                         }
                     }
                 }
@@ -1152,10 +1145,7 @@ class RouteScanViewModel(
                                     platform = getPlatformName(),
                                     lat = lat,
                                     lng = lng,
-                                    // NaN/Infinite would throw serializing this
-                                    // event into the persisted queue (GccJson
-                                    // has no allowSpecialFloatingPointValues).
-                                    distanceMeters = if (segmentMeters.isFinite()) segmentMeters else 0.0,
+                                    distanceMeters = segmentMeters,
                                     scanMode = "route",
                                     deviceTier = coverageDeviceTier,
                                     capturedAt = Clock.System.now().toString(),

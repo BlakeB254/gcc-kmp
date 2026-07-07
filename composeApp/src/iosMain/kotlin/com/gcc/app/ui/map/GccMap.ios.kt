@@ -485,8 +485,9 @@ actual fun GccMap(
             // IOS_SPOT_DOTS_MIN_ZOOM) instead of the old hard clip at 12.99.
             // Gated on spots: the scan summary card renders GccMap with no
             // spots and must not allocate the heatmap sources/layers it never
-            // paints (Fix 2, r2a). The scrim FillLayer inside already had its own
-            // `spots.isNotEmpty()` guard — left untouched, now just nested.
+            // paints (Fix 2, r2a). The scrim FillLayer below relies on this
+            // same outer guard — toggle-off and zero-report areas never reach
+            // it, so no gray wash (mirrors the web version's guard).
             if (spots.isNotEmpty()) {
                 val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
                 val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
@@ -499,21 +500,17 @@ actual fun GccMap(
                 // Fades from 0.55 opacity at overview zoom to 0 by
                 // IOS_SPOT_HEAT_FADE_ZOOM so it doesn't compete with street
                 // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
-                // Gated on spots being present so toggle-off and zero-report areas
-                // don't show a gray wash (mirrors the web version's guard).
-                if (spots.isNotEmpty()) {
-                    FillLayer(
-                        id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
-                        source = spotCleanZoneSrc,
-                        color = const(MapStyles.SPOT_SCRIM_COLOR),
-                        opacity = interpolate(
-                            type = org.maplibre.compose.expressions.dsl.linear(),
-                            input = zoom(),
-                            MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
-                            IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                        ),
-                    )
-                }
+                FillLayer(
+                    id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
+                    source = spotCleanZoneSrc,
+                    color = const(MapStyles.SPOT_SCRIM_COLOR),
+                    opacity = interpolate(
+                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        input = zoom(),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.55f),
+                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
+                    ),
+                )
 
                 // Sampled overview heat over the neutral scrim baseline. These
                 // sources are density field samples, not raw spot points, so the

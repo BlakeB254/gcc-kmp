@@ -434,3 +434,25 @@ class CoverageRetractionQueue(
         private const val KEY_PENDING_RETRACTIONS = "pending_coverage_retractions"
     }
 }
+
+/**
+ * INDOOR-flip companion purge for the ledger queues: drops pending events in
+ * the window and retracts already-flushed ones server-side (spec §2). The
+ * caller purges its recorder + tracker itself (those are surface-specific).
+ */
+suspend fun purgeAndRetractCoverage(
+    cutoffMs: Long,
+    nowMs: Long,
+    eventQueue: CoverageEventQueue,
+    retractionQueue: CoverageRetractionQueue,
+) {
+    eventQueue.purgeSince(cutoffMs)
+    retractionQueue.enqueue(
+        RetractCoverageRequest(
+            deviceId = CoverageDeviceId.value,
+            fromCapturedAt = Instant.fromEpochMilliseconds(cutoffMs).toString(),
+            toCapturedAt = Instant.fromEpochMilliseconds(nowMs).toString(),
+        )
+    )
+    retractionQueue.flush()
+}

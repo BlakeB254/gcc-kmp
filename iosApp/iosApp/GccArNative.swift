@@ -163,15 +163,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         coachingOverlay?.setActive(false, animated: false)
         coachingOverlay = nil
 
-        frameLock.lock()
-        lastFrame = nil
-        frameLock.unlock()
-
-        arView.session.pause()
-
-        if Self.liveSurface === self {
-            Self.liveSurface = nil
-        }
+        pause()
     }
 
     func currentPixelBufferAddress() -> Int64 {

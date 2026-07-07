@@ -1037,7 +1037,11 @@ export const crashReports = pgTable('crash_reports', {
   stackTrace: text('stack_trace').notNull(),
   occurredAt: timestamp('occurred_at', { mode: 'string', withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Per-device throttle check (POST /api/crashes) queries recent rows for a
+  // device — without this, that's a sequential scan over the whole table.
+  deviceCreatedIdx: index('crash_reports_device_id_created_at_idx').on(table.deviceId, table.createdAt),
+}))
 
 // =====================
 // FEEDBACK & COMMUNITY
