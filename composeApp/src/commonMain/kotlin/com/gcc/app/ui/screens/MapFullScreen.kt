@@ -389,17 +389,21 @@ fun MapFullScreen(
     val availableRouteCoordinates: List<List<Coordinates>> = remember(uiState.routes) {
         uiState.routes.map { it.routePathCoordinates() }
     }
-    val assignedRouteCoordinates: List<List<Coordinates>> = remember(assignedJobRoutePairs, currentLocation) {
-        val assignedRoutes = assignedJobRoutePairs.map { (_, route) -> route.routePathCoordinates() }
+    // The assigned route's own boundary, kept separate from its GPS guidance
+    // line so the boundary can be located by value inside mapRouteCoordinates
+    // below (drives the active-route highlight index).
+    val assignedRouteBoundaryCoordinates: List<List<Coordinates>> = remember(assignedJobRoutePairs) {
+        assignedJobRoutePairs.map { (_, route) -> route.routePathCoordinates() }
+    }
+    val assignedGuidanceLines: List<List<Coordinates>> = remember(assignedJobRoutePairs, currentLocation) {
         val location = currentLocation
-        val guidanceLines = if (location != null) {
+        if (location != null) {
             assignedJobRoutePairs.mapNotNull { (_, route) ->
                 route.routePathCoordinates().firstOrNull()?.let { start -> listOf(location, start) }
             }
         } else {
             emptyList()
         }
-        guidanceLines + assignedRoutes
     }
     val blockRecordCoordinates: List<List<Coordinates>> = remember(displayBlocks) {
         displayBlocks.mapNotNull { block ->
@@ -428,18 +432,47 @@ fun MapFullScreen(
             .distinct()
     }
 
-    val mapRouteCoordinates = if (assignedRouteCoordinates.isNotEmpty()) {
-        assignedRouteCoordinates
-    } else if (availableRouteCoordinates.isNotEmpty()) {
-        availableRouteCoordinates
-    } else {
-        blockRecordCoordinates
+    // Selectable record set: every block/route boundary the < > controls and
+    // bottom inventory chips page through. Available (published) routes take
+    // priority; block records fill in the rest of the service area.
+    val selectableRecordCoordinates: List<List<Coordinates>> =
+        availableRouteCoordinates.ifEmpty { blockRecordCoordinates }
+
+    // What actually renders on the map: the UNION of every selectable
+    // boundary PLUS the worker's assigned route and its GPS guidance line.
+    // Previously this was an exclusive if/else where an active assignment's
+    // coordinates won outright over everything else, hiding the rest of the
+    // worker's ~10-block service area and the inner exclusion rings that
+    // only pair up (by centroid containment) against a boundary that is
+    // actually present in this list (Blake: "only see that one block
+    // instead of all 10"; "1500 S Millard St block isn't displaying the
+    // correct internal exclusion areas").
+    val mapRouteCoordinates: List<List<Coordinates>> = remember(
+        selectableRecordCoordinates, assignedRouteBoundaryCoordinates, assignedGuidanceLines,
+    ) {
+        (selectableRecordCoordinates + assignedRouteBoundaryCoordinates + assignedGuidanceLines).distinct()
     }
+
+    // Index of EACH assigned route's boundary within mapRouteCoordinates →
+    // its (job, route) pair. Drives both the distinct (thicker/brighter)
+    // highlight for active blocks now that they're no longer drawn
+    // exclusively, and tap routing: only taps that land on an assigned
+    // boundary open the active job — every other block keeps the normal
+    // select/zoom behavior.
+    val activeRouteIndexToPair: Map<Int, Pair<Job, Route>> = remember(
+        mapRouteCoordinates, assignedRouteBoundaryCoordinates, assignedJobRoutePairs,
+    ) {
+        assignedRouteBoundaryCoordinates.mapIndexedNotNull { i, boundary ->
+            val pair = assignedJobRoutePairs.getOrNull(i) ?: return@mapIndexedNotNull null
+            mapRouteCoordinates.indexOf(boundary).takeIf { it >= 0 }?.let { it to pair }
+        }.toMap()
+    }
+
     val selectedRouteCoordinates = selectedRecordIndex
-        ?.let { mapRouteCoordinates.getOrNull(it) }
+        ?.let { selectableRecordCoordinates.getOrNull(it) }
         ?.let { listOf(it) }
         ?: emptyList()
-    val routeRecordCount = mapRouteCoordinates.size
+    val routeRecordCount = selectableRecordCoordinates.size
 
     LaunchedEffect(routeRecordCount) {
         val selected = selectedRecordIndex
@@ -524,6 +557,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
+            observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
             explorerAreaStates = explorerAreaStates,
             enableGestures = true,
@@ -532,15 +566,25 @@ fun MapFullScreen(
             routeCoordinates = if (mapMode == MapMode.MY_AREA) {
                 selectedRouteCoordinates.ifEmpty { mapRouteCoordinates }
             } else emptyList(),
+            // Only meaningful against the full union list — a manually
+            // selected single record has nothing to highlight against.
+            activeRouteIndices = if (mapMode == MapMode.MY_AREA && selectedRouteCoordinates.isEmpty()) {
+                activeRouteIndexToPair.keys.toList()
+            } else emptyList(),
             imageStars = if (mapMode == MapMode.MY_AREA) imageStars else emptyList(),
             onAreaTap = { /* tooltip handled internally by GccMap */ },
             onRouteTap = if (mapMode == MapMode.MY_AREA) { routeIndex ->
-                val assigned = primaryAssignedPair
-                if (assigned != null && assignedRouteCoordinates.isNotEmpty()) {
+                // Tap indices refer to whatever list GccMap is rendering: the
+                // union (mapRouteCoordinates) normally, or the single selected
+                // record when one is zoomed. Only a tap that actually lands on
+                // an assigned route's boundary opens the active job; all other
+                // blocks get the normal select/zoom behavior.
+                val assigned = if (selectedRecordIndex == null) activeRouteIndexToPair[routeIndex] else null
+                if (assigned != null) {
                     onActiveJobClick(assigned.first.id, assigned.second.id)
                 } else {
                     val actualIndex = selectedRecordIndex ?: routeIndex
-                    selectVisualRoute(actualIndex)
+                    if (actualIndex in 0 until routeRecordCount) selectVisualRoute(actualIndex)
                 }
             } else null,
             onSpotTap = { spotId ->
@@ -676,28 +720,12 @@ fun MapFullScreen(
                 }
             }
 
-            // Explorer scan: the free-form scan, open anywhere on the map —
-            // no route, no boundary, coverage credit wherever you stand.
-            if (mapMode == MapMode.EXPLORER && selectedSpot == null) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = if (hasBottomRecords) 84.dp else 20.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(GccGreen)
-                        .clickable { onNavigateToSpot() }
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("📷", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = "Explorer Scan",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                    )
-                }
-            }
+            // Single scan button for the map tab, regardless of mode: this used
+            // to sit alongside a second "Explorer Scan" pill that only showed
+            // in EXPLORER mode — same destination, same callback, redundant
+            // side-by-side buttons (Blake). SpotCreateButton below already
+            // launches the env scan in both MY_AREA and EXPLORER, so the
+            // EXPLORER-only pill was pure duplication; removed.
 
             // Bottom-right map actions: keep Spot and Location peers in one row.
             if (selectedSpot == null) {

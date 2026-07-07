@@ -178,7 +178,16 @@ fun RouteScanScreen(
                             return@launch
                         }
                     } else {
-                        "manual_before_${sectionIndex ?: 0}.jpg"
+                        // beforePhotoUrl is a required, non-nullable field the
+                        // whole way through (this viewmodel param, the server's
+                        // 400-validation, the DB NOT NULL column) — it can't be
+                        // sent null/omitted. The literal that used to go here,
+                        // "manual_before_N.jpg", was never actually uploaded
+                        // anywhere and left an unresolvable image reference on
+                        // the hotspot. Skip persisting a hotspot with no real
+                        // photo instead of recording one with a broken link.
+                        viewModel.setError("No photo captured — hotspot not saved")
+                        return@launch
                     }
 
                     viewModel.addDetectedHotspot(

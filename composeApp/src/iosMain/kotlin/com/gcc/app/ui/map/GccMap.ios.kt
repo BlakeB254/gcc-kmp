@@ -77,6 +77,7 @@ actual fun GccMap(
     gpsHeading: Float?,
     enableGestures: Boolean,
     routeCoordinates: List<List<Coordinates>>,
+    activeRouteIndices: List<Int>,
     animateRoutes: Boolean,
     bountyLocations: List<Coordinates>,
     bounties: List<com.gcc.shared.model.Bounty>,
@@ -105,6 +106,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -125,6 +127,13 @@ actual fun GccMap(
     }
     val routeCorridorJson = remember(routeCoordinates, innerBoundaryRings) {
         buildRouteCorridorGeoJson(routeCoordinates, innerBoundaryRings)
+    }
+    // Active-route highlight: a source built from just the assigned routes'
+    // boundaries so they can be drawn with a brighter/thicker outer line on
+    // top of the regular route stack (Fix: active blocks no longer render
+    // exclusively, so they need their own visual emphasis).
+    val activeRouteJson = remember(routeCoordinates, activeRouteIndices) {
+        buildRoutesGeoJson(activeRouteIndices.mapNotNull { routeCoordinates.getOrNull(it) })
     }
     val coverageStateJsons = remember(coverageCells, spots) {
         if (coverageCells.isEmpty()) null
@@ -153,6 +162,29 @@ actual fun GccMap(
     val bountiedSpotJson = remember(spots) { buildBountiedSpotMarkersGeoJson(spots) }
     val spotRectJson = remember(spots) { buildSpotRectanglePolygonsGeoJson(spots) }
     val hasHeatActivity = hasActiveSpots
+
+    // Pillar 3 footprints: true-scale oriented shapes at close zoom, split by
+    // domain into three JSON strings so each domain gets its own tinted
+    // fill/outline pair (coverage-tile precedent) — simpler than one shared
+    // source plus a color-match expression for three fixed buckets.
+    val hasFootprintData = remember(observationFootprints) {
+        observationFootprints.any { obs ->
+            val width = obs.widthMeters
+            width != null && width.isFinite() && width > 0.0
+        }
+    }
+    val footprintVegetationJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "vegetation" }, centerLat)
+    }
+    val footprintConstructionJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "construction" }, centerLat)
+    }
+    val footprintOtherJson = remember(observationFootprints, centerLat) {
+        buildObservationFootprintsGeoJson(
+            observationFootprints.filter { it.domain != "vegetation" && it.domain != "construction" },
+            centerLat,
+        )
+    }
 
     // Per-type litter glyphs for close-zoom pins. Stable instances so the
     // MapLibre image manager registers each drawable once (keyed by painter
@@ -753,6 +785,49 @@ actual fun GccMap(
                     join = const(LineJoin.Round),
                     onClick = routeIndexClickHandler(onRouteTap),
                 )
+
+                // Active-route highlight: brighter/thicker outer lines on top
+                // of the regular stack so the worker's assigned blocks still
+                // read as "the ones to work" now that they render alongside
+                // (not instead of) the rest of the service area. Deliberately
+                // NON-tappable: this source is built from a sublist, so its
+                // feature `routeIndex` properties are sublist-local and would
+                // misreport the union index — taps fall through to the
+                // underlying route core/fill layers, which carry the correct
+                // indices for the same geometry.
+                if (activeRouteIndices.isNotEmpty()) {
+                    val activeRouteSrc = rememberGeoJsonSource(GeoJsonData.JsonString(activeRouteJson))
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-glow",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed.copy(alpha = 0.55f)),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(2.dp),
+                            13 to const(5.dp),
+                            15 to const(11.dp),
+                            17 to const(18.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                    )
+                    LineLayer(
+                        id = MapStyles.LAYER_ROUTE_LINE + "-active-core",
+                        source = activeRouteSrc,
+                        color = const(GccClaimed),
+                        width = interpolate(
+                            type = exponential(1.5f),
+                            input = zoom(),
+                            10 to const(1.dp),
+                            13 to const(2.5.dp),
+                            15 to const(4.5.dp),
+                            17 to const(7.dp),
+                        ),
+                        cap = const(LineCap.Round),
+                        join = const(LineJoin.Round),
+                    )
+                }
             }
 
             // ── Foundational coverage-state tiles (under heat + markers) ──
@@ -1146,6 +1221,81 @@ actual fun GccMap(
                     } else null,
                 )
 
+            }
+
+            // ── Observation footprints (Pillar 3) ──
+            // True-scale, oriented shapes at close zoom — declared BEFORE the
+            // user-location dot AND the pin/glyph layers below so footprints
+            // render UNDER all of them (z-order = declaration order); a
+            // footprint must never bury the marker that represents it, nor
+            // sit atop the user's own position dot. Gated on non-empty
+            // footprint data (Fix 2, r2a convention) and zoom (>=17 via
+            // opacity interpolate) — heatmap/pins own the far zoom story,
+            // footprints are the close-zoom "what does it actually look
+            // like" detail. Domain-tinted per the geometry-approximation
+            // table: vegetation green, construction grey, everything else
+            // (litter/unspecified) orange.
+            if (hasFootprintData) {
+                val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
+                val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
+                val footprintOtherSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintOtherJson))
+                val footprintOutlineOpacity = interpolate(
+                    type = exponential(1.5f),
+                    input = zoom(),
+                    16.5 to const(0f),
+                    17 to const(1f),
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-vegetation",
+                    source = footprintVegetationSrc,
+                    color = const(Color(0xFF16A34A)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.18f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-vegetation",
+                    source = footprintVegetationSrc,
+                    color = const(Color(0xFF16A34A)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-construction",
+                    source = footprintConstructionSrc,
+                    color = const(Color(0xFF6B7280)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.18f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-construction",
+                    source = footprintConstructionSrc,
+                    color = const(Color(0xFF6B7280)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
+
+                FillLayer(
+                    id = "observation-footprint-fill-other",
+                    source = footprintOtherSrc,
+                    color = const(Color(0xFFF97316)),
+                    opacity = interpolate(
+                        type = exponential(1.5f), input = zoom(),
+                        16.5 to const(0f), 17 to const(0.20f),
+                    ),
+                )
+                LineLayer(
+                    id = "observation-footprint-outline-other",
+                    source = footprintOtherSrc,
+                    color = const(Color(0xFFF97316)),
+                    width = const(0.5.dp),
+                    opacity = footprintOutlineOpacity,
+                )
             }
 
             // ── User location blue dot ──

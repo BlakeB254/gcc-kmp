@@ -52,6 +52,14 @@ export async function GET(request: NextRequest) {
       severity: (r.attributes as Record<string, unknown> | null)?.severity ?? null,
       estimatedWeightGrams: (r.attributes as Record<string, unknown> | null)?.estimatedWeightGrams ?? null,
       estimatedWidthMeters: (r.attributes as Record<string, unknown> | null)?.estimatedWidthMeters ?? null,
+      // Footprint-rendering fields (Pillar 3): widthMeters is the generic
+      // physical-extent name the footprint layer builder reads regardless of
+      // domain — landmarks and sized trash both persist their measured width
+      // under the same `estimatedWidthMeters` attribute key, so this is an
+      // alias, not a second stored value. yawDegrees is the bearing of the
+      // observed face, captured at registration (client Task 1).
+      widthMeters: (r.attributes as Record<string, unknown> | null)?.estimatedWidthMeters ?? null,
+      yawDegrees: (r.attributes as Record<string, unknown> | null)?.yawDegrees ?? null,
       mediaUrl: r.mediaUrl,
       sourceType: r.sourceType,
       capturedAt: r.capturedAt,

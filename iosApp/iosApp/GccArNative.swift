@@ -22,6 +22,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// Kotlin stays valid for the duration of one Vision tick.
     private var lastFrame: ARFrame?
     private let frameLock = NSLock()
+    /// Background session recorder (Pillar 1) — created on the first
+    /// `startCapture`. Lives entirely off the render path: `append(frame:)`
+    /// is allocation-light on the delegate thread and can never throw.
+    private var recorder: ArSessionRecorder?
 
     /// Grid squares stay this size no matter how large a plane grows.
     /// 1.5m = a clean divisor of CoverageTracker's 3m cells, and the grid is
@@ -136,6 +140,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// this fixes. Called from Kotlin's `ArEnvScanOverlay.stop()` (and the
     /// route/spot overlays) instead of `pause()` at composition teardown.
     func teardown() {
+        // Kotlin's stop order calls stopCaptureAndDrain() BEFORE teardown;
+        // if capture is somehow still live here, finalize + drop silently —
+        // teardown must stay safe regardless of ordering.
+        recorder?.finishSilently()
+        recorder = nil
+
         updateSubscription?.cancel()
         updateSubscription = nil
 
@@ -589,12 +599,36 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
+    // MARK: - Session capture (Pillar 1 — see ArSessionRecorder)
+
+    func startCapture(sessionId: String, outputDirPath: String) {
+        if recorder == nil { recorder = ArSessionRecorder() }
+        recorder?.start(sessionId: sessionId, outputDirPath: outputDirPath)
+    }
+
+    func drainFinishedCaptureChunks() -> [String] {
+        recorder?.drainFinishedChunks() ?? []
+    }
+
+    func discardCurrentCaptureChunk() {
+        recorder?.discardCurrentChunk()
+    }
+
+    func stopCaptureAndDrain() -> [String] {
+        recorder?.stopAndDrain() ?? []
+    }
+
+    func setCaptureEnabled(enabled: Bool) {
+        recorder?.setEnabled(enabled)
+    }
+
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         frameLock.lock()
         lastFrame = frame
         frameLock.unlock()
+        recorder?.append(frame: frame)
     }
 
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
