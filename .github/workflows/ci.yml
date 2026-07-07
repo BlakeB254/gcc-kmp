@@ -73,7 +73,7 @@ jobs:
         run: npm run build
 
   kotlin:
-    name: Kotlin — shared + compose desktop
+    name: Kotlin — shared + server + compose desktop
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -104,6 +104,9 @@ jobs:
 
       - name: Compile + test shared (JVM target)
         run: ./gradlew :shared:jvmJar :shared:jvmTest --no-daemon --stacktrace
+
+      - name: Build server
+        run: ./gradlew :server:build --no-daemon --stacktrace
 
       - name: Compile composeApp (desktop target)
         run: ./gradlew :composeApp:compileKotlinDesktop --no-daemon --stacktrace
