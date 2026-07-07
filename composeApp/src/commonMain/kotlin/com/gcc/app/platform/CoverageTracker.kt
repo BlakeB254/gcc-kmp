@@ -10,8 +10,16 @@ import kotlinx.datetime.Clock
 import kotlin.math.PI
 import kotlin.math.cos
 
-/** Scan quality tier for a credited cell. Order matters: CLOSE > GRAZED (ordinal upgrade check). */
-enum class CoverageQuality { GRAZED, CLOSE }
+/**
+ * Scan quality tier for a credited cell. Order matters: SEEN < GRAZED < CLOSE
+ * (ordinal upgrade check via `>=` in [CoverageTracker.creditCell]) — SEEN
+ * MUST stay ordinal 0. CellCredit/this enum are in-memory only (never
+ * persisted or serialized — verified: no @Serializable on either type, no
+ * DB/wire encoding references CoverageQuality), so this reorder carries no
+ * migration risk; the wire protocol's quality strings ('seen'|'grazed'|
+ * 'close') are a separate, independently-versioned representation.
+ */
+enum class CoverageQuality { SEEN, GRAZED, CLOSE }
 
 /**
  * Per-cell credit: what tier, when, and (one level deep) what the cell held
@@ -44,8 +52,15 @@ class CoverageTracker {
 
         /** Raycast hits at or under this surface distance credit CLOSE (detail-scan tier). */
         const val CLOSE_RANGE_METERS = 4.0
-        /** Raycast hits beyond this surface distance credit nothing (fan ceiling). */
+        /** Raycast hits at or under this surface distance (and beyond CLOSE) credit GRAZED. */
         const val GRAZE_RANGE_METERS = 10.0
+        /**
+         * Raycast hits at or under this surface distance (and beyond GRAZE)
+         * credit SEEN — the camera looked at it (a cross-street storefront
+         * face) even though the worker never walked there. Beyond this, the
+         * fan drops the hit entirely (fan ceiling).
+         */
+        const val SEEN_RANGE_METERS = 55.0
     }
 
     private fun nowEpochMs(): Long = Clock.System.now().toEpochMilliseconds()
@@ -74,8 +89,17 @@ class CoverageTracker {
     private val _creditedCells = MutableStateFlow<Map<Pair<Int, Int>, CellCredit>>(emptyMap())
     val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> = _creditedCells.asStateFlow()
 
+    // GRAZED+ keys only (SEEN excluded — sight isn't "scanned" for fog/lap
+    // purposes, spec Pillar 7 §AR fog). Existing consumers (fog reveal via
+    // getUnscannedCells, minimap punch-out, corridor fill) all key off this.
     private val _scannedCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
     val scannedCells: StateFlow<Set<Pair<Int, Int>>> = _scannedCells.asStateFlow()
+
+    // SEEN-only cells (credited but not GRAZED+) — their own accessor so
+    // renderers can draw the faintest "sighted at a distance" wash without
+    // it counting as scanned anywhere fog/coverage% is computed.
+    private val _seenCells = MutableStateFlow<Set<Pair<Int, Int>>>(emptySet())
+    val seenCells: StateFlow<Set<Pair<Int, Int>>> = _seenCells.asStateFlow()
 
     private val _coveragePercent = MutableStateFlow(0.0)
     val coveragePercent: StateFlow<Double> = _coveragePercent.asStateFlow()
@@ -254,12 +278,19 @@ class CoverageTracker {
 
     // ── Quality-aware credit map ──────────────────────────────────────
 
-    /** Recompute all derived flows from a new credit map. */
+    /**
+     * Recompute all derived flows from a new credit map. GRAZED+ defines
+     * "scanned" everywhere (fog, coveragePercent, lap-advance) — SEEN cells
+     * never inflate lap completion (spec Pillar 7: sight-at-distance still
+     * needs walking). closePercent is unchanged (CLOSE-only, as before).
+     */
     private fun publish(map: Map<Pair<Int, Int>, CellCredit>) {
         _creditedCells.value = map
-        _scannedCells.value = map.keys
+        val grazedPlus = map.filterValues { it.quality >= CoverageQuality.GRAZED }.keys
+        _scannedCells.value = grazedPlus
+        _seenCells.value = map.filterValues { it.quality == CoverageQuality.SEEN }.keys
         if (totalCells > 0) {
-            val scannedCorridor = map.keys.count { it in corridorCells }
+            val scannedCorridor = grazedPlus.count { it in corridorCells }
             _coveragePercent.value = (scannedCorridor.toDouble() / totalCells * 100.0).coerceIn(0.0, 100.0)
             val closeCorridor = map.count { (cell, credit) ->
                 cell in corridorCells && credit.quality == CoverageQuality.CLOSE
@@ -294,11 +325,13 @@ class CoverageTracker {
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for (hit in hits) {
-            if (hit.distanceMeters > GRAZE_RANGE_METERS) continue
+            if (hit.distanceMeters > SEEN_RANGE_METERS) continue
             val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
-            val quality =
-                if (hit.distanceMeters <= CLOSE_RANGE_METERS) CoverageQuality.CLOSE
-                else CoverageQuality.GRAZED
+            val quality = when {
+                hit.distanceMeters <= CLOSE_RANGE_METERS -> CoverageQuality.CLOSE
+                hit.distanceMeters <= GRAZE_RANGE_METERS -> CoverageQuality.GRAZED
+                else -> CoverageQuality.SEEN
+            }
             if (creditCell(map, cell, quality, nowMs)) changed = true
         }
         if (changed) publish(map)
@@ -393,6 +426,7 @@ class CoverageTracker {
     fun reset() {
         _creditedCells.value = emptyMap()
         _scannedCells.value = emptySet()
+        _seenCells.value = emptySet()
         _coveragePercent.value = 0.0
         _closePercent.value = 0.0
     }

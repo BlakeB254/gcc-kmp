@@ -22,6 +22,7 @@ class CoverageTrackerQualityTest {
         // "scanned" means on the public map) — snap the values.
         assertEquals(4.0, CoverageTracker.CLOSE_RANGE_METERS)
         assertEquals(10.0, CoverageTracker.GRAZE_RANGE_METERS)
+        assertEquals(55.0, CoverageTracker.SEEN_RANGE_METERS)
     }
 
     @Test
@@ -31,17 +32,76 @@ class CoverageTrackerQualityTest {
             listOf(
                 RaycastCoverageHit(41.8600, -87.7200, distanceMeters = 2.0),   // CLOSE
                 RaycastCoverageHit(41.86005, -87.7200, distanceMeters = 7.0),  // GRAZED
-                RaycastCoverageHit(41.86010, -87.7200, distanceMeters = 12.0), // beyond range: no credit
+                RaycastCoverageHit(41.86010, -87.7200, distanceMeters = 40.0), // SEEN
+                RaycastCoverageHit(41.86015, -87.7200, distanceMeters = 60.0), // beyond range: no credit
             ),
             nowMs = 1_000L,
         )
         val credits = t.creditedCells.value
         val closeCell = t.cellForLatLng(41.8600, -87.7200)!!
         val grazedCell = t.cellForLatLng(41.86005, -87.7200)!!
-        val farCell = t.cellForLatLng(41.86010, -87.7200)!!
+        val seenCell = t.cellForLatLng(41.86010, -87.7200)!!
+        val farCell = t.cellForLatLng(41.86015, -87.7200)!!
         assertEquals(CoverageQuality.CLOSE, credits[closeCell]?.quality)
         assertEquals(CoverageQuality.GRAZED, credits[grazedCell]?.quality)
+        assertEquals(CoverageQuality.SEEN, credits[seenCell]?.quality)
         assertNull(credits[farCell])
+    }
+
+    @Test
+    fun seenDoesNotMoveCoveragePercentOrFog() {
+        val t = tracker()
+        val before = t.coveragePercent.value
+        val seenCell = t.cellForLatLng(41.86010, -87.7200)!!
+        t.updateWithRaycastHits(
+            listOf(RaycastCoverageHit(41.86010, -87.7200, distanceMeters = 40.0)),
+            nowMs = 1_000L,
+        )
+        // coveragePercent must not move — SEEN never counts as "scanned".
+        assertEquals(before, t.coveragePercent.value)
+        // The cell is credited (visible via creditedCells/seenCells)...
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[seenCell]?.quality)
+        assertTrue(seenCell in t.seenCells.value)
+        // ...but is NOT in the legacy scannedCells set, so it stays in fog
+        // (getUnscannedCells = corridor - scannedCells - preSeeded).
+        assertTrue(seenCell !in t.scannedCells.value)
+        assertTrue(seenCell in t.getUnscannedCells())
+    }
+
+    @Test
+    fun upgradeChainSeenToGrazedToClose() {
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 1_000L)
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell !in t.scannedCells.value)
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 7.0)), nowMs = 2_000L)
+        assertEquals(CoverageQuality.GRAZED, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell in t.scannedCells.value)
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), nowMs = 3_000L)
+        assertEquals(CoverageQuality.CLOSE, t.creditedCells.value[cell]?.quality)
+        // A later SEEN-range hit must never downgrade CLOSE.
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 4_000L)
+        assertEquals(CoverageQuality.CLOSE, t.creditedCells.value[cell]?.quality)
+    }
+
+    @Test
+    fun purgeRevertWithThreeTiers() {
+        val t = tracker()
+        // Cell A: SEEN BEFORE the window, upgraded straight to CLOSE INSIDE
+        // it (skipping GRAZED) — purge reverts one hop back to SEEN.
+        val cellA = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 1_000L)
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), nowMs = 5_000L)
+        // Cell B: first credited INSIDE the window at SEEN tier — purge
+        // removes it entirely (no pre-window history to fall back to).
+        val cellB = t.cellForLatLng(41.86005, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.86005, -87.7200, 40.0)), nowMs = 6_000L)
+        t.purgeSince(cutoffMs = 4_000L)
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[cellA]?.quality)
+        assertTrue(cellA !in t.scannedCells.value)
+        assertNull(t.creditedCells.value[cellB])
+        assertTrue(cellB !in t.seenCells.value)
     }
 
     @Test
