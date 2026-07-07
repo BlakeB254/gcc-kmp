@@ -130,4 +130,40 @@ class MapDeltaMergeTest {
         )
         assertEquals("2026-07-07T00:05:00Z", result)
     }
+
+    @Test
+    fun perEndpointCursors_advanceIndependently() {
+        // Coverage and observations carry independent clocks (lastScannedAt
+        // vs capturedAt). Each cursor must advance ONLY from its own
+        // endpoint's timestamps — a shared max would starve the endpoint
+        // that updates less often (its rows fall behind the artificially-
+        // advanced cursor and never return).
+        val coverageDelta = listOf(
+            cell("a", lastScannedAt = "2026-07-07T00:10:00Z"),
+            cell("b", lastScannedAt = "2026-07-07T00:12:00Z"),
+        )
+        val observationDelta = listOf(
+            obs(1, capturedAt = "2026-07-07T00:01:00Z"),
+            obs(2, capturedAt = "2026-07-07T00:03:00Z"),
+        )
+
+        var coverageCursor: String? = "2026-07-07T00:00:00Z"
+        var observationCursor: String? = "2026-07-07T00:00:00Z"
+        coverageCursor = latestIsoTimestamp(coverageCursor, coverageDelta.map { it.lastScannedAt })
+        observationCursor = latestIsoTimestamp(observationCursor, observationDelta.map { it.capturedAt })
+
+        // Coverage cursor takes coverage's max; observation cursor takes
+        // observations' max — NOT the (later) coverage max.
+        assertEquals("2026-07-07T00:12:00Z", coverageCursor)
+        assertEquals("2026-07-07T00:03:00Z", observationCursor)
+
+        // Next round: only observations tick. Coverage's cursor must hold
+        // rather than be dragged forward by the other endpoint.
+        val nextObservationDelta = listOf(obs(3, capturedAt = "2026-07-07T00:20:00Z"))
+        coverageCursor = latestIsoTimestamp(coverageCursor, emptyList())
+        observationCursor = latestIsoTimestamp(observationCursor, nextObservationDelta.map { it.capturedAt })
+
+        assertEquals("2026-07-07T00:12:00Z", coverageCursor)
+        assertEquals("2026-07-07T00:20:00Z", observationCursor)
+    }
 }

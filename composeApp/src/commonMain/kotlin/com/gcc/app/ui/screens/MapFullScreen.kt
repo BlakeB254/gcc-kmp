@@ -206,11 +206,15 @@ fun MapFullScreen(
     var mapObservations by remember { mutableStateOf(listOf<com.gcc.shared.model.WorldObservation>()) }
     // Coverage tile the user tapped (fresh/stale) — shows the last-scan card.
     var selectedCoverageCell by remember { mutableStateOf<com.gcc.shared.model.MapCoverageCell?>(null) }
-    // Delta-poll cursor (Pillar 2 live map): the max lastScannedAt/capturedAt
-    // seen across any coverage/observation fetch so far. This is SERVER clock
-    // authority, never the device clock — passed as `since` on the next poll
-    // so the server only returns rows that changed.
-    var sinceCursor by remember { mutableStateOf<String?>(null) }
+    // Delta-poll cursors (Pillar 2 live map): SERVER clock authority, never
+    // the device clock — each is the max timestamp seen in that endpoint's
+    // OWN responses and is passed back as `since` on that endpoint's next
+    // poll. The two are deliberately separate: coverage advances on
+    // lastScannedAt while observations advance on capturedAt, and a shared
+    // max would starve whichever endpoint updates less often (its rows would
+    // fall behind the artificially-advanced cursor and never return).
+    var coverageSinceCursor by remember { mutableStateOf<String?>(null) }
+    var observationSinceCursor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(centerLat, centerLng, mapMode) {
         val pad = if (mapMode == MapMode.EXPLORER) 0.02 else 0.006 // ~2.2km vs ~650m
         val west = centerLng - pad
@@ -237,18 +241,26 @@ fun MapFullScreen(
         try {
             val bbox = listOf(west, south, east, north).joinToString(",")
             val fetched = gccApiClient.getMapCoverage(bbox).cells
-            coverageCells = fetched
+            // Merge (not wholesale-assign) so a slow-resolving initial load
+            // can never stomp newer rows the 20s poll already merged in.
+            coverageCells = mergeCoverageCells(coverageCells, fetched)
             val observations = try {
                 gccApiClient.getMapObservations(bbox)
             } catch (_: Exception) {
                 emptyList()
             }
-            if (observations.isNotEmpty()) mapObservations = observations
-            // Seed the poll cursor from this full fetch so the first 20s poll
-            // only asks for what changed since, not everything just loaded.
-            sinceCursor = latestIsoTimestamp(
-                sinceCursor,
-                fetched.map { it.lastScannedAt } + observations.map { it.capturedAt },
+            if (observations.isNotEmpty()) {
+                mapObservations = mergeObservations(mapObservations, observations)
+            }
+            // Seed each poll cursor from ITS OWN endpoint's response so the
+            // first 20s poll only asks for what changed since this load.
+            coverageSinceCursor = latestIsoTimestamp(
+                coverageSinceCursor,
+                fetched.map { it.lastScannedAt },
+            )
+            observationSinceCursor = latestIsoTimestamp(
+                observationSinceCursor,
+                observations.map { it.capturedAt },
             )
             withContext(Dispatchers.Default) {
                 val now = Clock.System.now().toEpochMilliseconds()
@@ -287,12 +299,12 @@ fun MapFullScreen(
                     pollLat + pad,
                 ).joinToString(",")
 
-                val coverageDelta = gccApiClient.getMapCoverage(bbox, since = sinceCursor).cells
+                val coverageDelta = gccApiClient.getMapCoverage(bbox, since = coverageSinceCursor).cells
                 if (coverageDelta.isNotEmpty()) {
                     coverageCells = mergeCoverageCells(coverageCells, coverageDelta)
                 }
                 val observationDelta = try {
-                    gccApiClient.getMapObservations(bbox, since = sinceCursor)
+                    gccApiClient.getMapObservations(bbox, since = observationSinceCursor)
                 } catch (_: Exception) {
                     emptyList()
                 }
@@ -300,10 +312,17 @@ fun MapFullScreen(
                     mapObservations = mergeObservations(mapObservations, observationDelta)
                 }
 
-                sinceCursor = latestIsoTimestamp(
-                    sinceCursor,
-                    coverageDelta.map { it.lastScannedAt } + observationDelta.map { it.capturedAt },
+                // Advance each cursor ONLY from its own endpoint's timestamps.
+                coverageSinceCursor = latestIsoTimestamp(
+                    coverageSinceCursor,
+                    coverageDelta.map { it.lastScannedAt },
                 )
+                observationSinceCursor = latestIsoTimestamp(
+                    observationSinceCursor,
+                    observationDelta.map { it.capturedAt },
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // leaving composition is not an error — let the loop die
             } catch (e: Exception) {
                 DiagnosticsLog.error("live-map-poll", "20s delta poll failed (will retry)", e)
             }
