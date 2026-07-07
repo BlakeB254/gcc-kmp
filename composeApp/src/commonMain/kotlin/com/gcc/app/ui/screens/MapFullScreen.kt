@@ -718,9 +718,11 @@ fun MapFullScreen(
                     selectedCoverageCell == null,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
+                // Bottom-right, above the map controls — off the map's prime
+                // real estate (owner direction 2026-07-07: not mid-screen).
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 112.dp),
             ) {
                 ScanCoverageLegend()
             }
