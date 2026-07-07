@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
  * - PHOTO: teal intersection with camera icon
  * - ALLEY: brown perspective alley with directional arrow
  *
- * Used by both the mobile app (CheckpointThumbnail) and the admin desktop app
+ * Used by both the mobile app (RouteThumbnail) and the admin desktop app
  * (AdminCheckpointThumbnail) to maintain visual consistency across platforms.
  */
 

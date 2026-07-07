@@ -59,7 +59,6 @@ fun SpotScanCapture(
     /** Typed pass-through — per-type minimap glyphs. */
     typedTrashItems: List<ObservedSpotItem> = emptyList(),
     /** Ledger freshness pass-through for the minimap veil/wash. */
-    fogCellCenters: List<Pair<Double, Double>> = emptyList(),
     staleCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Session cells credited at CLOSE tier — pass-through to the minimap. */
@@ -220,7 +219,6 @@ fun SpotScanCapture(
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,
             typedTrashItems = typedTrashItems,
-            fogCellCenters = fogCellCenters,
             staleCellCenters = staleCellCenters,
             freshCellCenters = freshCellCenters,
             closeCellCenters = closeCellCenters,

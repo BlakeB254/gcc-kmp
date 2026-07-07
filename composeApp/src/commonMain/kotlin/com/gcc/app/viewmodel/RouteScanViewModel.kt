@@ -278,8 +278,6 @@ class RouteScanViewModel(
     // anyone; stale = scanned before, ledger says re-visit. Both recompute
     // whenever either the server priors arrive or a cell gets scanned this
     // session (see the coverageJob collector in initForRoute).
-    private val _fogCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
-    val fogCellCenters: StateFlow<List<Pair<Double, Double>>> = _fogCellCenters.asStateFlow()
     private val _staleCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
     val staleCellCenters: StateFlow<List<Pair<Double, Double>>> = _staleCellCenters.asStateFlow()
     private val _freshCellCenters = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
@@ -287,7 +285,6 @@ class RouteScanViewModel(
 
     private fun refreshFogAndStaleCenters() {
         val classification = classifyFogAndStale(coverageTracker.getUnscannedCells(), cellPriorStates)
-        _fogCellCenters.value = classification.fogCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         // Ledger-fresh cells punch out of the minimap veil (already-scanned sky).
         _freshCellCenters.value = cellPriorStates
