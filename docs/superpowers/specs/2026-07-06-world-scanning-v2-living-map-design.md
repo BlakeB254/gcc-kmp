@@ -155,6 +155,20 @@ Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
    (exists) + explicit approach prompting ("go up to it — scan around it") escalating
    to close-scan capture of advanced data (estimated weight, materials — the confirm
    card's estimators exist; the guided approach flow is the new part).
+6. **Proportional truth at close zoom (Blake, same day).** Litter renders at its
+   REAL size and position: a lone chip bag = a tiny-but-noticeable colored spec
+   (visibility floor by zoom so small-real litter never vanishes; color carries
+   noticeability, size carries truth); a trash bag reads larger; lot-scale
+   dumping renders at lot-scale footprint. One system spans all of it.
+7. **Observation lifecycle: OBSERVED → DIAGNOSED → resolved/superseded.**
+   Identify-from-afar without close capture persists: the distant still frame
+   (detection photo) + position/type at OBSERVED completeness; close 360°/weight/
+   materials capture upgrades to DIAGNOSED. Map renders the states distinctly
+   (hollow/outlined = observed-only, solid = diagnosed) on app + web.
+8. **Completion flows.** Incomplete (OBSERVED-only) items become guidance/priority
+   targets so other users can finish the diagnosis ("still there? get up on it") —
+   wired into the rescan-priority lens (Pillar 5) and in-scan phase-2 steering; a
+   completing scan either upgrades the observation or supersedes it (gone/cleaned).
 
 ## Explicit non-goals (v2)
 
