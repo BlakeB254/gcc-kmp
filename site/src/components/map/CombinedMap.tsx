@@ -19,7 +19,7 @@ import {
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
-import { PrecipitationLegend } from './PrecipitationLegend'
+import { CellHealthLegend } from './CellHealthLegend'
 import { CoverageFreshnessOverlay } from './CoverageFreshnessOverlay'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
@@ -34,7 +34,14 @@ import {
   aggregateCellHealth,
   buildChoroplethGeoJson,
   choroplethTileMetersForZoom,
+  type CoverageCellInput,
 } from '@/lib/cell-health-choropleth'
+
+// Debounce for the far-zoom coverage fetch below — matches
+// CoverageFreshnessOverlay's own FETCH_DEBOUNCE_MS so both coverage fetchers
+// in this file settle on the same "wait for the pan/zoom gesture to stop"
+// cadence.
+const COVERAGE_FETCH_DEBOUNCE_MS = 400
 
 // ============================================================================
 // TYPES
@@ -165,6 +172,11 @@ export function CombinedMap({
   const [heatmapVisible, setHeatmapVisible] = useState(true)
   const [coverageOverlayVisible, setCoverageOverlayVisible] = useState(false) // off by default, per spec §4.2
   const [mapBounds, setMapBounds] = useState<{ west: number; south: number; east: number; north: number } | null>(null)
+  // Coverage cells feeding the cell-health choropleth at far zoom (see the
+  // fetch effect below) — separate from CoverageFreshnessOverlay's own
+  // close-zoom-only, toggle-gated fetch, which exists to render the
+  // never-scanned/stale dot overlay, not to feed aggregateCellHealth.
+  const [coverageCells, setCoverageCells] = useState<CoverageCellInput[]>([])
   const detailZoomOpacity = Math.max(
     0,
     Math.min(
@@ -263,24 +275,69 @@ export function CombinedMap({
 
   // ----- cell-health choropleth GeoJSON (far-zoom, v2 Pillar 8 amendment) --
   // Replaces the point-density spot heatmap: instead of a blurred kernel over
-  // spot points, each far-zoom tile is colored by its OWN litter load
-  // (green -> amber -> red, grey where never scanned). Fed by the SAME
-  // `observations` feed already loaded for the footprint layer — no new
-  // fetch (mirrors the Global Constraint the mobile side follows; web
-  // coverage cells are only fetched lazily at close zoom inside
-  // CoverageFreshnessOverlay, so the far-zoom choropleth is litter-driven).
-  // tileMeters is bucketed off the zoom, so this only rebuilds when the zoom
-  // crosses a bucket boundary or the observations change, not every pan tick.
+  // spot points, each far-zoom tile is colored by its OWN litter load AND its
+  // own scan coverage (green -> amber -> red, grey where never scanned). Fed
+  // by the `observations` feed already loaded for the footprint layer plus
+  // `coverageCells` fetched below. tileMeters is bucketed off the zoom, so
+  // this only rebuilds when the zoom crosses a bucket boundary, the
+  // observations change, or a new coverage fetch lands — not every pan tick.
   const choroplethTileMeters = choroplethTileMetersForZoom(currentZoom)
   const choroplethGeoJson = useMemo(
     () =>
       buildChoroplethGeoJson(
-        aggregateCellHealth([], observations, choroplethTileMeters),
+        aggregateCellHealth(coverageCells, observations, choroplethTileMeters),
         choroplethTileMeters
       ),
-    [observations, choroplethTileMeters]
+    [coverageCells, observations, choroplethTileMeters]
   )
   const hasChoroplethTiles = choroplethGeoJson.features.length > 0
+
+  // ----- far-zoom coverage fetch (feeds the choropleth above) -----
+  // Without real coverage data, `aggregateCellHealth`'s coverageComponent
+  // caps at 0.5 for every bin (see cell-health-choropleth.ts), so a
+  // scanned-clean block could never cross CLEAN_DOMINANT_HEALTH_THRESHOLD
+  // and read green, and an all-stale block could never read amber — only
+  // dirty (litter-driven, health forced low) and unscanned (no cells at all)
+  // ever rendered correctly. Mirrors mobile's MapFullScreen.kt, which always
+  // keeps a `coverageCells` ledger loaded from the same endpoint. Debounced
+  // on viewport change the same way CoverageFreshnessOverlay debounces its
+  // own close-zoom fetch (400ms — a pan/zoom gesture fires onMove many times
+  // a second), and only runs while the choropleth is actually on screen
+  // (heatmap toggle on, zoom inside the layer's own minzoom/maxzoom band) so
+  // it goes quiet at close zoom where footprints/CoverageFreshnessOverlay
+  // take over instead of firing a redundant wide-bbox query forever.
+  const coverageFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    const shouldFetch =
+      heatmapVisible &&
+      mapBounds !== null &&
+      currentZoom >= SPOT_ZOOM.HEATMAP_MIN &&
+      currentZoom < SPOT_ZOOM.HEATMAP_FADE_OUT
+    if (!shouldFetch) return
+
+    let cancelled = false
+    coverageFetchTimerRef.current = setTimeout(() => {
+      const b = mapBounds!
+      const bboxParam = `${b.west},${b.south},${b.east},${b.north}`
+      fetch(`/api/map/coverage?bbox=${bboxParam}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data.success) setCoverageCells(data.cells)
+        })
+        .catch(() => {
+          if (!cancelled) setCoverageCells([])
+        })
+    }, COVERAGE_FETCH_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      if (coverageFetchTimerRef.current !== null) {
+        clearTimeout(coverageFetchTimerRef.current)
+        coverageFetchTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmapVisible, currentZoom, mapBounds?.west, mapBounds?.south, mapBounds?.east, mapBounds?.north])
 
   // ----- handle map feature click (routes + litter footprints) -----
   const handleMapClick = useCallback(
@@ -606,14 +663,14 @@ export function CombinedMap({
             {spots.length > 0 ? (
               <>
                 {heatmapVisible
-                  ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
+                  ? <CellHealthLegend onDone={() => setHeatmapVisible(false)} />
                   : legendNode}
                 <button
-                  data-testid="precip-toggle"
+                  data-testid="cell-health-toggle"
                   onClick={() => setHeatmapVisible((v) => !v)}
                   aria-pressed={heatmapVisible}
                   className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
-                  title="Toggle report density"
+                  title="Toggle ground health layer"
                 >
                   {/* stacked-layers glyph */}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
