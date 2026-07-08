@@ -579,11 +579,13 @@ actual fun GccMap(
                     color = org.maplibre.compose.expressions.dsl.switch(
                         choroplethDominantExpr,
                         org.maplibre.compose.expressions.dsl.case("unscanned", const(Color(0xFF4B5563))),
-                        fallback = interpolate(
+                        fallback = interpolateHcl(
                             type = org.maplibre.compose.expressions.dsl.linear(),
                             input = choroplethHealthExpr,
-                            0.0 to const(Color(0xFFEF4444)),
+                            0.0 to const(Color(0xFFDC2626)),
+                            0.25 to const(Color(0xFFF97316)),
                             0.5 to const(Color(0xFFF59E0B)),
+                            0.75 to const(Color(0xFF84CC16)),
                             1.0 to const(Color(0xFF22C55E)),
                         ),
                     ),

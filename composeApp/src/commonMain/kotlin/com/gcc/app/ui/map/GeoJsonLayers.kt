@@ -1039,15 +1039,26 @@ fun buildCoverageStateGeoJsons(
  */
 fun buildChoroplethGeoJson(tiles: List<HealthTile>, tileMeters: Double): String {
     if (tiles.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
-    val halfLat = (tileMeters / 2.0) / 111_320.0
+    // Dilate tiles ~8% past edge-to-edge so neighbours overlap and their
+    // anti-aliased seams blend into one continuous wash instead of a hard
+    // grid (the "blocky heatmap" look). Cosmetic only — aggregateCellHealth
+    // still bins on the true tile size, so nothing is double-counted.
+    val paintedMeters = tileMeters * CHOROPLETH_TILE_OVERLAP
+    val halfLat = (paintedMeters / 2.0) / 111_320.0
     val features = tiles.joinToString(",") { tile ->
         val lngScale = cos(tile.centerLat * PI / 180.0).let { if (it < 0.01) 0.01 else it }
-        val halfLng = (tileMeters / 2.0) / (111_320.0 * lngScale)
+        val halfLng = (paintedMeters / 2.0) / (111_320.0 * lngScale)
         val ring = squareRing(tile.centerLng, tile.centerLat, halfLng, halfLat)
         """{"type":"Feature","properties":{"health":${tile.health},"dominant":"${tile.dominant.name.lowercase()}"},"geometry":{"type":"Polygon","coordinates":[$ring]}}"""
     }
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
+
+/** Cosmetic tile dilation for [buildChoroplethGeoJson] — 1.0 = edge-to-edge
+ *  (visible seams), >1 overlaps neighbours to blend the surface. ~8% swallows
+ *  the anti-aliased seam without noticeably fattening the painted area past
+ *  the data's real extent. Mirrored in the web builder (cell-health-choropleth.ts). */
+const val CHOROPLETH_TILE_OVERLAP = 1.08
 
 /**
  * Explorer-mode scan-state color coding: buckets every Chicago community

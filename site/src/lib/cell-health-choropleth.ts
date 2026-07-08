@@ -12,6 +12,12 @@
 
 export type HealthState = 'clean' | 'dirty' | 'stale' | 'unscanned'
 
+/** Cosmetic tile dilation for `buildChoroplethGeoJson` — mirrors Kotlin's
+ *  CHOROPLETH_TILE_OVERLAP in GeoJsonLayers.kt. 1.0 = edge-to-edge (visible
+ *  seams), >1 overlaps neighbours so the anti-aliased seams blend into a
+ *  continuous wash instead of a hard grid. */
+export const CHOROPLETH_TILE_OVERLAP = 1.08
+
 export interface HealthTile {
   centerLat: number
   centerLng: number
@@ -236,10 +242,11 @@ export interface ChoroplethFeatureCollection {
  * latitude).
  */
 export function buildChoroplethGeoJson(tiles: HealthTile[], tileMeters: number): ChoroplethFeatureCollection {
-  const halfLat = tileMeters / 2.0 / 111_320.0
+  const paintedMeters = tileMeters * CHOROPLETH_TILE_OVERLAP
+  const halfLat = paintedMeters / 2.0 / 111_320.0
   const features = tiles.map((tile): ChoroplethFeature => {
     const lngScale = Math.max(Math.cos((tile.centerLat * Math.PI) / 180.0), 0.01)
-    const halfLng = tileMeters / 2.0 / (111_320.0 * lngScale)
+    const halfLng = paintedMeters / 2.0 / (111_320.0 * lngScale)
     const lat = tile.centerLat
     const lng = tile.centerLng
     return {

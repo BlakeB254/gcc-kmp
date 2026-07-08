@@ -844,14 +844,21 @@ export function CombinedMap({
                   ['get', 'dominant'],
                   'unscanned',
                   '#4B5563',
+                  // interpolate-hcl (not plain 'interpolate') + more stops for
+                  // a smooth perceptual gradient — mirrors interpolateHcl in
+                  // GccMap.ios.kt.
                   [
-                    'interpolate',
+                    'interpolate-hcl',
                     ['linear'],
                     ['to-number', ['get', 'health']],
                     0.0,
-                    '#EF4444',
+                    '#DC2626',
+                    0.25,
+                    '#F97316',
                     0.5,
                     '#F59E0B',
+                    0.75,
+                    '#84CC16',
                     1.0,
                     '#22C55E',
                   ],
