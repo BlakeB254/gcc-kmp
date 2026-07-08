@@ -336,6 +336,11 @@ class RouteScanViewModel(
                     mediaUrl = mediaUrl,
                 ),
             )
+            // Real-time streaming (spec system 3), same immediate kick as the
+            // env-scan path (SpotViewModel.addObservedItem): don't wait for
+            // the periodic sweep to put a just-placed marker on the public
+            // map. The periodic flushes elsewhere stay as the retry sweep.
+            arMarkerQueue.flush()
         }
     }
 
@@ -389,7 +394,11 @@ class RouteScanViewModel(
     val freshCellCenters: StateFlow<List<Pair<Double, Double>>> = _freshCellCenters.asStateFlow()
 
     private fun refreshFogAndStaleCenters() {
-        val classification = classifyFogAndStale(coverageTracker.getUnscannedCells(), cellPriorStates)
+        // Classify against the session-only unscanned set (ignores ledger
+        // fog-exemption) so seeding stale cells as fog-exempt (below) doesn't
+        // erase the "needs revisit" minimap indicator for cells not yet
+        // re-scanned this session.
+        val classification = classifyFogAndStale(coverageTracker.getUnscannedCellsIgnoringSeed(), cellPriorStates)
         _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         // Ledger-fresh cells punch out of the minimap veil (already-scanned sky).
         _freshCellCenters.value = cellPriorStates
@@ -469,10 +478,12 @@ class RouteScanViewModel(
 
     /**
      * Bring the digital twin into the AR fog: fetch `/api/map/coverage` for
-     * the route's bounding box and (a) pre-reveal cells the ledger marks
-     * fresh, (b) remember fresh/stale priors for live points estimation.
-     * Server cells are 10m; each maps onto the 3m client cells inside its
-     * footprint. Fetch failures degrade silently to session-local fog.
+     * the route's bounding box and (a) pre-reveal every cell the ledger
+     * knows about at all — fresh OR stale, ledger presence lifts fog — (b)
+     * remember fresh/stale priors for live points estimation AND the
+     * minimap's separate "needs revisit" stale indicator. Server cells are
+     * 10m; each maps onto the 3m client cells inside its footprint. Fetch
+     * failures degrade silently to session-local fog.
      */
     private fun seedFogFromServerCoverage(waypoints: List<Coordinates>) {
         cellPriorStates = emptyMap()
@@ -489,17 +500,23 @@ class RouteScanViewModel(
                 val serverCells = apiClient.getMapCoverage(bbox).cells
 
                 val priors = mutableMapOf<Pair<Int, Int>, String>()
-                val fresh = mutableSetOf<Pair<Int, Int>>()
+                // Ledger presence lifts fog regardless of freshness (owner law):
+                // fresh AND stale cells are both fog-exempt. "Stale" still gets
+                // its own minimap revisit indicator via cellPriorStates +
+                // getUnscannedCellsIgnoringSeed (see refreshFogAndStaleCenters) —
+                // seeding it here only suppresses the AR fog overlay, not the
+                // revisit prompt.
+                val ledgerKnown = mutableSetOf<Pair<Int, Int>>()
                 for (serverCell in serverCells) {
                     for (cell in clientCellsForServerCell(serverCell.lat, serverCell.lng)) {
                         priors[cell] = serverCell.state
-                        if (serverCell.state == "fresh") fresh.add(cell)
+                        ledgerKnown.add(cell)
                     }
                 }
                 cellPriorStates = priors
                 refreshFogAndStaleCenters()
-                if (fresh.isNotEmpty()) coverageTracker.seedScannedCells(fresh)
-                DiagnosticsLog.info("fog-seed", "seeded ${fresh.size} fresh cells, ${priors.size} priors from ${serverCells.size} server cells")
+                if (ledgerKnown.isNotEmpty()) coverageTracker.seedScannedCells(ledgerKnown)
+                DiagnosticsLog.info("fog-seed", "seeded ${ledgerKnown.size} ledger-known cells, ${priors.size} priors from ${serverCells.size} server cells")
             } catch (e: Exception) {
                 // Non-fatal: fog stays session-local, estimator treats all as new.
                 DiagnosticsLog.error("fog-seed", "coverage fetch failed — fog is session-local", e)

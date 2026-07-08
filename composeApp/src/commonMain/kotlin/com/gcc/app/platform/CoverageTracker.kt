@@ -482,6 +482,17 @@ class CoverageTracker {
     fun getUnscannedCells(): Set<Pair<Int, Int>> =
         corridorCells - _scannedCells.value - preSeededCells
 
+    /**
+     * Corridor cells not credited THIS session, ignoring ledger fog-exemption
+     * ([preSeededCells]) — for classifiers (e.g. the route stale-cell
+     * indicator, [com.gcc.app.platform.classifyFogAndStale]) that need to
+     * keep distinguishing ledger-stale-but-unrevisited cells from truly
+     * fog-clear ones even after [seedScannedCells] marks stale cells
+     * fog-exempt for AR rendering purposes.
+     */
+    fun getUnscannedCellsIgnoringSeed(): Set<Pair<Int, Int>> =
+        corridorCells - _scannedCells.value
+
     // ── Reset ────────────────────────────────────────────────────────
 
     fun reset() {

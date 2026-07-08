@@ -271,6 +271,12 @@ class SpotViewModel(
                             mediaUrl = mediaUrl,
                         ),
                     )
+                    // Real-time streaming (spec system 3): flush immediately on
+                    // confirm instead of waiting for the 30s loop — the public
+                    // map should reflect a newly tagged item right away. The
+                    // 30s loop in SpotScreen stays live as the retry sweep for
+                    // whatever this flush can't land (offline, in-flight, etc).
+                    arMarkerQueue.flush()
                 } catch (e: Exception) {
                     // Unguarded launch precedent (r2a): a SerializationException
                     // or similar failure here must not kill the process — this
