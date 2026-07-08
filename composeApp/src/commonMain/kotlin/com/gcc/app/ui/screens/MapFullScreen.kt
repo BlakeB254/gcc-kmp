@@ -67,6 +67,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
+// Half-width (degrees) of the coverage/observation fetch box, ~2.2km. Used for
+// BOTH map modes so scanned tiles show on My Area from the first frame — see
+// the fetch LaunchedEffect for why a tighter My-Area box lost cells.
+private const val COVERAGE_FETCH_PAD_DEGREES = 0.02
+
 @Composable
 fun MapFullScreen(
     onBack: () -> Unit = {},
@@ -227,7 +232,14 @@ fun MapFullScreen(
     var coverageSinceCursor by remember { mutableStateOf<String?>(null) }
     var observationSinceCursor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(centerLat, centerLng, mapMode) {
-        val pad = if (mapMode == MapMode.EXPLORER) 0.02 else 0.006 // ~2.2km vs ~650m
+        // Coverage/observations always fetch the wider (~2.2km) box in BOTH
+        // modes. The map center is a fixed service-area/GPS anchor that does
+        // not follow the camera, so a tight My-Area box (~650m) missed cells
+        // the user scanned farther out — they only appeared after toggling to
+        // Explorer's wider box (which merges + persists). Fetch wide, render
+        // clips to the viewport, so scanned data shows on My Area from the
+        // first frame.
+        val pad = COVERAGE_FETCH_PAD_DEGREES
         val west = centerLng - pad
         val south = centerLat - pad
         val east = centerLng + pad
@@ -300,9 +312,9 @@ fun MapFullScreen(
     LaunchedEffect(Unit) {
         while (true) {
             delay(20_000L)
-            val (pollLat, pollLng, pollMode) = latestViewport.value
+            val (pollLat, pollLng, _) = latestViewport.value
             try {
-                val pad = if (pollMode == MapMode.EXPLORER) 0.02 else 0.006
+                val pad = COVERAGE_FETCH_PAD_DEGREES // wide in both modes — see initial-load note
                 val bbox = listOf(
                     pollLng - pad,
                     pollLat - pad,
