@@ -38,6 +38,38 @@ data class WorldObservation(
      * orient a true-scale footprint on the map. Null when unmeasured.
      */
     val yawDegrees: Double? = null,
+    /**
+     * Estimated item weight in grams (TrashItemCatalog.estimateWeightGrams,
+     * computed server-side from itemType + widthMeters and stored in
+     * attributes.estimatedWeightGrams). Already returned by every row of
+     * `GET /api/map/observations` (site/src/app/api/map/observations/route.ts)
+     * — added here so the client can actually read it (Pillar 8 Task 2,
+     * Part C: the litter-footprint detail card shows this). Null when
+     * absent/unestimated.
+     */
+    val estimatedWeightGrams: Int? = null,
+    /**
+     * Litter-truth lifecycle (Pillar 8 items 7-8, Task 4): 'observed'
+     * (identified from afar — distant detection photo + position/type, no
+     * close capture) or 'diagnosed' (a close-range capture — weight+width
+     * from a close confirm, or Object Capture — upgraded it). Map layers
+     * render diagnosed litter SOLID and observed-only litter
+     * HOLLOW/OUTLINED — see GeoJsonLayers.kt's buildObservationFootprintsGeoJson.
+     *
+     * Null-handling: null covers both a genuinely missing value AND rows
+     * from a server that predates this field (nullable default keeps old
+     * servers wire-compatible). Null is treated as DIAGNOSED (solid), not
+     * observed — deliberately, NOT symmetrically with "unknown defaults to
+     * the lesser claim": legacy/pre-lifecycle data was never tagged
+     * observed-only in the first place, and observed-only is a "needs
+     * completion" signal that feeds the needs-scanning priority lens.
+     * Treating null as observed would falsely spam that lens with every
+     * pre-Task-4 row instead of just genuinely-unconfirmed litter — false
+     * "go re-scan me" noise on data nobody asked to re-diagnose. Treating
+     * null as diagnosed (solid, no priority signal) is the conservative,
+     * no-false-alarm default.
+     */
+    val diagnosticStatus: String? = null,
 )
 
 @Serializable

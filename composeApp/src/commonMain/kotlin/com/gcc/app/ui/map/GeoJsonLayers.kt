@@ -1,5 +1,6 @@
 package com.gcc.app.ui.map
 
+import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.shared.model.AffectedArea
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
@@ -7,6 +8,7 @@ import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sqrt
 import kotlin.math.sin
 
@@ -760,60 +762,92 @@ fun buildCommunityAreaLabelsGeoJson(): String {
  * The subtitle is a pre-formatted string like "3 bounties · $150" for display on map labels.
  */
 /**
- * Builds a GeoJSON FeatureCollection of Polygon features for rectangle-type spot areas.
- * Computes 4 rotated corner coordinates from center, width/height in meters, and rotation.
- * Circle-type spots are excluded (rendered by CircleLayer instead).
+ * Web Mercator meters-per-pixel constant: Earth's circumference (~40,075,017m)
+ * spread across a 256px tile at zoom 0 → 156543.03392 m/px at the equator;
+ * halves every zoom level and scales by cos(latitude) elsewhere. Standard
+ * formula, shared source of truth for [FOOTPRINT_VISIBILITY_FLOOR_METERS].
  */
-fun buildSpotRectanglePolygonsGeoJson(spots: List<CommunityReport>): String {
-    val rectSpots = spots.filter {
-        it.status != CommunityReportStatus.RESOLVED && it.affectedArea is AffectedArea.Rectangle
-    }
-    if (rectSpots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+private const val WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR = 156543.03392
 
-    val features = rectSpots.map { s ->
-        val rect = s.affectedArea as AffectedArea.Rectangle
-        val lat = s.coordinates.lat
-        val lng = s.coordinates.lng
-        // Convert meters to degrees (approximate at this latitude)
-        val metersPerDegreeLat = 111320.0
-        val metersPerDegreeLng = 111320.0 * cos(lat * kotlin.math.PI / 180.0)
-        val halfW = (rect.widthMeters / 2.0) / metersPerDegreeLng
-        val halfH = (rect.heightMeters / 2.0) / metersPerDegreeLat
-        val rad = rect.rotationDeg * kotlin.math.PI / 180.0
-        val cosR = cos(rad)
-        val sinR = sin(rad)
+/** cos(41.85°) — a representative Chicago latitude, used only to derive the
+ *  visibility floor below (a fixed constant, not per-observation latitude,
+ *  since the floor just needs to be "in the right ballpark" everywhere the
+ *  app operates today). */
+private const val CHICAGO_REPRESENTATIVE_LAT_COS = 0.7447
 
-        // 4 corners (unrotated: ±halfW, ±halfH), then rotate around center
-        val corners = listOf(
-            -halfW to -halfH, halfW to -halfH,
-            halfW to halfH, -halfW to halfH,
-        ).map { (dx, dy) ->
-            val rx = dx * cosR - dy * sinR
-            val ry = dx * sinR + dy * cosR
-            "[${lng + rx},${lat + ry}]"
-        }
-        // Close the ring
-        val ring = corners.joinToString(",") + ",${corners.first()}"
-        """{"type":"Feature","properties":{"id":${s.id},"needsVerification":${s.needsVerification}},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
-    }.joinToString(",")
-    return """{"type":"FeatureCollection","features":[$features]}"""
-}
+/** 2^15.5 — the zoom level where the footprint layer reaches FULL opacity
+ *  (see `footprintFadeInFullZoom` in GccMap.ios.kt). The fade-in BAND runs
+ *  IOS_SPOT_HEAT_FADE_ZOOM (14.2) → 15.5 (moved from the old z16.5→17 band
+ *  by commit adbef27, closing the dead zoom gap left after spot pins were
+ *  removed); the visibility floor below is anchored to the END of that
+ *  band — where the shapes are fully legible — not the start. */
+private const val FOOTPRINT_FULL_OPACITY_ZOOM_POW2 = 46_340.95 // 2^15.5
+
+/** meters/px at z15.5 for a representative Chicago latitude:
+ *  156543.03392 * 0.7447 / 46340.95 ≈ 2.5156 m/px. */
+private const val METERS_PER_PIXEL_AT_FOOTPRINT_FULL_OPACITY =
+    WEB_MERCATOR_MPP_AT_ZOOM0_EQUATOR * CHICAGO_REPRESENTATIVE_LAT_COS / FOOTPRINT_FULL_OPACITY_ZOOM_POW2
+
+/**
+ * Visibility floor (spec: "min 2.5px at render zoom, color carries
+ * noticeability, size carries truth"): the minimum world-space width/
+ * diameter a footprint may render at, so a true-scale tiny item (a 0.03m
+ * cigarette butt, a 0.22m chip bag) never shrinks under 2.5 screen pixels
+ * at the zoom where this layer reaches full opacity (z15.5 — see
+ * `footprintFadeInFullZoom` in GccMap.ios.kt; the fade-in band that leads
+ * up to it starts at z14.2, where the item is even smaller on screen and
+ * only reads via color, not shape).
+ *
+ * 2.5px * 2.5156 m/px ≈ 6.29m. That's deliberately generous at z15.5 — most
+ * typical litter items (well under a meter) render at several times their
+ * true size right as the layer becomes fully legible, the spec's explicit
+ * accepted trade-off. It also means the floor is LARGE relative to true
+ * item size at deeper zooms (z18+, standing right on top of the item) —
+ * but on-screen size only ever GROWS from there (same world-space size,
+ * smaller meters/px), so the 2.5px guarantee always holds; the trade-off is
+ * that the floor looks increasingly oversized (not undersized) the closer
+ * you get. The floor is a fixed world-space constant — the GeoJSON geometry
+ * is zoom-static, not recomputed per frame — anchored to the full-opacity
+ * zoom rather than expressed as zoom-dependent: a one-way guarantee, not a
+ * moving target.
+ */
+private const val FOOTPRINT_VISIBILITY_FLOOR_METERS = 2.5 * METERS_PER_PIXEL_AT_FOOTPRINT_FULL_OPACITY
 
 /**
  * Builds a GeoJSON FeatureCollection of true-scale, oriented footprint
- * polygons for world observations that carry a physical width (Pillar 3
- * Task 3 — see docs/superpowers/plans/2026-07-07-pillar3-footprints.md).
+ * polygons for world observations (Pillar 3 Task 3 — see
+ * docs/superpowers/plans/2026-07-07-pillar3-footprints.md — extended into
+ * the close-zoom litter-truth visualization by Pillar 8 Task 2, replacing
+ * the removed spot pin/glyph layers).
  *
  * Geometry approximation table (v1):
- *  - domain == "vegetation" → circle (12-gon) of diameter [WorldObservation.widthMeters]
- *  - everything else → oriented rectangle widthMeters × (widthMeters × 0.4),
- *    rotated by [WorldObservation.yawDegrees] (bearing of the observed face;
- *    defaults to 0 when unmeasured)
+ *  - domain == "vegetation" → circle (12-gon) of diameter [effective width]
+ *  - everything else → oriented rectangle [effective width] × ([effective
+ *    width] × 0.4), rotated by [WorldObservation.yawDegrees] (bearing of the
+ *    observed face; defaults to 0 when unmeasured)
  *
- * Observations with a null/non-finite/non-positive widthMeters are skipped —
- * there is no measured footprint to draw. Feature properties carry itemType,
- * domain, and state so GccMap.ios can filter/color per domain and the tap
- * target can identify what was scanned.
+ * "Effective width" (Pillar 8 Task 2, Part B):
+ *  1. [WorldObservation.widthMeters] when it's a usable measurement (finite,
+ *     positive) — a real close-range capture.
+ *  2. Otherwise [TrashItemCatalog.infoFor]'s typicalWidthMeters for the
+ *     observation's itemType (falling back to [TrashItemCatalog.FALLBACK_TYPE]
+ *     when itemType itself is null) — most detections never get a close-
+ *     range width capture, and a type-appropriate default beats skipping
+ *     the feature entirely (every observation gets a footprint now; see
+ *     Part B.4 — there is still no clustering step).
+ *  3. Floored to [FOOTPRINT_VISIBILITY_FLOOR_METERS] either way, so nothing
+ *     ever renders sub-2.5px at the zoom where this layer reaches full
+ *     opacity (z15.5).
+ *
+ * Feature properties carry id (Part C — tap resolution back to a
+ * [WorldObservation]), itemType, domain, state, and (Pillar 8 Task 4)
+ * diagnosed so GccMap.ios can filter/color per domain, identify what was
+ * scanned, and render the observed/diagnosed litter-truth split (solid vs
+ * hollow/outlined) as a real per-feature `filter`, not the flat
+ * `isDiagnosed` stub Task 2 left in place. `diagnosed` = `obs.diagnosticStatus
+ * != "observed"` — true for both a real "diagnosed" value AND null (legacy
+ * rows predating this field render solid; see [WorldObservation.diagnosticStatus]'s
+ * KDoc for why).
  *
  * [centerLat] anchors the lng/lat meter-scale conversion for the oriented
  * rectangles (single lngScale for the whole collection, matching
@@ -828,9 +862,17 @@ fun buildObservationFootprintsGeoJson(
     val metersPerDegreeLat = 111_320.0
     val metersPerDegreeLng = (metersPerDegreeLat * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
 
-    val features = observations.mapNotNull { obs ->
-        val width = obs.widthMeters
-        if (width == null || !width.isFinite() || width <= 0.0) return@mapNotNull null
+    val features = observations.map { obs ->
+        // Part B.1: a null/non-finite/non-positive measurement is not a
+        // usable close-range capture — fall back to the type's typical
+        // width instead of skipping the observation.
+        val measuredWidth = obs.widthMeters?.takeIf { it.isFinite() && it > 0.0 }
+        val rawWidth = measuredWidth
+            ?: TrashItemCatalog.infoFor(obs.itemType ?: TrashItemCatalog.FALLBACK_TYPE).typicalWidthMeters
+        // Part B.2: visibility floor, applied after resolving the real/
+        // type-default width so nothing renders sub-2.5px at the z15.5
+        // full-opacity zoom.
+        val width = max(rawWidth, FOOTPRINT_VISIBILITY_FLOOR_METERS)
         val yaw = obs.yawDegrees?.takeIf { it.isFinite() } ?: 0.0
 
         val ring = if (obs.domain == "vegetation") {
@@ -849,7 +891,14 @@ fun buildObservationFootprintsGeoJson(
 
         val itemTypeProp = obs.itemType?.let { """"itemType":"$it",""" } ?: ""
         val domainProp = obs.domain?.let { """"domain":"$it",""" } ?: ""
-        """{"type":"Feature","properties":{$itemTypeProp$domainProp"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
+        // Pillar 8 Task 4: diagnosticStatus != "observed" -> diagnosed
+        // (true). Covers both the real "diagnosed" string AND null (legacy/
+        // pre-lifecycle rows) — see WorldObservation.diagnosticStatus's
+        // KDoc for why null renders solid, not hollow.
+        val diagnosed = obs.diagnosticStatus != "observed"
+        // Part C: id rides along so GccMap.ios's onClick can resolve the
+        // tapped feature back to a specific WorldObservation.
+        """{"type":"Feature","properties":{"id":${obs.id},$itemTypeProp$domainProp"diagnosed":$diagnosed,"state":"${obs.state}"},"geometry":{"type":"Polygon","coordinates":[[$ring]]}}"""
     }.joinToString(",")
 
     return """{"type":"FeatureCollection","features":[$features]}"""
@@ -857,9 +906,8 @@ fun buildObservationFootprintsGeoJson(
 
 /**
  * Oriented rectangle ring for [buildObservationFootprintsGeoJson]'s non-
- * vegetation branch — same corner-rotation idiom as
- * [buildSpotRectanglePolygonsGeoJson] (rotate ±half-extents around center in
- * already-degree-converted space), parameterized on a caller-supplied
+ * vegetation branch: rotate ±half-extents around center in
+ * already-degree-converted space, parameterized on a caller-supplied
  * meters-per-degree pair instead of recomputing per feature.
  */
 private fun footprintRectRing(

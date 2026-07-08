@@ -31,7 +31,10 @@ export async function GET(_request: Request, context: RouteContext) {
       !apiBounty ||
       apiBounty.status !== 'open' ||
       bounty.visibility !== 'public' ||
-      apiBounty.triggerReportId == null ||
+      // Amendment 2 / Task 1b, Change 3: mirror the list GET's "has a
+      // report OR observation trigger" rule — an observation-seeded bounty
+      // must be individually fetchable too, not just listable.
+      (apiBounty.triggerReportId == null && apiBounty.triggerObservationId == null) ||
       apiBounty.amount < BOUNTY_MINIMUM_CENTS ||
       !Number.isFinite(apiBounty.locationLat) ||
       !Number.isFinite(apiBounty.locationLng)

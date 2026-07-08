@@ -38,6 +38,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.gridCell10m
 import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -200,6 +201,23 @@ class RouteScanViewModel(
 
     /** Required-corridor cell centers (static per route) — the minimap fill base. */
     fun corridorCellCenters(): List<Pair<Double, Double>> = coverageTracker.getCorridorCenters()
+
+    /**
+     * Cells this scan session's [coverageTracker] actually swept at GRAZED+
+     * quality (the same set backing the minimap fill/fog), translated to
+     * server `gridCell()` ids for the Pillar 8 task 1 cell-supersede sweep
+     * (site/src/lib/world-observations.ts's `resolveByCoveredCells`).
+     * Capped at 2000 to match the server's `parseCoveredCellIds` truncation.
+     *
+     * TODO(merge): wire into route-scan completion submission once
+     * checkpoint-removal branch lands.
+     */
+    fun coveredCellIdsForSubmission(): List<String> =
+        coverageTracker.scannedCells.value
+            .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+            .map { (lat, lng) -> gridCell10m(lat, lng) }
+            .distinct()
+            .take(2000)
 
     // One recorder per lap: the baseline lap and the clean lap each upload as
     // their own session manifest (route-v2 design step 1/5). journalPath is

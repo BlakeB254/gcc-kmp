@@ -9,13 +9,13 @@ import {
   ROUTE_STATUS_COLORS,
   BOUNTY_COLORS,
   SPOT_COLORS,
-  SPOT_SEVERITY_COLORS,
-  VEGETATION_MARKER_COLOR,
-  SPOT_STATUS_COLORS,
   SPOT_ZOOM,
+  CHICAGO_CENTER,
   CHICAGO_CENTER_LNG_LAT,
   SPOT_SCRIM_PAINT,
   SPOT_HEATMAP_PAINT,
+  LITTER_FOOTPRINT_COLORS,
+  LITTER_FOOTPRINT_ZOOM,
   getSpotHeatWeight,
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
@@ -25,6 +25,12 @@ import { CoverageFreshnessOverlay } from './CoverageFreshnessOverlay'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
 import type { Route } from './RouteMap'
+import {
+  buildObservationFootprintsGeoJson,
+  humanizeItemType,
+  formatEstimatedWeight,
+  type MapObservation,
+} from '@/lib/litter-footprints'
 
 // ============================================================================
 // TYPES
@@ -34,6 +40,15 @@ interface CombinedMapProps {
   bounties: Bounty[]
   spots?: SpotReport[]
   routes?: Route[]
+  /** World observations (GET /api/map/observations) driving the litter-
+   *  footprint layer — the close-zoom, true-scale replacement for the
+   *  removed spot pin/glyph/verification-ring layers (Pillar 8 Task 3).
+   *  A prop rather than an internal fetch: today CombinedMap has exactly
+   *  one consumer (bounties/page.tsx), which already fetches this feed for
+   *  its own fold-in logic — an internal bbox-scoped fetch here would just
+   *  double that request for zero benefit. Defaults to [] so pages that
+   *  don't pass it keep working with no footprint layer rendered. */
+  observations?: MapObservation[]
   height?: string
   showLegend?: boolean
   onBountySelect?: (bounty: Bounty) => void
@@ -44,7 +59,7 @@ interface CombinedMapProps {
 type PopupTarget =
   | { kind: 'bounty'; data: Bounty }
   | { kind: 'route'; data: Route }
-  | { kind: 'spot'; data: SpotReport; lng: number; lat: number }
+  | { kind: 'footprint'; data: MapObservation }
 
 // ============================================================================
 // COLOR MAPS
@@ -65,8 +80,11 @@ const BOUNTY_STATUS_LABELS: Record<BountyStatus, string> = {
   completed: 'Completed',
 }
 
-// Per-status spot dot colors. Matches the MapLibre `combined-spot-center`
-// circle-color expression so the Leaflet fallback renders the same visual.
+// Per-status spot dot colors for the Leaflet (no-WebGL) fallback path only.
+// The MapLibre `combined-spot-center` circle layer this used to parallel was
+// removed in Pillar 8 Task 3 (replaced by the litter-footprint layer, which
+// has no Leaflet-fallback equivalent yet); this table lives on as the
+// fallback's own status-color source of truth.
 const STATUS_DOT_COLOR: Record<string, string> = {
   pending: '#F59E0B',       // amber — awaiting verification
   verified: '#EF4444',      // red — confirmed dirty
@@ -129,6 +147,7 @@ export function CombinedMap({
   bounties,
   spots = [],
   routes = [],
+  observations = [],
   height = '500px',
   showLegend = true,
   onBountySelect,
@@ -196,7 +215,11 @@ export function CombinedMap({
     [routes, selectedRouteId]
   )
 
-  // ----- spot GeoJSON -----
+  // ----- spot GeoJSON (heatmap input only — the pin/glyph/verification-ring
+  // layers that used to consume itemType/severity/domain/hasBounty/
+  // needsVerification/tags were removed in Pillar 8 Task 3; combined-spot-
+  // heatmap only ever reads `heatWeight`, so those properties are dead here
+  // now and were dropped) -----
   const spotGeoJson = useMemo(
     () => ({
       type: 'FeatureCollection' as const,
@@ -207,15 +230,6 @@ export function CombinedMap({
           radiusMeters: spot.radiusMeters,
           label: spot.label || '',
           heatWeight: getSpotHeatWeight(spot),
-          hasBounty: spot.bountyId != null,
-          needsVerification: spot.needsVerification ?? false,
-          tags: JSON.stringify(spot.tags ?? []),
-          itemType: spot.itemType ?? 'general_litter',
-          // worldObservations-derived fields (Task 10) — severity coalesced to
-          // the same neutral default (2) LiveSeverityEstimator uses on-device,
-          // so an unscored spot renders at the same size/color it always has.
-          severity: spot.severity ?? 2,
-          domain: spot.domain ?? 'litter',
         },
         geometry: {
           type: 'Point' as const,
@@ -226,7 +240,24 @@ export function CombinedMap({
     [spots]
   )
 
-  // ----- handle map feature click (routes + spots) -----
+  // ----- litter-footprint GeoJSON (Pillar 8 Task 3) -----
+  // centerLat anchors the oriented-rectangle lng/lat meter-scale conversion
+  // (matches the Kotlin reference's per-collection lngScale). Mobile
+  // recomputes this from the live camera position every frame; the web
+  // builder intentionally uses a fixed representative Chicago latitude
+  // instead (same reasoning the Kotlin visibility-floor constant already
+  // relies on — "in the right ballpark everywhere the app operates today")
+  // rather than re-deriving the whole FeatureCollection on every `onMove`
+  // pan/zoom tick, which would rebuild every footprint's geometry on each
+  // pointer-move for zero visible benefit (aspect-ratio error from using a
+  // fixed Chicago lat instead of the live one is well under 1% at this
+  // city's latitude span).
+  const footprintGeoJson = useMemo(
+    () => buildObservationFootprintsGeoJson(observations, CHICAGO_CENTER.lat),
+    [observations]
+  )
+
+  // ----- handle map feature click (routes + litter footprints) -----
   const handleMapClick = useCallback(
     (event: any) => {
       const feature = event.features?.[0]
@@ -234,27 +265,22 @@ export function CombinedMap({
 
       const layerId = feature.layer?.id || ''
 
-      // Spot click — pan map so popup (which renders upward) isn't clipped
-      if (layerId.includes('spot')) {
-        const spotId = feature.properties.id
-        const spot = spots.find((s) => String(s.id) === String(spotId))
-        if (spot) {
-          setPopup({
-            kind: 'spot',
-            data: spot,
-            lng: spot.coordinates[0],
-            lat: spot.coordinates[1],
-          })
+      // Litter-footprint click — the close-zoom litter-truth layer that
+      // replaced the spot pin/glyph/verification-ring tap target (Pillar 8
+      // Task 3). Same "pan so the popup has room" plumbing the old spot-pin
+      // click handler used.
+      if (layerId.includes('litter-footprint')) {
+        const obsId = feature.properties.id
+        const obs = observations.find((o) => o.id === obsId)
+        if (obs) {
+          setPopup({ kind: 'footprint', data: obs })
 
-          // Offset the map center so the spot sits in the lower portion of the
-          // viewport, giving the popup card (images + details) room above it.
-          // offset [0, Y] shifts the target Y pixels below map center.
           const map = mapRef.current
           if (map) {
-            const currentZoom = map.getZoom()
+            const currentMapZoom = map.getZoom()
             map.flyTo({
-              center: [spot.coordinates[0], spot.coordinates[1]],
-              zoom: Math.max(currentZoom, ZOOM.ROUTE),
+              center: [obs.lng, obs.lat],
+              zoom: Math.max(currentMapZoom, ZOOM.ROUTE),
               offset: [0, 140],
               duration: 600,
             })
@@ -271,7 +297,7 @@ export function CombinedMap({
         onRouteSelect?.(route)
       }
     },
-    [routes, spots, onRouteSelect]
+    [routes, observations, onRouteSelect]
   )
 
   // ----- initial view (will be overridden by fitBounds) -----
@@ -351,23 +377,24 @@ export function CombinedMap({
       )
     }
 
-    // spot popup
-    if (popup.kind === 'spot') {
-      const s = popup.data
-      // Falls back to the observation's derived mediaUrl (Task 11) when the
-      // report itself has no user-submitted photo — covers scan-detected
-      // items nobody explicitly photographed, once one is captured.
-      const allPhotos = s.mediaUrls?.length
-        ? s.mediaUrls
-        : s.photoUrl
-          ? [s.photoUrl]
-          : s.mediaUrl
-            ? [s.mediaUrl]
-            : []
+    // litter-footprint popup (Pillar 8 Task 3 — replaces the removed spot-
+    // pin popup). Shows: photo (mediaUrl, when present — "best photo" per
+    // observation is just its mediaUrl today), humanized itemType, estimated
+    // weight when present, capturedAt date. No materials field exists on
+    // WorldObservation, so it's omitted (not silently faked).
+    if (popup.kind === 'footprint') {
+      const o = popup.data
+      const weightLabel = formatEstimatedWeight(o.estimatedWeightGrams)
+      const domainColor =
+        o.domain === 'vegetation'
+          ? LITTER_FOOTPRINT_COLORS.vegetation
+          : o.domain === 'construction'
+            ? LITTER_FOOTPRINT_COLORS.construction
+            : LITTER_FOOTPRINT_COLORS.other
       return (
         <Popup
-          longitude={popup.lng}
-          latitude={popup.lat}
+          longitude={o.lng}
+          latitude={o.lat}
           anchor="bottom"
           onClose={() => setPopup(null)}
           closeButton
@@ -375,55 +402,27 @@ export function CombinedMap({
           offset={[0, -8] as [number, number]}
         >
           <div className="min-w-[280px] max-w-[340px] max-h-[60vh] overflow-y-auto">
-            {/* Images first — full-bleed at top of card for visual impact */}
-            {allPhotos.length > 0 && (
-              <div className={`${allPhotos.length > 1 ? 'flex gap-1 overflow-x-auto' : ''}`}>
-                {allPhotos.map((url, i) => (
-                  <img
-                    key={i}
-                    src={url}
-                    alt={`Spot report photo ${i + 1}`}
-                    className={`object-cover cursor-pointer hover:opacity-90 transition-opacity ${
-                      allPhotos.length === 1 ? 'w-full h-48' : 'w-44 h-36 flex-shrink-0'
-                    }`}
-                    onClick={() => window.open(url, '_blank')}
-                  />
-                ))}
-              </div>
+            {o.mediaUrl && (
+              <img
+                src={o.mediaUrl}
+                alt={`Litter: ${humanizeItemType(o.itemType)}`}
+                className="w-full h-48 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                onClick={() => window.open(o.mediaUrl!, '_blank')}
+              />
             )}
             <div className="p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span
                   className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: SPOT_COLORS.MARKER }}
+                  style={{ backgroundColor: domainColor }}
                 />
-                <span className="font-bold text-neutral-900 text-sm">Spot Report</span>
-                {s.status && (
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full text-white font-medium ml-auto capitalize"
-                    style={{ backgroundColor: SPOT_STATUS_COLORS[s.status || 'pending'] || SPOT_STATUS_COLORS.pending }}
-                  >
-                    {s.status}
-                  </span>
-                )}
+                <span className="font-bold text-neutral-900 text-sm">{humanizeItemType(o.itemType)}</span>
               </div>
-              {s.label && (
-                <p className="text-sm font-medium text-neutral-700 mb-1 capitalize">{s.label.replace(/_/g, ' ')}</p>
-              )}
-              {(s.tags?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {s.tags!.map((tag) => (
-                    <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">{tag}</span>
-                  ))}
-                </div>
-              )}
-              {s.description && (
-                <p className="text-sm text-neutral-500 mb-2 line-clamp-3">{s.description}</p>
-              )}
               <div className="flex items-center gap-3 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-                <span>~{Math.round(s.radiusMeters)}m radius</span>
-                {s.reporterName && <span>By: {s.reporterName}</span>}
-                {allPhotos.length > 1 && <span className="ml-auto">{allPhotos.length} photos</span>}
+                {weightLabel && <span>~{weightLabel}</span>}
+                {o.capturedAt && (
+                  <span className="ml-auto">{new Date(o.capturedAt).toLocaleDateString()}</span>
+                )}
               </div>
             </div>
           </div>
@@ -480,7 +479,7 @@ export function CombinedMap({
         </div>
       </Popup>
     )
-  }, [popup, onRouteSelect, spots])
+  }, [popup, onRouteSelect])
 
   // ----- combined legend -----
   const legendNode = showLegend ? (
@@ -568,9 +567,9 @@ export function CombinedMap({
         fallbackLayers={fallbackLayers}
         interactiveLayerIds={[
           ...(routes.length > 0 ? ['combined-route-fill-layer'] : []),
-          ...(spots.length > 0 ? ['combined-spot-center', 'combined-spot-verification-ring'] : []),
+          ...(observations.length > 0 ? ['litter-footprint-fill'] : []),
         ]}
-        onClick={routes.length > 0 || spots.length > 0 ? handleMapClick : undefined}
+        onClick={routes.length > 0 || observations.length > 0 ? handleMapClick : undefined}
         onMove={(event) => {
           setCurrentZoom(event.viewState.zoom)
           const b = event.target.getBounds()
@@ -736,10 +735,12 @@ export function CombinedMap({
           </Source>
         )}
 
-        {/* Spot reports — heatmap (z<14.5) + dots (z14+) opacity crossfade.
-            Same design as the homepage; with fitBounds capped at zoom 15,
-            users land in the dots-fully-visible / heatmap-invisible
-            portion of the crossfade. */}
+        {/* Spot reports — heatmap only (z<15). Far-zoom "how bad is it around
+            here" language; unchanged by Pillar 8 Task 3 (Global Constraint:
+            heatmap layer definition untouched). The close-zoom pin/glyph/
+            verification-ring layers that used to render here were removed —
+            the litter-footprint layer below (fed by world observations, not
+            `spots`) is now THE close-zoom litter-truth visualization. */}
         {spots.length > 0 && (
           <Source id="combined-spots" type="geojson" data={spotGeoJson}>
             <Layer
@@ -750,93 +751,87 @@ export function CombinedMap({
               paint={SPOT_HEATMAP_PAINT}
               layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
             />
+          </Source>
+        )}
 
+        {/* ============================================================ */}
+        {/* LITTER FOOTPRINTS — close-zoom, true-scale, per-observation   */}
+        {/* shapes (Pillar 8 Task 3). Web mirror of the mobile            */}
+        {/* observation-footprint layer in GccMap.ios.kt: replaces the    */}
+        {/* removed combined-spot-center/icons/verification-ring pin      */}
+        {/* family. Geometry (rectangle rotation, vegetation circle,      */}
+        {/* visibility floor) is computed once in JS via                  */}
+        {/* buildObservationFootprintsGeoJson — see src/lib/litter-       */}
+        {/* footprints.ts. Fade-in starts at SPOT_ZOOM.HEATMAP_FADE_OUT   */}
+        {/* (the heatmap's own fade-OUT zoom) so the two layers hand off  */}
+        {/* with no dead band, reaching full opacity at z15.5 (matches    */}
+        {/* mobile's footprintFadeInFullZoom). No clustering — every      */}
+        {/* observation is its own feature.                               */}
+        {/* ============================================================ */}
+        {observations.length > 0 && (
+          <Source id="litter-footprints" type="geojson" data={footprintGeoJson}>
             <Layer
-              id="combined-spot-center"
-              type="circle"
-              minzoom={SPOT_ZOOM.DOTS_MIN}
+              id="litter-footprint-fill"
+              type="fill"
               paint={{
-                // Base zoom-driven radius (unchanged from before) times a
-                // severity multiplier, so a mattress-sized problem reads
-                // visibly larger than a bottle at the same zoom level.
-                'circle-radius': [
+                'fill-color': [
+                  'match', ['get', 'domain'],
+                  'vegetation', LITTER_FOOTPRINT_COLORS.vegetation,
+                  'construction', LITTER_FOOTPRINT_COLORS.construction,
+                  LITTER_FOOTPRINT_COLORS.other,
+                ],
+                // Zoom fade-in (0 -> full) times a diagnosed/observed target
+                // (Pillar 8 Task 4 — mirrors GccMap.ios.kt's diagnosed/
+                // observed split): diagnosed (solid, true OR the property
+                // missing/legacy — see litter-footprints.ts's `diagnosed`
+                // KDoc) uses the same per-domain full-opacity target as
+                // before (vegetation/construction 0.18, other 0.20);
+                // observed-only (hollow) drops to a flat 0.05 — faint fill,
+                // full-strength outline below carries the "ring" signal.
+                'fill-opacity': [
                   '*',
-                  ['interpolate', ['linear'], ['zoom'], 14, 2, 14.5, 3, 16, 5, 17, 7],
                   [
-                    'match', ['coalesce', ['get', 'severity'], 2],
-                    1, 0.7, 2, 0.85, 3, 1.0, 4, 1.3, 5, 1.6,
-                    1.0,
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    LITTER_FOOTPRINT_ZOOM.FADE_IN_START, 0,
+                    LITTER_FOOTPRINT_ZOOM.FADE_IN_FULL, 1,
+                  ],
+                  [
+                    'case',
+                    ['==', ['get', 'diagnosed'], false],
+                    0.05,
+                    [
+                      'match', ['get', 'domain'],
+                      'vegetation', 0.18,
+                      'construction', 0.18,
+                      0.20,
+                    ],
                   ],
                 ],
-                // Vegetation observations get their own color regardless of
-                // severity (informational, not an urgency signal); litter
-                // steps through the same low/medium/high ramp used elsewhere
-                // for heat-weight and bounty urgency.
-                'circle-color': [
+              }}
+            />
+            <Layer
+              id="litter-footprint-outline"
+              type="line"
+              paint={{
+                'line-color': [
+                  'match', ['get', 'domain'],
+                  'vegetation', LITTER_FOOTPRINT_COLORS.vegetation,
+                  'construction', LITTER_FOOTPRINT_COLORS.construction,
+                  LITTER_FOOTPRINT_COLORS.other,
+                ],
+                // Observed-only (hollow) gets a heavier outline than
+                // diagnosed (solid) — same intent as GccMap.ios.kt's
+                // 0.5dp/1.2dp split, so the ring reads as deliberate.
+                'line-width': [
                   'case',
-                  ['==', ['get', 'domain'], 'vegetation'], VEGETATION_MARKER_COLOR,
-                  ['>=', ['coalesce', ['get', 'severity'], 2], 4], SPOT_SEVERITY_COLORS.HIGH,
-                  ['==', ['coalesce', ['get', 'severity'], 2], 3], SPOT_SEVERITY_COLORS.MEDIUM,
-                  SPOT_SEVERITY_COLORS.LOW,
+                  ['==', ['get', 'diagnosed'], false],
+                  1.75,
+                  1,
                 ],
-                'circle-stroke-color': '#ffffff',
-                'circle-stroke-width': 2,
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  14, 0, 14.5, 0.8, 15, 1,
-                ],
-              }}
-            />
-
-            {/* Per-item-type labels — close-zoom enhancement layered on top of the
-                dots, one zoom level past where dots are already fully opaque.
-                Does NOT touch combined-spot-heatmap/combined-spot-center paint.
-                icon-image/icon-* keys were removed here (2026-07-06 cleanup
-                audit): the tire/couch/branch/etc. sprites they referenced were
-                never registered in the map style, so MapLibre rendered nothing
-                for them — the text-field label was the only visible output. */}
-            <Layer
-              id="combined-spot-icons"
-              type="symbol"
-              minzoom={SPOT_ZOOM.DOTS_MIN + 1}
-              layout={{
-                'text-field': ['get', 'itemType'],
-                'text-size': 9,
-                'text-offset': [0, 1.2],
-                'text-anchor': 'top',
-              }}
-              paint={{
-                'text-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN + 1, 0, SPOT_ZOOM.DOTS_MIN + 1.5, 1,
-                ],
-              }}
-            />
-
-            {/* Verification indicator — orange ring on spots needing verification */}
-            <Layer
-              id="combined-spot-verification-ring"
-              type="circle"
-              minzoom={SPOT_ZOOM.DOTS_MIN}
-              filter={['==', ['get', 'needsVerification'], true]}
-              paint={{
-                'circle-radius': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 5,
-                  15, 9,
-                  17, 12,
-                ],
-                'circle-color': 'transparent',
-                'circle-stroke-color': '#FF8C00',
-                'circle-stroke-width': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 1.5,
-                  15, 2.5,
-                ],
-                'circle-opacity': [
-                  'interpolate', ['linear'], ['zoom'],
-                  SPOT_ZOOM.DOTS_MIN, 0,
-                  SPOT_ZOOM.HEATMAP_FADE_OUT, 1,
+                'line-opacity': [
+                  'interpolate', ['exponential', 1.5], ['zoom'],
+                  LITTER_FOOTPRINT_ZOOM.FADE_IN_START, 0,
+                  LITTER_FOOTPRINT_ZOOM.FADE_IN_FULL, 1,
                 ],
               }}
             />
