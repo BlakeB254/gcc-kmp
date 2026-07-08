@@ -453,7 +453,9 @@ fun ArRouteScreen(
                     centerLat = mapCenterLat,
                     centerLng = mapCenterLng,
                     zoom = mapZoom,
-                    currentLocation = Coordinates(lat = ui.currentLat, lng = ui.currentLng),
+                    // currentLocation=null: ScanMinimapOverlay draws the one
+                    // centered dot; the basemap puck here was a second dot.
+                    currentLocation = null,
                     gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
                 )
                 ScanMinimapOverlay(

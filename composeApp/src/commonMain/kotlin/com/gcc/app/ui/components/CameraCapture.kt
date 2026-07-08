@@ -241,7 +241,10 @@ fun CameraCapture(
                         centerLat = currentLocation.lat,
                         centerLng = currentLocation.lng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
-                        currentLocation = currentLocation,
+                        // currentLocation=null: ScanMinimapOverlay draws the one
+                        // authoritative centered dot — the basemap puck here was
+                        // a SECOND dot (field report). Framing uses centerLat/Lng.
+                        currentLocation = null,
                         gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
                     )
                     // Scan coverage + trash + ledger freshness, projected over

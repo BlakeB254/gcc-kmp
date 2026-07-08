@@ -213,7 +213,10 @@ fun ScanMinimapOverlay(
         // and the scanned/scanning cells hard to see — lightened from 0.62 to
         // 0.45 (corridor re-shade below dropped proportionally to keep the
         // same relative contrast between "assigned" and "everything else").
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.45f))
+        // Field report (env scan): the minimap read "too darkened". Veil
+        // lightened 0.45 -> 0.30 so unscanned ground still reads as fog without
+        // drowning the beam, the painted coverage, and the user dot.
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.30f))
 
         // Scene-aware flashlight beam (WS2): projected through the SAME
         // zoom-biased toOffset as every other layer so it stays glued to the
