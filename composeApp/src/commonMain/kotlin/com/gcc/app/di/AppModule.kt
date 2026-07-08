@@ -43,6 +43,7 @@ import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.cache.ScanAreaCacheStore
+import com.gcc.shared.cache.BuildingFootprintStore
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,6 +73,7 @@ val appModule = module {
     single<SqlDriver> { createSqlDriver() }
     single { RouteCacheStore(get()) }
     single { ScanAreaCacheStore(get()) }
+    single { BuildingFootprintStore(get()) }
     single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
     single { CaptureChunkUploader(get(), get()) }

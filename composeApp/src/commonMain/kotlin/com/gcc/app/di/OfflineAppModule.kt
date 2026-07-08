@@ -34,6 +34,7 @@ import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
 import com.gcc.shared.cache.ScanAreaCacheStore
+import com.gcc.shared.cache.BuildingFootprintStore
 import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import app.cash.sqldelight.db.SqlDriver
@@ -55,6 +56,7 @@ val offlineAppModule = module {
     single<SqlDriver> { createSqlDriver() }
     single { RouteCacheStore(get()) }
     single { ScanAreaCacheStore(get()) }
+    single { BuildingFootprintStore(get()) }
     single { CaptureChunkStore(get()) }
     single { EnvScanSessionUploader(get()) }
     single { CaptureChunkUploader(get(), get()) }
