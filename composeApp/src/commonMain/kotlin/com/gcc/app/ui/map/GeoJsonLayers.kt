@@ -9,7 +9,6 @@ import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.sqrt
 import kotlin.math.sin
 
 /** Empty GeoJSON FeatureCollection — shared so callers can cheaply check
@@ -326,154 +325,6 @@ fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
     return """{"type":"FeatureCollection","features":[$features]}"""
 }
 
-fun buildSpotDensityHeatEdgeGeoJson(spots: List<CommunityReport>): String =
-    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 0.08)
-
-fun buildSpotDensityHeatLowGeoJson(spots: List<CommunityReport>): String =
-    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 0.52)
-
-fun buildSpotDensityHeatMediumGeoJson(spots: List<CommunityReport>): String =
-    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 1.35)
-
-fun buildSpotDensityHeatHighGeoJson(spots: List<CommunityReport>): String =
-    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 2.7)
-
-fun buildSpotDensityHeatExtremeGeoJson(spots: List<CommunityReport>): String =
-    buildSpotDensitySurfaceGeoJson(spots, minDensityScore = 5.0)
-
-private fun buildSpotDensitySurfaceGeoJson(
-    spots: List<CommunityReport>,
-    minDensityScore: Double,
-): String {
-    val activeSpots = spots.filter { it.status != CommunityReportStatus.RESOLVED }
-    if (activeSpots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
-
-    val features = spotDensityClusters(activeSpots)
-        .flatMap { cluster -> spotDensitySurfaceFeatures(cluster, minDensityScore) }
-        .joinToString(",")
-    return """{"type":"FeatureCollection","features":[$features]}"""
-}
-
-private const val SPOT_DENSITY_SURFACE_KERNEL_METERS = 280.0
-private const val SPOT_DENSITY_SURFACE_BASE_SPACING_METERS = 44.0
-private const val SPOT_DENSITY_SURFACE_CLUSTER_LINK_METERS = SPOT_DENSITY_SURFACE_KERNEL_METERS * 1.75
-private const val SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES = 1600.0
-
-private fun spotDensityClusters(activeSpots: List<CommunityReport>): List<List<CommunityReport>> {
-    val visited = BooleanArray(activeSpots.size)
-    val clusters = mutableListOf<List<CommunityReport>>()
-
-    activeSpots.indices.forEach { start ->
-        if (visited[start]) return@forEach
-
-        val clusterIndices = mutableListOf<Int>()
-        val queue = ArrayDeque<Int>()
-        visited[start] = true
-        queue.add(start)
-
-        while (queue.isNotEmpty()) {
-            val index = queue.removeFirst()
-            clusterIndices.add(index)
-
-            activeSpots.indices.forEach { candidate ->
-                if (!visited[candidate] &&
-                    distanceMeters(activeSpots[index].coordinates, activeSpots[candidate].coordinates) <=
-                    SPOT_DENSITY_SURFACE_CLUSTER_LINK_METERS
-                ) {
-                    visited[candidate] = true
-                    queue.add(candidate)
-                }
-            }
-        }
-
-        clusters.add(clusterIndices.map { activeSpots[it] })
-    }
-
-    return clusters
-}
-
-private fun spotDensitySurfaceFeatures(
-    cluster: List<CommunityReport>,
-    minDensityScore: Double,
-): List<String> {
-    val centerLat = cluster.map { it.coordinates.lat }.average()
-    val minLat = cluster.minOf { it.coordinates.lat }
-    val maxLat = cluster.maxOf { it.coordinates.lat }
-    val minLng = cluster.minOf { it.coordinates.lng }
-    val maxLng = cluster.maxOf { it.coordinates.lng }
-    val metersPerDegreeLat = 111_320.0
-    val metersPerDegreeLng = (111_320.0 * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
-    val paddingLat = SPOT_DENSITY_SURFACE_KERNEL_METERS / metersPerDegreeLat
-    val paddingLng = SPOT_DENSITY_SURFACE_KERNEL_METERS / metersPerDegreeLng
-
-    val widthMeters = ((maxLng - minLng).coerceAtLeast(0.0) + paddingLng * 2.0) * metersPerDegreeLng
-    val heightMeters = ((maxLat - minLat).coerceAtLeast(0.0) + paddingLat * 2.0) * metersPerDegreeLat
-    val estimatedSamples = (widthMeters / SPOT_DENSITY_SURFACE_BASE_SPACING_METERS).coerceAtLeast(1.0) *
-        (heightMeters / SPOT_DENSITY_SURFACE_BASE_SPACING_METERS).coerceAtLeast(1.0)
-    val spacingMeters = if (estimatedSamples <= SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES) {
-        SPOT_DENSITY_SURFACE_BASE_SPACING_METERS
-    } else {
-        SPOT_DENSITY_SURFACE_BASE_SPACING_METERS *
-            sqrt(estimatedSamples / SPOT_DENSITY_SURFACE_CLUSTER_MAX_SAMPLES)
-    }
-    val latStep = spacingMeters / metersPerDegreeLat
-    val lngStep = spacingMeters / metersPerDegreeLng
-    val startLat = minLat - paddingLat
-    val endLat = maxLat + paddingLat
-    val startLng = minLng - paddingLng
-    val endLng = maxLng + paddingLng
-    val features = mutableListOf<String>()
-
-    var lat = startLat
-    var row = 0
-    while (lat <= endLat) {
-        val rowOffset = if (row % 2 == 0) 0.0 else lngStep * 0.5
-        var lng = startLng + rowOffset
-        while (lng <= endLng) {
-            val score = surfaceDensityScore(Coordinates(lng = lng, lat = lat), cluster)
-            if (score >= minDensityScore) {
-                features.add(
-                    """{"type":"Feature","properties":{"densityScore":$score},"geometry":{"type":"Point","coordinates":[$lng,$lat]}}"""
-                )
-            }
-            lng += lngStep
-        }
-        lat += latStep
-        row += 1
-    }
-
-    return features
-}
-
-private fun surfaceDensityScore(point: Coordinates, cluster: List<CommunityReport>): Double {
-    return cluster.fold(0.0) { total, spot ->
-        val distance = distanceMeters(point, spot.coordinates)
-        if (distance > SPOT_DENSITY_SURFACE_KERNEL_METERS) {
-            total
-        } else {
-            val t = 1.0 - distance / SPOT_DENSITY_SURFACE_KERNEL_METERS
-            val smoothKernel = t * t * (3.0 - 2.0 * t)
-            total + smoothKernel * densityStatusScale(spot)
-        }
-    }
-}
-
-private fun densityStatusScale(spot: CommunityReport): Double = when (spot.status) {
-    CommunityReportStatus.VERIFIED -> 1.08
-    CommunityReportStatus.ACKNOWLEDGED -> 1.04
-    CommunityReportStatus.PENDING -> 1.0
-    else -> 0.9
-}
-
-private fun distanceMeters(a: Coordinates, b: Coordinates): Double {
-    val metersPerDegreeLat = 111_320.0
-    val avgLat = (a.lat + b.lat) / 2.0
-    val metersPerDegreeLng = (111_320.0 * cos(avgLat * PI / 180.0)).coerceAtLeast(1.0)
-    val dx = (a.lng - b.lng) * metersPerDegreeLng
-    val dy = (a.lat - b.lat) * metersPerDegreeLat
-    return kotlin.math.sqrt(dx * dx + dy * dy)
-}
-
 fun buildOverviewHeatPointsGeoJson(
     spots: List<CommunityReport>,
     activityCoords: List<Coordinates>,
@@ -649,6 +500,19 @@ private fun circlePolygonRing(
     }
     return points.joinToString(",") + ",${points.first()}"
 }
+
+/**
+ * A closed axis-aligned square ring string (GeoJSON [lng,lat] order,
+ * clockwise, first point repeated) centered on ([lng], [lat]) with the given
+ * half-extents in degrees. Shared by every fixed-cell tile builder — the
+ * coverage-state quads, the fog holes, and the choropleth tiles — so the
+ * winding/closure/coordinate order lives in exactly one place. Returns just
+ * the ring `[[..],[..],..]`; callers wrap it in the polygon `coordinates`
+ * array (`[$ring]` for a solid tile, or as one entry in a holes list).
+ */
+private fun squareRing(lng: Double, lat: Double, halfLng: Double, halfLat: Double): String =
+    "[[${lng - halfLng},${lat - halfLat}],[${lng + halfLng},${lat - halfLat}]," +
+        "[${lng + halfLng},${lat + halfLat}],[${lng - halfLng},${lat + halfLat}],[${lng - halfLng},${lat - halfLat}]]"
 
 private fun spotHeatWeight(spot: CommunityReport): Double {
     val statusWeight = when (spot.status) {
@@ -1045,12 +909,8 @@ fun buildCoverageStateGeoJsons(
     val latStep = cellSizeMeters / 111_320.0
     val lngStep = cellSizeMeters / (111_320.0 * lngScale)
 
-    fun cellQuad(lat: Double, lng: Double): String {
-        val hLat = latStep / 2
-        val hLng = lngStep / 2
-        return "[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}]," +
-            "[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]"
-    }
+    fun cellQuad(lat: Double, lng: Double): String =
+        squareRing(lng, lat, halfLng = lngStep / 2, halfLat = latStep / 2)
 
     // cellId rides in feature properties so the fill layers are tappable —
     // MapFullScreen resolves the id back to the full MapCoverageCell for the
@@ -1139,10 +999,7 @@ fun buildCoverageStateGeoJsons(
         val holes = coverageCells
             .filter { it.lat in minLat..maxLat && it.lng in minLng..maxLng }
             .take(1500)
-            .joinToString(",") { cell ->
-                "[[${cell.lng - hLng},${cell.lat - hLat}],[${cell.lng + hLng},${cell.lat - hLat}]," +
-                    "[${cell.lng + hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat - hLat}]]"
-            }
+            .joinToString(",") { cell -> squareRing(cell.lng, cell.lat, halfLng = hLng, halfLat = hLat) }
         val rings = if (holes.isEmpty()) "[$outerRing]" else "[$outerRing,$holes]"
         fogFeatures.append(
             """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":$rings}}"""
@@ -1162,6 +1019,35 @@ fun buildCoverageStateGeoJsons(
     )
 }
 
+
+/**
+ * Builds one GeoJSON FeatureCollection for the far-zoom cell-health
+ * choropleth (v2 Pillar 8 amendment) — one small square Feature per
+ * [HealthTile] from [aggregateCellHealth], each carrying its own `health`
+ * (0..1) and `dominant` ("clean" | "dirty" | "stale" | "unscanned")
+ * properties so a SINGLE data-driven FillLayer can color every tile by ITS
+ * OWN constituents, replacing the point-density spot-heat layers this
+ * choropleth supersedes (GccMap.ios.kt: the removed `spot-density-heat-*`
+ * CircleLayers).
+ *
+ * Each tile is rendered as its own [tileMeters]-sided square, centered on
+ * [HealthTile.centerLat]/[HealthTile.centerLng] — the same axis-aligned-quad
+ * approach [buildCoverageStateGeoJsons] uses for its per-cell tiles, just at
+ * a coarser, zoom-scaled size. The longitude scale is computed per-feature
+ * off the tile's own latitude (mirrors [circlePolygonRing]'s per-feature
+ * scaling) since tiles can span a wide latitude range at low zoom.
+ */
+fun buildChoroplethGeoJson(tiles: List<HealthTile>, tileMeters: Double): String {
+    if (tiles.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
+    val halfLat = (tileMeters / 2.0) / 111_320.0
+    val features = tiles.joinToString(",") { tile ->
+        val lngScale = cos(tile.centerLat * PI / 180.0).let { if (it < 0.01) 0.01 else it }
+        val halfLng = (tileMeters / 2.0) / (111_320.0 * lngScale)
+        val ring = squareRing(tile.centerLng, tile.centerLat, halfLng, halfLat)
+        """{"type":"Feature","properties":{"health":${tile.health},"dominant":"${tile.dominant.name.lowercase()}"},"geometry":{"type":"Polygon","coordinates":[$ring]}}"""
+    }
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
 
 /**
  * Explorer-mode scan-state color coding: buckets every Chicago community
