@@ -185,6 +185,17 @@ Scans must yield the still frames that BEST depict each issue area:
   GPS+pose in the sidecar ties every extracted frame to map position.
 
 
+### Pillar 8 amendment — cell-health choropleth replaces point heatmap (Blake, 2026-07-07)
+
+"No more spots" includes the FAR-ZOOM layer: the current heatmap interpolates
+density between spot points — an estimation between dots. Replace it with a
+cell-based choropleth: each heat cell represents ITS OWN boundary's health,
+computed from the real data inside it (litter observations + weights, coverage
+state, staleness). Far zoom aggregates the 10m ledger cells into zoom-scaled
+tiles (client- or server-side); color = health, not proximity-to-a-pin. Close
+zoom remains realistic litter representations (footprints). The point-density
+heatmap layers (mobile + web) are removed once the choropleth lands.
+
 ## Pillar 10 — Area bounties, peer-to-peer (Blake, 2026-07-07)
 
 The legacy report-seeded bounty flow was never fully implemented — replaced by:
