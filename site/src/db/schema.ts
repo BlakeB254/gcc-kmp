@@ -7,6 +7,7 @@ import {
   timestamp,
   numeric,
   integer,
+  bigint,
   jsonb,
   pgEnum,
   doublePrecision,
@@ -2005,3 +2006,44 @@ export const blockCompletionReports = pgTable('block_completion_reports', {
 
 export type BlockCompletionReportRow = typeof blockCompletionReports.$inferSelect
 export type NewBlockCompletionReportRow = typeof blockCompletionReports.$inferInsert
+
+// Building footprints (scan-visibility rework Workstream 1): real OSM building
+// polygons backing the indoor gate's map-containment signal. One row per OSM
+// building way; bbox columns are indexed for cheap intersection lookup, the
+// full ring lives in `polygon` as GeoJSON [lng,lat][]. Lazily fetched from
+// Overpass on a tile cache-miss (see GET /api/map/buildings). Additive, no FKs
+// (osm_id is the natural key), matching the hot-path-lookup pattern used by
+// scan_coverage_events / world_observations elsewhere in this file.
+export const buildingFootprints = pgTable('building_footprints', {
+  id: serial('id').primaryKey(),
+  osmId: bigint('osm_id', { mode: 'number' }), // OSM way id; natural upsert key
+  source: varchar('source', { length: 16 }).default('overpass').notNull(),
+  tileKey: varchar('tile_key', { length: 32 }).notNull(), // "b:{latIdx}:{lngIdx}"
+  minLng: doublePrecision('min_lng').notNull(),
+  minLat: doublePrecision('min_lat').notNull(),
+  maxLng: doublePrecision('max_lng').notNull(),
+  maxLat: doublePrecision('max_lat').notNull(),
+  polygon: jsonb('polygon').notNull(), // GeoJSON linear ring: [lng,lat][]
+  buildingType: varchar('building_type', { length: 64 }), // OSM building=* tag value
+  fetchedAt: timestamp('fetched_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  bboxIdx: index('building_footprints_bbox_idx').on(table.minLng, table.maxLng, table.minLat, table.maxLat),
+  tileIdx: index('building_footprints_tile_idx').on(table.tileKey),
+  sourceOsmIdx: uniqueIndex('building_footprints_source_osm_idx').on(table.source, table.osmId),
+}))
+
+export type BuildingFootprintRow = typeof buildingFootprints.$inferSelect
+export type NewBuildingFootprintRow = typeof buildingFootprints.$inferInsert
+
+// Per-tile fetch ledger: records that a ~1.1km tile was fetched from Overpass
+// and when, so a tile (INCLUDING an empty one with zero footprints) is fetched
+// at most once per TTL. Without this, empty tiles would re-hit Overpass on
+// every request.
+export const buildingFootprintTiles = pgTable('building_footprint_tiles', {
+  tileKey: varchar('tile_key', { length: 32 }).primaryKey(),
+  fetchedAt: timestamp('fetched_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  footprintCount: integer('footprint_count').default(0).notNull(),
+})
+
+export type BuildingFootprintTileRow = typeof buildingFootprintTiles.$inferSelect
+export type NewBuildingFootprintTileRow = typeof buildingFootprintTiles.$inferInsert
