@@ -102,12 +102,6 @@ export function aggregateCellHealth(
   const metersPerDegreeLat = 111_320.0
   const metersPerDegreeLng = Math.max(metersPerDegreeLat * Math.cos((avgLat * Math.PI) / 180.0), 1.0)
 
-  const binKey = (lat: number, lng: number): string => {
-    const row = Math.floor((lat * metersPerDegreeLat) / tileMeters)
-    const col = Math.floor((lng * metersPerDegreeLng) / tileMeters)
-    return `${row}:${col}`
-  }
-
   interface Bin {
     row: number
     col: number
@@ -117,15 +111,12 @@ export function aggregateCellHealth(
 
   const bins = new Map<string, Bin>()
   const ensureBin = (lat: number, lng: number): Bin => {
-    const key = binKey(lat, lng)
+    const row = Math.floor((lat * metersPerDegreeLat) / tileMeters)
+    const col = Math.floor((lng * metersPerDegreeLng) / tileMeters)
+    const key = `${row}:${col}`
     let bin = bins.get(key)
     if (!bin) {
-      bin = {
-        row: Math.floor((lat * metersPerDegreeLat) / tileMeters),
-        col: Math.floor((lng * metersPerDegreeLng) / tileMeters),
-        cells: [],
-        dirtyWeightGrams: [],
-      }
+      bin = { row, col, cells: [], dirtyWeightGrams: [] }
       bins.set(key, bin)
     }
     return bin

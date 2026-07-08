@@ -501,6 +501,19 @@ private fun circlePolygonRing(
     return points.joinToString(",") + ",${points.first()}"
 }
 
+/**
+ * A closed axis-aligned square ring string (GeoJSON [lng,lat] order,
+ * clockwise, first point repeated) centered on ([lng], [lat]) with the given
+ * half-extents in degrees. Shared by every fixed-cell tile builder — the
+ * coverage-state quads, the fog holes, and the choropleth tiles — so the
+ * winding/closure/coordinate order lives in exactly one place. Returns just
+ * the ring `[[..],[..],..]`; callers wrap it in the polygon `coordinates`
+ * array (`[$ring]` for a solid tile, or as one entry in a holes list).
+ */
+private fun squareRing(lng: Double, lat: Double, halfLng: Double, halfLat: Double): String =
+    "[[${lng - halfLng},${lat - halfLat}],[${lng + halfLng},${lat - halfLat}]," +
+        "[${lng + halfLng},${lat + halfLat}],[${lng - halfLng},${lat + halfLat}],[${lng - halfLng},${lat - halfLat}]]"
+
 private fun spotHeatWeight(spot: CommunityReport): Double {
     val statusWeight = when (spot.status) {
         CommunityReportStatus.VERIFIED -> 1.45
@@ -896,12 +909,8 @@ fun buildCoverageStateGeoJsons(
     val latStep = cellSizeMeters / 111_320.0
     val lngStep = cellSizeMeters / (111_320.0 * lngScale)
 
-    fun cellQuad(lat: Double, lng: Double): String {
-        val hLat = latStep / 2
-        val hLng = lngStep / 2
-        return "[[${lng - hLng},${lat - hLat}],[${lng + hLng},${lat - hLat}]," +
-            "[${lng + hLng},${lat + hLat}],[${lng - hLng},${lat + hLat}],[${lng - hLng},${lat - hLat}]]"
-    }
+    fun cellQuad(lat: Double, lng: Double): String =
+        squareRing(lng, lat, halfLng = lngStep / 2, halfLat = latStep / 2)
 
     // cellId rides in feature properties so the fill layers are tappable —
     // MapFullScreen resolves the id back to the full MapCoverageCell for the
@@ -990,10 +999,7 @@ fun buildCoverageStateGeoJsons(
         val holes = coverageCells
             .filter { it.lat in minLat..maxLat && it.lng in minLng..maxLng }
             .take(1500)
-            .joinToString(",") { cell ->
-                "[[${cell.lng - hLng},${cell.lat - hLat}],[${cell.lng + hLng},${cell.lat - hLat}]," +
-                    "[${cell.lng + hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat + hLat}],[${cell.lng - hLng},${cell.lat - hLat}]]"
-            }
+            .joinToString(",") { cell -> squareRing(cell.lng, cell.lat, halfLng = hLng, halfLat = hLat) }
         val rings = if (holes.isEmpty()) "[$outerRing]" else "[$outerRing,$holes]"
         fogFeatures.append(
             """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":$rings}}"""
@@ -1037,10 +1043,7 @@ fun buildChoroplethGeoJson(tiles: List<HealthTile>, tileMeters: Double): String 
     val features = tiles.joinToString(",") { tile ->
         val lngScale = cos(tile.centerLat * PI / 180.0).let { if (it < 0.01) 0.01 else it }
         val halfLng = (tileMeters / 2.0) / (111_320.0 * lngScale)
-        val lat = tile.centerLat
-        val lng = tile.centerLng
-        val ring = "[[${lng - halfLng},${lat - halfLat}],[${lng + halfLng},${lat - halfLat}]," +
-            "[${lng + halfLng},${lat + halfLat}],[${lng - halfLng},${lat + halfLat}],[${lng - halfLng},${lat - halfLat}]]"
+        val ring = squareRing(tile.centerLng, tile.centerLat, halfLng, halfLat)
         """{"type":"Feature","properties":{"health":${tile.health},"dominant":"${tile.dominant.name.lowercase()}"},"geometry":{"type":"Polygon","coordinates":[$ring]}}"""
     }
     return """{"type":"FeatureCollection","features":[$features]}"""
