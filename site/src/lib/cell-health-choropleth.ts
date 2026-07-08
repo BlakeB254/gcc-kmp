@@ -36,6 +36,18 @@ export interface ObservationInput {
   estimatedWeightGrams?: number | null
 }
 
+/**
+ * Minimal community-spot-report shape this module needs. Coordinates are
+ * [lng, lat] (GeoJSON order, matching the web SpotReport type). `status`
+ * 'resolved' reports are dropped; `severity` (1-5, from the backing
+ * observation when one matched) and `status` set the reported-mess weight.
+ */
+export interface SpotInput {
+  coordinates: [number, number]
+  status?: string | null
+  severity?: number | null
+}
+
 const QUALITY_WEIGHT_CLOSE = 1.0
 const QUALITY_WEIGHT_GRAZED = 0.6
 const QUALITY_WEIGHT_SEEN = 0.3
@@ -47,6 +59,21 @@ const DEFAULT_DIRTY_OBSERVATION_WEIGHT_GRAMS = 150.0
 const DIRTY_DOMINANT_LITTER_PENALTY_THRESHOLD = 0.5
 const CLEAN_DOMINANT_HEALTH_THRESHOLD = 0.66
 const DIRTY_DOMINANT_HEALTH_THRESHOLD = 0.34
+
+// Reported-mess weighting — see CellHealthChoropleth.kt's spotLitterGrams for
+// the rationale. Web severity is numeric (1-5) rather than the mobile
+// high/medium/low string, but the buckets line up: 4-5 -> high, 2-3 ->
+// medium, else low.
+const SPOT_LITTER_BASE_GRAMS = 500.0
+
+function spotLitterGrams(spot: SpotInput): number {
+  const sev = spot.severity ?? 0
+  const severityFactor = sev >= 4 ? 6.0 : sev >= 2 ? 2.4 : 1.0
+  const status = spot.status ?? 'pending'
+  const statusFactor =
+    status === 'verified' ? 1.2 : status === 'acknowledged' ? 1.1 : status === 'pending' ? 1.0 : 0.8
+  return SPOT_LITTER_BASE_GRAMS * severityFactor * statusFactor
+}
 
 function qualityWeight(quality: string | null | undefined): number {
   switch (quality) {
@@ -89,15 +116,21 @@ export function choroplethTileMetersForZoom(zoom: number): number {
 export function aggregateCellHealth(
   coverageCells: CoverageCellInput[],
   observations: ObservationInput[],
+  spots: SpotInput[],
   tileMeters: number
 ): HealthTile[] {
   if (tileMeters <= 0.0) return []
-  if (coverageCells.length === 0 && observations.length === 0) return []
 
   const dirtyObservations = observations.filter((o) => o.state === 'dirty')
-  if (coverageCells.length === 0 && dirtyObservations.length === 0) return []
+  // Active (unresolved) reports keep reported messes visible until scanned.
+  const activeSpots = spots.filter((s) => (s.status ?? 'pending') !== 'resolved')
+  if (coverageCells.length === 0 && dirtyObservations.length === 0 && activeSpots.length === 0) return []
 
-  const lats = [...coverageCells.map((c) => c.lat), ...dirtyObservations.map((o) => o.lat)]
+  const lats = [
+    ...coverageCells.map((c) => c.lat),
+    ...dirtyObservations.map((o) => o.lat),
+    ...activeSpots.map((s) => s.coordinates[1]),
+  ]
   const avgLat = lats.reduce((sum, v) => sum + v, 0) / lats.length
   const metersPerDegreeLat = 111_320.0
   const metersPerDegreeLng = Math.max(metersPerDegreeLat * Math.cos((avgLat * Math.PI) / 180.0), 1.0)
@@ -106,7 +139,7 @@ export function aggregateCellHealth(
     row: number
     col: number
     cells: CoverageCellInput[]
-    dirtyWeightGrams: number[]
+    litterGrams: number[]
   }
 
   const bins = new Map<string, Bin>()
@@ -116,7 +149,7 @@ export function aggregateCellHealth(
     const key = `${row}:${col}`
     let bin = bins.get(key)
     if (!bin) {
-      bin = { row, col, cells: [], dirtyWeightGrams: [] }
+      bin = { row, col, cells: [], litterGrams: [] }
       bins.set(key, bin)
     }
     return bin
@@ -130,7 +163,10 @@ export function aggregateCellHealth(
       typeof obs.estimatedWeightGrams === 'number' && obs.estimatedWeightGrams > 0
         ? obs.estimatedWeightGrams
         : DEFAULT_DIRTY_OBSERVATION_WEIGHT_GRAMS
-    ensureBin(obs.lat, obs.lng).dirtyWeightGrams.push(weight)
+    ensureBin(obs.lat, obs.lng).litterGrams.push(weight)
+  }
+  for (const spot of activeSpots) {
+    ensureBin(spot.coordinates[1], spot.coordinates[0]).litterGrams.push(spotLitterGrams(spot))
   }
 
   const tiles: HealthTile[] = []
@@ -138,12 +174,15 @@ export function aggregateCellHealth(
     const centerLat = ((bin.row + 0.5) * tileMeters) / metersPerDegreeLat
     const centerLng = ((bin.col + 0.5) * tileMeters) / metersPerDegreeLng
 
-    const totalLitterWeight = bin.dirtyWeightGrams.reduce((sum, v) => sum + v, 0)
+    const totalLitterWeight = bin.litterGrams.reduce((sum, v) => sum + v, 0)
+    const hasLitter = totalLitterWeight > 0.0
     const litterPenalty = Math.min(Math.max(totalLitterWeight / LITTER_SATURATION_GRAMS, 0.0), 1.0)
 
     const hasCoverage = bin.cells.length > 0
     let coverageComponent: number
     if (!hasCoverage) {
+      // No scan record — keep this reported/observed mess in the amber→red
+      // half so it never reads clean-green (see the Kotlin mirror).
       coverageComponent = 0.5
     } else {
       const qualitySum = bin.cells.reduce(
@@ -160,8 +199,10 @@ export function aggregateCellHealth(
     if (litterPenalty >= DIRTY_DOMINANT_LITTER_PENALTY_THRESHOLD) {
       dominant = 'dirty'
     } else if (!hasCoverage) {
-      dominant = 'unscanned'
-    } else if (allStale) {
+      // Reported/observed mess, not yet scanned -> warm attention (colored by
+      // health), never the neutral grey veil that would hide it.
+      dominant = 'dirty'
+    } else if (allStale && !hasLitter) {
       dominant = 'stale'
     } else if (health >= CLEAN_DOMINANT_HEALTH_THRESHOLD) {
       dominant = 'clean'

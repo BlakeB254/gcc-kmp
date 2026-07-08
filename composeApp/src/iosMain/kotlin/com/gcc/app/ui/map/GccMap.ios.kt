@@ -173,8 +173,8 @@ actual fun GccMap(
     // choroplethTileMetersForZoom's doc, same deferred-reactivity trade-off
     // useOutlineCoverage above already accepts).
     val choroplethTileMeters = remember(zoom) { choroplethTileMetersForZoom(zoom) }
-    val choroplethTiles = remember(coverageCells, observationFootprints, choroplethTileMeters) {
-        aggregateCellHealth(coverageCells, observationFootprints, choroplethTileMeters)
+    val choroplethTiles = remember(coverageCells, observationFootprints, spots, choroplethTileMeters) {
+        aggregateCellHealth(coverageCells, observationFootprints, spots, choroplethTileMeters)
     }
     val choroplethJson = remember(choroplethTiles, choroplethTileMeters) {
         buildChoroplethGeoJson(choroplethTiles, choroplethTileMeters)

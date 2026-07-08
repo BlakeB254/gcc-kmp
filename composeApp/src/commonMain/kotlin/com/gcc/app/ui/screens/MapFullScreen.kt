@@ -26,7 +26,6 @@ import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.MyLocationButton
-import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
 import com.gcc.app.ui.map.latestIsoTimestamp
@@ -65,6 +64,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.koinInject
 
 // Half-width (degrees) of the coverage/observation fetch box, ~2.2km. Used for
@@ -723,29 +725,18 @@ fun MapFullScreen(
                 // spot pins are gone, so it had nothing left to control.)
             }
 
-            // Precipitation intensity legend — right edge, vertically centered so it
-            // never overlaps the top-left community info panel (routes/jobs/earnings).
-            // Zoom-gated to the band where the heatmap actually renders; at
-            // street zoom the pins speak for themselves and the legend would
-            // label a layer that isn't on screen.
+            // Scan-state legend — labels the ONE health colour system used at
+            // every zoom: the far-zoom cell-health choropleth (aggregated
+            // tiles) and the close-zoom per-cell coverage tiles are the same
+            // green/amber/red/grey vocabulary, so a single legend describes
+            // both. It used to swap to the retired "precipitation intensity"
+            // (Extreme/Heavy/Moderate/Light) legend below the footprint
+            // fade-in zoom, which mislabeled the choropleth's health colours
+            // as density — removed 2026-07-08 so the legend on screen always
+            // matches the colours on screen. Hidden only while a coverage
+            // cell is selected (its own info card explains that tile).
             androidx.compose.animation.AnimatedVisibility(
-                visible = currentMapZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
-            ) {
-                PrecipitationLegend()
-            }
-
-            // Scan-coverage legend — takes over from the heat legend at
-            // street zoom, where the coverage tiles are the dominant layer.
-            // Green/amber/grey previously rendered UNLABELED; this is what
-            // tells a worker "grey ground needs scanning".
-            androidx.compose.animation.AnimatedVisibility(
-                visible = currentMapZoom >= MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM &&
-                    selectedCoverageCell == null,
+                visible = selectedCoverageCell == null,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
                 // Bottom-right, above the map controls — off the map's prime
@@ -1797,16 +1788,16 @@ private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "Scan state",
+                "Map colours",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
             )
             ScanLegendRow(Color(0xFF22C55E), "Scanned · clean")
             ScanLegendRow(Color(0xFF22C55E), "Light green · needs detail scan", swatchAlpha = 0.35f)
-            ScanLegendRow(Color(0xFFEF4444), "Scanned · litter found")
+            ScanLegendRow(Color(0xFFEF4444), "Litter / reported mess")
             ScanLegendRow(Color(0xFFF59E0B), "Stale · re-scan")
             ScanLegendRow(Color(0xFF4B5563), "Never scanned")
             Text(
-                "Tap a scanned tile\nfor last results",
+                "Tap a tile for last results",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted,
             )
@@ -1954,6 +1945,12 @@ private fun ObservationInfoCard(
     val itemLabel = observation.itemType?.let { TrashItemCatalog.infoFor(it).displayName }
         ?: "Litter"
 
+    // Tap-to-enlarge: opening the full-screen gallery (shared with SpotInfoCard)
+    // so the footprint card's photo behaves like the spot card's — tap to view
+    // large, swipe / arrows to page when there's more than one image.
+    var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
+    val photoUrls = listOfNotNull(observation.mediaUrl)
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1973,6 +1970,21 @@ private fun ObservationInfoCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                // State chip (Dirty / Clean) — quick colour cue in the header.
+                val dirty = observation.state.equals("dirty", ignoreCase = true)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = (if (dirty) Color(0xFFEF4444) else GccGreen).copy(alpha = 0.15f),
+                ) {
+                    Text(
+                        if (dirty) "Litter" else "Clean",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (dirty) Color(0xFFEF4444) else GccGreen,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
                 TextButton(
                     onClick = onDismiss,
                     contentPadding = PaddingValues(0.dp),
@@ -1984,27 +1996,122 @@ private fun ObservationInfoCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            observation.mediaUrl?.let { url ->
-                PhotoStrip(urls = listOf(url), photoSize = 120)
+            if (photoUrls.isNotEmpty()) {
+                PhotoStrip(
+                    urls = photoUrls,
+                    photoSize = 120,
+                    onPhotoClick = { index -> fullScreenImageIndex = index },
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Tap photo to enlarge",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GccGreen,
+                )
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            observation.estimatedWeightGrams?.let { grams ->
-                // String.format is JVM-only — not usable from commonMain
-                // (iOS/desktop share this file) — round to one decimal by
-                // hand instead.
-                val label = if (grams >= 1000) {
-                    val tenthsOfKg = kotlin.math.round(grams / 100.0)
-                    "~${tenthsOfKg / 10.0} kg"
-                } else {
-                    "~$grams g"
-                }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
-                )
-            }
+            // Structured detail rows — only the fields that are actually
+            // present render, so the card stays compact for a bare detection
+            // and grows richer for a fully-diagnosed one.
+            ObservationDetailRow("Category", observation.domain?.let { humanizeObservationField(it) })
+            ObservationDetailRow("Severity", observation.severity?.let { severityDisplayLabel(it) })
+            ObservationDetailRow(
+                "Est. weight",
+                observation.estimatedWeightGrams?.let { grams ->
+                    // String.format is JVM-only — round to one decimal by hand.
+                    if (grams >= 1000) "~${kotlin.math.round(grams / 100.0) / 10.0} kg" else "~$grams g"
+                },
+            )
+            ObservationDetailRow(
+                "Size",
+                observation.widthMeters?.takeIf { it.isFinite() && it > 0.0 }?.let {
+                    "~${kotlin.math.round(it * 10.0) / 10.0} m wide"
+                },
+            )
+            ObservationDetailRow("Source", observationSourceLabel(observation.sourceType))
+            ObservationDetailRow(
+                "Confirmation",
+                when (observation.diagnosticStatus) {
+                    "observed" -> "Observed from afar"
+                    "diagnosed" -> "Diagnosed (close capture)"
+                    else -> null
+                },
+            )
+            ObservationDetailRow("Reported", formatIsoTimestamp(observation.capturedAt))
         }
+    }
+
+    fullScreenImageIndex?.let { startIndex ->
+        FullScreenImageGallery(
+            urls = photoUrls,
+            startIndex = startIndex,
+            onDismiss = { fullScreenImageIndex = null },
+        )
+    }
+}
+
+/** One "Label   value" row for the observation detail card; renders nothing
+ *  when [value] is null/blank so absent fields don't leave empty rows. */
+@Composable
+private fun ObservationDetailRow(label: String, value: String?) {
+    if (value.isNullOrBlank()) return
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = TextSubtle)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = TextMuted,
+        )
+    }
+}
+
+/** Title-cases a snake_case field like "land_use" -> "Land use". */
+private fun humanizeObservationField(raw: String): String =
+    raw.split('_').filter { it.isNotBlank() }
+        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
+private fun observationSourceLabel(sourceType: String): String = when (sourceType) {
+    "route_scan" -> "Route scan"
+    "spot_report" -> "Community report"
+    "ar_auto_detect" -> "AR detection"
+    else -> humanizeObservationField(sourceType)
+}
+
+/** Numeric 1-5 severity -> a word; passes small numbers through as a label. */
+private fun severityDisplayLabel(severity: Int): String = when {
+    severity >= 4 -> "High"
+    severity >= 2 -> "Medium"
+    else -> "Low"
+}
+
+/**
+ * Formats an ISO-8601 timestamp string (e.g. "2026-07-08T14:47:00Z") into a
+ * short local "Jul 8, 2026 · 2:47 PM". Returns null on a null/unparseable
+ * input so the caller's row simply doesn't render. commonMain-safe (no
+ * java.text) — kotlinx.datetime + a hand-rolled month table.
+ */
+private fun formatIsoTimestamp(iso: String?): String? {
+    val raw = iso?.takeIf { it.isNotBlank() } ?: return null
+    return try {
+        val dt = Instant.parse(raw).toLocalDateTime(TimeZone.currentSystemDefault())
+        val months = listOf(
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        )
+        val month = months.getOrElse(dt.monthNumber - 1) { dt.monthNumber.toString() }
+        val hour12 = when {
+            dt.hour == 0 -> 12
+            dt.hour > 12 -> dt.hour - 12
+            else -> dt.hour
+        }
+        val ampm = if (dt.hour < 12) "AM" else "PM"
+        val minute = dt.minute.toString().padStart(2, '0')
+        "$month ${dt.dayOfMonth}, ${dt.year} · $hour12:$minute $ampm"
+    } catch (_: Exception) {
+        null
     }
 }

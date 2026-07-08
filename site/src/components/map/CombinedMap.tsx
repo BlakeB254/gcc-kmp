@@ -285,10 +285,14 @@ export function CombinedMap({
   const choroplethGeoJson = useMemo(
     () =>
       buildChoroplethGeoJson(
-        aggregateCellHealth(coverageCells, observations, choroplethTileMeters),
+        // Coverage cells (fetched below) drive clean/stale health; observations
+        // + active community reports (`spots`) keep reported messes visible as
+        // warm tiles until the ground is scanned over (product feedback
+        // 2026-07-08 — a big reported mess must read hot, not vanish).
+        aggregateCellHealth(coverageCells, observations, spots, choroplethTileMeters),
         choroplethTileMeters
       ),
-    [coverageCells, observations, choroplethTileMeters]
+    [coverageCells, observations, spots, choroplethTileMeters]
   )
   const hasChoroplethTiles = choroplethGeoJson.features.length > 0
 

@@ -1,5 +1,7 @@
 package com.gcc.app.ui.map
 
+import com.gcc.shared.model.CommunityReport
+import com.gcc.shared.model.CommunityReportStatus
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.WorldObservation
 import kotlin.math.PI
@@ -17,15 +19,13 @@ enum class HealthState { CLEAN, DIRTY, STALE, UNSCANNED }
 
 /**
  * One aggregated far-zoom tile: a [tileMeters]-sized bin of the underlying
- * 10m coverage ledger + litter observations, colored by its OWN
- * constituents — not a blurred point-density kernel.
+ * 10m coverage ledger + litter observations + reported spots, colored by its
+ * OWN constituents (litter weight vs clean-coverage vs stale) — not a blurred
+ * point-density kernel.
  *
  * [health] is the continuous [0,1] scale (1 = clean-scanned, 0 = heavy-
  * litter/never-refreshed). [dominant] is the categorical bucket a renderer
- * can filter/color on directly — carried alongside [health] (rather than as
- * four separate fixed-color tile layers, the coverage-tile precedent)
- * because the choropleth is ONE data-driven fill layer, not four; see
- * `GeoJsonLayers.kt`'s `buildChoroplethGeoJson`.
+ * can filter/color on directly.
  */
 data class HealthTile(
     val centerLat: Double,
@@ -42,8 +42,7 @@ private const val QUALITY_WEIGHT_DEFAULT = 0.5
 /**
  * A stale cell still counts as "coverage exists" — it was scanned before, it
  * just needs a refresh — so it earns half credit toward the tile's clean
- * baseline instead of zero (zero would read identically to litter, which is
- * a much stronger negative signal than "due for a rescan").
+ * baseline instead of zero.
  */
 private const val STALE_CREDIT = 0.5
 
@@ -56,19 +55,44 @@ private const val LITTER_SATURATION_GRAMS = 4000.0
 
 /**
  * Fallback litter weight (grams) for a dirty observation with no
- * [WorldObservation.estimatedWeightGrams] on record — the rough order of
- * magnitude of TrashItemCatalog's "other" default, not a precise figure; it
- * only needs to nudge a bin toward "some litter present" when the real
- * weight is unknown.
+ * [WorldObservation.estimatedWeightGrams] on record.
  */
 private const val DEFAULT_DIRTY_OBSERVATION_WEIGHT_GRAMS = 150.0
 
 /**
+ * Litter weight (grams) attributed to an active community spot report so
+ * REPORTED messes stay representable at far zoom until the ground is scanned
+ * over (product feedback 2026-07-08: switching the far-zoom view to a
+ * coverage choropleth must not make reported messes vanish — a big reported
+ * pile should still read as a hot region, just not as a generic pin). A
+ * report carries no measured weight, so it's estimated from severity ×
+ * status: a verified high-severity report (~3600g) clears the DIRTY
+ * threshold on its own (a large mess reads red); a plain pending low report
+ * (~500g) reads as light attention. Once the cell is scanned, the coverage
+ * ledger + route-scan observations drive the health and (when the report is
+ * resolved) it drops out of this set — "update with the scanned data."
+ */
+private const val SPOT_LITTER_BASE_GRAMS = 500.0
+
+private fun spotLitterGrams(spot: CommunityReport): Double {
+    val severityFactor = when (spot.aiAnalysis?.severity) {
+        "high" -> 6.0
+        "medium" -> 2.4
+        else -> 1.0
+    }
+    val statusFactor = when (spot.status) {
+        CommunityReportStatus.VERIFIED -> 1.2
+        CommunityReportStatus.ACKNOWLEDGED -> 1.1
+        CommunityReportStatus.PENDING -> 1.0
+        else -> 0.8
+    }
+    return SPOT_LITTER_BASE_GRAMS * severityFactor * statusFactor
+}
+
+/**
  * Heavy litter always dominates the tile's category regardless of how clean
  * its scan history is — a scanned-clean cell with a mattress dumped on it
- * reads DIRTY, not CLEAN (the coverage-tile system makes the same call:
- * `dirty` overrides `clean` whenever a spot is nearby — see
- * [buildCoverageStateGeoJsons]'s `hasSpotNear`).
+ * reads DIRTY, not CLEAN.
  */
 private const val DIRTY_DOMINANT_LITTER_PENALTY_THRESHOLD = 0.5
 
@@ -84,11 +108,8 @@ private fun qualityWeight(quality: String): Double = when (quality) {
 
 /**
  * Picks a bin size (meters) for the far-zoom choropleth from the map's
- * TARGET zoom (same convention as `useOutlineCoverage` in GccMap.ios.kt —
- * the caller-set zoom, not the live pinch-gesture zoom; re-aggregating on
- * every fractional pinch tick would be expensive Compose churn for a purely
- * cosmetic bin-size change — deferred, same trade-off already accepted
- * there). Coarser at world/city zoom (keeps tile count bounded over a huge
+ * TARGET zoom (same convention as `useOutlineCoverage` in GccMap.ios.kt).
+ * Coarser at world/city zoom (keeps tile count bounded over a huge
  * viewport), finer as zoom approaches the footprint hand-off (~14.2) where
  * the choropleth is about to cede the story to true-scale footprints anyway.
  */
@@ -103,42 +124,45 @@ fun choroplethTileMetersForZoom(zoom: Double): Double = when {
 }
 
 /**
- * Aggregates the 10m coverage ledger + litter observations into
- * [tileMeters]-sized health tiles: each tile is colored by its OWN
- * constituents (litter weight vs clean-coverage vs stale), not a blurred
- * density kernel — the far-zoom choropleth (v2 Pillar 8 amendment).
+ * Aggregates the 10m coverage ledger + litter observations + active community
+ * spot reports into [tileMeters]-sized health tiles: each tile is colored by
+ * its OWN constituents (litter weight vs clean-coverage vs stale), not a
+ * blurred density kernel — the far-zoom choropleth (v2 Pillar 8 amendment).
  *
- * Binning: both inputs are snapped onto ONE global equirectangular grid
+ * Binning: all inputs are snapped onto ONE global equirectangular grid
  * (anchored at the equator/prime meridian, not a moving camera-relative
- * anchor — see [buildCoverageStateGeoJsons]'s `anchorLat`/`anchorLng` doc for
- * why a moving anchor is the wrong call) using a single longitude scale
- * derived from the combined inputs' average latitude — precise enough for a
- * far-zoom overview tile, not meant to be geodesically exact.
+ * anchor) using a single longitude scale derived from the combined inputs'
+ * average latitude — precise enough for a far-zoom overview tile.
  *
- * A bin with NEITHER a coverage cell NOR a dirty observation is never
- * manufactured — it's simply absent from the result. The existing world-fog
- * layer already renders the "never scanned anywhere near here" veil at every
- * zoom (see `coverage-fog` in GccMap.ios.kt); this function only ever
- * describes bins where there IS something to say, matching the "never-
- * scanned = neutral grey veil" language from the fog system rather than
- * re-painting it per bin.
+ * A bin with NEITHER a coverage cell NOR a dirty observation NOR an active
+ * report is never manufactured — it's simply absent from the result (the
+ * world-fog layer already renders the "never scanned anywhere near here"
+ * veil at every zoom). Every bin the result DOES describe therefore has
+ * something to say; a bin that exists only because of reported/observed
+ * litter reads as a warm unscanned MESS (amber→red), never neutral grey —
+ * that is what keeps reported messes visible until the ground is scanned.
  *
  * Clean-state observations (confirmed-no-litter checks) are NOT counted —
- * the coverage ledger is the authoritative "this ground was scanned clean"
- * signal; only 'dirty' observations feed the litter penalty.
+ * the coverage ledger is the authoritative "scanned clean" signal; only
+ * 'dirty' observations and unresolved reports feed the litter penalty.
  */
 fun aggregateCellHealth(
     coverageCells: List<MapCoverageCell>,
     observations: List<WorldObservation>,
+    spots: List<CommunityReport>,
     tileMeters: Double,
 ): List<HealthTile> {
     if (tileMeters <= 0.0) return emptyList()
-    if (coverageCells.isEmpty() && observations.isEmpty()) return emptyList()
 
     val dirtyObservations = observations.filter { it.state == "dirty" }
-    if (coverageCells.isEmpty() && dirtyObservations.isEmpty()) return emptyList()
+    // Active (unresolved) community reports keep reported messes on the map
+    // until the ground is scanned/the report is resolved — same "active spot"
+    // filter the coverage-state tiles use (buildCoverageStateGeoJsons).
+    val activeSpots = spots.filter { it.status != CommunityReportStatus.RESOLVED }
+    if (coverageCells.isEmpty() && dirtyObservations.isEmpty() && activeSpots.isEmpty()) return emptyList()
 
-    val avgLat = (coverageCells.map { it.lat } + dirtyObservations.map { it.lat }).average()
+    val avgLat = (coverageCells.map { it.lat } + dirtyObservations.map { it.lat } +
+        activeSpots.map { it.coordinates.lat }).average()
     val metersPerDegreeLat = 111_320.0
     val metersPerDegreeLng = (metersPerDegreeLat * cos(avgLat * PI / 180.0)).coerceAtLeast(1.0)
 
@@ -150,7 +174,7 @@ fun aggregateCellHealth(
 
     class Bin {
         val cells = mutableListOf<MapCoverageCell>()
-        val dirtyWeightGrams = mutableListOf<Double>()
+        val litterGrams = mutableListOf<Double>()
     }
 
     val bins = LinkedHashMap<Pair<Long, Long>, Bin>()
@@ -160,7 +184,11 @@ fun aggregateCellHealth(
     dirtyObservations.forEach { obs ->
         val weight = obs.estimatedWeightGrams?.takeIf { it > 0 }?.toDouble()
             ?: DEFAULT_DIRTY_OBSERVATION_WEIGHT_GRAMS
-        bins.getOrPut(binKey(obs.lat, obs.lng)) { Bin() }.dirtyWeightGrams.add(weight)
+        bins.getOrPut(binKey(obs.lat, obs.lng)) { Bin() }.litterGrams.add(weight)
+    }
+    activeSpots.forEach { spot ->
+        bins.getOrPut(binKey(spot.coordinates.lat, spot.coordinates.lng)) { Bin() }
+            .litterGrams.add(spotLitterGrams(spot))
     }
 
     return bins.map { (key, bin) ->
@@ -168,12 +196,16 @@ fun aggregateCellHealth(
         val centerLat = (row + 0.5) * tileMeters / metersPerDegreeLat
         val centerLng = (col + 0.5) * tileMeters / metersPerDegreeLng
 
-        val totalLitterWeight = bin.dirtyWeightGrams.sum()
+        val totalLitterWeight = bin.litterGrams.sum()
+        val hasLitter = totalLitterWeight > 0.0
         val litterPenalty = (totalLitterWeight / LITTER_SATURATION_GRAMS).coerceIn(0.0, 1.0)
 
         val hasCoverage = bin.cells.isNotEmpty()
         val coverageComponent = if (!hasCoverage) {
-            0.5 // neutral baseline — no scan record in this bin at all
+            // No scan record here yet — a bin only exists because of reported/
+            // observed litter, so keep it in the amber→red half (0.5 * …); it
+            // must read as an unscanned MESS, never as clean green.
+            0.5
         } else {
             val qualitySum = bin.cells.sumOf { cell ->
                 if (cell.state == "stale") STALE_CREDIT else qualityWeight(cell.quality)
@@ -186,8 +218,11 @@ fun aggregateCellHealth(
 
         val dominant = when {
             litterPenalty >= DIRTY_DOMINANT_LITTER_PENALTY_THRESHOLD -> HealthState.DIRTY
-            !hasCoverage -> HealthState.UNSCANNED
-            allStale -> HealthState.STALE
+            // Reported/observed mess with no scan yet: warm attention (colored
+            // by health above), never the neutral grey veil — that would hide
+            // exactly the messes we want to keep showing until they're cleaned.
+            !hasCoverage -> HealthState.DIRTY
+            allStale && !hasLitter -> HealthState.STALE
             health >= CLEAN_DOMINANT_HEALTH_THRESHOLD -> HealthState.CLEAN
             health <= DIRTY_DOMINANT_HEALTH_THRESHOLD -> HealthState.DIRTY
             else -> HealthState.STALE
