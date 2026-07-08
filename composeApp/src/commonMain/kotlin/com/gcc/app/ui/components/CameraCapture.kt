@@ -265,31 +265,9 @@ fun CameraCapture(
                         guidanceTarget = guidanceTarget,
                         visibilityBeam = visibilityBeam,
                     )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                "\uD83D\uDCCD",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                "You are here",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GccGreen,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
+                    // WS6: the decorative "\uD83D\uDCCD You are here" bar was removed \u2014
+                    // the overlay already draws the user dot; the bar was pure
+                    // clutter (field feedback).
                 }
             }
 

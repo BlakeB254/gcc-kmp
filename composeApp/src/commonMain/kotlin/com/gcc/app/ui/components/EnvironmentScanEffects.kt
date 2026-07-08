@@ -1,11 +1,5 @@
 package com.gcc.app.ui.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,8 +18,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,10 +25,12 @@ import com.gcc.app.ui.theme.GccGreen
 import kotlinx.coroutines.delay
 
 /**
- * "The environment is being scanned" feedback for the spot camera: a soft
- * green band sweeps down the viewfinder on a loop, and a brief full-screen
- * pulse fires whenever [creditTick] increments (a new zone was credited or an
- * item registered) — data registration made visible as it happens.
+ * "The environment is being scanned" feedback for the spot camera: a brief
+ * full-screen green pulse fires whenever [creditTick] increments (a new zone
+ * was credited or an item registered) — data registration made visible as it
+ * happens. The old continuous green sweep-band was removed (WS6 declutter,
+ * field feedback): it read as clutter without conveying anything the pulse and
+ * the minimap don't already show.
  */
 @Composable
 fun EnvironmentScanEffects(
@@ -46,49 +40,21 @@ fun EnvironmentScanEffects(
 ) {
     if (!active) return
 
-    val transition = rememberInfiniteTransition()
-    val sweep by transition.animateFloat(
-        initialValue = -0.25f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-    )
-
-    // Registration pulse: flare on each credit, fade over ~450ms.
+    // Registration pulse: flare on each credit, fade over ~300ms. Subtler than
+    // before (peak 0.28 -> 0.18) now that it's the only effect on screen.
     var pulseAlpha by remember { mutableStateOf(0f) }
     LaunchedEffect(creditTick) {
         if (creditTick == 0) return@LaunchedEffect
-        pulseAlpha = 0.28f
+        pulseAlpha = 0.18f
         while (pulseAlpha > 0.01f) {
             delay(30)
             pulseAlpha *= 0.8f
         }
         pulseAlpha = 0f
     }
-
+    if (pulseAlpha <= 0f) return
     Canvas(modifier = modifier.fillMaxSize()) {
-        val bandHeight = size.height * 0.18f
-        val top = size.height * sweep - bandHeight / 2f
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    GccGreen.copy(alpha = 0.14f),
-                    GccGreen.copy(alpha = 0.30f),
-                    GccGreen.copy(alpha = 0.14f),
-                    Color.Transparent,
-                ),
-                startY = top,
-                endY = top + bandHeight,
-            ),
-            topLeft = Offset(0f, top),
-            size = androidx.compose.ui.geometry.Size(size.width, bandHeight),
-        )
-        if (pulseAlpha > 0f) {
-            drawRect(color = GccGreen.copy(alpha = pulseAlpha))
-        }
+        drawRect(color = GccGreen.copy(alpha = pulseAlpha))
     }
 }
 
