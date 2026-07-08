@@ -23,7 +23,6 @@ import com.gcc.app.ui.theme.GccClaimed
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /** Same 1-5 scale as [com.gcc.app.platform.LiveSeverityEstimator] and
  *  OnDeviceAnalyzer's post-capture severity -- low reuses the existing brand
@@ -121,19 +120,14 @@ fun DetectionReticleOverlay(
                 )
             }
 
-            val distanceSuffix = detection.distanceMeters?.let { d ->
-                // Lock-on needs ≤2m (NEAR_DISTANCE_METERS); the 2.2m UI
-                // threshold here stays a deliberate 0.2m headroom above that
-                // so the hint escalates just before the streak arc can
-                // start filling, not exactly at the edge. Two tiers:
-                // "walk up to it" while still out of lock-on range, then
-                // "scan around it" once close enough that the streak should
-                // be building (candidate not yet locked -- once the streak
-                // fills, the confirm card takes over automatically).
-                val hint = if (d > 2.2) " · walk up to it" else " · scan around it"
-                " · ${(d * 10).roundToInt() / 10.0}m$hint"
-            } ?: ""
-            val label = textMeasurer.measure(detection.label + distanceSuffix, labelStyle)
+            // ONE guidance voice (spec system 4): the "walk up to it"/"scan
+            // around it" move-closer hint used to render here, per-detection,
+            // as its own private caption — duplicating (and often
+            // contradicting) the single status-chip caption SpotScreen
+            // already shows ("Trash spotted — walk up close to identify
+            // it"). The reticle keeps its visual circle/arc/checkmark and the
+            // item label; the move-closer text now has exactly one home.
+            val label = textMeasurer.measure(detection.label, labelStyle)
             drawText(
                 textLayoutResult = label,
                 topLeft = Offset(

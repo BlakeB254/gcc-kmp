@@ -85,12 +85,11 @@ fun CameraCapture(
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
+    /** Single guidance-voice caption (spec system 4) — the ONLY on-screen
+     *  status/guidance text; callers fold every prompt (hold-still,
+     *  move-closer, DETAIL-phase re-scan, frontier steering, …) into this
+     *  one string in priority order rather than stacking separate chips. */
     statusText: String? = null,
-    /** Two-phase guidance: true once coverage has flipped from cover-the-area
-     *  to detail-scan-the-grazed-cells — renders a sibling caption chip
-     *  under the status chip (never both at once; caller gates against the
-     *  idle nudge). */
-    detailPhase: Boolean = false,
     /** When set, the viewfinder is the ARKit env-scan surface (ground grid,
      *  vector-scan overlay, trash lock-on) instead of the AVCapture preview. */
     arOverlay: ArEnvScanOverlay? = null,
@@ -168,10 +167,9 @@ fun CameraCapture(
             }
 
             // Scan status / instructions (top-center, under the status bar,
-            // clear of the corner chrome). The DETAIL-phase caption is a
-            // sibling chip stacked below it — same visual treatment, shown
-            // only once guidance has flipped to detail-scanning and the
-            // idle nudge isn't already occupying the status line.
+            // clear of the corner chrome). ONE guidance-voice caption (spec
+            // system 4) — statusText is the single prioritized string the
+            // caller computes; no sibling caption stacks under it anymore.
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -195,22 +193,6 @@ fun CameraCapture(
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
                     )
-                }
-                if (detailPhase) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text(
-                            text = "Move closer — detail-scan the light areas",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                        )
-                    }
                 }
                 if (captureState != null) {
                     Spacer(modifier = Modifier.height(6.dp))

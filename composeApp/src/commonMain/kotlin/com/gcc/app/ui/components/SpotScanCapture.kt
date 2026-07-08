@@ -70,10 +70,10 @@ fun SpotScanCapture(
     /** Steering pass-through: minimap ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
     environmentScanMode: Boolean = false,
+    /** Single guidance-voice caption (spec system 4) — the DETAIL-phase
+     *  "move closer — detail-scan the light areas" prompt is one branch of
+     *  the caller's priority chain now, not a separate pass-through. */
     statusText: String? = null,
-    /** Two-phase guidance: DETAIL phase caption pass-through ("move closer —
-     *  detail-scan the light areas"), shown alongside statusText. */
-    detailPhase: Boolean = false,
     /** ARKit env-scan surface, passed through to the viewfinder. */
     arOverlay: ArEnvScanOverlay? = null,
     /** Background capture indicator pass-through (Pillar 1) — see
@@ -232,7 +232,6 @@ fun SpotScanCapture(
             guidanceTarget = guidanceTarget,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
-            detailPhase = detailPhase,
             arOverlay = arOverlay,
             captureState = captureState,
             modifier = Modifier.fillMaxSize(),

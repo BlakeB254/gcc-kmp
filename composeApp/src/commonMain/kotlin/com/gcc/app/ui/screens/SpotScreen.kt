@@ -628,6 +628,15 @@ private fun CameraPhase(
             anchor.lng - pad, anchor.lat - pad,
             anchor.lng + pad, anchor.lat + pad,
         ).joinToString(",")
+        // Ledger presence lifts fog regardless of freshness or quality tier
+        // (owner law) — seed BOTH fresh and stale cells as fog-exempt so the
+        // AR/minimap fog reads "never scanned in the system", not "never
+        // scanned this session". Fog-exempt only: seeded cells do NOT count
+        // toward this session's own coveragePercent. Shared by the live-fetch
+        // and cache-fallback branches below.
+        fun seedFogFromLedger(cells: List<MapCoverageCell>) {
+            tracker.seedScannedCells(cells.mapNotNull { tracker.cellForLatLng(it.lat, it.lng) }.toSet())
+        }
         var fetchedCells: List<MapCoverageCell>? = null
         try {
             val serverCells = apiClient.getMapCoverage(bbox).cells
@@ -636,6 +645,7 @@ private fun CameraPhase(
             freshCells = serverCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
             freshCloseCells = serverCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
+            seedFogFromLedger(serverCells)
             DiagnosticsLog.info(
                 "env-scan",
                 "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
@@ -652,6 +662,7 @@ private fun CameraPhase(
                 freshCells = cached.coverageCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
                 freshCloseCells = cached.coverageCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
                 fogCells = neverScannedGrid(anchor, cached.coverageCells)
+                seedFogFromLedger(cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
         }
@@ -857,6 +868,16 @@ private fun CameraPhase(
     Box(modifier = Modifier.fillMaxSize()) {
         val arTracking by (arOverlay?.trackingState
             ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
+        // ONE guidance voice (spec system 4): every prompt the scan can show
+        // is a single branch of this chain, in priority order, instead of
+        // several chips/captions stacking or fighting for attention —
+        // hold-still > blocking prerequisites (GPS/ground) > candidate
+        // lock/move-closer > frontier steering (idle nudge, then the
+        // DETAIL-phase "go back over the light areas" prompt) > default
+        // sweep. Previously the DETAIL caption rendered as a SEPARATE
+        // sibling chip below this one, and DetectionReticleOverlay drew its
+        // own third "walk up to it"/"scan around it" caption per detection —
+        // both folded in/removed so exactly one caption is ever on screen.
         val scanStatus = when {
             arTracking == com.gcc.app.platform.TrackingState.LIMITED ->
                 "Hold steady — AR tracking is settling"
@@ -870,12 +891,10 @@ private fun CameraPhase(
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
             idleNudge && guidanceTarget != null ->
                 "Turn toward the highlighted area on the minimap"
+            guidancePhase == GuidancePhase.DETAIL ->
+                "Move closer — detail-scan the light areas"
             else -> "Environment scan active — sweep the camera slowly"
         }
-        // DETAIL-phase caption is a sibling chip, not a scanStatus branch —
-        // it must not fight the idle nudge for the same status line.
-        val showDetailCaption = guidancePhase == GuidancePhase.DETAIL &&
-            !(idleNudge && guidanceTarget != null)
         if (!showObjectCapture) if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,
@@ -900,7 +919,6 @@ private fun CameraPhase(
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 environmentScanMode = true,
                 statusText = scanStatus,
-                detailPhase = showDetailCaption,
                 arOverlay = arOverlay,
                 captureState = captureRecState,
                 modifier = Modifier.fillMaxSize(),
