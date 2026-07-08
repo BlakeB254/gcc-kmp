@@ -512,8 +512,18 @@ actual class ArEnvScanOverlay actual constructor() {
      * reference and hand it to whichever renderer is live (main queue). The
      * SceneKit path picks [gridPhase] up on the next plane tick; the native
      * surface re-phases its plane entities immediately.
+     *
+     * ONE-SHOT LOCK (Task 2 — spec system 2, "stability beats accuracy for
+     * the grid"): the first non-null [gridPhase] is TERMINAL. This call runs
+     * on every geo-reference re-pair (i.e. every GPS fix); re-deriving and
+     * re-sending the phase on each one was the flashing/overlapping-grid
+     * spam this fixes, both for the SceneKit path (which reads [gridPhase]
+     * directly every tick) and by keeping the Kotlin layer from holding
+     * divergent state that would out-live the native surface's own terminal
+     * guard in [com.gcc.app.platform.ArNativeSurface.setGridPhaseOrigin].
      */
     private fun pushGridPhase() {
+        if (gridPhase != null) return
         val lat = latticeLat ?: return
         val lng = latticeLng ?: return
         if (!hasGeoRef) return
@@ -1061,6 +1071,12 @@ actual class ArEnvScanOverlay actual constructor() {
             "registered ${element.domain}/${element.itemType} #${registeredElements.size} at ${hit.distance}m " +
                 "width=${widthMeters ?: "?"}m yaw=${yawDegrees ?: "?"}",
         )
+        // Vector-scan analysis effect (spec system 3): trash candidates get
+        // this on lock-on (above); landmark elements never did, so a newly
+        // identified tree/fence/gate registered silently with no on-screen
+        // acknowledgment. Every registration — litter or landmark — now
+        // fires the same effect at its world position.
+        native?.emitLockEffect(world[0].toDouble(), world[1].toDouble(), world[2].toDouble())
         dispatch_async(dispatch_get_main_queue()) {
             listener(lat, lng, element.itemType, element.domain, confidence, widthMeters, yawDegrees)
         }

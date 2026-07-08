@@ -43,12 +43,29 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// Weak so a surface that DID get released properly doesn't leak here.
     private static weak var liveSurface: RealityKitArSurface?
 
-    private var planeEntities: [UUID: PlaneGridEntity] = [:]
+    /// ONE stable ground grid (spec system 2): a single RealityKit entity
+    /// covering the monotonic union of every floor-classified ARPlaneAnchor's
+    /// world AABB ever observed — never replaced, never shrunk. Before this,
+    /// every detected ARPlaneAnchor (the floor fragmenting/re-merging as
+    /// ARKit refines it, PLUS every piece of furniture) got its own grid
+    /// entity, which is what produced the reported "spamming
+    /// overlapping/flashing" grids: several independently-positioned quads
+    /// live at once, re-snapping on every plane update. Consolidating to one
+    /// entity makes "how many grids exist" a static invariant instead of a
+    /// function of how ARKit happens to be segmenting the room right now.
+    private var floorGrid: PlaneGridEntity?
+    private var floorMinX: Float?
+    private var floorMaxX: Float?
+    private var floorMinZ: Float?
+    private var floorMaxZ: Float?
     /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
-    /// from Kotlin via `setGridPhaseOrigin`). Grid planes snap their bounds
-    /// to multiples of `gridTileMeters` from this point so the on-camera
-    /// geogrid registers with the minimap's cell grid. Nil until the first
-    /// geo-reference pairing — planes phase to the AR world origin until then.
+    /// from Kotlin via `setGridPhaseOrigin`). The grid snaps its bounds to
+    /// multiples of `gridTileMeters` from this point so the on-camera geogrid
+    /// registers with the minimap's cell grid. Nil until the first
+    /// geo-reference pairing — the grid phases to the AR world origin until
+    /// then. TERMINAL once set (see `setGridPhaseOrigin`) — "stability beats
+    /// accuracy for the grid": content (fog/vector cells/guidance) keeps
+    /// re-anchoring on every re-pair, the grid itself never does.
     private var gridPhaseOrigin: SIMD2<Float>?
     private var vectorCellEntities: [String: AnchorEntity] = [:]
     private var fogCellEntities: [String: AnchorEntity] = [:]
@@ -59,7 +76,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var groundGridVisible = true
 
     // Route-mode extras: camera-attached guidance arrow + warning veil.
-    private static let maxFogCells = 600
+    // Mirrors the Kotlin SceneKit path's MAX_FOG_NODES (ArEnvScan.kt) — one
+    // shared cap (was 600 vs 400, audit finding) even though Kotlin already
+    // truncates the shipped list to this count before it reaches Swift; kept
+    // here too as the defensive receiving-end limit.
+    private static let maxFogCells = 400
     private let cameraAnchor = AnchorEntity(.camera)
     private var arrowEntity: ModelEntity?
     private var veilEntity: ModelEntity?
@@ -69,9 +90,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
-    )
-    private lazy var roughGridTexture: TextureResource? = Self.makeGridTexture(
-        line: UIColor(white: 1.0, alpha: 0.4), lineWidth: 2
     )
     private lazy var vectorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 1.0), lineWidth: 4, diagonals: true
@@ -149,8 +167,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         updateSubscription?.cancel()
         updateSubscription = nil
 
-        for (_, entry) in planeEntities { entry.anchor.removeFromParent() }
-        planeEntities.removeAll()
+        floorGrid?.anchor.removeFromParent()
+        floorGrid = nil
+        floorMinX = nil
+        floorMaxX = nil
+        floorMinZ = nil
+        floorMaxZ = nil
 
         for (_, anchor) in vectorCellEntities { anchor.removeFromParent() }
         vectorCellEntities.removeAll()
@@ -331,22 +353,30 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             coachingOverlay?.activatesAutomatically = visible
             if !visible {
                 coachingOverlay?.setActive(false, animated: false)
-                for (_, entity) in planeEntities { entity.anchor.removeFromParent() }
-                planeEntities.removeAll()
-                refreshGroundState()
+                floorGrid?.anchor.removeFromParent()
+                floorGrid = nil
+                floorMinX = nil
+                floorMaxX = nil
+                floorMinZ = nil
+                floorMaxZ = nil
+                groundLive = false
             }
         }
     }
 
+    /// ONE-SHOT LOCK (spec system 2): the first non-nil phase origin is
+    /// TERMINAL. Geo-ref re-pairs arrive on every GPS fix — re-phasing the
+    /// grid on each one (the pre-fix behavior) is exactly what produced the
+    /// reported flashing/overlapping grid spam, since every re-phase
+    /// regenerates the mesh and repositions the anchor. "Stability beats
+    /// accuracy for the grid": fog/vector cells/guidance keep re-anchoring on
+    /// every re-pair; the grid locks to wherever it first landed and stays
+    /// there for the rest of the session.
     func setGridPhaseOrigin(x: Double, z: Double) {
         DispatchQueue.main.async { [self] in
-            let phase = SIMD2(Float(x), Float(z))
-            // Geo-ref re-pairs arrive on every GPS fix; skip sub-5cm jitter —
-            // invisible against a 1.5m tile — and re-phase live planes when
-            // the lattice actually moved under them.
-            if let current = gridPhaseOrigin, simd_distance(current, phase) < 0.05 { return }
-            gridPhaseOrigin = phase
-            for (_, entry) in planeEntities { applyPlaneGeometry(entry) }
+            if gridPhaseOrigin != nil { return }
+            gridPhaseOrigin = SIMD2(Float(x), Float(z))
+            if let grid = floorGrid { applyPlaneGeometry(grid) }
         }
     }
 
@@ -640,10 +670,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-        for case let plane as ARPlaneAnchor in anchors {
-            planeEntities.removeValue(forKey: plane.identifier)?.anchor.removeFromParent()
-        }
-        refreshGroundState()
+        // The grid is a single monotonic-union entity (spec system 2) that
+        // does not track individual contributing anchors — ARKit merging or
+        // discarding a plane underneath it must never shrink or flicker the
+        // grid. Nothing to do here; the union bounds are left as they are.
     }
 
     // MARK: - Ground grid
@@ -651,19 +681,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private final class PlaneGridEntity {
         let anchor: AnchorEntity
         let model: ModelEntity
-        /// RAW (unsnapped) world-space AABB of the detected plane — the
-        /// snapped render geometry is re-derived from these + the lattice
-        /// phase in `applyPlaneGeometry`, so a phase change can re-snap
-        /// without waiting for the next ARKit anchor update.
-        var lastSize: SIMD2<Float> = .zero
-        var lastCenter: SIMD3<Float> = .zero
         /// Snapped size the current mesh was generated with (mesh regen skip).
         var lastAppliedSize: SIMD2<Float> = .zero
-        var isFloor: Bool
-        init(anchor: AnchorEntity, model: ModelEntity, isFloor: Bool) {
+        init(anchor: AnchorEntity, model: ModelEntity) {
             self.anchor = anchor
             self.model = model
-            self.isFloor = isFloor
         }
     }
 
@@ -671,7 +693,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let extent = SIMD2(plane.planeExtent.width, plane.planeExtent.height)
         guard extent.x >= 0.4, extent.y >= 0.4 else { return }
         // Unclassified horizontal planes count as ground (matches the Kotlin
-        // KVO path); recognized furniture (table/seat/…) gets the faint grid.
+        // KVO path). Recognized furniture (table/seat/…) no longer gets a
+        // grid at all — a second "faint grid" system layered over furniture
+        // was itself a duplicate-grid source (spec system 2: ONE ground
+        // grid), so only floor-classified planes feed the grid now.
         let isFloor: Bool
         switch plane.classification {
         case .floor: isFloor = true
@@ -685,7 +710,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             let y = plane.transform.columns.3.y + plane.center.y
             if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
         }
-        guard groundGridVisible else { return }
+        guard groundGridVisible, isFloor else { return }
 
         // World-aligned grid: the anchor's yaw is arbitrary (whatever ARKit
         // detected first), but AR world axes are compass-true. Rendering the
@@ -696,68 +721,73 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let yaw = atan2(-m.columns.0.z, m.columns.0.x)
         let worldW = abs(extent.x * cos(yaw)) + abs(extent.y * sin(yaw))
         let worldD = abs(extent.x * sin(yaw)) + abs(extent.y * cos(yaw))
-        let size = SIMD2(worldW, worldD)
         let c = plane.center
         let centerWorld = SIMD3(
             m.columns.0.x * c.x + m.columns.1.x * c.y + m.columns.2.x * c.z + m.columns.3.x,
             m.columns.0.y * c.x + m.columns.1.y * c.y + m.columns.2.y * c.z + m.columns.3.y,
             m.columns.0.z * c.x + m.columns.1.z * c.y + m.columns.2.z * c.z + m.columns.3.z
         )
+        let planeMinX = centerWorld.x - worldW / 2, planeMaxX = centerWorld.x + worldW / 2
+        let planeMinZ = centerWorld.z - worldD / 2, planeMaxZ = centerWorld.z + worldD / 2
 
-        if let existing = planeEntities[plane.identifier] {
-            let grew = abs(size.x - existing.lastSize.x) > 0.25 || abs(size.y - existing.lastSize.y) > 0.25
-            let moved = simd_distance(centerWorld, existing.lastCenter) > 0.05
-            guard grew || moved else { return }
-            existing.lastSize = size
-            existing.lastCenter = centerWorld
-            applyPlaneGeometry(existing)
-            return
+        // Fold this plane's AABB into the ONE grid's monotonic union — the
+        // union only ever grows, matching "stability beats accuracy for the
+        // grid": ARKit merging/re-splitting/removing a contributing anchor
+        // must never make the single grid entity flicker, shrink or spawn a
+        // sibling.
+        var grew = false
+        if floorMinX == nil || planeMinX < floorMinX! { floorMinX = planeMinX; grew = true }
+        if floorMaxX == nil || planeMaxX > floorMaxX! { floorMaxX = planeMaxX; grew = true }
+        if floorMinZ == nil || planeMinZ < floorMinZ! { floorMinZ = planeMinZ; grew = true }
+        if floorMaxZ == nil || planeMaxZ > floorMaxZ! { floorMaxZ = planeMaxZ; grew = true }
+
+        let entry: PlaneGridEntity
+        if let existing = floorGrid {
+            guard grew else { return }
+            entry = existing
+        } else {
+            // AnchorEntity(world:) has identity orientation = world axes.
+            let anchor = AnchorEntity(world: centerWorld)
+            let model = ModelEntity(
+                mesh: MeshResource.generatePlane(width: 1, depth: 1),
+                materials: []
+            )
+            anchor.addChild(model)
+            arView.scene.addAnchor(anchor)
+            entry = PlaneGridEntity(anchor: anchor, model: model)
+            floorGrid = entry
         }
-
-        // AnchorEntity(world:) has identity orientation = world axes; plane
-        // pose updates are re-applied by every didUpdate upsert instead of
-        // ARKit's anchor tracking (which would reintroduce the yaw).
-        let anchor = AnchorEntity(world: centerWorld)
-        let model = ModelEntity(
-            mesh: MeshResource.generatePlane(width: 1, depth: 1),
-            materials: []
-        )
-        anchor.addChild(model)
-        arView.scene.addAnchor(anchor)
-        let entry = PlaneGridEntity(anchor: anchor, model: model, isFloor: isFloor)
-        entry.lastSize = size
-        entry.lastCenter = centerWorld
-        planeEntities[plane.identifier] = entry
         applyPlaneGeometry(entry)
         refreshGroundState()
     }
 
-    /// (Re)build a grid plane's render geometry from its RAW world AABB:
-    /// with a lattice phase known, the bounds snap OUTWARD to multiples of
-    /// `gridTileMeters` from the phase origin, so the plane edges — and every
-    /// repeated tile line between them — land exactly on the geo-anchored
-    /// 3m cell lattice the minimap draws. Runs on plane growth/moves AND
-    /// whenever the phase origin shifts (geo-ref re-pair). Mesh regeneration
-    /// is the expensive part — skipped while the snapped size is unchanged.
+    /// (Re)build the ONE grid's render geometry from the monotonic union
+    /// AABB: with a lattice phase known, the bounds snap OUTWARD to
+    /// multiples of `gridTileMeters` from the phase origin, so the grid
+    /// edges — and every repeated tile line between them — land exactly on
+    /// the geo-anchored 3m cell lattice the minimap draws. Runs on union
+    /// growth AND once when the phase origin locks (geo-ref first pairing —
+    /// it never moves again, see `setGridPhaseOrigin`). Mesh regeneration is
+    /// the expensive part — skipped while the snapped size is unchanged.
     private func applyPlaneGeometry(_ entry: PlaneGridEntity) {
+        guard let rawMinX = floorMinX, let rawMaxX = floorMaxX,
+              let rawMinZ = floorMinZ, let rawMaxZ = floorMaxZ else { return }
         let tile = Self.gridTileMeters
-        let raw = entry.lastSize
-        let center = entry.lastCenter
-        var minX = center.x - raw.x / 2, maxX = center.x + raw.x / 2
-        var minZ = center.z - raw.y / 2, maxZ = center.z + raw.y / 2
+        var minX = rawMinX, maxX = rawMaxX
+        var minZ = rawMinZ, maxZ = rawMaxZ
         if let phase = gridPhaseOrigin {
             (minX, maxX) = Self.snapToLattice(minX, maxX, phase: phase.x, tile: tile)
             (minZ, maxZ) = Self.snapToLattice(minZ, maxZ, phase: phase.y, tile: tile)
         }
         let size = SIMD2(maxX - minX, maxZ - minZ)
-        let snappedCenter = SIMD3((minX + maxX) / 2, center.y, (minZ + maxZ) / 2)
+        let y = floorWorldY ?? cameraFallbackGroundY()
+        let snappedCenter = SIMD3((minX + maxX) / 2, y, (minZ + maxZ) / 2)
         entry.anchor.position = snappedCenter
         if entry.lastAppliedSize != size {
             entry.model.model?.mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
             entry.lastAppliedSize = size
         }
-        entry.model.model?.materials =
-            [planeMaterial(isFloor: entry.isFloor, size: size, centerWorld: snappedCenter)]
+        entry.model.model?.materials = [planeMaterial(size: size, centerWorld: snappedCenter)]
     }
 
     /// Snap a 1-D extent outward to the lattice `phase + k * tile` — both
@@ -770,20 +800,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return (snappedLo, snappedHi)
     }
 
+    /// Monotonic: once the grid is live it stays live for the rest of the
+    /// session (matches the union's own never-shrinks contract) — a
+    /// transient gap in floor recognition must not flicker "ground detected"
+    /// off and on. Reset only by `setGroundGridVisible(false)` (mode switch).
     private func refreshGroundState() {
-        groundLive = !planeEntities.isEmpty
+        if floorGrid != nil { groundLive = true }
     }
 
     private func planeMaterial(
-        isFloor: Bool,
         size: SIMD2<Float>,
         centerWorld: SIMD3<Float>
     ) -> PhysicallyBasedMaterial {
-        let texture = isFloor ? floorGridTexture : roughGridTexture
-        let tint = isFloor
-            ? UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
-            : UIColor(white: 1.0, alpha: 0.3)
-        var material = gridMaterial(texture, tint: tint, uvScale: 1)
+        let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
+        var material = gridMaterial(floorGridTexture, tint: tint, uvScale: 1)
         // Scale keeps tiles a constant gridTileMeters; the offset phases the
         // repeat so grid LINES land on multiples of the tile from the lattice
         // phase origin (the geo-anchored CoverageTracker lattice once the

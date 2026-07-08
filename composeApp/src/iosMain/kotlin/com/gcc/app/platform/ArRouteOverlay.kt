@@ -132,6 +132,13 @@ actual class ArRouteOverlay actual constructor() {
     // (native path) phases its lines to it so AR grid == minimap grid.
     private var latticeLat: Double? = null
     private var latticeLng: Double? = null
+    /** ONE-SHOT LOCK mirror (Task 2): true once [pushGridPhase] has sent a
+     *  phase to the native surface. The Swift side already guards this
+     *  terminally (`RealityKitArSurface.setGridPhaseOrigin`), but every GPS
+     *  fix calls [updateGeoReference] → [pushGridPhase] regardless — this
+     *  skips the now-pointless repeat cross-language call instead of relying
+     *  solely on the far side of the bridge to no-op it. */
+    private var gridPhaseSent = false
 
     /** Called by the Compose UIKitView factory (Task 16) once the ARSCNView exists. */
     fun bind(view: ARSCNView) {
@@ -316,11 +323,13 @@ actual class ArRouteOverlay actual constructor() {
      * at lattice cell centers), so there is nothing to phase on that path.
      */
     private fun pushGridPhase() {
+        if (gridPhaseSent) return
         val lat = latticeLat ?: return
         val lng = latticeLng ?: return
         if (!hasGeoRef) return
         val local = latLngToLocal(lat, lng)
         nativeSurface?.setGridPhaseOrigin(local.first, local.second)
+        gridPhaseSent = true
     }
 
     /**
