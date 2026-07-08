@@ -311,6 +311,19 @@ actual fun GccMap(
             modifier = Modifier.fillMaxSize(),
             cameraState = camera,
             baseStyle = BaseStyle.Uri(MapStyles.STYLE_URL),
+            // WS4: merged coverage outlines carry no cellId, so the per-layer
+            // cellIdClickHandler Passes — resolve the tapped lat/lng back to a
+            // cell here so tap-to-info still works on the painted coverage.
+            onMapClick = onMapClick@{ pos, _ ->
+                val tap = onCoverageCellTap ?: return@onMapClick ClickResult.Pass
+                val cellId = coverageCellIdAt(pos.latitude, pos.longitude)
+                if (coverageCells.any { it.locationCellId == cellId }) {
+                    tap(cellId)
+                    ClickResult.Consume
+                } else {
+                    ClickResult.Pass
+                }
+            },
             options = MapOptions(
                 gestureOptions = GestureOptions(
                     isScrollEnabled = enableGestures,
