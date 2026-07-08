@@ -1164,6 +1164,38 @@ fun buildCoverageStateGeoJsons(
 
 
 /**
+ * Builds one GeoJSON FeatureCollection for the far-zoom cell-health
+ * choropleth (v2 Pillar 8 amendment) — one small square Feature per
+ * [HealthTile] from [aggregateCellHealth], each carrying its own `health`
+ * (0..1) and `dominant` ("clean" | "dirty" | "stale" | "unscanned")
+ * properties so a SINGLE data-driven FillLayer can color every tile by ITS
+ * OWN constituents, replacing the point-density spot-heat layers this
+ * choropleth supersedes (GccMap.ios.kt: the removed `spot-density-heat-*`
+ * CircleLayers).
+ *
+ * Each tile is rendered as its own [tileMeters]-sided square, centered on
+ * [HealthTile.centerLat]/[HealthTile.centerLng] — the same axis-aligned-quad
+ * approach [buildCoverageStateGeoJsons] uses for its per-cell tiles, just at
+ * a coarser, zoom-scaled size. The longitude scale is computed per-feature
+ * off the tile's own latitude (mirrors [circlePolygonRing]'s per-feature
+ * scaling) since tiles can span a wide latitude range at low zoom.
+ */
+fun buildChoroplethGeoJson(tiles: List<HealthTile>, tileMeters: Double): String {
+    if (tiles.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
+    val halfLat = (tileMeters / 2.0) / 111_320.0
+    val features = tiles.joinToString(",") { tile ->
+        val lngScale = cos(tile.centerLat * PI / 180.0).let { if (it < 0.01) 0.01 else it }
+        val halfLng = (tileMeters / 2.0) / (111_320.0 * lngScale)
+        val lat = tile.centerLat
+        val lng = tile.centerLng
+        val ring = "[[${lng - halfLng},${lat - halfLat}],[${lng + halfLng},${lat - halfLat}]," +
+            "[${lng + halfLng},${lat + halfLat}],[${lng - halfLng},${lat + halfLat}],[${lng - halfLng},${lat - halfLat}]]"
+        """{"type":"Feature","properties":{"health":${tile.health},"dominant":"${tile.dominant.name.lowercase()}"},"geometry":{"type":"Polygon","coordinates":[$ring]}}"""
+    }
+    return """{"type":"FeatureCollection","features":[$features]}"""
+}
+
+/**
  * Explorer-mode scan-state color coding: buckets every Chicago community
  * area by its scan state — "clean" | "dirty" | "stale" from analytics,
  * everything else defaults to "unscanned" (grey; the whole city today).

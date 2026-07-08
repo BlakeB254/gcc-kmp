@@ -160,12 +160,25 @@ actual fun GccMap(
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
     val hasActiveSpots = remember(spots) { spots.any { it.status != CommunityReportStatus.RESOLVED } }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
-    val spotDensityHeatEdgeJson = remember(spots) { buildSpotDensityHeatEdgeGeoJson(spots) }
-    val spotDensityHeatLowJson = remember(spots) { buildSpotDensityHeatLowGeoJson(spots) }
-    val spotDensityHeatMediumJson = remember(spots) { buildSpotDensityHeatMediumGeoJson(spots) }
-    val spotDensityHeatHighJson = remember(spots) { buildSpotDensityHeatHighGeoJson(spots) }
-    val spotDensityHeatExtremeJson = remember(spots) { buildSpotDensityHeatExtremeGeoJson(spots) }
     val hasHeatActivity = hasActiveSpots
+
+    // ── Cell-health choropleth (v2 Pillar 8 amendment) ──
+    // Replaces the point-density spot-heat CircleLayers that used to live
+    // here: instead of a blurred kernel-density surface over spot/report
+    // points, each far-zoom tile is colored by its OWN constituents (litter
+    // weight vs clean-coverage vs stale), aggregated from the SAME
+    // coverageCells/observationFootprints already fed to the coverage-state
+    // tiles and footprint layers below — no new fetch. tileMeters is chosen
+    // from the caller's TARGET zoom (not live pinch — see
+    // choroplethTileMetersForZoom's doc, same deferred-reactivity trade-off
+    // useOutlineCoverage above already accepts).
+    val choroplethTileMeters = remember(zoom) { choroplethTileMetersForZoom(zoom) }
+    val choroplethTiles = remember(coverageCells, observationFootprints, choroplethTileMeters) {
+        aggregateCellHealth(coverageCells, observationFootprints, choroplethTileMeters)
+    }
+    val choroplethJson = remember(choroplethTiles, choroplethTileMeters) {
+        buildChoroplethGeoJson(choroplethTiles, choroplethTileMeters)
+    }
 
     // Pillar 3 footprints: true-scale oriented shapes at close zoom, split by
     // domain into three JSON strings so each domain gets its own tinted
@@ -507,29 +520,22 @@ actual fun GccMap(
             // basemap + colored spot dots; density is conveyed by how
             // many dots cluster, not by an overlay wash.
 
-            // ── Spot density heat surface (BELOW the route stack) ──
-            // Heat is texture, routes are structure: the wash renders under
-            // the green loops so route opportunities stay readable at
-            // overview zoom. Opacity ramps to 0 at IOS_SPOT_HEAT_FADE_ZOOM —
-            // a real crossfade with the spot dots (which fade in from
-            // IOS_SPOT_DOTS_MIN_ZOOM) instead of the old hard clip at 12.99.
-            // Gated on spots: the scan summary card renders GccMap with no
-            // spots and must not allocate the heatmap sources/layers it never
-            // paints (Fix 2, r2a). The scrim FillLayer below relies on this
-            // same outer guard — toggle-off and zero-report areas never reach
-            // it, so no gray wash (mirrors the web version's guard).
+            // ── Cell-health choropleth (BELOW the route stack) ──
+            // Texture-under-structure, same z-order the point-density heat
+            // it replaces used to occupy: routes stay readable at overview
+            // zoom. Gated on spots for the scrim (still keyed off the static
+            // clean-zone polygon, no allocation cost) and on the aggregated
+            // tiles for the choropleth itself — the scan summary card
+            // renders GccMap with no data and must not allocate sources/
+            // layers it never paints (Fix 2, r2a).
             if (spots.isNotEmpty()) {
-                val spotDensityHeatEdgeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatEdgeJson))
-                val spotDensityHeatLowSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatLowJson))
-                val spotDensityHeatMediumSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatMediumJson))
-                val spotDensityHeatHighSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatHighJson))
-                val spotDensityHeatExtremeSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotDensityHeatExtremeJson))
-
-                // ── Spot scrim: neutral off-white tint beneath heatmap ──
+                // ── Spot scrim: neutral off-white tint beneath the choropleth ──
                 // Planet-spanning fill sourced from the same clean-zone GeoJSON.
                 // Fades from 0.55 opacity at overview zoom to 0 by
                 // IOS_SPOT_HEAT_FADE_ZOOM so it doesn't compete with street
-                // labels at close zoom. Replaces the former green CLEAN_BASE_COLOR.
+                // labels at close zoom. Kept from the old point-density heat —
+                // still the right backdrop for the choropleth's data-driven
+                // fills, muting the basemap under whatever tiles render.
                 FillLayer(
                     id = MapStyles.LAYER_SPOT_CLEAN_ZONE_BASE,
                     source = spotCleanZoneSrc,
@@ -541,167 +547,52 @@ actual fun GccMap(
                         IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
                     ),
                 )
+            }
 
-                // Sampled overview heat over the neutral scrim baseline. These
-                // sources are density field samples, not raw spot points, so the
-                // layers read as one continuous surface at overview zooms.
-                CircleLayer(
-                    id = "spot-density-heat-low-fringe",
-                    source = spotDensityHeatEdgeSrc,
+            // Cell-health choropleth: one data-driven FillLayer, colored per
+            // tile by [HealthTile.dominant] (categorical grey override for
+            // never-scanned ground) falling back to an interpolate over
+            // [HealthTile.health] (green -> amber -> red). Gated on non-empty
+            // tiles independent of `spots` — the aggregation is fed by
+            // coverageCells/observationFootprints, not spot reports, so an
+            // area with scan/litter data but zero community reports still
+            // gets a choropleth. Fades OUT exactly at IOS_SPOT_HEAT_FADE_ZOOM
+            // (the same constant the footprint layer below fades IN from) so
+            // the choropleth and true-scale footprints never both show.
+            if (choroplethTiles.isNotEmpty()) {
+                val choroplethSrc = rememberGeoJsonSource(GeoJsonData.JsonString(choroplethJson))
+                @Suppress("UNCHECKED_CAST")
+                val choroplethHealthExpr = feature["health"] as org.maplibre.compose.expressions.ast.Expression<
+                    org.maplibre.compose.expressions.value.NumberValue<Number>>
+                @Suppress("UNCHECKED_CAST")
+                val choroplethDominantExpr = feature["dominant"] as org.maplibre.compose.expressions.ast.Expression<
+                    org.maplibre.compose.expressions.value.StringValue>
+
+                FillLayer(
+                    id = "choropleth-cell-health",
+                    source = choroplethSrc,
                     minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
                     maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_HEAT_EDGE.copy(alpha = 0.72f)),
-                    blur = const(1.35f),
-                    radius = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(2.2.dp),
-                        7 to const(5.2.dp),
-                        9 to const(8.8.dp),
-                        11 to const(13.5.dp),
-                        12.5 to const(18.dp),
-                        13.1 to const(15.dp),
-                        13.8 to const(12.dp),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(10.dp),
+                    // Same green/red/amber/grey vocabulary as the coverage-
+                    // state tiles (coverage-clean/dirty/stale/fog above) —
+                    // "one visual system" per the Global Constraint.
+                    color = org.maplibre.compose.expressions.dsl.switch(
+                        choroplethDominantExpr,
+                        org.maplibre.compose.expressions.dsl.case("unscanned", const(Color(0xFF4B5563))),
+                        fallback = interpolate(
+                            type = org.maplibre.compose.expressions.dsl.linear(),
+                            input = choroplethHealthExpr,
+                            0.0 to const(Color(0xFFEF4444)),
+                            0.5 to const(Color(0xFFF59E0B)),
+                            1.0 to const(Color(0xFF22C55E)),
+                        ),
                     ),
                     opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
+                        type = exponential(1.5f),
                         input = zoom(),
-                        2 to const(0.1f),
-                        7 to const(0.18f),
-                        9 to const(0.28f),
-                        11 to const(0.34f),
-                        12.5 to const(0.42f),
-                        13.1 to const(0.3f),
-                        13.8 to const(0.16f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                    ),
-                )
-                CircleLayer(
-                    id = "spot-density-heat-low-core",
-                    source = spotDensityHeatLowSrc,
-                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_HEAT_LOW.copy(alpha = 0.82f)),
-                    blur = const(1.25f),
-                    radius = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(1.7.dp),
-                        7 to const(4.2.dp),
-                        9 to const(7.2.dp),
-                        11 to const(11.5.dp),
-                        12.5 to const(16.dp),
-                        13.1 to const(13.dp),
-                        13.8 to const(10.5.dp),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(8.4.dp),
-                    ),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.12f),
-                        7 to const(0.2f),
-                        9 to const(0.32f),
-                        11 to const(0.44f),
-                        12.5 to const(0.54f),
-                        13.1 to const(0.36f),
-                        13.8 to const(0.2f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                    ),
-                )
-                CircleLayer(
-                    id = "spot-density-heat-mid",
-                    source = spotDensityHeatMediumSrc,
-                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_HEAT_MEDIUM),
-                    blur = const(1.1f),
-                    radius = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(1.2.dp),
-                        7 to const(3.3.dp),
-                        9 to const(6.1.dp),
-                        11 to const(10.dp),
-                        12.5 to const(13.8.dp),
-                        13.1 to const(10.8.dp),
-                        13.8 to const(8.8.dp),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(7.dp),
-                    ),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.08f),
-                        7 to const(0.18f),
-                        9 to const(0.4f),
-                        11 to const(0.62f),
-                        12.5 to const(0.78f),
-                        13.1 to const(0.48f),
-                        13.8 to const(0.26f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                    ),
-                )
-                CircleLayer(
-                    id = "spot-density-heat-high",
-                    source = spotDensityHeatHighSrc,
-                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_HEAT_HIGH),
-                    blur = const(1.05f),
-                    radius = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.8.dp),
-                        7 to const(2.7.dp),
-                        9 to const(5.6.dp),
-                        11 to const(9.2.dp),
-                        12.5 to const(12.8.dp),
-                        13.1 to const(9.4.dp),
-                        13.8 to const(7.6.dp),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(6.dp),
-                    ),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.06f),
-                        7 to const(0.16f),
-                        9 to const(0.5f),
-                        11 to const(0.84f),
-                        12.5 to const(0.96f),
-                        13.1 to const(0.62f),
-                        13.8 to const(0.3f),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
-                    ),
-                )
-                CircleLayer(
-                    id = "spot-density-heat-extreme",
-                    source = spotDensityHeatExtremeSrc,
-                    minZoom = MapStyles.SPOT_HEATMAP_MIN_ZOOM.toFloat(),
-                    maxZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
-                    color = const(MapStyles.SPOT_HEAT_EXTREME),
-                    blur = const(1.0f),
-                    radius = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0.dp),
-                        7 to const(1.2.dp),
-                        9 to const(2.6.dp),
-                        11 to const(4.4.dp),
-                        12.5 to const(6.dp),
-                        13.1 to const(4.4.dp),
-                        13.8 to const(4.6.dp),
-                        IOS_SPOT_HEAT_FADE_ZOOM to const(3.6.dp),
-                    ),
-                    opacity = interpolate(
-                        type = org.maplibre.compose.expressions.dsl.linear(),
-                        input = zoom(),
-                        2 to const(0f),
-                        7 to const(0.12f),
-                        9 to const(0.32f),
-                        11 to const(0.62f),
-                        12.5 to const(0.78f),
-                        13.1 to const(0.48f),
-                        13.8 to const(0.18f),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.5f),
+                        12.5 to const(0.6f),
+                        13.5 to const(0.48f),
                         IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
                     ),
                 )
