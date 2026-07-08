@@ -13,7 +13,6 @@ import {
   CHICAGO_CENTER,
   CHICAGO_CENTER_LNG_LAT,
   SPOT_SCRIM_PAINT,
-  SPOT_HEATMAP_PAINT,
   LITTER_FOOTPRINT_COLORS,
   LITTER_FOOTPRINT_ZOOM,
   getSpotHeatWeight,
@@ -31,6 +30,11 @@ import {
   formatEstimatedWeight,
   type MapObservation,
 } from '@/lib/litter-footprints'
+import {
+  aggregateCellHealth,
+  buildChoroplethGeoJson,
+  choroplethTileMetersForZoom,
+} from '@/lib/cell-health-choropleth'
 
 // ============================================================================
 // TYPES
@@ -256,6 +260,27 @@ export function CombinedMap({
     () => buildObservationFootprintsGeoJson(observations, CHICAGO_CENTER.lat),
     [observations]
   )
+
+  // ----- cell-health choropleth GeoJSON (far-zoom, v2 Pillar 8 amendment) --
+  // Replaces the point-density spot heatmap: instead of a blurred kernel over
+  // spot points, each far-zoom tile is colored by its OWN litter load
+  // (green -> amber -> red, grey where never scanned). Fed by the SAME
+  // `observations` feed already loaded for the footprint layer — no new
+  // fetch (mirrors the Global Constraint the mobile side follows; web
+  // coverage cells are only fetched lazily at close zoom inside
+  // CoverageFreshnessOverlay, so the far-zoom choropleth is litter-driven).
+  // tileMeters is bucketed off the zoom, so this only rebuilds when the zoom
+  // crosses a bucket boundary or the observations change, not every pan tick.
+  const choroplethTileMeters = choroplethTileMetersForZoom(currentZoom)
+  const choroplethGeoJson = useMemo(
+    () =>
+      buildChoroplethGeoJson(
+        aggregateCellHealth([], observations, choroplethTileMeters),
+        choroplethTileMeters
+      ),
+    [observations, choroplethTileMeters]
+  )
+  const hasChoroplethTiles = choroplethGeoJson.features.length > 0
 
   // ----- handle map feature click (routes + litter footprints) -----
   const handleMapClick = useCallback(
@@ -735,20 +760,55 @@ export function CombinedMap({
           </Source>
         )}
 
-        {/* Spot reports — heatmap only (z<15). Far-zoom "how bad is it around
-            here" language; unchanged by Pillar 8 Task 3 (Global Constraint:
-            heatmap layer definition untouched). The close-zoom pin/glyph/
-            verification-ring layers that used to render here were removed —
-            the litter-footprint layer below (fed by world observations, not
-            `spots`) is now THE close-zoom litter-truth visualization. */}
-        {spots.length > 0 && (
-          <Source id="combined-spots" type="geojson" data={spotGeoJson}>
+        {/* Cell-health choropleth — far-zoom "how healthy is this ground"
+            language (v2 Pillar 8 amendment). REPLACES the point-density spot
+            heatmap (`combined-spot-heatmap`, keyed on spot-report density):
+            each tile is now colored by ITS OWN litter load rather than a
+            blurred kernel over report points. One data-driven fill layer,
+            colored by `dominant` (grey where never scanned) falling back to
+            an interpolate over `health` (green -> amber -> red) — the SAME
+            visual vocabulary as the coverage-freshness tiles. Fades OUT at
+            SPOT_ZOOM.HEATMAP_FADE_OUT, the exact zoom the litter-footprint
+            layer below fades IN from, so the two never both show. */}
+        {hasChoroplethTiles && (
+          <Source id="cell-health-choropleth" type="geojson" data={choroplethGeoJson}>
             <Layer
-              id="combined-spot-heatmap"
-              type="heatmap"
+              id="choropleth-cell-health-fill"
+              type="fill"
               minzoom={SPOT_ZOOM.HEATMAP_MIN}
-              maxzoom={SPOT_ZOOM.HEATMAP_MAX}
-              paint={SPOT_HEATMAP_PAINT}
+              maxzoom={SPOT_ZOOM.HEATMAP_FADE_OUT}
+              paint={{
+                'fill-color': [
+                  'match',
+                  ['get', 'dominant'],
+                  'unscanned',
+                  '#4B5563',
+                  [
+                    'interpolate',
+                    ['linear'],
+                    ['to-number', ['get', 'health']],
+                    0.0,
+                    '#EF4444',
+                    0.5,
+                    '#F59E0B',
+                    1.0,
+                    '#22C55E',
+                  ],
+                ],
+                'fill-opacity': [
+                  'interpolate',
+                  ['exponential', 1.5],
+                  ['zoom'],
+                  SPOT_ZOOM.HEATMAP_MIN,
+                  0.5,
+                  12.5,
+                  0.6,
+                  13.5,
+                  0.48,
+                  SPOT_ZOOM.HEATMAP_FADE_OUT,
+                  0,
+                ],
+              }}
               layout={{ visibility: heatmapVisible ? 'visible' : 'none' }}
             />
           </Source>
