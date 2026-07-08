@@ -209,8 +209,13 @@ class RouteScanViewModel(
      * (site/src/lib/world-observations.ts's `resolveByCoveredCells`).
      * Capped at 2000 to match the server's `parseCoveredCellIds` truncation.
      *
-     * TODO(merge): wire into route-scan completion submission once
-     * checkpoint-removal branch lands.
+     * SpotViewModel now sends the equivalent set on its `/api/spots`
+     * submission (from its own env-scan session's scannedCells — see
+     * SpotViewModel.submitReport), so the cell-supersede sweep is live for
+     * spot reports. This route-scan counterpart is still unwired: route
+     * scans complete via `CompleteScanRequest` (`/api/scans/{id}/complete`),
+     * which has no `coveredCellIds` field yet — that's a server + shared-
+     * model change, deferred until a route-scan completion branch adds it.
      */
     fun coveredCellIdsForSubmission(): List<String> =
         coverageTracker.scannedCells.value

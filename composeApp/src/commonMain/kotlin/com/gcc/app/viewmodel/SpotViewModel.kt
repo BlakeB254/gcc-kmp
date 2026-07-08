@@ -28,6 +28,7 @@ import com.gcc.shared.api.CaptureStorageNotConfiguredException
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.gridCell10m
 import com.gcc.shared.model.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -689,6 +690,22 @@ class SpotViewModel(
                 // Include on-device AI analysis
                 val onDeviceAiResult = state.aiAnalysis
 
+                // Pillar 8 task 1: scan submissions can additionally carry every
+                // GRAZED+ cell the scan swept, so the server can supersede stale
+                // reports across the whole sweep (not just the anchor +
+                // observedItems radius). pendingSessionDraft.scannedCells IS this
+                // ViewModel's coverage-tracker output — set from the AR env-scan
+                // session's own CoverageTracker in completeScan() — so this reuses
+                // it rather than standing up a second tracker. Only set on the
+                // Complete Scan path (pendingSessionDraft is null for the manual
+                // "Add details" flow, which never ran a scan session); the server
+                // treats an absent field identically to an old client.
+                val coveredCellIds = pendingSessionDraft?.scannedCells
+                    ?.map { gridCell10m(it.lat, it.lng) }
+                    ?.distinct()
+                    ?.take(2000)
+                    ?.takeIf { it.isNotEmpty() }
+
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
                     lat = submitLat,
@@ -710,17 +727,7 @@ class SpotViewModel(
                     // rejected with 'already exists within 15m'.
                     observedItems = state.observedItems,
                     objectCapture = state.objectCapture,
-                    // Pillar 8 task 1: scan submissions can additionally carry
-                    // every GRAZED+ cell a scan's CoverageTracker swept, so the
-                    // server can supersede stale reports across the whole
-                    // sweep (not just the anchor + observedItems radius). This
-                    // ViewModel has no CoverageTracker instance today (only
-                    // RouteScanViewModel does) — it enqueues ArDetectedMarkerRequests
-                    // and dedupes observedItems directly, with no coverage-grid
-                    // tracking of its own. Omitted (null) here rather than
-                    // inventing a new CoverageTracker wiring path; the server
-                    // treats an absent field identically to an old client.
-                    coveredCellIds = null,
+                    coveredCellIds = coveredCellIds,
                 )
                 val response = apiClient.httpClient.post("${apiClient.baseUrl}/api/spots") {
                     contentType(ContentType.Application.Json)
