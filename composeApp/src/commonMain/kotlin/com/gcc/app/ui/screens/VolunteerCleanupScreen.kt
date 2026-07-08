@@ -51,10 +51,8 @@ fun VolunteerCleanupScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            // Progress timeline (hide on completion phases)
-            if (uiState.phase != VolunteerPhase.COMPLETE &&
-                uiState.phase != VolunteerPhase.ALREADY_CLEAN_COMPLETE
-            ) {
+            // Progress timeline (hide on completion phase)
+            if (uiState.phase != VolunteerPhase.COMPLETE) {
                 val steps = remember { listOf("Verify Spot", "Cleanup", "After Photos", "Trash Heap", "Submit") }
                 val currentIndex = remember(uiState.phase) {
                     when (uiState.phase) {
@@ -86,7 +84,6 @@ fun VolunteerCleanupScreen(
                         spotLocation = uiState.spotLocation,
                         onScanCapture = { viewModel.addBeforeScanPhoto(it) },
                         onConfirmMessStillHere = { viewModel.startCleanup() },
-                        onAlreadyClean = { viewModel.reportAlreadyClean() },
                         onBack = onBack,
                     )
 
@@ -137,17 +134,10 @@ fun VolunteerCleanupScreen(
                         pointsAwarded = uiState.pointsAwarded,
                         onBack = onBack,
                     )
-
-                    VolunteerPhase.ALREADY_CLEAN_COMPLETE -> AlreadyCleanCompletionPhase(
-                        pointsAwarded = uiState.pointsAwarded,
-                        onBack = onBack,
-                    )
                 }
 
                 // Floating back button
-                if (uiState.phase != VolunteerPhase.COMPLETE &&
-                    uiState.phase != VolunteerPhase.ALREADY_CLEAN_COMPLETE
-                ) {
+                if (uiState.phase != VolunteerPhase.COMPLETE) {
                     TextButton(
                         onClick = onBack,
                         modifier = Modifier
@@ -186,7 +176,6 @@ private fun BeforePhotosPhase(
     spotLocation: Coordinates?,
     onScanCapture: (ScanCapturedPhoto) -> Unit,
     onConfirmMessStillHere: () -> Unit,
-    onAlreadyClean: () -> Unit,
     onBack: () -> Unit,
 ) {
     val beforePhotoCount = beforePhotos.size
@@ -241,93 +230,7 @@ private fun BeforePhotosPhase(
                 variant = GccButtonVariant.PRIMARY,
                 enabled = !isSubmitting,
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            GccButton(
-                text = if (isSubmitting) "Reporting..." else "Already Clean",
-                onClick = onAlreadyClean,
-                variant = GccButtonVariant.OUTLINED,
-                enabled = !isSubmitting,
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "Report a bonus if someone already cleaned it",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSubtle,
-            )
         }
-    }
-}
-
-// ── Already Clean Completion ─────────────────────────────────────────
-
-@Composable
-private fun AlreadyCleanCompletionPhase(
-    pointsAwarded: Int,
-    onBack: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            "\u2728",
-            style = MaterialTheme.typography.displayMedium,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            "Spot Already Clean!",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = GccGreen,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Thank you for verifying. The spot has been marked as resolved.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextMuted,
-            textAlign = TextAlign.Center,
-        )
-
-        if (pointsAwarded > 0) {
-            Spacer(modifier = Modifier.height(24.dp))
-            GccCard(accentColor = CardAccentSky) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text(
-                            "Report Bonus",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Text(
-                            "Thanks for checking on this spot!",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
-                    }
-                    Text(
-                        "+$pointsAwarded",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = GccSky,
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        GccButton(
-            text = "Back to Map",
-            onClick = onBack,
-            variant = GccButtonVariant.PRIMARY,
-        )
     }
 }
 

@@ -170,6 +170,67 @@ Sequenced as the round after Pillars 4/5 (same tracker/server/map files).
    wired into the rescan-priority lens (Pillar 5) and in-scan phase-2 steering; a
    completing scan either upgrades the observation or supersedes it (gone/cleaned).
 
+
+## Pillar 8/9 addendum — Best-frame extraction for issue areas (Blake, 2026-07-07)
+
+Scans must yield the still frames that BEST depict each issue area:
+- **Near term (client, shipped/shipping):** detection-frame JPEGs are captured at
+  marker promotion (#99) and analyzer photos flow on env scans; per issue-area
+  cluster, "best" = closest capture distance, then highest confidence, then most
+  recent — selection logic server-side at read time.
+- **Deep path (DGX, backlog):** the capture sidecar timestamps every frame and the
+  detection events carry timestamps — the fusion pipeline can extract the exact
+  video frames at detection moments from the HEVC chunks (multiple angles per
+  issue), rank by sharpness/framing, and attach the winners to observations.
+  GPS+pose in the sidecar ties every extracted frame to map position.
+
+
+## Pillar 10 — Area bounties, peer-to-peer (Blake, 2026-07-07)
+
+The legacy report-seeded bounty flow was never fully implemented — replaced by:
+- **Geographic-area bounties:** the issuer (any user, donator, or third party)
+  DRAWS A CIRCLE on the map around all the messes they want included (center +
+  radius drag). The circle is the bounty's contract geometry: stored server-side
+  and ENFORCED on the cleaner at completion — lap-1 scan coverage is computed
+  against the circle's area (intersected with authored exclusions where they
+  overlap), and verification requires the observations inside the circle to be
+  resolved/superseded by the after-scan. The circle renders on the cleaner's
+  minimap exactly like a block boundary.
+- **Same cycle as the $100 admin blocks, generalized P2P:** claim → lap-1 scan of the
+  area (coverage %) → clean → lap-2 after-scan (weight-based progress) → scan-based
+  verification (supersede/lifecycle evidence + block completion report as the
+  verification artifact) → Stripe payout to the cleaner.
+- **Funding:** Stripe payment collection from the funder at creation (escrow-style;
+  connect payouts already exist for the worker side); platform fee TBD; refund path
+  when a bounty expires unworked.
+- **Composition:** builds directly on #109's two-lap system (arbitrary-boundary
+  support), P8's observation clusters + lifecycle, P9's completion reports, and the
+  existing Connect payout rails. The P8 observation-seeded bounty is the interim
+  bridge until this lands.
+- Sequenced after P8 + P9 merge; needs its own plan (payment/refund flows warrant
+  the full spec→plan→review cycle).
+
+
+## Pillar 11 — AR scan overlay: four systems only (Blake, 2026-07-07)
+
+The env-scan AR overlay reduces to exactly these, everything else audited out:
+1. **Fog = never scanned in OUR SYSTEM.** Fog keys on the ledger (server coverage
+   + session credits), not session-only state — ground anyone has scanned stays
+   clear; grazed+ lifts it as today.
+2. **Solid stationary ground grid.** Once placed, the grid NEVER moves — locked to
+   the map lattice (geogrid phase work) and immune to GPS re-pair re-phasing;
+   stability beats accuracy (drift correction may re-anchor CONTENT, not the grid).
+3. **Vector-scan analysis effect.** Any identified world feature not yet on the map
+   (litter, landmarks) gets the vector-scan effect over it — "being analyzed and
+   added." Litter posts to the map in REAL TIME (immediate flush on confirm), and
+   ALL scan data streams incrementally (marker queue, observations, capture chunks,
+   journal) so a disconnect loses seconds, never the session.
+4. **Close-scan guidance.** Edge arrows + directional prompts (move left/right/up,
+   hold still, closer) driving high-quality captures — Object-Capture-style UX
+   feeding the quality scorer's signals.
+
+Sequenced after P8 (same ArEnvScan/fog/grid files as its tap-to-focus work).
+
 ## Explicit non-goals (v2)
 
 - On-device reconstruction (DGX owns it; phone ships raw truth).

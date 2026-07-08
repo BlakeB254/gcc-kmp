@@ -1,10 +1,8 @@
 package com.gcc.app.viewmodel
 
 import com.gcc.app.platform.LocationTrackingController
-import com.gcc.app.platform.triggerHapticFeedback
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
-import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -18,34 +16,28 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sqrt
 
-enum class CheckpointStatus { COMPLETED, CURRENT, UPCOMING }
-
-data class CheckpointUiItem(
-    val checkpoint: RouteCheckpoint,
-    val status: CheckpointStatus,
-    val distanceMeters: Double? = null,
-)
-
 data class ActiveJobUiState(
     val job: Job? = null,
     val route: Route? = null,
-    val checkpoints: List<CheckpointUiItem> = emptyList(),
     val currentLocation: Coordinates? = null,
-    val currentCheckpointIndex: Int = 0,
-    val isWithinGeofence: Boolean = false,
     val distanceToRouteMeters: Double? = null,
     val isWithinStartArea: Boolean = false,
     val isLoading: Boolean = true,
     val error: String? = null,
     val isStarting: Boolean = false,
     val isCompleting: Boolean = false,
-    val isUploadingEvidence: Boolean = false,
     val isDeclining: Boolean = false,
     val jobStarted: Boolean = false,
     val jobCompleted: Boolean = false,
     val isAdminMode: Boolean = false,
 )
 
+/**
+ * Assignment lifecycle for an accepted job: load, GPS-gated start, decline,
+ * and completion. The work itself (both laps) happens in the route-scan flow
+ * (RouteScanViewModel) — this ViewModel no longer carries any checkpoint
+ * machinery.
+ */
 class ActiveJobViewModel(
     private val apiClient: GccApiClient,
     private val locationTrackingController: LocationTrackingController,
@@ -69,19 +61,16 @@ class ActiveJobViewModel(
                 // Also fetch the job to get its current status
                 val job = apiClient.getJob(jobId)
 
-                val checkpointItems = CheckpointGenerator.generateIfMissing(route)
-                    .sortedBy { it.sequenceOrder }
-                    .mapIndexed { index, cp ->
-                        CheckpointUiItem(
-                            checkpoint = cp,
-                            status = if (index == 0) CheckpointStatus.CURRENT else CheckpointStatus.UPCOMING,
-                        )
-                    }
+                // The scan flow completes the job server-side; when we come
+                // back to a COMPLETED job, make sure background tracking from
+                // startJob is stopped.
+                if (job.status == JobStatus.COMPLETED) {
+                    locationTrackingController.stopTracking()
+                }
 
                 _uiState.value = _uiState.value.copy(
                     job = job,
                     route = route,
-                    checkpoints = checkpointItems,
                     isLoading = false,
                     jobStarted = job.status == JobStatus.IN_PROGRESS,
                     jobCompleted = job.status == JobStatus.COMPLETED,
@@ -102,15 +91,8 @@ class ActiveJobViewModel(
             try {
                 val updatedJob = apiClient.startJob(job.id)
                 locationTrackingController.startTracking()
-                val state = _uiState.value
-                val rotatedCheckpoints = reorderCheckpointsForStart(
-                    checkpoints = state.checkpoints,
-                    location = state.currentLocation,
-                )
                 _uiState.value = _uiState.value.copy(
                     job = updatedJob,
-                    checkpoints = rotatedCheckpoints,
-                    currentCheckpointIndex = 0,
                     isStarting = false,
                     jobStarted = true,
                 )
@@ -166,155 +148,16 @@ class ActiveJobViewModel(
         }
     }
 
-    fun submitCheckpointEvidence(
-        checkpointId: Int?,
-        beforePhotoBytes: ByteArray,
-        afterPhotoBytes: ByteArray,
-    ) {
-        val job = _uiState.value.job ?: return
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isUploadingEvidence = true, error = null)
-            try {
-                val urls = apiClient.uploadSpotPhotos(listOf(beforePhotoBytes, afterPhotoBytes))
-                if (urls.size < 2) {
-                    throw IllegalStateException("Both before and after photos are required")
-                }
-                val updatedJob = apiClient.submitJobEvidence(
-                    job.id,
-                    JobEvidenceRequest(
-                        checkpointId = checkpointId,
-                        beforePhotoUrl = urls[0],
-                        afterPhotoUrl = urls[1],
-                    ),
-                )
-                _uiState.value = _uiState.value.copy(
-                    job = updatedJob,
-                    isUploadingEvidence = false,
-                )
-                completeCurrentCheckpoint()
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isUploadingEvidence = false,
-                    error = e.message ?: "Failed to upload checkpoint photos",
-                )
-            }
-        }
-    }
-
     fun updateLocation(location: Coordinates) {
         val state = _uiState.value
-        val currentIndex = state.currentCheckpointIndex
-        val checkpoints = state.checkpoints
         val routeDistance = state.route?.distanceToRouteMeters(location)
         val isWithinStartArea = routeDistance?.let { it <= START_ROUTE_RADIUS_METERS } ?: false
 
-        if (checkpoints.isEmpty() || currentIndex >= checkpoints.size) {
-            _uiState.value = state.copy(
-                currentLocation = location,
-                distanceToRouteMeters = routeDistance,
-                isWithinStartArea = isWithinStartArea,
-            )
-            return
-        }
-
-        val currentCheckpoint = checkpoints[currentIndex].checkpoint
-        val distance = GeofenceVerification.distanceMeters(
-            location.lat, location.lng,
-            currentCheckpoint.coordinates.lat, currentCheckpoint.coordinates.lng,
-        )
-        val withinGeofence = distance <= currentCheckpoint.geofenceRadius
-
-        val updatedCheckpoints = checkpoints.mapIndexed { index, item ->
-            val cpDistance = GeofenceVerification.distanceMeters(
-                location.lat, location.lng,
-                item.checkpoint.coordinates.lat, item.checkpoint.coordinates.lng,
-            )
-            item.copy(distanceMeters = cpDistance)
-        }
-
         _uiState.value = state.copy(
             currentLocation = location,
-            isWithinGeofence = withinGeofence,
             distanceToRouteMeters = routeDistance,
             isWithinStartArea = isWithinStartArea,
-            checkpoints = updatedCheckpoints,
         )
-    }
-
-    /** Admin shortcut: mark all checkpoints done and complete the job. */
-    fun adminCompleteAll() {
-        val state = _uiState.value
-        if (!state.isAdminMode) return
-        val allCompleted = state.checkpoints.map { it.copy(status = CheckpointStatus.COMPLETED) }
-        _uiState.value = state.copy(
-            checkpoints = allCompleted,
-            currentCheckpointIndex = allCompleted.size,
-        )
-        completeJob()
-    }
-
-    fun completeCurrentCheckpoint() {
-        val state = _uiState.value
-        val currentIndex = state.currentCheckpointIndex
-        val checkpoints = state.checkpoints
-        if (currentIndex >= checkpoints.size) return
-
-        val updated = checkpoints.mapIndexed { index, item ->
-            when {
-                index < currentIndex -> item.copy(status = CheckpointStatus.COMPLETED)
-                index == currentIndex -> item.copy(status = CheckpointStatus.COMPLETED)
-                index == currentIndex + 1 -> item.copy(status = CheckpointStatus.CURRENT)
-                else -> item
-            }
-        }
-
-        val newIndex = currentIndex + 1
-        triggerHapticFeedback()
-        _uiState.value = state.copy(
-            currentCheckpointIndex = newIndex,
-            checkpoints = updated,
-            isWithinGeofence = false,
-        )
-
-        // Auto-complete job when all checkpoints are done
-        if (newIndex >= checkpoints.size) {
-            completeJob()
-        }
-    }
-
-    private fun reorderCheckpointsForStart(
-        checkpoints: List<CheckpointUiItem>,
-        location: Coordinates?,
-    ): List<CheckpointUiItem> {
-        if (checkpoints.size <= 1 || location == null) {
-            return checkpoints.mapIndexed { index, item ->
-                item.copy(status = if (index == 0) CheckpointStatus.CURRENT else CheckpointStatus.UPCOMING)
-            }
-        }
-
-        val nearestIndex = checkpoints.indices.minByOrNull { index ->
-            val coordinates = checkpoints[index].checkpoint.coordinates
-            GeofenceVerification.distanceMeters(
-                location.lat,
-                location.lng,
-                coordinates.lat,
-                coordinates.lng,
-            )
-        } ?: 0
-
-        val reordered = checkpoints.drop(nearestIndex) + checkpoints.take(nearestIndex)
-        return reordered.mapIndexed { index, item ->
-            val coordinates = item.checkpoint.coordinates
-            item.copy(
-                status = if (index == 0) CheckpointStatus.CURRENT else CheckpointStatus.UPCOMING,
-                distanceMeters = GeofenceVerification.distanceMeters(
-                    location.lat,
-                    location.lng,
-                    coordinates.lat,
-                    coordinates.lng,
-                ),
-            )
-        }
     }
 
     private fun Route.distanceToRouteMeters(location: Coordinates): Double? {

@@ -388,6 +388,30 @@ class RouteScanViewModel(
     private val resolvedObservationIds = mutableSetOf<Int>()
     private var rectifyBonusPoints = 0
 
+    // ── Lap-2 weight progress ────────────────────────────────────────
+    // Percentage = confirmed-cleaned estimated weight ÷ total estimated
+    // weight identified in lap 1 (see Lap2WeightMath). Snapshot of every
+    // dirty observation surfaced for the route (rectified ones are removed
+    // from _expectedObservations, so they need their own ledger here).
+    private var lap1Observations: List<WorldObservation> = emptyList()
+    private val rectifiedObservationIds = mutableSetOf<Int>()
+    private val _lap2WeightStats = MutableStateFlow(Lap2WeightProgress())
+    /** Weight-based lap-2 stats (lbs + item counts) for the cleaning UI. */
+    val lap2WeightStats: StateFlow<Lap2WeightProgress> = _lap2WeightStats.asStateFlow()
+    private val _lap2WeightProgress = MutableStateFlow(0.0)
+    /** Lap-2 progress percentage, 0–100 (cleaned est. weight ÷ lap-1 total). */
+    val lap2WeightProgress: StateFlow<Double> = _lap2WeightProgress.asStateFlow()
+
+    private fun recomputeLap2Weight() {
+        val stats = Lap2WeightMath.compute(
+            hotspots = _uiState.value.hotspots,
+            observations = lap1Observations,
+            rectifiedObservationIds = rectifiedObservationIds,
+        )
+        _lap2WeightStats.value = stats
+        _lap2WeightProgress.value = stats.percent
+    }
+
     /** "Still there" — keep the marker but stop prompting this session. */
     fun dismissExpectedObservation(observation: WorldObservation) {
         resolvedObservationIds.add(observation.id)
@@ -398,6 +422,8 @@ class RouteScanViewModel(
     fun rectifyObservation(observation: WorldObservation) {
         val scanId = _uiState.value.scanId ?: return
         resolvedObservationIds.add(observation.id)
+        rectifiedObservationIds.add(observation.id)
+        recomputeLap2Weight()
         _nearbyExpectedObservation.value = null
         _expectedObservations.value = _expectedObservations.value.filterNot { it.id == observation.id }
         scope.launch {
@@ -412,6 +438,8 @@ class RouteScanViewModel(
                 // Put it back so the worker can retry when they pass again.
                 DiagnosticsLog.error("rectify", "rectify of observation ${observation.id} failed (will re-prompt)", e)
                 resolvedObservationIds.remove(observation.id)
+                rectifiedObservationIds.remove(observation.id)
+                recomputeLap2Weight()
                 _expectedObservations.value = _expectedObservations.value + observation
             }
         }
@@ -466,6 +494,8 @@ class RouteScanViewModel(
                 ).joinToString(",")
                 _expectedObservations.value = apiClient.getMapObservations(bbox)
                     .filter { it.state == "dirty" }
+                lap1Observations = _expectedObservations.value
+                recomputeLap2Weight()
                 DiagnosticsLog.info("expected-obs", "${_expectedObservations.value.size} dirty observations near route")
             } catch (e: Exception) {
                 // Non-fatal: no expected-trash markers this session.
@@ -537,6 +567,10 @@ class RouteScanViewModel(
     private var allowUnpublishedRoute = false
     private var onBehalfOfWorkerId: Int? = null
 
+    // Assignment path: job to mark COMPLETED once the scan submits. Null on
+    // the free-scan path (route detail / admin proxy).
+    private var completeJobId: Int? = null
+
     // Coroutine jobs
     private var locationJob: Job? = null
     private var timerJob: Job? = null
@@ -545,9 +579,15 @@ class RouteScanViewModel(
 
     // ── Initialisation ───────────────────────────────────────────────
 
-    fun initForRoute(route: Route, allowUnpublished: Boolean = false, onBehalfOfWorkerId: Int? = null) {
+    fun initForRoute(
+        route: Route,
+        allowUnpublished: Boolean = false,
+        onBehalfOfWorkerId: Int? = null,
+        completeJobId: Int? = null,
+    ) {
         allowUnpublishedRoute = allowUnpublished
         this.onBehalfOfWorkerId = onBehalfOfWorkerId
+        this.completeJobId = completeJobId
         timerJob?.cancel()
         locationJob?.cancel()
         coverageJob?.cancel()
@@ -618,6 +658,9 @@ class RouteScanViewModel(
         lapSessionRecorder = newLapSessionRecorder()
         lapTransitionFired = false
         visitedProblemAreas.clear()
+        lap1Observations = emptyList()
+        rectifiedObservationIds.clear()
+        recomputeLap2Weight()
         seedFogFromServerCoverage(waypoints)
 
         // Observe coverage changes
@@ -768,6 +811,7 @@ class RouteScanViewModel(
                     currentSectionIndex = nextSectionIndex,
                     sectionPrompt = prompt,
                 )
+                recomputeLap2Weight()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to add hotspot: ${e.message}",
@@ -899,6 +943,7 @@ class RouteScanViewModel(
                     nearbyHotspot = null,
                     sectionPrompt = "Area approved clean. Continue to the next section.",
                 )
+                recomputeLap2Weight()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to confirm hotspot: ${e.message}",
@@ -932,6 +977,7 @@ class RouteScanViewModel(
                     nearbyHotspot = null,
                     sectionPrompt = "Section documented without cleanup. Continue to the next target.",
                 )
+                recomputeLap2Weight()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = "Failed to skip hotspot: ${e.message}",
@@ -983,6 +1029,21 @@ class RouteScanViewModel(
                     pointsAwarded = response.pointsAwarded,
                 )
                 uploadLapSession(lapKind = "clean")
+
+                // Assignment path: the submitted scan IS the job's work —
+                // flip the job to COMPLETED. Non-fatal on failure: the scan
+                // stays COMPLETE and an admin can complete the job manually.
+                completeJobId?.let { jobId ->
+                    try {
+                        apiClient.completeJob(jobId)
+                    } catch (e: Exception) {
+                        DiagnosticsLog.error(
+                            "scan-submit",
+                            "scan $scanId submitted but completing job $jobId failed",
+                            e,
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
                 _uiState.value = _uiState.value.copy(

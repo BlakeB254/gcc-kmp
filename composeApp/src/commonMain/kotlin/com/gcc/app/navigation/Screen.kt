@@ -97,6 +97,8 @@ sealed class Screen {
         val allowUnpublished: Boolean = false,
         val onBehalfOfWorkerId: Int? = null,
         val onBehalfOfWorkerName: String? = null,
+        /** Assignment path: job to mark COMPLETED when the scan submits. */
+        val completeJobId: Int? = null,
     ) : Screen()
 
     @Serializable

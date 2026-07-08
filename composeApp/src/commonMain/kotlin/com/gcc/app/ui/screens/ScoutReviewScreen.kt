@@ -23,6 +23,7 @@ import com.gcc.app.ui.components.GccButtonVariant
 import com.gcc.app.ui.components.GccCard
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
 import com.gcc.app.ui.utils.displayLabel
 import com.gcc.app.ui.utils.emoji
@@ -66,6 +67,12 @@ fun ScoutReviewScreen(
         uiState.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) }
     }
 
+    // Authored per-building inner-exclusion islands; the synthetic 8m inset
+    // may only render when the block has none.
+    val authoredInnerRings = remember(uiState.route) {
+        uiState.route?.innerBoundary.authoredInnerRings()
+    }
+
     // Map center: midpoint of route checkpoints, otherwise Chicago default
     val mapCenterLat = remember(effectiveCheckpoints) {
         effectiveCheckpoints
@@ -102,6 +109,8 @@ fun ScoutReviewScreen(
             enableGestures = false,
             routeCoordinates = routeCoords,
             bountyLocations = hotspotLocations,
+            innerBoundaryRings = authoredInnerRings,
+            innerBoundaryFallback = authoredInnerRings.isEmpty(),
             showBuildings = false,
             showGridLines = true,
             showControls = false,

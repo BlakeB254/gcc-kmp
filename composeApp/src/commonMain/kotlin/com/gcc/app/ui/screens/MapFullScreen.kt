@@ -26,7 +26,6 @@ import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.MyLocationButton
-import com.gcc.app.ui.map.NeedsScanningToggleChip
 import com.gcc.app.ui.map.PrecipitationLegend
 import com.gcc.app.ui.map.RouteOverlay
 import com.gcc.app.ui.map.findCommunityAreaForLocation
@@ -141,18 +140,13 @@ fun MapFullScreen(
     var selectedRecordIndex by remember { mutableStateOf<Int?>(null) }
 
     // Precipitation/heat + spot-density data always flows to GccMap now
-    // (Pillar 8 Task 2, Part D2 — owner amendment): the top-right "spots
-    // visibility" dot toggle that used to gate this was removed along with
-    // spot pins themselves (Part A) — a control whose stated purpose was
-    // "show/hide spots" no longer has anything spot-shaped to hide, and a
-    // state variable nothing can flip is dead weight. Heat legend visibility
-    // now follows zoom only (see the AnimatedVisibility below), same as it
-    // always did on the zoom axis.
+    // (Pillar 8 Task 2 Part D2 + owner direction 2026-07-07, converged in
+    // merge): the top-right "spots visibility" dot toggle was removed along
+    // with the spot pins themselves — heat is always on, and its legend
+    // visibility follows zoom only (see the AnimatedVisibility below).
 
-    // Explorer "Needs scanning" lens (P5) — Explorer-only, so it resets when
-    // leaving the mode (MapModeToggle's onModeChange below) rather than
-    // silently persisting a lens the My Area toggle chip can't reach.
-    var needsScanningLensOn by remember { mutableStateOf(false) }
+    // Needs-scanning lens UI removed (owner direction 2026-07-07); the P5
+    // layer stays dormant behind showNeedsScanningLens = false below.
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -593,7 +587,7 @@ fun MapFullScreen(
             zoom = mapZoom,
             currentLocation = currentLocation,
             coverageCells = coverageCells,
-            showNeedsScanningLens = mapMode == MapMode.EXPLORER && needsScanningLensOn,
+            showNeedsScanningLens = false,
             observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
             explorerAreaStates = explorerAreaStates,
@@ -706,27 +700,15 @@ fun MapFullScreen(
                         selectedSpot = null
                         selectedObservation = null
                         selectedRecordIndex = null
-                        needsScanningLensOn = false
                     },
                 )
 
-                // Explorer-only "Needs scanning" lens toggle (P5) — sits
-                // beside MapModeToggle, same chip family (MapModeToggle.kt).
-                if (mapMode == MapMode.EXPLORER) {
-                    NeedsScanningToggleChip(
-                        active = needsScanningLensOn,
-                        onToggle = { needsScanningLensOn = !needsScanningLensOn },
-                    )
-                }
-
-                // The top-right spots-visibility dot toggle ("●"/"○",
-                // FilledTonalIconButton wired to heatmapVisible) was removed
-                // here (Pillar 8 Task 2, Part D2 — owner amendment): spot
-                // pins are gone (Part A), so a toggle whose stated purpose
-                // was "show/hide spots" had nothing left to control. Heat/
-                // spot-density data now always flows to GccMap (see `spots =
-                // visibleSpots` above) — the heat legend's own visibility
-                // still follows zoom, just below.
+                // Owner direction 2026-07-07: no extra chrome beside the mode
+                // toggle — the needs-scanning lens chip (crashed in the field)
+                // and the heatmap dot toggle are both removed; the heatmap is
+                // always on and speaks through its own zoom gating. (Pillar 8
+                // Task 2 Part D2 removed the same dot toggle independently —
+                // spot pins are gone, so it had nothing left to control.)
             }
 
             // Precipitation intensity legend — right edge, vertically centered so it
@@ -754,9 +736,11 @@ fun MapFullScreen(
                     selectedCoverageCell == null,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
+                // Bottom-right, above the map controls — off the map's prime
+                // real estate (owner direction 2026-07-07: not mid-screen).
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 112.dp),
             ) {
                 ScanCoverageLegend()
             }

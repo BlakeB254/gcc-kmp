@@ -2,41 +2,42 @@ package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.gcc.app.platform.CameraManager
-import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.LocationProvider
-import com.gcc.app.ui.camera.PhotoComparisonSheet
 import com.gcc.app.ui.components.*
-import com.gcc.app.ui.map.ActiveJobOverlay
-import com.gcc.app.ui.map.CheckpointMarker
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
-import com.gcc.app.viewmodel.ActiveJobViewModel
-import com.gcc.app.viewmodel.CheckpointStatus
 import com.gcc.app.util.fmt
+import com.gcc.app.viewmodel.ActiveJobViewModel
 import com.gcc.shared.model.Job
 import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.TEST_ASSIGNMENT_START_WINDOW_MINUTES
 import com.gcc.shared.model.isTestAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import org.koin.compose.koinInject
 
+/**
+ * Assignment gate for an accepted job.
+ *
+ * Pre-start: GPS-verified "go to the route boundary" gate with the test-
+ * assignment countdown and decline option. Once the job starts, the worker is
+ * routed straight into the two-lap route scan (Scout & Clean) via
+ * [onStartScan] — there is no separate checkpoint flow; the scan IS the job.
+ */
 @Composable
 fun ActiveJobScreen(
     jobId: Int = 0,
@@ -48,30 +49,13 @@ fun ActiveJobScreen(
     val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
-    val cameraManager = remember { CameraManager() }
-    val captureScope = rememberCoroutineScope()
-    var beforePhoto by remember(uiState.currentCheckpointIndex) { mutableStateOf<CapturedPhoto?>(null) }
-    var afterPhoto by remember(uiState.currentCheckpointIndex) { mutableStateOf<CapturedPhoto?>(null) }
-    var photoCaptureError by remember(uiState.currentCheckpointIndex) { mutableStateOf<String?>(null) }
     var nowMillis by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
-    var shouldOpenRouteExperience by remember { mutableStateOf(false) }
 
-    fun captureEvidencePhoto(onCaptured: (CapturedPhoto) -> Unit) {
-        captureScope.launch {
-            photoCaptureError = null
-            val photo = try {
-                cameraManager.capturePhoto()
-            } catch (e: Exception) {
-                photoCaptureError = e.message ?: "Photo capture failed"
-                null
-            }
-            if (photo != null) {
-                onCaptured(photo)
-            } else if (photoCaptureError == null) {
-                photoCaptureError = "Camera unavailable. Try again or use a device with camera access."
-            }
-        }
-    }
+    // Auto-open the two-lap scan exactly once per visit to this screen: when
+    // the worker taps "Start Route", or when they arrive with a job that is
+    // already IN_PROGRESS. Saveable so returning (back) from the scan shows
+    // the in-progress panel instead of re-launching a fresh scan.
+    var scanAutoOpened by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(jobId, routeId) {
         viewModel.loadJob(jobId, routeId)
@@ -95,10 +79,10 @@ fun ActiveJobScreen(
         }
     }
 
-    LaunchedEffect(shouldOpenRouteExperience, uiState.jobStarted, uiState.route?.id) {
+    LaunchedEffect(uiState.jobStarted, uiState.jobCompleted, uiState.route?.id) {
         val routeIdToOpen = uiState.route?.id
-        if (shouldOpenRouteExperience && uiState.jobStarted && routeIdToOpen != null) {
-            shouldOpenRouteExperience = false
+        if (!scanAutoOpened && uiState.jobStarted && !uiState.jobCompleted && routeIdToOpen != null) {
+            scanAutoOpened = true
             onStartScan(routeIdToOpen)
         }
     }
@@ -113,14 +97,13 @@ fun ActiveJobScreen(
         return
     }
 
-    // All checkpoints completed — show job complete state
-    val allCheckpointsDone = uiState.checkpoints.isNotEmpty() &&
-        uiState.currentCheckpointIndex >= uiState.checkpoints.size
-
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Map section (55% height)
             Box(modifier = Modifier.weight(0.55f)) {
+                val authoredRings = remember(uiState.route) {
+                    uiState.route?.innerBoundary.authoredInnerRings()
+                }
                 GccMap(
                     modifier = Modifier.fillMaxSize(),
                     centerLat = uiState.currentLocation?.lat
@@ -132,15 +115,9 @@ fun ActiveJobScreen(
                     zoom = MapStyles.ZOOM_ACTIVE_JOB,
                     currentLocation = uiState.currentLocation,
                     routeCoordinates = uiState.route?.let { listOf(it.routePathCoordinates()) } ?: emptyList(),
-                ) {
-                    ActiveJobOverlay(
-                        checkpoints = uiState.checkpoints,
-                        currentLocation = uiState.currentLocation,
-                        currentCheckpointIndex = uiState.currentCheckpointIndex,
-                        isWithinGeofence = uiState.isWithinGeofence,
-                        modifier = Modifier.align(Alignment.TopStart),
-                    )
-                }
+                    innerBoundaryRings = authoredRings,
+                    innerBoundaryFallback = authoredRings.isEmpty(),
+                )
             }
 
             // Bottom panel
@@ -221,10 +198,7 @@ fun ActiveJobScreen(
 
                             GccButton(
                                 text = if (uiState.isWithinStartArea) "Start Route" else "Go to Location to Start",
-                                onClick = {
-                                    shouldOpenRouteExperience = true
-                                    viewModel.startJob()
-                                },
+                                onClick = { viewModel.startJob() },
                                 variant = GccButtonVariant.PRIMARY,
                                 enabled = !uiState.isStarting && canStartRoute,
                                 isLoading = uiState.isStarting,
@@ -240,13 +214,13 @@ fun ActiveJobScreen(
                                 )
                             }
                         }
-                    } else if (uiState.jobCompleted || allCheckpointsDone) {
+                    } else if (uiState.jobCompleted) {
                         // Job completed — show success
                         SectionHeader(title = "Route Complete!")
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            "All checkpoints verified. Great work!",
+                            "Both laps submitted. Great work!",
                             style = MaterialTheme.typography.bodyMedium,
                             color = GccGreen,
                         )
@@ -258,94 +232,46 @@ fun ActiveJobScreen(
                             variant = GccButtonVariant.PRIMARY,
                         )
                     } else {
-                        // Job in progress — show checkpoint checklist
-                        SectionHeader(title = "Checkpoint Checklist")
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // Job in progress — the work happens in the two-lap scan
+                        SectionHeader(title = "Route Scan In Progress")
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        // Admin skip-to-complete shortcut
+                        Text(
+                            "This assignment is completed with the two-lap scan: " +
+                                "Lap 1 documents the whole block, Lap 2 cleans and " +
+                                "re-scans everything you flagged.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        uiState.error?.let { error ->
+                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
                         if (uiState.isAdminMode) {
                             GccButton(
                                 text = "Admin: Skip to Complete",
-                                onClick = { viewModel.adminCompleteAll() },
+                                onClick = { viewModel.completeJob() },
                                 variant = GccButtonVariant.SECONDARY,
                                 isLoading = uiState.isCompleting,
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
 
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            itemsIndexed(
-                                uiState.checkpoints,
-                                key = { _, item -> item.checkpoint.sequenceOrder },
-                            ) { index, item ->
-                                ChecklistItem(
-                                    index = index + 1,
-                                    item = item,
-                                )
-                            }
-                        }
-
-                        // Action button for current checkpoint
-                        val currentCheckpoint = uiState.checkpoints.getOrNull(uiState.currentCheckpointIndex)
-                        val canComplete = uiState.isWithinGeofence || uiState.isAdminMode
-                        if (currentCheckpoint != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            if (currentCheckpoint.checkpoint.photoRequired && canComplete && !uiState.isAdminMode) {
-                                PhotoComparisonSheet(
-                                    checkpointName = currentCheckpoint.checkpoint.name,
-                                    hasBeforePhoto = beforePhoto != null,
-                                    hasAfterPhoto = afterPhoto != null,
-                                    onTakeBeforePhoto = {
-                                        captureEvidencePhoto { beforePhoto = it }
-                                    },
-                                    onTakeAfterPhoto = {
-                                        captureEvidencePhoto { afterPhoto = it }
-                                    },
-                                    onConfirmAndUpload = {
-                                        val before = beforePhoto ?: return@PhotoComparisonSheet
-                                        val after = afterPhoto ?: return@PhotoComparisonSheet
-                                        viewModel.submitCheckpointEvidence(
-                                            checkpointId = currentCheckpoint.checkpoint.id,
-                                            beforePhotoBytes = before.bytes,
-                                            afterPhotoBytes = after.bytes,
-                                        )
-                                    },
-                                    isUploading = uiState.isUploadingEvidence,
-                                )
-                            } else if (canComplete) {
-                                GccButton(
-                                    text = "Complete Checkpoint",
-                                    onClick = { viewModel.completeCurrentCheckpoint() },
-                                    variant = GccButtonVariant.PRIMARY,
-                                )
-                            } else {
-                                GccButton(
-                                    text = "Move closer to checkpoint (${currentCheckpoint.distanceMeters?.let { "${it.fmt(0)}m" } ?: "..."})",
-                                    onClick = {},
-                                    variant = GccButtonVariant.OUTLINED,
-                                    enabled = false,
-                                )
-                            }
-                        }
-
-                        uiState.error?.let { error ->
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
-                        }
-                        photoCaptureError?.let { error ->
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
-                        }
+                        GccButton(
+                            text = "Open Route Scan",
+                            onClick = { uiState.route?.id?.let(onStartScan) },
+                            variant = GccButtonVariant.PRIMARY,
+                            enabled = uiState.route != null,
+                        )
                     }
                 }
             }
         }
 
-        // Floating status card on top of map
+        // Floating route name card on top of map
         uiState.route?.let { route ->
             GccCard(
                 modifier = Modifier
@@ -359,7 +285,7 @@ fun ActiveJobScreen(
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 )
                 Text(
-                    "${uiState.currentCheckpointIndex}/${uiState.checkpoints.size} checkpoints",
+                    route.code,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                 )
@@ -382,7 +308,7 @@ fun ActiveJobScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "\u2190",
+                    "←",
                     style = MaterialTheme.typography.titleMedium,
                     color = GccGreenDark,
                 )
@@ -444,58 +370,5 @@ private fun TestAssignmentCountdownCard(
             color = if (isExpired) GccError else GccClaimed,
             modifier = Modifier.padding(12.dp),
         )
-    }
-}
-
-@Composable
-private fun ChecklistItem(
-    index: Int,
-    item: com.gcc.app.viewmodel.CheckpointUiItem,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CheckpointMarker(
-            sequenceNumber = index,
-            type = item.checkpoint.type,
-            status = item.status,
-            photoRequired = item.checkpoint.photoRequired,
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                item.checkpoint.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (item.status == CheckpointStatus.CURRENT) FontWeight.Bold
-                    else FontWeight.Normal,
-                ),
-                color = when (item.status) {
-                    CheckpointStatus.COMPLETED -> MapCheckpointCompleted
-                    CheckpointStatus.CURRENT -> MapCheckpointCurrent
-                    CheckpointStatus.UPCOMING -> TextSubtle
-                },
-            )
-            if (item.checkpoint.photoRequired) {
-                Text(
-                    "\uD83D\uDCF7 Photo required",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = GccGreen.copy(
-                        alpha = if (item.status == CheckpointStatus.UPCOMING) 0.4f else 1f,
-                    ),
-                )
-            }
-        }
-
-        item.distanceMeters?.let { dist ->
-            Text(
-                text = if (dist >= 1000) "${(dist / 1000).fmt(1)} km"
-                else "${dist.toInt()} m",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSubtle,
-            )
-        }
     }
 }

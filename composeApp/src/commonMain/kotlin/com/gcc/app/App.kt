@@ -100,7 +100,9 @@ fun App(component: RootComponent) {
                     jobId = screen.jobId,
                     routeId = screen.routeId,
                     onBack = component::navigateBack,
-                    onStartScan = { routeId -> component.navigateToRouteScan(routeId, allowUnpublished = true) },
+                    onStartScan = { routeId ->
+                        component.navigateToRouteScan(routeId, allowUnpublished = true, completeJobId = screen.jobId)
+                    },
                 )
                 is Screen.Profile -> ProfileScreen(
                     onBack = { component.switchToTab(Screen.Dashboard) },
@@ -251,6 +253,7 @@ fun App(component: RootComponent) {
                             allowUnpublished = screen.allowUnpublished,
                             onBehalfOfWorkerId = screen.onBehalfOfWorkerId,
                             onBehalfOfWorkerName = screen.onBehalfOfWorkerName,
+                            completeJobId = screen.completeJobId,
                             onBack = component::navigateBack,
                             onComplete = component::navigateBack,
                         )
