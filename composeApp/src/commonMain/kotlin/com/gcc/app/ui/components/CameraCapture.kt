@@ -82,6 +82,8 @@ fun CameraCapture(
     freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering: minimap double-ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
+    /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
+    visibilityBeam: List<Pair<Double, Double>> = emptyList(),
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -240,7 +242,7 @@ fun CameraCapture(
                         centerLng = currentLocation.lng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         currentLocation = currentLocation,
-                        gpsHeading = gpsHeading,
+                        gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
                     )
                     // Scan coverage + trash + ledger freshness, projected over
                     // the fixed-zoom minimap.
@@ -258,6 +260,7 @@ fun CameraCapture(
                         seenCellCenters = seenCellCenters,
                         freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
+                        visibilityBeam = visibilityBeam,
                     )
                     Box(
                         modifier = Modifier

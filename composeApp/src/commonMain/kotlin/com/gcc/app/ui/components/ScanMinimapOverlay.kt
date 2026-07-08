@@ -76,6 +76,10 @@ fun ScanMinimapOverlay(
     corridorCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Lap-2 target: the problem area currently being guided to. */
     guidanceTarget: Coordinates? = null,
+    /** Scene-aware flashlight beam (WS2): closed lat/lng ring from the user
+     *  dot out through the current tick's ray-hit envelope. Drawn UNDER the
+     *  coverage shading, over the veil. Empty = no beam this tick. */
+    visibilityBeam: List<Pair<Double, Double>> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     // Stable lattice anchor for the session-tier outline tracer (Pillar 7):
@@ -205,6 +209,20 @@ fun ScanMinimapOverlay(
         // 0.45 (corridor re-shade below dropped proportionally to keep the
         // same relative contrast between "assigned" and "everything else").
         drawPath(veil, color = VeilSlate.copy(alpha = 0.45f))
+
+        // Scene-aware flashlight beam (WS2): projected through the SAME
+        // zoom-biased toOffset as every other layer so it stays glued to the
+        // streets. Subtle fill (flashlight feel), no stroke; drawn under the
+        // coverage shading below.
+        if (visibilityBeam.size >= 3) {
+            val beamPath = Path()
+            visibilityBeam.forEachIndexed { index, (lat, lng) ->
+                val p = toOffset(lat, lng)
+                if (index == 0) beamPath.moveTo(p.x, p.y) else beamPath.lineTo(p.x, p.y)
+            }
+            beamPath.close()
+            drawPath(beamPath, color = GccGreen.copy(alpha = 0.12f))
+        }
 
         // Required corridor (block laps): punched out of the heavy veil, then
         // re-shaded lighter so the assignment reads as a distinct region.

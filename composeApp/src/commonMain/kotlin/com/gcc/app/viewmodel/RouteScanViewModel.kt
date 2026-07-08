@@ -189,6 +189,11 @@ class RouteScanViewModel(
     private val _isOutsideBoundary = MutableStateFlow(false)
     val isOutsideBoundary: StateFlow<Boolean> = _isOutsideBoundary.asStateFlow()
 
+    // WS2: scene-aware flashlight beam ring (lat, lng), recomputed each
+    // raycast tick — ArRouteScreen renders it on the route minimap.
+    private val _visibilityBeam = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val visibilityBeam: StateFlow<List<Pair<Double, Double>>> = _visibilityBeam.asStateFlow()
+
     // Block boundary polygon as (lat, lng) pairs, matching PolygonContainment's
     // pointInPolygon convention. Empty when no boundary is loaded for the route.
     private var boundaryPolygon: List<Pair<Double, Double>> = emptyList()
@@ -1280,6 +1285,8 @@ class RouteScanViewModel(
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
         coverageTracker.updateWithRaycastHits(hits, deepAllowed = deepAllowed)
         bestFanQualitySinceLastEvent = bestOf(bestFanQualitySinceLastEvent, fanHitQuality(hits))
+        val s = _uiState.value
+        _visibilityBeam.value = com.gcc.app.ui.map.visibilityBeamPolygon(s.currentLat, s.currentLng, hits)
     }
 
     // ── Internal: location tracking ──────────────────────────────────

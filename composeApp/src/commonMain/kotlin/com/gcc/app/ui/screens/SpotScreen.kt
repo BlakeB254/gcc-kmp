@@ -388,6 +388,9 @@ private fun CameraPhase(
     // listener so a <=4m hit only credits the deep CLOSE shade on a GOOD scan.
     val deepScanAllowed = remember { object { var value: Boolean = true } }
 
+    // WS2: latest scene-aware beam ring, recomputed each raycast tick.
+    var visibilityBeam by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
+
     // ── Background full-session capture (Pillar 1) ───────────────────
     // Every call here is wrapped so a capture failure only ever disables
     // capture for the session (captureRecState -> null) — it must never
@@ -465,6 +468,10 @@ private fun CameraPhase(
             val hitBest = fanHitQuality(hits)
             if (hitBest != null) {
                 bestFanQualitySinceLastEvent.value = bestOf(bestFanQualitySinceLastEvent.value, hitBest)
+            }
+            // WS2: redraw the flashlight beam from this tick's ray envelope.
+            locationProvider.currentLocation.value?.let { self ->
+                visibilityBeam = com.gcc.app.ui.map.visibilityBeamPolygon(self.lat, self.lng, hits)
             }
         }
         onDispose {
@@ -941,6 +948,7 @@ private fun CameraPhase(
                 seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
+                visibilityBeam = visibilityBeam,
                 environmentScanMode = true,
                 statusText = scanStatus,
                 arOverlay = arOverlay,
