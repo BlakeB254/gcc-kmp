@@ -1,6 +1,7 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -234,7 +235,10 @@ fun CameraCapture(
                         .padding(end = 12.dp, bottom = 96.dp)
                         .size(width = miniMapWidth, height = miniMapHeight)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.3f)),
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        // Subtle rim so the picture-in-picture map separates
+                        // from a busy camera feed instead of blurring into it.
+                        .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(12.dp)),
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
