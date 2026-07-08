@@ -183,8 +183,20 @@ actual class ArEnvScanOverlay actual constructor() {
     /** AR-local lattice phase (x, z) — null until origin AND geo-ref exist. */
     private var gridPhase: Pair<Double, Double>? = null
 
-    // Ground planes: anchor UUID -> rendered grid node.
-    private val planeNodes = mutableMapOf<String, SCNNode>()
+    // Ground plane: SINGLE grid node covering the monotonic union of every
+    // floor-classified ARPlaneAnchor's world AABB ever observed — never
+    // replaced, never shrunk. Mirrors GccArNative.swift's floorGrid
+    // (RealityKit path): this SceneKit fallback used to keep one grid PER
+    // anchor (planeNodes.getOrPut(id)), which stacked overlapping
+    // semi-transparent grids as ARKit split/merged/re-detected planes.
+    // Furniture ("rough") grids are no longer rendered either, matching the
+    // RealityKit path's "ONE ground grid" contract (spec system 2).
+    private var floorGridNode: SCNNode? = null
+    private var floorGridLastSize: Pair<Double, Double>? = null
+    private var floorMinX: Double? = null
+    private var floorMaxX: Double? = null
+    private var floorMinZ: Double? = null
+    private var floorMaxZ: Double? = null
     /** World Y of the lowest floor-classified plane (vector cells sit on it). */
     private var floorY: Float? = null
 
@@ -234,7 +246,6 @@ actual class ArEnvScanOverlay actual constructor() {
     private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
-    private var roughGridTexture: UIImage? = null
     private var vectorTexture: UIImage? = null
 
     /**
@@ -456,8 +467,13 @@ actual class ArEnvScanOverlay actual constructor() {
         sceneView?.session?.pause()
         // SceneKit fallback: release every node this overlay created — same
         // "don't just pause, tear down" principle as the native surface.
-        for ((_, node) in planeNodes) node.removeFromParentNode()
-        planeNodes.clear()
+        floorGridNode?.removeFromParentNode()
+        floorGridNode = null
+        floorGridLastSize = null
+        floorMinX = null
+        floorMaxX = null
+        floorMinZ = null
+        floorMaxZ = null
         for ((_, node) in vectorNodes) node.removeFromParentNode()
         vectorNodes.clear()
         for ((_, node) in fogNodes) node.removeFromParentNode()
@@ -1115,112 +1131,144 @@ actual class ArEnvScanOverlay actual constructor() {
 
     // ── Ground grid ──────────────────────────────────────────────────
 
-    /** Sync grid nodes with the frame's current plane anchors (main queue). */
+    /**
+     * Sync the ONE ground grid with the frame's current plane anchors (main
+     * queue). Mirrors GccArNative.swift's upsertPlane/floorGrid: every
+     * floor-classified ARPlaneAnchor folds its world AABB into a monotonic
+     * union (grows only, never shrinks) that backs a SINGLE SCNNode — this
+     * used to create one grid node per anchor (planeNodes.getOrPut(id)),
+     * which visibly stacked overlapping semi-transparent grids whenever
+     * ARKit split, merged or re-detected planes. Furniture ("rough") planes
+     * no longer render a grid at all, matching the RealityKit path's "ONE
+     * ground grid" contract (spec system 2).
+     */
     private fun updatePlaneNodes(frame: ARFrame) {
         val scene = sceneView?.scene ?: return
         val anchors = frame.anchors.filterIsInstance<ARPlaneAnchor>()
-        val seen = mutableSetOf<String>()
         var lowestFloor: Float? = null
+        var grew = false
 
         for (anchor in anchors) {
-            val id = anchor.identifier.UUIDString
-            seen.add(id)
             // KVO — raw ARPlaneClassification: none=0, floor=2 (unclassified
-            // horizontal planes count as ground; tables/seats get the faint grid).
+            // horizontal planes count as ground; only these feed the grid).
             val classification = try {
                 (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
             } catch (_: Throwable) { 0L }
             val isFloor = classification == 2L || classification == 0L
+            if (!isFloor) continue
             val center = vectorFloats(anchor.center)
             val extent = vectorFloats(anchor.extent)
             if (extent[0] < 0.4f || extent[2] < 0.4f) continue // ignore slivers
 
-            val node = planeNodes.getOrPut(id) {
-                makePlaneGridNode(isFloor).also { scene.rootNode.addChildNode(it) }
-            }
-            // Anchor pose: translation only — the grid renders WORLD-axis
-            // aligned (compass-true under gravityAndHeading) instead of at the
-            // anchor's arbitrary detected yaw, sized to the world-space AABB
-            // of the rotated extent, so grid lines run north/south–east/west
-            // and register with the north-up minimap lattice.
+            // World-aligned AABB: the anchor's yaw is arbitrary (whatever
+            // ARKit detected first), but AR world axes are compass-true —
+            // computing the world-space AABB of the rotated extent keeps the
+            // eventual grid lines north/south–east/west, registering with
+            // the north-up minimap lattice.
             val m = matrixFloats(anchor.transform)
-            node.position = SCNVector3Make(m[12], m[13], m[14])
-            // R_y(θ): col0=(cosθ,0,-sinθ) → θ = atan2(-m[2], m[0]).
             val yaw = kotlin.math.atan2(-m[2].toDouble(), m[0].toDouble())
-            node.eulerAngles = SCNVector3Make(0f, 0f, 0f)
             val cosYaw = kotlin.math.cos(yaw)
             val sinYaw = kotlin.math.sin(yaw)
             val ex = extent[0].toDouble()
             val ez = extent[2].toDouble()
             val worldW = abs(ex * cosYaw) + abs(ez * sinYaw)
             val worldD = abs(ex * sinYaw) + abs(ez * cosYaw)
-            val planeChild = node.childNodes.firstOrNull() as? SCNNode ?: continue
-            // Anchor-local center rotated into the world frame (the container
-            // no longer carries the anchor's rotation).
             val centerWorldX = m[12] + (center[0] * cosYaw + center[2] * sinYaw)
             val centerWorldZ = m[14] + (-center[0] * sinYaw + center[2] * cosYaw)
-            // Snap the plane's world AABB OUTWARD to the coverage lattice once
-            // its phase is known (tracker origin set + geo-ref paired): the
-            // plane edges — and every repeated 1.5m texture line between them —
-            // then land exactly on the 3m cell lattice the minimap draws.
-            // Before the phase exists, the raw AABB keeps today's behavior.
-            val tile = GRID_TILE_METERS.toDouble()
-            val phase = gridPhase
-            val (left, right) = if (phase != null) {
-                snapRangeToLattice(centerWorldX - worldW / 2, centerWorldX + worldW / 2, phase.first, tile)
-            } else (centerWorldX - worldW / 2) to (centerWorldX + worldW / 2)
-            val (nearZ, farZ) = if (phase != null) {
-                snapRangeToLattice(centerWorldZ - worldD / 2, centerWorldZ + worldD / 2, phase.second, tile)
-            } else (centerWorldZ - worldD / 2) to (centerWorldZ + worldD / 2)
-            planeChild.position = SCNVector3Make(
-                ((left + right) / 2 - m[12]).toFloat(),
-                center[1],
-                ((nearZ + farZ) / 2 - m[14]).toFloat(),
-            )
-            (planeChild.geometry as? SCNPlane)?.let { plane ->
-                plane.width = right - left
-                plane.height = farZ - nearZ
-                val uv = SCNMatrix4MakeScale(
-                    ((right - left) / tile).toFloat().coerceAtLeast(1f),
-                    ((farZ - nearZ) / tile).toFloat().coerceAtLeast(1f),
-                    1f,
-                )
-                plane.firstMaterial?.diffuse?.contentsTransform = uv
-                plane.firstMaterial?.emission?.contentsTransform = uv
-            }
-            if (isFloor) {
-                val y = m[13] + center[1]
-                if (lowestFloor == null || y < lowestFloor) lowestFloor = y
-            }
-        }
+            val planeMinX = centerWorldX - worldW / 2
+            val planeMaxX = centerWorldX + worldW / 2
+            val planeMinZ = centerWorldZ - worldD / 2
+            val planeMaxZ = centerWorldZ + worldD / 2
 
-        // Planes ARKit merged/removed.
-        for ((id, node) in planeNodes.toMap()) {
-            if (id !in seen) {
-                node.removeFromParentNode()
-                planeNodes.remove(id)
-            }
+            // Fold this plane's AABB into the ONE grid's monotonic union —
+            // the union only ever grows, matching "stability beats accuracy
+            // for the grid": ARKit merging/re-splitting/removing a
+            // contributing anchor must never make the single grid entity
+            // flicker, shrink or spawn a sibling.
+            if (floorMinX == null || planeMinX < floorMinX!!) { floorMinX = planeMinX; grew = true }
+            if (floorMaxX == null || planeMaxX > floorMaxX!!) { floorMaxX = planeMaxX; grew = true }
+            if (floorMinZ == null || planeMinZ < floorMinZ!!) { floorMinZ = planeMinZ; grew = true }
+            if (floorMaxZ == null || planeMaxZ > floorMaxZ!!) { floorMaxZ = planeMaxZ; grew = true }
+
+            val y = m[13] + center[1]
+            if (lowestFloor == null || y < lowestFloor!!) lowestFloor = y
         }
 
         if (lowestFloor != null) floorY = lowestFloor
-        val detected = lowestFloor != null || planeNodes.isNotEmpty()
+
+        val existing = floorGridNode
+        if (existing == null) {
+            if (floorMinX == null) {
+                renderVectorCells()
+                return
+            }
+            val newNode = makePlaneGridNode().also { scene.rootNode.addChildNode(it) }
+            floorGridNode = newNode
+            applyFloorGridGeometry(newNode)
+        } else if (grew) {
+            applyFloorGridGeometry(existing)
+        }
+
+        val detected = floorGridNode != null
         if (_groundDetected.value != detected) {
             _groundDetected.value = detected
-            if (detected) DiagnosticsLog.info("env-ar", "ground recognized — grid live (${planeNodes.size} planes)")
+            if (detected) DiagnosticsLog.info("env-ar", "ground recognized — grid live")
         }
         renderVectorCells()
     }
 
-    private fun makePlaneGridNode(isFloor: Boolean): SCNNode {
-        val texture = if (isFloor) {
-            floorGridTexture ?: makeGridTexture(
-                UIColor.colorWithRed(0.20, 0.85, 0.45, 0.9), lineWidth = 3.0,
-            ).also { floorGridTexture = it }
-        } else {
-            roughGridTexture ?: makeGridTexture(
-                UIColor.colorWithRed(1.0, 1.0, 1.0, 0.4), lineWidth = 2.0,
-            ).also { roughGridTexture = it }
+    /**
+     * (Re)build the ONE grid's render geometry from the monotonic union AABB
+     * — snapped OUTWARD to the coverage lattice once its phase is known
+     * (tracker origin set + geo-ref paired), so the grid edges — and every
+     * repeated [GRID_TILE_METERS] texture line between them — land exactly
+     * on the 3m cell lattice the minimap draws. Mirrors
+     * GccArNative.swift's applyPlaneGeometry. Called on union growth; mesh
+     * width/height writes are skipped when the snapped size is unchanged.
+     */
+    private fun applyFloorGridGeometry(node: SCNNode) {
+        val rawMinX = floorMinX ?: return
+        val rawMaxX = floorMaxX ?: return
+        val rawMinZ = floorMinZ ?: return
+        val rawMaxZ = floorMaxZ ?: return
+        val tile = GRID_TILE_METERS.toDouble()
+        val phase = gridPhase
+        val (left, right) = if (phase != null) {
+            snapRangeToLattice(rawMinX, rawMaxX, phase.first, tile)
+        } else rawMinX to rawMaxX
+        val (nearZ, farZ) = if (phase != null) {
+            snapRangeToLattice(rawMinZ, rawMaxZ, phase.second, tile)
+        } else rawMinZ to rawMaxZ
+
+        val width = right - left
+        val depth = farZ - nearZ
+        val y = floorY ?: (refY - GROUND_OFFSET_METERS)
+        node.position = SCNVector3Make(((left + right) / 2).toFloat(), y, ((nearZ + farZ) / 2).toFloat())
+
+        val planeChild = node.childNodes.firstOrNull() as? SCNNode ?: return
+        val size = width to depth
+        if (floorGridLastSize != size) {
+            (planeChild.geometry as? SCNPlane)?.let { plane ->
+                plane.width = width
+                plane.height = depth
+            }
+            floorGridLastSize = size
         }
+        (planeChild.geometry as? SCNPlane)?.let { plane ->
+            val uv = SCNMatrix4MakeScale(
+                (width / tile).toFloat().coerceAtLeast(1f),
+                (depth / tile).toFloat().coerceAtLeast(1f),
+                1f,
+            )
+            plane.firstMaterial?.diffuse?.contentsTransform = uv
+            plane.firstMaterial?.emission?.contentsTransform = uv
+        }
+    }
+
+    private fun makePlaneGridNode(): SCNNode {
+        val texture = floorGridTexture ?: makeGridTexture(
+            UIColor.colorWithRed(0.20, 0.85, 0.45, 0.9), lineWidth = 3.0,
+        ).also { floorGridTexture = it }
         val plane = SCNPlane.planeWithWidth(1.0, 1.0)
         val material = SCNMaterial()
         material.diffuse.contents = texture
@@ -1231,7 +1279,7 @@ actual class ArEnvScanOverlay actual constructor() {
         material.emission.wrapT = platform.SceneKit.SCNWrapModeRepeat
         material.doubleSided = true
         material.writesToDepthBuffer = false
-        material.transparency = if (isFloor) 0.55 else 0.3
+        material.transparency = 0.55
         plane.materials = listOf(material)
 
         val planeChild = SCNNode.nodeWithGeometry(plane)
