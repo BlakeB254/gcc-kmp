@@ -628,6 +628,15 @@ private fun CameraPhase(
             anchor.lng - pad, anchor.lat - pad,
             anchor.lng + pad, anchor.lat + pad,
         ).joinToString(",")
+        // Ledger presence lifts fog regardless of freshness or quality tier
+        // (owner law) — seed BOTH fresh and stale cells as fog-exempt so the
+        // AR/minimap fog reads "never scanned in the system", not "never
+        // scanned this session". Fog-exempt only: seeded cells do NOT count
+        // toward this session's own coveragePercent. Shared by the live-fetch
+        // and cache-fallback branches below.
+        fun seedFogFromLedger(cells: List<MapCoverageCell>) {
+            tracker.seedScannedCells(cells.mapNotNull { tracker.cellForLatLng(it.lat, it.lng) }.toSet())
+        }
         var fetchedCells: List<MapCoverageCell>? = null
         try {
             val serverCells = apiClient.getMapCoverage(bbox).cells
@@ -636,12 +645,7 @@ private fun CameraPhase(
             freshCells = serverCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
             freshCloseCells = serverCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
             fogCells = neverScannedGrid(anchor, serverCells)
-            // Ledger presence lifts fog regardless of freshness or quality tier
-            // (owner law) — seed BOTH fresh and stale cells as fog-exempt so
-            // the AR/minimap fog reads "never scanned in the system", not
-            // "never scanned this session". Fog-exempt only: seeded cells do
-            // NOT count toward this session's own coveragePercent.
-            tracker.seedScannedCells(serverCells.mapNotNull { tracker.cellForLatLng(it.lat, it.lng) }.toSet())
+            seedFogFromLedger(serverCells)
             DiagnosticsLog.info(
                 "env-scan",
                 "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
@@ -658,9 +662,7 @@ private fun CameraPhase(
                 freshCells = cached.coverageCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
                 freshCloseCells = cached.coverageCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
                 fogCells = neverScannedGrid(anchor, cached.coverageCells)
-                tracker.seedScannedCells(
-                    cached.coverageCells.mapNotNull { tracker.cellForLatLng(it.lat, it.lng) }.toSet(),
-                )
+                seedFogFromLedger(cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
         }
