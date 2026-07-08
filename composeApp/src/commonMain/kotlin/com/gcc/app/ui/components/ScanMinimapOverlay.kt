@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -220,23 +221,46 @@ fun ScanMinimapOverlay(
 
         // Scene-aware flashlight beam (WS2): projected through the SAME
         // zoom-biased toOffset as every other layer so it stays glued to the
-        // streets. Subtle fill (flashlight feel), no stroke; drawn under the
-        // coverage shading below.
+        // streets. Filled with a RADIAL GRADIENT from the user dot — bright at
+        // the origin, fading to nothing at the reach — so it reads as an actual
+        // flashlight beam (Blake's "flashlight effect") instead of a flat blob.
         if (visibilityBeam.size >= 3) {
+            val beamCenter = Offset(size.width / 2f, size.height / 2f)
             val beamPath = Path()
+            var maxReachPx = 0f
             visibilityBeam.forEachIndexed { index, (lat, lng) ->
                 val p = toOffset(lat, lng)
                 if (index == 0) beamPath.moveTo(p.x, p.y) else beamPath.lineTo(p.x, p.y)
+                val dx = p.x - beamCenter.x
+                val dy = p.y - beamCenter.y
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                if (d > maxReachPx) maxReachPx = d
             }
             beamPath.close()
-            drawPath(beamPath, color = GccGreen.copy(alpha = 0.12f))
+            if (maxReachPx > 1f) {
+                drawPath(
+                    beamPath,
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GccGreen.copy(alpha = 0.34f),
+                            GccGreen.copy(alpha = 0.12f),
+                            GccGreen.copy(alpha = 0.0f),
+                        ),
+                        center = beamCenter,
+                        radius = maxReachPx,
+                    ),
+                )
+            }
         }
 
         // WS4 "paint the town": corridor + ledger tiers render as merged
         // organic outlines (no per-cell rects, no interior grid lines), at the
         // SAME colors/alphas as before.
-        // Required corridor (block laps): re-shaded lighter over the veil.
-        drawPath(corridorOutline, color = VeilSlate.copy(alpha = 0.28f))
+        // Required corridor (block laps): your assigned block. With the veil
+        // now lighter (0.30), a 0.28 re-shade blended into the fog — dropped to
+        // 0.10 so the corridor reads as a distinctly LIGHTER "your zone" cut
+        // out of the surrounding fog (block-route legibility).
+        drawPath(corridorOutline, color = VeilSlate.copy(alpha = 0.10f))
         // Ledger-fresh: grazed = whisper (needs detail), close = established
         // faint green (already well-scanned by the community).
         drawPath(freshOutline, color = GccGreen.copy(alpha = 0.07f))
