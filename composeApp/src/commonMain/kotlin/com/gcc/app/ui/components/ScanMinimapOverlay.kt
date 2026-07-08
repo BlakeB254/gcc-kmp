@@ -108,6 +108,23 @@ fun ScanMinimapOverlay(
         quantizeAndTraceOutlines(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     }
 
+    // WS4: the coarser ledger tiers (server-fresh / fresh-close / stale) and the
+    // corridor now trace through the SAME marching-squares engine as the session
+    // tiers, so they merge like paint with no interior grid lines. Memoized on
+    // their cell sets off the stable lattice anchor (matches the session hoist).
+    val corridorRings = remember(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        quantizeAndTraceOutlines(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+    val freshRings = remember(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        quantizeAndTraceOutlines(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+    val freshCloseRings = remember(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        quantizeAndTraceOutlines(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+    val staleRings = remember(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
+        quantizeAndTraceOutlines(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
         // DrawScope works in physical pixels; the basemap camera zoom is
@@ -135,20 +152,6 @@ fun ScanMinimapOverlay(
             drawPath(path, color = color, style = Stroke(width = widthPx))
         }
 
-
-        fun cellRect(lat: Double, lng: Double, sideMeters: Double, overscan: Float): Rect? {
-            // Overscan slightly so adjacent cells fuse without hairline seams.
-            val side = metersToPixels(sideMeters, centerLat, overlayZoom).coerceAtLeast(2f) * overscan
-            val c = toOffset(lat, lng)
-            if (c.x < -side || c.x > size.width + side) return null
-            if (c.y < -side || c.y > size.height + side) return null
-            return Rect(Offset(c.x - side / 2f, c.y - side / 2f), Size(side, side))
-        }
-
-        fun drawCell(lat: Double, lng: Double, sideMeters: Double, color: Color, overscan: Float = 1f) {
-            val r = cellRect(lat, lng, sideMeters, overscan) ?: return
-            drawRect(color = color, topLeft = r.topLeft, size = r.size)
-        }
 
         // ── Organic session-tier outlines (Pillar 7) ──────────────────
         // Session-credited cells (this scan's own GRAZED/CLOSE/SEEN sets)
@@ -180,6 +183,11 @@ fun ScanMinimapOverlay(
         // ground still fogged, spec Pillar 7) — only used for the faint wash
         // drawn on TOP of the veil below.
         val seenOutline = ringsToPath(seenRings)
+        // WS4: coarse ledger/corridor tiers as merged organic outlines too.
+        val corridorOutline = ringsToPath(corridorRings)
+        val freshOutline = ringsToPath(freshRings)
+        val freshCloseOutline = ringsToPath(freshCloseRings)
+        val staleOutline = ringsToPath(staleRings)
 
         // ── Fog-of-war veil ──────────────────────────────────────────
         // The WHOLE minimap starts under one heavy dark veil: everything you
@@ -192,12 +200,9 @@ fun ScanMinimapOverlay(
         // (corridor and session cells share locations; overscanned neighbors
         // overlap at edges — even-odd parity would re-fill those overlaps).
         val holes = Path()
-        fun punch(lat: Double, lng: Double, sideMeters: Double, overscan: Float) {
-            cellRect(lat, lng, sideMeters, overscan)?.let { holes.addRect(it) }
-        }
-        for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
-        for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
-        for ((lat, lng) in freshCloseCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
+        holes.addPath(corridorOutline)
+        holes.addPath(freshOutline)
+        holes.addPath(freshCloseOutline)
         holes.addPath(scanOutline)
         val veil = Path.combine(
             PathOperation.Difference,
@@ -224,26 +229,17 @@ fun ScanMinimapOverlay(
             drawPath(beamPath, color = GccGreen.copy(alpha = 0.12f))
         }
 
-        // Required corridor (block laps): punched out of the heavy veil, then
-        // re-shaded lighter so the assignment reads as a distinct region.
-        for ((lat, lng) in corridorCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.28f), overscan = 1.15f)
-        }
-
-        // Ledger-fresh cells: grazed = whisper (needs detail), close = the
-        // established faint green (already well-scanned by the community).
-        for ((lat, lng) in freshCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.07f), overscan = 1.1f)
-        }
-        for ((lat, lng) in freshCloseCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.16f), overscan = 1.1f)
-        }
-
-        // Stale cells: scanned before, worth re-scanning — amber glow over
-        // the veil.
-        for ((lat, lng) in staleCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
-        }
+        // WS4 "paint the town": corridor + ledger tiers render as merged
+        // organic outlines (no per-cell rects, no interior grid lines), at the
+        // SAME colors/alphas as before.
+        // Required corridor (block laps): re-shaded lighter over the veil.
+        drawPath(corridorOutline, color = VeilSlate.copy(alpha = 0.28f))
+        // Ledger-fresh: grazed = whisper (needs detail), close = established
+        // faint green (already well-scanned by the community).
+        drawPath(freshOutline, color = GccGreen.copy(alpha = 0.07f))
+        drawPath(freshCloseOutline, color = GccGreen.copy(alpha = 0.16f))
+        // Stale: scanned before, worth re-scanning — amber glow over the veil.
+        drawPath(staleOutline, color = StaleAmber.copy(alpha = 0.45f))
 
         // This session, three shades (Pillar 7 rendering hierarchy: SEEN
         // faintest → GRAZED light → CLOSE vivid) — every credited cell gets

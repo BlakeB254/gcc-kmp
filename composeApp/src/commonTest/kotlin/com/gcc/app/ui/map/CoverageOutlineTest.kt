@@ -30,6 +30,24 @@ class CoverageOutlineTest {
     }
 
     @Test
+    fun adjacentFreshnessCellsMergeIntoOneRingNoInteriorEdge() {
+        // Two edge-adjacent cells on a 10m lattice → a single merged ring (the
+        // "paint, not graph paper" invariant the minimap freshness layers now
+        // rely on — Plan B Task 5). One ring means no interior seam.
+        val lngPerMeter = 1.0 / (111_320.0 * cos(anchorLat * PI / 180.0))
+        val a = anchorLat to anchorLng
+        val b = anchorLat to (anchorLng + 10.0 * lngPerMeter) // ~10m east = next cell
+        val rings = quantizeAndTraceOutlines(
+            listOf(a, b),
+            cellSizeMeters = 10.0,
+            anchorLat = anchorLat,
+            anchorLng = anchorLng,
+        )
+        assertEquals(1, rings.size)
+        assertTrue(isClosed(rings.first()))
+    }
+
+    @Test
     fun singleCellProducesOneClosedRing() {
         val rings = traceCoverageOutlines(setOf(0 to 0), ::cellCenter, cellSizeMeters)
         assertEquals(1, rings.size)
