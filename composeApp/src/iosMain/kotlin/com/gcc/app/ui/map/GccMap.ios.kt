@@ -139,7 +139,11 @@ actual fun GccMap(
     // coverage cell into marching-squares rings on every fractional pinch
     // tick would be expensive Compose churn for a purely cosmetic mode.
     // Deferred: reacting to live pinch-zoom crossing the threshold.
-    val useOutlineCoverage = zoom >= MapStyles.ZOOM_STREET
+    // WS4 "paint the town": merged organic outlines are the ONLY coverage path
+    // now (was zoom-gated at ZOOM_STREET, leaving squares at wider zooms). Cell
+    // taps resolve via the map-level lat/lng->cell hit-test (Plan B Task 7), so
+    // losing per-cell cellIds on the fill features is fine.
+    val useOutlineCoverage = true
     val coverageStateJsons = remember(coverageCells, spots, useOutlineCoverage) {
         if (coverageCells.isEmpty()) null
         else {
