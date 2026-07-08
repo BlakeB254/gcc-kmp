@@ -1245,6 +1245,25 @@ class GccApiClient(
         return response.body<MapCoverageResponse>()
     }
 
+    /**
+     * Real OSM building footprints intersecting [bbox]
+     * ("minLng,minLat,maxLng,maxLat") — backs the indoor gate's map-containment
+     * signal. Server-side lazy-fetches from Overpass + Neon cache; each ring is
+     * GeoJSON [lng,lat]. Callers treat failure as "no footprints" (fall back to
+     * the hardcoded rectangles) — never block a scan on this.
+     */
+    suspend fun getBuildingFootprints(bbox: String): List<BuildingPolygon> {
+        val response = httpClient.get("$baseUrl/api/map/buildings") {
+            parameter("bbox", bbox)
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<BuildingFootprintsResponse>().buildings
+    }
+
     // ── Cleanliness Analytics ─────────────────────────────────────
 
     suspend fun getCityCleanlinessOverview(): CityCleanlinessOverview =
