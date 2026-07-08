@@ -1,5 +1,7 @@
 package com.gcc.app.ui.map
 
+import com.gcc.shared.geo.pointInGeoJsonRing
+
 /**
  * A rectangular building footprint defined by lat/lng bounds.
  *
@@ -198,11 +200,52 @@ val northLawndaleBuildings = listOf(
 
 
 /**
- * True when (lat, lng) falls inside any mapped building footprint — the same
- * rectangles the map renders, so "my dot is in the middle of a building" and
- * the OutdoorGate's map evidence can never disagree.
+ * In-memory registry of real building footprints near the user, keyed by the
+ * ~1.1km tile they were fetched for. Populated by
+ * [com.gcc.app.platform.BuildingFootprintLoader] from the SQLDelight cache +
+ * `GET /api/map/buildings`. Rings are GeoJSON linear rings ([lng,lat]).
+ *
+ * Keyed by tile so a user near a tile boundary keeps footprints from both
+ * tiles live; [current] flattens all registered tiles. Thread-safe: the loader
+ * writes on a background coroutine while the gate reads on the location flow.
  */
-fun isInsideMappedBuilding(lat: Double, lng: Double): Boolean =
-    northLawndaleBuildings.any { b ->
+object MappedBuildingRegistry {
+    private val ringsByTile = mutableMapOf<String, List<List<List<Double>>>>()
+    private var flattened: List<List<List<Double>>> = emptyList()
+
+    @Synchronized
+    fun setRingsForTile(tileKey: String, rings: List<List<List<Double>>>) {
+        ringsByTile[tileKey] = rings
+        flattened = ringsByTile.values.flatten()
+    }
+
+    @Synchronized
+    fun clear() {
+        ringsByTile.clear()
+        flattened = emptyList()
+    }
+
+    fun current(): List<List<List<Double>>> = flattened
+    fun hasFootprints(): Boolean = flattened.isNotEmpty()
+}
+
+/**
+ * True when (lat, lng) falls inside a mapped building.
+ *
+ * When real footprints have been cached/fetched for the area
+ * ([MappedBuildingRegistry] non-empty), this is a point-in-polygon test over
+ * those OSM building rings. When nothing is cached yet (offline, or Overpass
+ * unreachable), it falls back to the hardcoded North Lawndale rectangles so
+ * the gate never regresses vs. the old behavior. Either way, "my dot is in the
+ * middle of a building" and the OutdoorGate's map evidence can never disagree.
+ */
+fun isInsideMappedBuilding(lat: Double, lng: Double): Boolean {
+    val rings = MappedBuildingRegistry.current()
+    if (rings.isNotEmpty()) {
+        return rings.any { ring -> pointInGeoJsonRing(lng = lng, lat = lat, ring = ring) }
+    }
+    // Offline fallback: hardcoded North Lawndale rectangles.
+    return northLawndaleBuildings.any { b ->
         lat <= b.north && lat >= b.south && lng <= b.east && lng >= b.west
     }
+}
