@@ -390,6 +390,10 @@ private fun CameraPhase(
 
     // WS2: latest scene-aware beam ring, recomputed each raycast tick.
     var visibilityBeam by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
+    // Hide the beam whenever capture isn't allowed (INDOOR / confirming) — the
+    // listener early-returns in that state and would otherwise leave a stale
+    // beam frozen on the minimap (spec: cone/beam hidden inside a building).
+    LaunchedEffect(captureAllowed) { if (!captureAllowed) visibilityBeam = emptyList() }
 
     // ── Background full-session capture (Pillar 1) ───────────────────
     // Every call here is wrapped so a capture failure only ever disables
@@ -470,8 +474,12 @@ private fun CameraPhase(
                 bestFanQualitySinceLastEvent.value = bestOf(bestFanQualitySinceLastEvent.value, hitBest)
             }
             // WS2: redraw the flashlight beam from this tick's ray envelope.
+            // Only overwrite when this tick actually produced a beam — a
+            // transient no-hit tick (camera aimed at sky) must NOT blank the
+            // beam, or it flickers between ticks.
             locationProvider.currentLocation.value?.let { self ->
-                visibilityBeam = com.gcc.app.ui.map.visibilityBeamPolygon(self.lat, self.lng, hits)
+                val beam = com.gcc.app.ui.map.visibilityBeamPolygon(self.lat, self.lng, hits)
+                if (beam.isNotEmpty()) visibilityBeam = beam
             }
         }
         onDispose {

@@ -1285,8 +1285,11 @@ class RouteScanViewModel(
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
         coverageTracker.updateWithRaycastHits(hits, deepAllowed = deepAllowed)
         bestFanQualitySinceLastEvent = bestOf(bestFanQualitySinceLastEvent, fanHitQuality(hits))
+        // Only overwrite the beam when this tick produced one — a transient
+        // no-hit tick must not blank it (flicker).
         val s = _uiState.value
-        _visibilityBeam.value = com.gcc.app.ui.map.visibilityBeamPolygon(s.currentLat, s.currentLng, hits)
+        val beam = com.gcc.app.ui.map.visibilityBeamPolygon(s.currentLat, s.currentLng, hits)
+        if (beam.isNotEmpty()) _visibilityBeam.value = beam
     }
 
     // ── Internal: location tracking ──────────────────────────────────
@@ -1314,6 +1317,10 @@ class RouteScanViewModel(
                 if (gateState != lastState) {
                     DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
                     lastState = gateState
+                    // Hide the flashlight beam whenever we're not OUTDOOR — it
+                    // must not linger frozen on the minimap indoors (spec:
+                    // beam hidden inside a building).
+                    if (gateState != OutdoorState.OUTDOOR) _visibilityBeam.value = emptyList()
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     // Audit trail rides with whichever lap recorder is current
                     // at event time — a lap boundary may have swapped it out.

@@ -320,6 +320,11 @@ fun ScanMinimapOverlay(
         // so the user is always exactly at the canvas center — no projection
         // needed. Replaces reliance on any MapLibre location puck underneath.
         val selfCenter = Offset(size.width / 2f, size.height / 2f)
+        // Dark backing disc first: the dot's white ring + green core would
+        // otherwise sit green-on-green over CLOSE-scanned tiles (0.65 green) and
+        // the green beam, washing out. A translucent dark pad guarantees the
+        // dot reads on ANY underlying layer.
+        drawCircle(color = Color.Black.copy(alpha = 0.38f), radius = 7.dp.toPx(), center = selfCenter)
         drawCircle(color = Color.White, radius = 5.dp.toPx(), center = selfCenter, style = Stroke(width = 2.dp.toPx()))
         drawCircle(color = GccGreen, radius = 3.5.dp.toPx(), center = selfCenter)
     }
