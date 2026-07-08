@@ -35,6 +35,7 @@ import com.gcc.app.ui.map.mergeObservations
 import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.app.ui.components.GccBottomNavBar
 import com.gcc.app.ui.components.GccButton
 import com.gcc.app.ui.components.GccButtonVariant
@@ -133,20 +134,24 @@ fun MapFullScreen(
     // Selected spot for info card
     var selectedSpot by remember { mutableStateOf<CommunityReport?>(null) }
 
+    // Selected litter-footprint observation for its detail card (Pillar 8
+    // Task 2, Part C) — same pattern as selectedSpot/selectedCoverageCell.
+    var selectedObservation by remember { mutableStateOf<com.gcc.shared.model.WorldObservation?>(null) }
+
     // Camera override for zooming to a tapped spot/bounty/route
     var overrideCenterLat by remember { mutableStateOf<Double?>(null) }
     var overrideCenterLng by remember { mutableStateOf<Double?>(null) }
     var overrideZoom by remember { mutableStateOf<Double?>(null) }
     var selectedRecordIndex by remember { mutableStateOf<Int?>(null) }
 
-    // Precipitation overlay visibility (legend + heat + scrim + dots)
-    // Heatmap is always on (owner direction 2026-07-07; zoom gating governs visibility).
-    val heatmapVisible = true
+    // Precipitation/heat + spot-density data always flows to GccMap now
+    // (Pillar 8 Task 2 Part D2 + owner direction 2026-07-07, converged in
+    // merge): the top-right "spots visibility" dot toggle was removed along
+    // with the spot pins themselves — heat is always on, and its legend
+    // visibility follows zoom only (see the AnimatedVisibility below).
 
-    // Explorer "Needs scanning" lens (P5) — Explorer-only, so it resets when
-    // leaving the mode (MapModeToggle's onModeChange below) rather than
-    // silently persisting a lens the My Area toggle chip can't reach.
-    // needs-scanning lens UI removed (owner direction 2026-07-07); layer stays dormant.
+    // Needs-scanning lens UI removed (owner direction 2026-07-07); the P5
+    // layer stays dormant behind showNeedsScanningLens = false below.
 
     // Selected route for zoom-to-fit before navigation
     var selectedRouteForZoom by remember { mutableStateOf<com.gcc.shared.model.Route?>(null) }
@@ -629,6 +634,7 @@ fun MapFullScreen(
                 val spot = (uiState.spots).find { it.id == spotId }
                 if (spot != null) {
                     selectedSpot = spot
+                    selectedObservation = null
                     selectedRecordIndex = null
                     overrideCenterLat = spot.coordinates.lat
                     overrideCenterLng = spot.coordinates.lng
@@ -638,14 +644,24 @@ fun MapFullScreen(
             onBountyTap = { bountyId ->
                 onBountyClick(bountyId)
             },
+            onObservationTap = { obsId ->
+                selectedObservation = mapObservations.find { it.id == obsId }
+                if (selectedObservation != null) {
+                    selectedSpot = null
+                    selectedCoverageCell = null
+                }
+            },
             cameraBounds = null,
             bounties = visibleBounties,
-            spots = if (heatmapVisible) visibleSpots else emptyList(),
+            spots = visibleSpots,
             mapMode = mapMode,
             onZoomChanged = { currentMapZoom = it },
             onCoverageCellTap = { cellId ->
                 selectedCoverageCell = coverageCells.find { it.locationCellId == cellId }
-                if (selectedCoverageCell != null) selectedSpot = null
+                if (selectedCoverageCell != null) {
+                    selectedSpot = null
+                    selectedObservation = null
+                }
             },
             affectedBlocks = affectedState.blocks,
             onAffectedBlockTap = { blockId ->
@@ -694,6 +710,7 @@ fun MapFullScreen(
                         overrideCenterLng = null
                         overrideZoom = null
                         selectedSpot = null
+                        selectedObservation = null
                         selectedRecordIndex = null
                     },
                 )
@@ -701,7 +718,9 @@ fun MapFullScreen(
                 // Owner direction 2026-07-07: no extra chrome beside the mode
                 // toggle — the needs-scanning lens chip (crashed in the field)
                 // and the heatmap dot toggle are both removed; the heatmap is
-                // always on and speaks through its own zoom gating.
+                // always on and speaks through its own zoom gating. (Pillar 8
+                // Task 2 Part D2 removed the same dot toggle independently —
+                // spot pins are gone, so it had nothing left to control.)
             }
 
             // Precipitation intensity legend — right edge, vertically centered so it
@@ -710,8 +729,7 @@ fun MapFullScreen(
             // street zoom the pins speak for themselves and the legend would
             // label a layer that isn't on screen.
             androidx.compose.animation.AnimatedVisibility(
-                visible = heatmapVisible &&
-                    currentMapZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM,
+                visible = currentMapZoom < MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
                 modifier = Modifier
@@ -869,6 +887,18 @@ fun MapFullScreen(
                     cell = cell,
                     observations = mapObservations,
                     onDismiss = { selectedCoverageCell = null },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                )
+            }
+
+            // Litter-footprint info card (Pillar 8 Task 2, Part C) — tap a
+            // close-zoom footprint shape to see its photo/type/weight.
+            selectedObservation?.let { observation ->
+                ObservationInfoCard(
+                    observation = observation,
+                    onDismiss = { selectedObservation = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
@@ -1895,6 +1925,85 @@ private fun CoverageCellInfoCard(
                         color = TextSubtle,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Litter-footprint detail card (Pillar 8 Task 2, Part C) — shown when a
+ * close-zoom observation-footprint shape (GccMap's observation-footprint-
+ * fill-* layers) is tapped. Modeled on [SpotInfoCard]/[CoverageCellInfoCard]
+ * for visual consistency (same card chrome/dismiss pattern), but a new
+ * composable rather than force-fitting a [WorldObservation] into
+ * [CommunityReport]'s shape — they aren't the same thing.
+ *
+ * Shows: photo (mediaUrl, via [PhotoStrip] — the same async-image component
+ * SpotInfoCard uses), item type (human label via
+ * [TrashItemCatalog.infoFor]), and estimated weight when present. There is
+ * no "materials" field anywhere in the schema/attributes today (confirmed
+ * by a repo-wide search) — that display is deferred pending a real data
+ * source, not a task-2 gap.
+ */
+@Composable
+private fun ObservationInfoCard(
+    observation: com.gcc.shared.model.WorldObservation,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val itemLabel = observation.itemType?.let { TrashItemCatalog.infoFor(it).displayName }
+        ?: "Litter"
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    itemLabel,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Text("✕", color = TextMuted)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            observation.mediaUrl?.let { url ->
+                PhotoStrip(urls = listOf(url), photoSize = 120)
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            observation.estimatedWeightGrams?.let { grams ->
+                // String.format is JVM-only — not usable from commonMain
+                // (iOS/desktop share this file) — round to one decimal by
+                // hand instead.
+                val label = if (grams >= 1000) {
+                    val tenthsOfKg = kotlin.math.round(grams / 100.0)
+                    "~${tenthsOfKg / 10.0} kg"
+                } else {
+                    "~$grams g"
+                }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
             }
         }
     }

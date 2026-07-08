@@ -47,6 +47,10 @@ export async function GET(request: NextRequest) {
       itemType: r.itemType,
       state: r.state,
       domain: r.domain,
+      // Litter-truth lifecycle (Pillar 8 Task 4) — additive/nullable field,
+      // wire-safe for old clients. See WorldObservation.kt's diagnosticStatus
+      // KDoc for the null-handling contract on the reading side.
+      diagnosticStatus: r.diagnosticStatus,
       // Wire shape is unchanged from before the attributes refactor — only
       // the internal storage location of `severity` moved.
       severity: (r.attributes as Record<string, unknown> | null)?.severity ?? null,

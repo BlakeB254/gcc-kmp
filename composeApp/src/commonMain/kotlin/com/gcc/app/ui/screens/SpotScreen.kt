@@ -1020,7 +1020,16 @@ private fun CameraPhase(
             )
         }
         EnvironmentScanEffects(active = captureAllowed, creditTick = creditTick)
-        DetectionReticleOverlay(detections = liveDetections)
+        // Gate the reticle out once a candidate is pending: analyzeTrash
+        // stops pushing new detections while the confirm card is up (it
+        // returns early), but CameraDetectionBus is a StateFlow -- its last
+        // value (the tick that triggered promotion) keeps being collected
+        // and re-rendered here otherwise, so the frozen reticle + its
+        // approach-prompt caption would sit on screen at the same time as
+        // the TrashConfirmCard below. Confirm/dismiss both clear the bus
+        // (see confirmCandidate/dismissCandidate), so this only ever hides
+        // the reticle for the duration the card itself is visible.
+        if (trashCandidate == null) DetectionReticleOverlay(detections = liveDetections)
         if (isScanMode) {
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates

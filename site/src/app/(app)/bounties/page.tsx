@@ -8,6 +8,7 @@ import type { Bounty, SpotReport } from '@/components/map/BountyMap'
 import type { Route } from '@/components/map/RouteMap'
 import { BOUNTY_MINIMUM_CENTS, SPOT_STATUS_COLORS } from '@/lib/design-tokens'
 import { CombinedMap } from '@/components/map/CombinedMap'
+import type { MapObservation } from '@/lib/litter-footprints'
 
 // Note: CombinedMap was previously next/dynamic-imported with ssr:false plus
 // a "Loading map..." fallback. The fallback was getting stuck on prod
@@ -41,6 +42,7 @@ interface BlockCard {
 export default function BountiesPage() {
   const [bounties, setBounties] = useState<Bounty[]>([])
   const [spots, setSpots] = useState<SpotReport[]>([])
+  const [observations, setObservations] = useState<MapObservation[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
   const [blockCards, setBlockCards] = useState<BlockCard[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -113,58 +115,55 @@ export default function BountiesPage() {
         }
       }
 
-      // Fold in the unified world-observations feed (Task 7/8): match each
-      // observation to a nearby community-report-backed spot by proximity so
-      // it picks up an `itemType` (for the map's new per-item icon layer)
-      // without losing the rich fields (photos/description/status/etc.) that
-      // the "Active Spot Reports" cards and the map's own spot popup depend
-      // on. Observations with no nearby community report — e.g. route-scan
-      // hotspots that were never reported by a person — become lightweight,
-      // map-only spots so they still show up on the heatmap/dots.
+      // Fold in the unified world-observations feed (Task 7/8; trimmed for
+      // Pillar 8 Task 3 — pin removal): the litter-footprint map layer now
+      // renders directly from the raw observations feed (see `observations`
+      // state below, passed to CombinedMap), not from a copy grafted onto
+      // `spots`. What's left here is proximity-matching each observation to
+      // a nearby community-report-backed spot ONLY to know which
+      // observations are already represented by a report, so the
+      // scan-only synthesis below doesn't double them up. The itemType/
+      // severity/domain/mediaUrl per-field enrichment this used to attach to
+      // matched spots fed exclusively the removed map pin/icon layer and its
+      // tap popup — CombinedMap's heatmap only ever reads `heatWeight`, and
+      // the "Active Spot Reports" cards below never read
+      // spot.itemType/severity/domain/mediaUrl — so that copy was dead
+      // weight and has been dropped; the match + bookkeeping stays because
+      // scanOnlySpots (which DOES feed the heatmap and the cards) needs it.
       if (observationsResult.status === 'fulfilled' && observationsResult.value) {
-        const observations = observationsResult.value.observations || []
+        const rawObservations: MapObservation[] = observationsResult.value.observations || []
+        setObservations(rawObservations)
+
         // ~15m at Chicago latitude — matches the server-side duplicate-spot
         // radius used in /api/spots so "same real-world item" lines up.
         const PROXIMITY_DEG = 0.000135
         const usedObservationIds = new Set<number>()
-
-        const spotsWithItemType: SpotReport[] = enrichedSpots.map((s) => {
+        for (const s of enrichedSpots) {
           const [lng, lat] = s.coordinates
-          const match = observations.find((o: any) =>
+          const match = rawObservations.find((o) =>
             !usedObservationIds.has(o.id) &&
             Math.abs(o.lng - lng) <= PROXIMITY_DEG &&
             Math.abs(o.lat - lat) <= PROXIMITY_DEG
           )
-          if (!match) return s
-          usedObservationIds.add(match.id)
-          return {
-            ...s,
-            itemType: match.itemType ?? undefined,
-            severity: match.severity ?? undefined,
-            domain: match.domain ?? undefined,
-            // Only fall back to the observation's own mediaUrl when the report
-            // has no photo of its own — a user-submitted photo is always the
-            // richer image when both exist.
-            mediaUrl: (s.photoUrl || s.mediaUrls?.[0]) ? undefined : match.mediaUrl ?? undefined,
-          }
-        })
+          if (match) usedObservationIds.add(match.id)
+        }
 
-        const scanOnlySpots: SpotReport[] = observations
-          .filter((o: any) => !usedObservationIds.has(o.id))
-          .map((o: any) => ({
+        // Observations with no nearby community report — e.g. route-scan
+        // hotspots that were never reported by a person — become
+        // lightweight, map-only spots so they still show up on the
+        // heatmap and the "Active Spot Reports" cards.
+        const scanOnlySpots: SpotReport[] = rawObservations
+          .filter((o) => !usedObservationIds.has(o.id))
+          .map((o) => ({
             id: `obs-${o.id}`,
             coordinates: [o.lng, o.lat] as [number, number],
             radiusMeters: 15,
             label: o.itemType ?? 'Reported',
             tags: o.itemType ? [o.itemType] : [],
-            itemType: o.itemType ?? undefined,
-            severity: o.severity ?? undefined,
-            domain: o.domain ?? undefined,
-            mediaUrl: o.mediaUrl ?? undefined,
             needsVerification: false,
           }))
 
-        setSpots([...spotsWithItemType, ...scanOnlySpots])
+        setSpots([...enrichedSpots, ...scanOnlySpots])
       } else if (enrichedSpots.length > 0) {
         setSpots(enrichedSpots)
       }
@@ -324,6 +323,7 @@ export default function BountiesPage() {
             bounties={bounties}
             spots={spots}
             routes={routes}
+            observations={observations}
             height="500px"
             showLegend={true}
           />

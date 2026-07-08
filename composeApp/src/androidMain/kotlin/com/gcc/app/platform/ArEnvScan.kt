@@ -23,6 +23,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun clearGuidanceTarget() {}
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? = null
     actual fun dismissCandidate() {}
+    actual fun focusAt(x: Float, y: Float) {}
     actual fun setElementObservedListener(
         listener: (
             (

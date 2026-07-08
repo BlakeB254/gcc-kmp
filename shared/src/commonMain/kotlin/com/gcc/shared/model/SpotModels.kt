@@ -102,6 +102,16 @@ data class CreateSpotRequest(
     val discoveredByWorkerId: Int? = null,
     /** Guided 3D capture of large litter (measured model), when performed. */
     val objectCapture: ObjectCaptureResult? = null,
+    /**
+     * Cells (server `gridCell()` ids, see [com.gcc.shared.geo.gridCell10m]) a
+     * scan's coverage tracker actually swept at GRAZED+ quality, beyond just
+     * the anchor + [observedItems] positions. The server treats any of these
+     * NOT re-confirmed by an anchor/item as "checked and found clean now"
+     * and supersedes stale reports/observations there (Pillar 8 task 1).
+     * Omitted/null for non-scan submissions and old clients — server
+     * behavior is unchanged when absent.
+     */
+    val coveredCellIds: List<String>? = null,
 )
 
 @Serializable

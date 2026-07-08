@@ -36,6 +36,8 @@ import com.gcc.shared.model.SpotTag
 fun ScanCompleteScreen(
     uiState: RouteScanUiState,
     onDone: () -> Unit,
+    completeJobId: Int? = null,
+    onRetryCompletionReport: () -> Unit = {},
 ) {
     val cleanedHotspots = uiState.hotspots.filter { it.status == HotspotStatus.CLEANED }
     val documentedOnly = uiState.hotspots.count { it.status == HotspotStatus.SKIPPED }
@@ -234,6 +236,21 @@ fun ScanCompleteScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // ── Pillar 9 block completion report ────────────────────────────
+            // Only meaningful for assignment-path scans (a linked job); test/
+            // unassigned scans never kick off report generation (see
+            // RouteScanViewModel.completeScan), so there's nothing to show.
+            if (completeJobId != null) {
+                item {
+                    CompletionReportCard(
+                        report = uiState.completionReport,
+                        isLoading = uiState.completionReportLoading,
+                        error = uiState.completionReportError,
+                        onRetry = onRetryCompletionReport,
+                    )
                 }
             }
 

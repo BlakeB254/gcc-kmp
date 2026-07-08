@@ -5,12 +5,19 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { communityReports, pointsLedger, workers } from '@/db/schema'
+import { communityReports, pointsLedger, workers, type NewCommunityReport } from '@/db/schema'
 import { eq, and, or, gt, isNull, desc, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
-import { autoTagFromDescription, resolveSpotTags, toCommunityReport } from '@/lib/spot-utils'
+import {
+  autoTagFromDescription,
+  resolveSpotTags,
+  toCommunityReport,
+  isScanSubmission as isScanSubmissionOf,
+  resolvePointsAction,
+  buildSyntheticScanReport,
+} from '@/lib/spot-utils'
 import { reverseGeocode } from '@/lib/geo-lookup'
-import { recordWorldObservation } from '@/lib/world-observations'
+import { recordWorldObservation, gridCell, parseCoveredCellIds, resolveByCoveredCells } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 
@@ -144,6 +151,7 @@ export async function POST(request: NextRequest) {
       duplicateOverrideReason,
       observedItems,
       objectCapture,
+      coveredCellIds: rawCoveredCellIds,
     } = body
 
     // Validate coordinates
@@ -173,7 +181,7 @@ export async function POST(request: NextRequest) {
     // A live-capture attestation also marks a scan: deployed clients send
     // observedItems = null when the scan confirmed zero items, and a
     // zero-item scan must supersede, not 409.
-    const isScanSubmission = Array.isArray(observedItems) || Boolean(captureAttestation)
+    const isScanSubmission = isScanSubmissionOf(observedItems, captureAttestation)
     const nearbyActiveReports = await db
       .select({ id: communityReports.id })
       .from(communityReports)
@@ -221,37 +229,52 @@ export async function POST(request: NextRequest) {
     // Auto-tag from description if no tags provided
     const effectiveTags = tags && tags.length > 0 ? tags : autoTagFromDescription(description)
 
-    // Create the community report with verification lifecycle fields
+    // Report field values, computed for both paths — the manual path
+    // inserts them as a communityReports row exactly as before; the scan
+    // path (Amendment 2 / Task 1b, Change 1) uses the SAME values to build
+    // a synthetic, non-persisted report for the response instead of
+    // inserting anything (see buildSyntheticScanReport below).
     const next24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    const [newReport] = await db
-      .insert(communityReports)
-      .values({
-        reporterType: 'worker',
-        reporterId: auth.workerId,
-        reporterName: reporterName || workerName,
-        type: type === 'sighting' ? 'sighting' : 'volunteer_cleanup',
-        description: description || null,
-        coordinates: [lng, lat], // GeoJSON [lng, lat]
-        mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
-        mediaCaptions: mediaCaptions && mediaCaptions.length > 0 ? mediaCaptions : null,
-        affectedRadiusMeters: String(effectiveRadius),
-        affectedArea: affectedArea || null,
-        tags: effectiveTags.length > 0 ? effectiveTags : null,
-        status: 'pending',
-        showOnMap: true,
-        capturedAt: new Date().toISOString(),
-        // Verification lifecycle
-        lastVerifiedAt: new Date().toISOString(),
-        verificationCount: 0,
-        nextVerificationDue: next24h,
-        missedVerifications: 0,
-        depthAnalysis: depthAnalysis || null,
-        captureAttestation: captureAttestation || null,
-        onDeviceAiResult: onDeviceAiResult || null,
-        duplicateOverrideReason: duplicateOverrideReason || null,
-        source: 'user', // User-submitted spots (vs 'admin' for GCC base data)
-      })
-      .returning()
+    const reportCapturedAt = new Date().toISOString()
+    const reportValues: NewCommunityReport = {
+      reporterType: 'worker',
+      reporterId: auth.workerId,
+      reporterName: reporterName || workerName,
+      type: type === 'sighting' ? 'sighting' : 'volunteer_cleanup',
+      description: description || null,
+      coordinates: [lng, lat], // GeoJSON [lng, lat]
+      mediaIds: mediaUrls && mediaUrls.length > 0 ? mediaUrls : null,
+      mediaCaptions: mediaCaptions && mediaCaptions.length > 0 ? mediaCaptions : null,
+      affectedRadiusMeters: String(effectiveRadius),
+      affectedArea: affectedArea || null,
+      tags: effectiveTags.length > 0 ? effectiveTags : null,
+      status: 'pending',
+      showOnMap: true,
+      capturedAt: reportCapturedAt,
+      // Verification lifecycle
+      lastVerifiedAt: reportCapturedAt,
+      verificationCount: 0,
+      nextVerificationDue: next24h,
+      missedVerifications: 0,
+      depthAnalysis: depthAnalysis || null,
+      captureAttestation: captureAttestation || null,
+      onDeviceAiResult: onDeviceAiResult || null,
+      duplicateOverrideReason: duplicateOverrideReason || null,
+      source: 'user', // User-submitted spots (vs 'admin' for GCC base data)
+    }
+
+    // Scan submissions (isScanSubmission) SKIP this insert entirely — world
+    // observations become the sole record (Amendment 2 / Task 1b). Manual
+    // "Report a Spot" submissions are unaffected: insert, geocode,
+    // spot_created points, real report in the response — exactly as today.
+    const newReport = isScanSubmission
+      ? null
+      : (
+          await db
+            .insert(communityReports)
+            .values(reportValues)
+            .returning()
+        )[0]
 
     // Preferred: client-supplied per-item positions from the environment scan
     // (heading-projected at capture time). Each becomes a world observation at
@@ -300,11 +323,17 @@ export async function POST(request: NextRequest) {
           ),
         )
       )
+      // Amendment 2 / Task 1b: the scan path no longer inserts a report row,
+      // so there is nothing to exclude from this sweep by id (the old
+      // `id != newReport.id` guard existed solely to keep the just-inserted
+      // row from resolving itself) — every pending/verified report in the
+      // covered boxes is now an eligible candidate. reviewNotes references
+      // the scan's timestamp instead of a report id, since none exists.
       const superseded = await db
         .update(communityReports)
         .set({
           status: 'resolved',
-          reviewNotes: `Superseded by scan report #${newReport.id} — fresh scan data covers this location`,
+          reviewNotes: `Superseded by scan sweep ${reportCapturedAt} — fresh scan covers this location`,
         })
         .where(
           and(
@@ -312,20 +341,70 @@ export async function POST(request: NextRequest) {
               eq(communityReports.status, 'pending'),
               eq(communityReports.status, 'verified')
             ),
-            sql`${communityReports.id} != ${newReport.id}`,
             or(...boxConditions),
           )
         )
         .returning({ id: communityReports.id })
       if (superseded.length > 0) {
-        console.log(`Scan report ${newReport.id} superseded stale reports: ${superseded.map((r) => r.id).join(', ')}`)
+        console.log(`Scan sweep ${reportCapturedAt} superseded stale reports: ${superseded.map((r) => r.id).join(', ')}`)
       }
     }
 
+    // Broader cell-coverage supersede: a scan's coverage tracker sweeps far
+    // more ground than just the anchor + item radius above (every GRAZED+
+    // cell the camera/GPS actually covered). `coveredCellIds` is optional
+    // and only ever sent by scan submissions — old clients never send it,
+    // so this whole block is a no-op for them (wire-compat). Gated on
+    // isScanSubmission defensively even though a non-scan submission would
+    // never carry this field in practice.
+    if (isScanSubmission) {
+      const coveredCellIds = parseCoveredCellIds(rawCoveredCellIds)
+      if (coveredCellIds.length > 0) {
+        // Cells this very submission just re-confirmed (the anchor or a
+        // detected item lives there) must survive even if the scan's
+        // coverage sweep also covered them — "items re-confirmed by the
+        // scan survive."
+        const confirmedCells = new Set([
+          gridCell(lat, lng),
+          ...clientItems.map((it) => gridCell(it.lat, it.lng)),
+        ])
+        const staleCells = [...new Set(coveredCellIds)].filter((c) => !confirmedCells.has(c))
+        if (staleCells.length > 0) {
+          // excludeReportId is undefined here (Amendment 2 / Task 1b): no
+          // report row exists on the scan path to exclude from the sweep.
+          const { resolvedReportIds, invalidatedObservationCount } = await resolveByCoveredCells(
+            staleCells,
+            undefined,
+            `Superseded by scan sweep ${reportCapturedAt} — covered by scan cell sweep`
+          )
+          if (resolvedReportIds.length > 0 || invalidatedObservationCount > 0) {
+            console.log(
+              `Scan sweep ${reportCapturedAt} cell-sweep superseded reports [${resolvedReportIds.join(', ')}] and invalidated ${invalidatedObservationCount} world observation(s) across ${staleCells.length} stale cell(s)`
+            )
+          }
+        }
+      }
+    }
+
+    // World observations link back to the real report row on the manual
+    // path (communityReportId set); on the scan path there is no row to
+    // link (Amendment 2 / Task 1b), so this is undefined. `observationsAt`
+    // is the report's own capturedAt for the manual path (round-tripped
+    // through the just-inserted row) or the same server timestamp used to
+    // build the synthetic report on the scan path — either way, "now."
+    const observationReportId = newReport?.id
+    const observationsAt = newReport?.capturedAt ?? reportCapturedAt
+    // The first observation recorded by this submission — becomes the
+    // synthetic report's id (SCAN_OBSERVATION_PIN_ID_BASE + this) on the
+    // scan path. Always ends up set for a scan submission in practice: the
+    // detectedItems fallback loop below guarantees at least one
+    // recordWorldObservation call even when clientItems is empty.
+    let anchorObservationId: number | undefined
+
     for (const item of clientItems) {
-      await recordWorldObservation({
+      const observation = await recordWorldObservation({
         sourceType: 'spot_report',
-        communityReportId: newReport.id,
+        communityReportId: observationReportId,
         lat: item.lat,
         lng: item.lng,
         itemType: item.itemType,
@@ -341,8 +420,9 @@ export async function POST(request: NextRequest) {
           : undefined,
         confidence: item.confidence,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
-        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+        capturedAt: observationsAt,
       })
+      if (anchorObservationId === undefined) anchorObservationId = observation?.id
     }
 
     // Fallback: explode on-device AI detections into per-item world observations
@@ -373,9 +453,9 @@ export async function POST(request: NextRequest) {
     const hasObjectCapture = Object.keys(objectCaptureAttributes).length > 0
 
     for (const item of clientItems.length > 0 ? [] : detectedItems) {
-      await recordWorldObservation({
+      const observation = await recordWorldObservation({
         sourceType: 'spot_report',
-        communityReportId: newReport.id,
+        communityReportId: observationReportId,
         lat,
         lng,
         itemType: item.itemType,
@@ -389,8 +469,9 @@ export async function POST(request: NextRequest) {
         confidence: item.confidence,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
         depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
-        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+        capturedAt: observationsAt,
       })
+      if (anchorObservationId === undefined) anchorObservationId = observation?.id
     }
 
     // Object Capture with scanned items present: the fallback anchor loop
@@ -398,9 +479,9 @@ export async function POST(request: NextRequest) {
     // own anchor observation — otherwise the 3D capture data would vanish on
     // exactly the scans most likely to include it.
     if (hasObjectCapture && clientItems.length > 0) {
-      await recordWorldObservation({
+      const observation = await recordWorldObservation({
         sourceType: 'spot_report',
-        communityReportId: newReport.id,
+        communityReportId: observationReportId,
         lat,
         lng,
         itemType: 'debris_pile',
@@ -408,42 +489,52 @@ export async function POST(request: NextRequest) {
         attributes: objectCaptureAttributes,
         mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
         depthData: depthAnalysis ? JSON.stringify(depthAnalysis) : undefined,
-        capturedAt: newReport.capturedAt ?? new Date().toISOString(),
+        capturedAt: observationsAt,
       })
+      if (anchorObservationId === undefined) anchorObservationId = observation?.id
     }
 
-    // Reverse geocode to populate geographic categorization (best-effort, non-blocking)
-    reverseGeocode(lat, lng).then(async (geo) => {
-      if (geo.city || geo.state || geo.communityArea) {
-        await db
-          .update(communityReports)
-          .set({
-            geoCity: geo.city,
-            geoState: geo.state,
-            geoCommunityArea: geo.communityArea,
-            geoCommunityAreaNumber: geo.communityAreaNumber,
-            geoWard: geo.ward,
-            geoZipCode: geo.zipCode,
-            geoCensusTract: geo.censusTract,
-            geoPoliceDistrict: geo.policeDistrict,
-            geoStreetAddress: geo.streetAddress,
-          })
-          .where(eq(communityReports.id, newReport.id))
-      }
-    }).catch(() => {}) // Silently ignore geocoding failures
+    // Reverse geocode to populate geographic categorization (best-effort,
+    // non-blocking) — manual path only. The scan path has no report row to
+    // update, and world_observations has no geo columns today; re-adding
+    // geo enrichment for observations is follow-up (Amendment 2 / Task 1b,
+    // Change 6 — deferred).
+    if (!isScanSubmission && newReport) {
+      const reportId = newReport.id
+      reverseGeocode(lat, lng).then(async (geo) => {
+        if (geo.city || geo.state || geo.communityArea) {
+          await db
+            .update(communityReports)
+            .set({
+              geoCity: geo.city,
+              geoState: geo.state,
+              geoCommunityArea: geo.communityArea,
+              geoCommunityAreaNumber: geo.communityAreaNumber,
+              geoWard: geo.ward,
+              geoZipCode: geo.zipCode,
+              geoCensusTract: geo.censusTract,
+              geoPoliceDistrict: geo.policeDistrict,
+              geoStreetAddress: geo.streetAddress,
+            })
+            .where(eq(communityReports.id, reportId))
+        }
+      }).catch(() => {}) // Silently ignore geocoding failures
+    }
 
-    // Award 10 observer points for creating a spot report
-    // Admin scans work exactly like user scans — same supersede, same world
-    // observations, same map data — but issue NO points (admins seeding or
-    // auditing the map must not climb the leaderboard).
+    // Award 10 observer points for creating a spot report (manual path) or
+    // recording an observation (scan path — Amendment 2 / Task 1b, Change 2).
+    // Admin scans/submissions work exactly like user ones — same supersede,
+    // same world observations, same map data — but issue NO points (admins
+    // seeding or auditing the map must not climb the leaderboard).
     const observerPoints = auth.role === 'admin' ? 0 : 10
+    const pointsAction = resolvePointsAction(isScanSubmission)
     if (observerPoints > 0) {
       await db.insert(pointsLedger).values({
         workerId: auth.workerId,
-        action: 'spot_created',
+        action: pointsAction.action,
         points: observerPoints,
-        referenceType: 'spot',
-        referenceId: newReport.id,
+        referenceType: pointsAction.referenceType,
+        referenceId: isScanSubmission ? (anchorObservationId ?? null) : newReport!.id,
       })
 
       // Update worker's denormalized points total
@@ -455,8 +546,14 @@ export async function POST(request: NextRequest) {
         .where(eq(workers.id, auth.workerId))
     }
 
-    // Build response matching SpotResponse { report, matchingBounties }
-    const report = toCommunityReport(newReport)
+    // Build response matching SpotResponse { report, matchingBounties }.
+    // Wire-compat (CRITICAL — see buildSyntheticScanReport doc comment):
+    // deployed clients dereference `data.report` non-null regardless of
+    // path, so the scan path must still return a syntactically valid
+    // report — a synthetic one, since no row was inserted.
+    const report = isScanSubmission
+      ? buildSyntheticScanReport(reportValues, anchorObservationId ?? 0, reportCapturedAt)
+      : toCommunityReport(newReport)
 
     return NextResponse.json({
       data: {

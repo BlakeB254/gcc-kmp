@@ -90,6 +90,11 @@ actual fun GccMap(
     // scope here — see iOS actual for the implementation this lens sits
     // alongside).
     @Suppress("UNUSED_PARAMETER") showNeedsScanningLens: Boolean,
+    // Unused on this platform: Android's GccMap actual doesn't render the
+    // observation-footprint layer at all yet (same pre-existing gap as
+    // showNeedsScanningLens above — see iOS actual for the tap wiring this
+    // sits alongside, Pillar 8 Task 2 Part C).
+    @Suppress("UNUSED_PARAMETER") onObservationTap: ((observationId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()

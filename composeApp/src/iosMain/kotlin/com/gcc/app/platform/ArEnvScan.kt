@@ -103,6 +103,12 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val NEAR_STREAK_TICKS = 2
         /** Don't re-offer a candidate within this range of a dismissed/confirmed one. */
         private const val SUPPRESS_RADIUS_METERS = 2.0
+        /** Tap-to-focus (Task 5): how long a [focusAt] tap biases detection. */
+        private const val FOCUS_DURATION_MS = 5_000L
+        /** Tap-to-focus: promotion streak relaxes to 1 tick for a candidate
+         *  hit within this XZ-plane distance of the tapped world point.
+         *  NEAR_DISTANCE_METERS (the range gate) is unchanged by focus. */
+        private const val FOCUS_RADIUS_METERS = 1.5
         /** Grid squares stay this size no matter how large the plane grows.
          *  1.5m = a clean divisor of CoverageTracker's 3m cells; with the
          *  world-axis alignment below, the on-camera lattice reads as the
@@ -201,6 +207,20 @@ actual class ArEnvScanOverlay actual constructor() {
     private var pendingWorld: Triple<Float, Float, Float>? = null
     private val suppressedWorld = mutableListOf<Triple<Float, Float, Float>>()
     private val markerPositions = mutableListOf<Triple<Float, Float, Float>>()
+
+    // Tap-to-focus (Task 5). A tap arrives on the gesture/main thread via
+    // [focusAt]; it's queued here and processed at the START of the next
+    // [analyzeTick] (on the Vision/analysis coroutine) rather than raycast
+    // synchronously off the tap — Vision/raycast work belongs on that queue.
+    /** Queued view-space tap awaiting the next tick; consumed then nulled. */
+    private var pendingFocusTap: Pair<Double, Double>? = null
+    /** Image-space point (top-left origin) the active focus raycast used —
+     *  reused by [selectSalientObject] to bias candidate selection. */
+    private var focusImagePoint: Pair<Double, Double>? = null
+    /** World point of the focus raycast hit; null when no focus is active. */
+    private var focusWorld: Triple<Float, Float, Float>? = null
+    /** Focus expires when `now > focusUntilMs` — no timer, checked inline. */
+    private var focusUntilMs: Long = 0L
 
     // Landmark elements registered this session: (itemType, x, z) for dedupe.
     private val registeredElements = mutableListOf<Triple<String, Float, Float>>()
@@ -562,6 +582,40 @@ actual class ArEnvScanOverlay actual constructor() {
         dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
     }
 
+    /**
+     * Queue a normalized view-space tap (top-left origin) for processing at
+     * the start of the next [analyzeTick] — see [processPendingFocusTap].
+     * Called from CameraCapture's gesture handler (main thread); reading/
+     * writing [pendingFocusTap] from both the main thread here and the
+     * analysis coroutine there is a plain last-write-wins overwrite (a
+     * single nullable field, not a collection), which is fine for a UX
+     * signal that a following tap is expected to supersede anyway.
+     */
+    actual fun focusAt(x: Float, y: Float) {
+        pendingFocusTap = x.toDouble() to y.toDouble()
+    }
+
+    /**
+     * Consume a queued [focusAt] tap: invert the image→view mapping
+     * [analyzeTrash] uses ([viewTapToImageCoords]) to recover the
+     * normalized image-space point, then raycast immediately. A hit
+     * becomes the focus bias for [FOCUS_DURATION_MS] — see
+     * [selectSalientObject] (saliency selection) and the promotion gate in
+     * [analyzeTrash] (lowered streak threshold). Haptic fires on FOCUS
+     * ACQUIRED (raycast hit), not on every tap; a miss silently leaves any
+     * previously active focus in place.
+     */
+    private fun processPendingFocusTap(frame: ARFrame?) {
+        val tap = pendingFocusTap ?: return
+        pendingFocusTap = null
+        val (imageX, imageY) = viewTapToImageCoords(tap.first, tap.second)
+        val hit = raycastImage(frame, imageX, imageY) ?: return
+        focusImagePoint = imageX to imageY
+        focusWorld = Triple(hit.x, hit.y, hit.z)
+        focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
+        dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
+    }
+
     actual fun setElementObservedListener(
         listener: (
             (
@@ -608,6 +662,12 @@ actual class ArEnvScanOverlay actual constructor() {
         val frame: ARFrame? = if (native == null) sceneView?.session?.currentFrame else null
         if (native == null && frame == null) return false
         tick += 1
+
+        // Tap-to-focus (Task 5): process at the START of the tick, before
+        // any other Vision/raycast work this tick does — see
+        // [processPendingFocusTap] kdoc for why it's queued rather than
+        // handled synchronously off the tap.
+        processPendingFocusTap(frame)
 
         // Ceiling cue for the OutdoorGate — checked every tick, cheap
         // (anchors are already tracked; no Vision work involved).
@@ -740,6 +800,36 @@ actual class ArEnvScanOverlay actual constructor() {
         return request
     }
 
+    /**
+     * Pick which salient candidate to lock onto: with no active focus, the
+     * Vision-ranked first candidate (existing behavior, unchanged). With an
+     * active [focusAt] focus, the candidate whose bounding-box center is
+     * nearest [focusImagePoint] in image space — candidate centers are
+     * computed in Vision's bottom-left-origin space and converted to the
+     * same top-left "image" convention [focusImagePoint] uses before
+     * comparing (mirrors the `imageX = visionX; imageY = 1 - visionY`
+     * conversion in [analyzeTrash]). ARKit/Vision-bound — no test harness in
+     * this repo, kept small and readable instead of extracted.
+     */
+    private fun selectSalientObject(
+        candidates: List<VNRectangleObservation>,
+        focusImagePoint: Pair<Double, Double>?,
+    ): VNRectangleObservation? {
+        if (focusImagePoint == null) return candidates.firstOrNull()
+        val (focusImageX, focusImageY) = focusImagePoint
+        return candidates.minByOrNull { candidate ->
+            var distanceSquared = Double.MAX_VALUE
+            candidate.boundingBox.useContents {
+                val candidateImageX = origin.x + size.width / 2.0
+                val candidateImageY = 1.0 - (origin.y + size.height / 2.0)
+                val dx = candidateImageX - focusImageX
+                val dy = candidateImageY - focusImageY
+                distanceSquared = dx * dx + dy * dy
+            }
+            distanceSquared
+        }
+    }
+
     private class RayHit(val x: Float, val y: Float, val z: Float, val distance: Float)
 
     /**
@@ -800,18 +890,24 @@ actual class ArEnvScanOverlay actual constructor() {
 
         // Salient region -> reticle position + angular size. SceneKit already
         // computed this alongside classification; native path runs it now,
-        // on demand, only because a trash label was actually found.
+        // on demand, only because a trash label was actually found. While a
+        // tap-to-focus (focusAt) is active, [selectSalientObject] biases
+        // toward the candidate nearest the tapped point instead of Vision's
+        // top-ranked one.
         var visionX = 0.5
         var visionY = 0.5
         var radius = 0.12f
         var bboxWidthFrac = 0.2
+        val nowMs = Clock.System.now().toEpochMilliseconds()
+        val focusActive = nowMs <= focusUntilMs
         val effectiveSaliency = saliencyOnDemand(native, saliencyRequest)
-        val salient = effectiveSaliency?.results
+        val candidates = effectiveSaliency?.results
             ?.filterIsInstance<VNSaliencyImageObservation>()
             ?.firstOrNull()
             ?.salientObjects
             ?.filterIsInstance<VNRectangleObservation>()
-            ?.firstOrNull()
+            ?: emptyList()
+        val salient = selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
         salient?.boundingBox?.useContents {
             visionX = origin.x + size.width / 2.0
             visionY = origin.y + size.height / 2.0
@@ -830,14 +926,30 @@ actual class ArEnvScanOverlay actual constructor() {
         val isNear = distance != null && distance <= NEAR_DISTANCE_METERS
         nearStreak = if (isNear) nearStreak + 1 else 0
 
+        // Lowered promotion threshold (Task 5): while focus is active and
+        // this tick's hit lands within FOCUS_RADIUS_METERS (XZ-plane, same
+        // idiom as the suppression check below) of the tapped world point,
+        // one near tick promotes instead of NEAR_STREAK_TICKS.
+        // NEAR_DISTANCE_METERS (the range gate `isNear` uses above) is
+        // unchanged by focus — only the streak count relaxes.
+        val fw = focusWorld
+        val effectiveStreakTicks = if (
+            focusActive && hit != null && fw != null &&
+            run {
+                val dx = (hit.x - fw.first).toDouble()
+                val dz = (hit.z - fw.third).toDouble()
+                sqrt(dx * dx + dz * dz) < FOCUS_RADIUS_METERS
+            }
+        ) 1 else NEAR_STREAK_TICKS
+
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(
                 listOf(
                     LiveDetection(
                         cx = viewX, cy = viewY, r = radius, label = trashLabel,
                         distanceMeters = distance,
-                        streakProgress = nearStreak.coerceAtMost(NEAR_STREAK_TICKS),
-                        streakTicks = NEAR_STREAK_TICKS,
+                        streakProgress = nearStreak.coerceAtMost(effectiveStreakTicks),
+                        streakTicks = effectiveStreakTicks,
                         severity = LiveSeverityEstimator.estimate(trashLabel, radius),
                         confidence = confidence,
                     )
@@ -845,7 +957,7 @@ actual class ArEnvScanOverlay actual constructor() {
             )
         }
 
-        if (nearStreak < NEAR_STREAK_TICKS || hit == null || distance == null) return
+        if (nearStreak < effectiveStreakTicks || hit == null || distance == null) return
 
         val world = floatArrayOf(hit.x, hit.y, hit.z)
         // Skip items already handled (confirmed or "not trash").

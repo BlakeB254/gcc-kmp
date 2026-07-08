@@ -105,6 +105,14 @@ expect class ArEnvScanOverlay() {
     fun dismissCandidate()
 
     /**
+     * User tapped the camera view at normalized view coords (0..1, top-left
+     * origin). Biases detection at that region for a few seconds: immediate
+     * raycast + saliency selection nearest the tap, and a lowered promotion
+     * threshold near the tapped world point. No-op off-iOS.
+     */
+    fun focusAt(x: Float, y: Float)
+
+    /**
      * Fires when a landmark element (tree, fence, gate… — see
      * [EnvironmentElementCatalog]) is auto-registered to the grid, with its
      * raycast world position, physical width (from the saliency bbox +

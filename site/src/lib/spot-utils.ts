@@ -1,6 +1,7 @@
 /**
  * Shared spot report utilities — used by both /api/spots and /api/admin/spots
  */
+import type { NewCommunityReport } from '@/db/schema'
 
 // Tag keywords for auto-tagging spots based on description
 const TAG_KEYWORDS: Record<string, string[]> = {
@@ -78,4 +79,81 @@ export function toCommunityReport(r: any, precomputedTags?: string[]) {
     createdAt: new Date(r.createdAt).toISOString(),
     updatedAt: new Date(r.updatedAt).toISOString(),
   }
+}
+
+/**
+ * Whether a POST /api/spots submission came from the environment-scan
+ * camera flow (as opposed to a genuine manual "Report a Spot"). The
+ * world-scan flow always carries an `observedItems` array (even empty —
+ * presence of the array IS the scan marker, per SpotViewModel), and a
+ * live-capture attestation also marks a scan: deployed clients send
+ * `observedItems = null` when the scan confirmed zero items, and a
+ * zero-item scan must still be recognized as a scan (Amendment 2 / Task
+ * 1b — supersede semantics for zero-item scans predate this change; this
+ * helper is the same decision, just factored out so it's independently
+ * testable and shared with the points/report-insert logic).
+ */
+export function isScanSubmission(observedItems: unknown, captureAttestation: unknown): boolean {
+  return Array.isArray(observedItems) || Boolean(captureAttestation)
+}
+
+/**
+ * Amendment 2 / Task 1b, Change 2: the points-ledger action + reference
+ * type a POST /api/spots submission logs. Scan submissions log
+ * `observation_logged` against the anchor world observation (no report row
+ * exists to reference); manual submissions keep the pre-existing
+ * `spot_created` against the new report row. Same 10 points either way —
+ * only the action/referenceType differ.
+ */
+export function resolvePointsAction(isScan: boolean): { action: 'spot_created' | 'observation_logged'; referenceType: 'spot' | 'world_observation' } {
+  return isScan
+    ? { action: 'observation_logged', referenceType: 'world_observation' }
+    : { action: 'spot_created', referenceType: 'spot' }
+}
+
+/**
+ * Synthetic-pin id offset shared with the client convention
+ * (shared/src/commonMain/kotlin/com/gcc/shared/model/WorldObservation.kt
+ * SCAN_OBSERVATION_PIN_ID_BASE / toScanMapPin()). Mirrored here rather than
+ * imported — the server has no Kotlin dependency — so keep the two in sync
+ * if the constant ever moves.
+ */
+export const SCAN_OBSERVATION_PIN_ID_BASE = 1_000_000
+
+/**
+ * Amendment 2 / Task 1b, Change 1 (wire-compat, CRITICAL): scan submissions
+ * no longer insert a `communityReports` row, but deployed clients
+ * (`SpotViewModel.submitReport`) dereference `spotResponse.data.report`
+ * NON-NULL and pass its id into the env-scan session manifest's
+ * `communityReportId`. This builds a SYNTHETIC, non-persisted report from
+ * the same `values` object that would have been inserted, so it round-trips
+ * through the client's `CommunityReport` deserializer exactly like a real
+ * row would.
+ *
+ * - `id = SCAN_OBSERVATION_PIN_ID_BASE + anchorObservationId` — the same
+ *   convention `WorldObservation.toScanMapPin()` uses for scan-sourced map
+ *   pins, so this id can never collide with a real community-report id
+ *   (serial ids stay far below 1_000_000 for the practical future) and is
+ *   recognizable on sight as synthetic.
+ * - `status` is inherited from `values.status`, which the caller sets to
+ *   'pending' (not e.g. 'resolved') for both the manual and scan paths so
+ *   that if any code path ever mistakes this id for a real report (it
+ *   matches no row in `communityReports`), the failure mode reads as "an
+ *   ordinary unreviewed report" rather than something that looks
+ *   authoritatively resolved/verified — fails soft.
+ */
+export function buildSyntheticScanReport(
+  values: NewCommunityReport,
+  anchorObservationId: number,
+  nowIso: string,
+) {
+  return toCommunityReport({
+    ...values,
+    id: SCAN_OBSERVATION_PIN_ID_BASE + anchorObservationId,
+    thankCount: 0,
+    reviewedById: null,
+    resolvedByJobId: null,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  })
 }

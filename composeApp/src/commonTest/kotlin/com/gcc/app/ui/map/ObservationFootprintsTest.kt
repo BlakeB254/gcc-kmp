@@ -18,6 +18,7 @@ class ObservationFootprintsTest {
         domain: String? = "litter",
         widthMeters: Double? = 10.0,
         yawDegrees: Double? = null,
+        diagnosticStatus: String? = null,
     ) = WorldObservation(
         id = 1,
         lat = lat0,
@@ -28,6 +29,7 @@ class ObservationFootprintsTest {
         sourceType = "route_scan",
         widthMeters = widthMeters,
         yawDegrees = yawDegrees,
+        diagnosticStatus = diagnosticStatus,
     )
 
     /** Pulls every "[lng,lat]" pair out of a built GeoJSON ring, in order. */
@@ -119,21 +121,62 @@ class ObservationFootprintsTest {
     }
 
     @Test
-    fun nullWidthObservationIsSkipped() {
+    fun nullWidthObservationFallsBackToTypeDefaultInsteadOfBeingSkipped() {
+        // Pillar 8 Task 2, Part B.1: unmeasured observations no longer get
+        // dropped — they fall back to TrashItemCatalog's typical width for
+        // the observation's itemType (here "debris_pile", which has no
+        // dedicated catalog entry and falls back further to "other").
         val json = buildObservationFootprintsGeoJson(
             listOf(observation(widthMeters = null)),
             centerLat = lat0,
         )
-        assertEquals("""{"type":"FeatureCollection","features":[]}""", json)
+        assertTrue(json.contains(""""id":1"""))
+        val coords = ringCoordinates(json)
+        assertEquals(5, coords.size) // still a closed 4-corner rect (non-vegetation domain)
     }
 
     @Test
-    fun nonFiniteWidthObservationIsSkipped() {
+    fun nonFiniteWidthObservationFallsBackToTypeDefaultInsteadOfBeingSkipped() {
         val json = buildObservationFootprintsGeoJson(
             listOf(observation(widthMeters = Double.NaN)),
             centerLat = lat0,
         )
-        assertEquals("""{"type":"FeatureCollection","features":[]}""", json)
+        assertTrue(json.contains(""""id":1"""))
+        assertEquals(5, ringCoordinates(json).size)
+    }
+
+    @Test
+    fun typeDefaultWidthIsFlooredToTheVisibilityMinimum() {
+        // "other"'s typicalWidthMeters (0.15m, see TrashItemCatalog) is far
+        // below the ~6.29m visibility floor computed for the z15.5
+        // full-opacity zoom — the rendered rectangle's width axis must
+        // reflect the floor, not the raw 0.15m.
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(domain = "litter", widthMeters = null, yawDegrees = 0.0)),
+            centerLat = lat0,
+        )
+        val coords = ringCoordinates(json)
+        val lngExtent = coords.maxOf { it.first } - coords.minOf { it.first }
+        val metersPerDegreeLng = 111_320.0 * cos(lat0 * PI / 180.0)
+        val widthMeters = lngExtent * metersPerDegreeLng
+        assertTrue(widthMeters > 5.0, "expected floored width > 5.0m, got $widthMeters")
+    }
+
+    @Test
+    fun measuredWidthAboveTheFloorIsUnaffectedByIt() {
+        // The existing orientedRectRingCloses/bounds tests already use a
+        // real (non-null) widthMeters=10.0, well above the ~6.29m floor —
+        // this just pins that the floor is a MINIMUM, not a rescale, once a
+        // real measurement clears it.
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(domain = "litter", widthMeters = 10.0, yawDegrees = 0.0)),
+            centerLat = lat0,
+        )
+        val coords = ringCoordinates(json)
+        val lngExtent = coords.maxOf { it.first } - coords.minOf { it.first }
+        val metersPerDegreeLng = 111_320.0 * cos(lat0 * PI / 180.0)
+        val widthMeters = lngExtent * metersPerDegreeLng
+        assertTrue(abs(widthMeters - 10.0) < 0.01, "expected ~10.0m unaffected by floor, got $widthMeters")
     }
 
     @Test
@@ -145,5 +188,38 @@ class ObservationFootprintsTest {
         assertTrue(json.contains(""""itemType":"debris_pile""""))
         assertTrue(json.contains(""""domain":"construction""""))
         assertTrue(json.contains(""""state":"dirty""""))
+    }
+
+    // ── diagnosticStatus -> "diagnosed" property (Pillar 8 Task 4) ───────
+
+    @Test
+    fun diagnosticStatusObservedEmitsDiagnosedFalse() {
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = "observed")),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":false"""))
+    }
+
+    @Test
+    fun diagnosticStatusDiagnosedEmitsDiagnosedTrue() {
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = "diagnosed")),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":true"""))
+    }
+
+    @Test
+    fun nullDiagnosticStatusEmitsDiagnosedTrueNotObserved() {
+        // Legacy rows / servers that predate this field must render solid
+        // (diagnosed), not hollow (observed) — see WorldObservation.
+        // diagnosticStatus's KDoc for the full rationale (observed-only is
+        // a "needs completion" priority signal; null must not spam it).
+        val json = buildObservationFootprintsGeoJson(
+            listOf(observation(diagnosticStatus = null)),
+            centerLat = lat0,
+        )
+        assertTrue(json.contains(""""diagnosed":true"""))
     }
 }

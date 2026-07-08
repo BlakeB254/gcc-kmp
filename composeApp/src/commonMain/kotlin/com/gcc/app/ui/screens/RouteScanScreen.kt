@@ -129,7 +129,9 @@ fun RouteScanScreen(
 
             ScanPhase.COMPLETE -> ScanCompleteScreen(
                 uiState = uiState,
+                completeJobId = completeJobId,
                 onDone = onComplete,
+                onRetryCompletionReport = { viewModel.retryCompletionReportFetch() },
             )
         }
 

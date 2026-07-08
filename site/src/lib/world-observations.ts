@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { worldObservations, blockExclusionZones, communityReports } from '@/db/schema'
-import { eq, and, isNull, inArray } from 'drizzle-orm'
+import { eq, and, isNull, inArray, ne } from 'drizzle-orm'
 import { pointInPolygon, METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
 
 const CELL_SIZE_METERS = 10
@@ -53,6 +53,62 @@ export interface RecordObservationInput {
   arAnchorData?: string
   capturedAt: string
   blockId?: number
+}
+
+/**
+ * Merges a prior observation's attributes forward into a new observation's
+ * attributes — new keys win over inherited ones, matching the supersede
+ * comment in `recordWorldObservation`. Pure/side-effect-free (no DB access)
+ * so the litter-truth completion-upgrade and diagnosis-persistence
+ * semantics (see `computeDiagnosticStatus`) are unit-testable without a
+ * database, the same pattern `selectReportsInStaleCells` uses below.
+ */
+export function mergeObservationAttributes(
+  prior: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined
+): Record<string, unknown> | undefined {
+  if (prior && typeof prior === 'object') {
+    return { ...prior, ...(incoming ?? {}) }
+  }
+  return incoming ?? undefined
+}
+
+/**
+ * Litter-truth lifecycle (Pillar 8 items 7-8): determine 'diagnosed' vs
+ * 'observed' from an observation's attributes. OBSERVED = identified from
+ * afar (distant detection photo + position/type), no close capture.
+ * DIAGNOSED = a close-range capture upgraded it — `estimatedWeightGrams`
+ * AND `estimatedWidthMeters` together (a close confirm measured both), OR
+ * any `objectCapture*` attribute (a full photogrammetry capture, always
+ * close-range by construction). Anything else is 'observed'.
+ *
+ * CRITICAL: callers MUST pass the POST-MERGE attributes (i.e. after
+ * `mergeObservationAttributes` has folded the prior current row's
+ * attributes forward), not the raw per-request input. Computing from the
+ * merged attributes — rather than from the new request alone — gives the
+ * completion-upgrade semantics for free in both directions:
+ *  (a) prior observed-only row (no size attrs) + new close-confirm (weight
+ *      + width) in the same cell+itemType -> the merge folds the new
+ *      weight+width in -> the new current row is 'diagnosed' (upgrade ✓).
+ *  (b) prior diagnosed row (weight+width already recorded) + a new LEAN
+ *      re-scan (auto-detect, no size data) -> the merge retains the prior
+ *      weight+width (new keys win, but the re-scan supplies none) -> the
+ *      new current row STAYS 'diagnosed'. This is deliberate: diagnosis is
+ *      a fact about the litter itself (it WAS close-range measured, at
+ *      some point), not a property of the latest scan's instrument — a
+ *      later drive-by glance must not un-diagnose it.
+ */
+export function computeDiagnosticStatus(
+  attributes: Record<string, unknown> | null | undefined
+): 'observed' | 'diagnosed' {
+  if (!attributes) return 'observed'
+  const weight = attributes.estimatedWeightGrams
+  const width = attributes.estimatedWidthMeters
+  const hasWeightAndWidth =
+    typeof weight === 'number' && Number.isFinite(weight) &&
+    typeof width === 'number' && Number.isFinite(width)
+  const hasObjectCapture = Object.keys(attributes).some((key) => key.startsWith('objectCapture'))
+  return hasWeightAndWidth || hasObjectCapture ? 'diagnosed' : 'observed'
 }
 
 /**
@@ -110,11 +166,12 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         eq(worldObservations.isCurrent, true)
       ))
       .limit(1)
-    if (prior?.attributes && typeof prior.attributes === 'object') {
-      input = {
-        ...input,
-        attributes: { ...(prior.attributes as Record<string, unknown>), ...(input.attributes ?? {}) },
-      }
+    input = {
+      ...input,
+      attributes: mergeObservationAttributes(
+        prior?.attributes as Record<string, unknown> | null | undefined,
+        input.attributes
+      ),
     }
 
     await db
@@ -126,6 +183,15 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         eq(worldObservations.isCurrent, true)
       ))
   }
+
+  // Computed from input.attributes AFTER the dirty-path merge above (see
+  // computeDiagnosticStatus's CRITICAL note) — this placement is what gives
+  // both upgrade and persistence semantics. The insert sets this
+  // explicitly rather than relying on the DB default: schema.ts now names
+  // the column, so drizzle includes it in every generated INSERT
+  // regardless (MERGE ACTION: migration 0029 adds this column — see that
+  // file's header).
+  const diagnosticStatus = computeDiagnosticStatus(input.attributes)
 
   const [row] = await db
     .insert(worldObservations)
@@ -139,6 +205,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       itemType: input.itemType,
       state: input.state,
       domain: input.domain ?? 'litter',
+      diagnosticStatus,
       attributes: input.attributes ?? null,
       confidence: input.confidence ?? null,
       mediaUrl: input.mediaUrl ?? null,
@@ -174,6 +241,146 @@ async function resolveSupersededReports(communityReportIds: (number | null)[]) {
       inArray(communityReports.id, ids),
       inArray(communityReports.status, ['pending', 'verified'])
     ))
+}
+
+/** Shape a `coveredCellIds` entry must match to be treated as a `gridCell()` id — same `${latIdx}:${lngIdx}` shape gridCell() produces. */
+const CELL_ID_PATTERN = /^-?\d+:-?\d+$/
+
+/**
+ * Cap on how many `coveredCellIds` a single scan submission can carry. A
+ * scan session's coverage tracker could in principle accumulate far more
+ * cells than any one report needs to sweep; this bounds the per-request
+ * work (both the truncation itself and the downstream community-reports
+ * full-table scan in `resolveByCoveredCells`) without rejecting the
+ * request — oversized input is silently truncated to the first N entries,
+ * not treated as an error.
+ */
+const MAX_COVERED_CELL_IDS = 2000
+
+/**
+ * Validate + normalize the optional `coveredCellIds` field on a scan
+ * submission (POST /api/spots). Old clients never send this field, so any
+ * non-array value (including `undefined`/`null`) is treated as "no extra
+ * cells to sweep" rather than a validation error — this is what keeps old
+ * clients wire-compatible: they get exactly the legacy point-radius
+ * supersede behavior and nothing else. Entries that aren't strings, or
+ * don't match the gridCell id shape, are dropped rather than failing the
+ * whole request.
+ */
+export function parseCoveredCellIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((v): v is string => typeof v === 'string' && CELL_ID_PATTERN.test(v))
+    .slice(0, MAX_COVERED_CELL_IDS)
+}
+
+/**
+ * Pure decision function: given raw community-report candidates (id +
+ * whatever shape `coordinates` happens to be — object `{lat,lng}` or array
+ * `[lng,lat]`, the same dual-shape handling the GET handler in
+ * `api/spots/route.ts` already does for this same column) and a set of
+ * stale cell ids, returns the ids of the candidates whose `gridCell()`
+ * falls inside `staleCells`. Kept side-effect-free (no DB access) so the
+ * cell-matching logic is unit-testable without a database.
+ */
+export function selectReportsInStaleCells(
+  candidates: { id: number; coordinates: unknown }[],
+  staleCells: Iterable<string>
+): number[] {
+  const staleCellSet = staleCells instanceof Set ? staleCells : new Set(staleCells)
+  const matched: number[] = []
+  for (const candidate of candidates) {
+    const coords = candidate.coordinates as any
+    let lat: number | undefined
+    let lng: number | undefined
+    if (Array.isArray(coords)) {
+      lng = Number(coords[0])
+      lat = Number(coords[1])
+    } else if (coords && typeof coords === 'object') {
+      lat = Number(coords.lat)
+      lng = Number(coords.lng ?? coords.lon) // .lon fallback mirrors spots/route.ts, _derived.ts, data-export/route.ts
+    }
+    if (Number.isFinite(lat) && Number.isFinite(lng) && staleCellSet.has(gridCell(lat as number, lng as number))) {
+      matched.push(candidate.id)
+    }
+  }
+  return matched
+}
+
+export interface CellSupersedeResult {
+  resolvedReportIds: number[]
+  invalidatedObservationCount: number
+}
+
+/**
+ * Broader "the scan swept this cell" supersede pass — a second, independent
+ * supersede driven by the full list of cells a scan's coverage tracker
+ * actually swept (GRAZED+ quality tier), not just the point-radius supersede
+ * around the scan's anchor + detected items (that legacy behavior in
+ * `api/spots/route.ts` is unchanged). `staleCells` are cells the scan
+ * covered but did NOT re-confirm this submission (no anchor/detected item
+ * landed there) — the caller is responsible for excluding re-confirmed
+ * cells before calling this. A covered-but-not-reconfirmed cell means the
+ * scan swept it and found nothing there: any pending/verified community
+ * report there is resolved, and any currently-current dirty world
+ * observation there is marked non-current.
+ *
+ * - Community reports: `coordinates` is untyped jsonb (object or array
+ *   shape depending on submission source), so `gridCell()` can't be
+ *   expressed as a SQL predicate. This table is small — the same scale as
+ *   the other near-full-table scans already in this file/route — so
+ *   candidates are fetched in bulk and filtered in JS via
+ *   `selectReportsInStaleCells`, favoring correctness/simplicity over a
+ *   fragile SQL json-path expression.
+ * - World observations: `locationCellId` is a real stored column, so this
+ *   half is a direct SQL `inArray` filter — no JS filtering needed.
+ *
+ * `dbClient` is an injectable seam for unit tests (defaults to the real
+ * `db`); production callers should never pass it.
+ *
+ * `excludeReportId` is optional (Amendment 2 / Task 1b): scan submissions
+ * no longer insert a `communityReports` row, so there's nothing to exclude
+ * from the sweep — callers on that path pass `undefined` and every
+ * pending/verified report becomes an eligible candidate.
+ */
+export async function resolveByCoveredCells(
+  staleCells: string[],
+  excludeReportId: number | undefined,
+  reason: string,
+  dbClient: typeof db = db
+): Promise<CellSupersedeResult> {
+  if (staleCells.length === 0) {
+    return { resolvedReportIds: [], invalidatedObservationCount: 0 }
+  }
+
+  const candidates = await dbClient
+    .select({ id: communityReports.id, coordinates: communityReports.coordinates })
+    .from(communityReports)
+    .where(and(
+      inArray(communityReports.status, ['pending', 'verified']),
+      excludeReportId != null ? ne(communityReports.id, excludeReportId) : undefined
+    ))
+
+  const resolvedReportIds = selectReportsInStaleCells(candidates, staleCells)
+
+  if (resolvedReportIds.length > 0) {
+    await dbClient
+      .update(communityReports)
+      .set({ status: 'resolved', reviewNotes: reason })
+      .where(inArray(communityReports.id, resolvedReportIds))
+  }
+
+  const invalidated = await dbClient
+    .update(worldObservations)
+    .set({ isCurrent: false })
+    .where(and(
+      eq(worldObservations.isCurrent, true),
+      eq(worldObservations.state, 'dirty'),
+      inArray(worldObservations.locationCellId, staleCells)
+    ))
+    .returning({ id: worldObservations.id })
+
+  return { resolvedReportIds, invalidatedObservationCount: invalidated.length }
 }
 
 /**

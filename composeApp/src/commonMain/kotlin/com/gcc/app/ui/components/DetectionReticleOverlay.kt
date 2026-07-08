@@ -122,10 +122,15 @@ fun DetectionReticleOverlay(
             }
 
             val distanceSuffix = detection.distanceMeters?.let { d ->
-                // Lock-on needs ≤2m (NEAR_DISTANCE_METERS); past that the
-                // streak arc can never fill — say so instead of letting the
-                // user wonder. Also walks them into LiDAR/depth range.
-                val hint = if (d > 2.2) " · move closer" else ""
+                // Lock-on needs ≤2m (NEAR_DISTANCE_METERS); the 2.2m UI
+                // threshold here stays a deliberate 0.2m headroom above that
+                // so the hint escalates just before the streak arc can
+                // start filling, not exactly at the edge. Two tiers:
+                // "walk up to it" while still out of lock-on range, then
+                // "scan around it" once close enough that the streak should
+                // be building (candidate not yet locked -- once the streak
+                // fills, the confirm card takes over automatically).
+                val hint = if (d > 2.2) " · walk up to it" else " · scan around it"
                 " · ${(d * 10).roundToInt() / 10.0}m$hint"
             } ?: ""
             val label = textMeasurer.measure(detection.label + distanceSuffix, labelStyle)

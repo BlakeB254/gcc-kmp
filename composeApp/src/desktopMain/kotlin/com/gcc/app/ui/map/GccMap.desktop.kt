@@ -82,6 +82,9 @@ actual fun GccMap(
     // Canvas fallback doesn't render the coverage-tile system at all — no
     // MapLibre FillLayer stack to add the priority lens to.
     @Suppress("UNUSED_PARAMETER") showNeedsScanningLens: Boolean,
+    // Canvas fallback doesn't render the observation-footprint layer either
+    // (Pillar 8 Task 2 Part C tap wiring is iOS-only for now).
+    @Suppress("UNUSED_PARAMETER") onObservationTap: ((observationId: Int) -> Unit)?,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()

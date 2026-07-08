@@ -816,6 +816,11 @@ export const bounties = pgTable('bounties', {
 
   // Source spot and optional worker/job linkage
   triggerReportId: integer('trigger_report_id'),
+  // Amendment 2 (litter-truth): a bounty can instead be seeded from a
+  // worldObservations row when the triggering scan produced no report row.
+  // Exactly one of triggerReportId/triggerObservationId is set — enforced
+  // at the API layer, not the schema (both stay nullable).
+  triggerObservationId: integer('trigger_observation_id'),
   observerId: integer('observer_id'),
   firstRefusalExpiresAt: timestamp('first_refusal_expires_at', { mode: 'string', withTimezone: true }),
   claimedBy: integer('claimed_by'),
@@ -1386,6 +1391,7 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'scan_coverage_stale',    // Distance-tracked: re-scanned a cell stale >24h
   'scan_coverage_close_upgrade', // Distance-tracked: grazed->close upgrade on a fresh cell
   'scan_coverage_rectification', // Confirmed a previously-expected-dirty spot is now clean
+  'observation_logged',     // Scan recorded world observations (no spot report row) — 10 pts
 ])
 
 // Spot verifications table (audit trail of each verification event)
@@ -1723,6 +1729,14 @@ export const worldObservations = pgTable('world_observations', {
   locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
   itemType: varchar('item_type', { length: 50 }), // null when state='clean' (nothing dirty found)
   state: varchar('state', { length: 10 }).notNull(), // 'dirty' | 'clean'
+  // Litter-truth lifecycle (Pillar 8 Task 4): 'observed' (identified from
+  // afar — distant detection photo + position/type, no close capture) or
+  // 'diagnosed' (a close-range capture — weight+width from a close confirm,
+  // or Object Capture — upgraded it). Computed in recordWorldObservation
+  // from the POST-MERGE attributes (see that function's comment for why),
+  // so a later close-confirm on the same cell+itemType upgrades the row.
+  // MERGE ACTION: migration 0029 adds this column — see that file's header.
+  diagnosticStatus: varchar('diagnostic_status', { length: 10 }).default('observed').notNull(),
   attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedVolumeLiters, estimatedWeightLbs}
   confidence: doublePrecision('confidence'),
   mediaUrl: varchar('media_url', { length: 500 }),
@@ -1949,3 +1963,45 @@ export const feedProfileOptIns = pgTable('feed_profile_opt_ins', {
   itemWorkerUnique: uniqueIndex('feed_profile_opt_ins_item_worker_unique').on(table.feedItemId, table.workerId),
   workerIdx: index('idx_feed_profile_opt_ins_worker').on(table.workerId),
 }))
+
+// Pillar 9 — block completion reports. Auto-generated when a worker's job
+// completion PATCH (site/src/app/api/jobs/[id]/complete) fires, from the
+// job's linked route_scans session (see site/src/lib/block-completion-report.ts).
+// One report per job; regenerable by admin (upsert on jobId) if generation
+// failed or needs a re-run after a v1 heuristic upgrade. `sessionId` is the
+// route_scans.id the report was built from, kept for traceability/debugging
+// even though jobId is the stable lookup key clients use.
+export const blockCompletionReports = pgTable('block_completion_reports', {
+  id: serial('id').primaryKey(),
+  jobId: integer('job_id').notNull(),
+  routeId: integer('route_id').notNull(),
+  workerId: integer('worker_id').notNull(),
+  sessionId: integer('session_id').notNull(), // route_scans.id this report was built from
+
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  durationSeconds: integer('duration_seconds'),
+
+  // GeoJSON-ish track data: { scout: LineString | null, clean: LineString | null }
+  gpsTrack: jsonb('gps_track'),
+  // Array of { locationCellId, lat, lng, domain, observationCount } — see
+  // queryAreasCleaned in block-completion-report.ts.
+  areasCleaned: jsonb('areas_cleaned'),
+  // Array of { locationCellId, itemType, before, after } before/after photo pairs
+  // — see pairBeforeAfterPhotos in block-completion-report.ts.
+  imagePairs: jsonb('image_pairs'),
+
+  totalEstimatedWeightLbs: doublePrecision('total_estimated_weight_lbs'),
+  cleanedEstimatedWeightLbs: doublePrecision('cleaned_estimated_weight_lbs'),
+  // { byType: Record<string, number>, bySeverity: Record<string, number> }
+  countsByType: jsonb('counts_by_type'),
+
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  jobIdx: uniqueIndex('block_completion_reports_job_id_idx').on(table.jobId),
+  routeIdx: index('block_completion_reports_route_id_idx').on(table.routeId),
+  workerIdx: index('block_completion_reports_worker_id_idx').on(table.workerId),
+}))
+
+export type BlockCompletionReportRow = typeof blockCompletionReports.$inferSelect
+export type NewBlockCompletionReportRow = typeof blockCompletionReports.$inferInsert

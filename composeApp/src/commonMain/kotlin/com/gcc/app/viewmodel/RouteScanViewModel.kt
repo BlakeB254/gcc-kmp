@@ -38,6 +38,7 @@ import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.gridCell10m
 import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
@@ -117,6 +118,17 @@ data class RouteScanUiState(
     val problemAreas: List<ProblemArea> = emptyList(),
     /** The problem area lap 2 is currently steering the worker toward. */
     val guidanceTarget: ProblemArea? = null,
+    /**
+     * Pillar 9 block-completion report (duration, mini route path, weight
+     * cleaned, before/after photo pairs, counts), fetched after job
+     * completion. Null while [completionReportLoading] is true, and also
+     * null (with loading false and no error) after a fetch that 404'd —
+     * that's the "still generating" state; see
+     * [RouteScanViewModel.retryCompletionReportFetch].
+     */
+    val completionReport: BlockCompletionReport? = null,
+    val completionReportLoading: Boolean = false,
+    val completionReportError: String? = null,
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────
@@ -143,6 +155,17 @@ class RouteScanViewModel(
 
         /** Reaching this close to a guidance target advances to the next one. */
         const val PROBLEM_AREA_REACHED_METERS = 15.0
+
+        /**
+         * Block-completion report generation (Pillar 9) is fire-and-forget on
+         * the server, kicked off right after the job-completion PATCH — so
+         * the first fetch can easily 404 if it lands before generation
+         * finishes. One retry after this delay covers the common case
+         * without blocking the completion screen for long; a persistent
+         * "still generating" state after that falls back to the manual
+         * refresh action ([retryCompletionReportFetch]) surfaced in the UI.
+         */
+        const val COMPLETION_REPORT_RETRY_DELAY_MS = 2500L
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -178,6 +201,23 @@ class RouteScanViewModel(
 
     /** Required-corridor cell centers (static per route) — the minimap fill base. */
     fun corridorCellCenters(): List<Pair<Double, Double>> = coverageTracker.getCorridorCenters()
+
+    /**
+     * Cells this scan session's [coverageTracker] actually swept at GRAZED+
+     * quality (the same set backing the minimap fill/fog), translated to
+     * server `gridCell()` ids for the Pillar 8 task 1 cell-supersede sweep
+     * (site/src/lib/world-observations.ts's `resolveByCoveredCells`).
+     * Capped at 2000 to match the server's `parseCoveredCellIds` truncation.
+     *
+     * TODO(merge): wire into route-scan completion submission once
+     * checkpoint-removal branch lands.
+     */
+    fun coveredCellIdsForSubmission(): List<String> =
+        coverageTracker.scannedCells.value
+            .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+            .map { (lat, lng) -> gridCell10m(lat, lng) }
+            .distinct()
+            .take(2000)
 
     // One recorder per lap: the baseline lap and the clean lap each upload as
     // their own session manifest (route-v2 design step 1/5). journalPath is
@@ -1025,6 +1065,11 @@ class RouteScanViewModel(
                             e,
                         )
                     }
+                    // Best-effort: the job is COMPLETE either way once we've
+                    // reached this point, and the report is a nice-to-have on
+                    // top of it. fetchCompletionReport handles its own
+                    // errors/404s and never throws.
+                    fetchCompletionReport(jobId)
                 }
             } catch (e: Exception) {
                 DiagnosticsLog.error("scan-submit", "completeScan submission failed", e)
@@ -1035,6 +1080,52 @@ class RouteScanViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * Fetches the Pillar 9 block-completion report for [jobId]. The server
+     * generates it non-fatally right after job completion (see
+     * completeScan's completeJob call above), so the first GET can 404 if it
+     * lands before generation finishes — this retries once after
+     * [COMPLETION_REPORT_RETRY_DELAY_MS] before settling into the "still
+     * generating" state (completionReport == null, loading == false, error
+     * == null), which the UI surfaces with a manual-refresh affordance via
+     * [retryCompletionReportFetch]. Never throws: all failures (including a
+     * persistent 404) land in uiState, not as an exception the caller has to
+     * handle.
+     */
+    private suspend fun fetchCompletionReport(jobId: Int) {
+        _uiState.value = _uiState.value.copy(
+            completionReportLoading = true,
+            completionReportError = null,
+        )
+        try {
+            var report = apiClient.getCompletionReport(jobId)
+            if (report == null) {
+                delay(COMPLETION_REPORT_RETRY_DELAY_MS)
+                report = apiClient.getCompletionReport(jobId)
+            }
+            _uiState.value = _uiState.value.copy(
+                completionReport = report,
+                completionReportLoading = false,
+            )
+        } catch (e: Exception) {
+            DiagnosticsLog.error(
+                "scan-submit",
+                "completion report fetch failed for job $jobId",
+                e,
+            )
+            _uiState.value = _uiState.value.copy(
+                completionReportLoading = false,
+                completionReportError = e.message ?: "Couldn't load the completion report",
+            )
+        }
+    }
+
+    /** Manual-refresh entry point for the "still generating" completion-report state. */
+    fun retryCompletionReportFetch() {
+        val jobId = completeJobId ?: return
+        scope.launch { fetchCompletionReport(jobId) }
     }
 
     fun retrySubmit() {

@@ -126,6 +126,30 @@ class GccApiClient(
         ApiResult.Error(e.message ?: "Unknown error")
     }
 
+    /**
+     * GET [path] and unwrap ApiResponse<T>.data, treating HTTP 404 as a
+     * recoverable "not there yet" signal (returns null) rather than an
+     * exception. For resources that are generated asynchronously/best-effort
+     * after some other action completes (e.g. the block-completion-report,
+     * which the server assembles in a fire-and-forget hook right after job
+     * completion — see GET /api/jobs/{id}/completion-report), a missing row
+     * is expected transient state, not an error the caller needs to surface.
+     * Any other non-2xx status still throws, same as [get].
+     */
+    private suspend inline fun <reified T> getOrNull(
+        path: String,
+        crossinline block: HttpRequestBuilder.() -> Unit = {},
+    ): T? {
+        val response = httpClient.get("$baseUrl$path", block)
+        if (response.status.value == 404) return null
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ApiResponse<T>>().data
+    }
+
     /** POST [path] with JSON [body] and unwrap ApiResponse<R>.data */
     private suspend inline fun <reified R> postJson(
         path: String,
@@ -289,6 +313,17 @@ class GccApiClient(
 
     suspend fun submitJobEvidence(jobId: Int, request: JobEvidenceRequest): Job =
         patchJson("/api/jobs/$jobId/evidence", request)
+
+    /**
+     * Fetch the Pillar 9 block-completion report for [jobId]. Returns null on
+     * HTTP 404 — the server generates this report non-fatally right after job
+     * completion, so it may not exist yet by the time a worker's client asks
+     * for it; callers should treat null as "still generating" and retry
+     * (see [com.gcc.app.viewmodel.RouteScanViewModel.fetchCompletionReport]),
+     * not as a hard error.
+     */
+    suspend fun getCompletionReport(jobId: Int): BlockCompletionReport? =
+        getOrNull("/api/jobs/$jobId/completion-report")
 
     // ── Worker Profile ────────────────────────────────────────────────
 

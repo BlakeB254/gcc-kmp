@@ -94,6 +94,28 @@ export const SPOT_ZOOM = {
   DOTS_MIN: 14,
 } as const
 
+// Litter-footprint layer (Pillar 8 Task 2/3): the close-zoom, true-scale,
+// per-observation shapes that replace the removed spot pin/glyph/
+// verification-ring layers — web mirror of the mobile footprint layer in
+// composeApp/.../GccMap.ios.kt. Domain-tinted per the mobile palette;
+// "color carries noticeability, size carries truth" (spec).
+export const LITTER_FOOTPRINT_COLORS = {
+  vegetation: '#16A34A',
+  construction: '#6B7280',
+  other: '#F97316', // litter/unspecified — same hex as SPOT_COLORS.MARKER
+} as const
+
+// Fade-in band: starts at SPOT_ZOOM.HEATMAP_FADE_OUT (the web heatmap's own
+// fade-OUT zoom, 14.5) so the two layers hand off with zero dead band by
+// construction, same trick mobile uses anchoring its fade-in start to
+// IOS_SPOT_HEAT_FADE_ZOOM. Reaches full opacity at z15.5 — matches mobile's
+// footprintFadeInFullZoom exactly (not heat-fade-zoom-dependent; the shapes
+// need to be legible at the same zoom on both platforms).
+export const LITTER_FOOTPRINT_ZOOM = {
+  FADE_IN_START: SPOT_ZOOM.HEATMAP_FADE_OUT,
+  FADE_IN_FULL: 15.5,
+} as const
+
 export type SpotHeatWeightInput = {
   status?: string | null
   bountyId?: string | number | null
