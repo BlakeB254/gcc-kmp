@@ -3,6 +3,7 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.ArScanner
+import com.gcc.app.platform.BuildingFootprintLoader
 import com.gcc.app.platform.CellCredit
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
@@ -139,6 +140,7 @@ class RouteScanViewModel(
     private val sessionUploader: EnvScanSessionUploader,
     private val captureUploader: CaptureChunkUploader,
     private val captureChunkStore: CaptureChunkStore,
+    private val buildingFootprintLoader: BuildingFootprintLoader,
 ) {
     companion object {
         /**
@@ -1334,6 +1336,13 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         updateBoundaryStatus(lat, lng)
+                        // Ensure real footprints for this tile are cached +
+                        // registered so isInsideMappedBuilding runs
+                        // point-in-polygon (not the hardcoded rectangles).
+                        // Best-effort; never blocks the gate below.
+                        buildingFootprintLoader.ensureFootprintsFor(
+                            lat, lng, Clock.System.now().toEpochMilliseconds(),
+                        )
                         outdoorGate.onMapEvidence(
                             insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(lat, lng),
                             timestampMs = Clock.System.now().toEpochMilliseconds(),

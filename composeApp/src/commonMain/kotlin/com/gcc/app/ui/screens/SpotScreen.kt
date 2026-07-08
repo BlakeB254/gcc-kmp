@@ -308,6 +308,7 @@ private fun CameraPhase(
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
+    val buildingFootprintLoader = koinInject<com.gcc.app.platform.BuildingFootprintLoader>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     val gpsHeading by locationProvider.headingDegrees.collectAsState()
     val gpsAccuracy by locationProvider.horizontalAccuracyMeters.collectAsState()
@@ -482,12 +483,18 @@ private fun CameraPhase(
     // after evidence accumulates.
     LaunchedEffect(Unit) {
         locationProvider.currentLocation.value?.let { loc ->
+            buildingFootprintLoader.ensureFootprintsFor(
+                loc.lat, loc.lng, Clock.System.now().toEpochMilliseconds(),
+            )
             gate.onMapEvidence(
                 insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
                 timestampMs = Clock.System.now().toEpochMilliseconds(),
             )
         }
         locationProvider.locationFlow.collect { loc ->
+            buildingFootprintLoader.ensureFootprintsFor(
+                loc.lat, loc.lng, Clock.System.now().toEpochMilliseconds(),
+            )
             gate.onMapEvidence(
                 insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
                 timestampMs = Clock.System.now().toEpochMilliseconds(),
