@@ -71,7 +71,12 @@ export default function BountiesPage() {
             const amountCents = Number(b.amountCents ?? b.amount ?? 0)
             if (!Number.isFinite(Number(lng)) || !Number.isFinite(Number(lat))) return null
             if (!Number.isFinite(amountCents) || amountCents < BOUNTY_MINIMUM_CENTS) return null
-            if (b.triggerReportId == null) return null
+            // Bounties are seeded by either a community report (triggerReportId)
+            // or a world observation (triggerObservationId) — keep the bounty if
+            // either is present. Dropping observation-seeded bounties here hid
+            // valid cleanup opportunities from the web list (mobile never filtered
+            // on this at all).
+            if (b.triggerReportId == null && b.triggerObservationId == null) return null
             return {
               id: String(b.id),
               title: b.title || 'Cleanup bounty',
@@ -81,6 +86,7 @@ export default function BountiesPage() {
               pledgeCount: b.pledgeCount ?? 0,
               coordinates: [Number(lng), Number(lat)] as [number, number],
               triggerReportId: b.triggerReportId,
+              triggerObservationId: b.triggerObservationId,
               mediaUrls: Array.isArray(b.mediaUrls) ? b.mediaUrls : [],
             }
           })

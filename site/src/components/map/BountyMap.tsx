@@ -25,6 +25,7 @@ interface Bounty {
   pledgeCount: number
   coordinates: [number, number] // [lng, lat]
   triggerReportId?: string | number | null
+  triggerObservationId?: string | number | null
   mediaUrls?: string[]
 }
 
