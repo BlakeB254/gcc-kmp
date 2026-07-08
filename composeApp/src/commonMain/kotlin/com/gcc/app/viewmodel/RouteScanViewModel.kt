@@ -1272,11 +1272,13 @@ class RouteScanViewModel(
         _uiState.value = _uiState.value.copy(error = message)
     }
 
-    /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener). */
-    fun onCoverageRayHits(hits: List<RaycastCoverageHit>) {
+    /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener).
+     *  [deepAllowed] gates the deep CLOSE shade on scan quality (WS3);
+     *  submission quality via [fanHitQuality] stays ungated. */
+    fun onCoverageRayHits(hits: List<RaycastCoverageHit>, deepAllowed: Boolean = true) {
         if (!outdoorGate.captureAllowed.value) return
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
-        coverageTracker.updateWithRaycastHits(hits)
+        coverageTracker.updateWithRaycastHits(hits, deepAllowed = deepAllowed)
         bestFanQualitySinceLastEvent = bestOf(bestFanQualitySinceLastEvent, fanHitQuality(hits))
     }
 
