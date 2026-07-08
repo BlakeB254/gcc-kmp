@@ -62,6 +62,15 @@ object ScanQualityScorer {
         else -> ScanQualityTier.POOR
     }
 
+    /**
+     * Deep-scan quality bar (spec WS3): the CLOSE/deep coverage shade only
+     * locks in on a genuinely good scan. Gates SHADE TIER ONLY — capture and
+     * submission stay ungated (this object's feedback-only contract). Wraps
+     * the existing score/tier so there is one definition of "GOOD".
+     */
+    fun meetsDeepScanQuality(signal: ScanQualitySignal): Boolean =
+        tierOf(score(signal)) == ScanQualityTier.GOOD
+
     /** Single most-actionable reason for a non-GOOD tier, for a short label
      *  ("Fair · GPS weak") rather than an opaque number. Null when GOOD. */
     fun limitingFactor(signal: ScanQualitySignal): String? = when {

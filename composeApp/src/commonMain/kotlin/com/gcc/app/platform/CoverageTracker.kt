@@ -55,6 +55,18 @@ fun coverageQualityForDistance(distanceMeters: Double): CoverageQuality? = when 
 fun fanHitQuality(hits: List<RaycastCoverageHit>): CoverageQuality? =
     hits.mapNotNull { coverageQualityForDistance(it.distanceMeters) }.maxOrNull()
 
+/**
+ * [coverageQualityForDistance] with the spec WS3 deep-tier quality gate: a
+ * <=CLOSE_RANGE_METERS hit only reaches [CoverageQuality.CLOSE] when
+ * [deepAllowed] (scan quality was GOOD at credit time); otherwise it caps at
+ * [CoverageQuality.GRAZED]. SEEN/GRAZED bands are unaffected by quality —
+ * only the dark "deep" paint is gated. Returns null beyond the fan ceiling.
+ */
+fun coverageQualityForDistanceGated(distanceMeters: Double, deepAllowed: Boolean): CoverageQuality? {
+    val raw = coverageQualityForDistance(distanceMeters) ?: return null
+    return if (raw == CoverageQuality.CLOSE && !deepAllowed) CoverageQuality.GRAZED else raw
+}
+
 /** Higher-ranked (close > grazed > seen) of two possibly-null qualities — null is lowest. */
 fun bestOf(a: CoverageQuality?, b: CoverageQuality?): CoverageQuality? =
     listOfNotNull(a, b).maxOrNull()
@@ -377,12 +389,16 @@ class CoverageTracker {
      * at real surfaces, so a wall 2m away means nothing beyond it can credit —
      * the indoor 15m-cone overreach is impossible by construction (spec §1).
      */
-    fun updateWithRaycastHits(hits: List<RaycastCoverageHit>, nowMs: Long = nowEpochMs()) {
+    fun updateWithRaycastHits(
+        hits: List<RaycastCoverageHit>,
+        deepAllowed: Boolean = true,
+        nowMs: Long = nowEpochMs(),
+    ) {
         if (totalCells == 0 || hits.isEmpty()) return
         val map = _creditedCells.value.toMutableMap()
         var changed = false
         for (hit in hits) {
-            val quality = coverageQualityForDistance(hit.distanceMeters) ?: continue
+            val quality = coverageQualityForDistanceGated(hit.distanceMeters, deepAllowed) ?: continue
             val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
             if (creditCell(map, cell, quality, nowMs)) changed = true
         }

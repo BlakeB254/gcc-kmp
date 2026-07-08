@@ -225,4 +225,72 @@ class CoverageTrackerQualityTest {
         assertTrue(t.closePercent.value > 0.0)
         assertNotNull(t.creditedCells.value)
     }
+
+    // ── WS3: quality-gated deep tier ──────────────────────────────────
+
+    @Test
+    fun closeHitBelowGoodQualityCreditsGrazedNotClose() {
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(
+            listOf(RaycastCoverageHit(41.8600, -87.7200, distanceMeters = 2.0)),
+            deepAllowed = false,
+            nowMs = 1_000L,
+        )
+        assertEquals(CoverageQuality.GRAZED, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell in t.scannedCells.value)
+        assertEquals(0.0, t.closePercent.value)
+    }
+
+    @Test
+    fun closeHitAtGoodQualityCreditsClose() {
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(
+            listOf(RaycastCoverageHit(41.8600, -87.7200, distanceMeters = 2.0)),
+            deepAllowed = true,
+            nowMs = 1_000L,
+        )
+        assertEquals(CoverageQuality.CLOSE, t.creditedCells.value[cell]?.quality)
+        assertTrue(t.closePercent.value > 0.0)
+    }
+
+    @Test
+    fun qualityGateNeverAffectsSeenOrGrazedBands() {
+        val t = tracker()
+        val grazedCell = t.cellForLatLng(41.86005, -87.7200)!!
+        val seenCell = t.cellForLatLng(41.86010, -87.7200)!!
+        t.updateWithRaycastHits(
+            listOf(
+                RaycastCoverageHit(41.86005, -87.7200, distanceMeters = 7.0),  // GRAZED
+                RaycastCoverageHit(41.86010, -87.7200, distanceMeters = 40.0), // SEEN
+            ),
+            deepAllowed = false,
+            nowMs = 1_000L,
+        )
+        assertEquals(CoverageQuality.GRAZED, t.creditedCells.value[grazedCell]?.quality)
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[seenCell]?.quality)
+    }
+
+    @Test
+    fun goodCloseCreditIsNotDowngradedByLaterUngatedCloseHit() {
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(
+            listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), deepAllowed = true, nowMs = 1_000L,
+        )
+        t.updateWithRaycastHits(
+            listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), deepAllowed = false, nowMs = 2_000L,
+        )
+        assertEquals(CoverageQuality.CLOSE, t.creditedCells.value[cell]?.quality)
+    }
+
+    @Test
+    fun coverageQualityForDistanceGatedCapsCloseWhenNotAllowed() {
+        assertEquals(CoverageQuality.GRAZED, coverageQualityForDistanceGated(2.0, deepAllowed = false))
+        assertEquals(CoverageQuality.CLOSE, coverageQualityForDistanceGated(2.0, deepAllowed = true))
+        assertEquals(CoverageQuality.GRAZED, coverageQualityForDistanceGated(7.0, deepAllowed = false))
+        assertEquals(CoverageQuality.SEEN, coverageQualityForDistanceGated(40.0, deepAllowed = false))
+        assertNull(coverageQualityForDistanceGated(60.0, deepAllowed = true))
+    }
 }
