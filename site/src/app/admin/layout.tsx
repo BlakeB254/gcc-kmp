@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: '/admin/boundaries', label: 'Boundary Editor' },
   { href: '/admin/block-proposals', label: 'Block Proposals' },
   { href: '/admin/sponsors', label: 'Sponsor Deliverables' },
+  { href: '/admin/reports', label: 'Completion Reports' },
   { href: '/admin/newsletter', label: 'Newsletter' },
   { href: '/admin/crashes', label: 'Crash Reports' },
 ]
