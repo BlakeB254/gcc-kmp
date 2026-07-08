@@ -19,7 +19,7 @@ import {
 } from '@/lib/design-tokens'
 import { MAP_BOUNDS } from '@/data/blocks'
 import { BaseMap, MapLegend } from './BaseMap'
-import { PrecipitationLegend } from './PrecipitationLegend'
+import { CellHealthLegend } from './CellHealthLegend'
 import { CoverageFreshnessOverlay } from './CoverageFreshnessOverlay'
 import type { FallbackGeoJSONLayer } from './BaseMap'
 import type { Bounty, SpotReport } from './BountyMap'
@@ -606,14 +606,14 @@ export function CombinedMap({
             {spots.length > 0 ? (
               <>
                 {heatmapVisible
-                  ? <PrecipitationLegend onDone={() => setHeatmapVisible(false)} />
+                  ? <CellHealthLegend onDone={() => setHeatmapVisible(false)} />
                   : legendNode}
                 <button
-                  data-testid="precip-toggle"
+                  data-testid="cell-health-toggle"
                   onClick={() => setHeatmapVisible((v) => !v)}
                   aria-pressed={heatmapVisible}
                   className="absolute top-28 right-3 z-10 bg-white/95 backdrop-blur-sm rounded-xl p-2 shadow-md"
-                  title="Toggle report density"
+                  title="Toggle ground health layer"
                 >
                   {/* stacked-layers glyph */}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
