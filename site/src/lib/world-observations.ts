@@ -298,7 +298,7 @@ export function selectReportsInStaleCells(
       lat = Number(coords[1])
     } else if (coords && typeof coords === 'object') {
       lat = Number(coords.lat)
-      lng = Number(coords.lng ?? coords.lon)
+      lng = Number(coords.lng ?? coords.lon) // .lon fallback mirrors spots/route.ts, _derived.ts, data-export/route.ts
     }
     if (Number.isFinite(lat) && Number.isFinite(lng) && staleCellSet.has(gridCell(lat as number, lng as number))) {
       matched.push(candidate.id)

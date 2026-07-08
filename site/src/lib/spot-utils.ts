@@ -135,11 +135,12 @@ export const SCAN_OBSERVATION_PIN_ID_BASE = 1_000_000
  *   pins, so this id can never collide with a real community-report id
  *   (serial ids stay far below 1_000_000 for the practical future) and is
  *   recognizable on sight as synthetic.
- * - `status: 'pending'` was chosen (not e.g. 'resolved') so that if any
- *   code path ever mistakes this id for a real report (it matches no row
- *   in `communityReports`), the failure mode reads as "an ordinary
- *   unreviewed report" rather than something that looks authoritatively
- *   resolved/verified — fails soft.
+ * - `status` is inherited from `values.status`, which the caller sets to
+ *   'pending' (not e.g. 'resolved') for both the manual and scan paths so
+ *   that if any code path ever mistakes this id for a real report (it
+ *   matches no row in `communityReports`), the failure mode reads as "an
+ *   ordinary unreviewed report" rather than something that looks
+ *   authoritatively resolved/verified — fails soft.
  */
 export function buildSyntheticScanReport(
   values: NewCommunityReport,
