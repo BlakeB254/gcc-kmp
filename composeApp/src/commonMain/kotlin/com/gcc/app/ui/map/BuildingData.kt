@@ -206,20 +206,21 @@ val northLawndaleBuildings = listOf(
  * `GET /api/map/buildings`. Rings are GeoJSON linear rings ([lng,lat]).
  *
  * Keyed by tile so a user near a tile boundary keeps footprints from both
- * tiles live; [current] flattens all registered tiles. Thread-safe: the loader
- * writes on a background coroutine while the gate reads on the location flow.
+ * tiles live; [current] flattens all registered tiles. Single-writer by
+ * construction — only [com.gcc.app.platform.BuildingFootprintLoader] mutates
+ * it, from the one active scan's location-flow coroutine — and readers only
+ * read the whole-list [flattened] reference, so a plain reference-swap is
+ * safe (no JVM-only @Synchronized, which isn't available in commonMain).
  */
 object MappedBuildingRegistry {
     private val ringsByTile = mutableMapOf<String, List<List<List<Double>>>>()
     private var flattened: List<List<List<Double>>> = emptyList()
 
-    @Synchronized
     fun setRingsForTile(tileKey: String, rings: List<List<List<Double>>>) {
         ringsByTile[tileKey] = rings
         flattened = ringsByTile.values.flatten()
     }
 
-    @Synchronized
     fun clear() {
         ringsByTile.clear()
         flattened = emptyList()

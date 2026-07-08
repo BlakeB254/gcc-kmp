@@ -1293,56 +1293,17 @@ actual class ArEnvScanOverlay actual constructor() {
 
     /** Lay "digitized" cell quads over already-credited ground (main queue). */
     private fun renderVectorCells() {
-        if (!hasGeoRef) return
+        // WS5: the neon emissive coverage quads (the blurry green rectangle low
+        // in the AR view — field report) are removed from the env-scan surface.
+        // Coverage feedback now lives on the minimap (scene-aware beam + merged
+        // "painted" outlines). The matte line-only ground grid is a separate
+        // path and is unaffected. This tears down anything already placed.
         nativeSurface?.let { surface ->
-            // Native mode: hand AR-local cell centers to the Swift renderer
-            // (it owns floor height, pulse animation and the node cap).
-            val flat = ArrayList<Double>(latestScannedCells.size * 2)
-            for ((lat, lng) in latestScannedCells) {
-                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-                flat.add(local.first)
-                flat.add(local.second)
-            }
-            surface.updateVectorCells(flat, CoverageTracker.cellSizeMeters)
+            surface.updateVectorCells(emptyList(), CoverageTracker.cellSizeMeters)
             return
         }
-        val scene = sceneView?.scene ?: return
-        val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.02f
-
-        val wanted = mutableSetOf<Pair<Long, Long>>()
-        for ((lat, lng) in latestScannedCells) {
-            val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
-            wanted.add(key)
-            if (key in vectorNodes) {
-                // Keep placement synced as floor detection improves and the
-                // geo reference re-pairs (re-pairing shifts the whole frame).
-                val fresh = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-                vectorNodes[key]?.position?.useContents {
-                    if (abs(y - groundY) > 0.05f ||
-                        abs(x - fresh.first.toFloat()) > 0.05f ||
-                        abs(z - fresh.second.toFloat()) > 0.05f
-                    ) {
-                        vectorNodes[key]?.position =
-                            SCNVector3Make(fresh.first.toFloat(), groundY, fresh.second.toFloat())
-                    }
-                }
-                continue
-            }
-            if (vectorNodes.size >= MAX_VECTOR_NODES) continue
-            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-            val dx = local.first - refX
-            val dz = local.second - refZ
-            if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
-            vectorNodes[key] = makeVectorCellNode(local.first.toFloat(), groundY, local.second.toFloat())
-                .also { scene.rootNode.addChildNode(it) }
-        }
-
-        for ((key, node) in vectorNodes.toMap()) {
-            if (key !in wanted) {
-                node.removeFromParentNode()
-                vectorNodes.remove(key)
-            }
-        }
+        for ((_, node) in vectorNodes) node.removeFromParentNode()
+        vectorNodes.clear()
     }
 
     private fun makeVectorCellNode(x: Float, y: Float, z: Float): SCNNode {

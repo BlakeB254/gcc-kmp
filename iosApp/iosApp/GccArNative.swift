@@ -265,41 +265,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {
+        // WS5: the neon emissive coverage quads (green-rectangle bleed in the
+        // camera view — field report) are removed from the env-scan surface.
+        // Tear down any previously-placed cells and ignore incoming centers;
+        // coverage feedback now lives on the minimap. The matte ground grid is
+        // a separate path (setGridPhaseOrigin) and stays crisp.
         DispatchQueue.main.async { [self] in
-            let groundY = (floorWorldY ?? cameraFallbackGroundY()) + 0.02
-            var wanted = Set<String>()
-            var index = 0
-            while index + 1 < flatXZ.count {
-                let x = Float(truncating: flatXZ[index])
-                let z = Float(truncating: flatXZ[index + 1])
-                index += 2
-                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
-                wanted.insert(key)
-                if let existing = vectorCellEntities[key] {
-                    // Floor detection refines over time — cells placed against
-                    // the camera-offset estimate must settle onto the real floor.
-                    if abs(existing.position.y - groundY) > 0.08 {
-                        existing.position.y = groundY
-                    }
-                    continue
-                }
-                if vectorCellEntities.count >= Self.maxVectorCells { continue }
-                let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
-                let mesh = MeshResource.generatePlane(
-                    width: Float(cellSizeMeters), depth: Float(cellSizeMeters)
-                )
-                let cell = ModelEntity(mesh: mesh, materials: [gridMaterial(vectorGridTexture, tint: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 0.5), uvScale: 1)])
-                anchor.addChild(cell)
-                arView.scene.addAnchor(anchor)
-                vectorCellEntities[key] = anchor
-                animateIn(cell)
-                // Slow shimmer after the grow-in settles.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak cell] in
-                    guard let cell else { return }
-                    self.addPulse(to: cell, scale: 0.94, duration: 1.4)
-                }
-            }
-            for (key, anchor) in vectorCellEntities where !wanted.contains(key) {
+            for (key, anchor) in vectorCellEntities {
                 vectorCellEntities.removeValue(forKey: key)
                 animateOutAndRemove(anchor)
             }
