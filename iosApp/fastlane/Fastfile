@@ -143,8 +143,8 @@ platform :ios do
     )
   end
 
-  desc "Submit latest build to App Store Review"
-  lane :submit do
+  desc "Submit a build to App Store Review (pass build:<number>)"
+  lane :submit do |options|
     api_key = app_store_connect_api_key(
       key_id: "XKAYZ4N88V",
       issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
@@ -152,12 +152,17 @@ platform :ios do
       in_house: false,
     )
 
+    build = options[:build]
+    UI.user_error!("Pass the build to submit, e.g. fastlane submit build:139") if build.to_s.strip.empty?
+
+    # automatic_release defaults to false: an approved version waits in
+    # Pending Developer Release until someone presses the button.
     deliver(
       api_key: api_key,
       app_version: "1.0.7",
-      build_number: "89",
+      build_number: build.to_s,
       submit_for_review: true,
-      automatic_release: true,
+      automatic_release: options.fetch(:automatic_release, false),
       skip_screenshots: true,
       skip_binary_upload: true,
       force: true,
