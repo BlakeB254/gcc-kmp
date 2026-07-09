@@ -21,8 +21,38 @@ data class CachedBuildingFootprints(
  * Mirrors [ScanAreaCacheStore]. Feeds [com.gcc.app.ui.map.MappedBuildingRegistry]
  * so the indoor gate's containment check works offline / before a fetch lands.
  */
-class BuildingFootprintStore(driver: SqlDriver) {
+class BuildingFootprintStore(private val driver: SqlDriver) {
     private val queries = GccDatabase(driver).buildingFootprintCacheQueries
+
+    init {
+        ensureTable()
+    }
+
+    /**
+     * keep in sync — upgraded installs create this table via
+     * BuildingFootprintStore.ensureTable, fresh installs via Schema.create.
+     *
+     * Same hazard [CaptureChunkStore.ensureTable] documents: SQLDelight's
+     * `GccDatabase.Schema.create()` only runs against a brand new "gcc.db",
+     * and adding this table never bumped `PRAGMA user_version`, so an upgrade
+     * from an older build lands on a gcc.db with routeCache/scanAreaCache but
+     * NOT buildingFootprintCache — the first [get] would throw "no such
+     * table". The DDL must stay byte-consistent with
+     * BuildingFootprintCache.sq's `CREATE TABLE buildingFootprintCache`.
+     */
+    private fun ensureTable() {
+        driver.execute(
+            null,
+            """
+            |CREATE TABLE IF NOT EXISTS buildingFootprintCache (
+            |  tileKey TEXT NOT NULL PRIMARY KEY,
+            |  buildingsJson TEXT NOT NULL,
+            |  cachedAtMs INTEGER NOT NULL
+            |)
+            """.trimMargin(),
+            0,
+        )
+    }
 
     fun put(tileKey: String, buildings: List<BuildingPolygon>, nowMs: Long) {
         queries.insertOrReplace(tileKey, GccJson.encodeToString(buildings), nowMs)

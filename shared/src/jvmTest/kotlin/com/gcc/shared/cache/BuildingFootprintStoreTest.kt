@@ -49,6 +49,23 @@ class BuildingFootprintStoreTest {
     }
 
     @Test
+    fun ensureTableBackfillsBuildingFootprintCacheOnAnUpgradedInstallWithoutSchemaCreate() {
+        // Simulates a TestFlight/App Store upgrade: an existing gcc.db whose
+        // PRAGMA user_version already matches the schema version, so
+        // GccDatabase.Schema.create() never ran and buildingFootprintCache is
+        // missing. Deliberately do NOT call GccDatabase.Schema.create(driver)
+        // here — the store's own init must self-heal the missing table.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val store = BuildingFootprintStore(driver)
+
+        val key = BuildingFootprintStore.tileKeyFor(41.863, -87.715)
+        assertNull(store.get(key))
+
+        store.put(key, listOf(square), nowMs = 1_000L)
+        assertEquals(1, store.get(key)?.buildings?.size)
+    }
+
+    @Test
     fun tileKeyAndBboxAgree() {
         val key = BuildingFootprintStore.tileKeyFor(41.863, -87.715)
         assertEquals("b:4186:-8772", key)

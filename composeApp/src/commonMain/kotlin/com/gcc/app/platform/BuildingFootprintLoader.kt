@@ -28,7 +28,15 @@ class BuildingFootprintLoader(
         if (tileKey in loadedTiles) return
 
         // Cache-first: seed the registry from the local store immediately.
-        val cached = store.get(tileKey)
+        // The read is guarded too — this function's contract is "never throws",
+        // and a local-cache fault must degrade to the rectangle fallback, not
+        // take down the scan screen.
+        val cached = try {
+            store.get(tileKey)
+        } catch (e: Exception) {
+            DiagnosticsLog.error("building-footprints", "cache read failed for $tileKey", e)
+            null
+        }
         if (cached != null) {
             MappedBuildingRegistry.setRingsForTile(tileKey, cached.buildings.map { it.polygon })
             if (nowMs - cached.cachedAtMs < BuildingFootprintStore.DEFAULT_MAX_AGE_MS) {
@@ -49,8 +57,14 @@ class BuildingFootprintLoader(
             )
             return // not marked loaded → retried on a later fix
         }
-        store.put(tileKey, fetched, nowMs)
-        store.prune(nowMs)
+        try {
+            store.put(tileKey, fetched, nowMs)
+            store.prune(nowMs)
+        } catch (e: Exception) {
+            // Persisting is best-effort; the registry below still gets the
+            // freshly fetched rings for this session.
+            DiagnosticsLog.error("building-footprints", "cache write failed for $tileKey", e)
+        }
         MappedBuildingRegistry.setRingsForTile(tileKey, fetched.map { it.polygon })
         loadedTiles.add(tileKey)
     }

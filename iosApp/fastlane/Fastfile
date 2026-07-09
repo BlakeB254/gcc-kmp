@@ -143,8 +143,14 @@ platform :ios do
     )
   end
 
-  desc "Submit latest build to App Store Review"
-  lane :submit do
+  desc "Submit a build to App Store Review: bundle exec fastlane submit build:<n> [version:<x.y.z>]"
+  lane :submit do |options|
+    # build/version are REQUIRED rather than defaulted: this lane previously
+    # hardcoded build_number "89" with automatic_release, so an unguarded run
+    # would submit a months-old binary and ship it to the public on approval.
+    build_number = options[:build] or UI.user_error!("Pass build:<n> — e.g. `fastlane submit build:140`")
+    app_version = options[:version] || "1.0.7"
+
     api_key = app_store_connect_api_key(
       key_id: "XKAYZ4N88V",
       issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
@@ -154,8 +160,8 @@ platform :ios do
 
     deliver(
       api_key: api_key,
-      app_version: "1.0.7",
-      build_number: "89",
+      app_version: app_version.to_s,
+      build_number: build_number.to_s,
       submit_for_review: true,
       automatic_release: true,
       skip_screenshots: true,

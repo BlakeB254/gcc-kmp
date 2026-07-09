@@ -69,8 +69,18 @@ data class GeoJSONLineString(
     val type: String = "LineString",
     val coordinates: List<Point>
 ) {
+    /**
+     * Malformed points (fewer than 2 ordinates) are dropped rather than
+     * indexed into — this runs unguarded inside Compose composition via
+     * `Route.routePathCoordinates()`, where an IndexOutOfBoundsException
+     * would take down the screen rather than surface as an error state.
+     */
     fun toCoordinates(): List<Coordinates> =
-        coordinates.map { Coordinates(lng = it[0], lat = it[1]) }
+        coordinates.mapNotNull { point ->
+            val lng = point.getOrNull(0)
+            val lat = point.getOrNull(1)
+            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
+        }
 }
 
 @Serializable

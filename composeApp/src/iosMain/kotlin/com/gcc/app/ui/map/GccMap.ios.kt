@@ -25,7 +25,6 @@ import org.maplibre.compose.expressions.dsl.exponential
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.interpolate
-import org.maplibre.compose.expressions.dsl.interpolateHcl
 import org.maplibre.compose.expressions.dsl.linear
 import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
@@ -591,10 +590,17 @@ actual fun GccMap(
                     // Same green/red/amber/grey vocabulary as the coverage-
                     // state tiles (coverage-clean/dirty/stale/fog above) —
                     // "one visual system" per the Global Constraint.
+                    // MUST be `interpolate`, never `interpolateHcl`: MapLibre
+                    // Native (the iOS/Android engine) implements no
+                    // `interpolate-hcl` / `interpolate-lab` operator — those are
+                    // MapLibre GL JS only. Passing one makes
+                    // `-[MLNFillStyleLayer setFillColor:]` raise an ObjC
+                    // NSException that Kotlin/Native cannot catch → SIGABRT the
+                    // instant this layer is built (crashed TestFlight 139).
                     color = org.maplibre.compose.expressions.dsl.switch(
                         choroplethDominantExpr,
                         org.maplibre.compose.expressions.dsl.case("unscanned", const(Color(0xFF4B5563))),
-                        fallback = interpolateHcl(
+                        fallback = interpolate(
                             type = org.maplibre.compose.expressions.dsl.linear(),
                             input = choroplethHealthExpr,
                             0.0 to const(Color(0xFFDC2626)),
@@ -902,7 +908,10 @@ actual fun GccMap(
                     FillLayer(
                         id = "coverage-needs-scanning",
                         source = prioritySrc,
-                        color = interpolateHcl(
+                        // `interpolate`, not `interpolateHcl` — see the
+                        // choropleth layer above: MapLibre Native has no
+                        // interpolate-hcl operator and aborts the process.
+                        color = interpolate(
                             type = linear(),
                             input = priorityExpr,
                             0f to const(Color(0xFFF59E0B)), // amber — just crossed the age threshold
