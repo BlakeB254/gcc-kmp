@@ -743,11 +743,14 @@ fun MapFullScreen(
                 visible = selectedCoverageCell == null,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
-                // Bottom-right, above the map controls — off the map's prime
-                // real estate (owner direction 2026-07-07: not mid-screen).
+                // Bottom-right, CLEAR OF the map controls — at 112.dp the
+                // collapsed pill sat inside the scan-FAB / my-location row's
+                // vertical span and was drawn behind them (they come later in
+                // this Box, so they win z-order). The expanded card grows
+                // upward from here.
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 112.dp),
+                    .padding(end = 12.dp, bottom = 176.dp),
             ) {
                 ScanCoverageLegend()
             }
@@ -1766,56 +1769,100 @@ private fun RowScope.ProgressionConnector(filled: Boolean) {
  */
 @Composable
 private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
+    // The legend is reference material, not a control — it must never own more
+    // of the map than the map does. Collapses to a single pill; the map is the
+    // thing the worker came to look at.
+    var expanded by remember { mutableStateOf(false) }
+
+    if (!expanded) {
+        Surface(
+            modifier = modifier.clickable { expanded = true },
+            shape = RoundedCornerShape(10.dp),
+            shadowElevation = 4.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Three swatches stand in for the whole scale — worst, mid, clean.
+                LegendSwatch(Color(0xFF991B1B), 0.7f)
+                Spacer(modifier = Modifier.width(2.dp))
+                LegendSwatch(Color(0xFFF59E0B), 0.7f)
+                Spacer(modifier = Modifier.width(2.dp))
+                LegendSwatch(Color(0xFF22C55E), 0.7f)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Key",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                )
+            }
+        }
+        return
+    }
+
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         shadowElevation = 4.dp,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            // wrapContentWidth: the header Row must not fillMaxWidth, or the
+            // Surface stretches edge-to-edge and swallows the map.
+            modifier = Modifier
+                .wrapContentWidth()
+                .padding(start = 8.dp, end = 6.dp, top = 6.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Text(
-                "Map colours",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            )
-            // FILL = what is here. Ordered worst-first so the eye lands on the
-            // thing that needs action.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Map key",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .clickable { expanded = false },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✕", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+            }
+            // FILL = what is here. Worst-first so the eye lands on what needs action.
             ScanLegendRow(Color(0xFF991B1B), "Severe mess")
             ScanLegendRow(Color(0xFFEF4444), "Litter here")
             ScanLegendRow(Color(0xFFF59E0B), "Some litter")
-            ScanLegendRow(Color(0xFF22C55E), "Scanned close · clean")
-            ScanLegendRow(Color(0xFF22C55E), "Scanned near · clean", swatchAlpha = 0.35f)
+            ScanLegendRow(Color(0xFF22C55E), "Scanned close")
+            ScanLegendRow(Color(0xFF22C55E), "Scanned near", swatchAlpha = 0.35f)
             ScanLegendRow(Color(0xFF22C55E), "Seen at a distance", swatchAlpha = 0.18f)
             ScanLegendRow(Color(0xFF4B5563), "Never scanned")
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 2.dp),
-                color = TextSubtle.copy(alpha = 0.3f),
-            )
-            // BORDER = how fresh our knowledge is. Rendered as an outline so it
-            // never re-teaches the old "orange means a stale AREA" model — it
-            // is a modifier on any fill, not a state of its own.
-            ScanLegendDashedRow(Color(0xFFB45309), "Dashed edge · over 24h, re-scan")
-            Text(
-                "Tap any area for photos and details",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-            )
+            // BORDER = how fresh our knowledge is. An outline, so it never
+            // re-teaches the old "orange means a stale AREA" model — it is a
+            // modifier on any fill, not a state of its own.
+            ScanLegendDashedRow(Color(0xFFB45309), "Over 24h · re-scan")
         }
     }
+}
+
+/** 9dp colour chip shared by the collapsed pill and the expanded rows. */
+@Composable
+private fun LegendSwatch(color: Color, alpha: Float) {
+    Box(
+        modifier = Modifier
+            .size(9.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(color.copy(alpha = alpha)),
+    )
 }
 
 @Composable
 private fun ScanLegendRow(color: Color, label: String, swatchAlpha: Float = 0.7f) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(color.copy(alpha = swatchAlpha)),
-        )
-        Spacer(modifier = Modifier.width(6.dp))
+        LegendSwatch(color, swatchAlpha)
+        Spacer(modifier = Modifier.width(5.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
@@ -1827,11 +1874,11 @@ private fun ScanLegendDashedRow(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(12.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .border(1.5.dp, color, RoundedCornerShape(3.dp)),
+                .size(9.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .border(1.2.dp, color, RoundedCornerShape(2.dp)),
         )
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(5.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }

@@ -251,6 +251,46 @@ Device (the real gate — none of the above proves legibility):
 
 Step 1 is independently shippable and should not wait for the rest.
 
+## Amendment — far-zoom choropleth (Blake, 2026-07-09, dashboard screenshot)
+
+> "The tiles representing the health of the environment are a little large and too
+> solid. When I start to work the environment scan system and areas are determined as
+> green, we need to make sure those squares get replaced by a similar system as the one
+> we have for the scans, where it's blobbed together but changes colour based on that
+> area's content — more patterned than just all red and orange. We want a good sense of
+> where the problem areas are specifically."
+
+The `choropleth-cell-health` layer is a **separate system** from the coverage blobs: it
+is the far-zoom *estimator* that stands in where scan truth is thin. Two parts:
+
+**Shipped in this pass (tuning only):**
+- `choroplethTileMetersForZoom`: street-approach band halved, `400/200/100m` →
+  `200/100/50m`, so tiles read as texture rather than block-wide slabs.
+- Opacity `0.5/0.6/0.48` → `0.42/0.34/0.24`. It is an estimate; it must not out-shout
+  the measured coverage blobs it overlaps in the 12.5–14.2 band.
+
+**Deferred (needs a decision, see Open questions):** having scanned ground *replace* its
+choropleth tiles rather than being painted over by them. The choropleth currently
+aggregates `coverageCells` alongside observations, so a scanned cell is drawn twice —
+once as truth (blob) and once as estimate (tile). The obvious rule ("emit no tile where
+coverage exists") is wrong at city zoom, where blobs are sub-pixel and the tile is the
+only visible signal. The likely shape is a zoom-dependent hand-off: below some zoom the
+tile wins, above it the blob wins and the tile is suppressed. Needs to be seen on device
+before committing.
+
+## Open questions
+
+1. **Choropleth → blob hand-off zoom.** At what zoom should a scanned tile yield to its
+   coverage blob? Requires looking at both on a real map.
+2. **Severity thresholds are currently inert.** 2kg / 15kg are first-cut, and worse:
+   `/api/map/observations` over South Millard returns **52 dirty litter observations with
+   zero `estimatedWeightGrams` between them**. Weight is only recorded on a diagnosed
+   close-range capture, which apparently never happens in the field. So in practice every
+   problem cell tiers through the **count** fallback
+   (`SEVERITY_MODERATE_COUNT = 3`, `SEVERITY_SEVERE_COUNT = 6`), and the gram thresholds are
+   dead code until Spec 3 makes diagnosis work. The count fallback is therefore
+   load-bearing, not a safety net. Re-tune both once real weights exist.
+
 ## Non-goals (this spec)
 
 - Native frame capture / `AreaCaptureFrameUploader` wiring. **Not needed** — the photos
@@ -273,12 +313,29 @@ This is Spec 1 of 5 agreed with Blake:
    **Note:** this *removes* the `completeScout(force = true)` escape shipped in PR #137
    (`RouteScanViewModel.kt:895`), which exists specifically to prevent a permanent
    dead-end. The `OCCLUDED` rule is what makes removing it safe; it must land first.
-3. **Detection quality.** Raise `TRASH_CONFIDENCE` (`TrashDetectionRules.kt:16`, currently
-   `0.35f`) and/or `MarkerPromotionTracker.streakTicks` (currently 2), **together with** a
-   manual "Identify manually" button. Raising the threshold trades recall for precision;
-   without a manual path a stricter threshold makes the app worse at its job. Also: AR
-   guidance to approach, frame, and hold still before capture (no motion/blur check exists
-   today — `ScanQualityScorer` is feedback-only and gates nothing).
+3. **Detection quality + scan HUD + AR focus.** Raise `TRASH_CONFIDENCE`
+   (`TrashDetectionRules.kt:16`, currently `0.35f`) and/or `MarkerPromotionTracker.streakTicks`
+   (currently 2), **together with** a manual "Identify manually" button. Raising the threshold
+   trades recall for precision; without a manual path a stricter threshold makes the app worse
+   at its job. Also (Blake, 2026-07-09):
+   - **Scan HUD:** live trash counter + running litter-weight estimate across the top of the
+     scan screen.
+   - **Circle what it thinks is trash** so the worker can move closer. `DetectionReticleOverlay`
+     already exists — this is a *bug hunt*, not new construction. Find out why it doesn't show.
+   - **Tap-to-focus on a screen position** so AR evaluates that area. Also already implemented
+     (`ArEnvScan.kt` ~line 947, `FOCUS_RADIUS_METERS = 1.5`, promotion streak relaxed to 1 on
+     tap). Likewise a bug hunt.
+   - **AR guidance** to approach, frame, and hold still before capture. No motion/blur check
+     exists today — `ScanQualityScorer` is feedback-only and gates nothing.
+   - **Closer-cropped litter photos.** Today the detection JPEG is the whole frame
+     (`ArFrameFeedback.kt:252`). Crop to the detection's image-space bbox (or require a close
+     approach before capture) so the card shows the litter, not the street.
+
+   **Load-bearing datum for this spec:** of 52 dirty litter observations around South Millard,
+   **zero** carry `estimatedWeightGrams` (checked via `/api/map/observations`). Weight is only
+   estimated on a diagnosed close-range capture, and in practice that has never happened. A
+   weight readout in the scan HUD, and the weight-based severity tiers in Spec 1, are both
+   inert until diagnosis actually runs. Fix diagnosis before trusting either.
 4. **Large messes** → comprehensive scan + generated asset. Object Capture machinery is
    intact (`ObjectCapturePhotogrammetry.swift`, USDZ + bounds, LiDAR-gated) but its entry
    point was deliberately deleted (`SpotScreen.kt:1106`, "Blake: not needed"). Re-enabling
