@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
+import { ingestBuildingFootprints, ingestBboxFromEnv } from '@/lib/building-footprints'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -34,8 +35,19 @@ export async function GET(request: NextRequest) {
     // Drain after processing so this tick's freshly-scheduled "initial"
     // notifications go out in the same run.
     const notifications = await dispatchDueOfferNotifications()
+    // Piggyback: keep the building-footprint cache warm for the indoor gate.
+    // Ingestion can't run inline in the user request (Overpass exceeds the
+    // serverless timeout) and a second vercel.json cron risks the Hobby cron
+    // limit, so it rides this existing daily cron. Non-fatal + idempotent
+    // (30d per-tile TTL) — a failure never affects the release run.
+    let footprints: Awaited<ReturnType<typeof ingestBuildingFootprints>> | null = null
+    try {
+      footprints = await ingestBuildingFootprints(ingestBboxFromEnv())
+    } catch (e) {
+      console.error('route-releases cron: building-footprint ingest failed (non-fatal)', e)
+    }
     return NextResponse.json({
-      data: { releases, notifications, ranAt: new Date().toISOString() },
+      data: { releases, notifications, footprints, ranAt: new Date().toISOString() },
       success: true,
     })
   } catch (error) {
