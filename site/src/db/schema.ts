@@ -1701,7 +1701,7 @@ export const worldObservations = pgTable('world_observations', {
   // so a later close-confirm on the same cell+itemType upgrades the row.
   // MERGE ACTION: migration 0029 adds this column — see that file's header.
   diagnosticStatus: varchar('diagnostic_status', { length: 10 }).default('observed').notNull(),
-  attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedVolumeLiters, estimatedWeightLbs}
+  attributes: jsonb('attributes'), // domain-specific payload, e.g. litter: {severity, estimatedWeightGrams, estimatedWidthMeters, yawDegrees}
   confidence: doublePrecision('confidence'),
   mediaUrl: varchar('media_url', { length: 500 }),
   depthData: text('depth_data'),

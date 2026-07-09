@@ -25,7 +25,6 @@ import org.maplibre.compose.expressions.dsl.exponential
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.interpolate
-import org.maplibre.compose.expressions.dsl.interpolateHcl
 import org.maplibre.compose.expressions.dsl.linear
 import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
@@ -96,6 +95,8 @@ actual fun GccMap(
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
+    showInnerBoundary: Boolean,
+    gateBlockOutlinesByZoom: Boolean,
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
@@ -142,6 +143,13 @@ actual fun GccMap(
     // now (was zoom-gated at ZOOM_STREET, leaving squares at wider zooms). Cell
     // taps resolve via the map-level lat/lng->cell hit-test (Plan B Task 7), so
     // losing per-cell cellIds on the fill features is fine.
+    // Block outlines hand off from the far-zoom choropleth at exactly the zoom
+    // where its squares finish fading out — one constant governs both, so they
+    // can never overlap or leave a gap. 0f = draw at every zoom, for surfaces
+    // that deliberately frame a single block (route detail, boundary editor,
+    // proposal preview, dashboard preview at ZOOM_NEIGHBORHOOD = 14.0).
+    val blockOutlineMinZoom = if (gateBlockOutlinesByZoom) IOS_SPOT_HEAT_FADE_ZOOM.toFloat() else 0f
+
     val useOutlineCoverage = true
     val coverageStateJsons = remember(coverageCells, spots, useOutlineCoverage) {
         if (coverageCells.isEmpty()) null
@@ -192,19 +200,20 @@ actual fun GccMap(
     // to a type-default width instead, so gating on "has a real measurement"
     // would wrongly hide the footprint layer when every observation in view
     // is unmeasured (the common case). Gate on non-empty input instead.
-    val hasFootprintData = observationFootprints.isNotEmpty()
-    val footprintVegetationJson = remember(observationFootprints, centerLat) {
-        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "vegetation" }, centerLat)
-    }
-    val footprintConstructionJson = remember(observationFootprints, centerLat) {
-        buildObservationFootprintsGeoJson(observationFootprints.filter { it.domain == "construction" }, centerLat)
-    }
-    val footprintOtherJson = remember(observationFootprints, centerLat) {
-        buildObservationFootprintsGeoJson(
-            observationFootprints.filter { it.domain != "vegetation" && it.domain != "construction" },
-            centerLat,
-        )
-    }
+    // Observation footprints are no longer DRAWN. They rendered as true-scale
+    // rectangles per domain (litter orange, construction grey, vegetation green
+    // — a tree showed up as a green circle), which read as arbitrary boxes at
+    // street zoom and were near-impossible to tap: a few pixels off and the tap
+    // fell through to the coverage tile below, producing a "needs re-scan / no
+    // litter here" card while standing on litter.
+    //
+    // Litter is now expressed as merged problem-area blobs in the coverage
+    // stack above (same organic shape language as scanned coverage), and the
+    // non-litter domains are not a worker-facing concern at all. The rows stay
+    // in the DB for the world model and the DGX pipeline.
+    //
+    // [observationFootprints] is still consumed — the far-zoom cell-health
+    // choropleth aggregates it (see choroplethTiles above).
 
     // Area tap state for tooltip overlay
     var tappedArea by remember { mutableStateOf<CommunityArea?>(null) }
@@ -591,10 +600,17 @@ actual fun GccMap(
                     // Same green/red/amber/grey vocabulary as the coverage-
                     // state tiles (coverage-clean/dirty/stale/fog above) —
                     // "one visual system" per the Global Constraint.
+                    // MUST be `interpolate`, never `interpolateHcl`: MapLibre
+                    // Native (the iOS/Android engine) implements no
+                    // `interpolate-hcl` / `interpolate-lab` operator — those are
+                    // MapLibre GL JS only. Passing one makes
+                    // `-[MLNFillStyleLayer setFillColor:]` raise an ObjC
+                    // NSException that Kotlin/Native cannot catch → SIGABRT the
+                    // instant this layer is built (crashed TestFlight 139).
                     color = org.maplibre.compose.expressions.dsl.switch(
                         choroplethDominantExpr,
                         org.maplibre.compose.expressions.dsl.case("unscanned", const(Color(0xFF4B5563))),
-                        fallback = interpolateHcl(
+                        fallback = interpolate(
                             type = org.maplibre.compose.expressions.dsl.linear(),
                             input = choroplethHealthExpr,
                             0.0 to const(Color(0xFFDC2626)),
@@ -604,12 +620,17 @@ actual fun GccMap(
                             1.0 to const(Color(0xFF22C55E)),
                         ),
                     ),
+                    // Deliberately translucent. This layer is an ESTIMATE, not
+                    // measured truth — at 0.5-0.6 it read as an authoritative
+                    // solid slab covering whole blocks and buried the basemap.
+                    // It also has to sit UNDER the coverage blobs without
+                    // fighting them, since both draw in the 12.5-14.2 band.
                     opacity = interpolate(
                         type = exponential(1.5f),
                         input = zoom(),
-                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.5f),
-                        12.5 to const(0.6f),
-                        13.5 to const(0.48f),
+                        MapStyles.SPOT_HEATMAP_MIN_ZOOM to const(0.42f),
+                        12.5 to const(0.34f),
+                        13.5 to const(0.24f),
                         IOS_SPOT_HEAT_FADE_ZOOM to const(0f),
                     ),
                 )
@@ -628,10 +649,22 @@ actual fun GccMap(
                 // overlapped the affected-block heatmap and the clean-zone base
                 // layer to look like a duplicated heatmap. The line stack below
                 // (glow + casing + core) carries the visual route presence;
-                // this fill is kept ONLY for tap targeting at all zoom levels.
+                // this fill is kept ONLY for tap targeting.
+                //
+                // ── Block outlines hand off from the choropleth at 14.2 ──
+                // The whole base stack (fill + glow + casing + core) is gated
+                // at IOS_SPOT_HEAT_FADE_ZOOM — the exact zoom where the
+                // choropleth squares finish fading OUT. One constant governs
+                // both, so the two systems can never overlap or leave a gap.
+                // Below it a city-scale view of many blocks is unreadable
+                // clutter that only worsens as blocks are added; above it the
+                // block IS the unit of work. The active job's block is drawn by
+                // its own un-gated layers further down, so a worker who zooms
+                // out mid-job never loses their assignment.
                 FillLayer(
                     id = MapStyles.LAYER_ROUTE_FILL,
                     source = routePolygonsSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_FILL_COLOR),
                     opacity = const(0.001f),
                     onClick = routeIndexClickHandler(onRouteTap),
@@ -644,6 +677,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_GLOW,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY)),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -661,6 +695,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_CASING,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_CASING_COLOR),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -678,6 +713,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_LINE,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(GccGreen),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -737,15 +773,20 @@ actual fun GccMap(
             }
 
             // ── Foundational coverage-state tiles (under heat + markers) ──
-            // fog = never scanned (attention), green = scanned clean,
-            // faded amber = stale (>24h) — dirty grading stays with the
-            // spot-density heat layers above.
+            // FILL answers "what is here": grey fog = never scanned, green =
+            // scanned clean (alpha by scan quality), red = a problem area (hue
+            // by severity). BORDER answers "how fresh is our knowledge": a
+            // dashed amber stroke marks any cell scanned >24h ago, drawn over
+            // whatever fill it already has. The two axes are orthogonal — the
+            // old amber stale FILL hid the litter inside stale cells.
             if (coverageStateJsons != null) {
                 val cleanSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.clean))
                 val cleanGrazedSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.cleanGrazed))
                 val seenSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.seen))
-                val dirtySrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.dirty))
-                val staleSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.stale))
+                val problemLightSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.problemLight))
+                val problemModerateSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.problemModerate))
+                val problemSevereSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.problemSevere))
+                val staleBorderSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.staleBorder))
                 val fogSrc = rememberGeoJsonSource(GeoJsonData.JsonString(coverageStateJsons.fog))
                 // Zoom-gated: at overview zooms the bounded fog patch would
                 // read as a broken partial grid — fade it in at street level
@@ -796,11 +837,16 @@ actual fun GccMap(
                 // Outline-mode rings (street zoom) carry no cellId, so taps
                 // don't resolve to a cell there — same trade-off as clean/
                 // clean-grazed in that mode.
+                // Alpha encodes scan quality: panning across a field lightly
+                // shades it; full shading is earned by walking up with the
+                // phone angled at the ground (a <=4m "close" ray). 0.05 was
+                // effectively invisible outdoors, so the gradient read as
+                // "nothing happened" — retuned to 0.10 / 0.22 / 0.40.
                 FillLayer(
                     id = "coverage-seen",
                     source = seenSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.05f),
+                    opacity = const(0.10f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 // Grazed-fresh: scanned at sweep quality only — lighter green,
@@ -809,30 +855,43 @@ actual fun GccMap(
                     id = "coverage-clean-grazed",
                     source = cleanGrazedSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.16f),
+                    opacity = const(0.22f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
                     id = "coverage-clean",
                     source = cleanSrc,
                     color = const(Color(0xFF22C55E)),
-                    opacity = const(0.36f),
+                    opacity = const(0.40f),
+                    onClick = cellIdClickHandler(onCoverageCellTap),
+                )
+
+                // ── Problem areas: hue by severity, light -> severe ──
+                // Merged marching-squares outlines carry no per-cell
+                // attributes, so a data-driven `interpolate` over a severity
+                // property is impossible INSIDE a blob. Bucketing into three
+                // pre-merged tiers is the established pattern here (the same
+                // reason clean/grazed/seen are three collections).
+                // Declaration order = z-order: severe draws last, on top.
+                FillLayer(
+                    id = "coverage-problem-light",
+                    source = problemLightSrc,
+                    color = const(Color(0xFFF59E0B)),
+                    opacity = const(0.30f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
                 FillLayer(
-                    id = "coverage-dirty",
-                    source = dirtySrc,
+                    id = "coverage-problem-moderate",
+                    source = problemModerateSrc,
                     color = const(Color(0xFFEF4444)),
                     opacity = const(0.34f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
-                // Stale is a CALL TO ACTION ("scan me again") — it must not
-                // be the faintest tile on the map (it was 0.10, then 0.24).
                 FillLayer(
-                    id = "coverage-stale",
-                    source = staleSrc,
-                    color = const(Color(0xFFF59E0B)),
-                    opacity = const(0.36f),
+                    id = "coverage-problem-severe",
+                    source = problemSevereSrc,
+                    color = const(Color(0xFF991B1B)),
+                    opacity = const(0.42f),
                     onClick = cellIdClickHandler(onCoverageCellTap),
                 )
 
@@ -874,18 +933,42 @@ actual fun GccMap(
                     opacity = const(0.65f),
                 )
                 LineLayer(
-                    id = "coverage-dirty-boundary",
-                    source = dirtySrc,
-                    color = const(Color(0xFFB91C1C)),
+                    id = "coverage-problem-light-boundary",
+                    source = problemLightSrc,
+                    color = const(Color(0xFFB45309)),
                     width = coverageBoundaryWidth,
                     opacity = const(0.55f),
                 )
                 LineLayer(
-                    id = "coverage-stale-boundary",
-                    source = staleSrc,
+                    id = "coverage-problem-moderate-boundary",
+                    source = problemModerateSrc,
+                    color = const(Color(0xFFB91C1C)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.60f),
+                )
+                LineLayer(
+                    id = "coverage-problem-severe-boundary",
+                    source = problemSevereSrc,
+                    color = const(Color(0xFF7F1D1D)),
+                    width = coverageBoundaryWidth,
+                    opacity = const(0.70f),
+                )
+
+                // ── Staleness: a DASHED BORDER, never a fill ──
+                // Drawn last so it sits above every fill and both boundary
+                // stacks. The dash is what distinguishes it from a problem
+                // edge — hue alone would collide with the light tier's amber.
+                // Gated to street zoom: at overview zooms a dash pattern on a
+                // few-pixel-wide blob aliases into a solid line, and re-scan
+                // decisions aren't made from that altitude anyway.
+                LineLayer(
+                    id = "coverage-stale-border",
+                    source = staleBorderSrc,
+                    minZoom = IOS_SPOT_HEAT_FADE_ZOOM.toFloat(),
                     color = const(Color(0xFFB45309)),
                     width = coverageBoundaryWidth,
-                    opacity = const(0.55f),
+                    opacity = const(0.85f),
+                    dasharray = const(listOf<Number>(2, 2)),
                 )
 
                 // P5 "Needs scanning" lens: an opt-in single FillLayer atop the
@@ -902,7 +985,10 @@ actual fun GccMap(
                     FillLayer(
                         id = "coverage-needs-scanning",
                         source = prioritySrc,
-                        color = interpolateHcl(
+                        // `interpolate`, not `interpolateHcl` — see the
+                        // choropleth layer above: MapLibre Native has no
+                        // interpolate-hcl operator and aborts the process.
+                        color = interpolate(
                             type = linear(),
                             input = priorityExpr,
                             0f to const(Color(0xFFF59E0B)), // amber — just crossed the age threshold
@@ -925,7 +1011,15 @@ actual fun GccMap(
             // source or layer (Fix 2, r2a). Kept as its own group (rather than
             // merged with the fill/line stack) because the coverage-state
             // tiles sit between them in z-order and must not move.
-            if (routeCoordinates.isNotEmpty()) {
+            //
+            // ALSO gated on [showInnerBoundary]: exclusion zones and the scan
+            // corridor are per-block working detail. Drawn for every block at
+            // once they are unactionable noise that worsens with every block
+            // added, so the browsing map draws them ONLY for the block the
+            // worker selected. `buildRouteInnerBoundariesGeoJson` pairs rings
+            // to the loops actually in `routeCoordinates`, so when one block is
+            // selected only that block's rings are emitted — no filtering here.
+            if (routeCoordinates.isNotEmpty() && showInnerBoundary) {
                 val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
                 val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
                 // The band BETWEEN the two boundaries is the assignment: tinted
@@ -1169,107 +1263,6 @@ actual fun GccMap(
             // everything else (litter/unspecified) orange. No clustering —
             // buildObservationFootprintsGeoJson maps every observation to
             // its own feature (Part B.4); nothing to remove or add here.
-            if (hasFootprintData) {
-                val footprintVegetationSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintVegetationJson))
-                val footprintConstructionSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintConstructionJson))
-                val footprintOtherSrc = rememberGeoJsonSource(GeoJsonData.JsonString(footprintOtherJson))
-                // Zoom hand-off fix (owner follow-up on commit 8bf83fd): with
-                // spot pins removed (Part A), the old 16.5->17 fade-in left a
-                // dead band between IOS_SPOT_HEAT_FADE_ZOOM (14.2, where the
-                // heat texture above finishes fading OUT) and 16.5 — that gap
-                // used to be covered by spot pins/dots, which no longer exist.
-                // The footprint fade-in now starts at IOS_SPOT_HEAT_FADE_ZOOM
-                // itself (not a separate magic number) so the two layers hand
-                // off with zero gap by construction — if MapStyles' heat
-                // fade-out zoom ever moves, this moves with it — and reaches
-                // full legibility by z15.5, well inside the "close zoom"
-                // range where these shapes are meant to read as authoritative.
-                val footprintFadeInStartZoom = IOS_SPOT_HEAT_FADE_ZOOM
-                val footprintFadeInFullZoom = 15.5
-                val footprintOutlineOpacity = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    footprintFadeInStartZoom to const(0f),
-                    footprintFadeInFullZoom to const(1f),
-                )
-                // Part B.3 — diagnostic-state styling, now wired to the real
-                // per-feature signal (Pillar 8 Task 4 adds diagnosticStatus
-                // end to end). buildObservationFootprintsGeoJson
-                // (GeoJsonLayers.kt) emits a "diagnosed" boolean property per
-                // feature (diagnosticStatus != "observed" — true for both a
-                // real diagnosed value AND null/legacy rows, see
-                // WorldObservation.diagnosticStatus's KDoc). maplibre-compose
-                // exposes boolean feature properties the same way string/
-                // number ones are already used elsewhere in this file
-                // (`feature["priority"] as Expression<NumberValue<...>>`,
-                // `feature["itemType"] as Expression<StringValue>`) — cast to
-                // Expression<BooleanValue> and use directly as a layer
-                // `filter`, the exact pattern this file used pre-Task-2 for
-                // `filter = feature.has("itemType")` / `filter =
-                // !feature.has(...)` (see git history on this file, e.g.
-                // commit 8bf83fdc's parent). So each domain's footprint layer
-                // pair is split into a diagnosed-filtered (solid) pair and an
-                // observed-filtered (hollow) pair instead of a single flat
-                // isDiagnosed constant — solid = full fill opacity + thin
-                // outline, hollow = fill scaled down (~35%) + thicker outline
-                // so it reads as a deliberate ring, not a bug.
-                @Suppress("UNCHECKED_CAST")
-                val diagnosedExpr = feature["diagnosed"] as org.maplibre.compose.expressions.ast.Expression<
-                    org.maplibre.compose.expressions.value.BooleanValue>
-                val observedExpr = !diagnosedExpr
-                val footprintOutlineWidthDiagnosed = const(0.5.dp)
-                val footprintOutlineWidthObserved = const(1.2.dp)
-                val footprintTapHandler = observationIdClickHandler(onObservationTap)
-
-                fun fullOpacityExpr(target: Float) = interpolate(
-                    type = exponential(1.5f), input = zoom(),
-                    footprintFadeInStartZoom to const(0f),
-                    footprintFadeInFullZoom to const(target),
-                )
-
-                val footprintDomains = listOf(
-                    Triple("vegetation", footprintVegetationSrc, Color(0xFF16A34A)) to 0.18f,
-                    Triple("construction", footprintConstructionSrc, Color(0xFF6B7280)) to 0.18f,
-                    Triple("other", footprintOtherSrc, Color(0xFFF97316)) to 0.20f,
-                )
-                for ((domainInfo, fullOpacityTarget) in footprintDomains) {
-                    val (domainName, domainSrc, domainColor) = domainInfo
-
-                    FillLayer(
-                        id = "observation-footprint-fill-$domainName-diagnosed",
-                        source = domainSrc,
-                        filter = diagnosedExpr,
-                        color = const(domainColor),
-                        opacity = fullOpacityExpr(fullOpacityTarget),
-                        onClick = footprintTapHandler,
-                    )
-                    LineLayer(
-                        id = "observation-footprint-outline-$domainName-diagnosed",
-                        source = domainSrc,
-                        filter = diagnosedExpr,
-                        color = const(domainColor),
-                        width = footprintOutlineWidthDiagnosed,
-                        opacity = footprintOutlineOpacity,
-                    )
-
-                    FillLayer(
-                        id = "observation-footprint-fill-$domainName-observed",
-                        source = domainSrc,
-                        filter = observedExpr,
-                        color = const(domainColor),
-                        opacity = fullOpacityExpr(fullOpacityTarget * 0.35f),
-                        onClick = footprintTapHandler,
-                    )
-                    LineLayer(
-                        id = "observation-footprint-outline-$domainName-observed",
-                        source = domainSrc,
-                        filter = observedExpr,
-                        color = const(domainColor),
-                        width = footprintOutlineWidthObserved,
-                        opacity = footprintOutlineOpacity,
-                    )
-                }
-            }
 
             // ── User location blue dot ──
             if (currentLocation != null) {
@@ -1334,9 +1327,12 @@ actual fun GccMap(
             }
 
             // Spot pin/marker/verification-ring layers removed (Pillar 8 Task 2,
-            // Part A): the observation-footprint layer above ("Observation
-            // footprints" block) is now THE close-zoom litter-truth visualization,
-            // replacing what spot-rect-fill/spot-rect-outline, LAYER_SPOT_MARKER_HALOS,
+            // Part A). The close-zoom litter-truth visualization is now the merged
+            // problem-area blob stack in the coverage-state group above
+            // (coverage-problem-light/moderate/severe) — it superseded both the
+            // spot pins listed below AND the true-scale observation-footprint
+            // rectangles that briefly stood in for them.
+            // Replacing what spot-rect-fill/spot-rect-outline, LAYER_SPOT_MARKER_HALOS,
             // LAYER_BOUNTIED_SPOT_HALOS, the spot-markers tap target, LAYER_SPOT_MARKERS,
             // "${LAYER_SPOT_MARKERS}-typed-dots", the spot-markers-glyphs SymbolLayer, and
             // spot-verification-ring used to show. Heat layers (spot-density-heat-*,
@@ -1424,26 +1420,6 @@ private fun cellIdClickHandler(onTap: ((String) -> Unit)?): FeaturesClickHandler
             ?.toString()?.trim('"')
         if (!cellId.isNullOrBlank()) {
             onTap(cellId)
-            ClickResult.Consume
-        } else {
-            ClickResult.Pass
-        }
-    } else null
-
-/**
- * Shared tap handler for the three observation-footprint fill layers
- * (vegetation/construction/other, Pillar 8 Task 2 Part C): every feature
- * carries the source observation's id in an `id` property
- * (buildObservationFootprintsGeoJson) — this reads it and forwards to
- * [onTap]. Mirrors [cellIdClickHandler]/onAffectedBlockTap's exact
- * structure. Returns null (no handler) when the caller passed no [onTap].
- */
-private fun observationIdClickHandler(onTap: ((Int) -> Unit)?): FeaturesClickHandler? =
-    if (onTap != null) { features ->
-        val raw = features.firstOrNull()?.properties?.get("id")
-        val id = (raw as? Number)?.toInt() ?: raw?.toString()?.toIntOrNull()
-        if (id != null) {
-            onTap(id)
             ClickResult.Consume
         } else {
             ClickResult.Pass

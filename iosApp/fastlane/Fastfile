@@ -103,7 +103,10 @@ platform :ios do
       in_house: false,
     )
 
-    build = options[:build] || "89"
+    # REQUIRED, never defaulted. This lane distributes to EXTERNAL testers,
+    # and a default would happily ship a months-old binary to them.
+    build = options[:build]
+    UI.user_error!("Pass the build to distribute, e.g. fastlane distribute build:143") if build.to_s.strip.empty?
     review_contact_phone = ENV["APP_REVIEW_CONTACT_PHONE"]
     UI.user_error!("Set APP_REVIEW_CONTACT_PHONE before external TestFlight distribution") if review_contact_phone.to_s.strip.empty?
     metadata_dir = File.expand_path("metadata/en-US", __dir__)
@@ -143,8 +146,13 @@ platform :ios do
     )
   end
 
-  desc "Submit a build to App Store Review (pass build:<number>)"
+  desc "Submit a build to App Store Review: bundle exec fastlane submit build:<n> [version:<x.y.z>]"
   lane :submit do |options|
+    # `build` is REQUIRED, never defaulted: this lane once hardcoded
+    # build_number "89" alongside automatic_release, so an unguarded run would
+    # have submitted a months-old binary and shipped it to the public.
+    app_version = options[:version] || "1.0.7"
+
     api_key = app_store_connect_api_key(
       key_id: "XKAYZ4N88V",
       issuer_id: "f40473c6-81af-4172-87a6-01bc0974972e",
@@ -159,7 +167,7 @@ platform :ios do
     # Pending Developer Release until someone presses the button.
     deliver(
       api_key: api_key,
-      app_version: "1.0.7",
+      app_version: app_version.to_s,
       build_number: build.to_s,
       submit_for_review: true,
       automatic_release: options.fetch(:automatic_release, false),

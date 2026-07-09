@@ -833,8 +833,18 @@ data class CoverageStateJsons(
      *  distance, never walked — Pillar 7) — the faintest tile of the three,
      *  distinct from cleanGrazed (which implies the ground was walked). */
     val seen: String,
-    val dirty: String,
-    val stale: String,
+    /** Problem areas, bucketed by [ProblemSeverity] — hue encodes how bad.
+     *  A merged outline cannot carry per-cell attributes, so each tier is its
+     *  own collection (same reason clean/cleanGrazed/seen are separate). */
+    val problemLight: String,
+    val problemModerate: String,
+    val problemSevere: String,
+    /** Cells last scanned >24h ago, merged into outlines. Rendered as a DASHED
+     *  BORDER over whatever fill the cell already has — never as a fill of its
+     *  own. Staleness says "our knowledge is old", which is orthogonal to
+     *  "what is here"; encoding both as hue forced one to hide the other
+     *  (a stale cell containing litter used to render amber, hiding the litter). */
+    val staleBorder: String,
     val fog: String,
     /** P5 Explorer "Needs scanning" lens: every cell with `priority` > 0, one
      *  FeatureCollection with a numeric "priority" property per feature (0..1)
@@ -852,11 +862,15 @@ data class CoverageStateJsons(
  *    "grazed" (walked, sweep-only) → lighter green, "come back and detail-scan me"
  *  - seen: fresh, no-spot cells whose best-recorded quality is "seen" only
  *    (sighted at a distance, never walked) → the faintest tile
- *  - dirty: fresh cells WITH an active spot/litter on record → red tint
- *    (the tile-level "cleanliness readout"; the heat layers still grade
- *    density at overview zooms)
- *  - stale: cells last scanned >24h ago → amber, the "scan me again" call
+ *  - problemLight/Moderate/Severe: cells with scan-found litter OR an
+ *    unresolved community report → red tint, hue by [ProblemSeverity]
+ *  - staleBorder: cells last scanned >24h ago → a DASHED BORDER drawn over
+ *    whatever fill they already carry, never a fill of its own
  *  - fog: never-scanned veil over [fogBounds] with holes at covered cells
+ *
+ * Fill answers "what is here"; border answers "how fresh is our knowledge".
+ * They are orthogonal, so a stale cell containing litter renders red-with-a-
+ * dashed-border rather than having to pick one colour.
  */
 fun buildCoverageStateGeoJsons(
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
@@ -933,25 +947,38 @@ fun buildCoverageStateGeoJsons(
         dLatM * dLatM + dLngM * dLngM < 12.0 * 12.0
     }
 
-    val fresh = coverageCells.filter { it.state == "fresh" }
-    val freshNoSpot = fresh.filter { !hasSpotNear(it.lat, it.lng) }
+    // A cell is a PROBLEM when scans found litter in it OR a human reported a
+    // mess there. Before this, only the report half counted (`hasSpotNear`),
+    // so scan-found litter never coloured a cell at all — the map could not
+    // show what the scanner had actually seen.
+    fun isProblem(c: com.gcc.shared.model.MapCoverageCell): Boolean =
+        c.litterCount > 0 || hasSpotNear(c.lat, c.lng)
+
+    // Fill = "what is here", independent of freshness. A STALE cell is still a
+    // scanned cell, so it keeps its green fill and merely gains a dashed
+    // border; excluding stale cells here would leave them with no fill at all
+    // and make scanned ground read as never-scanned fog.
+    val cleanCells = coverageCells.filter { !isProblem(it) }
     // Three-tier clean (spec §3, SEEN added Pillar 7): close-scanned reads
     // full green; grazed (walked, sweep-only) reads lighter green; seen
     // (sighted at a distance, never walked) reads faintest of all — quality
-    // buckets are now exact-match (a "seen" cell used to fall into
-    // cleanGrazed's `!= "close"` catch-all, which incorrectly read as
-    // "walked" on the map).
-    val clean = qualityCollection(freshNoSpot.filter { it.quality == "close" })
-    val cleanGrazed = qualityCollection(freshNoSpot.filter { it.quality == "grazed" })
-    val seen = qualityCollection(freshNoSpot.filter { it.quality == "seen" })
-    // Scanned recently but litter is still on record — previously these
-    // cells were silently DROPPED (no tile at all); now they read red so a
-    // scanned-but-dirty area is distinguishable from unscanned ground.
-    // WS4: dirty/stale also merge into organic outlines under outline mode.
-    // (Per-cell cellId tap is preserved via the map-level lat/lng->cell
-    // hit-test in GccMap.ios.kt — see Plan B Task 7.)
-    val dirty = qualityCollection(fresh.filter { hasSpotNear(it.lat, it.lng) })
-    val stale = qualityCollection(coverageCells.filter { it.state == "stale" })
+    // buckets are exact-match.
+    val clean = qualityCollection(cleanCells.filter { it.quality == "close" })
+    val cleanGrazed = qualityCollection(cleanCells.filter { it.quality == "grazed" })
+    val seen = qualityCollection(cleanCells.filter { it.quality == "seen" })
+
+    // Problem areas, merged per severity tier. (Per-cell cellId tap is
+    // preserved via the map-level lat/lng->cell hit-test in GccMap.ios.kt.)
+    val problemCells = coverageCells.filter { isProblem(it) }
+    fun problemTier(tier: ProblemSeverity): String = qualityCollection(
+        problemCells.filter { problemSeverityTier(it.litterCount, it.litterWeightGrams) == tier }
+    )
+    val problemLight = problemTier(ProblemSeverity.LIGHT)
+    val problemModerate = problemTier(ProblemSeverity.MODERATE)
+    val problemSevere = problemTier(ProblemSeverity.SEVERE)
+
+    // Staleness is a border over ANY fill — see CoverageStateJsons.staleBorder.
+    val staleBorder = qualityCollection(coverageCells.filter { it.state == "stale" })
 
     // P5 "Needs scanning" lens: one feature per cell with priority > 0 —
     // same tappable cellId as every other tile, plus the priority property.
@@ -999,8 +1026,10 @@ fun buildCoverageStateGeoJsons(
         clean = wrap(clean),
         cleanGrazed = wrap(cleanGrazed),
         seen = wrap(seen),
-        dirty = wrap(dirty),
-        stale = wrap(stale),
+        problemLight = wrap(problemLight),
+        problemModerate = wrap(problemModerate),
+        problemSevere = wrap(problemSevere),
+        staleBorder = wrap(staleBorder),
         fog = wrap(fogFeatures.toString()),
         priority = wrap(priority),
     )

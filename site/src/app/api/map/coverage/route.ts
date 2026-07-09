@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { cellCoverageSummary, worldObservations } from '@/db/schema'
-import { and, between, eq } from 'drizzle-orm'
+import { and, between, eq, sql, type SQL } from 'drizzle-orm'
 import { cellCenter } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +52,69 @@ export function applyObservedOnlyBoost(
   return Math.min(1, basePriority + (observedOnlyCells.has(cellId) ? OBSERVED_ONLY_PRIORITY_BOOST : 0))
 }
 
+/**
+ * `domain = 'litter'` is load-bearing, not decorative. `state='dirty'` is set on
+ * vegetation and construction observations too (a tree and a fence are both
+ * "dirty" in the sense of "not a clean sweep"), so filtering on state alone
+ * counts trees as trash. Prod carried 18 construction + 6 vegetation rows that
+ * were inflating rescan priority through the observed-only boost below until
+ * this filter was added.
+ *
+ * Exported as a pure condition builder (no DB access, no execution) so the
+ * `domain` predicate can be pinned by a test via `.toSQL()` — same
+ * side-effect-free pattern as computePriority/applyObservedOnlyBoost.
+ */
+export function currentDirtyLitterInBbox(
+  minLng: number,
+  minLat: number,
+  maxLng: number,
+  maxLat: number
+): SQL | undefined {
+  return and(
+    eq(worldObservations.isCurrent, true),
+    eq(worldObservations.domain, 'litter'),
+    eq(worldObservations.state, 'dirty'),
+    between(worldObservations.lng, minLng, maxLng),
+    between(worldObservations.lat, minLat, maxLat)
+  )
+}
+
+/**
+ * The observed-only signal narrows [currentDirtyLitterInBbox] to litter that has
+ * NOT yet been close-range diagnosed — a "needs completion" hint for the
+ * rescan-priority boost. Diagnosed litter is already well characterised and
+ * should not re-boost priority.
+ */
+export function observedOnlyLitterInBbox(
+  minLng: number,
+  minLat: number,
+  maxLng: number,
+  maxLat: number
+): SQL | undefined {
+  return and(
+    currentDirtyLitterInBbox(minLng, minLat, maxLng, maxLat),
+    eq(worldObservations.diagnosticStatus, 'observed')
+  )
+}
+
+/** Per-cell litter rollup fed to the client's problem-area blobs. */
+export interface LitterCellStats {
+  litterCount: number
+  litterWeightGrams: number
+}
+
+/**
+ * Merge the bbox litter rollup onto a coverage cell. A cell with observations
+ * but no recorded weight yields `litterWeightGrams: 0` with a non-zero count —
+ * the client tiers on count in that case rather than mis-reading it as "light".
+ */
+export function litterStatsFor(
+  cellId: string,
+  stats: ReadonlyMap<string, LitterCellStats>
+): LitterCellStats {
+  return stats.get(cellId) ?? { litterCount: 0, litterWeightGrams: 0 }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -86,15 +149,33 @@ export async function GET(request: NextRequest) {
     const observedOnlyRows = await db
       .selectDistinct({ locationCellId: worldObservations.locationCellId })
       .from(worldObservations)
-      .where(and(
-        eq(worldObservations.isCurrent, true),
-        eq(worldObservations.state, 'dirty'),
-        eq(worldObservations.diagnosticStatus, 'observed'),
-        between(worldObservations.lng, minLng, maxLng),
-        between(worldObservations.lat, minLat, maxLat)
-      ))
+      .where(observedOnlyLitterInBbox(minLng, minLat, maxLng, maxLat))
       .limit(5000)
     const observedOnlyCells = new Set(observedOnlyRows.map((r) => r.locationCellId))
+
+    // Per-cell litter rollup — one bbox-scoped GROUP BY, same cheap-Set
+    // reasoning as observedOnlyCells above (locationCellId is the shared
+    // gridCell() id on both tables). Feeds the client's problem-area blobs:
+    // hue by severity, so the client needs both a count and a mass.
+    // `attributes->>'estimatedWeightGrams'` is the real key (the schema's
+    // `estimatedWeightLbs` comment is stale); NULLIF guards rows whose
+    // attributes exist but carry no weight.
+    const litterRows = await db
+      .select({
+        locationCellId: worldObservations.locationCellId,
+        litterCount: sql<number>`count(*)::int`,
+        litterWeightGrams: sql<number>`coalesce(sum(nullif(${worldObservations.attributes} ->> 'estimatedWeightGrams', '')::numeric), 0)::float8`,
+      })
+      .from(worldObservations)
+      .where(currentDirtyLitterInBbox(minLng, minLat, maxLng, maxLat))
+      .groupBy(worldObservations.locationCellId)
+      .limit(5000)
+    const litterStats = new Map<string, LitterCellStats>(
+      litterRows.map((r) => [
+        r.locationCellId,
+        { litterCount: Number(r.litterCount), litterWeightGrams: Number(r.litterWeightGrams) },
+      ])
+    )
 
     const now = Date.now()
     const cells = rows
@@ -109,6 +190,7 @@ export async function GET(request: NextRequest) {
       .filter(({ r }) => since === null || new Date(r.lastScannedAt).getTime() >= since)
       .map(({ r, center }) => {
         const ageMs = now - new Date(r.lastScannedAt).getTime()
+        const litter = litterStatsFor(r.locationCellId, litterStats)
         return {
           locationCellId: r.locationCellId,
           lat: center.lat,
@@ -118,6 +200,10 @@ export async function GET(request: NextRequest) {
           lastScannedAt: r.lastScannedAt,
           totalDistanceMeters: r.totalDistanceMeters,
           priority: applyObservedOnlyBoost(computePriority(ageMs, r.bestQuality), r.locationCellId, observedOnlyCells),
+          // Additive (default 0 client-side): a pre-deploy client simply keeps
+          // its old spot-only problem derivation rather than breaking.
+          litterCount: litter.litterCount,
+          litterWeightGrams: litter.litterWeightGrams,
         }
       })
 

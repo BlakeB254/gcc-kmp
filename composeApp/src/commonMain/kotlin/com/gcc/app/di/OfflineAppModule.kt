@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.BiometricAuth
+import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -82,5 +83,8 @@ val offlineAppModule = module {
     singleOf(::SponsorWallViewModel)
     singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get(), get(), get(), get(), get()) }
+    // See appModule: `factory`, not `single` — CameraManager owns a live
+    // AVCaptureSession and must not be shared across screens.
+    factory { CameraManager() }
     factory { DocumentUploadViewModel(get(), get()) }
 }

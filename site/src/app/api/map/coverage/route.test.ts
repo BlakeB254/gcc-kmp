@@ -51,3 +51,56 @@ test('applyObservedOnlyBoost composed with computePriority: a fully-stale close 
   const observedOnlyCells = new Set(['5:5'])
   assert.equal(applyObservedOnlyBoost(base, '5:5', observedOnlyCells), 0.85)
 })
+
+// ── D7 regression: the litter join must filter on `domain`, not just `state` ──
+// `state='dirty'` is also set on vegetation and construction observations, so a
+// state-only filter counts trees and fences as trash. These build the drizzle
+// condition and inspect the generated SQL via `.toSQL()` — no query is executed.
+import { db } from '@/db'
+import { worldObservations } from '@/db/schema'
+import { currentDirtyLitterInBbox, observedOnlyLitterInBbox, litterStatsFor } from './route'
+
+// Inspect ONLY the WHERE clause — `select *` echoes every column name
+// (including "domain" and "diagnostic_status"), so asserting against the full
+// statement would pass no matter what the filter actually constrains.
+function whereFor(cond: ReturnType<typeof currentDirtyLitterInBbox>) {
+  const { sql, params } = db.select().from(worldObservations).where(cond).toSQL()
+  const idx = sql.indexOf(' where ')
+  assert.ok(idx >= 0, `expected a where clause, got: ${sql}`)
+  return { where: sql.slice(idx), params }
+}
+
+test('currentDirtyLitterInBbox filters on domain = litter', () => {
+  const { where, params } = whereFor(currentDirtyLitterInBbox(-87.8, 41.8, -87.6, 41.9))
+  assert.ok(where.includes('"domain"'), `expected a domain predicate, got: ${where}`)
+  assert.ok(params.includes('litter'), `expected 'litter' bound param, got: ${JSON.stringify(params)}`)
+})
+
+test('currentDirtyLitterInBbox still constrains state and is_current', () => {
+  const { where, params } = whereFor(currentDirtyLitterInBbox(-87.8, 41.8, -87.6, 41.9))
+  assert.ok(where.includes('"state"'))
+  assert.ok(where.includes('"is_current"'))
+  assert.ok(params.includes('dirty'))
+})
+
+test('currentDirtyLitterInBbox does NOT constrain diagnostic_status (diagnosed litter still counts)', () => {
+  const { where } = whereFor(currentDirtyLitterInBbox(-87.8, 41.8, -87.6, 41.9))
+  assert.ok(!where.includes('"diagnostic_status"'), `rollup must include diagnosed litter, got: ${where}`)
+})
+
+test('observedOnlyLitterInBbox narrows to observed AND still filters domain = litter', () => {
+  const { where, params } = whereFor(observedOnlyLitterInBbox(-87.8, 41.8, -87.6, 41.9))
+  assert.ok(where.includes('"diagnostic_status"'))
+  assert.ok(where.includes('"domain"'), 'the observed-only boost must not count trees as litter')
+  assert.ok(params.includes('litter'))
+  assert.ok(params.includes('observed'))
+})
+
+test('litterStatsFor: a cell with no observations yields zeroes, not undefined', () => {
+  assert.deepEqual(litterStatsFor('1:2', new Map()), { litterCount: 0, litterWeightGrams: 0 })
+})
+
+test('litterStatsFor: returns the rolled-up stats for a known cell', () => {
+  const stats = new Map([['1:2', { litterCount: 3, litterWeightGrams: 4200 }]])
+  assert.deepEqual(litterStatsFor('1:2', stats), { litterCount: 3, litterWeightGrams: 4200 })
+})

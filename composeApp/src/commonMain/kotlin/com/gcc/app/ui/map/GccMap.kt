@@ -104,6 +104,23 @@ expect fun GccMap(
     coverageCells: List<com.gcc.shared.model.MapCoverageCell> = emptyList(),
     /** Authored inner-boundary rings (route-v2); empty → parallel inset. */
     innerBoundaryRings: List<List<Coordinates>> = emptyList(),
+    /** Draw the exclusion zones and the tinted scan corridor between the outer
+     *  and inner rings. Defaults true for the screens whose whole purpose is a
+     *  single block (route detail, boundary editor, proposal preview). The
+     *  browsing map passes FALSE unless a block is selected: exclusion detail
+     *  on every block at once is noise you cannot act on, and it multiplies as
+     *  blocks are added. */
+    showInnerBoundary: Boolean = true,
+    /** Hide block outlines below [MapStyles.SPOT_HEATMAP_FADE_OUT_ZOOM] — the
+     *  zoom where the far-zoom choropleth finishes fading out, so the two
+     *  systems hand off with no overlap and no gap.
+     *
+     *  Opt-in, because it is only correct for the browsing map. Surfaces that
+     *  deliberately frame ONE block (route detail, boundary editor, proposal
+     *  preview) and the dashboard preview — which sits at ZOOM_NEIGHBORHOOD
+     *  (14.0), just below the threshold — must keep drawing their outline at
+     *  whatever zoom they chose. */
+    gateBlockOutlinesByZoom: Boolean = false,
     /** Explorer scan-state per community area ("clean"|"dirty"|"stale"). */
     explorerAreaStates: Map<String, String> = emptyMap(),
     affectedBlocks: List<AffectedBlock> = emptyList(),

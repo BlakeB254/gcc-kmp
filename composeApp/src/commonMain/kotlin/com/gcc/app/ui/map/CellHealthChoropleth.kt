@@ -118,9 +118,14 @@ fun choroplethTileMetersForZoom(zoom: Double): Double = when {
     zoom < 8.0 -> 3200.0
     zoom < 9.5 -> 1600.0
     zoom < 11.0 -> 800.0
-    zoom < 12.5 -> 400.0
-    zoom < 13.5 -> 200.0
-    else -> 100.0
+    // Street-approach band: the choropleth is an ESTIMATE standing in for
+    // scan truth, so as the camera nears the zoom where real coverage blobs
+    // become legible its tiles must get small enough to read as texture
+    // rather than as slabs. 400/200/100m read as "the whole block is red";
+    // halved so problem areas localise. (Blake, 2026-07-09 field screenshot.)
+    zoom < 12.5 -> 200.0
+    zoom < 13.5 -> 100.0
+    else -> 50.0
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -21,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.CommunityInfoPanel
 import com.gcc.app.ui.map.BlockOverlay
+import com.gcc.app.ui.map.ProblemSeverity
+import com.gcc.app.ui.map.problemSeverityTier
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
@@ -605,6 +608,15 @@ fun MapFullScreen(
             showNeedsScanningLens = false,
             observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
+            // Exclusion zones + scan corridor are per-block working detail:
+            // shown ONLY for the block the worker picked from the record cards.
+            // On the browsing map they were drawn for every block at once,
+            // which is unactionable noise that compounds with each new block.
+            showInnerBoundary = selectedRecordIndex != null,
+            // Browsing map: block outlines appear only once the choropleth
+            // squares have faded out (14.2). Below that, many blocks at city
+            // scale is clutter that compounds with every block added.
+            gateBlockOutlinesByZoom = true,
             explorerAreaStates = explorerAreaStates,
             enableGestures = true,
             showControls = true,
@@ -740,11 +752,14 @@ fun MapFullScreen(
                 visible = selectedCoverageCell == null,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
-                // Bottom-right, above the map controls — off the map's prime
-                // real estate (owner direction 2026-07-07: not mid-screen).
+                // Bottom-right, CLEAR OF the map controls — at 112.dp the
+                // collapsed pill sat inside the scan-FAB / my-location row's
+                // vertical span and was drawn behind them (they come later in
+                // this Box, so they win z-order). The expanded card grows
+                // upward from here.
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 112.dp),
+                    .padding(end = 12.dp, bottom = 176.dp),
             ) {
                 ScanCoverageLegend()
             }
@@ -1763,44 +1778,116 @@ private fun RowScope.ProgressionConnector(filled: Boolean) {
  */
 @Composable
 private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
+    // The legend is reference material, not a control — it must never own more
+    // of the map than the map does. Collapses to a single pill; the map is the
+    // thing the worker came to look at.
+    var expanded by remember { mutableStateOf(false) }
+
+    if (!expanded) {
+        Surface(
+            modifier = modifier.clickable { expanded = true },
+            shape = RoundedCornerShape(10.dp),
+            shadowElevation = 4.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Three swatches stand in for the whole scale — worst, mid, clean.
+                LegendSwatch(Color(0xFF991B1B), 0.7f)
+                Spacer(modifier = Modifier.width(2.dp))
+                LegendSwatch(Color(0xFFF59E0B), 0.7f)
+                Spacer(modifier = Modifier.width(2.dp))
+                LegendSwatch(Color(0xFF22C55E), 0.7f)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Key",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                )
+            }
+        }
+        return
+    }
+
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         shadowElevation = 4.dp,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            // wrapContentWidth: the header Row must not fillMaxWidth, or the
+            // Surface stretches edge-to-edge and swallows the map.
+            modifier = Modifier
+                .wrapContentWidth()
+                .padding(start = 8.dp, end = 6.dp, top = 6.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Text(
-                "Map colours",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            )
-            ScanLegendRow(Color(0xFF22C55E), "Scanned · clean")
-            ScanLegendRow(Color(0xFF22C55E), "Light green · needs detail scan", swatchAlpha = 0.35f)
-            ScanLegendRow(Color(0xFFEF4444), "Litter / reported mess")
-            ScanLegendRow(Color(0xFFF59E0B), "Stale · re-scan")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Map key",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .clickable { expanded = false },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✕", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+            }
+            // FILL = what is here. Worst-first so the eye lands on what needs action.
+            ScanLegendRow(Color(0xFF991B1B), "Severe mess")
+            ScanLegendRow(Color(0xFFEF4444), "Litter here")
+            ScanLegendRow(Color(0xFFF59E0B), "Some litter")
+            ScanLegendRow(Color(0xFF22C55E), "Scanned close")
+            ScanLegendRow(Color(0xFF22C55E), "Scanned near", swatchAlpha = 0.35f)
+            ScanLegendRow(Color(0xFF22C55E), "Seen at a distance", swatchAlpha = 0.18f)
             ScanLegendRow(Color(0xFF4B5563), "Never scanned")
-            Text(
-                "Tap a tile for last results",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-            )
+            // BORDER = how fresh our knowledge is. An outline, so it never
+            // re-teaches the old "orange means a stale AREA" model — it is a
+            // modifier on any fill, not a state of its own.
+            ScanLegendDashedRow(Color(0xFFB45309), "Over 24h · re-scan")
         }
     }
+}
+
+/** 9dp colour chip shared by the collapsed pill and the expanded rows. */
+@Composable
+private fun LegendSwatch(color: Color, alpha: Float) {
+    Box(
+        modifier = Modifier
+            .size(9.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(color.copy(alpha = alpha)),
+    )
 }
 
 @Composable
 private fun ScanLegendRow(color: Color, label: String, swatchAlpha: Float = 0.7f) {
     Row(verticalAlignment = Alignment.CenterVertically) {
+        LegendSwatch(color, swatchAlpha)
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** Swatch for the staleness BORDER: an outlined, neutral-filled square so it
+ *  reads as an edge treatment rather than another fill colour. */
+@Composable
+private fun ScanLegendDashedRow(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(12.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(color.copy(alpha = swatchAlpha)),
+                .size(9.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .border(1.2.dp, color, RoundedCornerShape(2.dp)),
         )
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(5.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
@@ -1840,6 +1927,39 @@ private fun CoverageCellInfoCard(
     }
     val dirty = nearby.filter { it.state == "dirty" && (it.domain == null || it.domain == "litter") }
     val stale = cell.state == "stale"
+    // The cell's own server-side rollup is authoritative for "is this a problem
+    // area" — `nearby` only holds the observations the client happens to have
+    // fetched for the current viewport.
+    val isProblem = cell.litterCount > 0 || dirty.isNotEmpty()
+    val severity = problemSeverityTier(cell.litterCount, cell.litterWeightGrams)
+
+    // Best-photo order (Pillar 8/9 addendum: closest capture, then confidence,
+    // then most recent). Capture distance isn't on the wire, but `diagnosed`
+    // IS a close-range capture by definition — that's what upgrades an
+    // observation out of `observed`. Severity then recency break the tie.
+    val photoUrls = remember(dirty) {
+        dirty.sortedWith(
+            compareByDescending<com.gcc.shared.model.WorldObservation> { it.diagnosticStatus == "diagnosed" }
+                .thenByDescending { it.severity ?: 0 }
+                .thenByDescending { it.capturedAt ?: "" }
+        ).mapNotNull { it.mediaUrl }.distinct().take(4)
+    }
+    var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
+
+    // "3 bottles, 1 tire" beats four identical bullet points.
+    val itemSummary = remember(dirty) {
+        dirty.groupingBy { obs ->
+            obs.itemType?.let { TrashItemCatalog.infoFor(it).displayName } ?: "Litter"
+        }.eachCount()
+            .entries.sortedByDescending { it.value }
+            .joinToString(", ") { (label, count) ->
+                if (count > 1) "$count × $label" else label
+            }
+    }
+
+    val weightLabel = cell.litterWeightGrams.takeIf { it > 0.0 }?.let { grams ->
+        if (grams >= 1000) "~${kotlin.math.round(grams / 100.0) / 10.0} kg" else "~${grams.toInt()} g"
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1853,57 +1973,102 @@ private fun CoverageCellInfoCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Title states WHAT IS HERE. Staleness is a qualifier on our
+                // knowledge, not the headline — a stale cell full of litter
+                // used to announce itself as "needs re-scan" and say nothing
+                // about the litter.
                 Text(
                     when {
-                        stale -> "Scanned — needs re-scan"
-                        dirty.isNotEmpty() -> "Scanned — litter on record"
+                        isProblem -> when (severity) {
+                            ProblemSeverity.SEVERE -> "Severe mess"
+                            ProblemSeverity.MODERATE -> "Litter here"
+                            ProblemSeverity.LIGHT -> "Some litter"
+                        }
                         else -> "Scanned — clean"
                     },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = when {
-                        stale -> Color(0xFFB45309)
-                        dirty.isNotEmpty() -> Color(0xFFDC2626)
+                        isProblem && severity == ProblemSeverity.SEVERE -> Color(0xFF991B1B)
+                        isProblem && severity == ProblemSeverity.MODERATE -> Color(0xFFDC2626)
+                        isProblem -> Color(0xFFB45309)
                         else -> GccGreenDark
                     },
                 )
                 TextButton(onClick = onDismiss) { Text("✕", color = TextMuted) }
             }
+
+            // How we know, and how well.
             Text(
-                "Last scanned ${lastScannedLabel(cell.lastScannedAt)}" +
-                    if (stale) " — over 24h old, scan it again to keep it fresh" else "",
+                buildString {
+                    append("Last scanned ${lastScannedLabel(cell.lastScannedAt)}")
+                    append(
+                        when (cell.quality) {
+                            "close" -> " · close-scanned"
+                            "grazed" -> " · walked past"
+                            "seen" -> " · seen from a distance"
+                            else -> ""
+                        }
+                    )
+                    if (stale) append(" · over 24h old — scan again to keep it fresh")
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = if (stale) Color(0xFFB45309) else TextMuted,
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (dirty.isEmpty()) {
+
+            if (cell.quality == "seen") {
+                Text(
+                    "Only sighted from a distance — walk up and scan closely for a full reading.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (!isProblem) {
                 Text(
                     "Last scan found no litter here.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = GccGreen,
                 )
             } else {
+                // Evidence first — the photos ARE the answer to "what's here?".
+                if (photoUrls.isNotEmpty()) {
+                    PhotoStrip(
+                        urls = photoUrls,
+                        photoSize = 120,
+                        onPhotoClick = { index -> fullScreenImageIndex = index },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 Text(
-                    "Litter still on record here:",
+                    listOfNotNull(
+                        itemSummary.takeIf { it.isNotBlank() }
+                            ?: "${cell.litterCount} item${if (cell.litterCount == 1) "" else "s"} on record",
+                        weightLabel,
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                dirty.take(4).forEach { obs ->
+
+                if (photoUrls.isEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "• ${(obs.itemType ?: "litter").replace('_', ' ')}" +
-                            (obs.severity?.let { " · severity $it" } ?: ""),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                    )
-                }
-                if (dirty.size > 4) {
-                    Text(
-                        "…and ${dirty.size - 4} more",
+                        "No photo captured for this area yet.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSubtle,
                     )
                 }
             }
         }
+    }
+
+    fullScreenImageIndex?.let { startIndex ->
+        FullScreenImageGallery(
+            urls = photoUrls,
+            startIndex = startIndex,
+            onDismiss = { fullScreenImageIndex = null },
+        )
     }
 }
 
