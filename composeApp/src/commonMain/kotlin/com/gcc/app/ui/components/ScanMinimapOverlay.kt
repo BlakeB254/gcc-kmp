@@ -6,8 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
@@ -76,6 +77,10 @@ fun ScanMinimapOverlay(
     corridorCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Lap-2 target: the problem area currently being guided to. */
     guidanceTarget: Coordinates? = null,
+    /** Scene-aware flashlight beam (WS2): closed lat/lng ring from the user
+     *  dot out through the current tick's ray-hit envelope. Drawn UNDER the
+     *  coverage shading, over the veil. Empty = no beam this tick. */
+    visibilityBeam: List<Pair<Double, Double>> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     // Stable lattice anchor for the session-tier outline tracer (Pillar 7):
@@ -92,17 +97,17 @@ fun ScanMinimapOverlay(
     // Marching-squares + Chaikin smoothing (traceCoverageOutlines) is the
     // expensive part of this overlay; hoisted out of the Canvas draw scope
     // (which reruns on every recomposition — every GPS tick, since the live
-    // centerLat/Lng feed toOffset below) and memoized on the actual
-    // credited-cell sets, so it only reruns when scan state changes.
-    val scanRings = remember(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val closeRings = remember(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val seenRings = remember(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
+    // centerLat/Lng feed toOffset below) and memoized on the actual cell sets,
+    // so tracing only reruns when THAT tier's scan state changes.
+    // Session tiers (3m grid) + coarser ledger/corridor tiers (10m
+    // freshness grid) all route through the same engine (WS4 "paint the town").
+    val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val corridorRings = rememberRings(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val freshRings = rememberRings(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val freshCloseRings = rememberRings(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val staleRings = rememberRings(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
@@ -131,20 +136,6 @@ fun ScanMinimapOverlay(
             drawPath(path, color = color, style = Stroke(width = widthPx))
         }
 
-
-        fun cellRect(lat: Double, lng: Double, sideMeters: Double, overscan: Float): Rect? {
-            // Overscan slightly so adjacent cells fuse without hairline seams.
-            val side = metersToPixels(sideMeters, centerLat, overlayZoom).coerceAtLeast(2f) * overscan
-            val c = toOffset(lat, lng)
-            if (c.x < -side || c.x > size.width + side) return null
-            if (c.y < -side || c.y > size.height + side) return null
-            return Rect(Offset(c.x - side / 2f, c.y - side / 2f), Size(side, side))
-        }
-
-        fun drawCell(lat: Double, lng: Double, sideMeters: Double, color: Color, overscan: Float = 1f) {
-            val r = cellRect(lat, lng, sideMeters, overscan) ?: return
-            drawRect(color = color, topLeft = r.topLeft, size = r.size)
-        }
 
         // ── Organic session-tier outlines (Pillar 7) ──────────────────
         // Session-credited cells (this scan's own GRAZED/CLOSE/SEEN sets)
@@ -176,6 +167,11 @@ fun ScanMinimapOverlay(
         // ground still fogged, spec Pillar 7) — only used for the faint wash
         // drawn on TOP of the veil below.
         val seenOutline = ringsToPath(seenRings)
+        // WS4: coarse ledger/corridor tiers as merged organic outlines too.
+        val corridorOutline = ringsToPath(corridorRings)
+        val freshOutline = ringsToPath(freshRings)
+        val freshCloseOutline = ringsToPath(freshCloseRings)
+        val staleOutline = ringsToPath(staleRings)
 
         // ── Fog-of-war veil ──────────────────────────────────────────
         // The WHOLE minimap starts under one heavy dark veil: everything you
@@ -188,12 +184,9 @@ fun ScanMinimapOverlay(
         // (corridor and session cells share locations; overscanned neighbors
         // overlap at edges — even-odd parity would re-fill those overlaps).
         val holes = Path()
-        fun punch(lat: Double, lng: Double, sideMeters: Double, overscan: Float) {
-            cellRect(lat, lng, sideMeters, overscan)?.let { holes.addRect(it) }
-        }
-        for ((lat, lng) in corridorCellCenters) punch(lat, lng, cellSizeMeters, 1.15f)
-        for ((lat, lng) in freshCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
-        for ((lat, lng) in freshCloseCellCenters) punch(lat, lng, freshnessCellSizeMeters, 1.1f)
+        holes.addPath(corridorOutline)
+        holes.addPath(freshOutline)
+        holes.addPath(freshCloseOutline)
         holes.addPath(scanOutline)
         val veil = Path.combine(
             PathOperation.Difference,
@@ -204,28 +197,59 @@ fun ScanMinimapOverlay(
         // and the scanned/scanning cells hard to see — lightened from 0.62 to
         // 0.45 (corridor re-shade below dropped proportionally to keep the
         // same relative contrast between "assigned" and "everything else").
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.45f))
+        // Field report (env scan): the minimap read "too darkened". Veil
+        // lightened 0.45 -> 0.30 so unscanned ground still reads as fog without
+        // drowning the beam, the painted coverage, and the user dot.
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.30f))
 
-        // Required corridor (block laps): punched out of the heavy veil, then
-        // re-shaded lighter so the assignment reads as a distinct region.
-        for ((lat, lng) in corridorCellCenters) {
-            drawCell(lat, lng, cellSizeMeters, VeilSlate.copy(alpha = 0.28f), overscan = 1.15f)
+        // Scene-aware flashlight beam (WS2): projected through the SAME
+        // zoom-biased toOffset as every other layer so it stays glued to the
+        // streets. Filled with a RADIAL GRADIENT from the user dot — bright at
+        // the origin, fading to nothing at the reach — so it reads as an actual
+        // flashlight beam (Blake's "flashlight effect") instead of a flat blob.
+        if (visibilityBeam.size >= 3) {
+            val beamCenter = Offset(size.width / 2f, size.height / 2f)
+            val beamPath = Path()
+            var maxReachPx = 0f
+            visibilityBeam.forEachIndexed { index, (lat, lng) ->
+                val p = toOffset(lat, lng)
+                if (index == 0) beamPath.moveTo(p.x, p.y) else beamPath.lineTo(p.x, p.y)
+                val dx = p.x - beamCenter.x
+                val dy = p.y - beamCenter.y
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                if (d > maxReachPx) maxReachPx = d
+            }
+            beamPath.close()
+            if (maxReachPx > 1f) {
+                drawPath(
+                    beamPath,
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GccGreen.copy(alpha = 0.34f),
+                            GccGreen.copy(alpha = 0.12f),
+                            GccGreen.copy(alpha = 0.0f),
+                        ),
+                        center = beamCenter,
+                        radius = maxReachPx,
+                    ),
+                )
+            }
         }
 
-        // Ledger-fresh cells: grazed = whisper (needs detail), close = the
-        // established faint green (already well-scanned by the community).
-        for ((lat, lng) in freshCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.07f), overscan = 1.1f)
-        }
-        for ((lat, lng) in freshCloseCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, GccGreen.copy(alpha = 0.16f), overscan = 1.1f)
-        }
-
-        // Stale cells: scanned before, worth re-scanning — amber glow over
-        // the veil.
-        for ((lat, lng) in staleCellCenters) {
-            drawCell(lat, lng, freshnessCellSizeMeters, StaleAmber.copy(alpha = 0.45f), overscan = 1.1f)
-        }
+        // WS4 "paint the town": corridor + ledger tiers render as merged
+        // organic outlines (no per-cell rects, no interior grid lines), at the
+        // SAME colors/alphas as before.
+        // Required corridor (block laps): your assigned block. With the veil
+        // now lighter (0.30), a 0.28 re-shade blended into the fog — dropped to
+        // 0.10 so the corridor reads as a distinctly LIGHTER "your zone" cut
+        // out of the surrounding fog (block-route legibility).
+        drawPath(corridorOutline, color = VeilSlate.copy(alpha = 0.10f))
+        // Ledger-fresh: grazed = whisper (needs detail), close = established
+        // faint green (already well-scanned by the community).
+        drawPath(freshOutline, color = GccGreen.copy(alpha = 0.07f))
+        drawPath(freshCloseOutline, color = GccGreen.copy(alpha = 0.16f))
+        // Stale: scanned before, worth re-scanning — amber glow over the veil.
+        drawPath(staleOutline, color = StaleAmber.copy(alpha = 0.45f))
 
         // This session, three shades (Pillar 7 rendering hierarchy: SEEN
         // faintest → GRAZED light → CLOSE vivid) — every credited cell gets
@@ -279,6 +303,11 @@ fun ScanMinimapOverlay(
         // so the user is always exactly at the canvas center — no projection
         // needed. Replaces reliance on any MapLibre location puck underneath.
         val selfCenter = Offset(size.width / 2f, size.height / 2f)
+        // Dark backing disc first: the dot's white ring + green core would
+        // otherwise sit green-on-green over CLOSE-scanned tiles (0.65 green) and
+        // the green beam, washing out. A translucent dark pad guarantees the
+        // dot reads on ANY underlying layer.
+        drawCircle(color = Color.Black.copy(alpha = 0.38f), radius = 7.dp.toPx(), center = selfCenter)
         drawCircle(color = Color.White, radius = 5.dp.toPx(), center = selfCenter, style = Stroke(width = 2.dp.toPx()))
         drawCircle(color = GccGreen, radius = 3.5.dp.toPx(), center = selfCenter)
     }
@@ -289,6 +318,19 @@ fun ScanMinimapOverlay(
  * (glass = teal accent) with a white outline for legibility over any fill —
  * the point is that a can, a bag and a bottle read differently at a glance.
  */
+/** Trace + memoize one tier's cell set into smoothed marching-squares rings,
+ *  keyed so it only re-traces when that tier's cells (or the lattice) change. */
+@Composable
+private fun rememberRings(
+    cells: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+    anchorLat: Double,
+    anchorLng: Double,
+): List<List<Pair<Double, Double>>> =
+    remember(cells, cellSizeMeters, anchorLat, anchorLng) {
+        quantizeAndTraceOutlines(cells, cellSizeMeters, anchorLat, anchorLng)
+    }
+
 private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
     val u = 3.dp.toPx() // half-size unit
     val outline = Color.White

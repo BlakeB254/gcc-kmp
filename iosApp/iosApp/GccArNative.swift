@@ -32,8 +32,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// world-axis aligned (compass-true under gravityAndHeading), so the
     /// on-camera lattice visually registers with the north-up minimap grid.
     private static let gridTileMeters: Float = 1.5
-    /// Vector-scan overlay caps (mirrors the Kotlin SceneKit path).
-    private static let maxVectorCells = 350
 
     /// Only one ARSession may hold the camera at a time. The Kotlin factory
     /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
@@ -67,7 +65,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// accuracy for the grid": content (fog/vector cells/guidance) keeps
     /// re-anchoring on every re-pair, the grid itself never does.
     private var gridPhaseOrigin: SIMD2<Float>?
-    private var vectorCellEntities: [String: AnchorEntity] = [:]
     private var fogCellEntities: [String: AnchorEntity] = [:]
     private var sectorPostEntities: [String: AnchorEntity] = [:]
     private var wallEntities: [AnchorEntity] = []
@@ -90,9 +87,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
-    )
-    private lazy var vectorGridTexture: TextureResource? = Self.makeGridTexture(
-        line: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 1.0), lineWidth: 4, diagonals: true
     )
 
     override init() {
@@ -173,9 +167,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         floorMaxX = nil
         floorMinZ = nil
         floorMaxZ = nil
-
-        for (_, anchor) in vectorCellEntities { anchor.removeFromParent() }
-        vectorCellEntities.removeAll()
 
         for (_, anchor) in fogCellEntities { anchor.removeFromParent() }
         fogCellEntities.removeAll()
@@ -264,47 +255,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             .map { "\($0.identifier)|\($0.confidence)" }
     }
 
-    func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {
-        DispatchQueue.main.async { [self] in
-            let groundY = (floorWorldY ?? cameraFallbackGroundY()) + 0.02
-            var wanted = Set<String>()
-            var index = 0
-            while index + 1 < flatXZ.count {
-                let x = Float(truncating: flatXZ[index])
-                let z = Float(truncating: flatXZ[index + 1])
-                index += 2
-                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
-                wanted.insert(key)
-                if let existing = vectorCellEntities[key] {
-                    // Floor detection refines over time — cells placed against
-                    // the camera-offset estimate must settle onto the real floor.
-                    if abs(existing.position.y - groundY) > 0.08 {
-                        existing.position.y = groundY
-                    }
-                    continue
-                }
-                if vectorCellEntities.count >= Self.maxVectorCells { continue }
-                let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
-                let mesh = MeshResource.generatePlane(
-                    width: Float(cellSizeMeters), depth: Float(cellSizeMeters)
-                )
-                let cell = ModelEntity(mesh: mesh, materials: [gridMaterial(vectorGridTexture, tint: UIColor(red: 0.15, green: 0.95, blue: 0.55, alpha: 0.5), uvScale: 1)])
-                anchor.addChild(cell)
-                arView.scene.addAnchor(anchor)
-                vectorCellEntities[key] = anchor
-                animateIn(cell)
-                // Slow shimmer after the grow-in settles.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak cell] in
-                    guard let cell else { return }
-                    self.addPulse(to: cell, scale: 0.94, duration: 1.4)
-                }
-            }
-            for (key, anchor) in vectorCellEntities where !wanted.contains(key) {
-                vectorCellEntities.removeValue(forKey: key)
-                animateOutAndRemove(anchor)
-            }
-        }
-    }
+    // WS5: the neon emissive coverage quads (green-rectangle bleed in the
+    // camera view — field report) are removed. Coverage feedback lives on the
+    // minimap now; this is a no-op kept for the ArNativeSurface protocol. The
+    // matte ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
+    func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {}
 
     func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
         DispatchQueue.main.async { [self] in

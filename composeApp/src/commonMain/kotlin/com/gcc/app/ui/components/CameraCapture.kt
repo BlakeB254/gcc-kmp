@@ -1,6 +1,7 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -62,7 +63,6 @@ fun CameraCapture(
     maxPhotos: Int = 3,
     showMiniMap: Boolean = false,
     currentLocation: Coordinates? = null,
-    gpsHeading: Float? = null,
     allowLibraryPick: Boolean = false,
     cameraManager: CameraManager? = null,
     /** Zones the environment scan has credited — minimap green highlight. */
@@ -82,6 +82,8 @@ fun CameraCapture(
     freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering: minimap double-ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
+    /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
+    visibilityBeam: List<Pair<Double, Double>> = emptyList(),
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -232,15 +234,21 @@ fun CameraCapture(
                         .padding(end = 12.dp, bottom = 96.dp)
                         .size(width = miniMapWidth, height = miniMapHeight)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.3f)),
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        // Subtle rim so the picture-in-picture map separates
+                        // from a busy camera feed instead of blurring into it.
+                        .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(12.dp)),
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
                         centerLat = currentLocation.lat,
                         centerLng = currentLocation.lng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
-                        currentLocation = currentLocation,
-                        gpsHeading = gpsHeading,
+                        // currentLocation=null: ScanMinimapOverlay draws the one
+                        // authoritative centered dot — the basemap puck here was
+                        // a SECOND dot (field report). Framing uses centerLat/Lng.
+                        currentLocation = null,
+                        gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
                     )
                     // Scan coverage + trash + ledger freshness, projected over
                     // the fixed-zoom minimap.
@@ -258,32 +266,11 @@ fun CameraCapture(
                         seenCellCenters = seenCellCenters,
                         freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
+                        visibilityBeam = visibilityBeam,
                     )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                "\uD83D\uDCCD",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                "You are here",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GccGreen,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
+                    // WS6: the decorative "\uD83D\uDCCD You are here" bar was removed \u2014
+                    // the overlay already draws the user dot; the bar was pure
+                    // clutter (field feedback).
                 }
             }
 

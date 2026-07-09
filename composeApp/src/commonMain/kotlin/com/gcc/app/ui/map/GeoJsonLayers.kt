@@ -968,12 +968,11 @@ fun buildCoverageStateGeoJsons(
     // Scanned recently but litter is still on record — previously these
     // cells were silently DROPPED (no tile at all); now they read red so a
     // scanned-but-dirty area is distinguishable from unscanned ground.
-    val dirty = fresh
-        .filter { hasSpotNear(it.lat, it.lng) }
-        .joinToString(",") { feature(it) }
-    val stale = coverageCells
-        .filter { it.state == "stale" }
-        .joinToString(",") { feature(it) }
+    // WS4: dirty/stale also merge into organic outlines under outline mode.
+    // (Per-cell cellId tap is preserved via the map-level lat/lng->cell
+    // hit-test in GccMap.ios.kt — see Plan B Task 7.)
+    val dirty = qualityCollection(fresh.filter { hasSpotNear(it.lat, it.lng) })
+    val stale = qualityCollection(coverageCells.filter { it.state == "stale" })
 
     // P5 "Needs scanning" lens: one feature per cell with priority > 0 —
     // same tappable cellId as every other tile, plus the priority property.
@@ -993,13 +992,22 @@ fun buildCoverageStateGeoJsons(
         val maxLat = fogBounds[2]
         val maxLng = fogBounds[3]
         val outerRing = "[[$minLng,$minLat],[$maxLng,$minLat],[$maxLng,$maxLat],[$minLng,$maxLat],[$minLng,$minLat]]"
-        val holeSize = cellSizeMeters * 1.2
-        val hLat = holeSize / 2 / 111_320.0
-        val hLng = holeSize / 2 / (111_320.0 * lngScale)
-        val holes = coverageCells
-            .filter { it.lat in minLat..maxLat && it.lng in minLng..maxLng }
-            .take(1500)
-            .joinToString(",") { cell -> squareRing(cell.lng, cell.lat, halfLng = hLng, halfLat = hLat) }
+        val inBounds = coverageCells.filter { it.lat in minLat..maxLat && it.lng in minLng..maxLng }
+        // WS4: under outline mode the fog holes take the MERGED coverage shape
+        // (marching-squares rings), not per-cell squares — so scanned ground
+        // reads as one painted region cut out of the veil.
+        val holes = if (useOutlines) {
+            quantizeAndTraceOutlines(inBounds.map { it.lat to it.lng }, cellSizeMeters, anchorLat, anchorLng)
+                .filter { it.size >= 3 }
+                .joinToString(",") { ring ->
+                    "[" + ring.joinToString(",") { (lat, lng) -> "[$lng,$lat]" } + "]"
+                }
+        } else {
+            val holeSize = cellSizeMeters * 1.2
+            val hLat = holeSize / 2 / 111_320.0
+            val hLng = holeSize / 2 / (111_320.0 * lngScale)
+            inBounds.take(1500).joinToString(",") { cell -> squareRing(cell.lng, cell.lat, halfLng = hLng, halfLat = hLat) }
+        }
         val rings = if (holes.isEmpty()) "[$outerRing]" else "[$outerRing,$holes]"
         fogFeatures.append(
             """{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":$rings}}"""

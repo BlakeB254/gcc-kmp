@@ -108,6 +108,7 @@ fun ArRouteScreen(
     val expectedObservations by viewModel.expectedObservations.collectAsState()
     val nearbyExpected by viewModel.nearbyExpectedObservation.collectAsState()
     val minimapBoundaries by viewModel.minimapBoundaries.collectAsState()
+    val visibilityBeam by viewModel.visibilityBeam.collectAsState()
     val (outerRing, innerRings) = minimapBoundaries
     val corridorCenters = remember(outerRing) { viewModel.corridorCellCenters() }
 
@@ -452,8 +453,10 @@ fun ArRouteScreen(
                     centerLat = mapCenterLat,
                     centerLng = mapCenterLng,
                     zoom = mapZoom,
-                    currentLocation = Coordinates(lat = ui.currentLat, lng = ui.currentLng),
-                    gpsHeading = gpsHeading,
+                    // currentLocation=null: ScanMinimapOverlay draws the one
+                    // centered dot; the basemap puck here was a second dot.
+                    currentLocation = null,
+                    gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
                 )
                 ScanMinimapOverlay(
                     centerLat = mapCenterLat,
@@ -471,6 +474,7 @@ fun ArRouteScreen(
                     innerBoundaries = innerRings,
                     corridorCellCenters = corridorCenters,
                     guidanceTarget = ui.guidanceTarget?.center,
+                    visibilityBeam = visibilityBeam,
                 )
             }
         }

@@ -1,0 +1,14 @@
+CREATE TABLE buildingFootprintCache (
+  tileKey TEXT NOT NULL PRIMARY KEY,
+  buildingsJson TEXT NOT NULL,
+  cachedAtMs INTEGER NOT NULL
+);
+
+selectByTile:
+SELECT * FROM buildingFootprintCache WHERE tileKey = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO buildingFootprintCache(tileKey, buildingsJson, cachedAtMs) VALUES (?, ?, ?);
+
+deleteOlderThan:
+DELETE FROM buildingFootprintCache WHERE cachedAtMs < ?;

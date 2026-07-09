@@ -273,4 +273,22 @@ class OutdoorGateV4Test {
         assertEquals(OutdoorState.OUTDOOR, gate.state.value)
         assertEquals(true, gate.captureAllowed.value)
     }
+
+    @Test
+    fun insidePolygonFootprintFlipsIndoorViaMapEvidence() {
+        com.gcc.app.ui.map.MappedBuildingRegistry.clear()
+        val ring = listOf(
+            listOf(-87.720, 41.860), listOf(-87.710, 41.860),
+            listOf(-87.710, 41.866), listOf(-87.720, 41.866),
+            listOf(-87.720, 41.860),
+        )
+        com.gcc.app.ui.map.MappedBuildingRegistry.setRingsForTile("b:4186:-8772", listOf(ring))
+
+        val gate = OutdoorGate()
+        val inside = com.gcc.app.ui.map.isInsideMappedBuilding(lat = 41.863, lng = -87.715)
+        gate.onMapEvidence(insideBuilding = inside, timestampMs = t0)
+        assertEquals(OutdoorState.INDOOR, gate.state.value) // MAP_STREAK_TO_FLIP=1
+
+        com.gcc.app.ui.map.MappedBuildingRegistry.clear()
+    }
 }

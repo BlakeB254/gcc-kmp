@@ -3,6 +3,7 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.AiDirectionEngine
 import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.ArScanner
+import com.gcc.app.platform.BuildingFootprintLoader
 import com.gcc.app.platform.CellCredit
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.CoverageEventQueue
@@ -139,6 +140,7 @@ class RouteScanViewModel(
     private val sessionUploader: EnvScanSessionUploader,
     private val captureUploader: CaptureChunkUploader,
     private val captureChunkStore: CaptureChunkStore,
+    private val buildingFootprintLoader: BuildingFootprintLoader,
 ) {
     companion object {
         /**
@@ -186,6 +188,11 @@ class RouteScanViewModel(
     // block boundary. Consumed by the AR overlay (boundary-crossing warning).
     private val _isOutsideBoundary = MutableStateFlow(false)
     val isOutsideBoundary: StateFlow<Boolean> = _isOutsideBoundary.asStateFlow()
+
+    // WS2: scene-aware flashlight beam ring (lat, lng), recomputed each
+    // raycast tick — ArRouteScreen renders it on the route minimap.
+    private val _visibilityBeam = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+    val visibilityBeam: StateFlow<List<Pair<Double, Double>>> = _visibilityBeam.asStateFlow()
 
     // Block boundary polygon as (lat, lng) pairs, matching PolygonContainment's
     // pointInPolygon convention. Empty when no boundary is loaded for the route.
@@ -1270,12 +1277,19 @@ class RouteScanViewModel(
         _uiState.value = _uiState.value.copy(error = message)
     }
 
-    /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener). */
-    fun onCoverageRayHits(hits: List<RaycastCoverageHit>) {
+    /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener).
+     *  [deepAllowed] gates the deep CLOSE shade on scan quality (WS3);
+     *  submission quality via [fanHitQuality] stays ungated. */
+    fun onCoverageRayHits(hits: List<RaycastCoverageHit>, deepAllowed: Boolean = true) {
         if (!outdoorGate.captureAllowed.value) return
         if (_uiState.value.phase != ScanPhase.SCOUTING) return
-        coverageTracker.updateWithRaycastHits(hits)
+        coverageTracker.updateWithRaycastHits(hits, deepAllowed = deepAllowed)
         bestFanQualitySinceLastEvent = bestOf(bestFanQualitySinceLastEvent, fanHitQuality(hits))
+        // Only overwrite the beam when this tick produced one — a transient
+        // no-hit tick must not blank it (flicker).
+        val s = _uiState.value
+        val beam = com.gcc.app.ui.map.visibilityBeamPolygon(s.currentLat, s.currentLng, hits)
+        if (beam.isNotEmpty()) _visibilityBeam.value = beam
     }
 
     // ── Internal: location tracking ──────────────────────────────────
@@ -1303,6 +1317,10 @@ class RouteScanViewModel(
                 if (gateState != lastState) {
                     DiagnosticsLog.info("outdoor-gate", "route gate → $gateState")
                     lastState = gateState
+                    // Hide the flashlight beam whenever we're not OUTDOOR — it
+                    // must not linger frozen on the minimap indoors (spec:
+                    // beam hidden inside a building).
+                    if (gateState != OutdoorState.OUTDOOR) _visibilityBeam.value = emptyList()
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     // Audit trail rides with whichever lap recorder is current
                     // at event time — a lap boundary may have swapped it out.
@@ -1334,6 +1352,13 @@ class RouteScanViewModel(
                 when (state.phase) {
                     ScanPhase.SCOUTING -> {
                         updateBoundaryStatus(lat, lng)
+                        // Ensure real footprints for this tile are cached +
+                        // registered so isInsideMappedBuilding runs
+                        // point-in-polygon (not the hardcoded rectangles).
+                        // Best-effort; never blocks the gate below.
+                        buildingFootprintLoader.ensureFootprintsFor(
+                            lat, lng, Clock.System.now().toEpochMilliseconds(),
+                        )
                         outdoorGate.onMapEvidence(
                             insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(lat, lng),
                             timestampMs = Clock.System.now().toEpochMilliseconds(),

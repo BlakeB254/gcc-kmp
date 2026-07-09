@@ -69,6 +69,8 @@ fun SpotScanCapture(
     freshCloseCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Steering pass-through: minimap ring over the next area worth scanning. */
     guidanceTarget: Coordinates? = null,
+    /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
+    visibilityBeam: List<Pair<Double, Double>> = emptyList(),
     environmentScanMode: Boolean = false,
     /** Single guidance-voice caption (spec system 4) — the DETAIL-phase
      *  "move closer — detail-scan the light areas" prompt is one branch of
@@ -219,7 +221,6 @@ fun SpotScanCapture(
             maxPhotos = maxPhotos,
             showMiniMap = true,
             currentLocation = currentLocation,
-            gpsHeading = gpsHeading,
             cameraManager = cameraManager,
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,
@@ -230,6 +231,7 @@ fun SpotScanCapture(
             seenCellCenters = seenCellCenters,
             freshCloseCellCenters = freshCloseCellCenters,
             guidanceTarget = guidanceTarget,
+            visibilityBeam = visibilityBeam,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
             arOverlay = arOverlay,

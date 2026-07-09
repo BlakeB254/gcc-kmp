@@ -308,6 +308,7 @@ private fun CameraPhase(
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
+    val buildingFootprintLoader = koinInject<com.gcc.app.platform.BuildingFootprintLoader>()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     val gpsHeading by locationProvider.headingDegrees.collectAsState()
     val gpsAccuracy by locationProvider.horizontalAccuracyMeters.collectAsState()
@@ -382,6 +383,18 @@ private fun CameraPhase(
     // state): mutated off-composition.
     val bestFanQualitySinceLastEvent = remember { object { var value: CoverageQuality? = null } }
 
+    // WS3: live deep-scan gate. Updated off-composition from the scan-quality
+    // signal (below, where arTracking is in scope); read by the raycast-fan
+    // listener so a <=4m hit only credits the deep CLOSE shade on a GOOD scan.
+    val deepScanAllowed = remember { object { var value: Boolean = true } }
+
+    // WS2: latest scene-aware beam ring, recomputed each raycast tick.
+    var visibilityBeam by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
+    // Hide the beam whenever capture isn't allowed (INDOOR / confirming) — the
+    // listener early-returns in that state and would otherwise leave a stale
+    // beam frozen on the minimap (spec: cone/beam hidden inside a building).
+    LaunchedEffect(captureAllowed) { if (!captureAllowed) visibilityBeam = emptyList() }
+
     // ── Background full-session capture (Pillar 1) ───────────────────
     // Every call here is wrapped so a capture failure only ever disables
     // capture for the session (captureRecState -> null) — it must never
@@ -455,10 +468,18 @@ private fun CameraPhase(
         }
         arOverlay?.setCoverageHitListener { hits ->
             if (!gate.captureAllowed.value) return@setCoverageHitListener
-            tracker.updateWithRaycastHits(hits)
+            tracker.updateWithRaycastHits(hits, deepAllowed = deepScanAllowed.value)
             val hitBest = fanHitQuality(hits)
             if (hitBest != null) {
                 bestFanQualitySinceLastEvent.value = bestOf(bestFanQualitySinceLastEvent.value, hitBest)
+            }
+            // WS2: redraw the flashlight beam from this tick's ray envelope.
+            // Only overwrite when this tick actually produced a beam — a
+            // transient no-hit tick (camera aimed at sky) must NOT blank the
+            // beam, or it flickers between ticks.
+            locationProvider.currentLocation.value?.let { self ->
+                val beam = com.gcc.app.ui.map.visibilityBeamPolygon(self.lat, self.lng, hits)
+                if (beam.isNotEmpty()) visibilityBeam = beam
             }
         }
         onDispose {
@@ -482,12 +503,18 @@ private fun CameraPhase(
     // after evidence accumulates.
     LaunchedEffect(Unit) {
         locationProvider.currentLocation.value?.let { loc ->
+            buildingFootprintLoader.ensureFootprintsFor(
+                loc.lat, loc.lng, Clock.System.now().toEpochMilliseconds(),
+            )
             gate.onMapEvidence(
                 insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
                 timestampMs = Clock.System.now().toEpochMilliseconds(),
             )
         }
         locationProvider.locationFlow.collect { loc ->
+            buildingFootprintLoader.ensureFootprintsFor(
+                loc.lat, loc.lng, Clock.System.now().toEpochMilliseconds(),
+            )
             gate.onMapEvidence(
                 insideBuilding = com.gcc.app.ui.map.isInsideMappedBuilding(loc.lat, loc.lng),
                 timestampMs = Clock.System.now().toEpochMilliseconds(),
@@ -868,6 +895,18 @@ private fun CameraPhase(
     Box(modifier = Modifier.fillMaxSize()) {
         val arTracking by (arOverlay?.trackingState
             ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
+
+        // WS3: the SAME signal the ScanQualityBadge shows also gates the deep
+        // (CLOSE) coverage shade. Feedback-only contract intact — this never
+        // gates capture/submit, only which SHADE a <=4m hit credits.
+        val liveScanSignal = com.gcc.app.platform.ScanQualitySignal(
+            trackingState = arTracking,
+            gpsAccuracyMeters = gpsAccuracy,
+            detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
+        )
+        LaunchedEffect(liveScanSignal) {
+            deepScanAllowed.value = com.gcc.app.platform.ScanQualityScorer.meetsDeepScanQuality(liveScanSignal)
+        }
         // ONE guidance voice (spec system 4): every prompt the scan can show
         // is a single branch of this chain, in priority order, instead of
         // several chips/captions stacking or fighting for attention —
@@ -917,6 +956,7 @@ private fun CameraPhase(
                 seenCellCenters = seenCellCenters,
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
+                visibilityBeam = visibilityBeam,
                 environmentScanMode = true,
                 statusText = scanStatus,
                 arOverlay = arOverlay,
@@ -942,7 +982,6 @@ private fun CameraPhase(
                 modifier = Modifier.fillMaxSize(),
                 showMiniMap = true,
                 currentLocation = currentLocation,
-                gpsHeading = gpsHeading,
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
                 typedTrashItems = typedMinimapItems,

@@ -114,12 +114,6 @@ actual class ArEnvScanOverlay actual constructor() {
          *  world-axis alignment below, the on-camera lattice reads as the
          *  same grid the north-up minimap draws. */
         private const val GRID_TILE_METERS = 1.5f
-        /** Vector-scan overlay: cap live cell nodes (fog-node precedent). */
-        private const val MAX_VECTOR_NODES = 350
-        private const val VECTOR_RENDER_RADIUS_METERS = 30.0
-        /** Fog planes over uncredited cells (route-scan parity, same radius as vector). */
-        private const val MAX_FOG_NODES = 400
-        private const val FOG_RENDER_RADIUS_METERS = 30.0
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -200,14 +194,6 @@ actual class ArEnvScanOverlay actual constructor() {
     /** World Y of the lowest floor-classified plane (vector cells sit on it). */
     private var floorY: Float? = null
 
-    // Vector-scan overlay: rounded cell center -> node.
-    private val vectorNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
-    private var latestScannedCells: List<Pair<Double, Double>> = emptyList()
-
-    // Fog over uncredited cells: rounded cell center -> node (SceneKit path).
-    private val fogNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
-    private var latestFogCells: List<Pair<Double, Double>> = emptyList()
-
     // Guidance arrow toward the next area worth scanning.
     private var guidanceLatLng: Pair<Double, Double>? = null
     private var arrowNode: SCNNode? = null
@@ -246,7 +232,6 @@ actual class ArEnvScanOverlay actual constructor() {
     private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
     private var floorGridTexture: UIImage? = null
-    private var vectorTexture: UIImage? = null
 
     /**
      * The exact closure instance handed to [CameraManager.externalFrameSource]
@@ -474,10 +459,6 @@ actual class ArEnvScanOverlay actual constructor() {
         floorMaxX = null
         floorMinZ = null
         floorMaxZ = null
-        for ((_, node) in vectorNodes) node.removeFromParentNode()
-        vectorNodes.clear()
-        for ((_, node) in fogNodes) node.removeFromParentNode()
-        fogNodes.clear()
         arrowNode?.removeFromParentNode()
         arrowNode = null
         frontierTarget?.removeFromParentNode()
@@ -508,11 +489,9 @@ actual class ArEnvScanOverlay actual constructor() {
             )
         }
         // Re-pairing shifts the whole geo-derived frame — re-place everything
-        // against the new reference so fog/cells/arrow don't lag a fix behind.
+        // against the new reference so the grid/arrow don't lag a fix behind.
         dispatch_async(dispatch_get_main_queue()) {
             pushGridPhase()
-            renderVectorCells()
-            renderFogCells()
             renderGuidance()
         }
     }
@@ -555,15 +534,14 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {
-        latestScannedCells = cellCenters
-        dispatch_async(dispatch_get_main_queue()) { renderVectorCells() }
-    }
+    // Env-scan AR ground overlays removed: the neon "digitized" coverage quads
+    // (updateScannedCells) and the ground fog (updateFog) no longer render on
+    // the camera surface — coverage + fog now live entirely on the minimap
+    // (merged "painted" outlines + veil). Kept as no-op `actual`s to satisfy
+    // the ArEnvScanOverlay interface; the calm matte ground grid is unaffected.
+    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
 
-    actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {
-        latestFogCells = cellCenters
-        dispatch_async(dispatch_get_main_queue()) { renderFogCells() }
-    }
+    actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
 
     actual fun setGuidanceTarget(lat: Double, lng: Double) {
         guidanceLatLng = lat to lng
@@ -1199,7 +1177,6 @@ actual class ArEnvScanOverlay actual constructor() {
         val existing = floorGridNode
         if (existing == null) {
             if (floorMinX == null) {
-                renderVectorCells()
                 return
             }
             val newNode = makePlaneGridNode().also { scene.rootNode.addChildNode(it) }
@@ -1214,7 +1191,6 @@ actual class ArEnvScanOverlay actual constructor() {
             _groundDetected.value = detected
             if (detected) DiagnosticsLog.info("env-ar", "ground recognized — grid live")
         }
-        renderVectorCells()
     }
 
     /**
@@ -1287,179 +1263,6 @@ actual class ArEnvScanOverlay actual constructor() {
         val container = SCNNode()
         container.addChildNode(planeChild)
         return container
-    }
-
-    // ── Vector-scan overlay ──────────────────────────────────────────
-
-    /** Lay "digitized" cell quads over already-credited ground (main queue). */
-    private fun renderVectorCells() {
-        if (!hasGeoRef) return
-        nativeSurface?.let { surface ->
-            // Native mode: hand AR-local cell centers to the Swift renderer
-            // (it owns floor height, pulse animation and the node cap).
-            val flat = ArrayList<Double>(latestScannedCells.size * 2)
-            for ((lat, lng) in latestScannedCells) {
-                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-                flat.add(local.first)
-                flat.add(local.second)
-            }
-            surface.updateVectorCells(flat, CoverageTracker.cellSizeMeters)
-            return
-        }
-        val scene = sceneView?.scene ?: return
-        val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.02f
-
-        val wanted = mutableSetOf<Pair<Long, Long>>()
-        for ((lat, lng) in latestScannedCells) {
-            val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
-            wanted.add(key)
-            if (key in vectorNodes) {
-                // Keep placement synced as floor detection improves and the
-                // geo reference re-pairs (re-pairing shifts the whole frame).
-                val fresh = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-                vectorNodes[key]?.position?.useContents {
-                    if (abs(y - groundY) > 0.05f ||
-                        abs(x - fresh.first.toFloat()) > 0.05f ||
-                        abs(z - fresh.second.toFloat()) > 0.05f
-                    ) {
-                        vectorNodes[key]?.position =
-                            SCNVector3Make(fresh.first.toFloat(), groundY, fresh.second.toFloat())
-                    }
-                }
-                continue
-            }
-            if (vectorNodes.size >= MAX_VECTOR_NODES) continue
-            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-            val dx = local.first - refX
-            val dz = local.second - refZ
-            if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
-            vectorNodes[key] = makeVectorCellNode(local.first.toFloat(), groundY, local.second.toFloat())
-                .also { scene.rootNode.addChildNode(it) }
-        }
-
-        for ((key, node) in vectorNodes.toMap()) {
-            if (key !in wanted) {
-                node.removeFromParentNode()
-                vectorNodes.remove(key)
-            }
-        }
-    }
-
-    private fun makeVectorCellNode(x: Float, y: Float, z: Float): SCNNode {
-        val texture = vectorTexture ?: makeGridTexture(
-            UIColor.colorWithRed(0.15, 0.95, 0.55, 1.0),
-            lineWidth = 4.0,
-            withDiagonals = true,
-        ).also { vectorTexture = it }
-        val plane = SCNPlane.planeWithWidth(CoverageTracker.cellSizeMeters, CoverageTracker.cellSizeMeters)
-        val material = SCNMaterial()
-        material.diffuse.contents = texture
-        material.emission.contents = texture
-        material.doubleSided = true
-        material.writesToDepthBuffer = false
-        material.transparency = 0.45
-        plane.materials = listOf(material)
-
-        val node = SCNNode.nodeWithGeometry(plane)
-        node.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
-        node.position = SCNVector3Make(x, y, z)
-        // Slow shimmer: scanned ground reads as live data, not paint.
-        node.runAction(
-            SCNAction.repeatActionForever(
-                SCNAction.sequence(
-                    listOf(
-                        SCNAction.fadeOpacityTo(0.7, duration = 1.2),
-                        SCNAction.fadeOpacityTo(1.0, duration = 1.2),
-                    )
-                )
-            )
-        )
-        return node
-    }
-
-    // ── Fog over uncredited cells (route-scan parity) ────────────────
-
-    /**
-     * Translucent planes over nearby UNcredited ground; a cell leaving
-     * [latestFogCells] (= it got credited) fades out — the "fog dissipates
-     * as you scan" cue. Native mode ships AR-local centers and lets the
-     * Swift renderer own reveal-by-omission (same policy as route mode).
-     */
-    private fun renderFogCells() {
-        if (!hasGeoRef) return
-        nativeSurface?.let { surface ->
-            val flat = ArrayList<Double>()
-            var shipped = 0
-            for ((lat, lng) in latestFogCells) {
-                val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-                val dx = local.first - refX
-                val dz = local.second - refZ
-                if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
-                if (shipped >= MAX_FOG_NODES) break
-                flat.add(local.first)
-                flat.add(local.second)
-                shipped++
-            }
-            surface.updateFogCells(flat, CoverageTracker.cellSizeMeters)
-            return
-        }
-        val scene = sceneView?.scene ?: return
-        val groundY = (floorY ?: (refY - GROUND_OFFSET_METERS)) + 0.01f
-
-        val wanted = mutableSetOf<Pair<Long, Long>>()
-        for ((lat, lng) in latestFogCells) {
-            val key = (lat * 1e6).roundToInt().toLong() to (lng * 1e6).roundToInt().toLong()
-            wanted.add(key)
-            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
-            if (key in fogNodes) {
-                fogNodes[key]?.position?.useContents {
-                    if (abs(y - groundY) > 0.05f ||
-                        abs(x - local.first.toFloat()) > 0.05f ||
-                        abs(z - local.second.toFloat()) > 0.05f
-                    ) {
-                        fogNodes[key]?.position =
-                            SCNVector3Make(local.first.toFloat(), groundY, local.second.toFloat())
-                    }
-                }
-                continue
-            }
-            if (fogNodes.size >= MAX_FOG_NODES) continue
-            val dx = local.first - refX
-            val dz = local.second - refZ
-            if (dx * dx + dz * dz > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
-            fogNodes[key] = makeFogNode(local.first.toFloat(), groundY, local.second.toFloat())
-                .also { scene.rootNode.addChildNode(it) }
-        }
-
-        for ((key, node) in fogNodes.toMap()) {
-            if (key !in wanted) {
-                // Credited: dissipate rather than pop.
-                node.runAction(
-                    SCNAction.sequence(
-                        listOf(
-                            SCNAction.fadeOpacityTo(0.0, duration = 0.35),
-                            SCNAction.removeFromParentNode(),
-                        )
-                    )
-                )
-                fogNodes.remove(key)
-            }
-        }
-    }
-
-    private fun makeFogNode(x: Float, y: Float, z: Float): SCNNode {
-        val plane = SCNPlane.planeWithWidth(CoverageTracker.cellSizeMeters, CoverageTracker.cellSizeMeters)
-        val material = SCNMaterial()
-        material.diffuse.contents = UIColor.grayColor.colorWithAlphaComponent(0.45)
-        material.doubleSided = true
-        material.writesToDepthBuffer = false
-        plane.materials = listOf(material)
-
-        val node = SCNNode.nodeWithGeometry(plane)
-        // SCNPlane is vertical (XY) by default — lay it flat on the ground.
-        node.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
-        node.position = SCNVector3Make(x, y, z)
-        return node
     }
 
     // ── Guidance arrow ───────────────────────────────────────────────
