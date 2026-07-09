@@ -8,6 +8,7 @@ export const TILE_DEGREES = 0.01
 export const TTL_MS = 30 * 24 * 60 * 60 * 1000 // fetch each tile at most once / 30d
 const OVERPASS_URL = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter'
 const OVERPASS_TIMEOUT_MS = 25_000
+const OVERPASS_TILE_DELAY_MS = 1_200 // space requests so the free instance doesn't 429
 
 // The pilot service area (North Lawndale, Chicago). Ingestion runs against this
 // by default so footprints are populated where workers actually are, off the
@@ -90,7 +91,13 @@ async function fetchOverpassTile(tile: Tile): Promise<ParsedFootprint[]> {
   try {
     const res = await fetch(OVERPASS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        // overpass-api.de's Apache does content negotiation and returns 406
+        // Not Acceptable without an explicit Accept; a UA is also expected.
+        Accept: 'application/json',
+        'User-Agent': 'gcc-building-footprints/1.0 (globalcommunitycleaners.org)',
+      },
       body: `data=${encodeURIComponent(query)}`,
       signal: controller.signal,
     })
@@ -134,9 +141,14 @@ export async function ingestBuildingFootprints(bbox: Bbox, maxTiles = 40): Promi
   const ledger = await db.select().from(buildingFootprintTiles).where(inArray(buildingFootprintTiles.tileKey, keys))
   const freshMs = new Map(ledger.map((r) => [r.tileKey, new Date(r.fetchedAt).getTime()]))
 
+  let firstFetch = true
   for (const tile of tiles) {
     const at = freshMs.get(tile.key)
     if (at !== undefined && now - at < TTL_MS) continue
+    // Space Overpass requests — firing every tile back-to-back gets us 429/504
+    // (the free instance rate-limits). ~1.2s between fetches is a good citizen.
+    if (!firstFetch) await new Promise((r) => setTimeout(r, OVERPASS_TILE_DELAY_MS))
+    firstFetch = false
     try {
       const footprints = await fetchOverpassTile(tile)
       const fetchedAtIso = new Date(now).toISOString()
