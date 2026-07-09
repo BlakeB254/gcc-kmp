@@ -608,6 +608,15 @@ fun MapFullScreen(
             showNeedsScanningLens = false,
             observationFootprints = mapObservations,
             innerBoundaryRings = innerBoundaryRings,
+            // Exclusion zones + scan corridor are per-block working detail:
+            // shown ONLY for the block the worker picked from the record cards.
+            // On the browsing map they were drawn for every block at once,
+            // which is unactionable noise that compounds with each new block.
+            showInnerBoundary = selectedRecordIndex != null,
+            // Browsing map: block outlines appear only once the choropleth
+            // squares have faded out (14.2). Below that, many blocks at city
+            // scale is clutter that compounds with every block added.
+            gateBlockOutlinesByZoom = true,
             explorerAreaStates = explorerAreaStates,
             enableGestures = true,
             showControls = true,

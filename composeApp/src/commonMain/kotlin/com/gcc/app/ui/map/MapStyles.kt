@@ -62,7 +62,12 @@ object MapStyles {
     val ROUTE_FILL_COLOR = Color(0x4022C55E)  // 25% opacity green — overview fill
 
     // Community area styles (outline only — no fill)
-    val COMMUNITY_AREA_STROKE_COLOR = Color(0xFFDC2626) // red boundary
+    // Chicago community-area boundaries (North Lawndale et al). Kept — they are
+    // the city's real administrative lines and workers orient by them. Recoloured
+    // from red (0xFFDC2626) to slate: red now means LITTER and nothing else, and
+    // a red administrative border competing with the red problem-area ramp reads
+    // as "this whole neighbourhood is a mess".
+    val COMMUNITY_AREA_STROKE_COLOR = Color(0xFF64748B) // slate boundary
     const val COMMUNITY_AREA_STROKE_WIDTH = 1.5f
 
     // Geographic boundary styles

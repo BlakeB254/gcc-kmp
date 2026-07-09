@@ -95,6 +95,8 @@ actual fun GccMap(
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
+    showInnerBoundary: Boolean,
+    gateBlockOutlinesByZoom: Boolean,
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
@@ -141,6 +143,13 @@ actual fun GccMap(
     // now (was zoom-gated at ZOOM_STREET, leaving squares at wider zooms). Cell
     // taps resolve via the map-level lat/lng->cell hit-test (Plan B Task 7), so
     // losing per-cell cellIds on the fill features is fine.
+    // Block outlines hand off from the far-zoom choropleth at exactly the zoom
+    // where its squares finish fading out — one constant governs both, so they
+    // can never overlap or leave a gap. 0f = draw at every zoom, for surfaces
+    // that deliberately frame a single block (route detail, boundary editor,
+    // proposal preview, dashboard preview at ZOOM_NEIGHBORHOOD = 14.0).
+    val blockOutlineMinZoom = if (gateBlockOutlinesByZoom) IOS_SPOT_HEAT_FADE_ZOOM.toFloat() else 0f
+
     val useOutlineCoverage = true
     val coverageStateJsons = remember(coverageCells, spots, useOutlineCoverage) {
         if (coverageCells.isEmpty()) null
@@ -640,10 +649,22 @@ actual fun GccMap(
                 // overlapped the affected-block heatmap and the clean-zone base
                 // layer to look like a duplicated heatmap. The line stack below
                 // (glow + casing + core) carries the visual route presence;
-                // this fill is kept ONLY for tap targeting at all zoom levels.
+                // this fill is kept ONLY for tap targeting.
+                //
+                // ── Block outlines hand off from the choropleth at 14.2 ──
+                // The whole base stack (fill + glow + casing + core) is gated
+                // at IOS_SPOT_HEAT_FADE_ZOOM — the exact zoom where the
+                // choropleth squares finish fading OUT. One constant governs
+                // both, so the two systems can never overlap or leave a gap.
+                // Below it a city-scale view of many blocks is unreadable
+                // clutter that only worsens as blocks are added; above it the
+                // block IS the unit of work. The active job's block is drawn by
+                // its own un-gated layers further down, so a worker who zooms
+                // out mid-job never loses their assignment.
                 FillLayer(
                     id = MapStyles.LAYER_ROUTE_FILL,
                     source = routePolygonsSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_FILL_COLOR),
                     opacity = const(0.001f),
                     onClick = routeIndexClickHandler(onRouteTap),
@@ -656,6 +677,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_GLOW,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_GLOW_COLOR.copy(alpha = MapStyles.ROUTE_GLOW_OPACITY)),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -673,6 +695,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_CASING,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(MapStyles.ROUTE_CASING_COLOR),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -690,6 +713,7 @@ actual fun GccMap(
                 LineLayer(
                     id = MapStyles.LAYER_ROUTE_LINE,
                     source = routesSrc,
+                    minZoom = blockOutlineMinZoom,
                     color = const(GccGreen),
                     width = interpolate(
                         type = exponential(1.5f),
@@ -987,7 +1011,15 @@ actual fun GccMap(
             // source or layer (Fix 2, r2a). Kept as its own group (rather than
             // merged with the fill/line stack) because the coverage-state
             // tiles sit between them in z-order and must not move.
-            if (routeCoordinates.isNotEmpty()) {
+            //
+            // ALSO gated on [showInnerBoundary]: exclusion zones and the scan
+            // corridor are per-block working detail. Drawn for every block at
+            // once they are unactionable noise that worsens with every block
+            // added, so the browsing map draws them ONLY for the block the
+            // worker selected. `buildRouteInnerBoundariesGeoJson` pairs rings
+            // to the loops actually in `routeCoordinates`, so when one block is
+            // selected only that block's rings are emitted — no filtering here.
+            if (routeCoordinates.isNotEmpty() && showInnerBoundary) {
                 val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
                 val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
                 // The band BETWEEN the two boundaries is the assignment: tinted
