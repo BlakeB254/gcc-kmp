@@ -45,7 +45,7 @@ Distribute an existing build to TestFlight groups
 [bundle exec] fastlane ios submit
 ```
 
-Submit latest build to App Store Review
+Submit a build to App Store Review: bundle exec fastlane submit build:<n> [version:<x.y.z>]
 
 ### ios screenshots
 
