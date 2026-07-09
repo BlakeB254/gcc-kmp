@@ -31,9 +31,6 @@ class BuildingFootprintStore(driver: SqlDriver) {
     fun get(tileKey: String): CachedBuildingFootprints? =
         queries.selectByTile(tileKey).executeAsOneOrNull()?.let(::decodeRow)
 
-    fun getAll(): List<CachedBuildingFootprints> =
-        queries.selectAll().executeAsList().mapNotNull(::decodeRow)
-
     /** Drop tiles older than [maxAgeMs]; call opportunistically after writes. */
     fun prune(nowMs: Long, maxAgeMs: Long = DEFAULT_MAX_AGE_MS) {
         queries.deleteOlderThan(nowMs - maxAgeMs)

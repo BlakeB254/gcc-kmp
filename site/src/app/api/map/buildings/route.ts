@@ -126,43 +126,50 @@ export async function GET(request: NextRequest) {
     // Lazily (re)fetch each stale/missing tile. Best-effort: an Overpass
     // failure leaves whatever is cached and does NOT mark the tile fresh, so
     // it retries next time — a scan is never blocked on this (spec §1 failure
-    // handling). neon-http has no db.transaction, so inserts are sequential.
+    // handling). All of a tile's upserts (footprints + the tile ledger row)
+    // run in ONE db.batch — neon-http has no db.transaction and a dense tile
+    // returns hundreds of footprints, so per-row awaits would be hundreds of
+    // serial HTTP round-trips inside the request.
     for (const tile of tiles) {
       const at = freshMs.get(tile.key)
       if (at !== undefined && now - at < TTL_MS) continue
       try {
         const footprints = await fetchOverpassTile(tile)
         const fetchedAtIso = new Date(now).toISOString()
-        for (const f of footprints) {
-          await db
-            .insert(buildingFootprints)
-            .values({
-              osmId: f.osmId,
-              source: 'overpass',
-              tileKey: tile.key,
-              minLng: f.minLng, minLat: f.minLat, maxLng: f.maxLng, maxLat: f.maxLat,
-              polygon: f.polygon,
-              buildingType: f.buildingType,
-              fetchedAt: fetchedAtIso,
-            })
-            .onConflictDoUpdate({
-              target: [buildingFootprints.source, buildingFootprints.osmId],
-              set: {
+        const writes = [
+          ...footprints.map((f) =>
+            db
+              .insert(buildingFootprints)
+              .values({
+                osmId: f.osmId,
+                source: 'overpass',
                 tileKey: tile.key,
                 minLng: f.minLng, minLat: f.minLat, maxLng: f.maxLng, maxLat: f.maxLat,
                 polygon: f.polygon,
                 buildingType: f.buildingType,
                 fetchedAt: fetchedAtIso,
-              },
-            })
-        }
-        await db
-          .insert(buildingFootprintTiles)
-          .values({ tileKey: tile.key, fetchedAt: fetchedAtIso, footprintCount: footprints.length })
-          .onConflictDoUpdate({
-            target: buildingFootprintTiles.tileKey,
-            set: { fetchedAt: fetchedAtIso, footprintCount: footprints.length },
-          })
+              })
+              .onConflictDoUpdate({
+                target: [buildingFootprints.source, buildingFootprints.osmId],
+                set: {
+                  tileKey: tile.key,
+                  minLng: f.minLng, minLat: f.minLat, maxLng: f.maxLng, maxLat: f.maxLat,
+                  polygon: f.polygon,
+                  buildingType: f.buildingType,
+                  fetchedAt: fetchedAtIso,
+                },
+              }),
+          ),
+          db
+            .insert(buildingFootprintTiles)
+            .values({ tileKey: tile.key, fetchedAt: fetchedAtIso, footprintCount: footprints.length })
+            .onConflictDoUpdate({
+              target: buildingFootprintTiles.tileKey,
+              set: { fetchedAt: fetchedAtIso, footprintCount: footprints.length },
+            }),
+        ]
+        // `writes` is always non-empty (the ledger upsert); batch wants a tuple.
+        await db.batch(writes as [(typeof writes)[number], ...(typeof writes)[number][]])
       } catch (e) {
         console.error('GET /api/map/buildings overpass fetch failed for tile', tile.key, e)
         // graceful: leave cached footprints, don't mark tile fresh (will retry)

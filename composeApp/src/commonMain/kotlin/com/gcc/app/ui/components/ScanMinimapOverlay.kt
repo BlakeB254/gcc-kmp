@@ -6,9 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
@@ -97,34 +97,17 @@ fun ScanMinimapOverlay(
     // Marching-squares + Chaikin smoothing (traceCoverageOutlines) is the
     // expensive part of this overlay; hoisted out of the Canvas draw scope
     // (which reruns on every recomposition — every GPS tick, since the live
-    // centerLat/Lng feed toOffset below) and memoized on the actual
-    // credited-cell sets, so it only reruns when scan state changes.
-    val scanRings = remember(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val closeRings = remember(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val seenRings = remember(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-
-    // WS4: the coarser ledger tiers (server-fresh / fresh-close / stale) and the
-    // corridor now trace through the SAME marching-squares engine as the session
-    // tiers, so they merge like paint with no interior grid lines. Memoized on
-    // their cell sets off the stable lattice anchor (matches the session hoist).
-    val corridorRings = remember(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val freshRings = remember(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val freshCloseRings = remember(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
-    val staleRings = remember(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng) {
-        quantizeAndTraceOutlines(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    }
+    // centerLat/Lng feed toOffset below) and memoized on the actual cell sets,
+    // so tracing only reruns when THAT tier's scan state changes.
+    // Session tiers (3m grid) + coarser ledger/corridor tiers (10m
+    // freshness grid) all route through the same engine (WS4 "paint the town").
+    val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val corridorRings = rememberRings(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val freshRings = rememberRings(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val freshCloseRings = rememberRings(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val staleRings = rememberRings(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val lngScale = cos(centerLat * PI / 180.0)
@@ -335,6 +318,19 @@ fun ScanMinimapOverlay(
  * (glass = teal accent) with a white outline for legibility over any fill —
  * the point is that a can, a bag and a bottle read differently at a glance.
  */
+/** Trace + memoize one tier's cell set into smoothed marching-squares rings,
+ *  keyed so it only re-traces when that tier's cells (or the lattice) change. */
+@Composable
+private fun rememberRings(
+    cells: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+    anchorLat: Double,
+    anchorLng: Double,
+): List<List<Pair<Double, Double>>> =
+    remember(cells, cellSizeMeters, anchorLat, anchorLng) {
+        quantizeAndTraceOutlines(cells, cellSizeMeters, anchorLat, anchorLng)
+    }
+
 private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
     val u = 3.dp.toPx() // half-size unit
     val outline = Color.White

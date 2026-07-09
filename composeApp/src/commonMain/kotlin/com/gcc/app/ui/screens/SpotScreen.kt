@@ -982,7 +982,6 @@ private fun CameraPhase(
                 modifier = Modifier.fillMaxSize(),
                 showMiniMap = true,
                 currentLocation = currentLocation,
-                gpsHeading = gpsHeading,
                 scanCellCenters = scanCellCenters,
                 trashItems = trashItems,
                 typedTrashItems = typedMinimapItems,

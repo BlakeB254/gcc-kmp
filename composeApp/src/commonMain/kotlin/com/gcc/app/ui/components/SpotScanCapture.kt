@@ -221,7 +221,6 @@ fun SpotScanCapture(
             maxPhotos = maxPhotos,
             showMiniMap = true,
             currentLocation = currentLocation,
-            gpsHeading = gpsHeading,
             cameraManager = cameraManager,
             scanCellCenters = scanCellCenters,
             trashItems = trashItems,

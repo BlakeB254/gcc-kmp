@@ -7,14 +7,8 @@ CREATE TABLE buildingFootprintCache (
 selectByTile:
 SELECT * FROM buildingFootprintCache WHERE tileKey = ?;
 
-selectAll:
-SELECT * FROM buildingFootprintCache;
-
 insertOrReplace:
 INSERT OR REPLACE INTO buildingFootprintCache(tileKey, buildingsJson, cachedAtMs) VALUES (?, ?, ?);
 
 deleteOlderThan:
 DELETE FROM buildingFootprintCache WHERE cachedAtMs < ?;
-
-clear:
-DELETE FROM buildingFootprintCache;

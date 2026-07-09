@@ -63,7 +63,6 @@ fun CameraCapture(
     maxPhotos: Int = 3,
     showMiniMap: Boolean = false,
     currentLocation: Coordinates? = null,
-    gpsHeading: Float? = null,
     allowLibraryPick: Boolean = false,
     cameraManager: CameraManager? = null,
     /** Zones the environment scan has credited — minimap green highlight. */
