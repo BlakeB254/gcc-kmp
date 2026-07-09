@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routes, blocks, routeCheckpoints } from '@/db/schema'
+import { routes, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
-import { generateRouteCheckpointInserts } from '@/lib/route-checkpoints'
 
 interface AcceptedProposal {
   routeCode: string
@@ -28,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'serviceAreaId and proposals array required' }, { status: 400 })
     }
 
-    // Insert routes first (need IDs for blocks + checkpoints)
+    // Insert routes first (need IDs for blocks)
     const insertedRoutes = await db.insert(routes).values(
       proposals.map((p) => ({
         code: p.routeCode,
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
       }))
     ).returning({ id: routes.id })
 
-    // Batch insert blocks + checkpoints using route IDs
+    // Batch insert blocks using route IDs
     const blockValues = proposals.map((p, i) => ({
       code: p.blockCode,
       name: p.displayName,
@@ -55,17 +54,7 @@ export async function POST(request: Request) {
       status: 'funded' as const,
     }))
 
-    const checkpointValues = proposals.flatMap((p, i) =>
-      generateRouteCheckpointInserts(
-        insertedRoutes[i].id,
-        { type: 'Polygon', coordinates: p.blockPolygon },
-      ),
-    )
-
-    await Promise.all([
-      db.insert(blocks).values(blockValues),
-      db.insert(routeCheckpoints).values(checkpointValues),
-    ])
+    await db.insert(blocks).values(blockValues)
 
     const createdRouteIds = insertedRoutes.map((r) => r.id)
     return NextResponse.json({ created: createdRouteIds.length, routes: createdRouteIds }, { status: 201 })

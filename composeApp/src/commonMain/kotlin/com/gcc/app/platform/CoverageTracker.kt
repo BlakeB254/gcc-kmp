@@ -169,7 +169,7 @@ class CoverageTracker {
 
     /**
      * Build the grid from route waypoints.
-     * Typically called with [RouteCheckpoint] coordinates in sequence order.
+     * Typically called with route path coordinates in sequence order.
      */
     fun initFromRoute(waypoints: List<Coordinates>) {
         if (waypoints.isEmpty()) return

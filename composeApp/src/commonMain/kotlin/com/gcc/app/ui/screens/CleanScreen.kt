@@ -26,7 +26,8 @@ import com.gcc.app.viewmodel.Lap2WeightProgress
 import com.gcc.app.viewmodel.RouteScanSectionStatus
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.geo.CheckpointGenerator
+import com.gcc.shared.geo.routePathCoordinates
+import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
@@ -69,26 +70,19 @@ fun CleanScreen(
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
     } else null
 
-    val effectiveCheckpoints = remember(uiState.route) {
-        uiState.route
-            ?.let { CheckpointGenerator.generateIfMissing(it) }
-            .orEmpty()
-            .sortedBy { it.sequenceOrder }
+    val routePath = remember(uiState.route) {
+        uiState.route?.routePathCoordinates().orEmpty()
     }
-
-    // Route polyline from checkpoint coordinates
-    val routeCoords = remember(effectiveCheckpoints) {
-        effectiveCheckpoints
-            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
+    val routeCoords = remember(routePath) {
+        routePath.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
     }
 
     // Map centre: user → route start → Chicago default
     val mapCenterLat = currentLocation?.lat
-        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lat
+        ?: uiState.route?.routeStartCoordinates()?.lat
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
-        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lng
+        ?: uiState.route?.routeStartCoordinates()?.lng
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     // Hotspot capture sheet state
@@ -313,20 +307,21 @@ fun CleanScreen(
                     captureError = null
                     coroutineScope.launch {
                         try {
-                            // Upload after-photo bytes and resolve URL
-                            val afterPhotoUrl = if (afterBytes.isNotEmpty()) {
-                                val urls = apiClient.uploadSpotPhotos(listOf(afterBytes))
-                                urls.firstOrNull() ?: "after_${hotspotToCapture.id}.jpg"
-                            } else {
-                                "after_${hotspotToCapture.id}.jpg"
+                            if (afterBytes.isEmpty()) {
+                                captureError = "Capture an after photo before confirming."
+                                return@launch
                             }
 
-                            // Delegate to parent callback (RouteScanScreen → ViewModel)
+                            val afterPhotoUrl = apiClient.uploadSpotPhotos(listOf(afterBytes)).firstOrNull()
+                            if (afterPhotoUrl.isNullOrBlank()) {
+                                captureError = "Upload did not return a photo URL."
+                                return@launch
+                            }
+
                             captureHotspot = null
                             onConfirmCleaned?.invoke(hotspotToCapture.id, afterPhotoUrl, score)
                                 ?: onCleanHotspot(hotspotToCapture)
                         } catch (e: Exception) {
-                            captureHotspot = null
                             captureError = "Upload failed: ${e.message}"
                         }
                     }

@@ -61,27 +61,6 @@ fun buildRoutesGeoJson(routeCoordinates: List<List<Coordinates>>): String {
 }
 
 /**
- * Builds a GeoJSON FeatureCollection of Point features for route checkpoint markers.
- *
- * Each point carries a "role" property: "start", "end", or "waypoint" so that
- * MapLibre layers can filter and style them differently.
- */
-fun buildCheckpointMarkersGeoJson(routeCoordinates: List<List<Coordinates>>): String {
-    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
-    val features = routeCoordinates.flatMapIndexed { routeIndex, coords ->
-        coords.mapIndexed { pointIndex, coord ->
-            val role = when (pointIndex) {
-                0 -> "start"
-                coords.lastIndex -> "end"
-                else -> "waypoint"
-            }
-            """{"type":"Feature","properties":{"routeIndex":$routeIndex,"pointIndex":$pointIndex,"role":"$role"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
-        }
-    }.joinToString(",")
-    return """{"type":"FeatureCollection","features":[$features]}"""
-}
-
-/**
  * Closes a coordinate list into a loop by appending the first point if needed.
  */
 private fun closeLoop(coords: List<Coordinates>): List<Coordinates> {

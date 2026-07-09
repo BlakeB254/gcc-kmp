@@ -3,7 +3,6 @@ package com.gcc.server.routes
 import com.gcc.server.db.DatabaseFactory.dbQuery
 import com.gcc.server.db.tables.Blocks
 import com.gcc.server.db.tables.Jobs
-import com.gcc.server.db.tables.RouteCheckpoints
 import com.gcc.server.db.tables.Routes
 import com.gcc.server.db.tables.SponsorWallets
 import com.gcc.server.db.tables.WalletTransactions
@@ -71,21 +70,6 @@ fun Route.adminRouteRoutes() {
                     it[createdAt] = now
                     it[updatedAt] = now
                 }[Routes.id]
-
-                for (cp in request.checkpoints) {
-                    RouteCheckpoints.insert {
-                        it[routeId] = id
-                        it[name] = cp.name
-                        it[sequenceOrder] = cp.sequenceOrder
-                        it[coordinates] = listOf(cp.lng, cp.lat)
-                        it[photoRequired] = cp.photoRequired
-                        it[geofenceRadius] = cp.geofenceRadius.toString()
-                        it[type] = cp.type
-                        it[imageUrl] = cp.imageUrl
-                        it[createdAt] = now
-                        it[updatedAt] = now
-                    }
-                }
 
                 Routes.selectAll().where { Routes.id eq id }
                     .first().toRoute()
@@ -275,7 +259,6 @@ fun Route.adminRouteRoutes() {
             val id = call.parameters["id"]?.toIntOrNull()
                 ?: throw IllegalArgumentException("Route ID required")
             val deleted = dbQuery {
-                RouteCheckpoints.deleteWhere { routeId eq id }
                 Routes.deleteWhere { Routes.id eq id } > 0
             }
             if (deleted) {

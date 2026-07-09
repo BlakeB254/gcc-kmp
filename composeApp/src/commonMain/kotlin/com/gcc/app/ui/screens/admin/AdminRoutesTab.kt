@@ -21,6 +21,7 @@ import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.AdminRouteRequest
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
@@ -593,16 +594,7 @@ private fun AssignmentModeChip(
 }
 
 private fun Route.adminPathCoordinates(): List<Coordinates> =
-    geometry?.coordinates
-        ?.mapNotNull { point ->
-            val lng = point.getOrNull(0)
-            val lat = point.getOrNull(1)
-            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
-        }
-        ?.takeIf { it.size >= 2 }
-        ?: checkpoints
-            .sortedBy { it.sequenceOrder }
-            .map { it.coordinates }
+    routePathCoordinates()
 
 private fun Worker.adminWorkerLabel(currentWorkerId: Int?): String =
     if (id == currentWorkerId) "$name (me)" else name

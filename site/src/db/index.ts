@@ -13,4 +13,4 @@ if (!databaseUrl) {
 const sql = neon(databaseUrl)
 
 // Create drizzle instance with Neon HTTP driver
-export const db = drizzle(sql, { schema })
+export const db = drizzle({ client: sql, schema })

@@ -20,7 +20,6 @@ private fun sampleRoute(id: Int, code: String) = Route(
     distanceMeters = 1000.0,
     estimatedDurationMinutes = 30,
     payoutAmount = 500,
-    checkpoints = emptyList(),
     imageUrl = null,
     imageLocationLat = null,
     imageLocationLng = null,

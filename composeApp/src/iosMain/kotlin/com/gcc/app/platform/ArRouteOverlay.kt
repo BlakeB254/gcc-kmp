@@ -62,8 +62,8 @@ actual class ArRouteOverlay actual constructor() {
     companion object {
         /** Only render fog planes within this radius of the worker — caps node count. */
         private const val FOG_RENDER_RADIUS_METERS = 35.0
-        /** Hard ceiling on live fog nodes, protects the SceneKit frame rate. */
-        private const val MAX_FOG_NODES = 600
+        /** Hard ceiling on live fog nodes, matching the native RealityKit receiving cap. */
+        private const val MAX_FOG_NODES = 400
         /** Fog planes sit this far below the camera (approx. phone-at-chest ground offset). */
         private const val GROUND_OFFSET_METERS = 1.4f
 

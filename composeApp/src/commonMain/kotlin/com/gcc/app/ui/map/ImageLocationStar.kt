@@ -14,7 +14,7 @@ import kotlin.math.sin
 
 /**
  * A gold 5-pointed star composable for marking display image locations.
- * Renders as an actual star shape — distinct from circle checkpoint markers
+ * Renders as an actual star shape, distinct from circular route markers
  * and orange spot dots.
  */
 @Composable

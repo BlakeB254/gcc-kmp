@@ -18,7 +18,6 @@ import {
   blocks,
   jobs,
   routes,
-  routeCheckpoints,
   routeReleaseBatches,
   routeReleaseRoutes,
   routeJobOffers,
@@ -28,7 +27,6 @@ import {
 } from '@/db/schema'
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
-import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 import { scheduleOfferNotifications } from '@/lib/route-queue-notifications'
 
 const ACTIVE_JOB_STATUSES = ['claimed', 'in_progress', 'pending_review'] as const
@@ -70,11 +68,6 @@ export function toRouteReleaseBatch(b: typeof routeReleaseBatches.$inferSelect) 
 async function toMobileRoute(routeId: number) {
   const [route] = await db.select().from(routes).where(eq(routes.id, routeId)).limit(1)
   if (!route) return null
-  const cps = await db
-    .select()
-    .from(routeCheckpoints)
-    .where(eq(routeCheckpoints.routeId, routeId))
-    .orderBy(routeCheckpoints.sequenceOrder)
   const [routeBlock] = await db
     .select({ locationBoundary: blocks.locationBoundary })
     .from(blocks)
@@ -90,7 +83,7 @@ async function toMobileRoute(routeId: number) {
     distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
     estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
     payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-    checkpoints: toMobileRouteCheckpoints(cps, routeBlock?.locationBoundary ?? route.geometry),
+    blockBoundary: routeBlock?.locationBoundary ?? null,
     imageUrl: route.imageUrl || null,
     imageLocationLat: route.imageLocationLat ?? null,
     imageLocationLng: route.imageLocationLng ?? null,

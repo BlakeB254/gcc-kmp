@@ -9,6 +9,7 @@ import {
   hotspotsForScan,
   toMobileRouteScan,
 } from '@/lib/mobile-route-scan-response'
+import { gridCell, parseCoveredCellIds, resolveByCoveredCells } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const hotspots = await hotspotsForScan(scanId, 'complete')
     const pointsAwarded = calculatePoints(hotspots)
     const now = new Date().toISOString()
+    const coveredCellIds = parseCoveredCellIds(body?.coveredCellIds)
 
     const [updated] = await db
       .update(routeScans)
@@ -65,6 +67,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
       .where(eq(routeScans.id, scanId))
       .returning()
+
+    if (coveredCellIds.length > 0) {
+      const confirmedCells = new Set(hotspots.map((hotspot) => gridCell(hotspot.lat, hotspot.lng)))
+      const staleCells = [...new Set(coveredCellIds)].filter((cellId) => !confirmedCells.has(cellId))
+      if (staleCells.length > 0) {
+        const { resolvedReportIds, invalidatedObservationCount } = await resolveByCoveredCells(
+          staleCells,
+          undefined,
+          `Superseded by route scan ${scanId} sweep ${now} — covered by scan cell sweep`
+        )
+        if (resolvedReportIds.length > 0 || invalidatedObservationCount > 0) {
+          console.log(
+            `Route scan ${scanId} cell-sweep superseded reports [${resolvedReportIds.join(', ')}] and invalidated ${invalidatedObservationCount} world observation(s) across ${staleCells.length} stale cell(s)`
+          )
+        }
+      }
+    }
 
     return NextResponse.json({
       data: {

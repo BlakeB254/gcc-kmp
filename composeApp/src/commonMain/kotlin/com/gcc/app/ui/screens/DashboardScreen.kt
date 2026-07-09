@@ -36,6 +36,9 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.geo.blockPathCoordinates
+import com.gcc.shared.geo.routePathCoordinates
+import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Block
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Job
@@ -219,15 +222,16 @@ fun DashboardScreen(
         val spotCountByRoute = remember(uiState.routes, uiState.spots) {
             if (uiState.spots.isEmpty()) emptyMap()
             else uiState.routes.associate { route ->
-                route.id to if (route.checkpoints.isEmpty()) 0
+                val routePoints = route.routePathCoordinates()
+                route.id to if (routePoints.isEmpty()) 0
                 else {
                     var minLat = Double.MAX_VALUE; var maxLat = -Double.MAX_VALUE
                     var minLng = Double.MAX_VALUE; var maxLng = -Double.MAX_VALUE
-                    for (cp in route.checkpoints) {
-                        if (cp.coordinates.lat < minLat) minLat = cp.coordinates.lat
-                        if (cp.coordinates.lat > maxLat) maxLat = cp.coordinates.lat
-                        if (cp.coordinates.lng < minLng) minLng = cp.coordinates.lng
-                        if (cp.coordinates.lng > maxLng) maxLng = cp.coordinates.lng
+                    for (coord in routePoints) {
+                        if (coord.lat < minLat) minLat = coord.lat
+                        if (coord.lat > maxLat) maxLat = coord.lat
+                        if (coord.lng < minLng) minLng = coord.lng
+                        if (coord.lng > maxLng) maxLng = coord.lng
                     }
                     val latRange = (minLat - 0.002)..(maxLat + 0.002)
                     val lngRange = (minLng - 0.002)..(maxLng + 0.002)
@@ -905,8 +909,8 @@ private fun AssignedRouteDashboardCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RouteFact(
-                    label = "Scan sections",
-                    value = route.checkpoints.size.toString(),
+                    label = "Scan area",
+                    value = routeDistanceText(route).takeUnless { it == "Boundary" } ?: "Mapped",
                     modifier = Modifier.weight(1f),
                 )
                 RouteFact(
@@ -1064,8 +1068,8 @@ private fun AvailableRouteOpportunityCard(
                     modifier = Modifier.weight(1f),
                 )
                 RouteMetricPill(
-                    label = "Stops",
-                    value = "${route.checkpoints.size}",
+                    label = "Scan",
+                    value = "Area",
                     modifier = Modifier.weight(1f),
                 )
                 RouteMetricPill(
@@ -1260,30 +1264,6 @@ private fun Job.isDashboardVisible(nowMillis: Long): Boolean {
     val deadline = testAssignmentStartDeadlineMillis()
     return deadline == null || status == JobStatus.IN_PROGRESS || deadline > nowMillis
 }
-
-private fun Route.routePathCoordinates(): List<Coordinates> =
-    geometry?.coordinates
-        ?.mapNotNull { point ->
-            val lng = point.getOrNull(0)
-            val lat = point.getOrNull(1)
-            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
-        }
-        ?.takeIf { it.size >= 2 }
-        ?: checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
-
-private fun Route.routeStartCoordinates(): Coordinates? =
-    routePathCoordinates().firstOrNull()
-
-private fun Block.blockPathCoordinates(): List<Coordinates> =
-    boundary?.coordinates
-        ?.firstOrNull()
-        ?.mapNotNull { point ->
-            val lng = point.getOrNull(0)
-            val lat = point.getOrNull(1)
-            if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
-        }
-        ?.takeIf { it.size >= 2 }
-        ?: checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
 
 private fun Route.assignedRouteMapCenter(currentLocation: Coordinates?): MapCenter {
     val routePoints = routePathCoordinates()

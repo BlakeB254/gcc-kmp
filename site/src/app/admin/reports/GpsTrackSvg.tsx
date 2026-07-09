@@ -9,7 +9,7 @@ import type { GpsTrack } from '@/lib/block-completion-report'
 // P8-owned and off-limits. The other map components under
 // src/components/map/ (RouteMap, BlockMap, BountyMap) are all tightly
 // coupled to specific domain objects — RouteMap expects a `Route` with
-// checkpoints/status/payoutAmount, BlockMap/BountyMap similarly — and all
+// status/payoutAmount, BlockMap/BountyMap similarly — and all
 // of them render through BaseMap, which pulls in maplibre-gl + a remote
 // style/tile fetch. None of them accept a bare GeoJSON LineString, and
 // forcing a report's gpsTrack into a fake Route/Block shape just to reuse

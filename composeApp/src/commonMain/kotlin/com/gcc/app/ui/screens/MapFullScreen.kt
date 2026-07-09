@@ -47,6 +47,7 @@ import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.Block
 import com.gcc.shared.model.CommunityReport
 import com.gcc.shared.model.CommunityReportStatus
@@ -1068,15 +1069,6 @@ private fun RouteArrowButton(
     }
 }
 
-private fun Route.routePathCoordinates(): List<Coordinates> =
-    (geometry?.toCoordinates().orEmpty().withoutClosingDuplicate())
-        .ifEmpty {
-            checkpoints
-                .sortedBy { it.sequenceOrder }
-                .map { it.coordinates }
-                .withoutClosingDuplicate()
-        }
-
 private fun Block.blockRouteCoordinates(): List<Coordinates> =
     boundary?.coordinates
         ?.firstOrNull()
@@ -1087,13 +1079,7 @@ private fun Block.blockRouteCoordinates(): List<Coordinates> =
         }
         .orEmpty()
         .withoutClosingDuplicate()
-        .ifEmpty {
-            checkpoints
-                .sortedBy { it.sequenceOrder }
-                .map { it.coordinates }
-                .withoutClosingDuplicate()
-                .ifEmpty { generatedBlockRectangle() }
-        }
+        .ifEmpty { generatedBlockRectangle() }
 
 private fun Route.imageLocationCoordinates(): Coordinates? {
     val lat = imageLocationLat

@@ -28,7 +28,8 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.ui.utils.displayLabel
 import com.gcc.app.ui.utils.emoji
 import com.gcc.app.viewmodel.RouteScanUiState
-import com.gcc.shared.geo.CheckpointGenerator
+import com.gcc.shared.geo.routeCenterCoordinates
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.HotspotStatus
 import com.gcc.shared.model.ScanHotspot
@@ -48,18 +49,11 @@ fun ScoutReviewScreen(
     onStartCleaning: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val effectiveCheckpoints = remember(uiState.route) {
-        uiState.route
-            ?.let { CheckpointGenerator.generateIfMissing(it) }
-            .orEmpty()
-            .sortedBy { it.sequenceOrder }
+    val routePath = remember(uiState.route) {
+        uiState.route?.routePathCoordinates().orEmpty()
     }
-
-    // Route polyline from checkpoint coordinates
-    val routeCoords = remember(effectiveCheckpoints) {
-        effectiveCheckpoints
-            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
+    val routeCoords = remember(routePath) {
+        routePath.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
     }
 
     // All hotspot locations as bounty (red) dots
@@ -73,21 +67,11 @@ fun ScoutReviewScreen(
         uiState.route?.innerBoundary.authoredInnerRings()
     }
 
-    // Map center: midpoint of route checkpoints, otherwise Chicago default
-    val mapCenterLat = remember(effectiveCheckpoints) {
-        effectiveCheckpoints
-            .takeIf { it.isNotEmpty() }
-            ?.map { it.coordinates.lat }
-            ?.average()
-            ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
+    val routeCenter = remember(uiState.route) {
+        uiState.route?.routeCenterCoordinates()
     }
-    val mapCenterLng = remember(effectiveCheckpoints) {
-        effectiveCheckpoints
-            .takeIf { it.isNotEmpty() }
-            ?.map { it.coordinates.lng }
-            ?.average()
-            ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
-    }
+    val mapCenterLat = routeCenter?.lat ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
+    val mapCenterLng = routeCenter?.lng ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     // Derived stats
     val cleanupTargets = uiState.hotspots.filter { it.status != HotspotStatus.SKIPPED }

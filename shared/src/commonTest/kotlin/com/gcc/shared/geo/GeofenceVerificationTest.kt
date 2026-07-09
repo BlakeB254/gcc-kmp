@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * Pure-function tests for the geofence math used to verify worker proximity
- * to checkpoints. Lives in commonTest so the same assertions run for every
+ * to route targets. Lives in commonTest so the same assertions run for every
  * KMP target.
  */
 class GeofenceVerificationTest {
@@ -49,7 +49,7 @@ class GeofenceVerificationTest {
     }
 
     @Test
-    fun `isWithinGeofence is true when user is exactly at checkpoint`() {
+    fun `isWithinGeofence is true when user is exactly at target`() {
         val p = doubleArrayOf(-87.7178, 41.8597).toList()
         assertTrue(GeofenceVerification.isWithinGeofence(p, p, radiusMeters = 50.0))
     }
@@ -57,20 +57,20 @@ class GeofenceVerificationTest {
     @Test
     fun `isWithinGeofence is true for nearby point inside radius`() {
         // Two points ~10m apart (small longitude offset at Chicago's latitude)
-        val checkpoint = doubleArrayOf(-87.7178, 41.8597).toList()
+        val target = doubleArrayOf(-87.7178, 41.8597).toList()
         val nearby = doubleArrayOf(-87.71768, 41.8597).toList()  // ~10m east
         assertTrue(
-            GeofenceVerification.isWithinGeofence(nearby, checkpoint, radiusMeters = 50.0),
+            GeofenceVerification.isWithinGeofence(nearby, target, radiusMeters = 50.0),
             "should be inside 50m radius",
         )
     }
 
     @Test
     fun `isWithinGeofence is false for point well outside radius`() {
-        val checkpoint = doubleArrayOf(-87.7178, 41.8597).toList()
+        val target = doubleArrayOf(-87.7178, 41.8597).toList()
         val faraway = doubleArrayOf(-87.6500, 41.8800).toList()  // several km away
         assertFalse(
-            GeofenceVerification.isWithinGeofence(faraway, checkpoint, radiusMeters = 50.0),
+            GeofenceVerification.isWithinGeofence(faraway, target, radiusMeters = 50.0),
             "should be outside 50m radius",
         )
     }

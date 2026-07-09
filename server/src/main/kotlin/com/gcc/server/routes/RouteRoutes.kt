@@ -10,10 +10,10 @@ import io.ktor.server.routing.*
 import com.gcc.server.plugins.koinGet
 
 /**
- * Route endpoints — cleaning routes with checkpoints.
+ * Route endpoints — cleaning routes.
  *
  * GET /api/routes            — List routes (filterable by status, service_area_id)
- * GET /api/routes/{id}       — Get single route with its checkpoints
+ * GET /api/routes/{id}       — Get single route
  * GET /api/routes/published  — Shortcut: only published routes
  */
 fun Routing.routeRoutes() {

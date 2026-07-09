@@ -427,7 +427,6 @@ export const blocks = pgTable('blocks', {
   toCorner: varchar('to_corner'),
   side: varchar('side', { length: 10 }), // 'north' or 'south'
   includesAlley: boolean('includes_alley').default(true),
-  checkpoints: jsonb('checkpoints'), // Array of checkpoint objects
 
   // Funding
   fundingGoal: numeric('funding_goal').default('100'),
@@ -1531,40 +1530,6 @@ export const routes = pgTable('routes', {
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 })
 
-// Checkpoint type enum
-export const checkpointTypeEnum = pgEnum('enum_route_checkpoints_type', [
-  'route_start',
-  'photo_point',
-  'alley_entrance',
-  'route_end',
-])
-
-// Route checkpoints table (photo verification points)
-export const routeCheckpoints = pgTable('route_checkpoints', {
-  id: serial('id').primaryKey(),
-  routeId: integer('route_id').notNull(), // FK to routes
-
-  name: varchar('name', { length: 100 }).notNull(),
-  sequenceOrder: integer('sequence_order').notNull(),
-
-  // GPS coordinates [lng, lat]
-  coordinates: jsonb('coordinates').notNull(),
-
-  // Photo configuration
-  photoRequired: boolean('photo_required').default(true),
-  photoInstructions: text('photo_instructions'),
-
-  // Geofence radius in meters
-  geofenceRadius: numeric('geofence_radius').default('15'),
-
-  // Type of checkpoint
-  type: checkpointTypeEnum('type').notNull(),
-
-  // Timestamps
-  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
-
 // Route scan session table (mobile Scout & Clean flow)
 export const routeScans = pgTable('route_scans', {
   id: serial('id').primaryKey(),
@@ -1698,8 +1663,6 @@ export type ServiceArea = typeof serviceAreas.$inferSelect
 export type NewServiceArea = typeof serviceAreas.$inferInsert
 export type Route = typeof routes.$inferSelect
 export type NewRoute = typeof routes.$inferInsert
-export type RouteCheckpoint = typeof routeCheckpoints.$inferSelect
-export type NewRouteCheckpoint = typeof routeCheckpoints.$inferInsert
 export type RouteScanRow = typeof routeScans.$inferSelect
 export type NewRouteScanRow = typeof routeScans.$inferInsert
 export type ScanHotspotRow = typeof scanHotspots.$inferSelect

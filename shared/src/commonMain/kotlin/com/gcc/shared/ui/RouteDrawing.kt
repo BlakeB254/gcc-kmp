@@ -9,16 +9,15 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 
 /**
- * Shared DrawScope extension functions for procedural checkpoint thumbnails.
+ * Shared DrawScope extension functions for procedural route thumbnails.
  *
- * These draw scene-based Canvas illustrations representing each checkpoint type:
+ * These draw scene-based Canvas illustrations representing route states:
  * - START: green road with flag and directional arrow
  * - END: red checkered finish line with flag pole
  * - PHOTO: teal intersection with camera icon
  * - ALLEY: brown perspective alley with directional arrow
  *
- * Used by both the mobile app (RouteThumbnail) and the admin desktop app
- * (AdminCheckpointThumbnail) to maintain visual consistency across platforms.
+ * Used by mobile route cards to maintain visual consistency across platforms.
  */
 
 fun DrawScope.drawStartScene() {

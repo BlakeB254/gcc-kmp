@@ -2,6 +2,8 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.RouteCacheStore
+import com.gcc.shared.geo.hasScannableGeometry
+import com.gcc.shared.geo.routeCenterCoordinates
 import com.gcc.shared.model.*
 import com.gcc.shared.offline.SeedData
 import kotlinx.coroutines.CoroutineScope
@@ -339,12 +341,8 @@ class DashboardViewModel(
     }
 }
 
-// Checkpoints are legacy from the photo-lap era: a route is workable when it
-// has anything scannable — a block boundary (scan corridor), a path geometry,
-// or (legacy) checkpoints.
 private fun Route.isWorkerAvailableRoute(): Boolean =
-    status == RouteStatus.PUBLISHED &&
-        (blockBoundary != null || geometry != null || checkpoints.size >= 2)
+    status == RouteStatus.PUBLISHED && hasScannableGeometry()
 
 private fun Job.isVisibleDashboardAssignment(
     nowMillis: Long = Clock.System.now().toEpochMilliseconds(),
@@ -354,8 +352,9 @@ private fun Job.isVisibleDashboardAssignment(
 }
 
 private fun Route.toBlockRecord(): Block {
-    val centerLng = imageLocationLng ?: geometry?.coordinates?.map { it[0] }?.average()
-    val centerLat = imageLocationLat ?: geometry?.coordinates?.map { it[1] }?.average()
+    val routeCenter = routeCenterCoordinates()
+    val centerLng = imageLocationLng ?: routeCenter?.lng
+    val centerLat = imageLocationLat ?: routeCenter?.lat
     return Block(
         id = id,
         code = code,

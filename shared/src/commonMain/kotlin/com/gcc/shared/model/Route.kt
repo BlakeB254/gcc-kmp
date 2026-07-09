@@ -34,7 +34,6 @@ data class Route(
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,
     val payoutAmount: Int? = null,
-    val checkpoints: List<RouteCheckpoint> = emptyList(),
     val imageUrl: String? = null,
     val imageLocationLat: Double? = null,
     val imageLocationLng: Double? = null,

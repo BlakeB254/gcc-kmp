@@ -8,9 +8,7 @@ object GccConstants {
     const val MIN_BOUNTY_CENTS = 1_000            // $10 minimum bounty reward
 
     // Geofence config
-    const val CHECKPOINT_RADIUS_METERS = 15.0
     const val GPS_ACCURACY_THRESHOLD_METERS = 20.0
-    const val MIN_CHECKPOINT_DWELL_MS = 5000L
     const val PATH_RECORDING_INTERVAL_MS = 5000L
 
     // North Lawndale

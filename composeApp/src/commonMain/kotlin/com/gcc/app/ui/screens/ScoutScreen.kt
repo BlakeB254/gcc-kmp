@@ -20,9 +20,11 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteScanSectionStatus
-import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.app.viewmodel.RouteScanUiState
 import com.gcc.app.viewmodel.RouteScanViewModel
+import com.gcc.shared.geo.hasScannableGeometry
+import com.gcc.shared.geo.routePathCoordinates
+import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.RouteStatus
@@ -61,18 +63,11 @@ fun ScoutScreen(
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
     } else null
 
-    val effectiveCheckpoints = remember(uiState.route) {
-        uiState.route
-            ?.let { CheckpointGenerator.generateIfMissing(it) }
-            .orEmpty()
-            .sortedBy { it.sequenceOrder }
+    val routePath = remember(uiState.route) {
+        uiState.route?.routePathCoordinates().orEmpty()
     }
-
-    // Route polyline from checkpoint coordinates
-    val routeCoords = remember(effectiveCheckpoints) {
-        effectiveCheckpoints
-            .map { Coordinates(lat = it.coordinates.lat, lng = it.coordinates.lng) }
-            .let { if (it.isNotEmpty()) listOf(it) else emptyList() }
+    val routeCoords = remember(routePath) {
+        routePath.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
     }
 
     // Hotspot bounty locations for red dot markers
@@ -88,10 +83,10 @@ fun ScoutScreen(
 
     // Map centre: user position if available, otherwise route start, otherwise Chicago default
     val mapCenterLat = currentLocation?.lat
-        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lat
+        ?: uiState.route?.routeStartCoordinates()?.lat
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LAT
     val mapCenterLng = currentLocation?.lng
-        ?: effectiveCheckpoints.firstOrNull()?.coordinates?.lng
+        ?: uiState.route?.routeStartCoordinates()?.lng
         ?: MapStyles.NORTH_LAWNDALE_CENTER_LNG
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -277,8 +272,7 @@ fun ScoutScreen(
                         onClick = onStartScout,
                         variant = GccButtonVariant.PRIMARY,
                         enabled = uiState.route?.let { route ->
-                            (route.status == RouteStatus.PUBLISHED || allowUnpublished) &&
-                                effectiveCheckpoints.size >= 2
+                            (route.status == RouteStatus.PUBLISHED || allowUnpublished) && route.hasScannableGeometry()
                         } == true,
                     )
                 }
@@ -325,7 +319,7 @@ fun ScoutScreen(
         }
 
         // ── Capture FAB (bottom-right, above bottom panel) ───────────
-        if (uiState.scanId != null && uiState.currentSectionIndex < uiState.routeSections.size) {
+        if (uiState.scanId != null) {
             FloatingActionButton(
                 onClick = {
                     onCaptureHotspot()

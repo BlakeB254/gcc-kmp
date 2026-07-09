@@ -402,28 +402,6 @@ class AdminPanelViewModel(
         }
     }
 
-    fun addCheckpoint(routeId: Int, request: AdminCheckpointRequest, onAdded: (RouteCheckpoint) -> Unit) {
-        scope.launch {
-            try {
-                val cp = apiClient.addCheckpoint(routeId, request)
-                onAdded(cp)
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to add checkpoint: ${e.message}")
-            }
-        }
-    }
-
-    fun deleteCheckpoint(routeId: Int, checkpointId: Int, onDeleted: () -> Unit) {
-        scope.launch {
-            try {
-                apiClient.deleteCheckpoint(routeId, checkpointId)
-                onDeleted()
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to delete checkpoint: ${e.message}")
-            }
-        }
-    }
-
     /**
      * Admin manually grants (or subtracts) community points for a worker.
      * Negative amounts subtract. The reason is captured in the points

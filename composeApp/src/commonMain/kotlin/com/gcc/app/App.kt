@@ -25,6 +25,7 @@ import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.screens.admin.AdminBountyDetailScreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
+import com.gcc.shared.geo.routeCenterCoordinates
 
 @Composable
 fun App(component: RootComponent) {
@@ -84,10 +85,9 @@ fun App(component: RootComponent) {
                     RouteDetailScreen(
                         routeId = screen.routeId,
                         allRouteIds = dashState.routes.sortedBy { route ->
-                        // Sort geographically west-to-east (by average longitude)
-                        // so left arrow = westward, right arrow = eastward
-                        route.geometry?.coordinates?.map { it[0] }?.average()
-                            ?: route.checkpoints.map { it.coordinates.lng }.average()
+                            // Sort geographically west-to-east so left arrow =
+                            // westward, right arrow = eastward.
+                            route.routeCenterCoordinates()?.lng ?: 0.0
                     }.map { it.id },
                         onBack = component::navigateBack,
                         onStartJob = { jobId -> component.navigateToActiveJob(jobId, screen.routeId) },

@@ -16,9 +16,9 @@ All text and selections needed for App Store Connect submission.
 
 **Description:**
 
-GCC is the official app for Global Community Cleaners, a nonprofit dedicated to revitalizing neighborhoods in Chicago's North Lawndale community. Workers use the app to accept GPS-verified cleaning routes, complete block-by-block assignments, and earn money for every block they clean. Each job is backed by real accountability: workers photograph before-and-after evidence at checkpoints along their route, and GPS verification confirms they walked the assigned blocks. The result is cleaner streets, documented proof of impact, and fair pay for honest work.
+GCC is the official app for Global Community Cleaners, a nonprofit dedicated to revitalizing neighborhoods in Chicago's North Lawndale community. Workers use the app to accept GPS-verified cleaning routes, complete block-by-block assignments, and earn money for every block they clean. Each job is backed by real accountability: workers capture route scan evidence, before-and-after cleanup photos, and GPS-verified progress while they walk assigned blocks. The result is cleaner streets, documented proof of impact, and fair pay for honest work.
 
-The app guides workers through every step of a cleaning job. Real-time maps powered by MapLibre show assigned routes, checkpoint locations, and progress. Workers claim available routes, navigate to their starting point, and tap through checkpoints as they clean. At each checkpoint, the camera captures photographic evidence that is timestamped and geotagged. Once a route is complete, the job enters a verification and approval process before payout is issued to the worker's wallet. The entire flow — from route acceptance to payment — happens inside the app.
+The app guides workers through every step of a cleaning job. Real-time maps powered by MapLibre show assigned routes, scan coverage, cleanup targets, and progress. Workers claim available routes, navigate to their starting point, scan the route, document trash hotspots, and confirm cleanup with timestamped and geotagged photo evidence. Once a route is complete, the job enters a verification and approval process before payout is issued to the worker's wallet. The entire flow — from route acceptance to payment — happens inside the app.
 
 GCC also features leaderboards and badges that recognize top performers and consistent contributors. Workers can track their earnings, view completed job history, and monitor their standing in the community. Whether you are looking for flexible work that makes a visible difference in your neighborhood or you want to be part of a movement to restore pride in Chicago's streets, GCC puts the opportunity in your hands. Download the app, get approved, and start earning.
 
@@ -62,13 +62,13 @@ Select the following data types in App Store Connect under "App Privacy":
 
 | Data Type | Purpose | Linked to User | Tracking |
 |-----------|---------|----------------|----------|
-| Precise Location | App Functionality — used for GPS-verified route completion and checkpoint validation during active cleaning jobs | Yes | No |
+| Precise Location | App Functionality — used for GPS-verified route completion and scan coverage during active cleaning jobs | Yes | No |
 
 ### Photos or Videos
 
 | Data Type | Purpose | Linked to User | Tracking |
 |-----------|---------|----------------|----------|
-| Photos | App Functionality — workers capture before/after checkpoint evidence photos during jobs | Yes | No |
+| Photos | App Functionality — workers capture route scan and before/after cleanup evidence during jobs | Yes | No |
 
 ### Contact Info
 
@@ -107,7 +107,7 @@ Paste the following into the "Notes" field in App Store Connect:
 GCC is a workforce app for Global Community Cleaners NFP, a registered nonprofit organization in Chicago, IL. The app is used by approved cleaning workers to accept, complete, and get paid for neighborhood cleaning routes in the North Lawndale community.
 
 **How the app works:**
-Workers are recruited and verified by the nonprofit before they can access job features. Once approved, workers browse available cleaning routes on a map, accept a route, walk the assigned blocks while cleaning, and photograph before/after evidence at GPS-verified checkpoints. Completed jobs go through an approval process, and workers are paid per block.
+Workers are recruited and verified by the nonprofit before they can access job features. Once approved, workers browse available cleaning routes on a map, accept a route, scan assigned blocks, document trash hotspots, and capture before/after cleanup evidence tied to their route and location. Completed jobs go through an approval process, and workers are paid per block.
 
 **Approval gate:**
 New users who register cannot access job features until their account is approved by an administrator. This is intentional — the app serves a vetted workforce, not the general public. The demo account below is pre-approved so all features are accessible for review.
@@ -116,11 +116,11 @@ New users who register cannot access job features until their account is approve
 - Email: `applereview@gcc.com`
 - Password: `Review2026!`
 
-This demo account has been pre-approved with full verification status, so the reviewer can test all features including route browsing, job acceptance, checkpoint completion, photo capture, and wallet/earnings views.
+This demo account has been pre-approved with full verification status, so the reviewer can test all features including route browsing, job acceptance, route scanning, photo capture, and wallet/earnings views.
 
 **Required permissions:**
-- **Camera:** Required for capturing before/after evidence photos at each checkpoint during a cleaning job. The app cannot complete checkpoints without camera access.
-- **Location (including background):** Required for GPS-verified route completion. The app validates that the worker is physically present at each checkpoint. Location is accessed during active jobs only and is used solely for route verification, not for tracking outside of job activity.
+- **Camera:** Required for route scanning and before/after cleanup evidence during active cleaning jobs.
+- **Location (including background):** Required for GPS-verified route completion and scan coverage during active jobs only. Location is used solely for route verification and active job progress, not for tracking outside of job activity.
 - **Push Notifications:** Used to alert workers when new routes are available, when a job is approved, and when payouts are issued.
 
 **No in-app purchases or subscriptions.** Workers earn money through the app; they do not pay anything to use it.
@@ -141,4 +141,4 @@ UPDATE workers SET verification_status = 'approved',
 WHERE email = 'applereview@gcc.com';
 ```
 
-Verify the account works end-to-end (login, browse routes, accept a job, complete a checkpoint with photo, view wallet) before submitting for review.
+Verify the account works end-to-end (login, browse routes, accept a job, complete a route scan with photo evidence, view wallet) before submitting for review.

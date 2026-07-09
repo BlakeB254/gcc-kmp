@@ -512,7 +512,7 @@ private fun canvasSpotHeatWeight(spot: com.gcc.shared.model.CommunityReport): Fl
     return (statusWeight + bountyBoost + verificationBoost + rewardBoost + radiusBoost).coerceIn(0.65f, 2.4f)
 }
 
-/** Draw a green circle node at the given canvas position for checkpoints with photos. */
+/** Draw a green circle node at the given canvas position for route evidence photos. */
 internal fun DrawScope.drawPhotoStar(cx: Float, cy: Float, radius: Float = 11f) {
     // White border
     drawCircle(color = Color.White, radius = radius, center = Offset(cx, cy))

@@ -27,7 +27,6 @@ export async function GET(request: Request) {
       fundingGoal: b.fundingGoal ? parseInt(b.fundingGoal) : 10000,
       fundingCurrent: b.fundingCurrent ? parseInt(b.fundingCurrent) : 0,
       sponsorId: b.fundedById,
-      checkpoints: b.checkpoints || [],
       createdAt: new Date(b.createdAt).toISOString(),
       updatedAt: new Date(b.updatedAt).toISOString(),
     }))

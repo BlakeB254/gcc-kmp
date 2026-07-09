@@ -21,6 +21,8 @@ import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
 import com.gcc.app.util.fmt
 import com.gcc.app.viewmodel.ActiveJobViewModel
+import com.gcc.shared.geo.routePathCoordinates
+import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Job
 import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.TEST_ASSIGNMENT_START_WINDOW_MINUTES
@@ -36,7 +38,7 @@ import org.koin.compose.koinInject
  * Pre-start: GPS-verified "go to the route boundary" gate with the test-
  * assignment countdown and decline option. Once the job starts, the worker is
  * routed straight into the two-lap route scan (Scout & Clean) via
- * [onStartScan] — there is no separate checkpoint flow; the scan IS the job.
+ * [onStartScan] — there is no separate stop flow; the scan IS the job.
  */
 @Composable
 fun ActiveJobScreen(
@@ -316,19 +318,6 @@ fun ActiveJobScreen(
         }
     }
 }
-
-private fun com.gcc.shared.model.Route.routePathCoordinates(): List<com.gcc.shared.model.Coordinates> =
-    geometry?.coordinates
-        ?.mapNotNull { point ->
-            val lng = point.getOrNull(0)
-            val lat = point.getOrNull(1)
-            if (lat != null && lng != null) com.gcc.shared.model.Coordinates(lng = lng, lat = lat) else null
-        }
-        ?.takeIf { it.size >= 2 }
-        ?: checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
-
-private fun com.gcc.shared.model.Route.routeStartCoordinates(): com.gcc.shared.model.Coordinates? =
-    routePathCoordinates().firstOrNull()
 
 private data class TestAssignmentCountdown(
     val text: String,

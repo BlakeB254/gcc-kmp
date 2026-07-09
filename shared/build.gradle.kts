@@ -39,7 +39,7 @@ kotlin {
             implementation(libs.multiplatform.settings)
             // ktor-client-mock is used by OfflineHttpEngine for production offline simulation
             implementation(libs.ktor.client.mock)
-            // Compose UI for shared DrawScope drawing functions (CheckpointDrawing)
+            // Compose UI for shared DrawScope drawing functions (RouteDrawing)
             implementation(compose.ui)
             implementation(libs.sqldelight.runtime)
         }

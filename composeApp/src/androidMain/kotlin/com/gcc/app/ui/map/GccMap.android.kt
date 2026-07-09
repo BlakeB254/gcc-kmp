@@ -74,14 +74,13 @@ actual fun GccMap(
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
-    checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
-    onAffectedBlockTap: ((Int) -> Unit)?,
+    onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
@@ -107,7 +106,6 @@ actual fun GccMap(
     val spotCleanZoneJson = remember { buildSpotCleanZoneBaseGeoJson() }
     val routesJson = remember(routeCoordinates) { buildRoutesGeoJson(routeCoordinates) }
     val routePolygonsJson = remember(routeCoordinates) { buildRoutePolygonsGeoJson(routeCoordinates) }
-    val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
     val spotJson = remember(spots) { buildSpotMarkersGeoJson(spots) }
@@ -196,8 +194,6 @@ actual fun GccMap(
             val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
             val routesSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routesJson))
             val routePolygonsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routePolygonsJson))
-            val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
-
             // --- Layers (bottom to top) ---
             // Boundary lines use zoom-based width: visible at overview, fade at street level
             // to avoid obscuring the base map's street names and POI labels.
@@ -570,95 +566,6 @@ actual fun GccMap(
                         ClickResult.Pass
                     }
                 } else null,
-            )
-
-            // ── Checkpoint markers: zoom-adaptive circles ──
-            // Hidden at overview, appear at neighborhood zoom, full size at street level.
-
-            // Waypoint outer ring (white border)
-            CircleLayer(
-                id = MapStyles.LAYER_CHECKPOINT_OUTER,
-                source = checkpointsSrc,
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(Color.White),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(3.dp),
-                    17 to const(8.dp),
-                ),
-                strokeColor = const(GccGreenDark),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(0.5.dp),
-                    17 to const(1.5.dp),
-                ),
-            )
-
-            // Waypoint inner fill (green)
-            CircleLayer(
-                id = MapStyles.LAYER_CHECKPOINT_INNER,
-                source = checkpointsSrc,
-                minZoom = MapStyles.SPOT_DOTS_MIN_ZOOM.toFloat(),
-                color = const(GccGreen),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(2.dp),
-                    17 to const(5.5.dp),
-                ),
-            )
-
-            // ── Photo star markers: gold dots for checkpoints with photos ──
-            val photoStarJson = remember(checkpointPhotos) {
-                if (checkpointPhotos.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                else {
-                    val features = checkpointPhotos.joinToString(",") { (coord, url) ->
-                        """{"type":"Feature","properties":{"imageUrl":"${url.replace("\"", "\\\"")}"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
-                    }
-                    """{"type":"FeatureCollection","features":[$features]}"""
-                }
-            }
-            val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
-
-            // Gold circle border (white ring)
-            CircleLayer(
-                id = "photo-star-outer",
-                source = photoStarSrc,
-                color = const(Color.White),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(5.dp),
-                    17 to const(11.dp),
-                ),
-            )
-
-            // Checkpoint photo nodes — green circles matching waypoints
-            CircleLayer(
-                id = "photo-star-inner",
-                source = photoStarSrc,
-                color = const(Color(0xFF22C55E)),
-                radius = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(4.dp),
-                    17 to const(9.dp),
-                ),
-                strokeColor = const(Color.White),
-                strokeWidth = interpolate(
-                    type = exponential(1.5f),
-                    input = zoom(),
-                    13 to const(0.dp),
-                    15 to const(0.5.dp),
-                    17 to const(1.5.dp),
-                ),
             )
 
             // ── Image location star markers: amber dots for display image locations ──

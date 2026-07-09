@@ -98,7 +98,6 @@ expect fun GccMap(
     zoomPresets: List<ZoomPreset> = overviewZoomPresets,
     cameraBounds: AreaBounds? = null,
     mapMode: MapMode = MapMode.MY_AREA,
-    checkpointPhotos: List<Pair<Coordinates, String>> = emptyList(),
     imageStars: List<Coordinates> = emptyList(),
     routePolygons: List<Pair<Int, List<Coordinates>>> = emptyList(),
     /** Ledger coverage cells for the foundational clean/stale/fog tiles. */

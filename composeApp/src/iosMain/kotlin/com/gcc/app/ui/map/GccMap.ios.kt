@@ -92,14 +92,13 @@ actual fun GccMap(
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
-    checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
     innerBoundaryRings: List<List<Coordinates>>,
     explorerAreaStates: Map<String, String>,
     affectedBlocks: List<com.gcc.shared.model.AffectedBlock>,
-    onAffectedBlockTap: ((Int) -> Unit)?,
+    onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
@@ -158,7 +157,6 @@ actual fun GccMap(
             )
         }
     }
-    val checkpointsJson = remember(routeCoordinates) { buildCheckpointMarkersGeoJson(routeCoordinates) }
     val labelsJson = remember { buildCommunityAreaLabelsGeoJson() }
     val explorerLabelsJson = remember(bounties) { buildExplorerLabelsGeoJson(bounties) }
     val bountyJson = remember(bounties) { buildBountyMarkersGeoJson(bounties) }
@@ -345,7 +343,7 @@ actual fun GccMap(
             val areaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(communityAreasJson))
             val serviceAreaSrc = rememberGeoJsonSource(GeoJsonData.JsonString(serviceAreaJson))
             val spotCleanZoneSrc = rememberGeoJsonSource(GeoJsonData.JsonString(spotCleanZoneJson))
-            // routesSrc/routePolygonsSrc/routeInnerSrc/routeCorridorSrc/checkpointsSrc are
+            // routesSrc/routePolygonsSrc/routeInnerSrc/routeCorridorSrc are
             // remembered further down, inside the route-data-gated groups that use them —
             // the scan summary card passes an empty routeCoordinates list and must not pay
             // for these GeoJSON sources at all (Fix 2, r2a).
@@ -921,7 +919,7 @@ actual fun GccMap(
                 }
             }
 
-            // ── Scan corridor + inner boundary (double-lined routes) + checkpoints ──
+            // ── Scan corridor + inner boundary (double-lined routes) ──
             // Gated on routeCoordinates — same reasoning as the route fill/line
             // stack above: no route means none of this should allocate a
             // source or layer (Fix 2, r2a). Kept as its own group (rather than
@@ -930,8 +928,6 @@ actual fun GccMap(
             if (routeCoordinates.isNotEmpty()) {
                 val routeInnerSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeInnerJson))
                 val routeCorridorSrc = rememberGeoJsonSource(GeoJsonData.JsonString(routeCorridorJson))
-                val checkpointsSrc = rememberGeoJsonSource(GeoJsonData.JsonString(checkpointsJson))
-
                 // The band BETWEEN the two boundaries is the assignment: tinted
                 // so "scan here" is explicit. Inside the inner ring (private
                 // property) and outside the outer ring are excluded.
@@ -991,94 +987,6 @@ actual fun GccMap(
                     join = const(LineJoin.Round),
                 )
 
-                CircleLayer(
-                    id = MapStyles.LAYER_CHECKPOINT_OUTER,
-                    source = checkpointsSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(Color.White),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(3.dp),
-                        17 to const(8.dp),
-                    ),
-                    strokeColor = const(GccGreenDark),
-                    strokeWidth = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(0.5.dp),
-                        17 to const(1.5.dp),
-                    ),
-                )
-
-                CircleLayer(
-                    id = MapStyles.LAYER_CHECKPOINT_INNER,
-                    source = checkpointsSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(GccGreen),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(2.dp),
-                        17 to const(5.5.dp),
-                    ),
-                )
-            }
-
-            // Gated on checkpointPhotos (Fix 2, r2a) — the scan summary card
-            // never has photo checkpoints and must not allocate this source/layers.
-            if (checkpointPhotos.isNotEmpty()) {
-                // ── Photo star markers: gold dots for checkpoints with photos ──
-                val photoStarJson = remember(checkpointPhotos) {
-                    if (checkpointPhotos.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
-                    else {
-                        val features = checkpointPhotos.joinToString(",") { (coord, url) ->
-                            """{"type":"Feature","properties":{"imageUrl":"${url.replace("\"", "\\\"")}"},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""
-                        }
-                        """{"type":"FeatureCollection","features":[$features]}"""
-                    }
-                }
-                val photoStarSrc = rememberGeoJsonSource(GeoJsonData.JsonString(photoStarJson))
-
-                // Checkpoint photo nodes — green circles matching waypoints
-                CircleLayer(
-                    id = "photo-star-outer",
-                    source = photoStarSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(Color.White),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(5.dp),
-                        17 to const(11.dp),
-                    ),
-                )
-
-                CircleLayer(
-                    id = "photo-star-inner",
-                    source = photoStarSrc,
-                    minZoom = IOS_SPOT_DOTS_MIN_ZOOM.toFloat(),
-                    color = const(Color(0xFF22C55E)),
-                    radius = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(4.dp),
-                        17 to const(9.dp),
-                    ),
-                    strokeColor = const(Color.White),
-                    strokeWidth = interpolate(
-                        type = exponential(1.5f),
-                        input = zoom(),
-                        13 to const(0.dp),
-                        15 to const(0.5.dp),
-                        17 to const(1.5.dp),
-                    ),
-                )
             }
 
             // Gated on imageStars (Fix 2, r2a) — the scan summary card never
@@ -1574,4 +1482,3 @@ private fun MapZoomControlOverlay(
         ScaleBar(zoom = zoomState.value)
     }
 }
-

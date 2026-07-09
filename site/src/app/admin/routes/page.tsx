@@ -135,7 +135,7 @@ export default function AdminRoutesPage() {
   const handleDelete = useCallback(
     async (route: RouteRow) => {
       const ok = window.confirm(
-        `Delete ${route.code}? This removes its checkpoints, linked block, and exclusion zones. This cannot be undone.`
+        `Delete ${route.code}? This removes its linked block and exclusion zones. This cannot be undone.`
       )
       if (!ok) return
       setBusyRouteId(route.id)

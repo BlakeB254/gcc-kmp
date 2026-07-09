@@ -104,6 +104,7 @@ data class CompleteScanRequest(
     val cleanPathGeoJson: String? = null,
     val totalTrashVolumeLiters: Double? = null,
     val totalTrashWeightLbs: Double? = null,
+    val coveredCellIds: List<String> = emptyList(),
 )
 
 @Serializable

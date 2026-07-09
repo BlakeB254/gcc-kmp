@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { blocks, serviceAreas } from '@/db/schema'
 import { eq, desc, sql, and } from 'drizzle-orm'
-import { generateBlockCheckpointsFromGeometry, MIN_ROUTE_CHECKPOINTS } from '@/lib/route-checkpoints'
 
 export const runtime = 'nodejs'
 
@@ -62,7 +61,6 @@ export async function GET(request: NextRequest) {
       toCorner: blocks.toCorner,
       side: blocks.side,
       includesAlley: blocks.includesAlley,
-      checkpoints: blocks.checkpoints,
       fundingGoal: blocks.fundingGoal,
       fundingCurrent: blocks.fundingCurrent,
       fundedById: blocks.fundedById,
@@ -93,13 +91,7 @@ export async function GET(request: NextRequest) {
   const totalPages = Math.ceil(total / limit)
 
   // Transform to API format with full geometry
-  const formattedBlocks = blockList.map((block) => {
-    const storedCheckpoints = Array.isArray(block.checkpoints) ? block.checkpoints : []
-    const checkpoints = storedCheckpoints.length >= MIN_ROUTE_CHECKPOINTS
-      ? storedCheckpoints
-      : generateBlockCheckpointsFromGeometry(block.locationBoundary)
-
-    return {
+  const formattedBlocks = blockList.map((block) => ({
       id: String(block.id),
       code: block.code,
       name: block.name,
@@ -126,7 +118,6 @@ export async function GET(request: NextRequest) {
       toCorner: block.toCorner,
       side: block.side,
       includesAlley: block.includesAlley,
-      checkpoints,
       // Funding
       funding: {
         goal: Number(block.fundingGoal) || 10000,
@@ -144,8 +135,7 @@ export async function GET(request: NextRequest) {
       completedAt: block.completedAt ? new Date(block.completedAt).toISOString() : null,
       createdAt: new Date(block.createdAt).toISOString(),
       updatedAt: new Date(block.updatedAt).toISOString(),
-    }
-  })
+    }))
 
   return Response.json({
     data: formattedBlocks,

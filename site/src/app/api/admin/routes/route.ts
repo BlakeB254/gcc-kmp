@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routes, routeCheckpoints, serviceAreas, blocks } from '@/db/schema'
+import { routes, serviceAreas, blocks } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
 import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
-import { generateRouteCheckpointInserts, toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request)
@@ -33,27 +32,17 @@ export async function GET(request: Request) {
       .leftJoin(serviceAreas, eq(routes.serviceAreaId, serviceAreas.id))
 
     const routeIds = routeList.map((r) => r.id)
-    const checkpointsMap = new Map<number, any[]>()
     const blockBoundaryMap = new Map<number, unknown>()
     const blockIdMap = new Map<number, number>()
 
     if (routeIds.length > 0) {
-      const [filtered, routeBlocks] = await Promise.all([
-        db.select().from(routeCheckpoints)
-          .where(inArray(routeCheckpoints.routeId, routeIds))
-          .orderBy(routeCheckpoints.sequenceOrder),
-        db.select({
-          id: blocks.id,
-          routeId: blocks.routeId,
-          locationBoundary: blocks.locationBoundary,
-        }).from(blocks)
-          .where(inArray(blocks.routeId, routeIds)),
-      ])
+      const routeBlocks = await db.select({
+        id: blocks.id,
+        routeId: blocks.routeId,
+        locationBoundary: blocks.locationBoundary,
+      }).from(blocks)
+        .where(inArray(blocks.routeId, routeIds))
 
-      for (const cp of filtered) {
-        if (!checkpointsMap.has(cp.routeId)) checkpointsMap.set(cp.routeId, [])
-        checkpointsMap.get(cp.routeId)!.push(cp)
-      }
       for (const block of routeBlocks) {
         if (block.routeId) {
           blockIdMap.set(block.routeId, block.id)
@@ -74,10 +63,6 @@ export async function GET(request: Request) {
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
       payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-      checkpoints: toMobileRouteCheckpoints(
-        checkpointsMap.get(route.id) || [],
-        blockBoundaryMap.get(route.id) ?? route.geometry,
-      ),
       imageUrl: route.imageUrl || null,
       description: route.description || null,
       blockId: blockIdMap.get(route.id) ?? null,
@@ -168,10 +153,8 @@ export async function POST(request: Request) {
       serviceAreaId,
       routeId: newRoute.id,
       // NO auto-seeded boundary: admins author the block's outer edge in
-      // the mobile Boundary Studio (draw-first flow). The buffered polygon
-      // below still shapes the legacy checkpoints, but a machine rectangle
-      // must never masquerade as an authored boundary (field report: 'the
-      // outer boundary is not set to the map... automatically created').
+      // the mobile Boundary Studio (draw-first flow). A machine rectangle
+      // must never masquerade as an authored boundary.
       locationBoundary: null,
       locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
       streetName: streetName || null,
@@ -180,16 +163,6 @@ export async function POST(request: Request) {
       side: side || 'north',
       status: 'funded',
     }).returning()
-
-    const checkpointValues = generateRouteCheckpointInserts(
-      newRoute.id,
-      { type: 'Polygon', coordinates: blockPolygon },
-    )
-    await db.insert(routeCheckpoints).values(checkpointValues)
-
-    // Fetch created checkpoints for the response
-    const cps = await db.select().from(routeCheckpoints)
-      .where(eq(routeCheckpoints.routeId, newRoute.id))
 
     return NextResponse.json({
       data: {
@@ -202,7 +175,6 @@ export async function POST(request: Request) {
         distanceMeters: newRoute.lengthMeters ? parseFloat(newRoute.lengthMeters) : null,
         estimatedDurationMinutes: newRoute.estimatedMinutes ? Math.round(parseFloat(newRoute.estimatedMinutes)) : null,
         payoutAmount: Math.round(parseFloat(newRoute.payoutAmount || '10000')),
-        checkpoints: toMobileRouteCheckpoints(cps, { type: 'Polygon', coordinates: blockPolygon }),
         imageUrl: newRoute.imageUrl || null,
         createdAt: new Date(newRoute.createdAt).toISOString(),
         updatedAt: new Date(newRoute.updatedAt).toISOString(),

@@ -160,14 +160,12 @@ class JobService {
         val now = Clock.System.now()
         val evidence = JsonObject(
             buildMap {
-                request.checkpointId?.let { put("checkpointId", JsonPrimitive(it)) }
                 put("url", JsonPrimitive(request.beforePhotoUrl))
                 put("capturedAt", JsonPrimitive(now.toString()))
             }
         )
         val afterEvidence = JsonObject(
             buildMap {
-                request.checkpointId?.let { put("checkpointId", JsonPrimitive(it)) }
                 put("url", JsonPrimitive(request.afterPhotoUrl))
                 put("capturedAt", JsonPrimitive(now.toString()))
             }

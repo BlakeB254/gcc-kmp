@@ -20,25 +20,6 @@ enum class RouteStatus {
     @SerialName("archived") ARCHIVED
 }
 
-@Serializable
-enum class CheckpointType {
-    @SerialName("route_start") ROUTE_START,
-    @SerialName("photo_point") PHOTO_POINT,
-    @SerialName("alley_entrance") ALLEY_ENTRANCE,
-    @SerialName("route_end") ROUTE_END,
-    @SerialName("record") RECORD,
-    @SerialName("clean") CLEAN,
-    @SerialName("verify") VERIFY,
-    @SerialName("record_clean_verify") RECORD_CLEAN_VERIFY,
-}
-
-@Serializable
-enum class CameraMode {
-    @SerialName("panoramic") PANORAMIC,
-    @SerialName("focused") FOCUSED,
-    @SerialName("video") VIDEO,
-}
-
 // ─── Admin Enums ─────────────────────────────────────────────────────
 
 @Serializable

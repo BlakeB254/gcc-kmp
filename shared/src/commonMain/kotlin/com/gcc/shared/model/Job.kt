@@ -48,7 +48,6 @@ data class JobTiming(
 
 @Serializable
 data class JobEvidenceRequest(
-    val checkpointId: Int? = null,
     val beforePhotoUrl: String,
     val afterPhotoUrl: String,
 )

@@ -810,37 +810,6 @@ class GccApiClient(
             fun decodePoint(parent: JsonObject?): GeoJSONPoint? = parent?.let {
                 runCatching { json.decodeFromJsonElement<GeoJSONPoint>(it) }.getOrNull()
             }
-            fun decodeCheckpoints(): List<RouteCheckpoint> {
-                val items = obj["checkpoints"] as? JsonArray ?: return emptyList()
-                return items.mapIndexedNotNull { index, item ->
-                    val checkpoint = item as? JsonObject ?: return@mapIndexedNotNull null
-                    val coordinates = checkpoint["coordinates"] as? JsonArray ?: return@mapIndexedNotNull null
-                    val lng = coordinates.getOrNull(0)?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
-                    val lat = coordinates.getOrNull(1)?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
-                    if (lng == null || lat == null) return@mapIndexedNotNull null
-                    val rawType = (checkpoint["type"] as? JsonPrimitive)?.contentOrNull?.lowercase()
-                    val type = when (rawType) {
-                        "corner_start", "route_start", "start" -> CheckpointType.ROUTE_START
-                        "corner_end", "route_end", "end" -> CheckpointType.ROUTE_END
-                        "alley", "alley_entrance" -> CheckpointType.ALLEY_ENTRANCE
-                        else -> CheckpointType.PHOTO_POINT
-                    }
-                    RouteCheckpoint(
-                        name = (checkpoint["name"] as? JsonPrimitive)?.contentOrNull
-                            ?: "Checkpoint ${index + 1}",
-                        sequenceOrder = index + 1,
-                        coordinates = Coordinates(lng = lng, lat = lat),
-                        photoRequired = true,
-                        geofenceRadius = (checkpoint["radius"] as? JsonPrimitive)
-                            ?.contentOrNull
-                            ?.toDoubleOrNull()
-                            ?: 15.0,
-                        type = type,
-                        instructions = (checkpoint["description"] as? JsonPrimitive)?.contentOrNull,
-                    )
-                }
-            }
-
             val blockName = str("name") ?: "Block"
             val blockCode = str("code") ?: ""
             val fromCorner = str("fromCorner")
@@ -870,7 +839,6 @@ class GccApiClient(
                 fundingGoal = nestedStr(funding, "goal")?.toDoubleOrNull()?.toInt(),
                 fundingCurrent = nestedStr(funding, "current")?.toDoubleOrNull()?.toInt() ?: 0,
                 sponsorId = str("fundedById")?.toIntOrNull(),
-                checkpoints = decodeCheckpoints(),
                 createdAt = now,
                 updatedAt = now,
             )
@@ -1041,16 +1009,6 @@ class GccApiClient(
     // Admin: Delete a spot report
     suspend fun deleteSpot(spotId: Int) =
         deleteUnit("/api/spots/$spotId")
-
-    // Admin: Add checkpoint to route
-    suspend fun addCheckpoint(routeId: Int, request: AdminCheckpointRequest): RouteCheckpoint =
-        postJson("/api/admin/routes/$routeId/checkpoints", request)
-
-    // Admin: Delete a checkpoint from a route
-    suspend fun deleteCheckpoint(routeId: Int, checkpointId: Int) =
-        deleteUnit("/api/admin/routes/$routeId/checkpoints") {
-            url { parameters.append("id", checkpointId.toString()) }
-        }
 
     // Admin: Update worker info (name, phone, address, tier)
     suspend fun updateAdminWorker(workerId: Int, updates: Map<String, String>): Worker =

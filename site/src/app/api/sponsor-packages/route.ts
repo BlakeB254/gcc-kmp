@@ -84,9 +84,12 @@ export async function POST(request: Request) {
     const priceBreakdown = calculatePackagePrice(config)
 
     // Find or create sponsor by email
-    let sponsor = await db.query.sponsors.findFirst({
-      where: eq(sponsors.email, contact.email.toLowerCase()),
-    })
+    const [existingSponsor] = await db
+      .select()
+      .from(sponsors)
+      .where(eq(sponsors.email, contact.email.toLowerCase()))
+      .limit(1)
+    let sponsor = existingSponsor
 
     if (!sponsor) {
       // Create new sponsor

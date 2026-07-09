@@ -4,6 +4,7 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +36,8 @@ data class ActiveJobUiState(
 /**
  * Assignment lifecycle for an accepted job: load, GPS-gated start, decline,
  * and completion. The work itself (both laps) happens in the route-scan flow
- * (RouteScanViewModel) — this ViewModel no longer carries any checkpoint
- * machinery.
+ * (RouteScanViewModel) — this ViewModel only handles assignment gating
+ * and route proximity.
  */
 class ActiveJobViewModel(
     private val apiClient: GccApiClient,
@@ -175,31 +176,6 @@ class ActiveJobViewModel(
         return path.zipWithNext().minOfOrNull { (from, to) ->
             distanceToSegmentMeters(location, from, to)
         }
-    }
-
-    private fun Route.routePathCoordinates(): List<Coordinates> =
-        geometry
-            ?.toCoordinates()
-            .orEmpty()
-            .withoutClosingDuplicate()
-            .ifEmpty {
-                checkpoints
-                    .sortedBy { it.sequenceOrder }
-                    .map { it.coordinates }
-                    .withoutClosingDuplicate()
-            }
-
-    private fun List<Coordinates>.withoutClosingDuplicate(): List<Coordinates> {
-        if (size < 2) return this
-        val first = first()
-        val last = last()
-        val closesLoop = GeofenceVerification.distanceMeters(
-            first.lat,
-            first.lng,
-            last.lat,
-            last.lng,
-        ) < 2.0
-        return if (closesLoop) dropLast(1) else this
     }
 
     private fun distanceToSegmentMeters(

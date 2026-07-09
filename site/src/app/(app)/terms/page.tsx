@@ -63,7 +63,7 @@ export default function TermsPage() {
                 To receive payment, Workers must:
               </p>
               <ul className="list-disc list-inside text-neutral-700 mb-4 space-y-2">
-                <li>Take before and after photos at each checkpoint</li>
+                <li>Capture route scan and before/after cleanup evidence</li>
                 <li>Complete the cleaning within the designated timeframe</li>
                 <li>Follow all safety guidelines</li>
                 <li>Properly dispose of collected trash</li>

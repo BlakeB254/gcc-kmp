@@ -25,11 +25,11 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.AdminRouteAssignment
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.Route
-import com.gcc.shared.model.RouteCheckpoint
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -578,9 +578,7 @@ fun AdminRouteDetailScreen(
 
                 // Build route polyline points
                 val routePoints = remember(route) {
-                    route.geometry?.coordinates?.map { pt ->
-                        Coordinates(lng = pt[0], lat = pt[1])
-                    } ?: route.checkpoints.sortedBy { it.sequenceOrder }.map { it.coordinates }
+                    route.routePathCoordinates()
                 }
 
                 if (routePoints.size >= 2) {
@@ -840,9 +838,6 @@ fun AdminRouteDetailScreen(
             }
 
 
-            // (Checkpoints section removed: checkpoints are photo-era legacy —
-            // scan fulfillment measures coverage against the block boundary.)
-
             // ── Inner Boundaries (private-property exclusion islands) ──
             item {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -893,7 +888,7 @@ fun AdminRouteDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                "Permanently delete this route and all its checkpoints?",
+                                "Permanently delete this route and its assignments?",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = GccError,
                                 fontWeight = FontWeight.Medium,

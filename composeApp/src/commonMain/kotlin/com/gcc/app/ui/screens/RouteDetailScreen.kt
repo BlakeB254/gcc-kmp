@@ -27,6 +27,8 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteDetailViewModel
 import com.gcc.app.util.fmt
+import com.gcc.shared.geo.hasScannableGeometry
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.RouteStatus
@@ -103,24 +105,11 @@ fun RouteDetailScreen(
         routeAuthorizationState(route, uiState.worker)
     }
 
-    // Compute route path from checkpoints for polyline rendering
-    val sortedCheckpoints = remember(route) {
-        route.checkpoints.sortedBy { it.sequenceOrder }
-    }
-    // Prefer server geometry (full road-following path), fall back to checkpoint coords
-    val routePath = remember(route) {
-        val geomCoords = route.geometry?.coordinates?.map { point ->
-            Coordinates(lng = point[0], lat = point[1])
-        }
-        listOf(geomCoords ?: sortedCheckpoints.map { it.coordinates })
-    }
-
-    // Collect all route points (prefer geometry, fall back to checkpoints)
     val allRoutePoints = remember(route) {
-        val geomCoords = route.geometry?.coordinates?.map { point ->
-            Coordinates(lng = point[0], lat = point[1])
-        }
-        geomCoords ?: sortedCheckpoints.map { it.coordinates }
+        route.routePathCoordinates()
+    }
+    val routePath = remember(allRoutePoints) {
+        allRoutePoints.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
     }
 
     // Track the bottom panel height so we can offset the map center
@@ -390,10 +379,6 @@ fun RouteDetailScreen(
                     )
                 }
 
-                // (Checkpoint list removed: checkpoints are photo-era legacy —
-                // scan fulfillment runs on the block boundary corridor. The
-                // sorted list above still feeds the map path fallback.)
-
                 // Route status and actions
                 item {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -460,14 +445,10 @@ private fun routeAuthorizationState(route: Route, worker: Worker?): RouteAuthSta
 }
 
 private fun Route.isWorkerAvailableRoute(): Boolean =
-    status == RouteStatus.PUBLISHED && checkpoints.size >= 2
+    status == RouteStatus.PUBLISHED && hasScannableGeometry()
 
 private fun routeCommunityAreaName(route: Route): String? {
-    val routePoints = route.geometry?.coordinates?.mapNotNull { point ->
-        val lng = point.getOrNull(0)
-        val lat = point.getOrNull(1)
-        if (lat != null && lng != null) Coordinates(lng = lng, lat = lat) else null
-    } ?: route.checkpoints.map { it.coordinates }
+    val routePoints = route.routePathCoordinates()
 
     val area = routePoints
         .asSequence()

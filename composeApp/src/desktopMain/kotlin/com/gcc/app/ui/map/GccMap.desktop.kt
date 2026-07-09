@@ -68,7 +68,6 @@ actual fun GccMap(
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
     mapMode: MapMode,
-    checkpointPhotos: List<Pair<Coordinates, String>>,
     imageStars: List<Coordinates>,
     routePolygons: List<Pair<Int, List<Coordinates>>>,
     coverageCells: List<com.gcc.shared.model.MapCoverageCell>,
@@ -487,37 +486,11 @@ actual fun GccMap(
                     )
                 }
 
-                // Checkpoint markers with start/end distinction
-                routeCoords.forEachIndexed { index, coord ->
-                    val point = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-                    val isStart = index == 0
-                    val isEnd = index == routeCoords.lastIndex
-                    val outerR = if (isStart || isEnd) MapStyles.CHECKPOINT_START_END_OUTER else MapStyles.CHECKPOINT_OUTER_RADIUS
-                    val innerR = if (isStart || isEnd) MapStyles.CHECKPOINT_START_END_INNER else MapStyles.CHECKPOINT_INNER_RADIUS
-                    val fillColor = when {
-                        isStart -> MapStyles.CHECKPOINT_START_COLOR
-                        isEnd -> MapStyles.CHECKPOINT_END_COLOR
-                        else -> GccGreen
-                    }
-                    // White outer ring with border
-                    drawCircle(color = androidx.compose.ui.graphics.Color.White, radius = outerR, center = point)
-                    drawCircle(color = GccGreenDark, radius = outerR, center = point, style = Stroke(width = 1.5f))
-                    // Colored inner fill
-                    drawCircle(color = fillColor, radius = innerR, center = point)
-                }
             }
 
             // --- Spot report markers (heatmap wash + dots) ---
             if (spots.isNotEmpty()) {
                 drawSpotMarkers(spots, centerLat, centerLng, zoom, w, h, effectiveZoom)
-            }
-
-            // --- Photo star markers (gold dots at checkpoints with photos) ---
-            for ((coord, _) in checkpointPhotos) {
-                val pos = latLngToPixel(coord.lat, coord.lng, centerLat, centerLng, zoom, w, h)
-                if (pos.x > -20f && pos.x < w + 20f && pos.y > -20f && pos.y < h + 20f) {
-                    drawPhotoStar(pos.x, pos.y)
-                }
             }
 
             // --- Image location star markers (gold 5-pointed stars) ---

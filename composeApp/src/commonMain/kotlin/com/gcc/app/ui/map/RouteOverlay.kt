@@ -32,7 +32,7 @@ import com.gcc.shared.ui.drawPhotoPointScene
 /**
  * Overlay that renders route chips in a horizontal scrollable row.
  *
- * Each chip shows a route thumbnail, the route name, checkpoint count, and payout.
+ * Each chip shows a route thumbnail, route name, and payout.
  */
 @Composable
 fun RouteOverlay(
@@ -213,7 +213,7 @@ private fun RouteChip(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        "${route.checkpoints.size} stops",
+                        "Mapped route",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )

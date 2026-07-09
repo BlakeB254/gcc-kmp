@@ -31,7 +31,7 @@ import kotlinx.datetime.Clock
  * [com.gcc.app.platform.EnvScanSessionUploader.flushPending] runs), and the
  * native recorder's finished-chunk drain (best-effort kick after each
  * insert). There is deliberately NO reactive "network flipped to Wi-Fi"
- * listener in this task — the checkpoints above already bound staleness to
+ * listener in this task — the state checks above already bound staleness to
  * "next scan or next app launch," matching [com.gcc.app.platform.EnvScanSessionUploader]'s
  * existing (also non-reactive) pattern.
  */

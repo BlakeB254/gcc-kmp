@@ -10,12 +10,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.NetworkImage
-import com.gcc.shared.model.CheckpointType
 import com.gcc.shared.model.Route
-import com.gcc.shared.ui.drawAlleyPointScene
-import com.gcc.shared.ui.drawEndScene
 import com.gcc.shared.ui.drawPhotoPointScene
-import com.gcc.shared.ui.drawStartScene
 
 /**
  * Route-level thumbnail showing either the route's cover image (if set via admin)
@@ -42,25 +38,11 @@ fun RouteThumbnail(
             decodeHeight = decodeHeight,
         )
     } else {
-        val firstCheckpoint = route.checkpoints
-            .minByOrNull { it.sequenceOrder }
-
-        val type = firstCheckpoint?.type ?: CheckpointType.ROUTE_START
-
         Box(
             modifier = modifier.clip(RoundedCornerShape(6.dp)),
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                when (type) {
-                    CheckpointType.ROUTE_START -> drawStartScene()
-                    CheckpointType.ROUTE_END -> drawEndScene()
-                    CheckpointType.PHOTO_POINT -> drawPhotoPointScene()
-                    CheckpointType.ALLEY_ENTRANCE -> drawAlleyPointScene()
-                    CheckpointType.RECORD -> drawPhotoPointScene()
-                    CheckpointType.CLEAN -> drawStartScene()
-                    CheckpointType.VERIFY -> drawEndScene()
-                    CheckpointType.RECORD_CLEAN_VERIFY -> drawPhotoPointScene()
-                }
+                drawPhotoPointScene()
             }
         }
     }

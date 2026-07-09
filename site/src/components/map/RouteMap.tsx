@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { Source, Layer, Marker, Popup } from 'react-map-gl/maplibre'
+import { Source, Layer, Popup } from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
-import { Camera } from 'lucide-react'
-import { CHICAGO_CENTER_LNG_LAT, ZOOM, ROUTE_WIDTHS, ROUTE_STATUS_COLORS, CHECKPOINT_COLORS, CHECKPOINT_BORDER_COLORS } from '@/lib/design-tokens'
+import { CHICAGO_CENTER_LNG_LAT, ZOOM, ROUTE_WIDTHS, ROUTE_STATUS_COLORS } from '@/lib/design-tokens'
 import { BaseMap } from './BaseMap'
 
 /**
@@ -51,16 +50,6 @@ const STATUS_LABELS: Record<RouteDisplayStatus, string> = {
 
 type RouteDisplayStatus = 'published' | 'claimed' | 'active' | 'completed'
 
-interface Checkpoint {
-  name: string
-  sequenceOrder: number
-  coordinates: [number, number]
-  photoRequired: boolean
-  photoInstructions?: string
-  geofenceRadius: number
-  type: 'route_start' | 'photo_point' | 'alley_entrance' | 'route_end'
-}
-
 interface Route {
   id: number
   code: string
@@ -73,7 +62,6 @@ interface Route {
   estimatedMinutes?: number
   payoutAmount: number
   status: RouteDisplayStatus
-  checkpoints: Checkpoint[]
   imageUrl?: string
 }
 
@@ -83,7 +71,6 @@ interface RouteMapProps {
   selectedRouteId?: number
   interactive?: boolean
   height?: string
-  showCheckpoints?: boolean
   showLegend?: boolean
   center?: [number, number]
   zoom?: number
@@ -107,7 +94,6 @@ export function RouteMap({
   selectedRouteId,
   interactive = true,
   height = '400px',
-  showCheckpoints = true,
   showLegend = true,
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
@@ -131,17 +117,6 @@ export function RouteMap({
       geometry: route.geometry,
     })),
   }), [routes, selectedRouteId])
-
-  // Get all checkpoints from routes
-  const allCheckpoints = useMemo(() => {
-    return routes.flatMap((route) =>
-      route.checkpoints.map((cp) => ({
-        ...cp,
-        routeId: route.id,
-        routeStatus: route.status,
-      }))
-    )
-  }, [routes])
 
   // Handle route click
   const onClick = useCallback((event: MapLayerMouseEvent) => {
@@ -219,7 +194,6 @@ export function RouteMap({
                 {popupInfo.estimatedMinutes && (
                   <span>{popupInfo.estimatedMinutes} min</span>
                 )}
-                <span>{popupInfo.checkpoints.length} checkpoints</span>
               </div>
               <div className="flex items-center justify-between mt-3 pt-3 border-t">
                 <span className="font-semibold text-green-600">
@@ -322,47 +296,9 @@ export function RouteMap({
         />
       </Source>
 
-      {/* ============================================================ */}
-      {/* CHECKPOINT MARKERS                                          */}
-      {/* ============================================================ */}
-
-      {showCheckpoints &&
-        allCheckpoints.map((cp, idx) => (
-          <Marker
-            key={`cp-${cp.routeId}-${idx}`}
-            longitude={cp.coordinates[0]}
-            latitude={cp.coordinates[1]}
-            anchor="center"
-          >
-            <div
-              className="flex items-center justify-center rounded-full border-2 shadow-sm"
-              style={
-                cp.type === 'route_start'
-                  ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.START, borderColor: CHECKPOINT_BORDER_COLORS.start }
-                  : cp.type === 'route_end'
-                    ? { width: 28, height: 28, backgroundColor: CHECKPOINT_COLORS.END, borderColor: CHECKPOINT_BORDER_COLORS.end }
-                    : { width: 24, height: 24, backgroundColor: CHECKPOINT_COLORS.DEFAULT, borderColor: CHECKPOINT_BORDER_COLORS.default }
-              }
-            >
-              {cp.photoRequired ? (
-                <Camera
-                  className={`w-3 h-3 ${
-                    cp.type === 'route_start' || cp.type === 'route_end'
-                      ? 'text-white'
-                      : 'text-slate-600'
-                  }`}
-                />
-              ) : (
-                <span className="text-xs font-bold text-slate-600">
-                  {cp.sequenceOrder + 1}
-                </span>
-              )}
-            </div>
-          </Marker>
-        ))}
     </BaseMap>
   )
 }
 
 // Re-export types
-export type { Route, Checkpoint, RouteDisplayStatus, RouteMapProps }
+export type { Route, RouteDisplayStatus, RouteMapProps }

@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { blocks, routes, routeCheckpoints, serviceAreas } from '@/db/schema'
+import { blocks, routes, serviceAreas } from '@/db/schema'
 import { eq, and, inArray } from 'drizzle-orm'
-import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 /**
  * GET /api/routes - Get published routes
  *
  * Returns routes that are available for workers to claim.
- * Only returns published routes with their checkpoints.
+ * Only returns published routes with their scannable geometry.
  *
  * Query params:
  * - serviceAreaId: Filter by service area
@@ -56,37 +55,19 @@ export async function GET(request: Request) {
       .leftJoin(serviceAreas, eq(routes.serviceAreaId, serviceAreas.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
 
-    // Get checkpoints for all routes
     const routeIds = routeList.map((r) => r.id)
-
-    let checkpointsMap: Map<number, typeof routeCheckpoints.$inferSelect[]> = new Map()
     const blockBoundaryMap = new Map<number, unknown>()
     const innerBoundaryMap = new Map<number, unknown>()
 
     if (routeIds.length > 0) {
-      const [allCheckpoints, routeBlocks] = await Promise.all([
-        db
-          .select()
-          .from(routeCheckpoints)
-          .where(inArray(routeCheckpoints.routeId, routeIds))
-          .orderBy(routeCheckpoints.sequenceOrder),
-        db
-          .select({
-            routeId: blocks.routeId,
-            locationBoundary: blocks.locationBoundary,
-            innerBoundary: blocks.innerBoundary,
-          })
-          .from(blocks)
-          .where(inArray(blocks.routeId, routeIds)),
-      ])
-
-      // Group by route
-      for (const cp of allCheckpoints) {
-        if (!checkpointsMap.has(cp.routeId)) {
-          checkpointsMap.set(cp.routeId, [])
-        }
-        checkpointsMap.get(cp.routeId)!.push(cp)
-      }
+      const routeBlocks = await db
+        .select({
+          routeId: blocks.routeId,
+          locationBoundary: blocks.locationBoundary,
+          innerBoundary: blocks.innerBoundary,
+        })
+        .from(blocks)
+        .where(inArray(blocks.routeId, routeIds))
 
       for (const block of routeBlocks) {
         if (block.routeId && block.locationBoundary) {
@@ -98,16 +79,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // Combine routes with checkpoints (field names match Kotlin Route model)
     const result = routeList.flatMap((route) => {
-      const checkpoints = toMobileRouteCheckpoints(
-        checkpointsMap.get(route.id) || [],
-        blockBoundaryMap.get(route.id) ?? route.geometry,
-      )
-      // Checkpoints are legacy (photo-lap era): scan fulfillment runs on the
-      // block boundary / geometry. Only drop routes with nothing to scan.
       if (
-        checkpoints.length < 2 &&
         !blockBoundaryMap.get(route.id) &&
         !route.geometry
       ) {
@@ -126,7 +99,6 @@ export async function GET(request: Request) {
         distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
         estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
         payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-        checkpoints,
         imageUrl: route.imageUrl || null,
         imageLocationLat: route.imageLocationLat ?? null,
         imageLocationLng: route.imageLocationLng ?? null,

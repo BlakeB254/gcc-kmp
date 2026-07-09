@@ -19,7 +19,7 @@ import com.gcc.app.ui.components.ScoutCaptureDialog
 import com.gcc.app.ui.theme.GccSky
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.geo.CheckpointGenerator
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.ScanPhase
 import com.gcc.shared.serialization.GccJson
@@ -108,12 +108,7 @@ fun RouteScanScreen(
                 lap2Weight = lap2WeightStats,
                 onCompleteScan = { viewModel.completeScan() },
                 onCleanHotspot = { hotspot ->
-                    // Fallback (no capture sheet) — mark cleaned with placeholder
-                    viewModel.confirmHotspotCleaned(
-                        hotspot.id,
-                        afterPhotoUrl = "after_${hotspot.id}.jpg",
-                        verificationScore = 1.0f,
-                    )
+                    viewModel.setError("Capture an after photo before marking hotspot #${hotspot.id} clean.")
                 },
                 onSkipHotspot = { viewModel.skipHotspot(it.id) },
                 onConfirmCleaned = { hotspotId, afterPhotoUrl, score ->
@@ -163,20 +158,17 @@ fun RouteScanScreen(
             onCaptured = { photo, analysisResult, cleanupTarget ->
                 showScoutCapture = false
                 val state = uiState
-                val effectiveCheckpoints = state.route
-                    ?.let { CheckpointGenerator.generateIfMissing(it) }
-                    .orEmpty()
-                    .sortedBy { it.sequenceOrder }
+                val routePath = state.route?.routePathCoordinates().orEmpty()
                 val sectionIndex = state.currentSectionIndex
                     .takeIf { it in state.routeSections.indices }
                 val activeSection = sectionIndex?.let { state.routeSections[it] }
                 val lat = state.currentLat.takeIf { it != 0.0 }
                     ?: activeSection?.coordinates?.lat
-                    ?: effectiveCheckpoints.getOrNull(sectionIndex ?: 0)?.coordinates?.lat
+                    ?: routePath.getOrNull(sectionIndex ?: 0)?.lat
                     ?: 0.0
                 val lng = state.currentLng.takeIf { it != 0.0 }
                     ?: activeSection?.coordinates?.lng
-                    ?: effectiveCheckpoints.getOrNull(sectionIndex ?: 0)?.coordinates?.lng
+                    ?: routePath.getOrNull(sectionIndex ?: 0)?.lng
                     ?: 0.0
 
                 coroutineScope.launch {

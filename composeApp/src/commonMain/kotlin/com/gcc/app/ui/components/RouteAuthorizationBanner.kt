@@ -52,7 +52,7 @@ fun RouteAuthorizationBanner(
             accentColor = amber,
             backgroundColor = amber.copy(alpha = 0.12f),
             title = "Not available yet",
-            body = "An admin must publish this route and configure checkpoints before workers can start it.",
+            body = "An admin must publish this route and set a block boundary or route path before workers can start it.",
         )
         RouteAuthState.VerificationRequired -> BannerContent(
             accentColor = amber,

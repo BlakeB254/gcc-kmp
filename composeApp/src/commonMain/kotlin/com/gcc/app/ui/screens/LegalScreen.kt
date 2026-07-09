@@ -76,11 +76,11 @@ private fun TermsContent() {
     LegalSection("3. Account Obligations",
         "You are responsible for maintaining the security of your account credentials. You must not share your account or allow unauthorized access. You agree to provide truthful, accurate information.")
     LegalSection("4. Service Description",
-        "GCC connects community cleaning workers with route-based cleaning assignments in the Chicago metropolitan area. Workers accept routes, complete GPS-verified checkpoints, submit photo documentation, and receive payment for completed work.")
+        "GCC connects community cleaning workers with route-based cleaning assignments in the Chicago metropolitan area. Workers accept routes, complete GPS-verified scan areas, submit photo documentation, and receive payment for completed work.")
     LegalSection("5. Payment Terms",
         "Payouts are calculated per completed job and displayed before route acceptance. Payments are processed weekly via Stripe. GCC reserves the right to withhold payment for disputed or unverified work.")
     LegalSection("6. Photo Documentation & GPS",
-        "Certain checkpoints require before/after photo documentation. By using the app, you consent to GPS location tracking during active jobs for route verification and worker safety.")
+        "Certain cleanup targets require before/after photo documentation. By using the app, you consent to GPS location tracking during active jobs for route verification and worker safety.")
     LegalSection("7. Dispute Resolution",
         "Disputes will be resolved through binding arbitration in Cook County, Illinois. You waive your right to a jury trial and class action participation.")
     LegalSection("8. Limitation of Liability",
@@ -94,15 +94,15 @@ private fun TermsContent() {
 @Composable
 private fun PrivacyContent() {
     LegalSection("Data We Collect",
-        "We collect: name, email address, phone number, GPS location during active jobs, photos submitted for checkpoint verification, device information, and usage analytics.")
+        "We collect: name, email address, phone number, GPS location during active jobs, photos submitted for route verification, device information, and usage analytics.")
     LegalSection("How We Use Your Data",
         "Your data is used to: assign and verify route completions, process payments, ensure worker safety, improve our services, and communicate important updates.")
     LegalSection("Third-Party Sharing",
         "We share data with: Stripe (payment processing), cloud storage providers (photo storage), and analytics services. We do not sell your personal information.")
     LegalSection("GPS & Location Data",
-        "Location tracking is active only during accepted jobs. GPS data is used for checkpoint verification and safety. You may disable location services, but active jobs require GPS access.")
+        "Location tracking is active only during accepted jobs. GPS data is used for route verification and safety. You may disable location services, but active jobs require GPS access.")
     LegalSection("Photo Data",
-        "Photos submitted for checkpoint verification are stored securely and used solely for job verification and quality assurance. Photos may be retained for up to 90 days after job completion.")
+        "Photos submitted for route verification are stored securely and used solely for job verification and quality assurance. Photos may be retained for up to 90 days after job completion.")
     LegalSection("Illinois BIPA Compliance",
         "GCC does not collect biometric data (fingerprints, facial geometry). Photos are used for documentation purposes only and are not processed through facial recognition systems.")
     LegalSection("Data Retention & Deletion",
@@ -116,11 +116,11 @@ private fun PrivacyContent() {
 @Composable
 private fun HelpContent() {
     LegalSection("How do I start a route?",
-        "From the Dashboard, tap an available route to view details. Tap \"Claim Route\" to accept it. Once claimed, tap \"Start\" to begin GPS tracking and checkpoint completion.")
+        "From the Dashboard, tap an available route to view details. Tap \"Claim Route\" to accept it. Once claimed, tap \"Start\" to begin GPS tracking and route scanning.")
     LegalSection("What if I can't complete a route?",
         "If you need to abandon a route, contact support. Frequently abandoned routes may affect your account standing.")
     LegalSection("How do photos work?",
-        "Some checkpoints require before/after photos. When you reach a photo checkpoint, the app will prompt you to take a \"before\" photo, complete the cleaning, then take an \"after\" photo.")
+        "Some cleanup targets require before/after photos. When you document a target, the app will prompt you to take a \"before\" photo, complete the cleaning, then take an \"after\" photo.")
     LegalSection("When do I get paid?",
         "Payouts are processed weekly on Fridays for all jobs completed and verified by Wednesday. Payment is via Stripe direct deposit.")
     LegalSection("What are badges?",

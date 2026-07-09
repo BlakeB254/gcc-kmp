@@ -33,8 +33,8 @@ object GeofenceVerification {
         return EARTH_RADIUS_METERS * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    /** Check if a point is within the geofence radius of a checkpoint */
-    fun isWithinGeofence(userLocation: Point, checkpointLocation: Point, radiusMeters: Double): Boolean {
-        return distanceMeters(userLocation, checkpointLocation) <= radiusMeters
+    /** Check if a point is within the geofence radius of another point. */
+    fun isWithinGeofence(userLocation: Point, targetLocation: Point, radiusMeters: Double): Boolean {
+        return distanceMeters(userLocation, targetLocation) <= radiusMeters
     }
 }

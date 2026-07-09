@@ -31,9 +31,6 @@ val BadgeDiamond = Color(0xFFB9F2FF)
 // Map colors
 val MapRouteGreen = Color(0xFF22C55E)
 val MapRouteGray = Color(0xFF9CA3AF)
-val MapCheckpointCompleted = Color(0xFF10B981)
-val MapCheckpointCurrent = Color(0xFFF59E0B)
-val MapCheckpointUpcoming = Color(0xFF6B7280)
 val MapGeofenceRadius = Color(0x3322C55E)
 val MapGpsBlue = Color(0xFF3B82F6)
 

@@ -5,14 +5,14 @@ Password: Review2026!
 GCC is a workforce app for Global Community Cleaners NFP, a registered nonprofit organization in Chicago, IL. The app is used by approved cleaning workers to accept, complete, and get paid for neighborhood cleaning routes in the North Lawndale community.
 
 How the app works:
-Workers are recruited and verified by the nonprofit before they can access job features. Once approved, workers browse available cleaning routes on a map, accept a route, walk the assigned blocks while cleaning, and photograph before/after evidence at GPS-verified checkpoints. Completed jobs go through an approval process, and workers are paid per block.
+Workers are recruited and verified by the nonprofit before they can access job features. Once approved, workers browse available cleaning routes on a map, accept a route, scan assigned blocks, document trash hotspots, and capture before/after cleanup evidence tied to their route and location. Completed jobs go through an approval process, and workers are paid per block.
 
 Approval gate:
 New users who register cannot access job features until their account is approved by an administrator. This is intentional — the app serves a vetted workforce, not the general public. The demo account above is pre-approved so all features are accessible for review.
 
 Required permissions:
-- Camera: Required for capturing before/after evidence photos at each checkpoint during a cleaning job. The app cannot complete checkpoints without camera access.
-- Location (including background): Required for GPS-verified route completion. The app validates that the worker is physically present at each checkpoint. Location is accessed during active jobs only.
+- Camera: Required for route scanning and before/after cleanup evidence during active cleaning jobs.
+- Location (including background): Required for GPS-verified route completion and scan coverage during active jobs only.
 - Push Notifications: Used to alert workers when new routes are available, when a job is approved, and when payouts are issued.
 
 No in-app purchases or subscriptions. Workers earn money through the app; they do not pay anything to use it.

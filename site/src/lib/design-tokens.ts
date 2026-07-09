@@ -37,13 +37,6 @@ export const ROUTE_STATUS_COLORS = {
   completed: { line: '#6B7280', casing: '#1F2937' },
 } as const
 
-export const CHECKPOINT_COLORS = {
-  START: '#16A34A',
-  END: '#F97316',
-  PHOTO: '#FFFFFF',
-  DEFAULT: '#FFFFFF',
-} as const
-
 export const BOUNTY_COLORS = {
   OPEN: '#EF4444',
   IN_PROGRESS: '#3B82F6',
@@ -236,13 +229,6 @@ export const STATUS_COLORS = {
 } as const
 
 export const BOUNTY_MINIMUM_CENTS = 1000
-
-// Checkpoint border colors (used in RouteMap.tsx)
-export const CHECKPOINT_BORDER_COLORS = {
-  start: '#15803d',
-  end: '#c2410c',
-  default: '#475569',
-} as const
 
 // Social brand colors (used in ShareButtons.tsx)
 export const SOCIAL_COLORS = {

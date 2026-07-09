@@ -30,7 +30,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await request.json().catch(() => null)
     const beforePhotoUrl = typeof body?.beforePhotoUrl === 'string' ? body.beforePhotoUrl : null
     const afterPhotoUrl = typeof body?.afterPhotoUrl === 'string' ? body.afterPhotoUrl : null
-    const checkpointId = Number.isInteger(body?.checkpointId) ? body.checkpointId : null
 
     if (!beforePhotoUrl || !afterPhotoUrl) {
       return NextResponse.json(
@@ -48,7 +47,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const now = new Date().toISOString()
-    const common = checkpointId == null ? { capturedAt: now } : { checkpointId, capturedAt: now }
+    const common = { capturedAt: now }
     const beforePhotos = appendEvidence(existing.beforePhotos, { ...common, url: beforePhotoUrl })
     const afterPhotos = appendEvidence(existing.afterPhotos, { ...common, url: afterPhotoUrl })
 

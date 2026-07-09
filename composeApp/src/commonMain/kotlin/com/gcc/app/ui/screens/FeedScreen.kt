@@ -868,7 +868,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBountyScene(
     }
 }
 
-/** Draw a route completion scene: path line with checkpoints */
+/** Draw a route completion scene: path line with route markers */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteScene(w: Float, h: Float) {
     val routeColor = GccGreen.copy(alpha = 0.35f)
     // Winding path
@@ -878,7 +878,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteScene(w: F
         quadraticTo(w * 0.7f, h * 0.7f, w * 0.9f, h * 0.3f)
     }
     drawPath(path, color = routeColor, style = Stroke(width = 3f))
-    // Checkpoint dots
+    // Route dots
     drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.1f, h * 0.7f))
     drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.5f, h * 0.5f))
     drawCircle(GccGreen.copy(alpha = 0.5f), 5f, Offset(w * 0.9f, h * 0.3f))

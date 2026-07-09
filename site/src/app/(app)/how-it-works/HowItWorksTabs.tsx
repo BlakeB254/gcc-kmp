@@ -898,7 +898,7 @@ const appFeatures = [
     icon: Route,
     title: 'Route Fulfillment',
     description:
-      'Workers can follow guided routes with checkpoints, capturing a required photo at each stop until the whole route is complete.',
+      'Workers can follow guided routes, scan assigned blocks, and capture required cleanup evidence until the whole route is complete.',
   },
   {
     icon: Target,

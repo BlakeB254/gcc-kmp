@@ -26,7 +26,6 @@ data class Block(
     val fundingGoal: Int? = null,
     val fundingCurrent: Int = 0,
     val sponsorId: Int? = null,
-    val checkpoints: List<RouteCheckpoint> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant
 )

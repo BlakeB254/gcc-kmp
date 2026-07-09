@@ -37,10 +37,14 @@ import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
-import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.geo.gridCell10m
+import com.gcc.shared.geo.hasScannableGeometry
+import com.gcc.shared.geo.innerRingCoordinates
+import com.gcc.shared.geo.outerRingCoordinates
 import com.gcc.shared.geo.pointInPolygon
+import com.gcc.shared.geo.routeCenterCoordinates
+import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -216,13 +220,10 @@ class RouteScanViewModel(
      * (site/src/lib/world-observations.ts's `resolveByCoveredCells`).
      * Capped at 2000 to match the server's `parseCoveredCellIds` truncation.
      *
-     * SpotViewModel now sends the equivalent set on its `/api/spots`
-     * submission (from its own env-scan session's scannedCells — see
-     * SpotViewModel.submitReport), so the cell-supersede sweep is live for
-     * spot reports. This route-scan counterpart is still unwired: route
-     * scans complete via `CompleteScanRequest` (`/api/scans/{id}/complete`),
-     * which has no `coveredCellIds` field yet — that's a server + shared-
-     * model change, deferred until a route-scan completion branch adds it.
+         * SpotViewModel sends the equivalent set on its `/api/spots`
+         * submission. Route scans include this set in `CompleteScanRequest` so
+         * final submission can resolve stale observations across the swept cells,
+         * not only at hotspot anchors.
      */
     fun coveredCellIdsForSubmission(): List<String> =
         coverageTracker.scannedCells.value
@@ -658,15 +659,17 @@ class RouteScanViewModel(
         }
 
         val deviceType = detectDeviceType()
-        val effectiveCheckpoints = CheckpointGenerator.generateIfMissing(route)
-            .sortedBy { it.sequenceOrder }
-        val sections = effectiveCheckpoints.mapIndexed { index, checkpoint ->
-            RouteScanSectionUiItem(
-                index = index,
-                name = checkpoint.name,
-                coordinates = checkpoint.coordinates,
+        val routePath = route.routePathCoordinates()
+        val sectionAnchor = route.routeCenterCoordinates() ?: routePath.firstOrNull()
+        val sections = sectionAnchor?.let { anchor ->
+            listOf(
+                RouteScanSectionUiItem(
+                    index = 0,
+                    name = "Route scan area",
+                    coordinates = anchor,
+                )
             )
-        }
+        }.orEmpty()
 
         _uiState.value = RouteScanUiState(
             routeId = route.id,
@@ -676,29 +679,17 @@ class RouteScanViewModel(
             routeSections = sections,
             sectionPrompt = when {
                 sections.isEmpty() -> "Lap 1: walk the block and scan the full area."
-                deviceType == DeviceType.AR -> "Start the area scan at section 1."
-                else -> "Start the fallback photo lap at section 1."
+                deviceType == DeviceType.AR -> "Start the area scan and walk the full route boundary."
+                else -> "Start the route scan and capture observations as you find them."
             },
         )
 
         // Initialise coverage grid. When the route carries authored block
-        // boundaries, the required area is the block interior minus the inner
-        // exclusion islands (route-v2 corridor); otherwise fall back to
-        // checkpoint-line proximity.
-        val waypoints = effectiveCheckpoints
-            .map { it.coordinates }
-        val outerRing = route.blockBoundary?.coordinates?.firstOrNull().orEmpty().mapNotNull { point ->
-            val lng = point.getOrNull(0) ?: return@mapNotNull null
-            val lat = point.getOrNull(1) ?: return@mapNotNull null
-            Coordinates(lat = lat, lng = lng)
-        }
-        val innerRings = route.innerBoundary?.coordinates.orEmpty().mapNotNull { islandPolygon ->
-            islandPolygon.firstOrNull()?.mapNotNull { point ->
-                val lng = point.getOrNull(0) ?: return@mapNotNull null
-                val lat = point.getOrNull(1) ?: return@mapNotNull null
-                Coordinates(lat = lat, lng = lng)
-            }?.takeIf { it.size >= 3 }
-        }
+        // Boundaries define the required scan area. Older route geometry remains
+        // as a line-proximity fallback when a block boundary is not available.
+        val waypoints = routePath
+        val outerRing = route.blockBoundary?.outerRingCoordinates().orEmpty()
+        val innerRings = route.innerBoundary.innerRingCoordinates()
         if (outerRing.size >= 3) {
             coverageTracker.initFromBlock(outerRing, innerRings, waypoints)
         } else {
@@ -1078,6 +1069,7 @@ class RouteScanViewModel(
                         cleanPathGeoJson = buildGeoJsonLineString(cleanPath),
                         totalTrashVolumeLiters = totalVolume,
                         totalTrashWeightLbs = totalWeight,
+                        coveredCellIds = coveredCellIdsForSubmission(),
                     )
                 )
                 _uiState.value = _uiState.value.copy(
@@ -1631,14 +1623,9 @@ class RouteScanViewModel(
     }
 }
 
-// Checkpoints are legacy (photo-lap era). Scannable = block boundary for the
-// corridor, or geometry / checkpoints for the line-proximity fallback.
 private fun Route.isWorkerAvailableRoute(allowUnpublished: Boolean = false): Boolean =
     (status == RouteStatus.PUBLISHED || allowUnpublished) &&
-        (
-            (blockBoundary?.coordinates?.firstOrNull()?.size ?: 0) >= 3 ||
-                CheckpointGenerator.generateIfMissing(this).size >= 2
-        )
+        hasScannableGeometry()
 
 private fun ScanHotspot.sectionIndex(): Int? =
     arAnchorData

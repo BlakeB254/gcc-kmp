@@ -547,7 +547,6 @@ export function CombinedMap({
           <div className="flex items-center gap-4 text-xs text-neutral-500 mb-2">
             {r.lengthMeters && <span>{(r.lengthMeters / 1000).toFixed(1)} km</span>}
             {r.estimatedMinutes && <span>{r.estimatedMinutes} min</span>}
-            <span>{r.checkpoints.length} checkpoints</span>
           </div>
           <div className="flex items-center justify-between mt-3 pt-3 border-t">
             <span className="font-semibold text-green-600">
@@ -788,8 +787,6 @@ export function CombinedMap({
             />
           </Source>
         )}
-
-        {/* Checkpoint markers removed — admin-level detail not shown on public map */}
 
         {/* ============================================================ */}
         {/* SPOT REPORTS — HEATMAP (zoomed out) + DOTS (zoomed in)      */}

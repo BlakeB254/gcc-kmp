@@ -5,16 +5,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { blocks, blockExclusionZones, routes, routeCheckpoints } from '@/db/schema'
+import { blocks, blockExclusionZones, routes } from '@/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
-import { toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 export const dynamic = 'force-dynamic'
 
 type RouteContext = { params: Promise<{ routeId: string }> }
 
-function toRouteResponse(route: any, checkpoints: any[] = [], checkpointGeometry: unknown = route.geometry) {
+function toRouteResponse(route: any) {
   return {
     id: route.id,
     code: route.code,
@@ -27,7 +26,6 @@ function toRouteResponse(route: any, checkpoints: any[] = [], checkpointGeometry
       ? Math.round(parseFloat(route.estimatedMinutes))
       : null,
     payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-    checkpoints: toMobileRouteCheckpoints(checkpoints, checkpointGeometry),
     imageUrl: route.imageUrl || null,
     imageLocationLat: route.imageLocationLat ?? null,
     imageLocationLng: route.imageLocationLng ?? null,
@@ -91,21 +89,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         )
     }
 
-    // Fetch checkpoints for the response
-    const checkpoints = await db
-      .select()
-      .from(routeCheckpoints)
-      .where(eq(routeCheckpoints.routeId, routeId))
-      .orderBy(routeCheckpoints.sequenceOrder)
-
-    const [routeBlock] = await db
-      .select({ locationBoundary: blocks.locationBoundary })
-      .from(blocks)
-      .where(eq(blocks.routeId, routeId))
-      .limit(1)
-
     return NextResponse.json({
-      data: toRouteResponse(updated, checkpoints, routeBlock?.locationBoundary ?? updated.geometry),
+      data: toRouteResponse(updated),
     })
   } catch (error) {
     console.error('PUT /api/admin/routes/[routeId] error:', error)
@@ -124,18 +109,17 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invalid route ID' }, { status: 400 })
     }
 
-    // Delete the route and everything hanging off it — checkpoints, the
-    // linked block (blocks.routeId is a 1:1 auto-created with the route,
-    // previously left orphaned), and that block's exclusion zones. db.batch
-    // runs all statements in a single transaction on the neon-http driver.
-    const [, , , deletedRoutes] = await db.batch([
+    // Delete the route and everything hanging off it: the linked block
+    // (blocks.routeId is 1:1 auto-created with the route) and that block's
+    // exclusion zones. db.batch runs all statements in a single transaction
+    // on the neon-http driver.
+    const [, , deletedRoutes] = await db.batch([
       db.delete(blockExclusionZones).where(
         inArray(
           blockExclusionZones.blockId,
           db.select({ id: blocks.id }).from(blocks).where(eq(blocks.routeId, routeId)),
         ),
       ),
-      db.delete(routeCheckpoints).where(eq(routeCheckpoints.routeId, routeId)),
       db.delete(blocks).where(eq(blocks.routeId, routeId)),
       db.delete(routes).where(eq(routes.id, routeId)).returning({ id: routes.id }),
     ])

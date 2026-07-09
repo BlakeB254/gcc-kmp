@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { blocks, jobs, routes, routeCheckpoints, routeScans, scanHotspots, serviceAreas } from '@/db/schema'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { blocks, jobs, routes, serviceAreas } from '@/db/schema'
+import { and, eq, inArray } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { hotspotCheckpoints, toMobileRouteCheckpoints } from '@/lib/route-checkpoints'
 
 /**
  * GET /api/routes/[id] - Get a single route by ID
  *
- * Returns the route with its checkpoints in mobile ApiResponse format.
+ * Returns the route with its scannable geometry in mobile ApiResponse format.
  */
 export async function GET(
   request: Request,
@@ -90,28 +89,13 @@ export async function GET(
       }
     }
 
-    // Get checkpoints for this route
-    const checkpoints = await db
-      .select()
-      .from(routeCheckpoints)
-      .where(eq(routeCheckpoints.routeId, routeId))
-      .orderBy(routeCheckpoints.sequenceOrder)
-
     const [routeBlock] = await db
       .select({ locationBoundary: blocks.locationBoundary, innerBoundary: blocks.innerBoundary })
       .from(blocks)
       .where(eq(blocks.routeId, routeId))
       .limit(1)
 
-    const baseCheckpointResponse = toMobileRouteCheckpoints(
-      checkpoints,
-      routeBlock?.locationBoundary ?? route.geometry,
-    )
-    // Checkpoints are legacy from the photo-lap era — scan-based fulfillment
-    // needs a block boundary or geometry, not checkpoints. Only reject a
-    // route with NO scannable geometry at all.
     if (
-      baseCheckpointResponse.length < 2 &&
       !routeBlock?.locationBoundary &&
       !route.geometry
     ) {
@@ -120,41 +104,6 @@ export async function GET(
         { status: 404 },
       )
     }
-
-    let historicalHotspots: Array<{
-      lat: number
-      lng: number
-      severity: number
-      detectedAt: string | Date
-      status: string
-    }> = []
-    try {
-      historicalHotspots = await db
-        .select({
-          lat: scanHotspots.lat,
-          lng: scanHotspots.lng,
-          severity: scanHotspots.severity,
-          detectedAt: scanHotspots.detectedAt,
-          status: scanHotspots.status,
-        })
-        .from(scanHotspots)
-        .innerJoin(routeScans, eq(scanHotspots.scanId, routeScans.id))
-        .where(
-          and(
-            eq(routeScans.routeId, routeId),
-            inArray(scanHotspots.status, ['detected', 'skipped']),
-          ),
-        )
-        .orderBy(desc(scanHotspots.detectedAt))
-        .limit(4)
-    } catch (hotspotError) {
-      console.warn('Unable to attach route hotspot checkpoints:', hotspotError)
-    }
-
-    const checkpointResponse = [
-      ...baseCheckpointResponse,
-      ...hotspotCheckpoints(historicalHotspots, baseCheckpointResponse.length + 1),
-    ]
 
     const result = {
       id: route.id,
@@ -170,7 +119,6 @@ export async function GET(
         ? Math.round(parseFloat(route.estimatedMinutes))
         : null,
       payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
-      checkpoints: checkpointResponse,
       imageUrl: route.imageUrl || null,
       imageLocationLat: route.imageLocationLat ?? null,
       imageLocationLng: route.imageLocationLng ?? null,

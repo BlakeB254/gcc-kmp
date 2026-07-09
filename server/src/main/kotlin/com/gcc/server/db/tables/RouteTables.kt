@@ -4,8 +4,8 @@ import com.gcc.shared.model.*
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestamp
 
-// Route-subsystem tables: service areas, blocks, routes, checkpoints,
-// jobs, and the route-release queue introduced in PR #4.
+// Route-subsystem tables: service areas, blocks, routes, jobs, and the
+// route-release queue introduced in PR #4.
 // Split out of Tables.kt as part of the M-9 per-domain split.
 // ===========================================================================
 // Service Areas
@@ -66,7 +66,6 @@ object Blocks : Table("blocks") {
     val toCorner = varchar("to_corner", 255).nullable()
     val side = varchar("side", 10).nullable()
     val includesAlley = bool("includes_alley").default(true)
-    val checkpoints = jsonbCol<kotlinx.serialization.json.JsonElement>("checkpoints").nullable()
 
     // Display image URL (Vercel Blob)
     val displayImage = varchar("display_image", 2048).nullable()
@@ -131,38 +130,6 @@ object Routes : Table("routes") {
     // Image location (where the display photo was taken)
     val imageLocationLat = double("image_location_lat").nullable()
     val imageLocationLng = double("image_location_lng").nullable()
-
-    // Timestamps
-    val createdAt = timestamp("created_at")
-    val updatedAt = timestamp("updated_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-// ===========================================================================
-// Route Checkpoints
-// ===========================================================================
-object RouteCheckpoints : Table("route_checkpoints") {
-    val id = integer("id").autoIncrement()
-    val routeId = integer("route_id").references(Routes.id)
-    val name = varchar("name", 100)
-    val sequenceOrder = integer("sequence_order")
-
-    // GPS coordinates [lng, lat] as JSONB
-    val coordinates = jsonbCol<List<Double>>("coordinates")
-
-    // Photo configuration
-    val photoRequired = bool("photo_required").default(true)
-    val photoInstructions = text("photo_instructions").nullable()
-
-    // Geofence radius (numeric stored as varchar)
-    val geofenceRadius = varchar("geofence_radius", 50).default("15")
-
-    // Type of checkpoint
-    val type = varchar("type", 50)
-
-    // Checkpoint image URL
-    val imageUrl = varchar("image_url", 2048).nullable()
 
     // Timestamps
     val createdAt = timestamp("created_at")
@@ -434,4 +401,3 @@ object ReconstructionAssets : Table("reconstruction_assets") {
 
     override val primaryKey = PrimaryKey(id)
 }
-

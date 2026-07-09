@@ -9,14 +9,6 @@
  * when the API is unreachable.
  */
 
-export interface BlockCheckpoint {
-  name: string
-  type: 'corner_start' | 'midpoint' | 'alley' | 'corner_end'
-  description: string
-  coordinates: [number, number] // [longitude, latitude]
-  radius: number // meters for GPS verification
-}
-
 export interface BlockDefinition {
   code: string
   streetName: string
@@ -34,7 +26,6 @@ export interface BlockDefinition {
       coordinates: [number, number][][]
     }
   }
-  checkpoints: BlockCheckpoint[]
 }
 
 /**
@@ -54,7 +45,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.72468409297217, 41.859784844988184] },
       polygon: { type: 'Polygon', coordinates: [[[-87.72436621243862,41.85887713030937],[-87.72440387844341,41.860699244917356],[-87.72501338445508,41.8606911657443],[-87.72495289655153,41.85887183898171],[-87.72436621243862,41.85887713030937]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-N02',
@@ -67,7 +57,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.7237635445187, 41.85980304089159] },
       polygon: { type: 'Polygon', coordinates: [[[-87.72310944121632,41.858901094921634],[-87.72314511046446,41.860716759951],[-87.72443494720221,41.86071341799601],[-87.72436467919184,41.85888089069772],[-87.72310944121632,41.858901094921634]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-N03',
@@ -80,7 +69,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.71891057876738, 41.85984871949483] },
       polygon: { type: 'Polygon', coordinates: [[[-87.71827424468796,41.858961246012996],[-87.71834096492195,41.860751496466605],[-87.71953970620343,41.86075132923571],[-87.71948739925617,41.858930806264],[-87.71827424468796,41.858961246012996]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-N04',
@@ -93,7 +81,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.7213029695082, 41.85981860777793] },
       polygon: { type: 'Polygon', coordinates: [[[-87.72061470463386,41.85892300649701],[-87.72075164656154,41.86073321229429],[-87.72196385861172,41.86071285531176],[-87.72188166822572,41.858905357008666],[-87.72061470463386,41.85892300649701]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-N05',
@@ -106,7 +93,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.72252501962954, 41.859809016798266] },
       polygon: { type: 'Polygon', coordinates: [[[-87.72188166822572,41.858905357008666],[-87.72196385861172,41.86071285531176],[-87.72314511046446,41.860716759951],[-87.72310944121632,41.858901094921634],[-87.72188166822572,41.858905357008666]]] },
     },
-    checkpoints: [],
   },
 
   // ===== SOUTH SIDE =====
@@ -121,7 +107,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.7140143183777, 41.859915968319314] },
       polygon: { type: 'Polygon', coordinates: [[[-87.71343772696717,41.86083650194416],[-87.71465168391362,41.86081931346976],[-87.7146000344683,41.858993625301764],[-87.71336782816174,41.859014432561565],[-87.71343772696717,41.86083650194416]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-S02',
@@ -134,7 +119,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.71523298766681, 41.85989385109283] },
       polygon: { type: 'Polygon', coordinates: [[[-87.7146580099565,41.8608114574389],[-87.71586975683759,41.86079192181697],[-87.7158041494049,41.85897839981368],[-87.7146000344683,41.858993625301764],[-87.7146580099565,41.8608114574389]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-S03',
@@ -147,7 +131,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.71645933534221, 41.859877341847756] },
       polygon: { type: 'Polygon', coordinates: [[[-87.71586975683759,41.86079192181697],[-87.71711589055013,41.86077708975296],[-87.71703596353454,41.858966447327674],[-87.71581573044654,41.858973908493425],[-87.71586975683759,41.86079192181697]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-S04',
@@ -160,7 +143,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.71768495492599, 41.859860690860984] },
       polygon: { type: 'Polygon', coordinates: [[[-87.71711589055013,41.86077708975296],[-87.71834096492195,41.860751496466605],[-87.71824700069735,41.858947729896684],[-87.71703596353454,41.858966447327674],[-87.71711589055013,41.86077708975296]]] },
     },
-    checkpoints: [],
   },
   {
     code: 'NL-S05',
@@ -173,7 +155,6 @@ export const NORTH_LAWNDALE_BLOCKS: BlockDefinition[] = [
       center: { type: 'Point', coordinates: [-87.72009836416376, 41.85983458857275] },
       polygon: { type: 'Polygon', coordinates: [[[-87.71953970620343,41.86075132923571],[-87.72075164656154,41.86073321229429],[-87.72061470463386,41.85892300649701],[-87.71948739925617,41.858930806264],[-87.71953970620343,41.86075132923571]]] },
     },
-    checkpoints: [],
   },
 ]
 
@@ -226,32 +207,6 @@ export function blocksToGeoJSON(
         status: block.status,
       },
       geometry: block.geo.polygon,
-    })),
-  }
-}
-
-/**
- * Convert checkpoints to GeoJSON for display
- */
-export function checkpointsToGeoJSON(
-  checkpoints: BlockCheckpoint[]
-) {
-  return {
-    type: 'FeatureCollection' as const,
-    features: checkpoints.map((cp, index) => ({
-      type: 'Feature' as const,
-      id: `checkpoint-${index}`,
-      properties: {
-        name: cp.name,
-        type: cp.type,
-        description: cp.description,
-        radius: cp.radius,
-        order: index + 1,
-      },
-      geometry: {
-        type: 'Point' as const,
-        coordinates: cp.coordinates,
-      },
     })),
   }
 }

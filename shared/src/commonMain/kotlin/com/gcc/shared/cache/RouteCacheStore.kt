@@ -9,8 +9,8 @@ import kotlinx.serialization.encodeToString
 /**
  * Local cache of the last successfully-fetched routes list, backed by
  * SQLDelight. One row per route: id (upsert identity) + the whole DTO
- * serialized as JSON -- Route has 18 fields including nested GeoJSON
- * geometry and a checkpoint list, so flattening into columns would be a
+ * serialized as JSON -- Route has nested GeoJSON geometry and metadata,
+ * so flattening into columns would be a
  * large, brittle schema that drifts from the Kotlin model over time.
  */
 class RouteCacheStore(driver: SqlDriver) {

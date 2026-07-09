@@ -188,17 +188,6 @@ export default function BountiesPage() {
             estimatedMinutes: r.estimatedDurationMinutes || r.estimatedMinutes || null,
             payoutAmount: r.payoutAmount || 10000,
             status: r.status || 'published',
-            checkpoints: (r.checkpoints || []).map((cp: any) => ({
-              name: cp.name,
-              sequenceOrder: cp.sequenceOrder,
-              coordinates: Array.isArray(cp.coordinates)
-                ? cp.coordinates
-                : [cp.coordinates?.lng ?? 0, cp.coordinates?.lat ?? 0],
-              photoRequired: cp.photoRequired ?? true,
-              photoInstructions: cp.photoInstructions,
-              geofenceRadius: cp.geofenceRadius || 15,
-              type: cp.type || 'photo_point',
-            })),
           }))
           setRoutes(transformed)
         }

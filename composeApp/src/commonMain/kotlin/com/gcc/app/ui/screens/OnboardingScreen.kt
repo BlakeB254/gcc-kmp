@@ -34,7 +34,7 @@ private data class OnboardingPage(
 private val onboardingPages = listOf(
     OnboardingPage(
         title = "Clean Your Community",
-        subtitle = "Accept routes, complete checkpoints, earn rewards for keeping Chicago clean.",
+        subtitle = "Accept routes, scan cleanup areas, and earn rewards for keeping Chicago clean.",
         emoji = "\uD83E\uDDF9",
     ),
     OnboardingPage(
