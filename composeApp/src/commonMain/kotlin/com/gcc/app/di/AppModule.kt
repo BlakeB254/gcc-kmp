@@ -1,5 +1,6 @@
 package com.gcc.app.di
 
+import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -116,5 +117,9 @@ val appModule = module {
     singleOf(::AffectedBlocksViewModel)
     singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get(), get(), get(), get(), get()) }
+    // `factory`, not `single`: CameraManager owns a live AVCaptureSession on
+    // iOS and every other call site builds its own (`remember { CameraManager() }`),
+    // so a shared instance would let two screens fight over the camera.
+    factory { CameraManager() }
     factory { DocumentUploadViewModel(get(), get()) }
 }
