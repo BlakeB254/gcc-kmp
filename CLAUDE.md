@@ -162,7 +162,21 @@ cdx-mobile build android                               # full Android build
 
 ## Where to read for context
 
-- `docs/feature-spec-2026-05.md` — current feature work
-- `docs/plans/` — initiative briefs
-- `docs/superpowers/` — designs in flight
+**Start here — the source-of-truth set:**
+- `docs/governance/00-INDEX.md` — the governing documentation set (architecture,
+  what actually runs in prod, the production API reference, the mobile app map).
+  **This is the primary architecture entry point; read the index first.**
+- `docs/governance/scan-and-coverage-model.md` — how the scan / coverage system
+  actually works end-to-end (SEEN/GRAZED/CLOSE tiers, raycast fan, organic
+  marching-squares rendering, the fog veil, the indoor gate, gridCell keying,
+  the coverage/retraction queues, world-observation supersession, cell→points).
+  A living map that points into the code — read this before touching scanning.
+- `docs/CONVENTIONS.md` — the cross-cutting client↔server contracts that MUST
+  stay in lockstep (Coordinates `(lng,lat)` ordering, gridCell byte-equality,
+  the litter-footprint mirror).
+
+**Feature history / in-flight (point-in-time, may be stale):**
+- `docs/feature-spec-2026-05.md` — product canon (§A invariants) + methods (§B)
+- `docs/plans/` and `docs/superpowers/{specs,plans}/` — dated change proposals;
+  a shipped plan is NOT current truth — cross-check against `docs/governance/`.
 - The GitHub PR list at `BlakeB254/gcc` — what's actively shipping

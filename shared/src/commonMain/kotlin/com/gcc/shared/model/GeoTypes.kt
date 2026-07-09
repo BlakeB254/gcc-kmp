@@ -40,6 +40,15 @@ object CoordinatesSerializer : KSerializer<Coordinates> {
     }
 }
 
+/**
+ * A geographic point, **longitude-first** (GeoJSON order: `[lng, lat]`).
+ *
+ * ALWAYS construct with named args — `Coordinates(lat = …, lng = …)`. The
+ * positional order is `(lng, lat)`, so a bare `Coordinates(a, b)` reads as
+ * lat-first to most people and silently transposes the point. This has caused
+ * a real "every pin off the map" bug (see WorldObservation.kt). See
+ * `docs/CONVENTIONS.md` §1.
+ */
 @Serializable(with = CoordinatesSerializer::class)
 data class Coordinates(val lng: Double, val lat: Double)
 
