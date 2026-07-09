@@ -1,6 +1,7 @@
 package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -21,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.map.CommunityInfoPanel
 import com.gcc.app.ui.map.BlockOverlay
+import com.gcc.app.ui.map.ProblemSeverity
+import com.gcc.app.ui.map.problemSeverityTier
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapMode
 import com.gcc.app.ui.map.MapModeToggle
@@ -1777,13 +1780,25 @@ private fun ScanCoverageLegend(modifier: Modifier = Modifier) {
                 "Map colours",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
             )
-            ScanLegendRow(Color(0xFF22C55E), "Scanned · clean")
-            ScanLegendRow(Color(0xFF22C55E), "Light green · needs detail scan", swatchAlpha = 0.35f)
-            ScanLegendRow(Color(0xFFEF4444), "Litter / reported mess")
-            ScanLegendRow(Color(0xFFF59E0B), "Stale · re-scan")
+            // FILL = what is here. Ordered worst-first so the eye lands on the
+            // thing that needs action.
+            ScanLegendRow(Color(0xFF991B1B), "Severe mess")
+            ScanLegendRow(Color(0xFFEF4444), "Litter here")
+            ScanLegendRow(Color(0xFFF59E0B), "Some litter")
+            ScanLegendRow(Color(0xFF22C55E), "Scanned close · clean")
+            ScanLegendRow(Color(0xFF22C55E), "Scanned near · clean", swatchAlpha = 0.35f)
+            ScanLegendRow(Color(0xFF22C55E), "Seen at a distance", swatchAlpha = 0.18f)
             ScanLegendRow(Color(0xFF4B5563), "Never scanned")
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = TextSubtle.copy(alpha = 0.3f),
+            )
+            // BORDER = how fresh our knowledge is. Rendered as an outline so it
+            // never re-teaches the old "orange means a stale AREA" model — it
+            // is a modifier on any fill, not a state of its own.
+            ScanLegendDashedRow(Color(0xFFB45309), "Dashed edge · over 24h, re-scan")
             Text(
-                "Tap a tile for last results",
+                "Tap any area for photos and details",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted,
             )
@@ -1799,6 +1814,22 @@ private fun ScanLegendRow(color: Color, label: String, swatchAlpha: Float = 0.7f
                 .size(12.dp)
                 .clip(RoundedCornerShape(3.dp))
                 .background(color.copy(alpha = swatchAlpha)),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** Swatch for the staleness BORDER: an outlined, neutral-filled square so it
+ *  reads as an edge treatment rather than another fill colour. */
+@Composable
+private fun ScanLegendDashedRow(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .border(1.5.dp, color, RoundedCornerShape(3.dp)),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
@@ -1840,6 +1871,39 @@ private fun CoverageCellInfoCard(
     }
     val dirty = nearby.filter { it.state == "dirty" && (it.domain == null || it.domain == "litter") }
     val stale = cell.state == "stale"
+    // The cell's own server-side rollup is authoritative for "is this a problem
+    // area" — `nearby` only holds the observations the client happens to have
+    // fetched for the current viewport.
+    val isProblem = cell.litterCount > 0 || dirty.isNotEmpty()
+    val severity = problemSeverityTier(cell.litterCount, cell.litterWeightGrams)
+
+    // Best-photo order (Pillar 8/9 addendum: closest capture, then confidence,
+    // then most recent). Capture distance isn't on the wire, but `diagnosed`
+    // IS a close-range capture by definition — that's what upgrades an
+    // observation out of `observed`. Severity then recency break the tie.
+    val photoUrls = remember(dirty) {
+        dirty.sortedWith(
+            compareByDescending<com.gcc.shared.model.WorldObservation> { it.diagnosticStatus == "diagnosed" }
+                .thenByDescending { it.severity ?: 0 }
+                .thenByDescending { it.capturedAt ?: "" }
+        ).mapNotNull { it.mediaUrl }.distinct().take(4)
+    }
+    var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
+
+    // "3 bottles, 1 tire" beats four identical bullet points.
+    val itemSummary = remember(dirty) {
+        dirty.groupingBy { obs ->
+            obs.itemType?.let { TrashItemCatalog.infoFor(it).displayName } ?: "Litter"
+        }.eachCount()
+            .entries.sortedByDescending { it.value }
+            .joinToString(", ") { (label, count) ->
+                if (count > 1) "$count × $label" else label
+            }
+    }
+
+    val weightLabel = cell.litterWeightGrams.takeIf { it > 0.0 }?.let { grams ->
+        if (grams >= 1000) "~${kotlin.math.round(grams / 100.0) / 10.0} kg" else "~${grams.toInt()} g"
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -1853,57 +1917,102 @@ private fun CoverageCellInfoCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Title states WHAT IS HERE. Staleness is a qualifier on our
+                // knowledge, not the headline — a stale cell full of litter
+                // used to announce itself as "needs re-scan" and say nothing
+                // about the litter.
                 Text(
                     when {
-                        stale -> "Scanned — needs re-scan"
-                        dirty.isNotEmpty() -> "Scanned — litter on record"
+                        isProblem -> when (severity) {
+                            ProblemSeverity.SEVERE -> "Severe mess"
+                            ProblemSeverity.MODERATE -> "Litter here"
+                            ProblemSeverity.LIGHT -> "Some litter"
+                        }
                         else -> "Scanned — clean"
                     },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = when {
-                        stale -> Color(0xFFB45309)
-                        dirty.isNotEmpty() -> Color(0xFFDC2626)
+                        isProblem && severity == ProblemSeverity.SEVERE -> Color(0xFF991B1B)
+                        isProblem && severity == ProblemSeverity.MODERATE -> Color(0xFFDC2626)
+                        isProblem -> Color(0xFFB45309)
                         else -> GccGreenDark
                     },
                 )
                 TextButton(onClick = onDismiss) { Text("✕", color = TextMuted) }
             }
+
+            // How we know, and how well.
             Text(
-                "Last scanned ${lastScannedLabel(cell.lastScannedAt)}" +
-                    if (stale) " — over 24h old, scan it again to keep it fresh" else "",
+                buildString {
+                    append("Last scanned ${lastScannedLabel(cell.lastScannedAt)}")
+                    append(
+                        when (cell.quality) {
+                            "close" -> " · close-scanned"
+                            "grazed" -> " · walked past"
+                            "seen" -> " · seen from a distance"
+                            else -> ""
+                        }
+                    )
+                    if (stale) append(" · over 24h old — scan again to keep it fresh")
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = if (stale) Color(0xFFB45309) else TextMuted,
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (dirty.isEmpty()) {
+
+            if (cell.quality == "seen") {
+                Text(
+                    "Only sighted from a distance — walk up and scan closely for a full reading.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (!isProblem) {
                 Text(
                     "Last scan found no litter here.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = GccGreen,
                 )
             } else {
+                // Evidence first — the photos ARE the answer to "what's here?".
+                if (photoUrls.isNotEmpty()) {
+                    PhotoStrip(
+                        urls = photoUrls,
+                        photoSize = 120,
+                        onPhotoClick = { index -> fullScreenImageIndex = index },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 Text(
-                    "Litter still on record here:",
+                    listOfNotNull(
+                        itemSummary.takeIf { it.isNotBlank() }
+                            ?: "${cell.litterCount} item${if (cell.litterCount == 1) "" else "s"} on record",
+                        weightLabel,
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                dirty.take(4).forEach { obs ->
+
+                if (photoUrls.isEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "• ${(obs.itemType ?: "litter").replace('_', ' ')}" +
-                            (obs.severity?.let { " · severity $it" } ?: ""),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                    )
-                }
-                if (dirty.size > 4) {
-                    Text(
-                        "…and ${dirty.size - 4} more",
+                        "No photo captured for this area yet.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSubtle,
                     )
                 }
             }
         }
+    }
+
+    fullScreenImageIndex?.let { startIndex ->
+        FullScreenImageGallery(
+            urls = photoUrls,
+            startIndex = startIndex,
+            onDismiss = { fullScreenImageIndex = null },
+        )
     }
 }
 

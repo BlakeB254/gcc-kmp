@@ -56,6 +56,13 @@ data class MapCoverageCell(
     // at read time (no schema migration). Defaulted so legacy/cached
     // responses without it still decode; 0.0 renders as "no urgency".
     val priority: Double = 0.0,
+    // Scan-found litter in this cell (current + dirty + domain=litter), rolled
+    // up server-side at read time like [priority]. Drives the problem-area
+    // blobs: [litterCount] decides IF a cell is a problem, [litterWeightGrams]
+    // decides HOW BAD. Both defaulted so a cached/pre-deploy response still
+    // decodes and simply renders no problem area.
+    val litterCount: Int = 0,
+    val litterWeightGrams: Double = 0.0,
 )
 
 @Serializable
