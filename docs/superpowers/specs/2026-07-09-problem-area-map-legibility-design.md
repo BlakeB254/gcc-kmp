@@ -64,19 +64,37 @@ domain = 'litter' AND is_current AND state = 'dirty'
 > existing `observedOnlyRows` query**, which omits it today.
 
 Client derivation in `buildCoverageStateGeoJsons` (`GeoJsonLayers.kt:861`) changes from a
-spot-only test to a union, with **litter winning over stale**:
+spot-only test to a union. **Staleness stops being a fill state entirely** (Blake,
+2026-07-09: "I don't like the stale scans changing the scan to orange — maybe change the
+border instead of the fill"). Fill answers *what is here*; border answers *how fresh our
+knowledge is*. They are orthogonal, so encoding both in hue forced one to hide the other.
 
 ```
-problem = litterCount > 0 || hasSpotNear(lat, lng)   // red, severity-tiered
-stale   = state == "stale" && !problem               // amber
-clean   = fresh && !problem                          // green, alpha by quality
-fog     = unscanned                                  // grey
+FILL   (what is here)
+  problem = litterCount > 0 || hasSpotNear(lat, lng)   // red, severity-tiered
+  clean   = fresh && !problem                          // green, alpha by quality
+  fog     = unscanned                                  // grey
+
+BORDER (how fresh)
+  stale   = state == "stale"                           // amber dashed stroke,
+                                                       // drawn over EITHER fill
 ```
 
-This reorders precedence. Today `stale` is computed independently of dirtiness
-(`GeoJsonLayers.kt:936-937`), so a stale cell containing litter renders amber. Under the
-new rule it renders red, and staleness moves into the card text ("seen 3 days ago").
-Rationale: known trash is actionable; staleness is only a hint the data may be old.
+This supersedes the earlier "litter always wins" precedence rule, and is strictly better:
+a stale cell that contains litter now shows **red fill + amber dashed border** rather than
+having to choose. No information is lost, and the amber fill (`coverage-stale`, currently
+`0xFFF59E0B` at α0.36) disappears from the map.
+
+The `stale` **fill** layer is deleted. A `coverage-stale-border` `LineLayer` replaces it,
+sourced from the merged outline of all stale cells regardless of their fill state, drawn
+above the fill layers. MapLibre Native supports dashed strokes via `LineLayer(dasharray=)`.
+
+Two consequences to verify on device:
+- A stale border and a problem border can coincide on the same blob edge. The stale
+  border must be visually distinct (dash pattern) rather than relying on hue alone.
+- Every scanned cell older than 24h gets a border, so a long-neglected area becomes a
+  field of dashed outlines. If that reads as noise, gate the stale border to zoom
+  ≥ `IOS_SPOT_HEAT_FADE_ZOOM` (street zoom), where re-scan decisions are actually made.
 
 `hasSpotNear` (12m radius, unresolved `CommunityReport`) is retained so human reports keep
 lighting up the map. Problem = scan-found litter **OR** human report.
@@ -131,8 +149,13 @@ dirty.
 **Removals.** Litter footprints are no longer drawn at close zoom (superseded by problem
 blobs). Vegetation and construction footprint layers are deleted outright. All three
 domains' rows remain in the DB for the world model and the DGX pipeline; only the map
-layers go. Net: `GccMap.ios.kt` **removes 12** footprint layers (3 domains × {fill,outline}
-× {diagnosed,observed}) and **adds 6** problem layers (3 severity tiers × {fill,outline}).
+layers go.
+
+Net layer change in `GccMap.ios.kt`:
+- **−12** footprint layers (3 domains × {fill,outline} × {diagnosed,observed})
+- **−1** `coverage-stale` fill layer (staleness becomes a border)
+- **+6** problem layers (3 severity tiers × {fill,outline})
+- **+1** `coverage-stale-border` dashed `LineLayer`
 
 ### C. Interaction & legend
 
@@ -163,14 +186,19 @@ flow may reuse it. Flagged so it isn't mistaken for live code.
 actually drawn, resolving D3/D5:
 
 ```
-Problem area   · light / moderate / severe   (3 red swatches)
-Scanned close  · full green
-Scanned near   · lighter green
+Problem area     · light / moderate / severe   (3 red swatches)
+Scanned close    · full green
+Scanned near     · lighter green
 Seen at distance · faintest green
-Stale · re-scan  · amber
 Never scanned    · grey
+─────────────────────────────────
+Dashed outline   · over 24h old — re-scan     (border swatch, not a fill)
 Tap any area for photos and details
 ```
+
+The stale entry is visually separated because it is a **modifier on** any fill, not a
+peer state. The legend swatch must render as a dashed outline around a neutral fill, or
+it will re-teach the old "orange means stale area" mental model.
 
 ### D. Error handling & degradation
 
@@ -197,8 +225,10 @@ Server (`node:test` + `tsx`, per repo convention — not vitest/jest):
 - Cells with no observations return `0`/`0.0`, not `null`.
 
 Client (`composeApp` `commonTest` — must compile for iOS, so no `JdbcSqliteDriver`):
-- `buildCoverageStateGeoJsons`: a cell with `litterCount > 0` lands in a problem tier and
-  **not** in `stale`, even when `state == "stale"` (pins the precedence reorder).
+- `buildCoverageStateGeoJsons`: a cell with `litterCount > 0 && state == "stale"` appears
+  in **both** the problem-tier fill collection **and** the stale-border collection (pins
+  the orthogonal fill/border encoding — the old code put it in exactly one).
+- No cell ever lands in a `stale` **fill** collection (that layer is gone).
 - A cell with `hasSpotNear` and `litterCount == 0` still lands in problem (union preserved).
 - Severity tiering: boundary values (0, 1999, 2000, 14999, 15000) land in the expected tier.
 - `litterWeightGrams == 0 && litterCount > 0` → count-based tier, not `light`.
@@ -263,8 +293,11 @@ This is Spec 1 of 5 agreed with Blake:
 
 - **Severity thresholds are guesses.** Validate against the real per-cell weight
   distribution before merge; adjust so all three tiers occur in North Lawndale.
-- **Precedence reorder is user-visible.** Cells that were amber become red. Intended, but
-  it will look like "more mess appeared" on first launch. Worth a release note.
+- **The amber fill disappears.** Cells that were amber become green-or-red with a dashed
+  border. Intended, but on first launch it will read as "the stale areas vanished and more
+  mess appeared." Worth a release note.
+- **Dashed strokes at low zoom.** A dash pattern that reads well at street zoom can alias
+  into a solid line when the blob is a few pixels wide. Verify, and gate by zoom if needed.
 - **`spot_report` dominates.** 140 of 166 problem cells come from `spot_report`, only 26
   from `route_scan`. The map will be mostly report-driven until scanning volume grows;
   don't read early screenshots as proof the scan path works.
