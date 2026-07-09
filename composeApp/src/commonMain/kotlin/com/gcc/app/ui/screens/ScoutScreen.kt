@@ -22,6 +22,7 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteScanSectionStatus
 import com.gcc.shared.geo.CheckpointGenerator
 import com.gcc.app.viewmodel.RouteScanUiState
+import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.RouteStatus
@@ -45,10 +46,16 @@ fun ScoutScreen(
     isOutsideBoundary: Boolean = false,
     onStartScout: () -> Unit,
     onCompleteScout: () -> Unit,
+    onForceCompleteScout: () -> Unit = {},
     onCaptureHotspot: () -> Unit,
     onBeginRoute: () -> Unit = {},
     onBack: () -> Unit,
 ) {
+    // Force-complete confirm: the scout lap must never strand a worker (see
+    // completeScout(force=…)); when the normal gate isn't met, the primary
+    // button routes through this confirm instead of being disabled.
+    var showForceConfirm by remember { mutableStateOf(false) }
+
     // Build Coordinates from flat lat/lng in uiState
     val currentLocation = if (uiState.currentLat != 0.0 || uiState.currentLng != 0.0) {
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
@@ -278,15 +285,28 @@ fun ScoutScreen(
                 else -> {
                     val allSectionsRecorded = uiState.routeSections.isNotEmpty() &&
                         uiState.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
-                    val canComplete = (uiState.coveragePercent >= 85.0 && uiState.isLoopClosed) ||
+                    // Mirror RouteScanViewModel.canCompleteScout() exactly (incl.
+                    // the >=95% escape the button previously dropped).
+                    val canComplete = uiState.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT ||
+                        (uiState.coveragePercent >= 85.0 && uiState.isLoopClosed) ||
                         allSectionsRecorded
+                    // Always tappable \u2014 a worker must never be stranded in the
+                    // scout lap. When the gate is met it completes normally; when
+                    // not, it routes through a force-complete confirm.
                     GccButton(
-                        text = if (canComplete) "Complete Scout"
-                        else "Scouting\u2026 ${uiState.coveragePercent.toInt()}%",
-                        onClick = { if (canComplete) onCompleteScout() },
+                        text = if (canComplete) "Complete Scout" else "Complete Scout anyway",
+                        onClick = { if (canComplete) onCompleteScout() else showForceConfirm = true },
                         variant = GccButtonVariant.PRIMARY,
-                        enabled = canComplete,
+                        enabled = true,
                     )
+                    if (!canComplete) {
+                        Text(
+                            text = "Scouting\u2026 ${uiState.coveragePercent.toInt()}% covered",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                 }
             }
 
@@ -346,6 +366,32 @@ fun ScoutScreen(
     }
 
     // ScoutCaptureDialog is now managed by RouteScanScreen — no stub needed here.
+
+    // Force-complete confirm: lets the worker leave the scout lap even when
+    // coverage stalled below the thresholds and sections couldn't be recorded,
+    // so a route can always be finished. Coverage collected so far still uploads.
+    if (showForceConfirm) {
+        AlertDialog(
+            onDismissRequest = { showForceConfirm = false },
+            title = { Text("Complete scout anyway?") },
+            text = {
+                Text(
+                    "You haven't fully covered the block (${uiState.coveragePercent.toInt()}%). " +
+                        "You can still finish scouting and move on to cleaning — the coverage " +
+                        "you've captured is saved.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showForceConfirm = false
+                    onForceCompleteScout()
+                }) { Text("Complete anyway") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForceConfirm = false }) { Text("Keep scouting") }
+            },
+        )
+    }
 }
 
 @Composable

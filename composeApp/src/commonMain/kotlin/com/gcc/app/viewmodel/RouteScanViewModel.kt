@@ -894,8 +894,15 @@ class RouteScanViewModel(
 
     // ── Phase transitions ────────────────────────────────────────────
 
-    fun completeScout() {
-        if (!canCompleteScout()) return
+    /**
+     * Advance SCOUTING → SCOUT_REVIEW. [force] bypasses [canCompleteScout] so a
+     * worker is never stranded in the scout lap when coverage stalls below the
+     * thresholds and a section can't be photo-recorded (the only otherwise-
+     * reachable escape is all-sections-recorded, which is all-or-nothing). The
+     * UI gates the forced path behind a confirm dialog; coverage still uploads.
+     */
+    fun completeScout(force: Boolean = false) {
+        if (!force && !canCompleteScout()) return
         val state = _uiState.value
         val scanId = state.scanId ?: return
 
