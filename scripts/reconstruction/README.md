@@ -251,3 +251,64 @@ container; H.264 fallback per `ArSessionRecorder`'s `hevcSupported` probe
 should decode fine via PyAV/ffmpeg regardless), and empirically validate
 `project_rgbd_to_points`'s depth-buffer axis/origin assumption (documented
 as unverified in its own docstring) against a real captured scene.
+
+---
+
+## 2026-07-10 — queue + real-data prototype (this branch)
+
+The pipeline above is now driven by a durable Neon queue and has run against
+REAL captured data for the first time. Spec:
+`docs/superpowers/specs/2026-07-10-phase3-reconstruction-queue-and-prototype-design.md`.
+
+**What ran (cell `464650:-721828`, sessions `env-1783470359293-i3tt1m` +
+`env-1783640498732-0cgku8`):** both sessions decoded (real HEVC via PyAV,
+real LZFSE depth), both ACCEPTED by GPS-seeded ICP, fused into a 61 MB
+`pointcloud.ply`; per-session HY-WorldMirror splats aligned + concatenated
+into a 105 MB `splat.ply` (1.54 M gaussians, recognizable photo-textured
+sidewalk); `splat-transform` compressed it to an 18.7 MB `.spz` in ~2 s.
+QC'd in SuperSplat (:7051, `gcc-cell-464650-721828.ply` staged in its dist/).
+
+**Fixes real data forced (all committed on this branch):**
+- Depth chunks upload as `.bin`, not `.depth` — grouping accepts both.
+- `extract_video_frame_at` was O(N²) on real chunks (full 60 s HEVC decode
+  per ~2 Hz depth record, ~120×/chunk → 20+ min with no end in sight);
+  `extract_video_frames_at` decodes once for all targets → full cell fuses
+  in ~3 min.
+- Open3D `Vector3dVector` SEGFAULTS on float32/non-contiguous input on this
+  box — coerce to contiguous float64 (add to the Open3D breakage list above).
+- `world_mirror_client.DEFAULT_BASE_URL` pointed at :7025 (now aiq-agent);
+  honors `WORLD_MIRROR_URL`, default :7027 (the live instance).
+
+**BLOCKED — R2 publish needs a write-capable token.** The DGX's surviving
+R2 token (`gcc-r2-key`, `backend/deploy/.env`) is Object-READ-only:
+`PutObject reconstructed/… → AccessDenied` (probed directly). Prod's
+write creds are Vercel-sensitive (env pull returns empty), and the site's
+presigned-PUT endpoints are strictly `raw/`-scoped. Create an
+Object Read & Write token scoped to `gcc-scan-storage`, put it in
+`backend/deploy/.env` (or a worker-specific env), and the queued jobs
+complete end-to-end — the failed attempt is recorded on job 3 and requeues
+cleanly.
+
+**Known quality caveats to iterate on (visible in the QC screenshot):**
+- Splat patches are camera-relative → orientation post-process needed
+  (rotate to Y-up + ground-level translate; see
+  `cdx-platform/scripts/rotate_splat_canonical.py` for the reference fix).
+- World-mirror reconstructs each session in its OWN scale/frame; the ICP
+  transform applied comes from the LiDAR point-cloud frame, so per-session
+  splat pieces don't perfectly co-register. Candidate fix: estimate a
+  similarity transform between each session's world-mirror cameras and its
+  ARKit poses before applying the cell transform.
+
+**Queue + worker usage:**
+
+```bash
+# Enqueue happens automatically after every backend index sweep
+curl -X POST localhost:8080/admin/index-scans -H "Authorization: Bearer $INDEX_SECRET"
+
+# Worker (this box):
+cd scripts/reconstruction && source .venv/bin/activate
+export DATABASE_URL=...           # Neon (unpooled)
+export R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET_NAME=gcc-scan-storage
+export WORLD_MIRROR_URL=http://127.0.0.1:7027 SPLAT_REQUIRE_ACTIVATION=0
+python recon_worker.py --once     # or --loop 60
+```
