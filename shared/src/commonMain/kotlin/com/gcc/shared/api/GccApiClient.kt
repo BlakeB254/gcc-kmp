@@ -702,6 +702,22 @@ class GccApiClient(
     suspend fun getAdminDailyStats(days: Int = 30): List<AdminDailyStats> =
         get("/api/admin/analytics/daily") { parameter("days", days) }
 
+    // Jobs (Operations drill-in). `status` must be an enum_jobs_status value —
+    // the server answers 400 for anything else.
+    suspend fun getAdminJobs(status: String? = null, page: Int = 1, limit: Int = 50): List<AdminJobSummary> =
+        get("/api/admin/jobs") {
+            status?.let { parameter("status", it) }
+            parameter("page", page)
+            parameter("limit", limit)
+        }
+
+    /** Every job of a status, across all pages — the drill-in list must match
+     *  the Operations count it was opened from. */
+    suspend fun getAllAdminJobs(status: String? = null): List<AdminJobSummary> =
+        fetchAllPages { page, limit ->
+            getAdminJobs(status = status, page = page, limit = limit)
+        }
+
     // Workers
     suspend fun getAdminWorkers(search: String? = null, status: String? = null, page: Int = 1, limit: Int = 20, verificationStatus: String? = null): List<Worker> =
         get("/api/admin/workers") {
