@@ -112,3 +112,15 @@ push-style notifications ("3 new 311 reports in your usual area").
 Writing anything BACK to the city's 311 system (read-only integration); citywide bulk
 backfill of closed historical reports (open + recent only); CV auto-matching; the streets
 table fix in `sync_chicago_data.py` (flagged, separate concern).
+
+## 9. Security addendum (same session)
+
+Automated review flagged the evidence endpoint for IDOR on the referenced resources. Root
+cause is a data-model gap: `scan_sessions` and `world_observations` carry NO worker
+attribution (sessions are device-keyed), so per-worker ownership is structurally
+unverifiable today. Hardening shipped: the session must exist and be completed; a
+referenced observation must exist AND lie within 150 m of the report; `photoKey` must be a
+well-formed `raw/{cell}/…` key whose cell is within 150 m of the report. **Hard
+prerequisite before setting `CIVIC_CAPTURE_BONUS_POINTS` > 0: add worker attribution to
+scan sessions (workerId on the manifest/session row) so evidence ownership is enforceable
+— otherwise points can be farmed by attaching someone else's nearby artifacts.**

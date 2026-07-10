@@ -8,14 +8,34 @@
  * CIVIC_CAPTURE_BONUS_POINTS (unset/0 = record evidence, award nothing) —
  * the bonus size is an open product decision (spec §5.4), so the loop works
  * end-to-end while the economics stay off until explicitly configured.
+ *
+ * Referenced-resource validation: sessions and observations carry NO worker
+ * attribution today (scan_sessions is device-keyed — a known model gap), so
+ * per-worker OWNERSHIP of a session/observation is structurally unverifiable.
+ * What IS enforced: the session must exist and be completed, the observation
+ * must exist AND sit within EVIDENCE_MAX_DISTANCE_M of the report, and
+ * photoKey must be a well-formed raw/ scan key whose cell is near the report
+ * — so only real, geographically-consistent artifacts can attach. Keeping
+ * CIVIC_CAPTURE_BONUS_POINTS at 0 until session→worker attribution exists is
+ * the guard against point farming via someone else's artifacts (spec §5.4).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { civicReports, civicReportEvidence, pointsLedger } from '@/db/schema'
-import { and, eq, isNull } from 'drizzle-orm'
+import { civicReports, civicReportEvidence, pointsLedger, scanSessions, worldObservations } from '@/db/schema'
+import { and, eq, isNull, isNotNull } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 
 export const dynamic = 'force-dynamic'
+
+const METERS_PER_DEG_LAT = 111_000
+const METERS_PER_DEG_LNG = 82_300
+const EVIDENCE_MAX_DISTANCE_M = 150
+// rawScanKey/rawSessionArtifactKey shape: raw/{latIdx}:{lngIdx}/…
+const RAW_KEY_PATTERN = /^raw\/(-?\d+):(-?\d+)\//
+
+function distanceMeters(latA: number, lngA: number, latB: number, lngB: number): number {
+  return Math.hypot((latA - latB) * METERS_PER_DEG_LAT, (lngA - lngB) * METERS_PER_DEG_LNG)
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireMobileAuth(request)
@@ -35,6 +55,51 @@ export async function POST(request: NextRequest) {
   const [report] = await db.select().from(civicReports).where(eq(civicReports.srNumber, srNumber)).limit(1)
   if (!report) {
     return NextResponse.json({ data: null, success: false, message: 'Unknown 311 report' }, { status: 404 })
+  }
+
+  // The session must be a real, completed scan session — not a fabricated id.
+  const [session] = await db
+    .select({ sessionId: scanSessions.sessionId })
+    .from(scanSessions)
+    .where(and(eq(scanSessions.sessionId, sessionId), isNotNull(scanSessions.completedAt)))
+    .limit(1)
+  if (!session) {
+    return NextResponse.json({ data: null, success: false, message: 'Unknown or incomplete scan session' }, { status: 403 })
+  }
+
+  // The observation, if referenced, must exist and be physically near the
+  // report — evidence has to be geographically consistent with the claim.
+  if (observationId !== null) {
+    const [obs] = await db
+      .select({ lat: worldObservations.lat, lng: worldObservations.lng })
+      .from(worldObservations)
+      .where(eq(worldObservations.id, observationId))
+      .limit(1)
+    if (!obs) {
+      return NextResponse.json({ data: null, success: false, message: 'Unknown observation' }, { status: 403 })
+    }
+    if (
+      report.lat !== null && report.lng !== null &&
+      distanceMeters(obs.lat, obs.lng, report.lat, report.lng) > EVIDENCE_MAX_DISTANCE_M
+    ) {
+      return NextResponse.json({ data: null, success: false, message: 'Observation too far from report' }, { status: 403 })
+    }
+  }
+
+  // photoKey must be a well-formed raw/ scan key whose cell sits near the
+  // report (the key's leading component IS a grid cell id).
+  if (photoKey !== null) {
+    const match = RAW_KEY_PATTERN.exec(photoKey)
+    if (!match) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid photo key' }, { status: 403 })
+    }
+    if (report.lat !== null && report.lng !== null) {
+      const cellLat = (Number(match[1]) + 0.5) * (10 / METERS_PER_DEG_LAT)
+      const cellLng = (Number(match[2]) + 0.5) * (10 / METERS_PER_DEG_LNG)
+      if (distanceMeters(cellLat, cellLng, report.lat, report.lng) > EVIDENCE_MAX_DISTANCE_M) {
+        return NextResponse.json({ data: null, success: false, message: 'Photo too far from report' }, { status: 403 })
+      }
+    }
   }
 
   const inserted = await db
