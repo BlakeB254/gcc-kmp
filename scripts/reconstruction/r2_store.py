@@ -117,3 +117,38 @@ def reconstructed_asset_key(cell_id: str, version: int, asset_type: str, fmt: st
     without either side hard-coding the other's output."""
     validate_cell_id(cell_id)
     return f"reconstructed/{cell_id}/{version}/{asset_type}.{fmt}"
+
+
+_VERSION_KEY_PATTERN = re.compile(r"^reconstructed/[^/]+/(\d+)/")
+
+
+def next_version_for_cell(cell_id: str, asset_type: str) -> int:
+    """R2's own object listing is the source of truth for "what physical
+    versions already exist" -- avoids a DB round-trip (this pipeline
+    otherwise never talks to Postgres directly, only through the admin API)
+    at the cost of a real but narrow race: two fuse_cell.py runs for the
+    SAME cell at the SAME instant could both compute the same next version
+    and collide. Acceptable for this tool's actual operating model (a
+    periodic single-run batch job, not a concurrent web service) -- if that
+    ever changes, this needs a proper atomic reservation instead."""
+    validate_cell_id(cell_id)
+    c = client()
+    prefix = f"reconstructed/{cell_id}/"
+    highest = 0
+    continuation = None
+    while True:
+        kwargs = {"Bucket": bucket_name(), "Prefix": prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        resp = c.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            if f"/{asset_type}." not in obj["Key"]:
+                continue
+            match = _VERSION_KEY_PATTERN.match(obj["Key"])
+            if match:
+                highest = max(highest, int(match.group(1)))
+        if resp.get("IsTruncated"):
+            continuation = resp["NextContinuationToken"]
+        else:
+            break
+    return highest + 1

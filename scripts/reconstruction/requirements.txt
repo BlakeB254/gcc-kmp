@@ -5,6 +5,13 @@
 # past its current stub.
 open3d==0.18.0
 numpy
+scipy
 pillow
 boto3
-psycopg2-binary
+requests
+av             # HEVC/.mov chunk decoding (chunk_io.py)
+pyliblzfse     # LZFSE depth-record decompression (chunk_io.py) -- matches
+               # Apple's Compression framework's LZFSE variant, same
+               # reference codec (github.com/lzfse/lzfse)
+plyfile        # Gaussian-splat .ply read/write (gaussian_ply.py)
+pytest         # test suite (tests/)
