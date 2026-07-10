@@ -101,6 +101,8 @@ export function observedOnlyLitterInBbox(
 export interface LitterCellStats {
   litterCount: number
   litterWeightGrams: number
+  /** Most recent `captured_at` among the cell's current dirty litter. */
+  lastLitterAt: string
 }
 
 /**
@@ -111,8 +113,83 @@ export interface LitterCellStats {
 export function litterStatsFor(
   cellId: string,
   stats: ReadonlyMap<string, LitterCellStats>
-): LitterCellStats {
-  return stats.get(cellId) ?? { litterCount: 0, litterWeightGrams: 0 }
+): Omit<LitterCellStats, 'lastLitterAt'> {
+  const hit = stats.get(cellId)
+  return hit
+    ? { litterCount: hit.litterCount, litterWeightGrams: hit.litterWeightGrams }
+    : { litterCount: 0, litterWeightGrams: 0 }
+}
+
+export interface CoverageCellDto {
+  locationCellId: string
+  lat: number
+  lng: number
+  state: 'fresh' | 'stale'
+  quality: string
+  lastScannedAt: string
+  totalDistanceMeters: number
+  priority: number
+  litterCount: number
+  litterWeightGrams: number
+}
+
+/**
+ * Litter on NEVER-SCANNED ground.
+ *
+ * Problem-area blobs are drawn from coverage cells, and a cell only exists in
+ * `cell_coverage_summary` once somebody scanned it. So a spot report on ground
+ * no scan ever swept had no cell to colour and was invisible on the map — 38 of
+ * the 52 dirty litter observations around South Millard, all of them
+ * `spot_report`. The map showed where people had walked, not where the litter is.
+ *
+ * These cells are synthesized so the litter renders. They carry:
+ *  - `quality: 'seen'` — sighted, never walked. Truthful: nothing swept here.
+ *  - `lastScannedAt` = the newest litter sighting, since that is genuinely the
+ *    freshest knowledge we hold about this ground. Staleness is then computed by
+ *    the same 24h rule, so old reports get the dashed "re-scan" border.
+ *  - `totalDistanceMeters: 0` — no sweep happened.
+ *  - `priority: 1.0` — known litter on unswept ground is the most urgent rescan
+ *    target there is.
+ *
+ * Trade-off, deliberate: these cells punch a hole in the never-scanned fog, so
+ * unswept ground stops reading as pure fog. The problem fill covers them anyway,
+ * and showing known litter beats preserving a technically-correct fog.
+ */
+export function synthesizeObservationOnlyCells(
+  litterStats: ReadonlyMap<string, LitterCellStats>,
+  coveredCellIds: ReadonlySet<string>,
+  centerOf: (cellId: string) => { lat: number; lng: number },
+  now: number,
+  staleAfterMs: number,
+  since: number | null
+): CoverageCellDto[] {
+  const out: CoverageCellDto[] = []
+  for (const [cellId, stats] of litterStats) {
+    if (coveredCellIds.has(cellId)) continue
+    const seenAtMs = new Date(stats.lastLitterAt).getTime()
+    if (!Number.isFinite(seenAtMs)) continue
+    if (since !== null && seenAtMs < since) continue
+    let center: { lat: number; lng: number }
+    try {
+      center = centerOf(cellId)
+    } catch {
+      continue
+    }
+    if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) continue
+    out.push({
+      locationCellId: cellId,
+      lat: center.lat,
+      lng: center.lng,
+      state: now - seenAtMs > staleAfterMs ? 'stale' : 'fresh',
+      quality: 'seen',
+      lastScannedAt: stats.lastLitterAt,
+      totalDistanceMeters: 0,
+      priority: 1,
+      litterCount: stats.litterCount,
+      litterWeightGrams: stats.litterWeightGrams,
+    })
+  }
+  return out
 }
 
 export async function GET(request: NextRequest) {
@@ -165,6 +242,7 @@ export async function GET(request: NextRequest) {
         locationCellId: worldObservations.locationCellId,
         litterCount: sql<number>`count(*)::int`,
         litterWeightGrams: sql<number>`coalesce(sum(nullif(${worldObservations.attributes} ->> 'estimatedWeightGrams', '')::numeric), 0)::float8`,
+        lastLitterAt: sql<string>`max(${worldObservations.capturedAt})`,
       })
       .from(worldObservations)
       .where(currentDirtyLitterInBbox(minLng, minLat, maxLng, maxLat))
@@ -173,12 +251,16 @@ export async function GET(request: NextRequest) {
     const litterStats = new Map<string, LitterCellStats>(
       litterRows.map((r) => [
         r.locationCellId,
-        { litterCount: Number(r.litterCount), litterWeightGrams: Number(r.litterWeightGrams) },
+        {
+          litterCount: Number(r.litterCount),
+          litterWeightGrams: Number(r.litterWeightGrams),
+          lastLitterAt: String(r.lastLitterAt),
+        },
       ])
     )
 
     const now = Date.now()
-    const cells = rows
+    const inBbox = rows
       .map((r) => {
         const center = cellCenter(r.locationCellId)
         return { r, center }
@@ -187,6 +269,12 @@ export async function GET(request: NextRequest) {
         center.lng >= minLng && center.lng <= maxLng &&
         center.lat >= minLat && center.lat <= maxLat
       )
+
+    // Built BEFORE the `since` delta filter: a covered cell the cursor skipped
+    // is still covered, and must not be re-synthesized as never-scanned ground.
+    const coveredCellIds = new Set(inBbox.map(({ r }) => r.locationCellId))
+
+    const scannedCells = inBbox
       .filter(({ r }) => since === null || new Date(r.lastScannedAt).getTime() >= since)
       .map(({ r, center }) => {
         const ageMs = now - new Date(r.lastScannedAt).getTime()
@@ -206,6 +294,19 @@ export async function GET(request: NextRequest) {
           litterWeightGrams: litter.litterWeightGrams,
         }
       })
+
+    // Litter on ground nobody ever scanned has no coverage row to colour, so it
+    // was invisible on the map. Emit a cell for it.
+    const observationOnlyCells = synthesizeObservationOnlyCells(
+      litterStats,
+      coveredCellIds,
+      cellCenter,
+      now,
+      STALE_AFTER_MS,
+      since
+    )
+
+    const cells = [...scannedCells, ...observationOnlyCells]
 
     return NextResponse.json({ cells, success: true })
   } catch (error) {
