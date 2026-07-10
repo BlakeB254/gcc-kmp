@@ -1832,6 +1832,34 @@ export const captureChunks = pgTable('capture_chunks', {
 export type CaptureChunkRow = typeof captureChunks.$inferSelect
 export type NewCaptureChunkRow = typeof captureChunks.$inferInsert
 
+// Durable Phase-3 reconstruction queue (docs/superpowers/specs/2026-07-10-
+// phase3-reconstruction-queue-and-prototype-design.md §4). The Kotlin backend
+// enqueues one job per completed, unreconstructed, chunk-bearing scan session
+// after each index sweep; the DGX GPU worker (scripts/reconstruction/
+// recon_worker.py) leases with SELECT … FOR UPDATE SKIP LOCKED and, on
+// success, closes every job for the same cell (job unit = session, work unit
+// = cell). Never consumed from Vercel/neon-http — leasing needs a real
+// transaction. Applied by migration 0034.
+export const reconstructionJobs = pgTable('reconstruction_jobs', {
+  id: serial('id').primaryKey(),
+  sessionId: varchar('session_id', { length: 64 }).notNull(),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  status: varchar('status', { length: 16 }).default('queued').notNull(), // 'queued' | 'leased' | 'done' | 'failed'
+  attempts: integer('attempts').default(0).notNull(),
+  leasedUntil: timestamp('leased_until', { mode: 'string', withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+}, (table) => ({
+  sessionIdKey: uniqueIndex('reconstruction_jobs_session_id_key').on(table.sessionId),
+  claimIdx: index('reconstruction_jobs_claim_idx').on(table.status, table.createdAt),
+  cellIdx: index('reconstruction_jobs_cell_idx').on(table.locationCellId),
+}))
+
+export type ReconstructionJobRow = typeof reconstructionJobs.$inferSelect
+export type NewReconstructionJobRow = typeof reconstructionJobs.$inferInsert
+
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
