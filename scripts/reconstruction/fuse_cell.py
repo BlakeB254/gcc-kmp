@@ -29,7 +29,11 @@ from registration import GpsAnchor, gps_seeded_initial_transform, register_sessi
 # from a video frame, isn't trustworthy enough to use (tracking may have
 # drifted meaningfully in that gap).
 MAX_POSE_TIME_GAP_SECONDS = 0.2
-_CHUNK_KEY_PATTERN = re.compile(r"chunk-(\d+)\.(mov|jsonl|depth)$")
+# Depth chunks upload with the .bin extension in practice (verified against
+# real R2 keys 2026-07-10) even though ArSessionRecorder's doc-comment says
+# .depth -- accept both, normalized to the "depth" kind in
+# _group_chunks_by_index.
+_CHUNK_KEY_PATTERN = re.compile(r"chunk-(\d+)\.(mov|jsonl|depth|bin)$")
 
 # A cell isn't canonical until this many independent sessions have
 # successfully registered -- design spec §3.1's activation gate. This exact
@@ -118,7 +122,8 @@ def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
 
 def _group_chunks_by_index(capture_chunk_keys: list[str]) -> dict[int, dict[str, str]]:
     """{chunk_index: {"mov": key, "jsonl": key, "depth": key}} -- kind is
-    inferred from the R2 key's extension (chunk-NNN.{mov,jsonl,depth}),
+    inferred from the R2 key's extension (chunk-NNN.{mov,jsonl,depth,bin};
+    .bin is what real uploads use for depth and is normalized to "depth"),
     matching ArSessionRecorder's file-per-kind convention. Missing kinds
     (e.g. no .mov when a whole chunk was recorded under thermal .serious
     pressure -- sidecar-only) are simply absent from the inner dict."""
@@ -128,6 +133,8 @@ def _group_chunks_by_index(capture_chunk_keys: list[str]) -> dict[int, dict[str,
         if not match:
             continue
         index, kind = int(match.group(1)), match.group(2)
+        if kind == "bin":
+            kind = "depth"
         grouped.setdefault(index, {})[kind] = key
     return grouped
 

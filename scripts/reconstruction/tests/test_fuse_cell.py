@@ -123,6 +123,23 @@ def test_group_chunks_by_index_groups_by_kind_from_key_extension():
     assert len(grouped) == 2
 
 
+def test_group_chunks_by_index_accepts_real_bin_depth_extension():
+    """Real uploads use .bin for depth (verified against R2 2026-07-10),
+    despite ArSessionRecorder's doc-comment saying .depth -- both must land
+    under the 'depth' kind."""
+    keys = [
+        "raw/464650:-721828/env-x/capture/chunk-0.mov",
+        "raw/464650:-721828/env-x/capture/chunk-0.jsonl",
+        "raw/464650:-721828/env-x/capture/chunk-0.bin",
+    ]
+    grouped = _group_chunks_by_index(keys)
+    assert grouped[0] == {
+        "mov": "raw/464650:-721828/env-x/capture/chunk-0.mov",
+        "jsonl": "raw/464650:-721828/env-x/capture/chunk-0.jsonl",
+        "depth": "raw/464650:-721828/env-x/capture/chunk-0.bin",
+    }
+
+
 # --- Real-format synthetic chunk builders (mirrors tests/test_chunk_io.py's
 # fixtures -- kept local to this file rather than shared, since each exists
 # to validate a different layer: test_chunk_io tests the decoders in
