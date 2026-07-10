@@ -183,7 +183,6 @@ fun App(component: RootComponent) {
                     onFallback = component::onBiometricFallback,
                 )
                 is Screen.AdminPanel -> AdminPanelScreen(
-                    onBack = component::navigateBack,
                     onLogout = component::signOut,
                     onNavigateToSpotCreate = component::navigateToAdminSpotCreate,
                     onNavigateToSpotDetail = component::navigateToAdminSpotDetail,

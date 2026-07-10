@@ -20,7 +20,6 @@ import org.koin.compose.koinInject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminPanelScreen(
-    onBack: () -> Unit = {},
     onLogout: () -> Unit = {},
     onNavigateToSpotCreate: (lat: Double, lng: Double) -> Unit = { _, _ -> },
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
@@ -48,8 +47,14 @@ fun AdminPanelScreen(
             TopAppBar(
                 title = { Text("Admin Panel") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    // Admin is only ever entered through switchToTab(), which calls
+                    // navigation.replaceAll() — the back stack is always empty here, so
+                    // a pop() would be a no-op. The arrow has to name its destination.
+                    IconButton(onClick = onNavigateToDashboard) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to dashboard",
+                        )
                     }
                 },
                 actions = {
