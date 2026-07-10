@@ -59,6 +59,18 @@ class SessionFusionInput:
 
 
 @dataclass
+class ProducedAsset:
+    """One artifact this run published to R2. `data` is kept in-memory so a
+    post-processing consumer (recon_worker's splat-web compression) can work
+    on it without a re-download; None once a caller deliberately drops it."""
+    asset_type: str  # 'pointcloud' | 'splat' | 'splat-web'
+    fmt: str         # 'ply' | 'spz' | ...
+    r2_key: str
+    version: int
+    data: bytes | None
+
+
+@dataclass
 class FusionResult:
     accepted_session_ids: list[str] = field(default_factory=list)
     rejected_session_ids: list[str] = field(default_factory=list)
@@ -73,6 +85,8 @@ class FusionResult:
     # into one world-mirror call, which has no cross-session registration
     # of its own -- see gaussian_ply.py's module docstring).
     session_transforms: dict[str, np.ndarray] = field(default_factory=dict)
+    # Every artifact fuse_cell published this run, all sharing one version.
+    assets: list[ProducedAsset] = field(default_factory=list)
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
@@ -232,15 +246,18 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
     )
 
 
-def _write_ply_to_r2(cell_id: str, asset_type: str, points: np.ndarray, colors: np.ndarray) -> str:
+def _write_ply_to_r2(cell_id: str, asset_type: str, points: np.ndarray, colors: np.ndarray, version: int) -> tuple[str, bytes]:
     """The one Open3D call this pipeline still uses -- .ply I/O, confirmed
-    safe on this hardware (see README). Version comes from
-    r2_store.next_version_for_cell (R2's own listing, not a hardcoded 1) so a
-    re-run never silently overwrites a prior version's physical file even
-    though the DB row records a new logical version."""
+    safe on this hardware (see README). Returns (r2_key, ply_bytes) so the
+    caller can record the asset without a re-download.
+
+    Vector3dVector on this box SEGFAULTS on anything but contiguous float64
+    input (float32 or Fortran-ordered arrays crash -- probed dtype-by-dtype
+    2026-07-10, same class of aarch64 breakage as the README's KDTree/ICP
+    list), and the pipeline's arrays are float32 -- coerce first."""
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(colors)
+    pcd.points = o3d.utility.Vector3dVector(np.ascontiguousarray(points, dtype=np.float64))
+    pcd.colors = o3d.utility.Vector3dVector(np.ascontiguousarray(colors, dtype=np.float64))
 
     tmp_path = f"/tmp/fuse_{cell_id.replace(':', '_')}_{asset_type}.ply"
     o3d.io.write_point_cloud(tmp_path, pcd)
@@ -248,11 +265,14 @@ def _write_ply_to_r2(cell_id: str, asset_type: str, points: np.ndarray, colors: 
         data = f.read()
     os.remove(tmp_path)
 
-    return _write_bytes_to_r2(cell_id, asset_type, "ply", data)
+    return _write_bytes_to_r2(cell_id, asset_type, "ply", data, version), data
 
 
-def _write_bytes_to_r2(cell_id: str, asset_type: str, fmt: str, data: bytes) -> str:
-    version = r2_store.next_version_for_cell(cell_id, asset_type)
+def _write_bytes_to_r2(cell_id: str, asset_type: str, fmt: str, data: bytes, version: int) -> str:
+    """Version is computed ONCE per run by the caller
+    (r2_store.next_run_version_for_cell) so every asset type in one run
+    shares one reconstructed/{cell}/{version}/ directory -- a re-run never
+    silently overwrites a prior version's physical files."""
     key = r2_store.reconstructed_asset_key(cell_id, version=version, asset_type=asset_type, fmt=fmt)
     r2_store.upload_bytes(key, data, content_type="application/octet-stream")
     return key
@@ -284,7 +304,15 @@ def _record_provenance(cell_id: str, r2_key: str, asset_type: str, fmt: str, act
     resp.raise_for_status()
 
 
-def fuse_cell(cell_id: str, api_base_url: str, train_splat: bool = True) -> FusionResult:
+def fuse_cell(
+    cell_id: str,
+    api_base_url: str | None = None,
+    train_splat: bool = True,
+    require_activation_for_splat: bool = True,
+) -> FusionResult:
+    """api_base_url=None (the default, and how recon_worker calls this)
+    skips the HTTP provenance write entirely -- the worker records
+    provenance directly in Postgres from FusionResult.assets instead."""
     manifests = r2_store.list_manifests_for_cell(cell_id)
     manifests_by_session_id = {m.manifest.get("sessionId", m.key): m.manifest for m in manifests}
     sessions = [s for m in manifests if (s := _session_fusion_input_from_manifest(m)) is not None]
@@ -296,24 +324,44 @@ def fuse_cell(cell_id: str, api_base_url: str, train_splat: bool = True) -> Fusi
         f"{len(result.rejected_session_ids)} rejected, activated={result.activated}"
     )
 
-    if result.merged_points.shape[0] > 0:
-        r2_key = _write_ply_to_r2(cell_id, "pointcloud", result.merged_points, result.merged_colors)
-        print(f"cell {cell_id}: wrote {r2_key}")
-        _record_provenance(cell_id, r2_key, "pointcloud", "ply", result.activated, api_base_url)
+    run_version: int | None = None
 
-    # Splat training is real GPU-inference cost (cdx-world-mirror) -- only
-    # worth spending on a cell the activation gate has already decided is
-    # canonical, not a still-unconfirmed single-session registration.
-    if train_splat and result.activated:
+    def _run_version() -> int:
+        nonlocal run_version
+        if run_version is None:
+            run_version = r2_store.next_run_version_for_cell(cell_id)
+        return run_version
+
+    if result.merged_points.shape[0] > 0:
+        version = _run_version()
+        r2_key, ply_bytes = _write_ply_to_r2(cell_id, "pointcloud", result.merged_points, result.merged_colors, version)
+        result.assets.append(ProducedAsset("pointcloud", "ply", r2_key, version, ply_bytes))
+        print(f"cell {cell_id}: wrote {r2_key}")
+        if api_base_url:
+            _record_provenance(cell_id, r2_key, "pointcloud", "ply", result.activated, api_base_url)
+
+    # Splat production is real GPU-inference cost (cdx-world-mirror). The
+    # default only spends it on a cell the activation gate has already
+    # decided is canonical; require_activation_for_splat=False (the
+    # prototype/worker setting while activation-count data is still scarce)
+    # produces a splat for any successful fusion -- activated_at in the DB
+    # still honestly records the gate's verdict either way.
+    splat_wanted = train_splat and result.accepted_session_ids and (
+        result.activated or not require_activation_for_splat
+    )
+    if splat_wanted:
         import splat_train  # deferred: avoids a hard dependency (plyfile,
         # a live world-mirror endpoint) for callers that only need the
         # point-cloud path, e.g. this module's own test suite.
 
         splat_bytes = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
         if splat_bytes is not None:
-            splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes)
+            version = _run_version()
+            splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes, version)
+            result.assets.append(ProducedAsset("splat", "ply", splat_key, version, splat_bytes))
             print(f"cell {cell_id}: wrote {splat_key}")
-            _record_provenance(cell_id, splat_key, "splat", "ply", activated=True, api_base_url=api_base_url)
+            if api_base_url:
+                _record_provenance(cell_id, splat_key, "splat", "ply", activated=result.activated, api_base_url=api_base_url)
         else:
             print(f"cell {cell_id}: no session produced a usable splat -- point cloud is still written")
 
@@ -325,12 +373,24 @@ if __name__ == "__main__":
     parser.add_argument("cell_id", help="locationCellId, e.g. '419500:-876234'")
     parser.add_argument(
         "--api-base-url",
-        default=os.environ.get("GCC_API_BASE_URL", "https://gcc.app"),
-        help="Base URL for the admin reconstruction-assets endpoint",
+        default=os.environ.get("GCC_API_BASE_URL"),
+        help="Base URL for the admin reconstruction-assets HTTP provenance "
+        "write; omit (default) to skip HTTP entirely -- recon_worker records "
+        "provenance directly in Postgres instead",
     )
     parser.add_argument(
         "--no-splat", action="store_true",
-        help="Skip cdx-world-mirror splat training, write only the point cloud",
+        help="Skip cdx-world-mirror splat production, write only the point cloud",
+    )
+    parser.add_argument(
+        "--splat-unactivated", action="store_true",
+        help="Produce a splat even when the cell hasn't hit the "
+        "activation-count gate (prototype mode)",
     )
     args = parser.parse_args()
-    fuse_cell(args.cell_id, args.api_base_url, train_splat=not args.no_splat)
+    fuse_cell(
+        args.cell_id,
+        args.api_base_url,
+        train_splat=not args.no_splat,
+        require_activation_for_splat=not args.splat_unactivated,
+    )

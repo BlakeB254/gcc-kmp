@@ -122,6 +122,35 @@ def reconstructed_asset_key(cell_id: str, version: int, asset_type: str, fmt: st
 _VERSION_KEY_PATTERN = re.compile(r"^reconstructed/[^/]+/(\d+)/")
 
 
+def next_run_version_for_cell(cell_id: str) -> int:
+    """One version directory per worker RUN, shared by every asset type in
+    that run (reconstructed/{cell}/{version}/{assetType}.{fmt} share the
+    version path segment) -- so the next run version is max across ALL
+    asset types + 1. Same R2-listing-as-source-of-truth rationale and same
+    narrow same-instant race caveat as next_version_for_cell below; the
+    queue's per-cell job closing makes two simultaneous runs for one cell
+    effectively impossible in the worker's operating model."""
+    validate_cell_id(cell_id)
+    c = client()
+    prefix = f"reconstructed/{cell_id}/"
+    highest = 0
+    continuation = None
+    while True:
+        kwargs = {"Bucket": bucket_name(), "Prefix": prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        resp = c.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            match = _VERSION_KEY_PATTERN.match(obj["Key"])
+            if match:
+                highest = max(highest, int(match.group(1)))
+        if resp.get("IsTruncated"):
+            continuation = resp["NextContinuationToken"]
+        else:
+            break
+    return highest + 1
+
+
 def next_version_for_cell(cell_id: str, asset_type: str) -> int:
     """R2's own object listing is the source of truth for "what physical
     versions already exist" -- avoids a DB round-trip (this pipeline

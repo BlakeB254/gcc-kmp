@@ -250,3 +250,84 @@ def test_session_fusion_input_from_manifest_none_without_capture_chunks():
         manifest={"sessionId": "sess-b", "deviceId": "deviceA", "path": [{"lat": 41.85, "lng": -87.65, "atMs": 1000}]},
     )
     assert _session_fusion_input_from_manifest(manifest_obj) is None
+
+
+# --- Task 3 (2026-07-10 spec): run-versioned publishes + produced-asset list ---
+
+def _identity_frame_fixture():
+    width, height = 8, 8
+    identity_transform = _column_major_flatten(np.eye(4))
+    identity_intrinsics = _column_major_flatten(np.array([[10.0, 0, 0], [0, 10.0, 0], [4.0, 4.0, 1.0]]))
+    sidecar = _build_sidecar_bytes(
+        source_wh=(width, height), video_wh=(width, height),
+        frames=[{"t": 0.5, "transform": identity_transform, "intrinsics": identity_intrinsics, "tracking": 0, "thermal": 0}],
+    )
+    depth = _build_depth_bytes([(0.5, np.full((height, width), 2.0, dtype=np.float32))])
+    video = _build_mov_bytes([(0.5, (100, 150, 200))], width, height)
+    return {
+        "raw/1:2/sess-a/capture/chunk-000.mov": video,
+        "raw/1:2/sess-a/capture/chunk-000.jsonl": sidecar,
+        "raw/1:2/sess-a/capture/chunk-000.bin": depth,
+    }
+
+
+def _mock_cell_with_one_session(monkeypatch, run_version: int) -> dict[str, bytes]:
+    fake_r2 = _identity_frame_fixture()
+    manifest_obj = r2_store.ManifestObject(
+        key="raw/1:2/deviceA/sess-a-manifest.json",
+        manifest={
+            "sessionId": "sess-a",
+            "deviceId": "deviceA",
+            "path": [{"lat": 41.85, "lng": -87.65, "atMs": 1000}],
+            "captureChunks": list(fake_r2.keys()),
+        },
+    )
+    monkeypatch.setattr(r2_store, "list_manifests_for_cell", lambda cell: [manifest_obj])
+    monkeypatch.setattr(r2_store, "download_bytes", lambda key: fake_r2[key])
+    monkeypatch.setattr(r2_store, "next_run_version_for_cell", lambda cell: run_version)
+    uploaded: dict[str, bytes] = {}
+    monkeypatch.setattr(r2_store, "upload_bytes", lambda key, data, content_type: uploaded.__setitem__(key, data))
+    return uploaded
+
+
+def test_next_run_version_for_cell_spans_asset_types(monkeypatch):
+    """One version directory per RUN, shared by every asset type -- max
+    version across ALL existing asset types + 1, not per-type."""
+    class FakeClient:
+        def list_objects_v2(self, **kwargs):
+            return {"Contents": [
+                {"Key": "reconstructed/1:2/1/pointcloud.ply"},
+                {"Key": "reconstructed/1:2/2/splat.ply"},
+            ]}
+    monkeypatch.setattr(r2_store, "client", lambda: FakeClient())
+    monkeypatch.setattr(r2_store, "bucket_name", lambda: "test-bucket")
+    assert r2_store.next_run_version_for_cell("1:2") == 3
+
+
+def test_fuse_cell_records_produced_assets_with_run_version(monkeypatch):
+    from fuse_cell import fuse_cell
+
+    uploaded = _mock_cell_with_one_session(monkeypatch, run_version=5)
+    result = fuse_cell("1:2", api_base_url=None, train_splat=False)
+
+    assert len(result.assets) == 1
+    asset = result.assets[0]
+    assert asset.asset_type == "pointcloud"
+    assert asset.fmt == "ply"
+    assert asset.version == 5
+    assert asset.r2_key == "reconstructed/1:2/5/pointcloud.ply"
+    assert asset.r2_key in uploaded
+    assert asset.data == uploaded[asset.r2_key]
+
+
+def test_fuse_cell_without_api_base_url_never_calls_http(monkeypatch):
+    import fuse_cell as fuse_cell_module
+
+    _mock_cell_with_one_session(monkeypatch, run_version=1)
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("HTTP provenance must not be called when api_base_url is None")
+
+    monkeypatch.setattr(fuse_cell_module.requests, "post", _boom)
+    result = fuse_cell_module.fuse_cell("1:2", api_base_url=None, train_splat=False)
+    assert result.assets  # it still published to R2
