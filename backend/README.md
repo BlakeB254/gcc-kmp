@@ -78,9 +78,13 @@ after a reconstruction exists" rule is Phase 3, driven by the index.
 
 ## Roadmap
 
-- **Phase 3:** enqueue reconstruction jobs (Neon `SELECT … FOR UPDATE SKIP
-  LOCKED`), hand off to the DGX GPU pipeline, write results back to
-  `reconstructed/…`, link provenance into `reconstruction_assets`, and mark
-  `scan_sessions.reconstruction_version`.
+- **Phase 3 (queue SHIPPED 2026-07-10):** every index sweep now enqueues a
+  `reconstruction_jobs` row per completed, unreconstructed session with a
+  full capture set (migration 0034). The DGX worker
+  (`scripts/reconstruction/recon_worker.py`) leases with `SELECT … FOR
+  UPDATE SKIP LOCKED`, fuses the job's cell, writes `reconstructed/…`,
+  records `reconstruction_assets` + `scan_sessions.reconstruction_version`.
+  See `scripts/reconstruction/README.md` §2026-07-10 for the real-data
+  prototype results and the outstanding R2 write-token blocker.
 - **Later:** migrate Next.js API endpoints here incrementally until Ktor is the
   primary backend and Next.js is the website frontend.
