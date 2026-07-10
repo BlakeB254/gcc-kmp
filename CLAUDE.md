@@ -122,6 +122,14 @@ Symptoms of this divergence:
   without a key.
 - **Public env var fallbacks** go through `site/src/lib/env.ts` so missing
   config fails fast in production instead of silently hitting localhost.
+- **Scheduled work is driven from Render, not `vercel.json`.** Vercel Hobby
+  caps crons at one per day and a more-frequent entry breaks all deploys, so
+  `render.yaml` defines cron jobs that `curl` the `CRON_SECRET`-guarded
+  `/api/cron/*` endpoints. Render serves no traffic and holds no logic — only
+  the schedule. Any handler reachable more often than daily must be wrapped in
+  `withCronLease()` (`site/src/lib/cron-lease.ts`); `processDueBatches()` has
+  no locking of its own. **The lease TTL must exceed the route's
+  `maxDuration`.** See `docs/governance/cron-and-scheduling.md`.
 - **CI runs** the Next.js site (typecheck + build) and Kotlin (`:shared`
   JVM + tests, `:composeApp` desktop compile) on every PR and main push.
   Android `assembleDebug` runs only on `workflow_dispatch`. iOS builds

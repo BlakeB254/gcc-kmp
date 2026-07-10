@@ -1,24 +1,33 @@
 /**
- * GET /api/cron/route-releases  — Vercel Cron entrypoint.
+ * GET /api/cron/route-releases  — release-queue tick.
  * Advances every due route-release batch (expire stale offers, send the next
  * wave to eligible workers in queue order), then drains the notification outbox
  * (offer email + native iOS push, including the 1h/5m expiry reminders).
- * Guarded by CRON_SECRET: Vercel Cron automatically sends
- * `Authorization: Bearer $CRON_SECRET` when that env var is set on the project.
- * Set CRON_SECRET in Vercel → Project → Settings → Env Vars.
+ * Guarded by CRON_SECRET (`Authorization: Bearer $CRON_SECRET`); fails closed
+ * when the secret is unset.
  *
- * NOTE: reminder precision (and initial-offer latency) tracks the cron cadence
- * in vercel.json. A daily cron means workers learn about a wave at most once a
- * day; for production use a frequent schedule (every few minutes on Vercel Pro,
- * or an external scheduler hitting this endpoint on Hobby).
+ * Driven by the Render cron job `gcc-cron-route-releases` (every 15m; see
+ * `render.yaml`), because Vercel Hobby caps crons at one-per-day and a
+ * more-frequent `vercel.json` entry breaks all deploys. The daily `vercel.json`
+ * cron is retained as a backstop — `withCronLease` makes a double-fire a no-op
+ * rather than a double-issue of offers.
+ *
+ * Reminder precision and initial-offer latency track the Render cadence, not
+ * this file.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
-import { ingestBuildingFootprints, ingestBboxFromEnv } from '@/lib/building-footprints'
+import { withCronLease } from '@/lib/cron-lease'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+// Was implicitly Vercel's ~10s default. processDueBatches() walks every due
+// batch and the notification drain does up to 100 sends, so give it headroom
+// (60s is the Hobby ceiling). Must stay below the lease TTL.
+export const maxDuration = 60
+
+const LEASE_TTL_SECONDS = 120
 
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET
@@ -31,23 +40,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 })
   }
   try {
-    const releases = await processDueBatches()
-    // Drain after processing so this tick's freshly-scheduled "initial"
-    // notifications go out in the same run.
-    const notifications = await dispatchDueOfferNotifications()
-    // Piggyback: keep the building-footprint cache warm for the indoor gate.
-    // Ingestion can't run inline in the user request (Overpass exceeds the
-    // serverless timeout) and a second vercel.json cron risks the Hobby cron
-    // limit, so it rides this existing daily cron. Non-fatal + idempotent
-    // (30d per-tile TTL) — a failure never affects the release run.
-    let footprints: Awaited<ReturnType<typeof ingestBuildingFootprints>> | null = null
-    try {
-      footprints = await ingestBuildingFootprints(ingestBboxFromEnv())
-    } catch (e) {
-      console.error('route-releases cron: building-footprint ingest failed (non-fatal)', e)
+    const outcome = await withCronLease('route-releases', LEASE_TTL_SECONDS, async () => {
+      const releases = await processDueBatches()
+      // Drain after processing so this tick's freshly-scheduled "initial"
+      // notifications go out in the same run.
+      const notifications = await dispatchDueOfferNotifications()
+      return { releases, notifications }
+    })
+
+    // A held lease means a previous tick is still running. That is expected at a
+    // 15m cadence, not an error — 200 so the scheduler doesn't alert.
+    if (!outcome.ran) {
+      return NextResponse.json({
+        data: { skipped: outcome.skipped, ranAt: new Date().toISOString() },
+        success: true,
+      })
     }
+
     return NextResponse.json({
-      data: { releases, notifications, footprints, ranAt: new Date().toISOString() },
+      data: { ...outcome.result, ranAt: new Date().toISOString() },
       success: true,
     })
   } catch (error) {

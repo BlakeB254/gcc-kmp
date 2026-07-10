@@ -1,0 +1,67 @@
+# Render Blueprint — external schedulers for the Next.js cron endpoints.
+#
+# Why Render at all: the API, the website, and both mobile clients are served by
+# the Next.js app on Vercel (see docs/governance/ARCHITECTURE-and-source-of-truth.md).
+# Nothing about that changes here. What Vercel cannot do on the Hobby plan is
+# *schedule*: crons are capped at one per day, and a more-frequent vercel.json
+# entry breaks all deploys. These jobs are the "external scheduler hitting this
+# endpoint" that site/src/app/api/cron/route-releases/route.ts has always asked for.
+#
+# These containers hold no business logic — they authenticate and curl. All
+# queue logic stays in site/, with Drizzle as the single source of schema truth.
+#
+# Schedules are UTC. Billing is per active second, with a $1/month minimum per
+# cron job service.
+#
+# One-time setup (cannot be automated — see docs/governance/cron-and-scheduling.md):
+#   1. Render Dashboard → Account Settings → Git Providers → connect GitHub, authorize `gcc`.
+#   2. Render Dashboard → New → Blueprint → select this repo.
+#   3. Set CRON_SECRET on both services to the exact value already set on Vercel.
+
+services:
+  # Advances release batches and drains the offer-notification outbox.
+  # 15m is the cadence that offer-expiry reminders (1h / 5m) are quantized to.
+  - name: gcc-cron-route-releases
+    type: cron
+    runtime: docker
+    region: ohio
+    plan: starter
+    rootDir: ops/render-cron
+    dockerfilePath: ./Dockerfile
+    schedule: "*/15 * * * *"
+    buildFilter:
+      paths:
+        - ops/render-cron/**
+    envVars:
+      - key: CRON_TARGET_URL
+        value: https://api.globalcommunitycleaners.org/api/cron/route-releases
+      - key: CRON_TIMEOUT
+        value: "90"
+      # Must equal CRON_SECRET on the Vercel project. sync:false keeps it out of
+      # this file and out of git; set it in the Render dashboard.
+      - key: CRON_SECRET
+        sync: false
+
+  # Warms the OSM building-footprint cache used by the indoor gate. Previously
+  # piggybacked on the route-releases cron, where it was killed by that handler's
+  # ~10s default timeout before a ~48s Overpass sweep could finish.
+  # Ingestion is idempotent with a 30d per-tile TTL, so hourly is cheap; the
+  # offset minute keeps it off the :00/:15/:30/:45 route-release ticks.
+  - name: gcc-cron-building-footprints
+    type: cron
+    runtime: docker
+    region: ohio
+    plan: starter
+    rootDir: ops/render-cron
+    dockerfilePath: ./Dockerfile
+    schedule: "23 * * * *"
+    buildFilter:
+      paths:
+        - ops/render-cron/**
+    envVars:
+      - key: CRON_TARGET_URL
+        value: https://api.globalcommunitycleaners.org/api/cron/building-footprints
+      - key: CRON_TIMEOUT
+        value: "90"
+      - key: CRON_SECRET
+        sync: false
