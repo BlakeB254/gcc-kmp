@@ -60,6 +60,7 @@ import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.retractionOutcome
+import com.gcc.app.platform.KeepScreenAwake
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -893,6 +894,9 @@ private fun CameraPhase(
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
+        // Global constraint 3: the scan runs for 60–90s with no touch input.
+        KeepScreenAwake()
+
         val arTracking by (arOverlay?.trackingState
             ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
 
