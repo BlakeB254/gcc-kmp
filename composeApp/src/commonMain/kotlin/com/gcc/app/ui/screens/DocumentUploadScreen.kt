@@ -31,6 +31,7 @@ fun DocumentUploadScreen(
 ) {
     val viewModel = koinInject<DocumentUploadViewModel>()
     val uiState by viewModel.uiState.collectAsState()
+    val spacing = GccTheme.spacing
 
     DisposableEffect(Unit) {
         onDispose { viewModel.onCleared() }
@@ -47,24 +48,27 @@ fun DocumentUploadScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // This Scaffold opts out of window insets and has no top bar, so the
+                // safe area has to be re-applied here or the header sits under the
+                // status bar / Dynamic Island.
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(horizontal = spacing.lg, vertical = spacing.xl),
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
             Text(
                 "Verify Your Identity",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(spacing.sm))
             Text(
                 "Upload documents to verify your identity and residency. This is required before you can claim blocks and start earning.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(spacing.xl))
 
             // --- Government ID ---
             DocumentUploadCard(
@@ -77,7 +81,7 @@ fun DocumentUploadScreen(
                 onPickLibrary = { viewModel.pickGovernmentIdFromLibrary() },
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(spacing.md))
 
             // --- Proof of Address ---
             DocumentUploadCard(
@@ -91,7 +95,7 @@ fun DocumentUploadScreen(
             )
 
             uiState.error?.let { error ->
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(spacing.md))
                 Text(
                     error,
                     style = MaterialTheme.typography.bodySmall,
@@ -99,7 +103,7 @@ fun DocumentUploadScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(spacing.xl))
 
             // Submit button
             GccButton(
@@ -110,7 +114,7 @@ fun DocumentUploadScreen(
                 isLoading = uiState.isUploading,
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(spacing.sm))
 
             // Skip for now button
             TextButton(
@@ -124,7 +128,7 @@ fun DocumentUploadScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(spacing.xs))
             Text(
                 "You can upload documents later from your profile, but you won't be able to claim blocks until verified.",
                 style = MaterialTheme.typography.bodySmall,
@@ -132,8 +136,6 @@ fun DocumentUploadScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -148,19 +150,19 @@ private fun DocumentUploadCard(
     onCapture: () -> Unit,
     onPickLibrary: () -> Unit,
 ) {
+    val spacing = GccTheme.spacing
+
     GccCard {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(vertical = 4.dp),
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(icon, style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(spacing.md))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
+                Spacer(modifier = Modifier.height(spacing.xxs))
                 Text(
                     description,
                     style = MaterialTheme.typography.bodySmall,
@@ -168,6 +170,7 @@ private fun DocumentUploadCard(
                 )
             }
             if (isUploaded || photo != null) {
+                Spacer(modifier = Modifier.width(spacing.sm))
                 Text(
                     "\u2705",
                     style = MaterialTheme.typography.titleLarge,
@@ -175,17 +178,17 @@ private fun DocumentUploadCard(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(spacing.md))
 
         if (photo == null) {
             // Upload area
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 OutlinedButton(
                     onClick = onCapture,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(ControlHeight),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = GccGreen,
@@ -195,7 +198,7 @@ private fun DocumentUploadCard(
                 }
                 OutlinedButton(
                     onClick = onPickLibrary,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(ControlHeight),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = GccGreen,
@@ -209,7 +212,7 @@ private fun DocumentUploadCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(ControlHeight)
                     .clip(RoundedCornerShape(12.dp))
                     .background(GccGreen.copy(alpha = 0.1f))
                     .border(1.dp, GccGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
@@ -222,7 +225,7 @@ private fun DocumentUploadCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(spacing.sm))
 
             TextButton(
                 onClick = onCapture,
@@ -233,3 +236,10 @@ private fun DocumentUploadCard(
         }
     }
 }
+
+/**
+ * Shared height for the capture buttons and the captured-photo chip that replaces
+ * them, so a card keeps its size when a document is added. Also clears the 44pt
+ * minimum touch target, which OutlinedButton's 40dp default does not.
+ */
+private val ControlHeight = 48.dp
