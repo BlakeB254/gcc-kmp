@@ -2010,3 +2010,16 @@ export const buildingFootprintTiles = pgTable('building_footprint_tiles', {
 
 export type BuildingFootprintTileRow = typeof buildingFootprintTiles.$inferSelect
 export type NewBuildingFootprintTileRow = typeof buildingFootprintTiles.$inferInsert
+
+// Single-writer leases for the cron endpoints. Needed once an external
+// scheduler drives them more often than once a day: `processDueBatches()` does
+// no locking, so overlapping ticks would double-issue offers. `expires_at`
+// (rather than a boolean) lets a crashed run self-heal. See lib/cron-lease.ts.
+export const cronLeases = pgTable('cron_leases', {
+  name: varchar('name', { length: 64 }).primaryKey(),
+  lockedAt: timestamp('locked_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }).notNull(),
+})
+
+export type CronLeaseRow = typeof cronLeases.$inferSelect
+export type NewCronLeaseRow = typeof cronLeases.$inferInsert
