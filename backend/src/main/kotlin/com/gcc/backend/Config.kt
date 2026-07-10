@@ -13,6 +13,11 @@ package com.gcc.backend
  *  - R2_BUCKET_NAME           R2 bucket (gcc-scan-storage)
  *  - INDEX_SECRET             bearer token guarding POST /admin/index-scans
  *  - INDEX_INTERVAL_MINUTES   background sweep cadence (default 30; 0 disables)
+ *  - CIVIC_SYNC_INTERVAL_MINUTES  Chicago 311 mirror cadence (default 360; 0 disables)
+ *  - CIVIC_SR_TYPES           comma-separated SODA sr_type filter (default: the
+ *                             seven cleanup types in the 2026-07-10 civic-loop spec)
+ *  - CIVIC_BACKFILL_DAYS      initial watermark lookback (default 90)
+ *  - SOCRATA_APP_TOKEN        optional; lifts the shared SODA throttle
  */
 data class Config(
     val port: Int,
@@ -20,8 +25,22 @@ data class Config(
     val r2: R2Config?,
     val indexSecret: String?,
     val indexIntervalMinutes: Long,
+    val civicSyncIntervalMinutes: Long,
+    val civicSrTypes: List<String>,
+    val civicBackfillDays: Long,
+    val socrataAppToken: String?,
 ) {
     companion object {
+        val DEFAULT_CIVIC_SR_TYPES = listOf(
+            "Graffiti Removal Request",
+            "Fly Dumping Complaint",
+            "Sanitation Code Violation",
+            "Weed Removal Request",
+            "Clean Vacant Lot Request",
+            "Street Cleaning Request",
+            "Tree Debris Clean-Up Request",
+        )
+
         fun fromEnv(): Config {
             val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
             val databaseUrl = System.getenv("DATABASE_URL")?.takeIf { it.isNotBlank() }
@@ -32,6 +51,11 @@ data class Config(
                 r2 = R2Config.fromEnvOrNull(),
                 indexSecret = System.getenv("INDEX_SECRET")?.takeIf { it.isNotBlank() },
                 indexIntervalMinutes = System.getenv("INDEX_INTERVAL_MINUTES")?.toLongOrNull() ?: 30L,
+                civicSyncIntervalMinutes = System.getenv("CIVIC_SYNC_INTERVAL_MINUTES")?.toLongOrNull() ?: 360L,
+                civicSrTypes = System.getenv("CIVIC_SR_TYPES")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: DEFAULT_CIVIC_SR_TYPES,
+                civicBackfillDays = System.getenv("CIVIC_BACKFILL_DAYS")?.toLongOrNull() ?: 90L,
+                socrataAppToken = System.getenv("SOCRATA_APP_TOKEN")?.takeIf { it.isNotBlank() },
             )
         }
     }

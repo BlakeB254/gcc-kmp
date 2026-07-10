@@ -1392,6 +1392,7 @@ export const pointsActionEnum = pgEnum('enum_points_ledger_action', [
   'scan_coverage_close_upgrade', // Distance-tracked: grazed->close upgrade on a fresh cell
   'scan_coverage_rectification', // Confirmed a previously-expected-dirty spot is now clean
   'observation_logged',     // Scan recorded world observations (no spot report row) — 10 pts
+  'civic_capture',          // Visual evidence attached to an open Chicago 311 report (bonus gated on CIVIC_CAPTURE_BONUS_POINTS)
 ])
 
 // Spot verifications table (audit trail of each verification event)
@@ -1859,6 +1860,54 @@ export const reconstructionJobs = pgTable('reconstruction_jobs', {
 
 export type ReconstructionJobRow = typeof reconstructionJobs.$inferSelect
 export type NewReconstructionJobRow = typeof reconstructionJobs.$inferInsert
+
+// Chicago Data Portal 311 mirror + GCC visual evidence (docs/superpowers/
+// specs/2026-07-10-chicago-311-civic-loop-design.md). The Ktor backend's
+// CivicReportSync upserts GCC-relevant SR types from the city's SODA API
+// (keyed by the city's own sr_number, cell id computed at ingest with the
+// shared gridCell10m); the app prompts on Open reports near an active scan
+// and posts evidence links here. Applied by migration 0035.
+export const civicReports = pgTable('civic_reports', {
+  id: serial('id').primaryKey(),
+  srNumber: varchar('sr_number', { length: 50 }).notNull(),
+  srType: varchar('sr_type', { length: 100 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull(), // portal values: 'Open' | 'Completed' | 'Canceled' | …
+  ownerDepartment: varchar('owner_department', { length: 100 }),
+  createdDate: timestamp('created_date', { mode: 'string', withTimezone: true }),
+  lastModifiedDate: timestamp('last_modified_date', { mode: 'string', withTimezone: true }),
+  closedDate: timestamp('closed_date', { mode: 'string', withTimezone: true }),
+  streetAddress: varchar('street_address', { length: 200 }),
+  communityArea: integer('community_area'),
+  lat: doublePrecision('lat'),
+  lng: doublePrecision('lng'),
+  locationCellId: varchar('location_cell_id', { length: 32 }),
+  firstCapturedAt: timestamp('first_captured_at', { mode: 'string', withTimezone: true }),
+  syncedAt: timestamp('synced_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  srNumberKey: uniqueIndex('civic_reports_sr_number_key').on(table.srNumber),
+  cellIdx: index('civic_reports_cell_idx').on(table.locationCellId),
+  statusTypeIdx: index('civic_reports_status_type_idx').on(table.status, table.srType),
+  communityAreaIdx: index('civic_reports_community_area_idx').on(table.communityArea),
+}))
+
+export const civicReportEvidence = pgTable('civic_report_evidence', {
+  id: serial('id').primaryKey(),
+  srNumber: varchar('sr_number', { length: 50 }).notNull(),
+  sessionId: varchar('session_id', { length: 64 }).notNull(),
+  observationId: integer('observation_id'),
+  photoR2Key: varchar('photo_r2_key', { length: 500 }),
+  workerId: integer('worker_id'),
+  matchConfidence: varchar('match_confidence', { length: 8 }).default('user').notNull(), // 'user' | 'auto'
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  srSessionKey: uniqueIndex('civic_report_evidence_sr_session_key').on(table.srNumber, table.sessionId),
+  srIdx: index('civic_report_evidence_sr_idx').on(table.srNumber),
+}))
+
+export type CivicReportRow = typeof civicReports.$inferSelect
+export type NewCivicReportRow = typeof civicReports.$inferInsert
+export type CivicReportEvidenceRow = typeof civicReportEvidence.$inferSelect
+export type NewCivicReportEvidenceRow = typeof civicReportEvidence.$inferInsert
 
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert

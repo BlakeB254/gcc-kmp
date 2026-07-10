@@ -75,6 +75,28 @@ fun Application.module(config: Config) {
         }
     }
 
+    // Chicago 311 civic mirror (2026-07-10 civic-loop spec §4) — same
+    // keep-alive-coroutine pattern as the scan indexer above.
+    val civicSync = CivicReportSync(dataSource, config.civicSrTypes, config.civicBackfillDays, config.socrataAppToken)
+    if (config.civicSyncIntervalMinutes > 0) {
+        scope.launch {
+            while (isActive) {
+                try {
+                    val result = withContext(Dispatchers.IO) { civicSync.runOnce() }
+                    log.info(
+                        "civic sweep: {} fetched, {} upserted, {} pages, watermark {} ({}ms)",
+                        result.fetched, result.upserted, result.pages, result.watermark, result.durationMs,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.error("civic sweep failed", e)
+                }
+                delay(config.civicSyncIntervalMinutes.minutes)
+            }
+        }
+    }
+
     monitor.subscribe(ApplicationStopping) {
         scope.cancel()
         r2?.close()
@@ -98,6 +120,16 @@ fun Application.module(config: Config) {
                 return@post
             }
             val result = withContext(Dispatchers.IO) { indexer.runOnce() }
+            call.respond(result)
+        }
+
+        // Manual trigger for an immediate Chicago-311 mirror sweep (same guard).
+        post("/admin/sync-civic") {
+            if (!authorized(call.request.header(HttpHeaders.Authorization), config.indexSecret)) {
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("unauthorized"))
+                return@post
+            }
+            val result = withContext(Dispatchers.IO) { civicSync.runOnce() }
             call.respond(result)
         }
     }
