@@ -1771,6 +1771,67 @@ export const reconstructionAssets = pgTable('reconstruction_assets', {
 export type ReconstructionAssetRow = typeof reconstructionAssets.$inferSelect
 export type NewReconstructionAssetRow = typeof reconstructionAssets.$inferInsert
 
+// Index of capture sessions whose raw blobs (video/depth/pose/USDZ/frames/
+// manifest) live in R2 (`gcc-scan-storage`). Before this, uploaded scans were
+// orphaned — discoverable only by prefix-scanning R2. The Kotlin backend
+// (`backend/`, the scan control-plane) parses each R2 manifest (the shared
+// `EnvScanManifest`) and mirrors it here so sessions are queryable and linkable
+// to coverage/reconstruction. Applied by migration 0033.
+export const scanSessions = pgTable('scan_sessions', {
+  id: serial('id').primaryKey(),
+  sessionId: varchar('session_id', { length: 64 }).notNull(),
+  deviceId: varchar('device_id', { length: 64 }).notNull(),
+  deviceModel: varchar('device_model', { length: 64 }),
+  platform: varchar('platform', { length: 16 }), // 'ios' | 'android' | null
+  osVersion: varchar('os_version', { length: 32 }),
+  lapKind: varchar('lap_kind', { length: 16 }), // 'baseline' | 'clean' | null
+  routeId: integer('route_id'),
+  locationCellId: varchar('location_cell_id', { length: 32 }), // anchor cell (parsed from the manifest R2 key)
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }),
+  completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
+  photoCount: integer('photo_count').default(0).notNull(),
+  chunkCount: integer('chunk_count').default(0).notNull(),
+  observedItemCount: integer('observed_item_count').default(0).notNull(),
+  scannedCellCount: integer('scanned_cell_count').default(0).notNull(),
+  hasObjectCapture: boolean('has_object_capture').default(false).notNull(),
+  objectCaptureR2Key: varchar('object_capture_r2_key', { length: 500 }),
+  manifestR2Key: varchar('manifest_r2_key', { length: 500 }).notNull(),
+  totalBytes: bigint('total_bytes', { mode: 'number' }), // sum of indexed artifact sizes (est)
+  reconstructionVersion: integer('reconstruction_version'), // set once a reconstruction exists (Phase 3)
+  reconstructedAt: timestamp('reconstructed_at', { mode: 'string', withTimezone: true }),
+  indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  sessionIdKey: uniqueIndex('scan_sessions_session_id_key').on(table.sessionId),
+  cellCompletedIdx: index('scan_sessions_cell_completed_idx').on(table.locationCellId, table.completedAt),
+  // Partial index `scan_sessions_unreconstructed_idx` (WHERE reconstruction_version IS NULL)
+  // is applied in migration 0033 for the "needs reconstructing" queue lookup.
+}))
+
+export type ScanSessionRow = typeof scanSessions.$inferSelect
+export type NewScanSessionRow = typeof scanSessions.$inferInsert
+
+// Per-artifact index of the individual R2 objects that make up each session.
+// Idempotent on `r2_key` so re-indexing updates rather than duplicates.
+export const captureChunks = pgTable('capture_chunks', {
+  id: serial('id').primaryKey(),
+  sessionId: varchar('session_id', { length: 64 }).notNull(),
+  locationCellId: varchar('location_cell_id', { length: 32 }).notNull(),
+  artifactType: varchar('artifact_type', { length: 24 }).notNull(), // video|depth|pose|frame_color|frame_depth|usdz|manifest|photo|other
+  r2Key: varchar('r2_key', { length: 500 }).notNull(),
+  format: varchar('format', { length: 16 }), // mp4|mov|png|jpg|jsonl|usdz|json|bin|ply
+  byteSize: bigint('byte_size', { mode: 'number' }),
+  capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }),
+  indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  r2KeyKey: uniqueIndex('capture_chunks_r2_key_key').on(table.r2Key),
+  sessionIdx: index('capture_chunks_session_idx').on(table.sessionId),
+  cellIdx: index('capture_chunks_cell_idx').on(table.locationCellId),
+}))
+
+export type CaptureChunkRow = typeof captureChunks.$inferSelect
+export type NewCaptureChunkRow = typeof captureChunks.$inferInsert
+
 export type CommunityReport = typeof communityReports.$inferSelect
 export type NewCommunityReport = typeof communityReports.$inferInsert
 export type CommunityReportThanks = typeof communityReportThanks.$inferSelect

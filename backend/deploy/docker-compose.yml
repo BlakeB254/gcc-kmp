@@ -1,0 +1,34 @@
+# Run the GCC backend (scan control-plane) on the DGX.
+#   cd backend/deploy && cp .env.example .env && edit .env && docker compose up -d --build
+# Build context is the repo root because the image needs :shared + the Gradle
+# wrapper (see backend/Dockerfile).
+services:
+  gcc-backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    image: gcc-backend:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080" # bind to loopback; Cloudflare Tunnel fronts it
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8080'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # Optional: expose the backend publicly via a Cloudflare Tunnel (no open ports
+  # on the DGX). Create a tunnel in the Cloudflare dashboard, put its token in
+  # .env as CLOUDFLARE_TUNNEL_TOKEN, and point a public hostname at
+  # http://gcc-backend:8080. Then uncomment:
+  #
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     - gcc-backend

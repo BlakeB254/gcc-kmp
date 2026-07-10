@@ -12,6 +12,7 @@ exposed = "0.58.0"
 sqldelight = "2.0.2"
 postgresql = "42.7.4"
 hikari = "6.2.1"
+awssdk = "2.31.6"  # AWS S3 SDK v2 — used against Cloudflare R2 (S3-compatible) in the backend module
 
 # KotlinX
 kotlinx-serialization = "1.7.3"
@@ -86,6 +87,10 @@ exposed-kotlin-datetime = { module = "org.jetbrains.exposed:exposed-kotlin-datet
 exposed-json = { module = "org.jetbrains.exposed:exposed-json", version.ref = "exposed" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+
+# AWS S3 SDK v2 — Cloudflare R2 access from the backend (control-plane) module
+awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
+awssdk-apache-client = { module = "software.amazon.awssdk:apache-client", version.ref = "awssdk" }
 
 # SQLDelight (Mobile offline cache)
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
