@@ -145,3 +145,27 @@ def test_extract_video_frame_at_picks_nearest_timestamp():
     assert near_start[..., 0].mean() > near_start[..., 1].mean()
     assert near_middle[..., 1].mean() > near_middle[..., 0].mean()
     assert near_end[..., 2].mean() > near_end[..., 0].mean()
+
+
+def test_extract_video_frames_at_single_decode_matches_per_call_results():
+    """Batch extraction (ONE decode pass for all targets) must return the
+    same nearest-frame picks as the per-call function -- added 2026-07-10
+    after the real-data prototype showed per-record full decodes are O(N^2)
+    (each 60s HEVC chunk was being fully decoded ~120 times)."""
+    from chunk_io import extract_video_frames_at
+
+    video_bytes = _encode_synthetic_mov([(0.0, (200, 0, 0)), (1.0, (0, 200, 0)), (2.0, (0, 0, 200))])
+    frames = extract_video_frames_at(video_bytes, [0.1, 0.9, 2.1])
+
+    assert len(frames) == 3
+    assert all(f is not None for f in frames)
+    assert frames[0][..., 0].mean() > frames[0][..., 1].mean()   # red
+    assert frames[1][..., 1].mean() > frames[1][..., 0].mean()   # green
+    assert frames[2][..., 2].mean() > frames[2][..., 0].mean()   # blue
+
+
+def test_extract_video_frames_at_handles_empty_targets_and_no_video():
+    from chunk_io import extract_video_frames_at
+
+    video_bytes = _encode_synthetic_mov([(0.0, (200, 0, 0))])
+    assert extract_video_frames_at(video_bytes, []) == []

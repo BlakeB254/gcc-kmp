@@ -168,17 +168,26 @@ def _fuse_one_chunk(video_bytes: bytes | None, sidecar_bytes: bytes, depth_bytes
     depth_records = chunk_io.parse_depth_chunk(depth_bytes)
 
     sidecar_times = np.array([f.t for f in sidecar_frames])
-    clouds = []
+
+    # Pose-match first, then extract ALL needed color frames in ONE decode
+    # pass (extract_video_frames_at) -- per-record decodes were O(N^2) on
+    # real 60s chunks (see that function's docstring).
+    usable: list[tuple] = []  # (depth_record, pose_frame)
     for depth_record in depth_records:
         nearest_idx = int(np.argmin(np.abs(sidecar_times - depth_record.t)))
         pose_frame = sidecar_frames[nearest_idx]
         if abs(pose_frame.t - depth_record.t) > MAX_POSE_TIME_GAP_SECONDS:
             continue  # pose sample too far from this depth keyframe to trust
+        usable.append((depth_record, pose_frame))
+    if not usable:
+        return []
 
-        color_img = chunk_io.extract_video_frame_at(video_bytes, depth_record.t)
+    color_imgs = chunk_io.extract_video_frames_at(video_bytes, [d.t for d, _ in usable])
+
+    clouds = []
+    for (depth_record, pose_frame), color_img in zip(usable, color_imgs):
         if color_img is None:
             continue
-
         cloud = frame_io.build_point_cloud_from_frame(
             color_img, depth_record.depth_meters, pose_frame.camera_transform, pose_frame.intrinsics
         )

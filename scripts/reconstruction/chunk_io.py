@@ -148,12 +148,48 @@ def parse_depth_chunk(depth_bytes: bytes) -> list[DepthRecord]:
     return records
 
 
+def extract_video_frames_at(video_bytes: bytes, target_times: list[float]) -> list[np.ndarray | None]:
+    """Nearest frame for EVERY target time in ONE decode pass. The per-call
+    extract_video_frame_at below fully decodes the container each call --
+    fine for a single lookup, O(N^2) when a chunk's ~120 depth keyframes
+    each need a color frame (the 2026-07-10 real-data prototype run spent
+    20+ minutes there before this existed). Returns a list parallel to
+    target_times; entries are None when the container has no video
+    stream/frames."""
+    if not target_times:
+        return []
+    container = av.open(io.BytesIO(video_bytes))
+    try:
+        stream = next((s for s in container.streams if s.type == "video"), None)
+        if stream is None:
+            return [None] * len(target_times)
+
+        best_frames: list[np.ndarray | None] = [None] * len(target_times)
+        best_diffs = [float("inf")] * len(target_times)
+        for frame in container.decode(stream):
+            if frame.pts is None:
+                continue
+            pts_seconds = float(frame.pts * stream.time_base)
+            decoded = None  # converted at most once, only if some target improves
+            for i, target in enumerate(target_times):
+                diff = abs(pts_seconds - target)
+                if diff < best_diffs[i]:
+                    if decoded is None:
+                        decoded = frame.to_ndarray(format="rgb24")
+                    best_diffs[i] = diff
+                    best_frames[i] = decoded
+        return best_frames
+    finally:
+        container.close()
+
+
 def extract_video_frame_at(video_bytes: bytes, target_time: float) -> np.ndarray | None:
     """Decodes the .mov and returns the frame whose presentation timestamp
     is closest to target_time, as an RGB uint8 HxWx3 array. None if the
     container has no video stream / no frames (a chunk recorded entirely
     under thermal `.serious` pressure has no video at all -- see
-    ArSessionRecorder's sidecar-only note)."""
+    ArSessionRecorder's sidecar-only note). For many lookups on one video
+    use extract_video_frames_at instead (single decode pass)."""
     container = av.open(io.BytesIO(video_bytes))
     try:
         stream = next((s for s in container.streams if s.type == "video"), None)
