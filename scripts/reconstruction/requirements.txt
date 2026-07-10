@@ -15,3 +15,4 @@ pyliblzfse     # LZFSE depth-record decompression (chunk_io.py) -- matches
                # reference codec (github.com/lzfse/lzfse)
 plyfile        # Gaussian-splat .ply read/write (gaussian_ply.py)
 pytest         # test suite (tests/)
+psycopg[binary]  # recon_worker queue + provenance writes (Neon/Postgres)
