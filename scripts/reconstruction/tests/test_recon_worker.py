@@ -209,3 +209,48 @@ def test_complete_cell_records_assets_stamps_sessions_closes_sibling_jobs(db):
     assert statuses["sess-1"] == "done"
     assert statuses["sess-2"] == "done"   # sibling closed by the same run
     assert statuses["sess-3"] == "queued"
+
+
+# --- compress_splat_for_web fallback logic (subprocess mocked; no DB) ---
+
+class _FakeProc:
+    def __init__(self, returncode):
+        self.returncode = returncode
+        self.stderr = "boom" if returncode else ""
+
+
+def test_compress_splat_prefers_spz(monkeypatch):
+    import recon_worker
+
+    def fake_run(cmd, **kwargs):
+        out = cmd[-1]
+        with open(out, "wb") as f:
+            f.write(b"SPZ" if out.endswith(".spz") else b"PLYC")
+        return _FakeProc(0)
+
+    monkeypatch.setattr(recon_worker.subprocess, "run", fake_run)
+    data, fmt = recon_worker.compress_splat_for_web(b"fake-ply")
+    assert (data, fmt) == (b"SPZ", "spz")
+
+
+def test_compress_splat_falls_back_to_compressed_ply(monkeypatch):
+    import recon_worker
+
+    def fake_run(cmd, **kwargs):
+        out = cmd[-1]
+        if out.endswith(".spz"):
+            return _FakeProc(1)  # spz path broken
+        with open(out, "wb") as f:
+            f.write(b"PLYC")
+        return _FakeProc(0)
+
+    monkeypatch.setattr(recon_worker.subprocess, "run", fake_run)
+    data, fmt = recon_worker.compress_splat_for_web(b"fake-ply")
+    assert (data, fmt) == (b"PLYC", "ply")
+
+
+def test_compress_splat_returns_none_when_all_paths_fail(monkeypatch):
+    import recon_worker
+
+    monkeypatch.setattr(recon_worker.subprocess, "run", lambda cmd, **k: _FakeProc(1))
+    assert recon_worker.compress_splat_for_web(b"fake-ply") is None
