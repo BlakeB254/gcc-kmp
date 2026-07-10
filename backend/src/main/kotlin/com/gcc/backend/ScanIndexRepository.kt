@@ -119,6 +119,22 @@ class ScanIndexRepository(private val dataSource: DataSource) {
         }
     }
 
+    /**
+     * Enqueue one Phase-3 reconstruction job per completed, unreconstructed
+     * session that has a full capture-chunk set (pose sidecar + depth +
+     * video — the fusion pipeline needs all three; GPS-only sessions are
+     * permanently skipped). Idempotent on `session_id`; consumed by the DGX
+     * worker (scripts/reconstruction/recon_worker.py) with
+     * SELECT … FOR UPDATE SKIP LOCKED. Returns how many were newly queued.
+     */
+    fun enqueueReconstructionJobs(): Int {
+        dataSource.connection.use { c ->
+            c.prepareStatement(ENQUEUE_RECON_JOBS).use { ps ->
+                return ps.executeUpdate()
+            }
+        }
+    }
+
     private fun java.sql.PreparedStatement.setNullableString(idx: Int, v: String?) =
         if (v == null) setNull(idx, Types.VARCHAR) else setString(idx, v)
 
@@ -179,6 +195,19 @@ class ScanIndexRepository(private val dataSource: DataSource) {
               (location_cell_id, asset_type, format, r2_key, version, source_scan_coverage_event_ids, created_at)
             SELECT ?, ?, ?, ?, ?, '[]'::jsonb, now()
             WHERE NOT EXISTS (SELECT 1 FROM reconstruction_assets WHERE r2_key = ?)
+        """.trimIndent()
+
+        private val ENQUEUE_RECON_JOBS = """
+            INSERT INTO reconstruction_jobs (session_id, location_cell_id)
+            SELECT s.session_id, s.location_cell_id
+            FROM scan_sessions s
+            WHERE s.reconstruction_version IS NULL
+              AND s.completed_at IS NOT NULL
+              AND s.location_cell_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM capture_chunks c WHERE c.session_id = s.session_id AND c.format = 'jsonl')
+              AND EXISTS (SELECT 1 FROM capture_chunks c WHERE c.session_id = s.session_id AND c.format = 'bin')
+              AND EXISTS (SELECT 1 FROM capture_chunks c WHERE c.session_id = s.session_id AND c.format = 'mov')
+            ON CONFLICT (session_id) DO NOTHING
         """.trimIndent()
     }
 }

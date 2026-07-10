@@ -33,6 +33,7 @@ class ScanIndexer(
         val reconstructionsIndexed: Int,
         val manifestsFailed: Int,
         val durationMs: Long,
+        val reconstructionJobsEnqueued: Int = 0,
     )
 
     fun runOnce(): Result {
@@ -111,7 +112,13 @@ class ScanIndexer(
             }
         }
 
-        return Result(sessions, chunks, reconstructions, failed, System.currentTimeMillis() - start)
+        // Phase 3: every freshly-indexed, still-unreconstructed session with a
+        // full capture set becomes a durable reconstruction job for the DGX
+        // GPU worker. Idempotent on session_id, so re-sweeps are free.
+        val jobsEnqueued = repo.enqueueReconstructionJobs()
+        if (jobsEnqueued > 0) log.info("enqueued {} reconstruction job(s)", jobsEnqueued)
+
+        return Result(sessions, chunks, reconstructions, failed, System.currentTimeMillis() - start, jobsEnqueued)
     }
 
     private fun chunkRow(sessionId: String, key: String, type: String, cell: String, size: Long?, capturedAtMs: Long?) =
