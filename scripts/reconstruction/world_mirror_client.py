@@ -16,11 +16,16 @@ sessions -- see gaussian_ply.py's module docstring for the reasoning.
 """
 from __future__ import annotations
 
+import os
 import time
 
 import requests
 
-DEFAULT_BASE_URL = "http://127.0.0.1:7025"
+# The live cdx-world-mirror instance runs on :7027 (verified 2026-07-10;
+# :7025 is occupied by aiq-agent, :7026 by an unrelated Gradio app).
+# recon_worker exports WORLD_MIRROR_URL -- honored here because fuse_cell's
+# splat path calls train_splat_for_cell without an explicit base_url.
+DEFAULT_BASE_URL = os.environ.get("WORLD_MIRROR_URL", "http://127.0.0.1:7027")
 POLL_INTERVAL_SECONDS = 1.0
 
 
