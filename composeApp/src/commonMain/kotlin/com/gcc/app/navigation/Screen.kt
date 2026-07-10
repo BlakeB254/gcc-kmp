@@ -76,6 +76,10 @@ sealed class Screen {
     @Serializable
     data class AdminSpotDetail(val spotId: Int) : Screen()
 
+    /** [status] is an `enum_jobs_status` value, or null for every job. */
+    @Serializable
+    data class AdminJobList(val title: String, val status: String?) : Screen()
+
     @Serializable
     data class AdminWorkerDetail(val workerId: Int) : Screen()
 

@@ -23,6 +23,7 @@ import com.gcc.app.viewmodel.SettingsViewModel
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
 import com.gcc.app.viewmodel.WalletViewModel
+import com.gcc.app.viewmodel.AdminJobListViewModel
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.ArticlesViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
@@ -87,4 +88,6 @@ val offlineAppModule = module {
     // AVCaptureSession and must not be shared across screens.
     factory { CameraManager() }
     factory { DocumentUploadViewModel(get(), get()) }
+    // See appModule: `factory` so each Operations drill-in owns its list state.
+    factory { AdminJobListViewModel(get()) }
 }

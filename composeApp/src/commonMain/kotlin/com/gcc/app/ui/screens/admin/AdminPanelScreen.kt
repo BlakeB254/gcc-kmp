@@ -21,6 +21,7 @@ import org.koin.compose.koinInject
 @Composable
 fun AdminPanelScreen(
     onLogout: () -> Unit = {},
+    onNavigateToJobList: (title: String, status: String?) -> Unit = { _, _ -> },
     onNavigateToSpotCreate: (lat: Double, lng: Double) -> Unit = { _, _ -> },
     onNavigateToSpotDetail: (spotId: Int) -> Unit = {},
     onNavigateToRouteDetail: (routeId: Int) -> Unit = {},
@@ -132,6 +133,7 @@ fun AdminPanelScreen(
                             recentActivity = uiState.recentActivity,
                             dailyStats = uiState.dailyStats,
                             onNavigateToTab = { tab -> viewModel.selectTab(tab) },
+                            onNavigateToJobList = onNavigateToJobList,
                         )
                         AdminTab.WORKERS -> AdminWorkersTab(
                             workers = uiState.workers,

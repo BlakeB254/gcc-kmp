@@ -51,6 +51,7 @@ internal fun AdminOverviewTab(
     recentActivity: List<AdminActivityItem> = emptyList(),
     dailyStats: List<AdminDailyStats> = emptyList(),
     onNavigateToTab: (AdminTab) -> Unit = {},
+    onNavigateToJobList: (title: String, status: String?) -> Unit = { _, _ -> },
 ) {
     if (stats == null) return
     LazyColumn(
@@ -62,12 +63,25 @@ internal fun AdminOverviewTab(
         item { AdminStatCard("Verified Workers", stats.verifiedWorkers.toString(), Icons.Default.CheckCircle, GccGreen, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { AdminStatCard("Pending Verifications", stats.pendingVerifications.toString(), Icons.Default.HourglassEmpty, GccSky, onClick = { onNavigateToTab(AdminTab.WORKERS) }) }
         item { SectionHeader("Operations") }
+        // Each row drills into the matching chronological job list.
         // "Jobs in Progress" = workers actively cleaning right now (status = 'in_progress').
-        item { AdminStatCard("Jobs in Progress", stats.activeJobs.toString(), Icons.Default.Bolt, GccGreen) }
+        item {
+            AdminStatCard("Jobs in Progress", stats.activeJobs.toString(), Icons.Default.Bolt, GccGreen,
+                onClick = { onNavigateToJobList("Jobs in Progress", AdminJobStatusFilter.IN_PROGRESS) })
+        }
         // Backlog — jobs that exist but haven't been started yet.
-        item { AdminStatCard("Open Jobs", stats.availableJobs.toString(), Icons.AutoMirrored.Filled.Assignment) }
-        item { AdminStatCard("Claimed (Not Started)", stats.claimedJobs.toString(), Icons.Default.Timer) }
-        item { AdminStatCard("Completed Jobs", stats.completedJobs.toString(), Icons.Default.CheckCircle) }
+        item {
+            AdminStatCard("Open Jobs", stats.availableJobs.toString(), Icons.AutoMirrored.Filled.Assignment,
+                onClick = { onNavigateToJobList("Open Jobs", AdminJobStatusFilter.AVAILABLE) })
+        }
+        item {
+            AdminStatCard("Claimed (Not Started)", stats.claimedJobs.toString(), Icons.Default.Timer,
+                onClick = { onNavigateToJobList("Claimed Jobs", AdminJobStatusFilter.CLAIMED) })
+        }
+        item {
+            AdminStatCard("Completed Jobs", stats.completedJobs.toString(), Icons.Default.CheckCircle,
+                onClick = { onNavigateToJobList("Completed Jobs", AdminJobStatusFilter.COMPLETED) })
+        }
         item { AdminStatCard("Total Routes", stats.totalRoutes.toString(), Icons.Default.Map, onClick = { onNavigateToTab(AdminTab.ROUTES) }) }
         item { SectionHeader("Spots") }
         item { AdminStatCard("Active Spots", stats.activeSpots.toString(), Icons.Default.LocationOn, GccGreen, onClick = { onNavigateToTab(AdminTab.SPOTS) }) }

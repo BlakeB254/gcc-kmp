@@ -136,6 +136,10 @@ class RootComponent(
         navigation.push(Screen.Feed)
     }
 
+    fun navigateToAdminJobList(title: String, status: String?) {
+        navigation.push(Screen.AdminJobList(title, status))
+    }
+
     fun navigateToAdminWorkerDetail(workerId: Int) {
         navigation.push(Screen.AdminWorkerDetail(workerId))
     }
