@@ -4,6 +4,7 @@ import com.gcc.app.platform.CapturedPhoto
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.api.PendingReview
 import com.gcc.shared.model.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class AdminTab(val label: String, val icon: String) {
@@ -34,6 +36,9 @@ data class AdminPanelUiState(
     val currentWorker: Worker? = null,
     val workers: List<Worker> = emptyList(),
     val routes: List<Route> = emptyList(),
+    val updatingRouteStatusIds: Set<Int> = emptySet(),
+    val routeStatusNotice: String? = null,
+    val routeStatusActionError: String? = null,
     val routeAssignments: Map<Int, List<AdminRouteAssignment>> = emptyMap(),
     val loadingRouteAssignmentIds: Set<Int> = emptySet(),
     val cancellingRouteAssignmentJobIds: Set<Int> = emptySet(),
@@ -67,7 +72,7 @@ class AdminPanelViewModel(
     }
 
     fun selectTab(tab: AdminTab) {
-        _uiState.value = _uiState.value.copy(selectedTab = tab)
+        _uiState.update { it.copy(selectedTab = tab) }
         if (tab !in _uiState.value.loadedTabs) {
             refreshCurrentTab()
         }
@@ -82,7 +87,7 @@ class AdminPanelViewModel(
     }
 
     fun clearSpotCreateError() {
-        _uiState.value = _uiState.value.copy(spotCreateError = null)
+        _uiState.update { it.copy(spotCreateError = null) }
     }
 
     /**
@@ -96,10 +101,7 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 val workers = apiClient.getAllAdminWorkers()
-                _uiState.value = _uiState.value.copy(
-                    workers = workers,
-                    loadedTabs = _uiState.value.loadedTabs + AdminTab.WORKERS,
-                )
+                _uiState.update { it.copy(workers = workers, loadedTabs = it.loadedTabs + AdminTab.WORKERS) }
             } catch (_: Exception) {
                 // Don't surface a global error — picker UI handles empty/error
                 // state inline; failure here just means the admin sees the
@@ -117,7 +119,7 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 val workers = apiClient.getAllAdminWorkers(verificationStatus = "approved")
-                _uiState.value = _uiState.value.copy(verifiedWorkers = workers)
+                _uiState.update { it.copy(verifiedWorkers = workers) }
             } catch (_: Exception) {
                 // Don't surface a global error — dropdown handles empty state inline
             }
@@ -125,7 +127,7 @@ class AdminPanelViewModel(
     }
 
     fun setSelectedProxyWorkerId(id: Int?) {
-        _uiState.value = _uiState.value.copy(selectedProxyWorkerId = id)
+        _uiState.update { it.copy(selectedProxyWorkerId = id) }
     }
 
     fun ensureCurrentWorkerLoaded() {
@@ -133,7 +135,7 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 val worker = apiClient.getWorkerProfile()
-                _uiState.value = _uiState.value.copy(currentWorker = worker)
+                _uiState.update { it.copy(currentWorker = worker) }
             } catch (_: Exception) {
                 // Admin-only sessions may not carry a worker profile. The
                 // route detail screen falls back to the regular worker picker.
@@ -142,19 +144,15 @@ class AdminPanelViewModel(
     }
 
     private fun invalidateTab(tab: AdminTab) {
-        _uiState.value = _uiState.value.copy(
-            loadedTabs = _uiState.value.loadedTabs - tab,
-        )
+        _uiState.update { it.copy(loadedTabs = it.loadedTabs - tab) }
     }
 
     private fun loadTabData(isRefresh: Boolean) {
         currentLoadingJob?.cancel()
         currentLoadingJob = scope.launch {
             val tab = _uiState.value.selectedTab
-            _uiState.value = if (isRefresh) {
-                _uiState.value.copy(isRefreshing = true, error = null)
-            } else {
-                _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update {
+                if (isRefresh) it.copy(isRefreshing = true, error = null) else it.copy(isLoading = true, error = null)
             }
             try {
                 when (tab) {
@@ -162,24 +160,24 @@ class AdminPanelViewModel(
                         val stats = apiClient.getAdminStats()
                         val activity = try { apiClient.getAdminActivity(limit = 10) } catch (_: Exception) { emptyList() }
                         val daily = try { apiClient.getAdminDailyStats(days = 7) } catch (_: Exception) { emptyList() }
-                        _uiState.value = _uiState.value.copy(stats = stats, recentActivity = activity, dailyStats = daily)
+                        _uiState.update { it.copy(stats = stats, recentActivity = activity, dailyStats = daily) }
                     }
                     AdminTab.WORKERS -> {
                         val workers = apiClient.getAllAdminWorkers()
-                        _uiState.value = _uiState.value.copy(workers = workers)
+                        _uiState.update { it.copy(workers = workers) }
                     }
                     AdminTab.ROUTES -> {
                         val routes = apiClient.getAdminRoutes()
-                        _uiState.value = _uiState.value.copy(routes = routes)
+                        _uiState.update { it.applyRoutesRefresh(routes) }
                     }
                     AdminTab.BOUNTIES -> {
                         // Bounties table may not exist in production — gracefully degrade
                         val bounties = try { apiClient.getAdminBounties() } catch (_: Exception) { emptyList() }
-                        _uiState.value = _uiState.value.copy(bounties = bounties)
+                        _uiState.update { it.copy(bounties = bounties) }
                     }
                     AdminTab.SPOTS -> {
                         val spots = apiClient.getAdminSpotReports()
-                        _uiState.value = _uiState.value.copy(spotReports = spots)
+                        _uiState.update { it.copy(spotReports = spots) }
                     }
                     AdminTab.PAYOUTS -> {
                         val reviews = apiClient.getPendingPayoutReviews()
@@ -191,67 +189,97 @@ class AdminPanelViewModel(
                         val recent = try {
                             apiClient.getAdminPayouts(limit = 20).payouts
                         } catch (_: Exception) { emptyList() }
-                        _uiState.value = _uiState.value.copy(
-                            pendingReviews = reviews,
-                            pendingChecks = checks,
-                            recentPayouts = recent,
-                        )
+                        _uiState.update {
+                            it.copy(
+                                pendingReviews = reviews,
+                                pendingChecks = checks,
+                                recentPayouts = recent,
+                            )
+                        }
                     }
                     AdminTab.BLOCK_PROPOSALS -> {
                         val proposals = apiClient.getAdminBlockProposals(status = BlockProposalStatus.PENDING)
-                        _uiState.value = _uiState.value.copy(blockProposals = proposals)
+                        _uiState.update { it.copy(blockProposals = proposals) }
                     }
                 }
-                _uiState.value = _uiState.value.copy(
-                    loadedTabs = _uiState.value.loadedTabs + tab,
-                )
+                _uiState.update { it.copy(loadedTabs = it.loadedTabs + tab) }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = when {
-                        e.message?.contains("401") == true || e.message?.contains("403") == true ->
-                            "Not authorized. Try signing out and back in."
-                        e.message?.contains("404") == true ->
-                            "Endpoint not found. The server may need updating."
-                        e.message?.contains("500") == true ->
-                            "Server error. Please try again later."
-                        else -> e.message ?: "Failed to load data"
-                    },
-                )
+                val message = when {
+                    e.message?.contains("401") == true || e.message?.contains("403") == true ->
+                        "Not authorized. Try signing out and back in."
+                    e.message?.contains("404") == true ->
+                        "Endpoint not found. The server may need updating."
+                    e.message?.contains("500") == true ->
+                        "Server error. Please try again later."
+                    else -> e.message ?: "Failed to load data"
+                }
+                _uiState.update { it.copy(error = message) }
             }
-            _uiState.value = _uiState.value.copy(isLoading = false, isRefreshing = false)
+            _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
         }
     }
 
-    fun updateRouteStatus(routeId: Int, newStatus: String) {
-        scope.launch {
-            try {
-                val updated = apiClient.updateRouteStatus(routeId, newStatus)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to update status: ${e.message}")
-            }
+    fun updateRouteStatus(
+        routeId: Int,
+        newStatus: RouteStatus,
+        successNotice: String,
+        onResult: (success: Boolean, error: String?) -> Unit = { _, _ -> },
+    ) {
+        while (true) {
+            val current = _uiState.value
+            val started = current.startRouteStatusUpdate(routeId) ?: return
+            if (_uiState.compareAndSet(current, started)) break
         }
+
+        scope.launch {
+            val updateResult = try {
+                Result.success(apiClient.updateRouteStatus(routeId, newStatus))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
+            val callbackResult = updateResult.fold(
+                onSuccess = { updated ->
+                    _uiState.update { it.completeRouteStatusUpdate(routeId, updated, successNotice) }
+                    true to null
+                },
+                onFailure = { error ->
+                    val missing = error.message?.contains("404") == true
+                    val message = if (missing) {
+                        "Route no longer exists"
+                    } else {
+                        error.message ?: "Failed to update route status"
+                    }
+                    _uiState.update { it.failRouteStatusUpdate(routeId, message) }
+                    if (missing) forceRefreshCurrentTab()
+                    false to message
+                },
+            )
+            onResult(callbackResult.first, callbackResult.second)
+        }
+    }
+
+    fun clearRouteStatusFeedback() {
+        _uiState.update { it.copy(routeStatusNotice = null, routeStatusActionError = null) }
     }
 
     fun updateRouteImage(routeId: Int, photoBytes: ByteArray) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val urls = apiClient.uploadSpotPhotos(listOf(photoBytes))
                 if (urls.isNotEmpty()) {
                     val updated = apiClient.updateRouteImage(routeId, urls.first())
-                    _uiState.value = _uiState.value.copy(
-                        routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
-                    )
+                    _uiState.update { state ->
+                        state.copy(routes = state.routes.map { route -> if (route.id == routeId) updated else route })
+                    }
                 } else {
-                    _uiState.value = _uiState.value.copy(error = "Photo upload returned no URLs")
+                    _uiState.update { it.copy(error = "Photo upload returned no URLs") }
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Failed to upload image: ${e.message}",
-                )
+                _uiState.update { it.copy(error = "Failed to upload image: ${e.message}") }
             }
         }
     }
@@ -259,15 +287,13 @@ class AdminPanelViewModel(
     fun removeRouteImage(routeId: Int) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val updated = apiClient.updateRouteImage(routeId, null)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
-                )
+                _uiState.update { state ->
+                    state.copy(routes = state.routes.map { route -> if (route.id == routeId) updated else route })
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Failed to remove image: ${e.message}",
-                )
+                _uiState.update { it.copy(error = "Failed to remove image: ${e.message}") }
             }
         }
     }
@@ -275,15 +301,13 @@ class AdminPanelViewModel(
     fun updateRouteNameDesc(routeId: Int, displayName: String, description: String?) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val updated = apiClient.updateRouteNameDesc(routeId, displayName, description)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
-                )
+                _uiState.update { state ->
+                    state.copy(routes = state.routes.map { route -> if (route.id == routeId) updated else route })
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Failed to update name: ${e.message}",
-                )
+                _uiState.update { it.copy(error = "Failed to update name: ${e.message}") }
             }
         }
     }
@@ -291,15 +315,13 @@ class AdminPanelViewModel(
     fun updateRouteImageLocation(routeId: Int, lat: Double?, lng: Double?) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val updated = apiClient.updateRouteImageLocation(routeId, lat, lng)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes.map { if (it.id == routeId) updated else it },
-                )
+                _uiState.update { state ->
+                    state.copy(routes = state.routes.map { route -> if (route.id == routeId) updated else route })
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Failed to update image location: ${e.message}",
-                )
+                _uiState.update { it.copy(error = "Failed to update image location: ${e.message}") }
             }
         }
     }
@@ -309,10 +331,10 @@ class AdminPanelViewModel(
             try {
                 apiClient.updateSpotStatus(spotId, newStatus)
                 val updated = apiClient.getAdminSpotReports()
-                _uiState.value = _uiState.value.copy(spotReports = updated)
+                _uiState.update { it.copy(spotReports = updated) }
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to update spot: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to update spot: ${e.message}") }
             }
         }
     }
@@ -323,10 +345,10 @@ class AdminPanelViewModel(
                 apiClient.deleteSpot(spotId)
                 // Re-fetch to get updated statuses (server archives, doesn't hard-delete)
                 val updated = apiClient.getAdminSpotReports()
-                _uiState.value = _uiState.value.copy(spotReports = updated)
+                _uiState.update { it.copy(spotReports = updated) }
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to archive spot: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to archive spot: ${e.message}") }
             }
         }
     }
@@ -334,7 +356,7 @@ class AdminPanelViewModel(
     fun createSpot(request: CreateSpotRequest, photos: List<CapturedPhoto>) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(isCreatingSpot = true, spotCreateError = null, error = null)
+                _uiState.update { it.copy(isCreatingSpot = true, spotCreateError = null, error = null) }
                 val photoBytes = photos.map { it.bytes }
                 val uploadedUrls = if (photoBytes.isNotEmpty()) apiClient.uploadSpotPhotos(photoBytes) else emptyList()
                 val requestWithPhotos = request.copy(
@@ -342,20 +364,24 @@ class AdminPanelViewModel(
                 )
                 apiClient.createAdminSpot(requestWithPhotos)
                 val updated = apiClient.getAdminSpotReports()
-                _uiState.value = _uiState.value.copy(
-                    spotReports = updated,
-                    isCreatingSpot = false,
-                    spotCreateError = null,
-                    spotCreateSuccessNonce = _uiState.value.spotCreateSuccessNonce + 1,
-                )
+                _uiState.update {
+                    it.copy(
+                        spotReports = updated,
+                        isCreatingSpot = false,
+                        spotCreateError = null,
+                        spotCreateSuccessNonce = it.spotCreateSuccessNonce + 1,
+                    )
+                }
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
                 val message = friendlyAdminCreateError(e.message)
-                _uiState.value = _uiState.value.copy(
-                    isCreatingSpot = false,
-                    spotCreateError = message,
-                    error = message,
-                )
+                _uiState.update {
+                    it.copy(
+                        isCreatingSpot = false,
+                        spotCreateError = message,
+                        error = message,
+                    )
+                }
             }
         }
     }
@@ -382,7 +408,7 @@ class AdminPanelViewModel(
                     apiClient.addSpotPhotos(spotId, urls)
                 }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to upload photos: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to upload photos: ${e.message}") }
             }
         }
     }
@@ -390,14 +416,12 @@ class AdminPanelViewModel(
     fun createRoute(request: AdminRouteRequest) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val created = apiClient.createRoute(request)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes + created,
-                )
+                _uiState.update { it.copy(routes = it.routes + created) }
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to create route: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to create route: ${e.message}") }
             }
         }
     }
@@ -424,7 +448,7 @@ class AdminPanelViewModel(
         scope.launch {
             _workerActionLoading.value = true
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val response = apiClient.adminGrantPoints(
                     workerId = workerId,
                     amount = amount,
@@ -449,7 +473,7 @@ class AdminPanelViewModel(
                 onResult(true, response.newTotal, null)
             } catch (e: Exception) {
                 val msg = friendlyGrantError(e.message)
-                _uiState.value = _uiState.value.copy(error = msg)
+                _uiState.update { it.copy(error = msg) }
                 onResult(false, null, msg)
             } finally {
                 _workerActionLoading.value = false
@@ -475,11 +499,11 @@ class AdminPanelViewModel(
             try {
                 val updated = apiClient.updateAdminWorker(workerId, updates)
                 _selectedWorker.value = updated
-                _uiState.value = _uiState.value.copy(
-                    workers = _uiState.value.workers.map { if (it.id == workerId) updated else it },
-                )
+                _uiState.update { state ->
+                    state.copy(workers = state.workers.map { worker -> if (worker.id == workerId) updated else worker })
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to update worker: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to update worker: ${e.message}") }
             }
         }
     }
@@ -523,7 +547,7 @@ class AdminPanelViewModel(
                 val worker = apiClient.getAdminWorker(workerId)
                 _selectedWorker.value = worker
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to load worker: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to load worker: ${e.message}") }
             }
             _workerActionLoading.value = false
             // Load documents in parallel (non-blocking)
@@ -554,12 +578,12 @@ class AdminPanelViewModel(
                 )
                 val updated = apiClient.verifyWorker(workerId, request)
                 _selectedWorker.value = updated
-                _uiState.value = _uiState.value.copy(
-                    workers = _uiState.value.workers.map { if (it.id == workerId) updated else it },
-                )
+                _uiState.update { state ->
+                    state.copy(workers = state.workers.map { worker -> if (worker.id == workerId) updated else worker })
+                }
                 invalidateTab(AdminTab.OVERVIEW)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to verify worker: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to verify worker: ${e.message}") }
             }
             _workerActionLoading.value = false
         }
@@ -570,12 +594,12 @@ class AdminPanelViewModel(
             _workerActionLoading.value = true
             try {
                 apiClient.deleteWorker(workerId)
-                _uiState.value = _uiState.value.copy(
-                    workers = _uiState.value.workers.filter { it.id != workerId },
-                )
+                _uiState.update { state ->
+                    state.copy(workers = state.workers.filter { worker -> worker.id != workerId })
+                }
                 onDeleted()
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to delete worker: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to delete worker: ${e.message}") }
             }
             _workerActionLoading.value = false
         }
@@ -584,15 +608,17 @@ class AdminPanelViewModel(
     fun bulkWorkerAction(workerIds: List<Int>, action: BulkAction) {
         scope.launch {
             try {
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 val updated = apiClient.bulkWorkerAction(BulkActionRequest(workerIds, action))
-                _uiState.value = _uiState.value.copy(
-                    workers = _uiState.value.workers.map { existing ->
-                        updated.find { it.id == existing.id } ?: existing
-                    },
-                )
+                _uiState.update { state ->
+                    state.copy(
+                        workers = state.workers.map { existing ->
+                            updated.find { it.id == existing.id } ?: existing
+                        },
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Bulk action failed: ${e.message}")
+                _uiState.update { it.copy(error = "Bulk action failed: ${e.message}") }
             }
         }
     }
@@ -601,13 +627,11 @@ class AdminPanelViewModel(
         scope.launch {
             try {
                 apiClient.deleteRoute(routeId)
-                _uiState.value = _uiState.value.copy(
-                    routes = _uiState.value.routes.filter { it.id != routeId },
-                )
+                _uiState.update { it.copy(routes = it.routes.filter { route -> route.id != routeId }) }
                 invalidateTab(AdminTab.OVERVIEW)
                 onDeleted()
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Failed to delete route: ${e.message}")
+                _uiState.update { it.copy(error = "Failed to delete route: ${e.message}") }
             }
         }
     }
@@ -619,7 +643,7 @@ class AdminPanelViewModel(
                 loadRouteAssignments(routeId)
                 onResult(true)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = "Assignment failed: ${e.message}")
+                _uiState.update { it.copy(error = "Assignment failed: ${e.message}") }
                 onResult(false)
             }
         }
@@ -627,67 +651,77 @@ class AdminPanelViewModel(
 
     fun loadRouteAssignments(routeId: Int) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(
-                loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds + routeId,
-                error = null,
-            )
+            _uiState.update {
+                it.copy(
+                    loadingRouteAssignmentIds = it.loadingRouteAssignmentIds + routeId,
+                    error = null,
+                )
+            }
             try {
                 val assignments = apiClient.getAdminRouteAssignments(routeId)
-                _uiState.value = _uiState.value.copy(
-                    routeAssignments = _uiState.value.routeAssignments + (routeId to assignments),
-                    loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds - routeId,
-                )
+                _uiState.update {
+                    it.copy(
+                        routeAssignments = it.routeAssignments + (routeId to assignments),
+                        loadingRouteAssignmentIds = it.loadingRouteAssignmentIds - routeId,
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    loadingRouteAssignmentIds = _uiState.value.loadingRouteAssignmentIds - routeId,
-                    error = "Failed to load assignments: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        loadingRouteAssignmentIds = it.loadingRouteAssignmentIds - routeId,
+                        error = "Failed to load assignments: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun cancelRouteAssignment(routeId: Int, jobId: Int) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(
-                cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds + jobId,
-                error = null,
-            )
+            _uiState.update {
+                it.copy(
+                    cancellingRouteAssignmentJobIds = it.cancellingRouteAssignmentJobIds + jobId,
+                    error = null,
+                )
+            }
             try {
                 apiClient.cancelAdminRouteAssignment(routeId, jobId)
                 val assignments = apiClient.getAdminRouteAssignments(routeId)
-                _uiState.value = _uiState.value.copy(
-                    routeAssignments = _uiState.value.routeAssignments + (routeId to assignments),
-                    cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds - jobId,
-                )
+                _uiState.update {
+                    it.copy(
+                        routeAssignments = it.routeAssignments + (routeId to assignments),
+                        cancellingRouteAssignmentJobIds = it.cancellingRouteAssignmentJobIds - jobId,
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    cancellingRouteAssignmentJobIds = _uiState.value.cancellingRouteAssignmentJobIds - jobId,
-                    error = "Cancel failed: ${e.message}",
-                )
+                _uiState.update {
+                    it.copy(
+                        cancellingRouteAssignmentJobIds = it.cancellingRouteAssignmentJobIds - jobId,
+                        error = "Cancel failed: ${e.message}",
+                    )
+                }
             }
         }
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
+        _uiState.update { it.copy(error = null) }
     }
 
     // ── Payout Approval Actions ────────────────────────────────────────
 
     fun approveJob(jobId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            _uiState.update { it.copy(payoutActionError = null) }
             try {
                 apiClient.approveJob(jobId)
                 // Remove the approved job from the local list immediately
-                _uiState.value = _uiState.value.copy(
-                    pendingReviews = _uiState.value.pendingReviews.filter { it.jobId != jobId },
-                )
+                _uiState.update { it.copy(pendingReviews = it.pendingReviews.filter { review -> review.jobId != jobId }) }
                 invalidateTab(AdminTab.PAYOUTS)
                 onResult(true, null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Failed to approve job"
-                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                _uiState.update { it.copy(payoutActionError = msg) }
                 onResult(false, msg)
             }
         }
@@ -695,24 +729,22 @@ class AdminPanelViewModel(
 
     fun denyJob(jobId: Int, reason: String, onResult: (success: Boolean, error: String?) -> Unit) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            _uiState.update { it.copy(payoutActionError = null) }
             try {
                 apiClient.denyJob(jobId, reason)
-                _uiState.value = _uiState.value.copy(
-                    pendingReviews = _uiState.value.pendingReviews.filter { it.jobId != jobId },
-                )
+                _uiState.update { it.copy(pendingReviews = it.pendingReviews.filter { review -> review.jobId != jobId }) }
                 invalidateTab(AdminTab.PAYOUTS)
                 onResult(true, null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Failed to deny job"
-                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                _uiState.update { it.copy(payoutActionError = msg) }
                 onResult(false, msg)
             }
         }
     }
 
     fun clearPayoutActionError() {
-        _uiState.value = _uiState.value.copy(payoutActionError = null)
+        _uiState.update { it.copy(payoutActionError = null) }
     }
 
     // ── Ad-hoc Payout Actions ──────────────────────────────────────────
@@ -755,17 +787,15 @@ class AdminPanelViewModel(
 
     fun markPayoutMailed(payoutId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(payoutActionError = null)
+            _uiState.update { it.copy(payoutActionError = null) }
             try {
                 apiClient.markPayoutMailed(payoutId)
-                _uiState.value = _uiState.value.copy(
-                    pendingChecks = _uiState.value.pendingChecks.filter { it.id != payoutId },
-                )
+                _uiState.update { it.copy(pendingChecks = it.pendingChecks.filter { check -> check.id != payoutId }) }
                 invalidateTab(AdminTab.PAYOUTS)
                 onResult(true, null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Failed to mark check as mailed"
-                _uiState.value = _uiState.value.copy(payoutActionError = msg)
+                _uiState.update { it.copy(payoutActionError = msg) }
                 onResult(false, msg)
             }
         }
@@ -778,17 +808,15 @@ class AdminPanelViewModel(
 
     fun approveBlockProposal(proposalId: Int, onResult: (success: Boolean, error: String?) -> Unit) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(blockProposalActionError = null)
+            _uiState.update { it.copy(blockProposalActionError = null) }
             try {
                 apiClient.approveBlockProposal(proposalId)
-                _uiState.value = _uiState.value.copy(
-                    blockProposals = _uiState.value.blockProposals.filter { it.id != proposalId },
-                )
+                _uiState.update { it.copy(blockProposals = it.blockProposals.filter { proposal -> proposal.id != proposalId }) }
                 invalidateTab(AdminTab.BLOCK_PROPOSALS)
                 onResult(true, null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Failed to approve block proposal"
-                _uiState.value = _uiState.value.copy(blockProposalActionError = msg)
+                _uiState.update { it.copy(blockProposalActionError = msg) }
                 onResult(false, msg)
             }
         }
@@ -796,23 +824,21 @@ class AdminPanelViewModel(
 
     fun rejectBlockProposal(proposalId: Int, reason: String?, onResult: (success: Boolean, error: String?) -> Unit) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(blockProposalActionError = null)
+            _uiState.update { it.copy(blockProposalActionError = null) }
             try {
                 apiClient.rejectBlockProposal(proposalId, reason)
-                _uiState.value = _uiState.value.copy(
-                    blockProposals = _uiState.value.blockProposals.filter { it.id != proposalId },
-                )
+                _uiState.update { it.copy(blockProposals = it.blockProposals.filter { proposal -> proposal.id != proposalId }) }
                 invalidateTab(AdminTab.BLOCK_PROPOSALS)
                 onResult(true, null)
             } catch (e: Exception) {
                 val msg = e.message ?: "Failed to reject block proposal"
-                _uiState.value = _uiState.value.copy(blockProposalActionError = msg)
+                _uiState.update { it.copy(blockProposalActionError = msg) }
                 onResult(false, msg)
             }
         }
     }
 
     fun clearBlockProposalActionError() {
-        _uiState.value = _uiState.value.copy(blockProposalActionError = null)
+        _uiState.update { it.copy(blockProposalActionError = null) }
     }
 }
