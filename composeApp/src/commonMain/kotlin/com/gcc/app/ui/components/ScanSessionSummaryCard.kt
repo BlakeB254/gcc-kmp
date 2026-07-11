@@ -23,8 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,7 @@ import com.gcc.app.platform.ScanScore
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
+import com.gcc.app.ui.map.quantizeAndTraceOutlines
 import com.gcc.app.ui.theme.CardAccentGreen
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccClaimed
@@ -183,10 +185,11 @@ private fun sessionDurationLabel(session: EnvScanSessionDraft?): String {
 }
 
 /**
- * Camera-locked basemap framed to the covered area, with each credited 3m
- * cell shaded on an overlay canvas. Cells are drawn slightly oversized so
- * adjacent cells fuse into one continuous swept region instead of reading as
- * a dotted grid.
+ * Camera-locked basemap framed to the covered area, with the credited 3m
+ * cells traced into merged organic outlines (marching squares via
+ * [quantizeAndTraceOutlines], same engine as the live scan minimap's
+ * [ScanMinimapOverlay]) and filled on an overlay canvas — "no graph paper"
+ * (Pillar 7): one swept-territory blob instead of a per-cell rect grid.
  */
 @Composable
 private fun SessionCoverageMap(
@@ -248,22 +251,33 @@ private fun SessionCoverageMap(
             )
         }
 
+        // Stable lattice anchor (tracer requirement, CoverageOutline.kt): the
+        // first credited cell center, locked once per distinct cell set —
+        // cellCenters is the session's final tally here (not a live-updating
+        // GPS feed like the minimap's), so it only re-anchors if the session
+        // itself changes.
+        val anchor = remember(cellCenters) { cellCenters.first() }
+        val rings = remember(cellCenters) {
+            quantizeAndTraceOutlines(cellCenters, CoverageTracker.cellSizeMeters, anchor.first, anchor.second)
+        }
+
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val cellPx = metersToPixels(CoverageTracker.cellSizeMeters, centerLat, overlayZoom)
-            // 1.2× so neighbouring cells overlap into continuous shading.
-            val drawSize = cellPx * 1.2f
             val fill = GccGreen.copy(alpha = 0.4f)
-            cellCenters.forEach { (lat, lng) ->
-                val eastMeters = (lng - centerLng) * 111_320.0 * cosLat
-                val northMeters = (lat - centerLat) * 111_320.0
-                val cx = size.width / 2f + metersToPixels(eastMeters, centerLat, overlayZoom)
-                val cy = size.height / 2f - metersToPixels(northMeters, centerLat, overlayZoom)
-                drawRect(
-                    color = fill,
-                    topLeft = Offset(cx - drawSize / 2f, cy - drawSize / 2f),
-                    size = Size(drawSize, drawSize),
-                )
+            val edge = GccGreen.copy(alpha = 0.8f)
+            val path = Path().apply { fillType = PathFillType.EvenOdd }
+            for (ring in rings) {
+                if (ring.size < 3) continue
+                ring.forEachIndexed { index, (lat, lng) ->
+                    val eastMeters = (lng - centerLng) * 111_320.0 * cosLat
+                    val northMeters = (lat - centerLat) * 111_320.0
+                    val x = size.width / 2f + metersToPixels(eastMeters, centerLat, overlayZoom)
+                    val y = size.height / 2f - metersToPixels(northMeters, centerLat, overlayZoom)
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
             }
+            drawPath(path, color = fill)
+            drawPath(path, color = edge, style = Stroke(width = 1.5.dp.toPx()))
         }
     }
 }
