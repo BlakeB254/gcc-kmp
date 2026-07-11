@@ -38,6 +38,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) { viewModel.loadSettings() }
     LaunchedEffect(Unit) { profileVm.loadProfile() }
     LaunchedEffect(Unit) { viewModel.loadConnectStatus() }
+    LaunchedEffect(Unit) { viewModel.loadPendingScanUploads() }
 
     LaunchedEffect(uiState.signedOut) {
         if (uiState.signedOut) onSignOut()
@@ -169,6 +170,66 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.togglePushNotifications(it) },
                         colors = SwitchDefaults.colors(checkedTrackColor = GccGreen),
                     )
+                }
+            }
+
+            // Scan Uploads Section — capture chunks (video/pose/depth) are
+            // policy-gated to Wi-Fi/charging unless the user opts into
+            // cellular here; the pending row + button make held uploads
+            // visible and recoverable instead of silently queued.
+            SectionHeader(title = "Scan Uploads")
+            GccCard {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Upload scans over cellular",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                "Scan captures upload on Wi-Fi or while charging. " +
+                                    "Enable to upload right after scanning (can use 100+ MB per scan).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                        Switch(
+                            checked = uiState.cellularUploadEnabled,
+                            onCheckedChange = { viewModel.toggleCellularUpload(it) },
+                            colors = SwitchDefaults.colors(checkedTrackColor = GccGreen),
+                        )
+                    }
+                    if (uiState.pendingScanUploads > 0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${uiState.pendingScanUploads} capture file(s) waiting",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                            if (uiState.scanUploadFlushing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = GccGreen,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                TextButton(onClick = { viewModel.flushScanUploadsNow() }) {
+                                    Text("Upload now", color = GccGreen)
+                                }
+                            }
+                        }
+                    }
+                    uiState.scanUploadHint?.let { hint ->
+                        Text(hint, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
                 }
             }
 
