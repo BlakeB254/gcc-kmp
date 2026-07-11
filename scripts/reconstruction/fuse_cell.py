@@ -246,7 +246,10 @@ def _fuse_one_chunk(video_bytes: bytes | None, sidecar_bytes: bytes, depth_bytes
     if not usable:
         return []
 
-    color_imgs = chunk_io.extract_video_frames_at(video_bytes, [d.t for d, _ in usable])
+    # Depth t is boot-clock; the video's pts start at 0 at the chunk's first
+    # sidecar frame -- rebase before matching (see SidecarFrame.t_video).
+    epoch = sidecar_frames[0].t
+    color_imgs = chunk_io.extract_video_frames_at(video_bytes, [d.t - epoch for d, _ in usable])
 
     clouds = []
     for (depth_record, pose_frame), color_img in zip(usable, color_imgs):

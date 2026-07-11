@@ -97,7 +97,10 @@ class SessionMedia:
                 best = (gap, idx)
         if best is None or best[0] > 5.0:  # >5s from any captured frame: no honest still
             return None
-        frames = chunk_io.extract_video_frames_at(self._videos[best[1]], [target_t])
+        # target_t is boot-clock; the chunk's video pts start at 0 at its
+        # own first sidecar frame -- rebase before matching.
+        chunk_t0 = self._sidecars[best[1]][0].t
+        frames = chunk_io.extract_video_frames_at(self._videos[best[1]], [target_t - chunk_t0])
         return frames[0] if frames else None
 
 

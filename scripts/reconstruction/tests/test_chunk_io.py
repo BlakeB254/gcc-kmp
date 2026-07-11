@@ -30,9 +30,12 @@ def test_parse_sidecar_recovers_transform_and_scales_intrinsics_to_video_resolut
     transform[:3, 3] = [1.0, 2.0, 3.0]
     transform[0, 1] = 0.5  # break symmetry so a transpose would be detectable
 
-    # Source-resolution intrinsics; video is downscaled to half size, so
-    # fx/fy/cx/cy should come back halved.
-    source_intrinsics = np.array([[100.0, 0, 0], [0, 120.0, 0], [50.0, 60.0, 1.0]])  # column-major storage
+    # Source-resolution intrinsics as the STANDARD pinhole K -- Apple's
+    # simd_float3x3 column-major flattening of this is [fx,0,0, 0,fy,0,
+    # cx,cy,1], which is exactly what real capture sidecars contain
+    # (verified against production data 2026-07-11: flat[6] ≈ width/2).
+    # Video is downscaled to half size, so fx/fy/cx/cy come back halved.
+    source_intrinsics = np.array([[100.0, 0, 50.0], [0, 120.0, 60.0], [0.0, 0.0, 1.0]])
 
     header = {"schema": 1, "sessionId": "s1", "chunk": 0, "sourceWidth": 200, "sourceHeight": 240, "videoWidth": 100, "videoHeight": 120}
     frame = {

@@ -42,6 +42,12 @@ from frame_io import Intrinsics
 @dataclass
 class SidecarFrame:
     t: float
+    # `t` is ARKit's boot-relative clock (shared with DepthRecord.t); the
+    # chunk's .mov pts start at 0. t_video = t - first frame's t is the
+    # video-clock time to pass to extract_video_frames_at. Passing raw `t`
+    # there silently matches EVERY target to one frame (2026-07-11 bug:
+    # gsplat trained on 3 distinct images posing as 159).
+    t_video: float
     camera_transform: np.ndarray  # 4x4, world = camera_transform @ point_camera_homogeneous
     intrinsics: Intrinsics | None  # width/height filled in by caller (sidecar only has fx/fy/cx/cy)
     tracking: int  # 0=normal, 1=limited, 2=other
@@ -92,19 +98,22 @@ def parse_sidecar(jsonl_bytes: bytes) -> tuple[dict, list[SidecarFrame]]:
         record = json.loads(line)
         transform = _matrix_from_column_major(record["transform"], 4)
         k = _matrix_from_column_major(record["intrinsics"], 3)
-        # ARKit's camera.intrinsics, per Apple's docs, is
-        # [[fx,0,0],[0,fy,0],[cx,cy,1]] -- reshaping the column-major-stored
-        # flat array with order='F' reconstructs exactly that layout, so cx/cy
-        # live at [2,0]/[2,1], NOT [0,2]/[1,2] (caught by
-        # tests/test_chunk_io.py -- an earlier version of this line had them
-        # transposed).
+        # ARKit's camera.intrinsics is a simd_float3x3 whose COLUMNS are
+        # (fx,0,0), (0,fy,0), (cx,cy,1) -- flattened column-major that's
+        # [fx,0,0, 0,fy,0, cx,cy,1], and reshape(order='F') reconstructs
+        # the standard K with cx/cy at [0,2]/[1,2]. Verified against real
+        # capture data 2026-07-11: flat[6] ≈ sourceWidth/2 (the principal
+        # point), while [2,0] is genuinely 0 -- an earlier version read
+        # [2,0]/[2,1] and silently zeroed the principal point in every
+        # unprojection.
         intr = Intrinsics(
             fx=k[0, 0] * scale_x, fy=k[1, 1] * scale_y,
-            cx=k[2, 0] * scale_x, cy=k[2, 1] * scale_y,
+            cx=k[0, 2] * scale_x, cy=k[1, 2] * scale_y,
             width=video_width, height=video_height,
         )
         frames.append(SidecarFrame(
             t=record["t"],
+            t_video=record["t"] - (frames[0].t if frames else record["t"]),
             camera_transform=transform,
             intrinsics=intr,
             tracking=record["tracking"],

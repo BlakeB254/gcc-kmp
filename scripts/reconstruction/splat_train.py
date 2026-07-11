@@ -62,7 +62,7 @@ def gather_session_frames(
 
         sample_count = min(per_chunk_budget, len(sidecar_frames))
         sample_indices = np.linspace(0, len(sidecar_frames) - 1, sample_count, dtype=int)
-        targets = [sidecar_frames[idx].t for idx in sample_indices]
+        targets = [sidecar_frames[idx].t_video for idx in sample_indices]
         imgs = chunk_io.extract_video_frames_at(video_bytes, targets)
         for idx, color_img in zip(sample_indices, imgs):
             if color_img is None:

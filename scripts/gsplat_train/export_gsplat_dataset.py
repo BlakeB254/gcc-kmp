@@ -77,7 +77,7 @@ def main() -> None:
         if not frames:
             continue
         idxs = np.linspace(0, len(frames) - 1, min(per_chunk, len(frames)), dtype=int)
-        imgs = chunk_io.extract_video_frames_at(video, [frames[i].t for i in idxs])
+        imgs = chunk_io.extract_video_frames_at(video, [frames[i].t_video for i in idxs])
         for i, img in zip(idxs, imgs):
             if img is None:
                 continue
