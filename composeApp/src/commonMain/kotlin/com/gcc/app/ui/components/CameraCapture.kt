@@ -124,28 +124,25 @@ fun CameraCapture(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(atLimit) {
+                .pointerInput(atLimit, environmentScanMode) {
                     detectTapGestures { offset ->
-                        // AR tap-to-focus (Task 5): bias detection toward
-                        // whatever the user tapped before the existing
-                        // tap-anywhere-to-capture behavior runs. The Box is
-                        // full-size, so the tap normalizes directly against
-                        // this pointerInput scope's size. No-op when there's
-                        // no AR overlay (non-AR camera / off-iOS).
+                        if (environmentScanMode) {
+                            // Global constraint 2: in a scan, a tap TARGETS.
+                            // It never captures. Accidental taps (and the taps
+                            // users make to keep the screen awake — see
+                            // KeepScreenAwake) must cost nothing. The tap opens
+                            // a provisional candidate the user must confirm.
+                            arOverlay?.focusAt(offset.x / size.width, offset.y / size.height)
+                            return@detectTapGestures
+                        }
+                        // Non-scan flows keep tap-to-capture.
                         if (arOverlay != null) {
                             arOverlay.focusAt(offset.x / size.width, offset.y / size.height)
                         }
                         if (!isCapturing && !atLimit) {
                             isCapturing = true
                             coroutineScope.launch {
-                                // Environment scan: silent frame grab (no
-                                // shutter); other flows keep the photo output
-                                // (depth + attestation).
-                                val photo = if (environmentScanMode) {
-                                    manager.captureFrame()
-                                } else {
-                                    manager.capturePhoto()
-                                }
+                                val photo = manager.capturePhoto()
                                 if (photo != null) onCapture(photo)
                                 isCapturing = false
                             }
