@@ -113,13 +113,20 @@ actual class ArEnvScanOverlay actual constructor() {
          *  image's smaller dimension. Wide enough to keep context (a bottle needs
          *  the ground around it), tight enough to exclude the rest of the scene. */
         private const val TAP_CROP_FRACTION = 0.35
-        /** One texture tile == one metre (constraint 7's minor interval). The
-         *  texture itself draws a heavier line every 3rd tile for the major
-         *  interval, and 1.0 stays an exact divisor of CoverageTracker's 3m cells.
+        /** Minor grid interval: one metre (constraint 7). The grid texture is a
+         *  3×3-cell tile — thin lines on the interior cell boundaries, a heavy
+         *  line on its outer edge — so ONE texture repeat spans
+         *  [GRID_MAJOR_TILE_METERS] (3m, CoverageTracker's cell size) and each
+         *  cell inside it spans this constant.
          *  MUST MATCH `gridTileMeters` in GccArNative.swift — the RealityKit and
          *  SceneKit paths phase the same lattice; the two are not read from a
          *  shared constant, so keep them in sync by hand. */
         private const val GRID_TILE_METERS = 1.0f
+        /** World size of ONE texture repeat (the 3m major interval). Every UV
+         *  scale and lattice snap for the ground grid must use THIS, not
+         *  [GRID_TILE_METERS] — dividing by the minor interval would render the
+         *  whole 3×3 texture per metre (minor lines at 0.33m, major at 1m). */
+        private const val GRID_MAJOR_TILE_METERS = GRID_TILE_METERS * 3f
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -1304,9 +1311,12 @@ actual class ArEnvScanOverlay actual constructor() {
     /**
      * (Re)build the ONE grid's render geometry from the monotonic union AABB
      * — snapped OUTWARD to the coverage lattice once its phase is known
-     * (tracker origin set + geo-ref paired), so the grid edges — and every
-     * repeated [GRID_TILE_METERS] texture line between them — land exactly
-     * on the 3m cell lattice the minimap draws. Mirrors
+     * (tracker origin set + geo-ref paired). Snapping AND the UV scale both
+     * use [GRID_MAJOR_TILE_METERS]: this path has no UV offset, so texture
+     * repeats can only register with the lattice if the plane edges land on
+     * repeat boundaries — snapped edges sit on the 3m cell lattice the
+     * minimap draws (which is also the 1m minor lattice), and each repeat's
+     * interior lines land on [GRID_TILE_METERS] multiples. Mirrors
      * GccArNative.swift's applyPlaneGeometry. Called on union growth; mesh
      * width/height writes are skipped when the snapped size is unchanged.
      */
@@ -1315,7 +1325,10 @@ actual class ArEnvScanOverlay actual constructor() {
         val rawMaxX = floorMaxX ?: return
         val rawMinZ = floorMinZ ?: return
         val rawMaxZ = floorMaxZ ?: return
-        val tile = GRID_TILE_METERS.toDouble()
+        // One texture repeat = one MAJOR tile (3m). Dividing by the minor
+        // interval instead renders the whole 3×3 texture per metre (minor
+        // lines every 0.33m) — the review finding this constant fixes.
+        val tile = GRID_MAJOR_TILE_METERS.toDouble()
         val phase = gridPhase
         val (left, right) = if (phase != null) {
             snapRangeToLattice(rawMinX, rawMaxX, phase.first, tile)
@@ -1345,7 +1358,6 @@ actual class ArEnvScanOverlay actual constructor() {
                 1f,
             )
             plane.firstMaterial?.diffuse?.contentsTransform = uv
-            plane.firstMaterial?.emission?.contentsTransform = uv
         }
     }
 
@@ -1459,13 +1471,16 @@ actual class ArEnvScanOverlay actual constructor() {
         floatArrayOf(vector.getFloatAt(0), vector.getFloatAt(1), vector.getFloatAt(2))
 
     /**
-     * A transparent 3×3-tile texture: a thin line on every cell boundary (the
-     * 1 m minor interval, [GRID_TILE_METERS]) and a heavier line on the
-     * texture's own outer boundary — which lands on every 3rd repeat once
-     * the material tiles this texture, giving the 3 m major interval for
-     * free. [withDiagonals] adds an X per cell for the denser "vector scan"
-     * look. Minor lines draw at alpha 0.5, major lines at alpha 0.9 — both
-     * derived from [line]'s hue so callers keep passing one color.
+     * A transparent 3×3-cell texture: a thin line on the interior cell
+     * boundaries (the 1 m minor interval, [GRID_TILE_METERS]) and a heavier
+     * line on the texture's own outer boundary. One texture repeat is scaled
+     * to span [GRID_MAJOR_TILE_METERS] (see applyFloorGridGeometry), so the
+     * heavy edge line lands on every repeat boundary — the 3 m major
+     * interval. [withDiagonals] adds an X per cell for the denser "vector
+     * scan" look. Minor lines draw at alpha 0.5, major lines at alpha 0.9 —
+     * both derived from [line]'s hue so callers keep passing one color.
+     * Mirrored by GccArNative.swift's makeGridTexture — keep them visually
+     * identical.
      */
     private fun makeGridTexture(
         line: UIColor,
@@ -1486,12 +1501,15 @@ actual class ArEnvScanOverlay actual constructor() {
             minorPath.addLineToPoint(CGPointMake(pos, sizePx))
         }
         if (withDiagonals) {
-            for (i in 0..2) {
-                val x0 = third * i
-                minorPath.moveToPoint(CGPointMake(x0, 0.0))
-                minorPath.addLineToPoint(CGPointMake(x0 + third, third))
-                minorPath.moveToPoint(CGPointMake(x0 + third, 0.0))
-                minorPath.addLineToPoint(CGPointMake(x0, third))
+            for (row in 0..2) {
+                for (col in 0..2) {
+                    val x0 = third * col
+                    val y0 = third * row
+                    minorPath.moveToPoint(CGPointMake(x0, y0))
+                    minorPath.addLineToPoint(CGPointMake(x0 + third, y0 + third))
+                    minorPath.moveToPoint(CGPointMake(x0 + third, y0))
+                    minorPath.addLineToPoint(CGPointMake(x0, y0 + third))
+                }
             }
         }
         minorPath.lineWidth = lineWidth

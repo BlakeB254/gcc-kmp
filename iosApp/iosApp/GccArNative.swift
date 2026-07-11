@@ -27,8 +27,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// is allocation-light on the delegate thread and can never throw.
     private var recorder: ArSessionRecorder?
 
-    /// Grid squares stay this size no matter how large a plane grows.
-    /// 1.0m = a clean divisor of CoverageTracker's 3m cells (the minor
+    /// Minor grid interval — stays this size no matter how large a plane
+    /// grows. 1.0m = a clean divisor of CoverageTracker's 3m cells (the minor
     /// interval from global constraint 7's 1m/3m grid), and the grid is
     /// world-axis aligned (compass-true under gravityAndHeading), so the
     /// on-camera lattice visually registers with the north-up minimap grid.
@@ -36,6 +36,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// SceneKit paths phase the same lattice; the two are not read from a
     /// shared constant, so keep them in sync by hand.
     private static let gridTileMeters: Float = 1.0
+    /// World size of ONE texture repeat: the grid texture is a 3×3-cell tile
+    /// (thin interior minor lines, heavy outer major line), so one repeat
+    /// spans 3m — the major interval and CoverageTracker's cell size. Every
+    /// UV scale/offset and lattice snap for the ground grid must use THIS,
+    /// not `gridTileMeters` — dividing by the minor interval would render
+    /// the whole 3×3 texture per metre (minor lines every 0.33m). Matches
+    /// `GRID_MAJOR_TILE_METERS` in ArEnvScan.kt.
+    private static let gridMajorTileMeters: Float = gridTileMeters * 3
 
     /// Only one ARSession may hold the camera at a time. The Kotlin factory
     /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
@@ -62,8 +70,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var floorMaxZ: Float?
     /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
     /// from Kotlin via `setGridPhaseOrigin`). The grid snaps its bounds to
-    /// multiples of `gridTileMeters` from this point so the on-camera geogrid
-    /// registers with the minimap's cell grid. Nil until the first
+    /// multiples of `gridMajorTileMeters` from this point so the on-camera
+    /// geogrid registers with the minimap's cell grid. Nil until the first
     /// geo-reference pairing — the grid phases to the AR world origin until
     /// then. TERMINAL once set (see `setGridPhaseOrigin`) — "stability beats
     /// accuracy for the grid": content (fog/vector cells/guidance) keeps
@@ -688,16 +696,17 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     /// (Re)build the ONE grid's render geometry from the monotonic union
     /// AABB: with a lattice phase known, the bounds snap OUTWARD to
-    /// multiples of `gridTileMeters` from the phase origin, so the grid
-    /// edges — and every repeated tile line between them — land exactly on
-    /// the geo-anchored 3m cell lattice the minimap draws. Runs on union
-    /// growth AND once when the phase origin locks (geo-ref first pairing —
-    /// it never moves again, see `setGridPhaseOrigin`). Mesh regeneration is
-    /// the expensive part — skipped while the snapped size is unchanged.
+    /// multiples of `gridMajorTileMeters` (one texture repeat = 3m) from the
+    /// phase origin, so the grid edges — and every minor/major texture line
+    /// between them — land exactly on the geo-anchored 3m cell lattice the
+    /// minimap draws. Runs on union growth AND once when the phase origin
+    /// locks (geo-ref first pairing — it never moves again, see
+    /// `setGridPhaseOrigin`). Mesh regeneration is the expensive part —
+    /// skipped while the snapped size is unchanged.
     private func applyPlaneGeometry(_ entry: PlaneGridEntity) {
         guard let rawMinX = floorMinX, let rawMaxX = floorMaxX,
               let rawMinZ = floorMinZ, let rawMaxZ = floorMaxZ else { return }
-        let tile = Self.gridTileMeters
+        let tile = Self.gridMajorTileMeters
         var minX = rawMinX, maxX = rawMaxX
         var minZ = rawMinZ, maxZ = rawMaxZ
         if let phase = gridPhaseOrigin {
@@ -739,21 +748,24 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     ) -> PhysicallyBasedMaterial {
         let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.28)
         var material = gridMaterial(floorGridTexture, tint: tint, uvScale: 1)
-        // Scale keeps tiles a constant gridTileMeters; the offset phases the
-        // repeat so grid LINES land on multiples of the tile from the lattice
-        // phase origin (the geo-anchored CoverageTracker lattice once the
-        // geo-ref pairs; the AR world origin before) — every plane shares one
-        // seamless lattice instead of each starting its grid at its corner.
-        // With bounds snapped by applyPlaneGeometry the offset is ~0; it
-        // mops up float residue and covers the unsnapped pre-phase case.
+        // One texture repeat = one MAJOR tile (gridMajorTileMeters, 3m) — the
+        // texture packs the 3×3 minor cells inside it, so dividing by the
+        // minor interval would draw minor lines every 0.33m. The offset
+        // phases the repeat so grid LINES land on multiples of the tile from
+        // the lattice phase origin (the geo-anchored CoverageTracker lattice
+        // once the geo-ref pairs; the AR world origin before) — every plane
+        // shares one seamless lattice instead of each starting its grid at
+        // its corner. With bounds snapped by applyPlaneGeometry the offset
+        // is ~0; it mops up float residue and covers the unsnapped pre-phase
+        // case.
         material.textureCoordinateTransform.scale = SIMD2(
-            max(size.x / Self.gridTileMeters, 1),
-            max(size.y / Self.gridTileMeters, 1)
+            max(size.x / Self.gridMajorTileMeters, 1),
+            max(size.y / Self.gridMajorTileMeters, 1)
         )
         let phaseX = gridPhaseOrigin?.x ?? 0
         let phaseZ = gridPhaseOrigin?.y ?? 0
-        let originX = (centerWorld.x - size.x / 2 - phaseX) / Self.gridTileMeters
-        let originZ = (centerWorld.z - size.y / 2 - phaseZ) / Self.gridTileMeters
+        let originX = (centerWorld.x - size.x / 2 - phaseX) / Self.gridMajorTileMeters
+        let originZ = (centerWorld.z - size.y / 2 - phaseZ) / Self.gridMajorTileMeters
         material.textureCoordinateTransform.offset = SIMD2(
             originX - floor(originX),
             originZ - floor(originZ)
@@ -791,27 +803,54 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return cameraY - 1.4
     }
 
-    /// Transparent tile with lines on its leading edges — repeat-tiled by the
-    /// UV transform it becomes a seamless grid; diagonals give the denser
-    /// "vector scan" look. Mirrors the Kotlin SceneKit texture exactly.
+    /// Transparent 3×3-cell tile: thin lines on the interior cell boundaries
+    /// (the 1m minor interval, `gridTileMeters`, alpha 0.5) and a heavier
+    /// line on the texture's own outer boundary (alpha 0.9). One repeat is
+    /// scaled to span `gridMajorTileMeters` (see `planeMaterial`), so the
+    /// heavy edge line lands on every repeat boundary — the 3m major
+    /// interval. Diagonals add an X per cell for the denser "vector scan"
+    /// look. Mirrors the Kotlin SceneKit texture (ArEnvScan.kt's
+    /// makeGridTexture) exactly — keep them visually identical.
     private static func makeGridTexture(line: UIColor, lineWidth: CGFloat, diagonals: Bool = false) -> TextureResource? {
-        let side: CGFloat = 128
+        let side: CGFloat = 129
+        let third = side / 3
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
         let image = renderer.image { ctx in
-            let path = UIBezierPath()
-            path.move(to: CGPoint(x: 0, y: 0.5))
-            path.addLine(to: CGPoint(x: side, y: 0.5))
-            path.move(to: CGPoint(x: 0.5, y: 0))
-            path.addLine(to: CGPoint(x: 0.5, y: side))
-            if diagonals {
-                path.move(to: .zero)
-                path.addLine(to: CGPoint(x: side, y: side))
-                path.move(to: CGPoint(x: side, y: 0))
-                path.addLine(to: CGPoint(x: 0, y: side))
+            // Minor grid: one line per interior cell boundary.
+            let minorPath = UIBezierPath()
+            for i in 1...2 {
+                let pos = third * CGFloat(i)
+                minorPath.move(to: CGPoint(x: 0, y: pos))
+                minorPath.addLine(to: CGPoint(x: side, y: pos))
+                minorPath.move(to: CGPoint(x: pos, y: 0))
+                minorPath.addLine(to: CGPoint(x: pos, y: side))
             }
-            path.lineWidth = lineWidth
-            line.setStroke()
-            path.stroke()
+            if diagonals {
+                for row in 0...2 {
+                    for col in 0...2 {
+                        let x0 = third * CGFloat(col)
+                        let y0 = third * CGFloat(row)
+                        minorPath.move(to: CGPoint(x: x0, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0 + third, y: y0 + third))
+                        minorPath.move(to: CGPoint(x: x0 + third, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0, y: y0 + third))
+                    }
+                }
+            }
+            minorPath.lineWidth = lineWidth
+            line.withAlphaComponent(0.5).setStroke()
+            minorPath.stroke()
+
+            // Major grid: only the texture's outer boundary — one heavy line
+            // per repeat, i.e. every gridMajorTileMeters in the world.
+            let majorPath = UIBezierPath()
+            majorPath.move(to: CGPoint(x: 0, y: 0.5))
+            majorPath.addLine(to: CGPoint(x: side, y: 0.5))
+            majorPath.move(to: CGPoint(x: 0.5, y: 0))
+            majorPath.addLine(to: CGPoint(x: 0.5, y: side))
+            majorPath.lineWidth = lineWidth * 1.5
+            line.withAlphaComponent(0.9).setStroke()
+            majorPath.stroke()
             _ = ctx // renderer context retained for the draw
         }
         guard let cg = image.cgImage else { return nil }
