@@ -68,6 +68,14 @@ expect class ArEnvScanOverlay() {
     /** Non-null while a close-range candidate awaits Confirm / Not trash. */
     val trashCandidate: StateFlow<TrashCandidate?>
 
+    /**
+     * Every identified/salient item box in the current frame (Task 17) —
+     * additive display layer alongside [trashCandidate]'s single lock-on
+     * flow, which this never affects or replaces. Capped at
+     * [MAX_MULTI_ITEM_RETICLES]. Always empty off-iOS.
+     */
+    val multiItemReticles: StateFlow<List<DetectionReticle>>
+
     /** The one pending user-tapped candidate. See [TapCandidateState]. */
     val tapCandidate: StateFlow<TapCandidateState>
 

@@ -173,6 +173,9 @@ actual class ArEnvScanOverlay actual constructor() {
     private val _trashCandidate = MutableStateFlow<TrashCandidate?>(null)
     actual val trashCandidate: StateFlow<TrashCandidate?> = _trashCandidate.asStateFlow()
 
+    private val _multiItemReticles = MutableStateFlow<List<DetectionReticle>>(emptyList())
+    actual val multiItemReticles: StateFlow<List<DetectionReticle>> = _multiItemReticles.asStateFlow()
+
     private val _tapCandidate = MutableStateFlow(TapCandidateState())
     actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
 
@@ -475,6 +478,7 @@ actual class ArEnvScanOverlay actual constructor() {
         floorMaxX = null
         floorMinZ = null
         floorMaxZ = null
+        _multiItemReticles.value = emptyList()
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
         }
@@ -992,6 +996,7 @@ actual class ArEnvScanOverlay actual constructor() {
         if (trashLabel == null) {
             nearStreak = 0
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
+            _multiItemReticles.value = emptyList()
             // No trash in view: a landmark element tick instead — trees,
             // fences, gates… register to the grid so future scans expect
             // them. (Only on trash-less ticks: a bag stuck in a bush must
@@ -1026,6 +1031,10 @@ actual class ArEnvScanOverlay actual constructor() {
             ?.salientObjects
             ?.filterIsInstance<VNRectangleObservation>()
             ?: emptyList()
+        // Task 17: multi-item reticle layer — reuses [candidates] above
+        // (zero extra saliency cost); classifyRegion only spends extra Vision
+        // requests when there's actually more than one box to disambiguate.
+        updateMultiItemReticles(frame, candidates, trashLabel, confidence)
         val salient = selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
         salient?.boundingBox?.useContents {
             visionX = origin.x + size.width / 2.0
@@ -1118,6 +1127,86 @@ actual class ArEnvScanOverlay actual constructor() {
             UIImpactFeedbackGenerator(style = UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium)
                 .impactOccurred()
         }
+    }
+
+    /**
+     * Multi-item reticle layer (Task 17), additive to the single-candidate
+     * lock-on above: from the saliency boxes [analyzeTrash] already computed
+     * for [selectSalientObject] (zero extra saliency cost — this is called
+     * with the SAME `candidates` list), builds one [DetectionReticle] per
+     * box and publishes the deduped/capped result for the overlay + capture
+     * tagging.
+     *
+     * Performance guard: region classification ([classifyRegion]) is skipped
+     * entirely when there's 0-1 boxes — the whole-frame classify that
+     * produced [wholeFrameLabel]/[wholeFrameConfidence] already covers that
+     * case, so reusing it costs nothing extra. Only when saliency finds >= 2
+     * boxes does this spend up to [MAX_MULTI_ITEM_RETICLES] additional Vision
+     * requests, one per box — see the task-17 report for the full per-tick
+     * Vision request-count accounting.
+     */
+    private fun updateMultiItemReticles(
+        frame: ARFrame?,
+        candidates: List<VNRectangleObservation>,
+        wholeFrameLabel: String,
+        wholeFrameConfidence: Float,
+    ) {
+        if (candidates.isEmpty()) {
+            _multiItemReticles.value = emptyList()
+            return
+        }
+        if (candidates.size == 1) {
+            val box = candidates[0].toReticleBox()
+            _multiItemReticles.value = listOf(
+                DetectionReticle(
+                    centerX = box.viewX, centerY = box.viewY,
+                    width = box.side.toFloat(), height = box.side.toFloat(),
+                    label = wholeFrameLabel, confidence = wholeFrameConfidence, isLitter = true,
+                )
+            )
+            return
+        }
+        val classified = candidates.take(MAX_MULTI_ITEM_RETICLES).map { obs ->
+            val box = obs.toReticleBox()
+            val fraction = box.side.coerceIn(0.2, 0.5)
+            val observations = classifyRegion(frame, box.imageX, box.imageY, fraction)
+            val label = TrashDetectionRules.autoPromotionLabelFrom(observations)
+            val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
+            DetectionReticle(
+                centerX = box.viewX, centerY = box.viewY,
+                width = box.side.toFloat(), height = box.side.toFloat(),
+                label = label, confidence = confidence, isLitter = label != null,
+            )
+        }
+        _multiItemReticles.value = dedupeReticles(classified)
+    }
+
+    /** A saliency box's geometry in both coordinate systems Task 17 needs:
+     *  [imageX]/[imageY] (Vision's bottom-left origin flipped to the top-left
+     *  "image" convention [classifyRegion] expects — same conversion
+     *  [analyzeTrash] uses for `imageX`/`imageY`) and [viewX]/[viewY] (the
+     *  portrait-screen convention [DetectionReticle]/`LiveDetection.cx`/`cy`
+     *  use, i.e. `viewX = 1 - imageY`, `viewY = imageX`). [side] is the
+     *  larger of the two normalized Vision bbox dimensions, clamped to
+     *  double [analyzeTrash]'s `radius` clamp ([0.06, 0.35]) since it plays
+     *  the same "full box size" role [DetectionReticle.width]/`height` need,
+     *  where `radius` there is a half-size. */
+    private class ReticleBox(val imageX: Double, val imageY: Double, val viewX: Float, val viewY: Float, val side: Double)
+
+    private fun VNRectangleObservation.toReticleBox(): ReticleBox {
+        var visionX = 0.5
+        var visionY = 0.5
+        var side = 0.2
+        boundingBox.useContents {
+            visionX = origin.x + size.width / 2.0
+            visionY = origin.y + size.height / 2.0
+            side = maxOf(size.width, size.height).coerceIn(0.12, 0.7)
+        }
+        val imageX = visionX
+        val imageY = 1.0 - visionY
+        val viewX = (1.0 - imageY).toFloat()
+        val viewY = imageX.toFloat()
+        return ReticleBox(imageX, imageY, viewX, viewY, side)
     }
 
     /**

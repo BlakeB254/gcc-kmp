@@ -116,6 +116,15 @@ data class EnvScanManifest(
      *  the R2 bundle so scan problems are debuggable from the backend without
      *  asking the tester for a screen recording. Capped — see DIAGNOSTICS_TAIL_MAX. */
     val diagnosticsLog: List<String>? = null,
+    /**
+     * R2 keys (a subset of [photoKeys]) of photos captured while >= 2
+     * identified-litter reticles were on screen at once — the "best shots
+     * for our display image in the backend extraction mechanisms" (Task 17).
+     * Additive/optional so manifests recorded before this field existed
+     * still decode; null (not just empty) when no photo in this session
+     * qualified.
+     */
+    val multiItemPhotoKeys: List<String>? = null,
 )
 
 @Serializable

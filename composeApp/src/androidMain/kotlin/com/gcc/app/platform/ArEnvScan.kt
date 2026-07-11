@@ -16,6 +16,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
+    actual val multiItemReticles: StateFlow<List<DetectionReticle>> = MutableStateFlow(emptyList())
     private val _tapCandidate = MutableStateFlow(TapCandidateState())
     actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
     actual fun confirmTapCandidate(): TapCandidateState? = null

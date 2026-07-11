@@ -335,6 +335,11 @@ private fun CameraPhase(
     val arOverlay = remember { if (isScanMode && arEnvScanSupported()) ArEnvScanOverlay() else null }
     val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
+    // Multi-item reticle layer (Task 17) — additive display alongside
+    // trashCandidate's single lock-on; never drives approach/confirm.
+    val multiItemReticles by (
+        arOverlay?.multiItemReticles ?: remember { MutableStateFlow(emptyList<com.gcc.app.platform.DetectionReticle>()) }
+        ).collectAsState()
     val tapCandidate by (arOverlay?.tapCandidate ?: remember { MutableStateFlow(TapCandidateState()) })
         .collectAsState()
     // Gate pauses AR frame analysis indoors (same behavior the route AR has),
@@ -1102,6 +1107,9 @@ private fun CameraPhase(
         // (see confirmCandidate/dismissCandidate), so this only ever hides
         // the reticle for the duration the card itself is visible.
         if (trashCandidate == null) DetectionReticleOverlay(detections = liveDetections)
+        // Task 17: multi-item reticles — same gating as the single reticle
+        // above (frozen/hidden while the confirm card is up).
+        if (trashCandidate == null) MultiItemDetectionOverlay(reticles = multiItemReticles)
         // A tapped candidate outranks the passive auto-detect reticle.
         if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
             TapCandidatePill(

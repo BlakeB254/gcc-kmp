@@ -127,6 +127,11 @@ class SpotViewModel(
     // Negative training examples (tapped + "Not litter") — never enter
     // uiState.observedItems / world_observations, only the R2 manifest.
     private val rejectedItems = mutableListOf<ObservedSpotItem>()
+    // Task 17: indices (into capturedPhotos, kept in sync with photoStamps
+    // the same way removePhoto/purgeRecentCaptures already do) of photos
+    // captured with >= 2 identified-litter reticles on screen — the "best
+    // shots" tag. Resolved to R2 keys at manifest-build time.
+    private val multiItemPhotoIndices = mutableSetOf<Int>()
 
     init {
         // Catch up any session manifests that couldn't reach R2 last time
@@ -167,13 +172,15 @@ class SpotViewModel(
         scope.launch { arMarkerQueue.flush() }
     }
 
-    fun addPhoto(photo: CapturedPhoto) {
+    fun addPhoto(photo: CapturedPhoto, isMultiItemBestShot: Boolean = false) {
         val current = _uiState.value
         if (current.capturedPhotos.size >= MAX_PHOTOS) return
+        val newIndex = current.capturedPhotos.size
         _uiState.value = current.copy(
             capturedPhotos = current.capturedPhotos + photo,
         )
         photoStamps.add(Clock.System.now().toEpochMilliseconds())
+        if (isMultiItemBestShot) multiItemPhotoIndices.add(newIndex)
 
         // Trigger on-device AI analysis on the first photo
         if (current.capturedPhotos.isEmpty() && analyzer.isAvailable()) {
@@ -226,7 +233,7 @@ class SpotViewModel(
             depthAnalysis = scanPhoto.depthAnalysis,
             attestation = scanPhoto.attestation,
         )
-        addPhoto(photo)
+        addPhoto(photo, isMultiItemBestShot = scanPhoto.isMultiItemBestShot)
         if (scanPhoto.aiAnalysis != null) {
             _uiState.value = _uiState.value.copy(aiAnalysis = scanPhoto.aiAnalysis)
         }
@@ -342,6 +349,17 @@ class SpotViewModel(
             // a later purgeRecentCaptures cutoff would be checked against the
             // wrong photo's timestamp.
             if (index in photoStamps.indices) photoStamps.removeAt(index)
+            // Same re-indexing for multiItemPhotoIndices (Task 17): drop the
+            // removed index, shift every later index down by one.
+            val reindexed = multiItemPhotoIndices.mapNotNullTo(mutableSetOf()) { i ->
+                when {
+                    i == index -> null
+                    i > index -> i - 1
+                    else -> i
+                }
+            }
+            multiItemPhotoIndices.clear()
+            multiItemPhotoIndices.addAll(reindexed)
         }
     }
 
@@ -572,6 +590,18 @@ class SpotViewModel(
                     DiagnosticsLog.error("env-capture", "photo upload to R2 failed — manifest continues without", e)
                 }
 
+                // Task 17 best-shot tagging: multiItemPhotoIndices (indices
+                // into state.capturedPhotos) resolved against photoKeys, which
+                // the forEachIndexed loop above populated in the same order —
+                // an index only resolves if its upload actually succeeded
+                // (photoKeys is shorter than capturedPhotos when the loop
+                // above threw partway through).
+                val multiItemPhotoKeys = multiItemPhotoIndices
+                    .filter { it < photoKeys.size }
+                    .sorted()
+                    .map { photoKeys[it] }
+                    .ifEmpty { null }
+
                 // Uploaded-so-far capture-chunk R2 keys (Pillar 1): late
                 // uploads (still-pending chunks, or ones the policy gate
                 // hasn't cleared yet) are keyed by sessionId in R2 regardless
@@ -611,6 +641,7 @@ class SpotViewModel(
                         .asReversed()
                         .map { it.format() }
                         .ifEmpty { null },
+                    multiItemPhotoKeys = multiItemPhotoKeys,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(
@@ -930,6 +961,10 @@ class SpotViewModel(
         }
         while (observedItemStamps.size > keptItems.size) observedItemStamps.removeLast()
         while (photoStamps.size > keptPhotos.size) photoStamps.removeLast()
+        // Trailing-window purge only ever drops the most recent photos, so
+        // the surviving indices are always the front [0, keptPhotos.size) —
+        // same simplification the photoStamps tail-drop above relies on.
+        multiItemPhotoIndices.removeAll { it >= keptPhotos.size }
         _uiState.value = state.copy(observedItems = keptItems, capturedPhotos = keptPhotos)
     }
 
@@ -947,6 +982,7 @@ class SpotViewModel(
         observedItemStamps.clear()
         photoStamps.clear()
         rejectedItems.clear()
+        multiItemPhotoIndices.clear()
         pendingSessionDraft = null
         archivedSessionIds.clear()
     }

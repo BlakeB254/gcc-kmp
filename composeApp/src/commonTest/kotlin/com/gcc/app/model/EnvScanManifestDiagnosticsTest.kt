@@ -38,4 +38,25 @@ class EnvScanManifestDiagnosticsTest {
         val reDecoded: EnvScanManifest = GccJson.decodeFromString(GccJson.encodeToString(manifest))
         assertEquals(manifest.diagnosticsLog, reDecoded.diagnosticsLog)
     }
+
+    /**
+     * Task 17: EnvScanManifest grew `multiItemPhotoKeys` (last property) —
+     * the R2 keys of photos that carried >=2 identified litter reticles at
+     * capture time, i.e. the "best shots" for the backend extraction
+     * mechanisms. Same additive/optional contract as `diagnosticsLog`.
+     */
+    @Test
+    fun legacyManifestWithoutMultiItemPhotoKeysStillDecodes() {
+        val decoded: EnvScanManifest = GccJson.decodeFromString(legacyJson)
+        assertEquals("s1", decoded.sessionId)
+        assertNull(decoded.multiItemPhotoKeys)
+    }
+
+    @Test
+    fun multiItemPhotoKeysRoundTrips() {
+        val manifest = GccJson.decodeFromString<EnvScanManifest>(legacyJson)
+            .copy(multiItemPhotoKeys = listOf("sessions/s1/photo0.jpg", "sessions/s1/photo2.jpg"))
+        val reDecoded: EnvScanManifest = GccJson.decodeFromString(GccJson.encodeToString(manifest))
+        assertEquals(manifest.multiItemPhotoKeys, reDecoded.multiItemPhotoKeys)
+    }
 }

@@ -155,6 +155,13 @@ fun SpotScanCapture(
             isLiveCapture = true,
         )
 
+        // Task 17: "the best shots for our display image in the backend
+        // extraction mechanisms" — a photo taken while >= 2 identified-litter
+        // reticles are on screen gets tagged so the manifest can flag it.
+        // Read synchronously (StateFlow.value): this is the reticle set AT
+        // THE INSTANT of capture, not a later recomposition's value.
+        val litterReticleCount = arOverlay?.multiItemReticles?.value?.count { it.isLitter } ?: 0
+
         val scanPhoto = ScanCapturedPhoto(
             photoBytes = photo.bytes,
             photoWidth = photo.width,
@@ -163,6 +170,7 @@ fun SpotScanCapture(
             captureLocation = location,
             attestation = attestation,
             distanceFromSpot = distanceToSpot,
+            isMultiItemBestShot = litterReticleCount >= 2,
         )
 
         if (idx == 0) {
