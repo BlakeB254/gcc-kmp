@@ -1,6 +1,7 @@
 package com.gcc.app.platform
 
 import com.gcc.shared.model.ObservedSpotItem
+import com.gcc.shared.model.WorldObservation
 
 /** An automatic detection. Never sufficient to file a report (constraint 10). */
 const val PROVENANCE_AUTO_DETECTED = "auto_detected"
@@ -34,3 +35,32 @@ fun countFeatures(items: List<ObservedSpotItem>): Int =
  */
 fun hasUserConfirmedLitter(items: List<ObservedSpotItem>): Boolean =
     items.any { it.provenance == PROVENANCE_USER_CONFIRMED && it.isLitter() }
+
+/**
+ * Litter-only glyphs for the scan minimap. Landmark/world-feature
+ * observations (fence, pole, sign, bench, gate, tree, bush — domain
+ * "vegetation"/"construction") are real world-observation data and still
+ * count toward "Features mapped", but they must never render on the
+ * minimap: punchlist "its showing little white squares on the minimap.
+ * remove that feature we dont want it." `knownElements` (nearby landmark
+ * observations) is intentionally not a parameter here — it never
+ * contributes to the minimap.
+ */
+fun minimapLitterItems(
+    observedItems: List<ObservedSpotItem>,
+    expectedDirty: List<WorldObservation>,
+): List<ObservedSpotItem> {
+    val session = observedItems.filter { it.isLitter() }
+    val nearby = expectedDirty
+        .filter { it.domain == null || it.domain == "litter" }
+        .map { obs ->
+            ObservedSpotItem(
+                lat = obs.lat,
+                lng = obs.lng,
+                itemType = obs.itemType ?: "other",
+                severity = obs.severity,
+                domain = obs.domain,
+            )
+        }
+    return session + nearby
+}

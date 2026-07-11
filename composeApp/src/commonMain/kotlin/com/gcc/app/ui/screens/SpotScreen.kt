@@ -51,6 +51,7 @@ import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.countFeatures
 import com.gcc.app.platform.countLitter
+import com.gcc.app.platform.minimapLitterItems
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
@@ -867,20 +868,16 @@ private fun CameraPhase(
     val trashItems = remember(litterItems) {
         litterItems.map { Coordinates(lat = it.lat, lng = it.lng) }
     }
-    // Minimap glyphs: this session's confirmed items PLUS the world model's
-    // known litter nearby — previously scanned trash persists on the minimap
-    // as what it IS (bottle/can/bag glyph), not an anonymous dot. Items the
-    // user resolves ("Already clean") drop out with expectedDirty.
-    val typedMinimapItems = remember(observedItems, expectedDirty, knownElements) {
-        observedItems + (expectedDirty + knownElements).map { obs ->
-            ObservedSpotItem(
-                lat = obs.lat,
-                lng = obs.lng,
-                itemType = obs.itemType ?: "other",
-                severity = obs.severity,
-                domain = obs.domain,
-            )
-        }
+    // Minimap glyphs: this session's confirmed LITTER items PLUS the world
+    // model's known litter nearby — previously scanned trash persists on the
+    // minimap as what it IS (bottle/can/bag glyph), not an anonymous dot.
+    // Items the user resolves ("Already clean") drop out with expectedDirty.
+    // knownElements (auto-registered landmark elements — fence/pole/bush/
+    // tree/etc.) are deliberately excluded: they're real world-observation
+    // data and still count in "Features mapped", but must never render on
+    // the minimap (punchlist: "little white squares on the minimap").
+    val typedMinimapItems = remember(observedItems, expectedDirty) {
+        minimapLitterItems(observedItems, expectedDirty)
     }
 
     // Live viewfinder trash reticle (frame tap on the AVCapture stream).
