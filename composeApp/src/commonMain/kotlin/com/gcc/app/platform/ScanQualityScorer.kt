@@ -114,6 +114,11 @@ object ScanScore {
     private const val CLOSE_WEIGHT = 0.35
     private const val STEADINESS_WEIGHT = 0.20
 
+    /** Absolute covered area that earns full effort credit for a free
+     *  environment scan — roughly a diligent few-minute sidewalk sweep.
+     *  See [compute]'s recalibration note. */
+    const val FULL_EFFORT_AREA_SQM = 200.0
+
     /**
      * @param coveragePercent [CoverageTracker.coveragePercent], 0..100.
      * @param closePercent [CoverageTracker.closePercent], 0..100.
@@ -121,13 +126,40 @@ object ScanScore {
      *   that were [TrackingState.NORMAL]. Sessions with no AR tracking
      *   history (desktop/Android, or an AR-less session) should pass 1.0 —
      *   absence isn't a steadiness failure.
+     * @param areaCoveredSquareMeters when provided (free environment scans),
+     *   effort is graded on the ABSOLUTE ground covered instead of
+     *   [coveragePercent]'s fraction-of-corridor.
+     *
+     * Recalibration (Blake's TestFlight 145 video: a good-faith 1:21 sweep
+     * covering 189m² graded a red F): the original formula double-penalized —
+     * a free env scan's "corridor" is a synthetic disc around the anchor, so
+     * a worker who swept a clean strip of it lost coverage points for the
+     * rest of the disc AND close points because closePercent shared that same
+     * disc denominator. Now (1) effort = absolute area against
+     * [FULL_EFFORT_AREA_SQM] when the caller can supply it, and (2) close
+     * quality = close fraction OF THE COVERED GROUND (closePercent /
+     * coveragePercent — the disc denominators cancel), i.e. "how well did
+     * you scan what you scanned", not "how much of the disc did you
+     * detail-scan".
      */
-    fun compute(coveragePercent: Double, closePercent: Double, steadinessFraction: Double): ScanScoreResult {
+    fun compute(
+        coveragePercent: Double,
+        closePercent: Double,
+        steadinessFraction: Double,
+        areaCoveredSquareMeters: Double? = null,
+    ): ScanScoreResult {
         val coverageNorm = (coveragePercent / 100.0).coerceIn(0.0, 1.0)
-        val closeNorm = (closePercent / 100.0).coerceIn(0.0, 1.0)
+        val effortNorm = areaCoveredSquareMeters
+            ?.let { (it / FULL_EFFORT_AREA_SQM).coerceIn(0.0, 1.0) }
+            ?: coverageNorm
+        val closeNorm = if (coverageNorm > 0.0) {
+            ((closePercent / 100.0) / coverageNorm).coerceIn(0.0, 1.0)
+        } else {
+            0.0
+        }
         val steadinessNorm = steadinessFraction.coerceIn(0.0, 1.0)
 
-        val composite = coverageNorm * COVERAGE_WEIGHT +
+        val composite = effortNorm * COVERAGE_WEIGHT +
             closeNorm * CLOSE_WEIGHT +
             steadinessNorm * STEADINESS_WEIGHT
         val compositePercent = composite * 100.0
@@ -154,7 +186,7 @@ object ScanScore {
         } else {
             listOf(
                 closeNorm to "Walk closer — most of your area was sweep-only",
-                coverageNorm to "Cover more of the area next time",
+                effortNorm to "Cover more ground next time",
                 steadinessNorm to "Hold the phone steadier while scanning",
             ).minByOrNull { it.first }?.second
         }

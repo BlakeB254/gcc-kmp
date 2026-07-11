@@ -954,8 +954,19 @@ private fun CameraPhase(
                 (gpsAccuracy ?: 0.0) > MAX_GEO_REF_ACCURACY_METERS ->
                 "GPS too weak to anchor the scan — move toward open sky"
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
-            idleNudge && guidanceTarget != null ->
+            // "Highlighted area" must only be said when the minimap actually
+            // highlights one: ScanMinimapOverlay hides the guidance ring for
+            // targets hugging the user dot (the frontier pick is the ground
+            // underfoot at scan start — TestFlight 145 "circle around me"),
+            // so a near target gets a plain sweep prompt instead of a
+            // reference to a ring that isn't drawn.
+            idleNudge && guidanceTarget != null && currentLocation?.let {
+                GeofenceVerification.distanceMeters(
+                    it.lat, it.lng, guidanceTarget!!.first, guidanceTarget!!.second,
+                ) > 12.0
+            } == true ->
                 "Turn toward the highlighted area on the minimap"
+            idleNudge -> "Keep sweeping — scan the ground around you"
             guidancePhase == GuidancePhase.DETAIL ->
                 "Move closer — detail-scan the light areas"
             else -> "Environment scan active — sweep the camera slowly"
@@ -1169,10 +1180,14 @@ private fun CameraPhase(
                     gpsAccuracyMeters = gpsAccuracy,
                     detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
                 ),
+                // Row 2 of the top-end chrome (TestFlight 145 overlap fix):
+                // row 1 (52dp) is the guidance caption's band; the 🐞
+                // diagnostics badge is row 3 (DiagnosticsOverlay). Keep the
+                // three rows separated.
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = 52.dp, end = 16.dp),
+                    .padding(top = 96.dp, end = 16.dp),
             )
         }
         ScanToast(message = toast)

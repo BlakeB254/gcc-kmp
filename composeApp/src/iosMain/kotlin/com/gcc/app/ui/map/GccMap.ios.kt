@@ -227,35 +227,44 @@ actual fun GccMap(
     )
 
     // Re-center camera when center coordinates or zoom change (e.g., navigating to a new route)
-    LaunchedEffect(centerLat, centerLng, zoom) {
-        val currentPos = camera.position
-        val targetLat = centerLat
-        val targetLng = centerLng
-        if (instantCamera) {
-            // Editor overlays redraw synchronously against (center, zoom):
-            // the map must SNAP with zero threshold or geometry visibly
-            // detaches from the basemap during zoom/pan. Direct position
-            // assignment — animateTo(0ms) does not reliably move the
-            // camera (the editor rendered its geometry half a block off
-            // because the camera silently stayed at the initial position).
-            camera.position = CameraPosition(
-                target = Position(latitude = targetLat, longitude = targetLng),
-                zoom = zoom,
-            )
-            return@LaunchedEffect
+    if (instantCamera) {
+        // Editor overlays and the scan minimap redraw synchronously against
+        // (center, zoom): the map must SNAP with zero threshold or geometry
+        // visibly detaches from the basemap during zoom/pan. Direct position
+        // assignment — animateTo(0ms) does not reliably move the camera (the
+        // editor rendered its geometry half a block off because the camera
+        // silently stayed at the initial position).
+        // ONE long-lived collector, not LaunchedEffect(centerLat, centerLng):
+        // the scan minimap animates its center every FRAME, and keying the
+        // effect on the values meant a coroutine cancel + relaunch per frame
+        // — churn and ordering jitter on top of the assignment itself.
+        val instantTarget by rememberUpdatedState(Triple(centerLat, centerLng, zoom))
+        LaunchedEffect(Unit) {
+            snapshotFlow { instantTarget }.collect { (lat, lng, z) ->
+                camera.position = CameraPosition(
+                    target = Position(latitude = lat, longitude = lng),
+                    zoom = z,
+                )
+            }
         }
-        // Only animate if the position has actually changed meaningfully
-        if (kotlin.math.abs(currentPos.target.latitude - targetLat) > 0.0001 ||
-            kotlin.math.abs(currentPos.target.longitude - targetLng) > 0.0001 ||
-            kotlin.math.abs(currentPos.zoom - zoom) > 0.1
-        ) {
-            camera.animateTo(
-                finalPosition = CameraPosition(
-                    target = Position(latitude = targetLat, longitude = targetLng),
-                    zoom = zoom,
-                ),
-                duration = 500.milliseconds,
-            )
+    } else {
+        LaunchedEffect(centerLat, centerLng, zoom) {
+            val currentPos = camera.position
+            val targetLat = centerLat
+            val targetLng = centerLng
+            // Only animate if the position has actually changed meaningfully
+            if (kotlin.math.abs(currentPos.target.latitude - targetLat) > 0.0001 ||
+                kotlin.math.abs(currentPos.target.longitude - targetLng) > 0.0001 ||
+                kotlin.math.abs(currentPos.zoom - zoom) > 0.1
+            ) {
+                camera.animateTo(
+                    finalPosition = CameraPosition(
+                        target = Position(latitude = targetLat, longitude = targetLng),
+                        zoom = zoom,
+                    ),
+                    duration = 500.milliseconds,
+                )
+            }
         }
     }
 

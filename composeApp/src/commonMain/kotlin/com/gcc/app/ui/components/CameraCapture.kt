@@ -1,10 +1,8 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.TwoWayConverter
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
@@ -39,17 +38,19 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 
-// ADDENDUM (Blake, binding): Compose's Animatable only ships a Float
-// AnimationVector1D converter out of the box; lat/lng are Double. A minimal
-// TwoWayConverter lets us animate them directly with animateTo/tween, which
-// is what lets ONE Animatable feed both GccMap and ScanMinimapOverlay every
-// frame (see the smoothed-center block below) instead of one layer getting
-// the raw GPS fix and the other a differently-smoothed value.
-private val DoubleVectorConverter = TwoWayConverter<Double, AnimationVector1D>(
-    convertToVector = { AnimationVector1D(it.toFloat()) },
-    convertFromVector = { it.value.toDouble() },
-)
+// Field report (TestFlight 145, "minimap shaking"): the first smoothed-center
+// attempt animated ABSOLUTE lat/lng through a Double→AnimationVector1D
+// converter — but AnimationVector1D is Float-backed, and Float at latitude
+// 41.85° only resolves ~0.42m (longitude −87.7° ≈ 0.63m). The "smooth" glide
+// therefore quantized onto a half-meter lattice: 3–4px jumps per frame on the
+// minimap. The smoother below animates METER OFFSETS from a session-fixed
+// anchor instead (Float at session scale is sub-millimeter) and adds the
+// offset back to the anchor in Double space. One pair of Animatables still
+// feeds BOTH GccMap and ScanMinimapOverlay every frame, so the coverage
+// paint can never diverge from the basemap.
 
 /**
  * Reusable full-screen camera composable for capturing photos.
@@ -185,15 +186,19 @@ fun CameraCapture(
                 )
             }
 
-            // Scan status / instructions (top-center, under the status bar,
-            // clear of the corner chrome). ONE guidance-voice caption (spec
-            // system 4) — statusText is the single prioritized string the
-            // caller computes; no sibling caption stacks under it anymore.
+            // Scan status / instructions (top-center, under the status bar).
+            // ONE guidance-voice caption (spec system 4) — statusText is the
+            // single prioritized string the caller computes; no sibling
+            // caption stacks under it anymore. Horizontal padding so a long
+            // caption WRAPS inside its own band instead of running under the
+            // right-edge chrome (TestFlight 145: the caption overlapped the
+            // scan-quality badge and the 🐞 diagnostics badge, which now live
+            // on their own rows below — keep the three rows separated).
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 52.dp),
+                    .padding(top = 52.dp, start = 40.dp, end = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
@@ -211,6 +216,7 @@ fun CameraCapture(
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
+                        textAlign = TextAlign.Center,
                     )
                 }
                 if (captureState != null) {
@@ -243,29 +249,40 @@ fun CameraCapture(
             // the primary action lives bottom-center).
             if (showMiniMap && currentLocation != null) {
                 // ADDENDUM (Blake, binding — supersedes Step 7's
-                // instantCamera-only approach): the Compose overlay used to
-                // recentre on every raw GPS fix while GccMap's own camera
-                // eased past a minimum-delta threshold — the two visibly
-                // drifted apart in field video. ONE smoothed center (~800ms
-                // walking-pace glide) now feeds BOTH layers identically every
-                // frame, so the coverage paint registers tightly to the map
-                // tiles underneath and the two views cannot diverge.
-                val smoothedLat = remember { Animatable(currentLocation.lat, DoubleVectorConverter) }
-                val smoothedLng = remember { Animatable(currentLocation.lng, DoubleVectorConverter) }
+                // instantCamera-only approach): ONE smoothed center feeds
+                // BOTH layers identically every frame (see the Float-precision
+                // note at the top of this file for why it animates meter
+                // offsets, not absolute coordinates). The spring — instead of
+                // the old restarted 800ms linear tween — carries velocity
+                // across retargets, so each new GPS fix BENDS the glide
+                // instead of kinking it (the tween restarted from zero
+                // velocity on every fix, a visible ~1Hz stutter on top of the
+                // Float quantization shake).
+                val anchorLat = remember { currentLocation.lat }
+                val anchorLng = remember { currentLocation.lng }
+                val anchorLngScale = remember { cos(anchorLat * PI / 180.0) }
+                val smoothedNorthMeters = remember { Animatable(0f) }
+                val smoothedEastMeters = remember { Animatable(0f) }
                 LaunchedEffect(currentLocation.lat, currentLocation.lng) {
+                    val centerSpring = spring<Float>(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessVeryLow,
+                    )
                     launch {
-                        smoothedLat.animateTo(
-                            currentLocation.lat,
-                            animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+                        smoothedNorthMeters.animateTo(
+                            ((currentLocation.lat - anchorLat) * 111_320.0).toFloat(),
+                            animationSpec = centerSpring,
                         )
                     }
                     launch {
-                        smoothedLng.animateTo(
-                            currentLocation.lng,
-                            animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+                        smoothedEastMeters.animateTo(
+                            ((currentLocation.lng - anchorLng) * 111_320.0 * anchorLngScale).toFloat(),
+                            animationSpec = centerSpring,
                         )
                     }
                 }
+                val smoothedCenterLat = anchorLat + smoothedNorthMeters.value / 111_320.0
+                val smoothedCenterLng = anchorLng + smoothedEastMeters.value / (111_320.0 * anchorLngScale)
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -282,8 +299,8 @@ fun CameraCapture(
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
-                        centerLat = smoothedLat.value,
-                        centerLng = smoothedLng.value,
+                        centerLat = smoothedCenterLat,
+                        centerLng = smoothedCenterLng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         // currentLocation=null: ScanMinimapOverlay draws the one
                         // authoritative centered dot — the basemap puck here was
@@ -301,8 +318,8 @@ fun CameraCapture(
                     // above — the shared value is what keeps this registered
                     // tightly to the basemap's tiles frame to frame.
                     ScanMinimapOverlay(
-                        centerLat = smoothedLat.value,
-                        centerLng = smoothedLng.value,
+                        centerLat = smoothedCenterLat,
+                        centerLng = smoothedCenterLng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         scanCellCenters = scanCellCenters,
                         cellSizeMeters = CoverageTracker.cellSizeMeters,

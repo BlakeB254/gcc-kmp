@@ -119,16 +119,24 @@ fun ScanSessionSummaryCard(
         // ScanQualityBadge; see ScanQualityScorer.kt for the unification
         // note). Only rendered once a session exists to score.
         if (session != null) {
-            val score = remember(session) {
+            val score = remember(session, cells) {
                 ScanScore.compute(
                     coveragePercent = session.coveragePercent,
                     closePercent = session.closePercent,
                     steadinessFraction = session.steadinessFraction,
+                    // Same number the "Area covered" stat above shows — the
+                    // grade must agree with the card's own evidence (grade
+                    // recalibration, TestFlight 145: 189m² of honest sweep
+                    // graded F against the synthetic corridor disc).
+                    areaCoveredSquareMeters = cells.size *
+                        CoverageTracker.cellSizeMeters * CoverageTracker.cellSizeMeters,
                 )
             }
+            // Red is reserved for an outright failed scan — a D ("Rough
+            // scan") is feedback, not failure (grade recalibration).
             val gradeColor = when (score.grade) {
                 'A', 'B' -> GccAvailable
-                'C' -> GccClaimed
+                'C', 'D' -> GccClaimed
                 else -> GccError
             }
             Spacer(modifier = Modifier.height(12.dp))
