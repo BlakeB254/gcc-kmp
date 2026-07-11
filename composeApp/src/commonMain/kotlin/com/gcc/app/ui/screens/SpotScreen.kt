@@ -1135,7 +1135,7 @@ private fun CameraPhase(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = 12.dp, end = 16.dp),
+                    .padding(top = 52.dp, end = 16.dp),
             )
         }
         ScanToast(message = toast)
@@ -1189,7 +1189,7 @@ private fun CameraPhase(
         )
         ConfirmingOutdoorsChip(
             visible = outdoorState == OutdoorState.UNCERTAIN,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
         )
 
         // No top-left ✕ here by design: once an environment scan session is

@@ -254,7 +254,8 @@ fun SpotScanCapture(
             deviceClass = deviceCapabilities.deviceClass,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 8.dp),
+                .statusBarsPadding()
+                .padding(top = 12.dp, end = 8.dp),
         )
 
     }
