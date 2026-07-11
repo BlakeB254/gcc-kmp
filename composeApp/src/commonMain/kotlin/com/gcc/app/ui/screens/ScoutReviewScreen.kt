@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.GccButton
 import com.gcc.app.ui.components.GccButtonVariant
 import com.gcc.app.ui.components.GccCard
+import com.gcc.app.ui.components.LapProgressChip
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.authoredInnerRings
@@ -118,6 +119,12 @@ fun ScoutReviewScreen(
                     .padding(horizontal = 16.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+
+                // Persistent 2-lap flow marker ("Lap 1 done · Review").
+                LapProgressChip(
+                    phase = uiState.phase,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
 
                 // ── Header ────────────────────────────────────────────────────
                 Row(

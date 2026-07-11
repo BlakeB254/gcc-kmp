@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { jobs, blockCompletionReports } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
+import { generateBlockCompletionReport } from '@/lib/block-completion-report'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -39,11 +40,33 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Job belongs to a different worker', success: false }, { status: 403 })
   }
 
-  const [report] = await db
+  let [report] = await db
     .select()
     .from(blockCompletionReports)
     .where(eq(blockCompletionReports.jobId, jobId))
     .limit(1)
+
+  // Self-heal: generation at job-completion time is best-effort, so a failure
+  // there used to strand the client on "still generating" forever (the row
+  // never appears and nothing retries). If the job is completed and the report
+  // is missing, try generating it right here — the generator upserts on jobId,
+  // so a concurrent attempt is harmless. A throw (e.g. no completed scan
+  // session yet) falls through to the same 404 the client already handles.
+  if (!report && job.status === 'completed') {
+    try {
+      await generateBlockCompletionReport(jobId)
+      ;[report] = await db
+        .select()
+        .from(blockCompletionReports)
+        .where(eq(blockCompletionReports.jobId, jobId))
+        .limit(1)
+    } catch (generateError) {
+      console.error(
+        `GET /api/jobs/[id]/completion-report: on-demand generation failed for job ${jobId}:`,
+        generateError
+      )
+    }
+  }
 
   if (!report) {
     return NextResponse.json(

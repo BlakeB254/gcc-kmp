@@ -7,6 +7,7 @@ import {
   canAccessRouteScan,
   findRouteScan,
   hotspotsForScan,
+  isValidScanPhaseTransition,
   normalizeScanPhase,
   toMobileRouteScan,
 } from '@/lib/mobile-route-scan-response'
@@ -39,6 +40,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const body = await request.json().catch(() => null)
     const phase = normalizeScanPhase(body?.phase ?? scan.phase)
+    if (!isValidScanPhaseTransition(scan.phase, phase)) {
+      return NextResponse.json(
+        {
+          data: null,
+          success: false,
+          message: `Invalid scan phase transition: ${scan.phase} → ${phase}`,
+        },
+        { status: 409 },
+      )
+    }
     const now = new Date().toISOString()
 
     const [updated] = await db
