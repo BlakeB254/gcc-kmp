@@ -154,3 +154,27 @@ def test_sim3_transform_scales_positions_and_log_scales():
     after = PlyData.read(io.BytesIO(out))["vertex"].data
     assert _np.allclose(after["x"], before["x"] * 2.0 + 10.0, atol=1e-5)
     assert _np.allclose(after["scale_0"], before["scale_0"] + _np.log(2.0), atol=1e-6)
+
+
+def test_fit_yaw_to_north_recovers_known_heading():
+    import numpy as _np
+
+    from gaussian_ply import fit_yaw_to_north
+
+    rng = _np.random.default_rng(3)
+    # true ENU track
+    enu = rng.uniform(-40, 40, (24, 2))
+    theta = _np.deg2rad(37.0)
+    # Build the ARKit track that a session rotated by -theta would record:
+    # arkit (x, -z) = Rot(-theta) @ enu
+    c, s = _np.cos(-theta), _np.sin(-theta)
+    u = (_np.array([[c, -s], [s, c]]) @ enu.T).T
+    arkit_xz = _np.column_stack([u[:, 0], -u[:, 1]])
+
+    R3, rms = fit_yaw_to_north(arkit_xz, enu)
+    assert rms < 1e-9
+    # applying R3 to arkit positions must reproduce ENU: east=x', north=-z'
+    p3 = _np.column_stack([arkit_xz[:, 0], _np.zeros(len(u)), arkit_xz[:, 1]])
+    p3r = (R3 @ p3.T).T
+    assert _np.allclose(p3r[:, 0], enu[:, 0], atol=1e-9)   # east
+    assert _np.allclose(-p3r[:, 2], enu[:, 1], atol=1e-9)  # north

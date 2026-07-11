@@ -98,9 +98,17 @@ def complete_cell(conn, cell: str, result: FusionResult, assets: list[ProducedAs
     cell (the run consumed all of the cell's sessions, so sibling jobs are
     satisfied by it)."""
     version = assets[0].version if assets else None
-    provenance = json.dumps(
-        {"sessions": result.accepted_session_ids, "rejectedSessions": result.rejected_session_ids}
-    )
+    provenance = json.dumps({
+        "sessions": result.accepted_session_ids,
+        "rejectedSessions": result.rejected_session_ids,
+        # Geo-referencing of the cell frame (north-aligned axes, origin at
+        # the anchor session's ARKit start) — consumers use this to place
+        # cells at their true relative offsets when merging across cells.
+        "anchorLat": result.anchor_lat,
+        "anchorLng": result.anchor_lng,
+        "northAligned": result.north_aligned,
+        "northRmsM": result.north_rms_m,
+    })
     with conn.transaction():
         with conn.cursor() as cur:
             for asset in assets:

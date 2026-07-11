@@ -34,6 +34,7 @@ class SessionSplatResult:
     session_id: str
     splat_bytes: bytes | None  # None when this session didn't have enough frames
     skip_reason: str | None = None
+    aligned: bool = False      # sim3 into the ARKit frame succeeded
 
 
 def gather_session_frames(
@@ -119,6 +120,7 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
             # meters of drift on sparse frames over a street-long walk — drop
             # the worst correspondences and refit so one bad pose can't tilt
             # the whole alignment.
+            min_keep = max(6, int(0.6 * len(src_all)))
             for _round in range(3):
                 try:
                     s, R, t, rms = umeyama_sim3(src, dst)
@@ -126,13 +128,23 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
                     fit = None
                     break
                 fit = (s, R, t, rms, len(src))
-                if len(src) <= 4:
+                if len(src) <= min_keep:
                     break
                 resid = np.sqrt((((s * (R @ src.T).T + t) - dst) ** 2).sum(axis=1))
                 keep = resid <= max(1.5 * float(np.median(resid)), 0.5)
-                if keep.all():
+                if keep.all() or int(keep.sum()) < min_keep:
                     break
                 src, dst = src[keep], dst[keep]
+            # Degeneracy guard (forensics 2026-07-11): yaw is only observable
+            # when the WALK has real extent. A 6.5m walk with metre-level
+            # residuals left yaw unconstrained — content landed ~96° off
+            # while the fit "passed" numerically. Require a decent baseline
+            # and residuals small RELATIVE to it. (Huge scale factors are
+            # legitimate — world-mirror normalizes its scene tiny.)
+            if fit is not None:
+                dst_extent = float(np.linalg.norm(dst_all.max(0) - dst_all.min(0)))
+                if dst_extent < 12.0 or fit[3] > 0.12 * dst_extent:
+                    fit = None
             if fit and (best is None or fit[3] < best[4]):
                 best = (convention, *fit)
         # Gate relative to the trajectory's own extent: what matters is that
@@ -145,6 +157,7 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
             print(f"splat_train: {session_id} sim3 [{convention}] scale={s:.3f} "
                   f"rms={rms:.2f}m ({n_used}/{len(wm_cameras)} cams, gate {gate:.2f}m)")
             splat_bytes = sim3_transform_gaussian_ply_bytes(splat_bytes, s, R, t)
+            return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes, aligned=True)
         elif best:
             print(f"splat_train: {session_id} sim3 fit rejected (rms={best[4]:.2f}m > gate {gate:.2f}m) -- splat left in world-mirror frame")
         else:
@@ -174,6 +187,12 @@ def train_splat_for_cell(
         result = train_splat_for_session(manifest, world_mirror_base_url)
         if result.splat_bytes is None:
             print(f"splat_train: session {session_id} skipped -- {result.skip_reason}")
+            continue
+        if not result.aligned:
+            # An unaligned splat is in world-mirror's arbitrary frame/scale —
+            # merging it would poison the cell. Skip it; the point cloud
+            # still covers this session's geometry.
+            print(f"splat_train: session {session_id} splat EXCLUDED (no trustworthy sim3)")
             continue
         transform = fusion_result.session_transforms[session_id]
         transformed_splats.append(transform_gaussian_ply_bytes(result.splat_bytes, transform))

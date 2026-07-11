@@ -56,6 +56,11 @@ class SessionFusionInput:
     anchor_lat: float
     anchor_lng: float
     anchor_local_xyz: np.ndarray
+    # For north alignment: the session's ARKit camera track [(t, xyz)] and
+    # the manifest GPS path samples [{lat,lng,atMs}] + startedAtMs bridge.
+    track: list = field(default_factory=list)
+    gps_path: list = field(default_factory=list)
+    started_at_ms: float = 0.0
 
 
 @dataclass
@@ -87,6 +92,13 @@ class FusionResult:
     session_transforms: dict[str, np.ndarray] = field(default_factory=dict)
     # Every artifact fuse_cell published this run, all sharing one version.
     assets: list[ProducedAsset] = field(default_factory=list)
+    # Geo-referencing of the cell frame: origin ≈ the anchor session's ARKit
+    # start, at this lat/lng, with axes north-aligned (+X=east, -Z=north)
+    # when northAligned is True.
+    anchor_lat: float | None = None
+    anchor_lng: float | None = None
+    north_aligned: bool = False
+    north_rms_m: float | None = None
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
@@ -131,7 +143,59 @@ def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
     result.merged_points = accumulated_points if accumulated_points is not None else np.zeros((0, 3))
     result.merged_colors = accumulated_colors if accumulated_colors is not None else np.zeros((0, 3))
     result.activated = len(result.accepted_session_ids) >= MIN_SESSIONS_FOR_ACTIVATION
+
+    # ── True-north alignment (Blake 2026-07-11: "fix the arbitrary yaw") ──
+    # The cell frame so far = the anchor session's ARKit frame: gravity-
+    # aligned but with arbitrary heading. Fit the anchor's ARKit ground
+    # track to its GPS track (both metric) for the yaw, then rotate the
+    # WHOLE cell frame — merged cloud and every session transform — so
+    # +X=east, -Z=north. Origin stays at the anchor's ARKit start, whose
+    # lat/lng is recorded for cross-cell geo-referencing.
+    if result.accepted_session_ids:
+        anchor = next(s for s in sessions if s.session_id == result.accepted_session_ids[0])
+        result.anchor_lat, result.anchor_lng = anchor.anchor_lat, anchor.anchor_lng
+        pairs = _track_gps_pairs(anchor)
+        if len(pairs) >= 5:
+            from gaussian_ply import fit_yaw_to_north
+
+            arkit_xz = np.array([[p[0][0], p[0][2]] for p in pairs])
+            enu = np.array([p[1] for p in pairs])
+            R_north, rms = fit_yaw_to_north(arkit_xz, enu)
+            gate = max(8.0, 0.35 * float(np.linalg.norm(enu.max(0) - enu.min(0))))
+            if rms <= gate:
+                result.merged_points = (R_north @ result.merged_points.T).T
+                T = np.eye(4); T[:3, :3] = R_north
+                for sid in list(result.session_transforms):
+                    result.session_transforms[sid] = T @ result.session_transforms[sid]
+                result.north_aligned = True
+                result.north_rms_m = round(rms, 2)
+                print(f"north alignment: yaw fitted from {len(pairs)} track/GPS pairs, rms {rms:.1f}m")
+            else:
+                print(f"north alignment SKIPPED: fit rms {rms:.1f}m > gate {gate:.1f}m")
     return result
+
+
+def _track_gps_pairs(session: SessionFusionInput) -> list:
+    """Matched (arkit_xyz, (east, north)) samples: GPS path atMs mapped onto
+    the sidecar clock via the session-start bridge, nearest track sample
+    taken (≤1.5s apart). ENU meters are relative to the anchor lat/lng."""
+    if not session.track or not session.gps_path or not session.started_at_ms:
+        return []
+    t0 = session.track[0][0]
+    times = np.array([t for t, _ in session.track])
+    pairs = []
+    for p in session.gps_path:
+        at_ms = p.get("atMs")
+        if not at_ms:
+            continue
+        target_t = t0 + (float(at_ms) - session.started_at_ms) / 1000.0
+        i = int(np.argmin(np.abs(times - target_t)))
+        if abs(times[i] - target_t) > 1.5:
+            continue
+        east = (p["lng"] - session.anchor_lng) * 82_300.0
+        north = (p["lat"] - session.anchor_lat) * 111_000.0
+        pairs.append((session.track[i][1], (east, north)))
+    return pairs
 
 
 def _group_chunks_by_index(capture_chunk_keys: list[str]) -> dict[int, dict[str, str]]:
@@ -225,6 +289,7 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
 
     clouds: list[frame_io.PointCloudArrays] = []
     anchor_xyz = None
+    track: list = []
     for index in sorted(chunks):
         kinds = chunks[index]
         if "jsonl" not in kinds or "depth" not in kinds:
@@ -233,10 +298,10 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
         depth_bytes = r2_store.download_bytes(kinds["depth"])
 
-        if anchor_xyz is None:
-            _header, sidecar_frames = chunk_io.parse_sidecar(sidecar_bytes)
-            if sidecar_frames:
-                anchor_xyz = sidecar_frames[0].camera_transform[:3, 3]
+        _header, sidecar_frames = chunk_io.parse_sidecar(sidecar_bytes)
+        if anchor_xyz is None and sidecar_frames:
+            anchor_xyz = sidecar_frames[0].camera_transform[:3, 3]
+        track.extend((f.t, f.camera_transform[:3, 3].astype(np.float64)) for f in sidecar_frames[::10])
 
         clouds.extend(_fuse_one_chunk(video_bytes, sidecar_bytes, depth_bytes))
 
@@ -252,6 +317,9 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         anchor_lat=anchor_lat,
         anchor_lng=anchor_lng,
         anchor_local_xyz=anchor_xyz,
+        track=track,
+        gps_path=path,
+        started_at_ms=float(manifest.get("startedAtMs") or 0),
     )
 
 

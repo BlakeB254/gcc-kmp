@@ -156,3 +156,36 @@ def sim3_transform_gaussian_ply_bytes(ply_bytes: bytes, s: float, R: np.ndarray,
     out = io.BytesIO()
     PlyData([PlyElement.describe(data, "vertex")], text=ply.text, byte_order=ply.byte_order).write(out)
     return out.getvalue()
+
+
+def fit_yaw_to_north(arkit_xz: np.ndarray, gps_east_north: np.ndarray) -> tuple[np.ndarray, float]:
+    """Yaw (about +Y) aligning an ARKit ground track to true north, from
+    matched samples: ARKit (x, z) positions vs GPS-derived (east, north)
+    meters. ARKit world frames are gravity-aligned but arbitrary in heading;
+    both tracks are metric, so a pure 2D rotation (Kabsch, det=+1) recovers
+    the heading. Returns (R_3x3, rms_meters). Convention matches the app's
+    geo math (+X=east, -Z=north when aligned).
+    """
+    arkit_xz = np.asarray(arkit_xz, dtype=np.float64)
+    gps = np.asarray(gps_east_north, dtype=np.float64)
+    assert arkit_xz.shape == gps.shape and len(arkit_xz) >= 3
+    # ARKit ground vector in would-be ENU: (x, -z)
+    u = np.column_stack([arkit_xz[:, 0], -arkit_xz[:, 1]])
+    u_c = u - u.mean(axis=0)
+    g_c = gps - gps.mean(axis=0)
+    H = u_c.T @ g_c
+    U, _D, Vt = np.linalg.svd(H)
+    S = np.eye(2)
+    if np.linalg.det(U @ Vt) < 0:
+        S[1, 1] = -1.0
+    R2 = Vt.T @ S @ U.T  # maps u -> gps frame
+    cos_t, sin_t = R2[0, 0], R2[1, 0]
+    # 3x3 yaw about Y acting on (x, y, z): derived from the (x,-z) mapping.
+    R3 = np.array([
+        [cos_t, 0.0, sin_t],
+        [0.0,   1.0, 0.0],
+        [-sin_t, 0.0, cos_t],
+    ])
+    aligned = (R2 @ u_c.T).T
+    rms = float(np.sqrt(((aligned - g_c) ** 2).sum(axis=1).mean()))
+    return R3, rms
