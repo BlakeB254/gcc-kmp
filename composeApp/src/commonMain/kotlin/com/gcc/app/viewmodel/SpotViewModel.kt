@@ -631,16 +631,7 @@ class SpotViewModel(
                     captureChunks = captureChunkKeys.ifEmpty { null },
                     captureSchema = if (captureChunkKeys.isNotEmpty()) 1 else null,
                     rejectedItems = rejectedItems.toList().ifEmpty { null },
-                    // DiagnosticsLog.entries is newest-first and may hold more
-                    // than DIAGNOSTICS_TAIL_MAX entries (its own ring buffer is
-                    // sized independently) — take the most recent
-                    // DIAGNOSTICS_TAIL_MAX and reverse to oldest-first so the
-                    // shipped tail reads chronologically, most recent last.
-                    diagnosticsLog = DiagnosticsLog.entries.value
-                        .take(DIAGNOSTICS_TAIL_MAX)
-                        .asReversed()
-                        .map { it.format() }
-                        .ifEmpty { null },
+                    diagnosticsLog = DiagnosticsLog.tailForManifest(),
                     multiItemPhotoKeys = multiItemPhotoKeys,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
@@ -1013,8 +1004,3 @@ class SpotViewModel(
 
 private const val SQ_FT_TO_SQ_METERS = 0.09290304
 private const val SCAN_RADIUS_BUFFER_METERS = 1.0
-
-/** Cap on the diagnostics-log tail shipped in an EnvScanManifest — bounds the
- *  manifest size; DiagnosticsLog's own ring buffer may hold more entries than
- *  this (it's sized for the on-screen panel, not for upload payloads). */
-private const val DIAGNOSTICS_TAIL_MAX = 300

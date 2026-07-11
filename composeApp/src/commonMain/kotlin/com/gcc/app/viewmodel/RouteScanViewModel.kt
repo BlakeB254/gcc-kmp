@@ -1264,6 +1264,7 @@ class RouteScanViewModel(
                     lapKind = lapKind,
                     routeId = state.routeId,
                     gateEvents = draft.gateEvents,
+                    diagnosticsLog = DiagnosticsLog.tailForManifest(),
                 )
                 sessionUploader.uploadOrQueue(manifest)
             } catch (e: Exception) {

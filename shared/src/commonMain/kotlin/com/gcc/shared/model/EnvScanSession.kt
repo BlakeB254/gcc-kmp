@@ -114,7 +114,9 @@ data class EnvScanManifest(
     val rejectedItems: List<ObservedSpotItem>? = null,
     /** Tail of the on-device diagnostics/error log for this session. Ships with
      *  the R2 bundle so scan problems are debuggable from the backend without
-     *  asking the tester for a screen recording. Capped — see DIAGNOSTICS_TAIL_MAX. */
+     *  asking the tester for a screen recording. Capped — see
+     *  `DiagnosticsLog.DIAGNOSTICS_TAIL_MAX` (composeApp), which every
+     *  construction site applies via `DiagnosticsLog.tailForManifest()`. */
     val diagnosticsLog: List<String>? = null,
     /**
      * R2 keys (a subset of [photoKeys]) of photos captured while >= 2

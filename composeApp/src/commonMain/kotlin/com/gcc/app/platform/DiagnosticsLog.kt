@@ -48,6 +48,29 @@ object DiagnosticsLog {
     private val _errorCount = MutableStateFlow(0)
     val errorCount: StateFlow<Int> = _errorCount.asStateFlow()
 
+    /** Cap on the diagnostics-log tail shipped in an
+     *  [com.gcc.shared.model.EnvScanManifest] — bounds the manifest size; the
+     *  ring buffer itself ([MAX_ENTRIES]) is sized for the on-screen panel
+     *  and may hold more entries than this. */
+    const val DIAGNOSTICS_TAIL_MAX = 300
+
+    /**
+     * The log tail as it ships in `EnvScanManifest.diagnosticsLog`: the most
+     * recent [max] entries, all severities (info lines carry the context
+     * around an error), formatted, in chronological order — most recent LAST.
+     * Null when the log is empty so the manifest field stays wire-null.
+     * Every manifest construction site (SpotViewModel, OrphanSessionRecovery,
+     * RouteScanViewModel) must attach this — the DGX pipeline reads it to
+     * debug scan sessions without a screen recording.
+     */
+    fun tailForManifest(max: Int = DIAGNOSTICS_TAIL_MAX): List<String>? =
+        tailForManifest(_entries.value, max)
+
+    /** [tailForManifest] over an explicit newest-first entries list (the
+     *  testable seam — the object's own buffer is process-global state). */
+    internal fun tailForManifest(entries: List<Entry>, max: Int): List<String>? =
+        entries.take(max).asReversed().map { it.format() }.ifEmpty { null }
+
     fun info(tag: String, message: String) = append(Level.INFO, tag, message)
 
     fun error(tag: String, message: String, throwable: Throwable? = null) {

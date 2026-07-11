@@ -146,6 +146,11 @@ internal suspend fun recoverOrphanScanSessions(
                 gateEvents = gateEvents,
                 captureChunks = chunkKeys.ifEmpty { null },
                 captureSchema = if (chunkKeys.isNotEmpty()) 1 else null,
+                // Crash-adjacent sessions are exactly where the diagnostics
+                // tail matters most — though on a fresh launch it holds this
+                // run's recovery-sweep lines, not the crashed run's (the ring
+                // buffer is in-memory only).
+                diagnosticsLog = DiagnosticsLog.tailForManifest(),
             )
             // uploadOrQueue never throws (it queues internally on failure) —
             // safe to delete the journal right after, in every case.
