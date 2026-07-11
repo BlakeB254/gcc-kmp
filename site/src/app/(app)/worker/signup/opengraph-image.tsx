@@ -73,7 +73,14 @@ export default async function Image() {
               marginBottom: '24px',
             }}
           >
-            <span style={{ fontSize: '24px' }}>💪</span>
+            <div
+              style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: '#30A0CE',
+              }}
+            />
             <span style={{ color: '#30A0CE', fontSize: '20px', fontWeight: 600 }}>
               NOW HIRING
             </span>
@@ -122,11 +129,18 @@ export default async function Image() {
                   alignItems: 'center',
                   gap: '8px',
                   background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '12px',
-                  padding: '12px 20px',
-                }}
+                borderRadius: '12px',
+                padding: '12px 20px',
+              }}
               >
-                <span style={{ color: '#22c55e', fontSize: '20px' }}>✓</span>
+                <div
+                  style={{
+                    width: '14px',
+                    height: '14px',
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                  }}
+                />
                 <span style={{ color: 'white', fontSize: '18px', fontWeight: 500 }}>
                   {benefit}
                 </span>
@@ -139,10 +153,19 @@ export default async function Image() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '10px',
             }}
           >
-            <span style={{ fontSize: '24px' }}>📍</span>
+            <span
+              style={{
+                color: '#30A0CE',
+                fontSize: '18px',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+              }}
+            >
+              SERVING
+            </span>
             <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '22px' }}>
               North Lawndale, Chicago (60623 & 60624)
             </span>
@@ -164,7 +187,7 @@ export default async function Image() {
           }}
         >
           <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '18px' }}>
-            Global Community Cleaners — globalcommunitycleaners.org
+            Global Community Cleaners - globalcommunitycleaners.org
           </span>
         </div>
       </div>
