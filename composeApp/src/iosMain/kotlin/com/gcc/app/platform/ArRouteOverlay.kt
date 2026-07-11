@@ -285,10 +285,15 @@ actual class ArRouteOverlay actual constructor() {
      * Must be called on every location update (ArRouteScreen wires this) —
      * fog/arrow placement is a no-op until the first pairing exists.
      */
-    actual fun updateGeoReference(lat: Double, lng: Double) {
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {
         val position = cameraPosition() ?: return
-        refLat = lat
-        refLng = lng
+        // Accuracy-fused anchor — see ArEnvScan.updateGeoReference / GeoRefFuser.
+        val fused = if (hasGeoRef && accuracyMeters != null) {
+            val (curLat, curLng) = localToLatLng(position[0], position[2])
+            GeoRefFuser.fuse(GeoRefFuser.Anchor(curLat, curLng), GeoRefFuser.Anchor(lat, lng), accuracyMeters)
+        } else GeoRefFuser.Anchor(lat, lng)
+        refLat = fused.lat
+        refLng = fused.lng
         refX = position[0]
         refY = position[1]
         refZ = position[2]

@@ -171,7 +171,7 @@ fun ArRouteScreen(
                 overlay.setGridLatticeOrigin(lat0, lng0)
             }
             if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
-                overlay.updateGeoReference(ui.currentLat, ui.currentLng)
+                overlay.updateGeoReference(ui.currentLat, ui.currentLng, viewModel.gpsAccuracyMeters.value)
             }
             overlay.updateFog(viewModel.unscannedCells()) { row, col ->
                 viewModel.cellCenterLatLng(row, col)

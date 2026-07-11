@@ -331,7 +331,7 @@ private fun CameraPhase(
         if (arOverlay == null) return@LaunchedEffect
         locationProvider.locationFlow.collect { loc ->
             if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
-                arOverlay.updateGeoReference(loc.lat, loc.lng)
+                arOverlay.updateGeoReference(loc.lat, loc.lng, locationProvider.horizontalAccuracyMeters.value)
                 geoRefPaired = true
             }
         }

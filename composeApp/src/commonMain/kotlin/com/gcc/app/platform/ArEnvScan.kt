@@ -69,7 +69,7 @@ expect class ArEnvScanOverlay() {
     val trashCandidate: StateFlow<TrashCandidate?>
 
     /** Pair the worker's latest GPS fix with the AR camera's current position. */
-    fun updateGeoReference(lat: Double, lng: Double)
+    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null)
 
     /** Cells credited this session — rendered as the vector-scan ground overlay. */
     fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)

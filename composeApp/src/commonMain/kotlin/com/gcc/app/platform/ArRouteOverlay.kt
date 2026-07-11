@@ -22,7 +22,7 @@ expect class ArRouteOverlay() {
     val trackingState: StateFlow<TrackingState>
 
     /** Pair the worker's latest GPS fix with the AR camera's current position. */
-    fun updateGeoReference(lat: Double, lng: Double)
+    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null)
 
     /**
      * Geographic origin of the CoverageTracker cell lattice. The AR ground

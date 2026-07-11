@@ -468,10 +468,18 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    actual fun updateGeoReference(lat: Double, lng: Double) {
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {
         val position = cameraPosition() ?: return
-        refLat = lat
-        refLng = lng
+        // Fuse instead of last-fix-wins: 14m-accuracy fixes pass the 20m gate
+        // (common in real July manifests) and used to teleport the WHOLE geo
+        // frame street-ward. GeoRefFuser blends by accuracy so only good
+        // fixes move the frame decisively (see its KDoc).
+        val fused = if (hasGeoRef && accuracyMeters != null) {
+            val (curLat, curLng) = localToLatLng(position[0], position[2], refLat, refLng, refX, refZ, lngScale)
+            GeoRefFuser.fuse(GeoRefFuser.Anchor(curLat, curLng), GeoRefFuser.Anchor(lat, lng), accuracyMeters)
+        } else GeoRefFuser.Anchor(lat, lng)
+        refLat = fused.lat
+        refLng = fused.lng
         refX = position[0]
         refY = position[1]
         refZ = position[2]
