@@ -427,11 +427,20 @@ def fuse_cell(
         result.activated or not require_activation_for_splat
     )
     if splat_wanted:
-        import splat_train  # deferred: avoids a hard dependency (plyfile,
-        # a live world-mirror endpoint) for callers that only need the
-        # point-cloud path, e.g. this module's own test suite.
+        # Default engine is gsplat (trains from ARKit poses in the cell
+        # frame — geo-true by construction). SPLAT_ENGINE=world-mirror
+        # restores the legacy feed-forward path, which needs Sim3 fitting
+        # and proved unreliable at street scale (2026-07-11 forensics).
+        engine = os.environ.get("SPLAT_ENGINE", "gsplat")
+        if engine == "gsplat":
+            import gsplat_runner  # deferred: keeps plyfile/torch-venv
+            # checks out of point-cloud-only callers (e.g. the test suite).
 
-        splat_bytes = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
+            splat_bytes = gsplat_runner.train_gsplat_for_cell(cell_id, result, manifests_by_session_id)
+        else:
+            import splat_train
+
+            splat_bytes = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
         if splat_bytes is not None:
             version = _run_version()
             splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes, version)

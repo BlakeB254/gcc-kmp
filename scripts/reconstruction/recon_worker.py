@@ -38,7 +38,10 @@ import requests
 import fuse_cell as fuse_cell_module
 from fuse_cell import FusionResult, ProducedAsset
 
-LEASE_MINUTES = 30
+# Must outlast the slowest job: gsplat training runs up to 3h (its
+# subprocess timeout in gsplat_runner) + fusion/download overhead. A lease
+# shorter than the run means a second worker double-claims mid-train.
+LEASE_MINUTES = 240
 MAX_ATTEMPTS = 3
 DEFAULT_WORLD_MIRROR_URL = "http://127.0.0.1:7027"
 
@@ -182,7 +185,16 @@ def process_job(conn, job: Job) -> None:
     require_activation = os.environ.get("SPLAT_REQUIRE_ACTIVATION", "0") == "1"
     world_mirror_url = os.environ.get("WORLD_MIRROR_URL", DEFAULT_WORLD_MIRROR_URL)
 
-    if train_splat and not _world_mirror_healthy(world_mirror_url):
+    splat_engine = os.environ.get("SPLAT_ENGINE", "gsplat")
+    if train_splat and splat_engine == "gsplat":
+        import gsplat_runner
+
+        if not gsplat_runner.available():
+            raise RuntimeError(
+                f"gsplat venv missing at {gsplat_runner.GSPLAT_PYTHON} -- run "
+                "scripts/gsplat_train/setup.sh, or set SPLAT_ENGINE=world-mirror"
+            )
+    elif train_splat and not _world_mirror_healthy(world_mirror_url):
         raise RuntimeError(
             f"cdx-world-mirror not healthy at {world_mirror_url} -- requeueing rather than "
             "producing a splat-less reconstruction silently"
