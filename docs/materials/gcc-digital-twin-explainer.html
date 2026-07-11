@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GCC — From Street Scans to a Living Digital Twin</title>
+<style>
+  @page { size: letter; margin: 0.55in 0.65in; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 10.5pt/1.45 Georgia, 'Times New Roman', serif; color: #1a2332; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  h1 { font: 700 21pt/1.15 Helvetica, Arial, sans-serif; letter-spacing: -.3pt; margin-bottom: 2pt; }
+  h2 { font: 700 13pt/1.2 Helvetica, Arial, sans-serif; color: #14532d; margin: 14pt 0 5pt; border-bottom: 1.5pt solid #16a34a; padding-bottom: 2pt; }
+  h3 { font: 700 10.5pt/1.2 Helvetica, Arial, sans-serif; margin: 9pt 0 3pt; }
+  p { margin-bottom: 6pt; }
+  .kicker { font: 700 9pt Helvetica, Arial, sans-serif; color: #16a34a; text-transform: uppercase; letter-spacing: 1.5pt; }
+  .sub { color: #4b5563; font-style: italic; margin-bottom: 10pt; }
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 8pt 0 10pt; font-family: Helvetica, Arial, sans-serif; }
+  .flow .step { flex: 1; background: #f0fdf4; border: 1pt solid #bbf7d0; border-radius: 4pt; padding: 6pt 7pt; font-size: 8pt; line-height: 1.35; }
+  .flow .step b { display: block; font-size: 8.5pt; color: #14532d; margin-bottom: 2pt; }
+  .flow .arrow { align-self: center; padding: 0 3pt; color: #16a34a; font-weight: 700; font-size: 11pt; }
+  .cols { display: flex; gap: 14pt; }
+  .cols > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; font: 8.5pt Helvetica, Arial, sans-serif; margin: 5pt 0 8pt; }
+  th { text-align: left; background: #14532d; color: #fff; padding: 3.5pt 6pt; font-size: 8pt; }
+  td { padding: 3.5pt 6pt; border-bottom: .5pt solid #d1d5db; vertical-align: top; }
+  .stat-row { display: flex; gap: 10pt; margin: 8pt 0; }
+  .stat { flex: 1; border: 1pt solid #d1d5db; border-left: 3pt solid #16a34a; border-radius: 3pt; padding: 6pt 8pt; }
+  .stat .n { font: 700 15pt Helvetica, Arial, sans-serif; color: #14532d; }
+  .stat .l { font: 8pt Helvetica, Arial, sans-serif; color: #4b5563; }
+  .foot { margin-top: 10pt; padding-top: 5pt; border-top: .5pt solid #d1d5db; font: 7.5pt Helvetica, Arial, sans-serif; color: #6b7280; display: flex; justify-content: space-between; }
+  ul { margin: 0 0 6pt 14pt; }
+  li { margin-bottom: 3pt; }
+  .tag { font: 700 7.5pt Helvetica, Arial, sans-serif; background: #dcfce7; color: #14532d; border-radius: 3pt; padding: 1pt 5pt; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ PAGE 1 — THE STORY ══════════════ -->
+<div class="page">
+  <div class="kicker">Global Community Cleaners × Codex Metatron</div>
+  <h1>From Street Scans to a Living Digital Twin</h1>
+  <p class="sub">How every walk with the GCC app becomes lasting 3D evidence of a neighborhood's condition — and how we maximize every byte of it.</p>
+
+  <h2>Every scan is captured once, used many times</h2>
+  <p>When a GCC worker scans a block, their iPhone records far more than a photo. The app
+  continuously spools <b>HEVC video</b>, <b>LiDAR depth keyframes</b>, and a <b>per-frame pose
+  sidecar</b> — the exact camera position, orientation, and lens parameters for every frame,
+  thirty times a second. Nothing is discarded: raw capture uploads to durable cloud storage
+  the moment a chunk completes, so the field work is done once and the data keeps paying out.</p>
+
+  <div class="flow">
+    <div class="step"><b>1 · Capture</b>iPhone LiDAR + video + pose, spooled in rotating chunks; GPS path &amp; detections in a session manifest</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>2 · Raw archive</b>Zero-egress object storage; raw scans are never modified or deleted — the permanent reconstruction input</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3 · GPU reconstruction</b>Depth-fused point clouds, photoreal Gaussian splats, and derived meshes — versioned, with full provenance</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>4 · Digital twin</b>3D assets, coverage, observations &amp; city data unified on one map, anchored at real GPS</div>
+  </div>
+
+  <h2>One capture, four products</h2>
+  <p>From a single walk we derive: <b>(1) coverage</b> — which 10-meter cells of ground were
+  verifiably seen, at what quality; <b>(2) observations</b> — geo-located litter and condition
+  findings that live until the area is rescanned; <b>(3) photoreal 3D</b> — Gaussian-splat
+  reconstructions of the actual street; and <b>(4) geometry</b> — measurable point clouds and
+  meshes derived from LiDAR. Multiple workers' sessions of the same place are registered
+  together, so the model of each block sharpens as the community keeps scanning.</p>
+
+  <div class="stat-row">
+    <div class="stat"><div class="n">~3 m</div><div class="l">ground-cell resolution of the coverage &amp; health grid</div></div>
+    <div class="stat"><div class="n">30 fps</div><div class="l">posed camera frames captured per scan second</div></div>
+    <div class="stat"><div class="n">1.5 M+</div><div class="l">Gaussians in a single reconstructed street scene</div></div>
+    <div class="stat"><div class="n">100 %</div><div class="l">of raw capture retained for future re-processing</div></div>
+  </div>
+
+  <h2>Why this matters</h2>
+  <p>Cities describe problems in text. GCC shows them — before, during, and after cleanup —
+  with survey-grade spatial context. As reconstruction methods improve, the archived raw scans
+  can be re-processed into ever-better models without anyone walking the block again: the
+  dataset appreciates in value over time.</p>
+
+  <div class="foot"><span>Global Community Cleaners — Digital Twin Program</span><span>Page 1 of 3 · July 2026</span></div>
+</div>
+
+<!-- ══════════════ PAGE 2 — TECHNICAL ══════════════ -->
+<div class="page">
+  <div class="kicker">Technical Overview</div>
+  <h1>Record Storage, Processing Cycles &amp; the Location-Health Grid</h1>
+
+  <h2>Record storage &amp; the processing cycle</h2>
+  <table>
+    <tr><th>Stage</th><th>System</th><th>What happens</th></tr>
+    <tr><td><b>Raw ingest</b></td><td>Cloudflare R2 (zero-egress object store)</td><td>App uploads via short-lived presigned URLs: <span class="tag">raw/{cell}/{session}/chunk-N.mov|.bin|.jsonl</span> + manifest. Raw is append-only; lifecycle rules only transition to cold storage, never delete.</td></tr>
+    <tr><td><b>Index sweep</b></td><td>Always-on control-plane service (30&nbsp;min cycle)</td><td>Walks R2, mirrors every session &amp; artifact into the database (idempotent), and enqueues a reconstruction job for each completed, unprocessed session.</td></tr>
+    <tr><td><b>Durable queue</b></td><td>Postgres job table, lease-based</td><td>Jobs are leased with row-locking (<span class="tag">FOR UPDATE SKIP LOCKED</span>), survive restarts, retry up to 3× with recorded errors. Job = session; work unit = the whole cell.</td></tr>
+    <tr><td><b>GPU reconstruction</b></td><td>NVIDIA DGX workstation (on-prem)</td><td>Decodes video + LZFSE depth, fuses posed RGBD into a point cloud, registers multiple sessions via GPS-seeded ICP, produces per-session Gaussian splats (feed-forward world model) aligned into one cell frame, plus Poisson meshes.</td></tr>
+    <tr><td><b>Versioned publish</b></td><td>R2 + Postgres provenance</td><td><span class="tag">reconstructed/{cell}/{version}/</span> — point cloud (.ply), full splat (.ply), web splat (.spz ≈ 5× smaller). Versions are append-only; every asset row records exactly which sessions produced it.</td></tr>
+    <tr><td><b>Serving</b></td><td>Digital-twin services</td><td>Web/app clients get compressed assets via just-in-time signed URLs; the 3D viewer anchors them at true GPS (ECEF) over photorealistic base tiles.</td></tr>
+  </table>
+
+  <h2>The geographic scan cache — a health record per location</h2>
+  <p>Every point on the ground maps deterministically to a <b>~3–10 m grid cell ID</b> — one
+  shared formula across the phone app, the servers, and the storage paths, so a cell is the
+  same cell everywhere. Each cell accumulates a compact health record:</p>
+  <ul>
+    <li><b>Coverage tier</b> — <i>seen</i> (sighted at distance), <i>grazed</i> (scanned nearby), or <i>close</i>
+      (verified up-close with quality-gated tracking). Tiers only upgrade; an indoor
+      false-positive purge can retract them. The append-only event log is the source of truth —
+      the summary is always recomputable.</li>
+    <li><b>Freshness</b> — first/last scanned timestamps drive "needs rescan" prioritization and the fog-of-war map.</li>
+    <li><b>Observation lifecycle</b> — a finding (e.g. dumped debris) <i>displays until its cell is rescanned</i>,
+      then automatically resolves to <b>still-present</b> (confirmed by the new scan) or
+      <b>cleaned</b> (superseded) — no manual bookkeeping.</li>
+    <li><b>3D status</b> — which reconstruction version covers the cell, and whether it has met the
+      multi-session activation gate (independent scans agreeing) that marks it canonical.</li>
+  </ul>
+
+  <h2>Trust &amp; integrity choices</h2>
+  <ul>
+    <li><b>Provenance-first:</b> every derived asset links back to its source sessions; nothing is untraceable.</li>
+    <li><b>Append-only everything:</b> raw scans, coverage events, and reconstruction versions never overwrite history.</li>
+    <li><b>Evidence validation:</b> visual evidence must be geographically consistent (within 150 m) with the report it claims to document.</li>
+    <li><b>Cross-session agreement:</b> a location's 3D model is only promoted to canonical once ≥3 independent sessions register consistently.</li>
+  </ul>
+
+  <div class="foot"><span>Global Community Cleaners — Digital Twin Program</span><span>Page 2 of 3 · July 2026</span></div>
+</div>
+
+<!-- ══════════════ PAGE 3 — OPEN DATA ══════════════ -->
+<div class="page">
+  <div class="kicker">Open-Data Integration</div>
+  <h1>Building on Chicago's Data — and Giving Back Eyes</h1>
+
+  <h2>The city's premises, our foundation</h2>
+  <p>Our maps are organized the way Chicago organizes itself: by the <b>77 official community
+  areas</b>, pulled directly from the Chicago Data Portal — the same boundaries that structure
+  every city dashboard. On top of that shared frame we've indexed the <b>entire portal
+  catalog (1,600+ datasets, 626 geo-enabled)</b>, so any city dataset — broadband zones,
+  transit, zoning, service requests — can be applied to any of our maps as a live layer in a
+  few clicks. New map projects (a neighborhood initiative, a business district, an
+  infrastructure study) are created through a simple form and inherit the whole system.</p>
+
+  <h2>The 311 loop: open data that asks for help — and gets it</h2>
+  <div class="flow">
+    <div class="step"><b>City reports</b>Open 311 requests (dumping, graffiti, weeds, vacant lots) sync from the Data Portal every 6 hours, citywide</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Scan prompt</b>A worker scanning near an open report is asked: “Do you see something matching this report?” — with a point bonus</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Visual evidence</b>Their scan &amp; photos attach to the city's own report number: text becomes imagery and 3D</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Capture analytics</b>Per community area: % of open sanitation reports GCC holds visual evidence for</div>
+  </div>
+  <p>The city's report is text and a street address. Ours adds timestamped photos, LiDAR
+  geometry, and a photoreal reconstruction — plus a follow-up mechanism the city lacks:
+  every rescan of that ground updates the finding to <b>still-present</b> or <b>cleaned</b>,
+  automatically. That capture-rate number, per neighborhood, is a new civic metric no one
+  else publishes.</p>
+
+  <h2>One twin, many sources</h2>
+  <table>
+    <tr><th>Layer</th><th>Source</th><th>Cadence</th></tr>
+    <tr><td>Community area boundaries</td><td>Chicago Data Portal</td><td>weekly sync</td></tr>
+    <tr><td>311 service requests (7 sanitation-class types)</td><td>Chicago Data Portal (SODA API)</td><td>6-hour sync, citywide</td></tr>
+    <tr><td>Any catalog dataset (broadband, CTA, zoning…)</td><td>Portal catalog index — 1,600+ datasets</td><td>on-demand, 24 h cache</td></tr>
+    <tr><td>Scan coverage, observations &amp; incident reports</td><td>GCC field app</td><td>live, per scan</td></tr>
+    <tr><td>Photoreal 3D (splats, meshes, point clouds)</td><td>DGX reconstruction pipeline</td><td>per scan session, versioned</td></tr>
+    <tr><td>Photorealistic 3D base tiles</td><td>Google Earth tiles</td><td>toggleable base layer</td></tr>
+  </table>
+
+  <h2>Where this goes next</h2>
+  <ul>
+    <li><b>Denser canonical models</b> as multi-session activation kicks in across the pilot area.</li>
+    <li><b>AI world-models</b> (single-image and splat-to-environment generation) to fill unscanned gaps and stylize the cumulative scan map into a seamless, Google-Earth-like experience built from <i>our own</i> ground truth.</li>
+    <li><b>More sources:</b> county/state open data, OpenStreetMap, transit feeds, and partner datasets — each just another layer on maps anyone can create.</li>
+  </ul>
+
+  <div class="foot"><span>Global Community Cleaners — Digital Twin Program · globalcommunitycleaners.org</span><span>Page 3 of 3 · July 2026</span></div>
+</div>
+
+</body>
+</html>
