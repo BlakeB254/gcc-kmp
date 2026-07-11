@@ -27,11 +27,23 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// is allocation-light on the delegate thread and can never throw.
     private var recorder: ArSessionRecorder?
 
-    /// Grid squares stay this size no matter how large a plane grows.
-    /// 1.5m = a clean divisor of CoverageTracker's 3m cells, and the grid is
+    /// Minor grid interval — stays this size no matter how large a plane
+    /// grows. 1.0m = a clean divisor of CoverageTracker's 3m cells (the minor
+    /// interval from global constraint 7's 1m/3m grid), and the grid is
     /// world-axis aligned (compass-true under gravityAndHeading), so the
     /// on-camera lattice visually registers with the north-up minimap grid.
-    private static let gridTileMeters: Float = 1.5
+    /// MUST MATCH `GRID_TILE_METERS` in ArEnvScan.kt — the RealityKit and
+    /// SceneKit paths phase the same lattice; the two are not read from a
+    /// shared constant, so keep them in sync by hand.
+    private static let gridTileMeters: Float = 1.0
+    /// World size of ONE texture repeat: the grid texture is a 3×3-cell tile
+    /// (thin interior minor lines, heavy outer major line), so one repeat
+    /// spans 3m — the major interval and CoverageTracker's cell size. Every
+    /// UV scale/offset and lattice snap for the ground grid must use THIS,
+    /// not `gridTileMeters` — dividing by the minor interval would render
+    /// the whole 3×3 texture per metre (minor lines every 0.33m). Matches
+    /// `GRID_MAJOR_TILE_METERS` in ArEnvScan.kt.
+    private static let gridMajorTileMeters: Float = gridTileMeters * 3
 
     /// Only one ARSession may hold the camera at a time. The Kotlin factory
     /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
@@ -58,8 +70,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var floorMaxZ: Float?
     /// AR-local origin of the geo-anchored CoverageTracker cell lattice (set
     /// from Kotlin via `setGridPhaseOrigin`). The grid snaps its bounds to
-    /// multiples of `gridTileMeters` from this point so the on-camera geogrid
-    /// registers with the minimap's cell grid. Nil until the first
+    /// multiples of `gridMajorTileMeters` from this point so the on-camera
+    /// geogrid registers with the minimap's cell grid. Nil until the first
     /// geo-reference pairing — the grid phases to the AR world origin until
     /// then. TERMINAL once set (see `setGridPhaseOrigin`) — "stability beats
     /// accuracy for the grid": content (fog/vector cells/guidance) keeps
@@ -79,11 +91,25 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // here too as the defensive receiving-end limit.
     private static let maxFogCells = 400
     private let cameraAnchor = AnchorEntity(.camera)
-    private var arrowEntity: ModelEntity?
     private var veilEntity: ModelEntity?
+    /// The frontier target the beacon sits on. (The camera-attached guidance
+    /// arrow stays deleted — global constraint 8; the beacon is world-anchored
+    /// ground UI, not camera chrome.)
     private var guidanceTarget: SIMD3<Float>?
-    private var updateSubscription: Cancellable?
     private var coachingOverlay: ARCoachingOverlayView?
+
+    // Frontier beacon (spec 2026-07-10): ONE pooled world-anchored ground
+    // ring, moved on every target change — NEVER an entity per target (the
+    // fog/sector-post per-cell dictionaries are the anti-pattern that caused
+    // the Complete Scan entity blowup). Torn down in teardown() alongside
+    // the veil.
+    private var beaconAnchor: AnchorEntity?
+    private var beaconModel: ModelEntity?
+    private var beaconSuppressed = false
+    /// Cool blue — deliberately outside the litter color language (green =
+    /// confirmed, orange = expected/litter, red = warning).
+    private static let beaconTint = UIColor(red: 0.3, green: 0.6, blue: 1.0, alpha: 0.7)
+    private lazy var beaconTexture: TextureResource? = Self.makeBeaconRingTexture()
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -113,10 +139,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         arView.session.run(config)
 
         arView.scene.addAnchor(cameraAnchor)
-        // RealityKit has no LookAt constraint — a per-frame scene update
-        // re-aims the guidance arrow at the current frontier target.
-        updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
-            self?.aimArrow()
+        // Global constraint 7: the grid must not draw over plants, fences, or
+        // cars. On LiDAR devices ARKit's reconstructed mesh occludes it.
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            arView.environment.sceneUnderstanding.options.insert(.occlusion)
         }
 
         let coaching = ARCoachingOverlayView()
@@ -143,23 +169,19 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    /// Full teardown, not just pause: cancels the per-frame scene subscription
-    /// and removes EVERY created entity (planes, vector/fog cells, sector
-    /// posts, walls, arrow, veil) from the RealityKit scene graph. `pause()`
-    /// alone left `updateSubscription` live and every entity — potentially
-    /// 750+ on a large scan — still anchored in the scene holding GPU
-    /// resources, which is the scan-end crash-on-Complete-Scan root cause
-    /// this fixes. Called from Kotlin's `ArEnvScanOverlay.stop()` (and the
-    /// route/spot overlays) instead of `pause()` at composition teardown.
+    /// Full teardown, not just pause: removes EVERY created entity (planes,
+    /// vector/fog cells, sector posts, walls, veil) from the RealityKit scene
+    /// graph. `pause()` alone left every entity — potentially 750+ on a large
+    /// scan — still anchored in the scene holding GPU resources, which is the
+    /// scan-end crash-on-Complete-Scan root cause this fixes. Called from
+    /// Kotlin's `ArEnvScanOverlay.stop()` (and the route/spot overlays)
+    /// instead of `pause()` at composition teardown.
     func teardown() {
         // Kotlin's stop order calls stopCaptureAndDrain() BEFORE teardown;
         // if capture is somehow still live here, finalize + drop silently —
         // teardown must stay safe regardless of ordering.
         recorder?.finishSilently()
         recorder = nil
-
-        updateSubscription?.cancel()
-        updateSubscription = nil
 
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
@@ -177,10 +199,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         for wall in wallEntities { wall.removeFromParent() }
         wallEntities.removeAll()
 
-        arrowEntity?.removeFromParent()
-        arrowEntity = nil
         veilEntity?.removeFromParent()
         veilEntity = nil
+        beaconAnchor?.removeFromParent()
+        beaconAnchor = nil
+        beaconModel = nil
+        guidanceTarget = nil
         cameraAnchor.removeFromParent()
 
         coachingOverlay?.setActive(false, animated: false)
@@ -205,6 +229,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         guard let frame = lastFrame else { return nil }
         let t = frame.camera.transform.columns.3
         return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
+    }
+
+    /// ARKit clock of the latest frame — the SAME clock the pose sidecar
+    /// stamps `t` with, so a (wall-clock, this) pair at geo-ref time lets the
+    /// DGX pipeline align the pose stream with the GPS track.
+    func currentFrameTimestamp() -> Double {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        return lastFrame?.timestamp ?? -1.0
     }
 
     func raycast(imageX: Double, imageY: Double) -> [KotlinDouble]? {
@@ -258,7 +291,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // WS5: the neon emissive coverage quads (green-rectangle bleed in the
     // camera view — field report) are removed. Coverage feedback lives on the
     // minimap now; this is a no-op kept for the ArNativeSurface protocol. The
-    // matte ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
+    // neon ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
     func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {}
 
     func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
@@ -418,16 +451,82 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     func setGuidanceTarget(x: Double, z: Double) {
         DispatchQueue.main.async { [self] in
             let groundY = (floorWorldY ?? cameraFallbackGroundY())
-            guidanceTarget = SIMD3(Float(x), groundY, Float(z))
-            arrow().isEnabled = true
+            let position = SIMD3(Float(x), groundY + 0.02, Float(z))
+            let firstShow = guidanceTarget == nil
+            guidanceTarget = position
+            let model = beacon()
+            beaconAnchor?.setPosition(position, relativeTo: nil)
+            let show = !beaconSuppressed
+            if show && (firstShow || !model.isEnabled) {
+                model.isEnabled = true
+                animateIn(model, duration: 0.4)
+            } else {
+                model.isEnabled = show
+            }
         }
     }
 
     func clearGuidanceTarget() {
         DispatchQueue.main.async { [self] in
             guidanceTarget = nil
-            arrowEntity?.isEnabled = false
+            beaconModel?.isEnabled = false
         }
+    }
+
+    /// Credit-triggered dissolve: the patch was properly scanned. Shrinks the
+    /// pooled ring out (≥0.4s, spec) then disables it — the entity is reused,
+    /// never removed, so this can run every target for free.
+    func dissolveGuidanceBeacon() {
+        DispatchQueue.main.async { [self] in
+            guard let model = beaconModel, model.isEnabled else { return }
+            let restore = model.transform
+            var end = restore
+            end.scale = SIMD3(repeating: 0.01)
+            model.move(to: end, relativeTo: beaconAnchor, duration: 0.4, timingFunction: .easeIn)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                guard let self, let model = self.beaconModel else { return }
+                model.isEnabled = false
+                model.transform = restore
+            }
+        }
+    }
+
+    /// Confirm flows own the screen: hide while a tap pill / lock-on card is
+    /// up, restore afterward only if a frontier target is still live.
+    func setBeaconSuppressed(suppressed: Bool) {
+        DispatchQueue.main.async { [self] in
+            beaconSuppressed = suppressed
+            beaconModel?.isEnabled = !suppressed && guidanceTarget != nil
+        }
+    }
+
+    /// Lazy singleton (arrow()/veil() pattern): one flat ring on a
+    /// free-standing world anchor, gently pulsing. Non-emissive on purpose —
+    /// it should read as sitting IN the scene (and LiDAR mesh occlusion
+    /// hides it behind real objects), unlike the deliberately-neon grid.
+    private func beacon() -> ModelEntity {
+        if let beaconModel { return beaconModel }
+        var material = PhysicallyBasedMaterial()
+        if let beaconTexture {
+            material.baseColor = .init(tint: Self.beaconTint, texture: .init(beaconTexture))
+        } else {
+            material.baseColor = .init(tint: Self.beaconTint)
+        }
+        material.roughness = 1.0
+        material.metallic = 0.0
+        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        let model = ModelEntity(
+            mesh: .generatePlane(width: 0.9, depth: 0.9, cornerRadius: 0.45),
+            materials: [material]
+        )
+        model.isEnabled = false
+        let anchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+        anchor.addChild(model)
+        arView.scene.addAnchor(anchor)
+        addPulse(to: model, scale: 1.18, duration: 1.1)
+        beaconAnchor = anchor
+        beaconModel = model
+        return model
     }
 
     func setBoundaryVeilVisible(visible: Bool) {
@@ -516,22 +615,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    // MARK: - Guidance arrow internals
-
-    /// Elongated emissive box pointer (cone/pyramid meshes are iOS 18+),
-    /// hanging below the camera; long axis is Z so look-style aiming works.
-    private func arrow() -> ModelEntity {
-        if let arrowEntity { return arrowEntity }
-        let entity = ModelEntity(
-            mesh: .generateBox(size: SIMD3(0.05, 0.05, 0.28)),
-            materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.95))]
-        )
-        entity.position = SIMD3(0, -0.4, -1.0)
-        cameraAnchor.addChild(entity)
-        arrowEntity = entity
-        return entity
-    }
-
     private func veil() -> ModelEntity {
         if let veilEntity { return veilEntity }
         let entity = ModelEntity(
@@ -545,18 +628,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return entity
     }
 
-    private func aimArrow() {
-        guard let target = guidanceTarget, let arrow = arrowEntity, arrow.isEnabled else { return }
-        let from = arrow.position(relativeTo: nil)
-        let direction = target - from
-        let flat = SIMD3(direction.x, direction.y, direction.z)
-        guard simd_length(flat) > 0.01 else { return }
-        arrow.setOrientation(
-            simd_quatf(from: SIMD3(0, 0, -1), to: simd_normalize(flat)),
-            relativeTo: nil
-        )
-    }
-
     func emitLockEffect(x: Double, y: Double, z: Double) {
         DispatchQueue.main.async { [self] in
             let anchor = AnchorEntity(world: SIMD3(Float(x), Float(y), Float(z)))
@@ -564,11 +635,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 mesh: .generateSphere(radius: 0.06),
                 materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.8))]
             )
-            if #available(iOS 18.0, *) {
-                var emitter = ParticleEmitterComponent.Presets.sparks
-                emitter.isEmitting = true
-                pulse.components.set(emitter)
-            }
             anchor.addChild(pulse)
             arView.scene.addAnchor(anchor)
             // Grow-and-vanish pulse; works on every OS version.
@@ -718,16 +784,17 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     /// (Re)build the ONE grid's render geometry from the monotonic union
     /// AABB: with a lattice phase known, the bounds snap OUTWARD to
-    /// multiples of `gridTileMeters` from the phase origin, so the grid
-    /// edges — and every repeated tile line between them — land exactly on
-    /// the geo-anchored 3m cell lattice the minimap draws. Runs on union
-    /// growth AND once when the phase origin locks (geo-ref first pairing —
-    /// it never moves again, see `setGridPhaseOrigin`). Mesh regeneration is
-    /// the expensive part — skipped while the snapped size is unchanged.
+    /// multiples of `gridMajorTileMeters` (one texture repeat = 3m) from the
+    /// phase origin, so the grid edges — and every minor/major texture line
+    /// between them — land exactly on the geo-anchored 3m cell lattice the
+    /// minimap draws. Runs on union growth AND once when the phase origin
+    /// locks (geo-ref first pairing — it never moves again, see
+    /// `setGridPhaseOrigin`). Mesh regeneration is the expensive part —
+    /// skipped while the snapped size is unchanged.
     private func applyPlaneGeometry(_ entry: PlaneGridEntity) {
         guard let rawMinX = floorMinX, let rawMaxX = floorMaxX,
               let rawMinZ = floorMinZ, let rawMaxZ = floorMaxZ else { return }
-        let tile = Self.gridTileMeters
+        let tile = Self.gridMajorTileMeters
         var minX = rawMinX, maxX = rawMaxX
         var minZ = rawMinZ, maxZ = rawMaxZ
         if let phase = gridPhaseOrigin {
@@ -769,21 +836,24 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     ) -> PhysicallyBasedMaterial {
         let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
         var material = gridMaterial(floorGridTexture, tint: tint, uvScale: 1)
-        // Scale keeps tiles a constant gridTileMeters; the offset phases the
-        // repeat so grid LINES land on multiples of the tile from the lattice
-        // phase origin (the geo-anchored CoverageTracker lattice once the
-        // geo-ref pairs; the AR world origin before) — every plane shares one
-        // seamless lattice instead of each starting its grid at its corner.
-        // With bounds snapped by applyPlaneGeometry the offset is ~0; it
-        // mops up float residue and covers the unsnapped pre-phase case.
+        // One texture repeat = one MAJOR tile (gridMajorTileMeters, 3m) — the
+        // texture packs the 3×3 minor cells inside it, so dividing by the
+        // minor interval would draw minor lines every 0.33m. The offset
+        // phases the repeat so grid LINES land on multiples of the tile from
+        // the lattice phase origin (the geo-anchored CoverageTracker lattice
+        // once the geo-ref pairs; the AR world origin before) — every plane
+        // shares one seamless lattice instead of each starting its grid at
+        // its corner. With bounds snapped by applyPlaneGeometry the offset
+        // is ~0; it mops up float residue and covers the unsnapped pre-phase
+        // case.
         material.textureCoordinateTransform.scale = SIMD2(
-            max(size.x / Self.gridTileMeters, 1),
-            max(size.y / Self.gridTileMeters, 1)
+            max(size.x / Self.gridMajorTileMeters, 1),
+            max(size.y / Self.gridMajorTileMeters, 1)
         )
         let phaseX = gridPhaseOrigin?.x ?? 0
         let phaseZ = gridPhaseOrigin?.y ?? 0
-        let originX = (centerWorld.x - size.x / 2 - phaseX) / Self.gridTileMeters
-        let originZ = (centerWorld.z - size.y / 2 - phaseZ) / Self.gridTileMeters
+        let originX = (centerWorld.x - size.x / 2 - phaseX) / Self.gridMajorTileMeters
+        let originZ = (centerWorld.z - size.y / 2 - phaseZ) / Self.gridMajorTileMeters
         material.textureCoordinateTransform.offset = SIMD2(
             originX - floor(originX),
             originZ - floor(originZ)
@@ -793,8 +863,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     // PhysicallyBasedMaterial rather than UnlitMaterial: only PBM has
     // textureCoordinateTransform before iOS 18, and tiling is what keeps
-    // grid squares a constant gridTileMeters as planes grow. Emissive channel
-    // keeps the glow regardless of scene lighting.
+    // grid squares a constant gridTileMeters as planes grow.
     private func gridMaterial(_ texture: TextureResource?, tint: UIColor, uvScale: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         if let texture {
@@ -804,6 +873,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             material.baseColor = .init(tint: tint)
             material.emissiveColor = .init(color: tint)
         }
+        // Neon restored on Blake's word (TestFlight 145: the non-emissive grid
+        // read as a shadow on the ground — invisible in daylight). The old
+        // glow-through-fences complaint is handled by scene-mesh occlusion
+        // (sceneUnderstanding .occlusion in init) on LiDAR devices, not by
+        // dimming the grid.
         material.emissiveIntensity = 2.0
         material.roughness = 1.0
         material.metallic = 0.0
@@ -821,28 +895,74 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return cameraY - 1.4
     }
 
-    /// Transparent tile with lines on its leading edges — repeat-tiled by the
-    /// UV transform it becomes a seamless grid; diagonals give the denser
-    /// "vector scan" look. Mirrors the Kotlin SceneKit texture exactly.
+    /// Transparent 3×3-cell tile: thin lines on the interior cell boundaries
+    /// (the 1m minor interval, `gridTileMeters`, alpha 0.5) and a heavier
+    /// line on the texture's own outer boundary (alpha 0.9). One repeat is
+    /// scaled to span `gridMajorTileMeters` (see `planeMaterial`), so the
+    /// heavy edge line lands on every repeat boundary — the 3m major
+    /// interval. Diagonals add an X per cell for the denser "vector scan"
+    /// look. Mirrors the Kotlin SceneKit texture (ArEnvScan.kt's
+    /// makeGridTexture) exactly — keep them visually identical.
     private static func makeGridTexture(line: UIColor, lineWidth: CGFloat, diagonals: Bool = false) -> TextureResource? {
-        let side: CGFloat = 128
+        let side: CGFloat = 129
+        let third = side / 3
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
         let image = renderer.image { ctx in
-            let path = UIBezierPath()
-            path.move(to: CGPoint(x: 0, y: 0.5))
-            path.addLine(to: CGPoint(x: side, y: 0.5))
-            path.move(to: CGPoint(x: 0.5, y: 0))
-            path.addLine(to: CGPoint(x: 0.5, y: side))
-            if diagonals {
-                path.move(to: .zero)
-                path.addLine(to: CGPoint(x: side, y: side))
-                path.move(to: CGPoint(x: side, y: 0))
-                path.addLine(to: CGPoint(x: 0, y: side))
+            // Minor grid: one line per interior cell boundary.
+            let minorPath = UIBezierPath()
+            for i in 1...2 {
+                let pos = third * CGFloat(i)
+                minorPath.move(to: CGPoint(x: 0, y: pos))
+                minorPath.addLine(to: CGPoint(x: side, y: pos))
+                minorPath.move(to: CGPoint(x: pos, y: 0))
+                minorPath.addLine(to: CGPoint(x: pos, y: side))
             }
-            path.lineWidth = lineWidth
-            line.setStroke()
-            path.stroke()
+            if diagonals {
+                for row in 0...2 {
+                    for col in 0...2 {
+                        let x0 = third * CGFloat(col)
+                        let y0 = third * CGFloat(row)
+                        minorPath.move(to: CGPoint(x: x0, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0 + third, y: y0 + third))
+                        minorPath.move(to: CGPoint(x: x0 + third, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0, y: y0 + third))
+                    }
+                }
+            }
+            minorPath.lineWidth = lineWidth
+            line.withAlphaComponent(0.5).setStroke()
+            minorPath.stroke()
+
+            // Major grid: only the texture's outer boundary — one heavy line
+            // per repeat, i.e. every gridMajorTileMeters in the world.
+            let majorPath = UIBezierPath()
+            majorPath.move(to: CGPoint(x: 0, y: 0.5))
+            majorPath.addLine(to: CGPoint(x: side, y: 0.5))
+            majorPath.move(to: CGPoint(x: 0.5, y: 0))
+            majorPath.addLine(to: CGPoint(x: 0.5, y: side))
+            majorPath.lineWidth = lineWidth * 1.5
+            line.withAlphaComponent(0.9).setStroke()
+            majorPath.stroke()
             _ = ctx // renderer context retained for the draw
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .color))
+    }
+
+    /// Frontier-beacon ring: a white annulus + soft center dot on a clear
+    /// ground plane; the material tints it beacon-blue. White-on-clear so the
+    /// tint fully owns the color (same texture×tint pattern as the grid).
+    private static func makeBeaconRingTexture() -> TextureResource? {
+        let side: CGFloat = 256
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { _ in
+            let ring = UIBezierPath(ovalIn: CGRect(x: 28, y: 28, width: side - 56, height: side - 56))
+            ring.lineWidth = 26
+            UIColor.white.setStroke()
+            ring.stroke()
+            let core = UIBezierPath(ovalIn: CGRect(x: side / 2 - 26, y: side / 2 - 26, width: 52, height: 52))
+            UIColor.white.withAlphaComponent(0.35).setFill()
+            core.fill()
         }
         guard let cg = image.cgImage else { return nil }
         return try? TextureResource.generate(from: cg, options: .init(semantic: .color))

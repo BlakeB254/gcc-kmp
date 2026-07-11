@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Android ArEnvScanOverlay stub: the environment scan keeps the plain
@@ -15,12 +16,20 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {}
+    actual val multiItemReticles: StateFlow<List<DetectionReticle>> = MutableStateFlow(emptyList())
+    private val _tapCandidate = MutableStateFlow(TapCandidateState())
+    actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
+    actual fun confirmTapCandidate(): TapCandidateState? = null
+    actual fun rejectTapCandidate(): TapCandidateState? = null
+    actual fun dismissTapCandidate() {}
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? = null
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
     actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
     actual fun setGuidanceTarget(lat: Double, lng: Double) {}
     actual fun clearGuidanceTarget() {}
+    actual fun dissolveGuidanceBeacon() {}
+    actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {}
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? = null
     actual fun dismissCandidate() {}
     actual fun focusAt(x: Float, y: Float) {}

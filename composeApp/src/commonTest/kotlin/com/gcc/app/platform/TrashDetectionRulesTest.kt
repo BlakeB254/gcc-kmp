@@ -3,6 +3,7 @@ package com.gcc.app.platform
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TrashDetectionRulesTest {
 
@@ -86,5 +87,58 @@ class TrashDetectionRulesTest {
     fun noTrashKeywordDoesNotMatch() {
         val obs = listOf(ClassificationObservation("cloud", 0.9f))
         assertNull(TrashDetectionRules.trashLabelFrom(obs))
+    }
+
+    @Test
+    fun tireOnACarDoesNotAutoPromote() {
+        // The exact field failure: a whole-frame classifier saw "tire" and "car".
+        val observations = listOf(obs("tire", 0.6f), obs("car", 0.7f))
+        assertNull(TrashDetectionRules.autoPromotionLabelFrom(observations))
+    }
+
+    @Test
+    fun tireNearATruckOrBicycleDoesNotAutoPromote() {
+        assertNull(TrashDetectionRules.autoPromotionLabelFrom(listOf(obs("tire", 0.6f), obs("truck", 0.5f))))
+        assertNull(TrashDetectionRules.autoPromotionLabelFrom(listOf(obs("tire", 0.6f), obs("bicycle", 0.5f))))
+        assertNull(TrashDetectionRules.autoPromotionLabelFrom(listOf(obs("wheel", 0.6f), obs("car", 0.5f))))
+    }
+
+    @Test
+    fun detachedTireWithNoVehicleContextStillAutoPromotes() {
+        val observations = listOf(obs("tire", 0.6f), obs("grass", 0.5f))
+        assertEquals("Tire", TrashDetectionRules.autoPromotionLabelFrom(observations))
+    }
+
+    @Test
+    fun vehicleContextDoesNotSuppressUnrelatedLitter() {
+        // A bottle on the sidewalk next to a parked car is still a bottle.
+        val observations = listOf(obs("bottle", 0.6f), obs("car", 0.7f))
+        assertEquals("Bottle", TrashDetectionRules.autoPromotionLabelFrom(observations))
+    }
+
+    @Test
+    fun weakVehicleEvidenceDoesNotSuppress() {
+        // Below SCENE_CONFIDENCE (0.3) the "car" label is noise, not context.
+        val observations = listOf(obs("tire", 0.6f), obs("car", 0.1f))
+        assertEquals("Tire", TrashDetectionRules.autoPromotionLabelFrom(observations))
+    }
+
+    @Test
+    fun autoPromotionStillHonoursTheConfidenceFloor() {
+        assertNull(TrashDetectionRules.autoPromotionLabelFrom(listOf(obs("bottle", 0.2f))))
+    }
+
+    @Test
+    fun hasVehicleContextIsIndependentlyUsable() {
+        assertTrue(TrashDetectionRules.hasVehicleContext(listOf(obs("car", 0.7f))))
+        assertTrue(!TrashDetectionRules.hasVehicleContext(listOf(obs("grass", 0.7f))))
+    }
+
+    @Test
+    fun wholeFrameRoutingSignalIsUnchangedBySuppression() {
+        // trashLabelFrom stays a weak routing signal: it still reports "Tire".
+        // Only auto-promotion is gated. This pins that we did not change it.
+        val observations = listOf(obs("tire", 0.6f), obs("car", 0.7f))
+        assertEquals("Tire", TrashDetectionRules.trashLabelFrom(observations))
     }
 }

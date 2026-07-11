@@ -44,6 +44,47 @@ object TrashDetectionRules {
         "tire" to "Tire", "mattress" to "Mattress",
     )
 
+    /**
+     * Labels that mean "a vehicle is in this frame". A whole-frame classifier
+     * cannot tell us whether the tire it saw is ON one of these — so when a
+     * vehicle is present at real confidence, a tire/wheel prediction is never
+     * auto-promoted. The user can still tap a detached tire and confirm it.
+     */
+    val VEHICLE_CONTEXT_KEYWORDS = setOf(
+        "car", "truck", "van", "bus", "vehicle", "automobile", "motorcycle",
+        "bicycle", "bike", "wheel", "wheels", "tyre", "trailer", "suv", "jeep",
+    )
+
+    /**
+     * Trash labels that are commonly a PART of a larger, non-discarded parent
+     * object. Only these are suppressed by [hasVehicleContext]; a bottle next
+     * to a parked car is still a bottle.
+     */
+    val PARENT_ATTACHED_LABELS = setOf("Tire")
+
+    /** True when a vehicle label is present at or above [SCENE_CONFIDENCE]. */
+    fun hasVehicleContext(observations: List<ClassificationObservation>): Boolean =
+        observations.any { obs ->
+            obs.confidence >= SCENE_CONFIDENCE &&
+                tokensOf(obs.identifier).any { it in VEHICLE_CONTEXT_KEYWORDS }
+        }
+
+    /**
+     * The label an AUTOMATIC detection may be promoted with, or null.
+     *
+     * Distinct from [trashLabelFrom], which stays a weak routing signal for the
+     * whole-frame classifier and is deliberately unchanged. This applies the
+     * parent-context suppression required before anything auto-files.
+     *
+     * A user tap MUST NOT call this — a tap is authoritative and may confirm a
+     * detached tire even in a driveway full of cars.
+     */
+    fun autoPromotionLabelFrom(observations: List<ClassificationObservation>): String? {
+        val label = trashLabelFrom(observations) ?: return null
+        if (label in PARENT_ATTACHED_LABELS && hasVehicleContext(observations)) return null
+        return label
+    }
+
     fun tokensOf(identifier: String): List<String> =
         identifier.lowercase().split('_', ' ', ',').filter { it.isNotBlank() }
 

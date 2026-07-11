@@ -30,6 +30,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
+import com.gcc.app.platform.TapCandidateState
+import com.gcc.app.platform.TapPhase
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
@@ -47,6 +49,11 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.NearbyDirtyPromptGate
+import com.gcc.app.platform.clusterIdsAround
+import com.gcc.app.platform.countFeatures
+import com.gcc.app.platform.countLitter
+import com.gcc.app.platform.minimapLitterItems
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
@@ -60,6 +67,8 @@ import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.retractionOutcome
+import com.gcc.app.platform.KeepScreenAwake
+import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -205,6 +214,8 @@ fun SpotScreen(
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
+                    onConfirmedTapItem = { candidate -> viewModel.addConfirmedTapItem(candidate) },
+                    onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
                     onFlushMarkers = { viewModel.flushArMarkers() },
@@ -264,7 +275,8 @@ fun SpotScreen(
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
                     session = uiState.completedSession,
-                    itemCount = uiState.observedItems.size,
+                    litterCount = countLitter(uiState.observedItems),
+                    featureCount = countFeatures(uiState.observedItems),
                     photoCount = uiState.capturedPhotos.size,
                     matchingBounties = uiState.matchingBounties,
                     createdBounty = uiState.createdBounty,
@@ -301,6 +313,10 @@ private fun CameraPhase(
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
+    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
+    onConfirmedTapItem: (TapCandidateState) -> Unit = {},
+    /** The user tapped a candidate and pressed "Not litter" — a negative example. */
+    onRejectedTapItem: (TapCandidateState) -> Unit = {},
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
     /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
@@ -322,20 +338,20 @@ private fun CameraPhase(
     val arOverlay = remember { if (isScanMode && arEnvScanSupported()) ArEnvScanOverlay() else null }
     val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
+    // Multi-item reticle layer (Task 17) — additive display alongside
+    // trashCandidate's single lock-on; never drives approach/confirm.
+    val multiItemReticles by (
+        arOverlay?.multiItemReticles ?: remember { MutableStateFlow(emptyList<com.gcc.app.platform.DetectionReticle>()) }
+        ).collectAsState()
+    val tapCandidate by (arOverlay?.tapCandidate ?: remember { MutableStateFlow(TapCandidateState()) })
+        .collectAsState()
     // Gate pauses AR frame analysis indoors (same behavior the route AR has),
     // and geo-references pair every GPS fix with the AR camera position —
     // except fixes worse than MAX_GEO_REF_ACCURACY_METERS, which must not
     // re-anchor the frame (one wild fix drags all geo-derived AR geometry).
+    // (The pairing collector itself lives below the session recorder, which
+    // persists each pairing for the DGX world-splat registration.)
     var geoRefPaired by remember { mutableStateOf(false) }
-    LaunchedEffect(arOverlay) {
-        if (arOverlay == null) return@LaunchedEffect
-        locationProvider.locationFlow.collect { loc ->
-            if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
-                arOverlay.updateGeoReference(loc.lat, loc.lng, locationProvider.horizontalAccuracyMeters.value)
-                geoRefPaired = true
-            }
-        }
-    }
     // Steadiness accumulator for the end-of-session A-F score (ScanScore):
     // a plain (non-Compose) counter pair, not state — sampled once/sec so a
     // steady session doesn't recompose per sample. ArSessionHealth's
@@ -372,6 +388,21 @@ private fun CameraPhase(
     val sessionRecorder = remember {
         val sessionId = EnvScanSessionRecorder.generateSessionId()
         EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
+    }
+    // Geo-ref pairing collector (see geoRefPaired above): every usable fix
+    // re-anchors the AR frame AND records the AR↔world pairing into the
+    // session recorder — the metadata the DGX splat pipeline registers this
+    // session's pose stream into the world splat layer with.
+    LaunchedEffect(arOverlay) {
+        if (arOverlay == null) return@LaunchedEffect
+        locationProvider.locationFlow.collect { loc ->
+            val accuracy = locationProvider.horizontalAccuracyMeters.value
+            if (isGeoRefFixUsable(accuracy)) {
+                arOverlay.updateGeoReference(loc.lat, loc.lng, accuracy)
+                    ?.let(sessionRecorder::addGeoRefEvent)
+                geoRefPaired = true
+            }
+        }
     }
     // Coverage tracker: hoisted above the AR-overlay DisposableEffect below
     // (rather than down with its other env-scan state) because the
@@ -626,6 +657,9 @@ private fun CameraPhase(
     fun isElementObservation(obs: WorldObservation) = obs.domain == "vegetation" || obs.domain == "construction"
     val resolvedObservationIds = remember { mutableSetOf<Int>() }
     var nearbyDirty by remember { mutableStateOf<WorldObservation?>(null) }
+    // Anti-spam gate (TestFlight 145 field report): one card at a time, quiet
+    // cooldown after an answer or a walk-away, cluster-resolve on answer.
+    val nearbyPromptGate = remember { NearbyDirtyPromptGate() }
 
     // Initialise the scan grid at the first real fix (single-point "route"
     // gives a ~15m-corridor zone around the spot). Keyed on Unit on purpose:
@@ -773,14 +807,15 @@ private fun CameraPhase(
                 bestFanQualitySinceLastEvent.value = null
             }
 
-            // Clean-confirm proximity (5m, unresolved only).
-            nearbyDirty = expectedDirty
-                .asSequence()
-                .filter { it.id !in resolvedObservationIds }
-                .map { it to GeofenceVerification.distanceMeters(loc.lat, loc.lng, it.lat, it.lng) }
-                .filter { (_, dist) -> dist <= 5.0 }
-                .minByOrNull { (_, dist) -> dist }
-                ?.first
+            // Clean-confirm proximity (5m, unresolved only), rate-limited by
+            // the gate so a walk past many old observations doesn't chain-
+            // prompt (TestFlight 145 spam report).
+            nearbyDirty = nearbyPromptGate.onLocation(
+                nowMs = Clock.System.now().toEpochMilliseconds(),
+                lat = loc.lat,
+                lng = loc.lng,
+                unresolved = expectedDirty.filter { it.id !in resolvedObservationIds },
+            )
         }
     }
     val scannedCells by tracker.scannedCells.collectAsState()
@@ -828,6 +863,22 @@ private fun CameraPhase(
                 coveragePercent = coveragePercentValue,
             )
         }
+        // Beacon dissolve (spec 2026-07-10): when the PREVIOUS frontier
+        // target's patch — its cell or an immediate neighbor, tolerating
+        // hysteresis re-picks a cell over — reached CLOSE credit, fade the
+        // AR beacon out as the "you finished this patch" reward BEFORE the
+        // new target teleports it. A plain target change (something closer
+        // appeared) moves the beacon without ceremony.
+        val previousTarget = guidanceTarget
+        if (arOverlay != null && previousTarget != null) {
+            val prevCell = tracker.cellForLatLng(previousTarget.first, previousTarget.second)
+            val closeCells = creditedCells
+                .filterValues { it.quality == CoverageQuality.CLOSE }.keys
+            val patchDone = prevCell != null && closeCells.any { (r, c) ->
+                kotlin.math.abs(r - prevCell.first) <= 1 && kotlin.math.abs(c - prevCell.second) <= 1
+            }
+            if (patchDone) arOverlay.dissolveGuidanceBeacon()
+        }
         guidanceTarget = pick?.target
         guidancePhase = pick?.phase ?: GuidancePhase.COVER
         if (arOverlay != null) {
@@ -835,6 +886,14 @@ private fun CameraPhase(
             if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
             else arOverlay.clearGuidanceTarget()
         }
+    }
+    // The beacon yields to confirm flows: while the tap pill or the lock-on
+    // card owns the screen it must not compete for attention; restored the
+    // moment the flow resolves (spec 2026-07-10 positioning constraints).
+    LaunchedEffect(tapCandidate.phase, trashCandidate) {
+        arOverlay?.setGuidanceBeaconSuppressed(
+            tapCandidate.phase == TapPhase.AWAITING_CONFIRMATION || trashCandidate != null
+        )
     }
     // Idle nudge: no new cell credited for a while → steer via the status chip.
     // Restarting on scannedCells.size IS the idle timer reset.
@@ -853,20 +912,16 @@ private fun CameraPhase(
     val trashItems = remember(litterItems) {
         litterItems.map { Coordinates(lat = it.lat, lng = it.lng) }
     }
-    // Minimap glyphs: this session's confirmed items PLUS the world model's
-    // known litter nearby — previously scanned trash persists on the minimap
-    // as what it IS (bottle/can/bag glyph), not an anonymous dot. Items the
-    // user resolves ("Already clean") drop out with expectedDirty.
-    val typedMinimapItems = remember(observedItems, expectedDirty, knownElements) {
-        observedItems + (expectedDirty + knownElements).map { obs ->
-            ObservedSpotItem(
-                lat = obs.lat,
-                lng = obs.lng,
-                itemType = obs.itemType ?: "other",
-                severity = obs.severity,
-                domain = obs.domain,
-            )
-        }
+    // Minimap glyphs: this session's confirmed LITTER items PLUS the world
+    // model's known litter nearby — previously scanned trash persists on the
+    // minimap as what it IS (bottle/can/bag glyph), not an anonymous dot.
+    // Items the user resolves ("Already clean") drop out with expectedDirty.
+    // knownElements (auto-registered landmark elements — fence/pole/bush/
+    // tree/etc.) are deliberately excluded: they're real world-observation
+    // data and still count in "Features mapped", but must never render on
+    // the minimap (punchlist: "little white squares on the minimap").
+    val typedMinimapItems = remember(observedItems, expectedDirty) {
+        minimapLitterItems(observedItems, expectedDirty)
     }
 
     // Live viewfinder trash reticle (frame tap on the AVCapture stream).
@@ -893,6 +948,9 @@ private fun CameraPhase(
 
     // Full-bleed viewfinder; everything else floats over it, inset-aware.
     Box(modifier = Modifier.fillMaxSize()) {
+        // Global constraint 3: the scan runs for 60–90s with no touch input.
+        KeepScreenAwake()
+
         val arTracking by (arOverlay?.trackingState
             ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
 
@@ -928,8 +986,19 @@ private fun CameraPhase(
                 (gpsAccuracy ?: 0.0) > MAX_GEO_REF_ACCURACY_METERS ->
                 "GPS too weak to anchor the scan — move toward open sky"
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
-            idleNudge && guidanceTarget != null ->
+            // "Highlighted area" must only be said when the minimap actually
+            // highlights one: ScanMinimapOverlay hides the guidance ring for
+            // targets hugging the user dot (the frontier pick is the ground
+            // underfoot at scan start — TestFlight 145 "circle around me"),
+            // so a near target gets a plain sweep prompt instead of a
+            // reference to a ring that isn't drawn.
+            idleNudge && guidanceTarget != null && currentLocation?.let {
+                GeofenceVerification.distanceMeters(
+                    it.lat, it.lng, guidanceTarget!!.first, guidanceTarget!!.second,
+                ) > 12.0
+            } == true ->
                 "Turn toward the highlighted area on the minimap"
+            idleNudge -> "Keep sweeping — scan the ground around you"
             guidancePhase == GuidancePhase.DETAIL ->
                 "Move closer — detail-scan the light areas"
             else -> "Environment scan active — sweep the camera slowly"
@@ -957,6 +1026,7 @@ private fun CameraPhase(
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 visibilityBeam = visibilityBeam,
+                headingDegrees = gpsHeading,
                 environmentScanMode = true,
                 statusText = scanStatus,
                 arOverlay = arOverlay,
@@ -1019,7 +1089,13 @@ private fun CameraPhase(
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.White.copy(alpha = 0.15f))
                             .clickable {
-                                resolvedObservationIds.add(obs.id)
+                                // One answer settles every unresolved
+                                // observation of this ≤5m cluster — ten old
+                                // records of one mess cost one question.
+                                resolvedObservationIds.addAll(
+                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                )
+                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
                             }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -1032,8 +1108,15 @@ private fun CameraPhase(
                             .clip(RoundedCornerShape(20.dp))
                             .background(GccGreen)
                             .clickable {
-                                resolvedObservationIds.add(obs.id)
+                                // Cluster-resolve like "Still there": the
+                                // server rectify below targets the answered
+                                // location; its ≤5m neighbors just stop
+                                // re-prompting this session.
+                                resolvedObservationIds.addAll(
+                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                )
                                 expectedDirty = expectedDirty.filterNot { it.id == obs.id }
+                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
                                 rectifyScope.launch {
                                     try {
@@ -1087,6 +1170,38 @@ private fun CameraPhase(
         // (see confirmCandidate/dismissCandidate), so this only ever hides
         // the reticle for the duration the card itself is visible.
         if (trashCandidate == null) DetectionReticleOverlay(detections = liveDetections)
+        // Task 17: multi-item reticles — same gating as the single reticle
+        // above (frozen/hidden while the confirm card is up).
+        if (trashCandidate == null) MultiItemDetectionOverlay(reticles = multiItemReticles)
+        // A tapped candidate outranks the passive auto-detect reticle.
+        if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
+            TapCandidatePill(
+                state = tapCandidate,
+                onConfirm = {
+                    // I2: mirror TrashConfirmCard's outdoor-gate guard — a
+                    // confirm/reject that lands after an outdoor->indoor flip
+                    // must not persist or record; treat it as a dismiss.
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.dismissTapCandidate()
+                    } else {
+                        arOverlay?.confirmTapCandidate()?.let { confirmed ->
+                            onConfirmedTapItem(confirmed)
+                        }
+                    }
+                },
+                onReject = {
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.dismissTapCandidate()
+                    } else {
+                        arOverlay?.rejectTapCandidate()?.let { rejected ->
+                            onRejectedTapItem(rejected)
+                        }
+                    }
+                },
+                onDismiss = { arOverlay?.dismissTapCandidate() },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
+            )
+        }
         if (isScanMode) {
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates
@@ -1097,10 +1212,14 @@ private fun CameraPhase(
                     gpsAccuracyMeters = gpsAccuracy,
                     detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
                 ),
+                // Row 2 of the top-end chrome (TestFlight 145 overlap fix):
+                // row 1 (52dp) is the guidance caption's band; the 🐞
+                // diagnostics badge is row 3 (DiagnosticsOverlay). Keep the
+                // three rows separated.
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = 12.dp, end = 16.dp),
+                    .padding(top = 96.dp, end = 16.dp),
             )
         }
         ScanToast(message = toast)
@@ -1130,6 +1249,12 @@ private fun CameraPhase(
                                 estimatedWeightGrams = final.estimatedWeightGrams,
                                 estimatedWidthMeters = final.estimatedWidthMeters,
                                 yawDegrees = final.yawDegrees,
+                                // C1: this is the primary lock-on confirm flow —
+                                // an explicit user confirmation — so it must
+                                // carry provenance, or hasUserConfirmedLitter()
+                                // never sees it and report filing silently
+                                // never triggers off this path.
+                                provenance = PROVENANCE_USER_CONFIRMED,
                             )
                         )
                     }
@@ -1154,7 +1279,7 @@ private fun CameraPhase(
         )
         ConfirmingOutdoorsChip(
             visible = outdoorState == OutdoorState.UNCERTAIN,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
         )
 
         // No top-left ✕ here by design: once an environment scan session is
@@ -1864,7 +1989,8 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
     session: EnvScanSessionDraft?,
-    itemCount: Int,
+    litterCount: Int,
+    featureCount: Int,
     photoCount: Int,
     matchingBounties: List<Bounty>,
     createdBounty: Bounty?,
@@ -1887,7 +2013,8 @@ private fun ResultPhase(
         item {
             ScanSessionSummaryCard(
                 session = session,
-                itemCount = itemCount,
+                litterCount = litterCount,
+                featureCount = featureCount,
                 photoCount = photoCount,
             )
         }

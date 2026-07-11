@@ -71,6 +71,9 @@ fun SpotScanCapture(
     guidanceTarget: Coordinates? = null,
     /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading, passed straight through to the minimap's
+     *  persistent facing cone. Mirrors the [visibilityBeam] pass-through. */
+    headingDegrees: Float? = null,
     environmentScanMode: Boolean = false,
     /** Single guidance-voice caption (spec system 4) — the DETAIL-phase
      *  "move closer — detail-scan the light areas" prompt is one branch of
@@ -152,6 +155,13 @@ fun SpotScanCapture(
             isLiveCapture = true,
         )
 
+        // Task 17: "the best shots for our display image in the backend
+        // extraction mechanisms" — a photo taken while >= 2 identified-litter
+        // reticles are on screen gets tagged so the manifest can flag it.
+        // Read synchronously (StateFlow.value): this is the reticle set AT
+        // THE INSTANT of capture, not a later recomposition's value.
+        val litterReticleCount = arOverlay?.multiItemReticles?.value?.count { it.isLitter } ?: 0
+
         val scanPhoto = ScanCapturedPhoto(
             photoBytes = photo.bytes,
             photoWidth = photo.width,
@@ -160,6 +170,7 @@ fun SpotScanCapture(
             captureLocation = location,
             attestation = attestation,
             distanceFromSpot = distanceToSpot,
+            isMultiItemBestShot = litterReticleCount >= 2,
         )
 
         if (idx == 0) {
@@ -232,6 +243,7 @@ fun SpotScanCapture(
             freshCloseCellCenters = freshCloseCellCenters,
             guidanceTarget = guidanceTarget,
             visibilityBeam = visibilityBeam,
+            headingDegrees = headingDegrees,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
             arOverlay = arOverlay,
@@ -254,7 +266,8 @@ fun SpotScanCapture(
             deviceClass = deviceCapabilities.deviceClass,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 8.dp),
+                .statusBarsPadding()
+                .padding(top = 12.dp, end = 8.dp),
         )
 
     }

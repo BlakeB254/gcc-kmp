@@ -1,9 +1,16 @@
 package com.gcc.app.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -16,9 +23,11 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.map.headingConePolygon
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.map.quantizeAndTraceOutlines
+import com.gcc.app.ui.map.unwrapHeading
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
@@ -28,6 +37,7 @@ import kotlin.math.cos
 private val StaleAmber = Color(0xFFF59E0B)
 private val TrashOrange = Color(0xFFF97316)
 private val VeilSlate = Color(0xFF1E293B)
+private val ConeBlue = Color(0xFF38BDF8)
 
 /**
  * Minimap overlay for the environment scan: draws (in map space, projected
@@ -81,8 +91,28 @@ fun ScanMinimapOverlay(
      *  dot out through the current tick's ray-hit envelope. Drawn UNDER the
      *  coverage shading, over the veil. Empty = no beam this tick. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading. The persistent 55° cone rotates with it and is
+     *  drawn even when [visibilityBeam] is empty (global constraint 5). */
+    headingDegrees: Float? = null,
     modifier: Modifier = Modifier,
 ) {
+    // ADDENDUM (Blake, binding): rotate the cone with a shortest-path
+    // unwrap so a heading crossing the 0/360 seam (350 -> 10) animates the
+    // short way (+20), not the long way around through 0. `cumulativeHeading`
+    // is intentionally NOT mod-360 — animateFloatAsState needs a monotonic
+    // target to interpolate the short step; unwrapHeading only depends on
+    // (next - previous) mod 360, so an ever-growing cumulative value is safe.
+    var cumulativeHeading by remember { mutableStateOf(headingDegrees ?: 0f) }
+    LaunchedEffect(headingDegrees) {
+        headingDegrees?.let { raw ->
+            cumulativeHeading += unwrapHeading(cumulativeHeading, raw)
+        }
+    }
+    val animatedHeading by animateFloatAsState(
+        targetValue = cumulativeHeading,
+        animationSpec = tween(durationMillis = 320, easing = LinearEasing),
+        label = "coneHeading",
+    )
     // Stable lattice anchor for the session-tier outline tracer (Pillar 7):
     // locked to whatever centerLat/Lng were at FIRST composition, never the
     // live/continuously-moving GPS fix `centerLat`/`centerLng` become on
@@ -200,7 +230,29 @@ fun ScanMinimapOverlay(
         // Field report (env scan): the minimap read "too darkened". Veil
         // lightened 0.45 -> 0.30 so unscanned ground still reads as fog without
         // drowning the beam, the painted coverage, and the user dot.
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.30f))
+        // Field report (Blake, TestFlight): "too dark to see anything" in
+        // daylight. The basemap is already the light OpenFreeMap Liberty
+        // style — the dimness was entirely this scrim. Unscanned ground must
+        // still read as fog, so the veil stays; it just stops drowning the
+        // streets, the cone, and the coverage paint.
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.18f))
+
+        // Persistent facing cone. Answers "where am I pointing?" — independent
+        // of whether any ray landed this tick (constraint 5). Drawn UNDER the
+        // beam so the brighter, scene-aware beam paints on top of it.
+        if (headingDegrees != null) {
+            val cone = headingConePolygon(centerLat, centerLng, animatedHeading)
+            if (cone.size >= 3) {
+                val conePath = Path()
+                cone.forEachIndexed { index, (lat, lng) ->
+                    val p = toOffset(lat, lng)
+                    if (index == 0) conePath.moveTo(p.x, p.y) else conePath.lineTo(p.x, p.y)
+                }
+                conePath.close()
+                drawPath(conePath, color = ConeBlue.copy(alpha = 0.16f))
+                drawPath(conePath, color = ConeBlue.copy(alpha = 0.55f), style = Stroke(width = 1.5.dp.toPx()))
+            }
+        }
 
         // Scene-aware flashlight beam (WS2): projected through the SAME
         // zoom-biased toOffset as every other layer so it stays glued to the
@@ -254,11 +306,16 @@ fun ScanMinimapOverlay(
         // This session, three shades (Pillar 7 rendering hierarchy: SEEN
         // faintest → GRAZED light → CLOSE vivid) — every credited cell gets
         // the light grazed wash, close-tier cells re-cover vivid, and SEEN
-        // gets its own faint tint over the still-fogged veil. Alphas bumped
-        // (0.25→0.30, 0.60→0.65) for scanned-vs-unscanned contrast.
-        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.11f))
-        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.30f))
-        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.65f))
+        // gets its own faint tint over the still-fogged veil.
+        // Field report (TestFlight 145): with the veil lightened to 0.18 the
+        // live fill stopped reading at all in daylight — the punch-out no
+        // longer carries the contrast, so the session paint itself must.
+        // Alphas raised (0.30→0.42, 0.65→0.78) and the swept-territory blob
+        // gets a bright edge stroke so "where I've scanned" pops as it grows.
+        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.14f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
+        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
 
         // Block boundaries over the fills: outer outline in the brand green,
         // inner exclusion islands in amber (the not-required areas).
@@ -290,11 +347,19 @@ fun ScanMinimapOverlay(
         }
 
         // Lap-2 guidance target: a double ring marking the problem area the
-        // worker is being steered toward.
+        // worker is being steered toward. Field report (TestFlight 145): at
+        // scan start the frontier pick is the nearest uncredited cell — the
+        // ground underfoot — so the ring drew AS a circle around the user dot
+        // and read as a bug. Guidance to "right where you stand" carries no
+        // information; only draw the ring once the target clears the dot.
         guidanceTarget?.let { target ->
             val c = toOffset(target.lat, target.lng)
-            drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
-            drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+            val selfC = Offset(size.width / 2f, size.height / 2f)
+            val awayPx = (c - selfC).getDistance()
+            if (awayPx >= 26.dp.toPx()) {
+                drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
+                drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+            }
         }
 
         // User-position dot, drawn LAST so it always sits above the veil,
@@ -380,18 +445,12 @@ private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
             drawCircle(color = outline, radius = u * 0.5f, center = c, style = stroke)
         }
         "mattress" -> rect(u * 2.8f, u * 1.4f, Color(0xFF93C5FD))
-        // Landmark elements (auto-registered context, not trash): muted
-        // greens/greys so they read as scenery behind the litter glyphs.
-        "tree" -> {
-            drawCircle(color = Color(0xFF16A34A).copy(alpha = 0.8f), radius = u * 1.3f, center = c)
-            drawCircle(color = Color(0xFF14532D), radius = u * 0.4f, center = c)
-        }
-        "bush" -> drawCircle(color = Color(0xFF22C55E).copy(alpha = 0.7f), radius = u * 0.9f, center = c)
-        "fence" -> rect(u * 2.6f, u * 0.7f, Color(0xFF9CA3AF))
-        "gate" -> rect(u * 1.2f, u * 1.6f, Color(0xFF9CA3AF))
-        "pole", "sign" -> rect(u * 0.6f, u * 2.4f, Color(0xFF9CA3AF))
-        "hydrant" -> rect(u * 1.0f, u * 1.4f, Color(0xFFDC2626))
-        "bench", "mailbox" -> rect(u * 1.8f, u * 1.2f, Color(0xFF6B7280))
+        // Landmark element types (tree/bush/fence/gate/pole/sign/hydrant/
+        // bench/mailbox — domain "vegetation"/"construction") never reach
+        // this function: minimapLitterItems() filters them out upstream in
+        // SpotScreen.kt before typedTrashItems is built. See punchlist
+        // "little white squares on the minimap" — those were this branch's
+        // rect() outline.
         else -> {
             drawCircle(color = TrashOrange, radius = u * 1.15f, center = c)
             drawCircle(color = outline, radius = u * 1.15f, center = c, style = stroke)

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.platform.DetectionReticle
 import com.gcc.app.platform.LiveDetection
 import com.gcc.app.ui.theme.GccClaimed
 import com.gcc.app.ui.theme.GccError
@@ -135,6 +136,68 @@ fun DetectionReticleOverlay(
                     (center.y - radius - label.size.height - 6.dp.toPx()).coerceAtLeast(0f),
                 ),
             )
+        }
+    }
+}
+
+/**
+ * Draws every box in [reticles] (Task 17) — additive to, and rendered
+ * alongside, [DetectionReticleOverlay]'s single lock-on reticle, which this
+ * never replaces. Identified litter reuses the same circle styling as the
+ * single-candidate reticle (color, stroke, label); a salient-but-unidentified
+ * box (label == null) draws only a dim white ring, no text — "something's
+ * there" without asserting a wrong guess. Callers cap the list at
+ * [com.gcc.app.platform.MAX_MULTI_ITEM_RETICLES] upstream (the iosMain
+ * producer already does; this just renders whatever it's handed).
+ */
+@Composable
+fun MultiItemDetectionOverlay(
+    reticles: List<DetectionReticle>,
+    modifier: Modifier = Modifier,
+) {
+    if (reticles.isEmpty()) return
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(
+        color = Color.White,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+    )
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val minDim = min(size.width, size.height)
+        for (reticle in reticles) {
+            val center = Offset(reticle.centerX * size.width, reticle.centerY * size.height)
+            val radius = ((reticle.width / 2f) * minDim).coerceIn(24.dp.toPx(), minDim * 0.45f)
+
+            if (reticle.isLitter && reticle.label != null) {
+                drawCircle(
+                    color = GccGreen,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 3.dp.toPx()),
+                )
+                drawCircle(
+                    color = GccGreen.copy(alpha = 0.15f),
+                    radius = radius,
+                    center = center,
+                )
+                val label = textMeasurer.measure(reticle.label, labelStyle)
+                drawText(
+                    textLayoutResult = label,
+                    topLeft = Offset(
+                        (center.x - label.size.width / 2f).coerceIn(0f, size.width - label.size.width),
+                        (center.y - radius - label.size.height - 6.dp.toPx()).coerceAtLeast(0f),
+                    ),
+                )
+            } else {
+                // Salient but unidentified: dimmer ring, no label.
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.5f),
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 2.dp.toPx()),
+                )
+            }
         }
     }
 }

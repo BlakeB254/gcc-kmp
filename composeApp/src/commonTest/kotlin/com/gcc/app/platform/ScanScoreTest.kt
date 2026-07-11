@@ -3,6 +3,7 @@ package com.gcc.app.platform
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ScanScoreTest {
 
@@ -24,18 +25,65 @@ class ScanScoreTest {
 
     @Test
     fun gradeBandBoundaries() {
-        // composite = coverage*0.45 + close*0.35 + steadiness*0.20
+        // composite = effort*0.45 + closeOfCovered*0.35 + steadiness*0.20.
+        // With coverage == close the quality ratio is 1.0 (0.35 fixed), so
+        // composite = coverage*0.45 + 35 + steadiness*20.
         assertEquals('A', ScanScore.compute(100.0, 100.0, 1.0).grade) // 100
-        assertEquals('B', ScanScore.compute(80.0, 80.0, 0.8).grade) // 80.0 exactly
-        assertEquals('C', ScanScore.compute(65.0, 65.0, 0.65).grade) // 65.0 exactly
-        assertEquals('D', ScanScore.compute(50.0, 50.0, 0.5).grade) // 50.0 exactly
-        assertEquals('F', ScanScore.compute(49.0, 49.0, 0.49).grade) // 49.0 — just under D
+        assertEquals('B', ScanScore.compute(80.0, 80.0, 0.45).grade) // 36+35+9 = 80.0 exactly
+        assertEquals('C', ScanScore.compute(40.0, 40.0, 0.6).grade) // 18+35+12 = 65.0 exactly
+        assertEquals('D', ScanScore.compute(20.0, 20.0, 0.3).grade) // 9+35+6 = 50.0 exactly
+        assertEquals('F', ScanScore.compute(20.0, 0.0, 0.3).grade) // 9+0+6 = 15.0
     }
 
     @Test
-    fun lowCoverageDrivesCoverageAdvice() {
-        val result = ScanScore.compute(coveragePercent = 20.0, closePercent = 90.0, steadinessFraction = 0.95)
-        assertEquals("Cover more of the area next time", result.advice)
+    fun closeQualityIsScoredAgainstCoveredGroundNotTheWholeCorridor() {
+        // Recalibration (TestFlight 145): covering 30% of the synthetic disc
+        // with EVERY covered cell at close tier used to be double-penalized
+        // (close 30% of the disc too). The quality ratio is now 30/30 = 1.0.
+        val thorough = ScanScore.compute(coveragePercent = 30.0, closePercent = 30.0, steadinessFraction = 1.0)
+        val sweepOnly = ScanScore.compute(coveragePercent = 30.0, closePercent = 0.0, steadinessFraction = 1.0)
+        assertTrue(thorough.grade < sweepOnly.grade) // 'C' < 'F' in char order A<B<C…
+        assertEquals('C', thorough.grade) // 13.5+35+20 = 68.5
+    }
+
+    @Test
+    fun absoluteAreaReplacesCorridorFractionWhenProvided() {
+        // Blake's 145 session shape: 189m² of honest sweep, ~27% of the
+        // synthetic disc, almost no close tier, decent tracking. Was an F;
+        // with effort graded on real ground covered it's a D ("Rough scan")
+        // with the walk-closer advice — still honest about the missing close
+        // tier, no longer failing the walk itself.
+        val result = ScanScore.compute(
+            coveragePercent = 27.0,
+            closePercent = 2.0,
+            steadinessFraction = 0.9,
+            areaCoveredSquareMeters = 189.0,
+        )
+        assertEquals('D', result.grade) // 0.945*45 + 0.074*35 + 0.9*20 ≈ 63.1
+        assertEquals("Walk closer — most of your area was sweep-only", result.advice)
+    }
+
+    @Test
+    fun tinyAreaStillGradesLow() {
+        // 18m² (two cells) of sweep-only: effort 0.09 — the floor still exists.
+        val result = ScanScore.compute(
+            coveragePercent = 3.0,
+            closePercent = 0.0,
+            steadinessFraction = 1.0,
+            areaCoveredSquareMeters = 18.0,
+        )
+        assertEquals('F', result.grade) // 4.05 + 0 + 20 = 24.1
+    }
+
+    @Test
+    fun lowEffortDrivesCoverageAdvice() {
+        val result = ScanScore.compute(
+            coveragePercent = 20.0,
+            closePercent = 18.0, // quality ratio 0.9 — not the weak component
+            steadinessFraction = 0.95,
+            areaCoveredSquareMeters = 40.0, // effort 0.2 — the weak component
+        )
+        assertEquals("Cover more ground next time", result.advice)
     }
 
     @Test

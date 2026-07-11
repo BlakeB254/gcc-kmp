@@ -3,12 +3,20 @@ package com.gcc.app.viewmodel
 import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.CoverageDeviceId
+import com.gcc.app.platform.DedupDecision
+import com.gcc.app.platform.dedupUpgradeDecision
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.hasUserConfirmedLitter
 import com.gcc.app.platform.ObjectCaptureOutcome
+import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
+import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
+import com.gcc.app.platform.PROVENANCE_USER_REJECTED
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.TapCandidateState
 import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.UNKNOWN_LITTER_LABEL
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
@@ -118,6 +126,14 @@ class SpotViewModel(
     // whatever was captured inside an INDOOR gate's trailing privacy window.
     private val observedItemStamps = mutableListOf<Long>()
     private val photoStamps = mutableListOf<Long>()
+    // Negative training examples (tapped + "Not litter") — never enter
+    // uiState.observedItems / world_observations, only the R2 manifest.
+    private val rejectedItems = mutableListOf<ObservedSpotItem>()
+    // Task 17: indices (into capturedPhotos, kept in sync with photoStamps
+    // the same way removePhoto/purgeRecentCaptures already do) of photos
+    // captured with >= 2 identified-litter reticles on screen — the "best
+    // shots" tag. Resolved to R2 keys at manifest-build time.
+    private val multiItemPhotoIndices = mutableSetOf<Int>()
 
     init {
         // Catch up any session manifests that couldn't reach R2 last time
@@ -158,13 +174,15 @@ class SpotViewModel(
         scope.launch { arMarkerQueue.flush() }
     }
 
-    fun addPhoto(photo: CapturedPhoto) {
+    fun addPhoto(photo: CapturedPhoto, isMultiItemBestShot: Boolean = false) {
         val current = _uiState.value
         if (current.capturedPhotos.size >= MAX_PHOTOS) return
+        val newIndex = current.capturedPhotos.size
         _uiState.value = current.copy(
             capturedPhotos = current.capturedPhotos + photo,
         )
         photoStamps.add(Clock.System.now().toEpochMilliseconds())
+        if (isMultiItemBestShot) multiItemPhotoIndices.add(newIndex)
 
         // Trigger on-device AI analysis on the first photo
         if (current.capturedPhotos.isEmpty() && analyzer.isAvailable()) {
@@ -217,7 +235,7 @@ class SpotViewModel(
             depthAnalysis = scanPhoto.depthAnalysis,
             attestation = scanPhoto.attestation,
         )
-        addPhoto(photo)
+        addPhoto(photo, isMultiItemBestShot = scanPhoto.isMultiItemBestShot)
         if (scanPhoto.aiAnalysis != null) {
             _uiState.value = _uiState.value.copy(aiAnalysis = scanPhoto.aiAnalysis)
         }
@@ -235,58 +253,126 @@ class SpotViewModel(
      */
     fun addObservedItem(item: ObservedSpotItem, photoBytes: ByteArray? = null) {
         val existing = _uiState.value.observedItems
-        val duplicate = existing.any { prior ->
-            prior.itemType == item.itemType &&
-                GeofenceVerification.distanceMeters(prior.lat, prior.lng, item.lat, item.lng) < 4.0
-        }
-        if (duplicate) return
-        val nowMs = Clock.System.now().toEpochMilliseconds()
-        // Stamp when the producer didn't: atMs is what lets post-processing
-        // match this item to the manifest's GPS/heading path samples.
-        val stamped = if (item.atMs == null) item.copy(atMs = nowMs) else item
-        _uiState.value = _uiState.value.copy(observedItems = existing + stamped)
-        observedItemStamps.add(nowMs)
-        DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
-        // Litter (not landmark elements) also queues for the 30s marker
-        // flush; the 10s indoor trailing purge usually beats the flush, same
-        // accepted trade-off as route markers.
-        if (stamped.domain == null || stamped.domain == "litter") {
-            scope.launch {
-                try {
-                    // Upload-then-enqueue: raw bytes never enter the persisted
-                    // ArMarkerQueue — only the resolved URL (or null on failure).
-                    val mediaUrl = photoBytes?.let { bytes ->
-                        try {
-                            apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
-                        } catch (e: Exception) {
-                            DiagnosticsLog.error("env-scan", "marker photo upload failed (enqueuing without photo)", e)
-                            null
-                        }
-                    }
-                    arMarkerQueue.enqueue(
-                        ArDetectedMarkerRequest(
-                            lat = stamped.lat,
-                            lng = stamped.lng,
-                            label = TrashItemCatalog.canonicalType(stamped.itemType),
-                            capturedAt = Clock.System.now(),
-                            mediaUrl = mediaUrl,
-                        ),
-                    )
-                    // Real-time streaming (spec system 3): flush immediately on
-                    // confirm instead of waiting for the 30s loop — the public
-                    // map should reflect a newly tagged item right away. The
-                    // 30s loop in SpotScreen stays live as the retry sweep for
-                    // whatever this flush can't land (offline, in-flight, etc).
-                    arMarkerQueue.flush()
-                } catch (e: Exception) {
-                    // Unguarded launch precedent (r2a): a SerializationException
-                    // or similar failure here must not kill the process — this
-                    // marker enqueue is best-effort, not required for the scan
-                    // to complete.
-                    DiagnosticsLog.error("env-scan", "arMarkerQueue.enqueue failed", e)
-                }
+        // C2: a same-type/4m match doesn't always mean "drop" — a fresh user
+        // confirmation matching a prior auto-detected item is real evidence
+        // (the only kind hasUserConfirmedLitter() accepts) and must upgrade
+        // the existing item in place instead of being silently swallowed.
+        // See dedupUpgradeDecision's kdoc for the full matrix.
+        when (val decision = dedupUpgradeDecision(existing, item)) {
+            is DedupDecision.Drop -> return
+            is DedupDecision.Upgrade -> {
+                val matched = existing[decision.index]
+                val nowMs = Clock.System.now().toEpochMilliseconds()
+                val upgraded = matched.copy(
+                    provenance = PROVENANCE_USER_CONFIRMED,
+                    // Preserve the original observation's atMs (manifest path
+                    // matching keys off when the item was first seen, not
+                    // when it was later confirmed) — only backfill if the
+                    // prior item never got one.
+                    atMs = matched.atMs ?: nowMs,
+                )
+                val updated = existing.toMutableList().also { it[decision.index] = upgraded }
+                _uiState.value = _uiState.value.copy(observedItems = updated)
+                DiagnosticsLog.info(
+                    "env-scan",
+                    "upgraded ${upgraded.itemType} @ ${upgraded.lat}, ${upgraded.lng} to user_confirmed " +
+                        "(matched a prior auto-detected tick)",
+                )
+                enqueueLitterMarker(upgraded, photoBytes)
+            }
+            DedupDecision.Add -> {
+                val nowMs = Clock.System.now().toEpochMilliseconds()
+                // Stamp when the producer didn't: atMs is what lets post-processing
+                // match this item to the manifest's GPS/heading path samples.
+                val stamped = if (item.atMs == null) item.copy(atMs = nowMs) else item
+                _uiState.value = _uiState.value.copy(observedItems = existing + stamped)
+                observedItemStamps.add(nowMs)
+                DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
+                enqueueLitterMarker(stamped, photoBytes)
             }
         }
+    }
+
+    /**
+     * Litter (not landmark elements) queues for the 30s marker flush; the
+     * 10s indoor trailing purge usually beats the flush, same accepted
+     * trade-off as route markers. Shared by both the fresh-add and the C2
+     * upgrade path in [addObservedItem] — an upgrade needs the exact same
+     * upload-then-enqueue-then-flush sequence a fresh add gets, just off the
+     * upgraded (now user_confirmed) item instead of a brand-new one.
+     */
+    private fun enqueueLitterMarker(stamped: ObservedSpotItem, photoBytes: ByteArray?) {
+        if (stamped.domain != null && stamped.domain != "litter") return
+        scope.launch {
+            try {
+                // Upload-then-enqueue: raw bytes never enter the persisted
+                // ArMarkerQueue — only the resolved URL (or null on failure).
+                val mediaUrl = photoBytes?.let { bytes ->
+                    try {
+                        apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                    } catch (e: Exception) {
+                        DiagnosticsLog.error("env-scan", "marker photo upload failed (enqueuing without photo)", e)
+                        null
+                    }
+                }
+                arMarkerQueue.enqueue(
+                    ArDetectedMarkerRequest(
+                        lat = stamped.lat,
+                        lng = stamped.lng,
+                        label = TrashItemCatalog.canonicalType(stamped.itemType),
+                        capturedAt = Clock.System.now(),
+                        mediaUrl = mediaUrl,
+                        provenance = stamped.provenance ?: PROVENANCE_AUTO_DETECTED,
+                    ),
+                )
+                // Real-time streaming (spec system 3): flush immediately on
+                // confirm instead of waiting for the 30s loop — the public
+                // map should reflect a newly tagged item right away. The
+                // 30s loop in SpotScreen stays live as the retry sweep for
+                // whatever this flush can't land (offline, in-flight, etc).
+                arMarkerQueue.flush()
+            } catch (e: Exception) {
+                // Unguarded launch precedent (r2a): a SerializationException
+                // or similar failure here must not kill the process — this
+                // marker enqueue is best-effort, not required for the scan
+                // to complete.
+                DiagnosticsLog.error("env-scan", "arMarkerQueue.enqueue failed", e)
+            }
+        }
+    }
+
+    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
+    fun addConfirmedTapItem(candidate: TapCandidateState) {
+        val lat = candidate.lat ?: return
+        val lng = candidate.lng ?: return
+        addObservedItem(
+            ObservedSpotItem(
+                lat = lat,
+                lng = lng,
+                itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL),
+                confidence = candidate.confidence,
+                domain = "litter",
+                provenance = PROVENANCE_USER_CONFIRMED,
+            ),
+        )
+    }
+
+    /** The user tapped a candidate and pressed "Not litter" — a negative example.
+     *  Kept OUT of world_observations; it rides the R2 manifest only. */
+    fun addRejectedTapItem(candidate: TapCandidateState) {
+        val lat = candidate.lat ?: return
+        val lng = candidate.lng ?: return
+        rejectedItems.add(
+            ObservedSpotItem(
+                lat = lat,
+                lng = lng,
+                itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL),
+                confidence = candidate.confidence,
+                domain = "litter",
+                provenance = PROVENANCE_USER_REJECTED,
+            ),
+        )
+        DiagnosticsLog.info("env-scan", "negative example recorded at $lat,$lng")
     }
 
     fun removePhoto(index: Int) {
@@ -298,6 +384,17 @@ class SpotViewModel(
             // a later purgeRecentCaptures cutoff would be checked against the
             // wrong photo's timestamp.
             if (index in photoStamps.indices) photoStamps.removeAt(index)
+            // Same re-indexing for multiItemPhotoIndices (Task 17): drop the
+            // removed index, shift every later index down by one.
+            val reindexed = multiItemPhotoIndices.mapNotNullTo(mutableSetOf()) { i ->
+                when {
+                    i == index -> null
+                    i > index -> i - 1
+                    else -> i
+                }
+            }
+            multiItemPhotoIndices.clear()
+            multiItemPhotoIndices.addAll(reindexed)
         }
     }
 
@@ -447,12 +544,13 @@ class SpotViewModel(
         if (state.phase != SpotPhase.CAMERA) return
         // A scan is a COVERAGE act, not an incident report: every location is
         // supposed to be scanned, so finishing one only files a report when
-        // the session produced litter evidence (a geo-tagged item or the
-        // on-device analyzer finding trash in a capture). Clean-area scans —
-        // photos or not — archive the full session bundle and land on the
-        // session summary.
-        val litterEvidence = state.observedItems.any { it.domain == null || it.domain == "litter" } ||
-            state.aiAnalysis?.trashTypes?.isNotEmpty() == true
+        // the session produced litter evidence. Clean-area scans — photos or
+        // not — archive the full session bundle and land on the session
+        // summary.
+        // Constraint 10: the whole-frame classifier (aiAnalysis.trashTypes) is a
+        // weak routing signal and may NOT file a report. Only a candidate the
+        // user explicitly confirmed is evidence.
+        val litterEvidence = hasUserConfirmedLitter(state.observedItems)
         if (state.capturedPhotos.isEmpty() || !litterEvidence) {
             // Complete Scan ALWAYS ends the session (product rule: the
             // bottom button is the only exit). The session manifest —
@@ -473,7 +571,30 @@ class SpotViewModel(
                     completedSession = sessionDraft,
                 )
             } else {
-                _uiState.value = _uiState.value.copy(scanFinishedWithoutReport = true)
+                // I4: zero-cells coverage-only close. Nothing was scanned, no
+                // session summary is shown (phase stays CAMERA — RESULT is
+                // never entered on this path), and the LaunchedEffect keyed
+                // on scanFinishedWithoutReport in SpotScreen navigates away
+                // (onBack) on the very next recomposition. But the VM is a
+                // Koin singleton, so anything session-scoped left behind here
+                // bleeds into the NEXT scan opened in this same VM instance.
+                // uploadEnvScanSession (above) already snapshotted
+                // rejectedItems/multiItemPhotoIndices synchronously before
+                // this point, so clearing them now cannot race its launched
+                // upload coroutine. observedItems/capturedPhotos are cleared
+                // too — CAMERA-phase UI briefly recomposes with them empty
+                // (harmless: 0 photos/0 items) before onBack tears it down,
+                // and RESULT (which reads uiState.observedItems /
+                // .capturedPhotos for the summary) is never reached here.
+                rejectedItems.clear()
+                multiItemPhotoIndices.clear()
+                observedItemStamps.clear()
+                photoStamps.clear()
+                _uiState.value = _uiState.value.copy(
+                    scanFinishedWithoutReport = true,
+                    observedItems = emptyList(),
+                    capturedPhotos = emptyList(),
+                )
             }
             return
         }
@@ -495,6 +616,16 @@ class SpotViewModel(
     private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int?) {
         if (!archivedSessionIds.add(draft.sessionId)) return
         val state = _uiState.value
+        // I4: rejectedItems/multiItemPhotoIndices are mutable session-scoped
+        // fields (not part of the immutable uiState snapshot above), so a
+        // caller that clears them right after this call returns — see the
+        // zero-cells coverage-only close in completeScan — would otherwise
+        // race the launched coroutine below, which doesn't read them until
+        // well after upload I/O suspends. Snapshot both HERE, synchronously,
+        // before the coroutine is even scheduled, so the clear can never
+        // observe (or cause) a torn read.
+        val rejectedSnapshot = rejectedItems.toList()
+        val multiItemPhotoIndicesSnapshot = multiItemPhotoIndices.toSet()
         scope.launch {
             try {
                 val anchorLat = state.spotLat ?: state.currentLat
@@ -527,6 +658,18 @@ class SpotViewModel(
                     DiagnosticsLog.error("env-capture", "photo upload to R2 failed — manifest continues without", e)
                 }
 
+                // Task 17 best-shot tagging: multiItemPhotoIndices (indices
+                // into state.capturedPhotos) resolved against photoKeys, which
+                // the forEachIndexed loop above populated in the same order —
+                // an index only resolves if its upload actually succeeded
+                // (photoKeys is shorter than capturedPhotos when the loop
+                // above threw partway through).
+                val multiItemPhotoKeys = multiItemPhotoIndicesSnapshot
+                    .filter { it < photoKeys.size }
+                    .sorted()
+                    .map { photoKeys[it] }
+                    .ifEmpty { null }
+
                 // Uploaded-so-far capture-chunk R2 keys (Pillar 1): late
                 // uploads (still-pending chunks, or ones the policy gate
                 // hasn't cleared yet) are keyed by sessionId in R2 regardless
@@ -554,7 +697,14 @@ class SpotViewModel(
                     objectCapture = state.objectCapture,
                     gateEvents = draft.gateEvents,
                     captureChunks = captureChunkKeys.ifEmpty { null },
-                    captureSchema = if (captureChunkKeys.isNotEmpty()) 1 else null,
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 2 else null,
+                    // World-splat registration (DGX): AR↔world pairings +
+                    // the AR axes convention the pose sidecar uses.
+                    geoRefEvents = draft.geoRefEvents.ifEmpty { null },
+                    arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
+                    rejectedItems = rejectedSnapshot.ifEmpty { null },
+                    diagnosticsLog = DiagnosticsLog.tailForManifest(),
+                    multiItemPhotoKeys = multiItemPhotoKeys,
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(
@@ -874,6 +1024,10 @@ class SpotViewModel(
         }
         while (observedItemStamps.size > keptItems.size) observedItemStamps.removeLast()
         while (photoStamps.size > keptPhotos.size) photoStamps.removeLast()
+        // Trailing-window purge only ever drops the most recent photos, so
+        // the surviving indices are always the front [0, keptPhotos.size) —
+        // same simplification the photoStamps tail-drop above relies on.
+        multiItemPhotoIndices.removeAll { it >= keptPhotos.size }
         _uiState.value = state.copy(observedItems = keptItems, capturedPhotos = keptPhotos)
     }
 
@@ -890,6 +1044,8 @@ class SpotViewModel(
         _uiState.value = SpotUiState()
         observedItemStamps.clear()
         photoStamps.clear()
+        rejectedItems.clear()
+        multiItemPhotoIndices.clear()
         pendingSessionDraft = null
         archivedSessionIds.clear()
     }

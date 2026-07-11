@@ -103,14 +103,16 @@ fun DiagnosticsOverlay(modifier: Modifier = Modifier) {
             }
         }
 
-        // Collapsed badge — top-right, below the status bar, small enough to
-        // stay out of the way of the scan chrome.
+        // Collapsed badge — top-right, row 3 of the scan chrome (TestFlight
+        // 145 overlap fix): row 1 (52dp) is the guidance caption's band,
+        // row 2 (96dp) the scan-quality badge; at 52dp this badge sat ON
+        // TOP of both.
         if (!expanded) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = 52.dp, end = 8.dp)
+                    .padding(top = 140.dp, end = 8.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(
                         if (errorCount > 0) ErrorRed.copy(alpha = 0.9f)

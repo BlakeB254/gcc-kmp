@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { processImage } from '@/lib/image-utils'
+import { spotPhotoPathname } from '@/lib/spot-photo-path'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -35,12 +36,13 @@ export async function POST(request: NextRequest) {
       const raw = await value.arrayBuffer()
       const processed = await processImage(raw)
 
-      const timestamp = Date.now()
-      const filename = `spots/${auth.workerId}/${timestamp}-${key}.jpg`
-
-      const blob = await put(filename, processed, {
+      const blob = await put(spotPhotoPathname(auth.workerId, key), processed, {
         access: 'public',
         contentType: 'image/jpeg',
+        // Defaults to FALSE for put(). Without it, two uploads in the same
+        // millisecond with the same form key collide and Blob answers
+        // HTTP 500 "This blob already exists" — the production failure.
+        addRandomSuffix: true,
       })
 
       urls.push(blob.url)

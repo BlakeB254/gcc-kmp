@@ -12,6 +12,13 @@ data class ScanCapturedPhoto(
     val captureLocation: Coordinates? = null,
     val attestation: CaptureAttestation? = null,
     val distanceFromSpot: Double? = null,
+    /** True when >= 2 identified-litter multi-item reticles (Task 17) were
+     *  on screen at the instant this photo was captured — the "best shots
+     *  for our display image in the backend extraction mechanisms". Computed
+     *  by the capture site (SpotScanCapture), which has the AR overlay;
+     *  threaded through to [com.gcc.shared.model.EnvScanManifest.multiItemPhotoKeys]
+     *  at manifest-build time. */
+    val isMultiItemBestShot: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -338,10 +338,15 @@ final class ArSessionRecorder {
         sizeCheckCountdown = Self.sizeCheckEvery
         chunkActive = true
         let (videoW, videoH) = Self.outputDimensions(sourceWidth: sourceWidth, sourceHeight: sourceHeight)
+        // Schema 2 (additive): epochMs + arT anchor BOTH clocks at chunk
+        // open — per-frame `t` is ARKit's boot-relative clock, the manifest's
+        // GPS path is epoch ms, and without this pair the DGX pipeline
+        // cannot align poses with GPS (world-splat registration).
         writeSidecar(
-            "{\"schema\":1,\"sessionId\":\"\(sessionId)\",\"chunk\":\(chunkIndex)," +
+            "{\"schema\":2,\"sessionId\":\"\(sessionId)\",\"chunk\":\(chunkIndex)," +
             "\"sourceWidth\":\(sourceWidth),\"sourceHeight\":\(sourceHeight)," +
-            "\"videoWidth\":\(videoW),\"videoHeight\":\(videoH)}"
+            "\"videoWidth\":\(videoW),\"videoHeight\":\(videoH)," +
+            "\"epochMs\":\(Int64(Date().timeIntervalSince1970 * 1000)),\"arT\":\(time)}"
         )
     }
 

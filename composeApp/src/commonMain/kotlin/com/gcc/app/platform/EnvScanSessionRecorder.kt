@@ -2,6 +2,7 @@ package com.gcc.app.platform
 
 import com.gcc.shared.model.EnvScanCell
 import com.gcc.shared.model.EnvScanPathSample
+import com.gcc.shared.model.GeoRefEvent
 import com.gcc.shared.serialization.GccJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,8 @@ data class EnvScanJournalEntry(
     val type: String,
     val sample: EnvScanPathSample? = null,
     val gate: String? = null,
+    /** AR↔world registration pairing (type "georef") — see [GeoRefEvent]. */
+    val geoRef: GeoRefEvent? = null,
 )
 
 /**
@@ -66,6 +69,7 @@ class EnvScanSessionRecorder(
 
     private val samples = mutableListOf<EnvScanPathSample>()
     private val gateEvents = mutableListOf<String>()
+    private val geoRefEvents = mutableListOf<GeoRefEvent>()
 
     @Volatile
     private var journalHealthy = journalPath != null
@@ -110,6 +114,22 @@ class EnvScanSessionRecorder(
     }
 
     /**
+     * AR↔world registration pairing from `updateGeoReference` — what lets
+     * the DGX splat pipeline place this session's AR-local pose stream into
+     * the world splat layer. Pairings arrive on every usable GPS fix (~1Hz);
+     * thinned to one per [GEO_REF_MIN_INTERVAL_MS] — registration is solved
+     * least-squares over the set, so density beyond that adds bytes, not
+     * accuracy.
+     */
+    fun addGeoRefEvent(event: GeoRefEvent) {
+        if (geoRefEvents.size >= MAX_GEO_REF_EVENTS) return
+        val last = geoRefEvents.lastOrNull()
+        if (last != null && event.atMs - last.atMs < GEO_REF_MIN_INTERVAL_MS) return
+        geoRefEvents.add(event)
+        enqueueJournalAppend(EnvScanJournalEntry(type = "georef", geoRef = event))
+    }
+
+    /**
      * @param coveragePercent [CoverageTracker.coveragePercent] at completion — rides
      *   the draft so downstream summary UI (see [ScanScore]) doesn't need its own
      *   plumbing back to the live tracker. Defaulted for callers that don't score
@@ -130,6 +150,7 @@ class EnvScanSessionRecorder(
             path = samples.toList(),
             scannedCells = scannedCellCenters.map { (lat, lng) -> EnvScanCell(lat, lng) },
             gateEvents = gateEvents.toList(),
+            geoRefEvents = geoRefEvents.toList(),
             coveragePercent = coveragePercent,
             closePercent = closePercent,
             steadinessFraction = steadinessFraction,
@@ -169,6 +190,7 @@ class EnvScanSessionRecorder(
         val lines = buildList {
             samples.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "sample", sample = it))) }
             gateEvents.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "gate", gate = it))) }
+            geoRefEvents.forEach { add(GccJson.encodeToString(EnvScanJournalEntry(type = "georef", geoRef = it))) }
         }
         journalScope.launch {
             if (!journalHealthy) return@launch
@@ -191,6 +213,10 @@ class EnvScanSessionRecorder(
         /** ~1Hz for an hour — nobody scans longer in one session. */
         private const val MAX_SAMPLES = 3600
         private const val MAX_GATE_EVENTS = 200
+        /** ~1 pairing per 5s for an hour; registration is least-squares over
+         *  the set, so more density adds bytes, not accuracy. */
+        private const val MAX_GEO_REF_EVENTS = 720
+        private const val GEO_REF_MIN_INTERVAL_MS = 5_000L
 
         /**
          * Same format the primary constructor used to generate inline.
@@ -223,6 +249,8 @@ data class EnvScanSessionDraft(
     val path: List<EnvScanPathSample>,
     val scannedCells: List<EnvScanCell>,
     val gateEvents: List<String> = emptyList(),
+    /** AR↔world registration pairings — see [GeoRefEvent]. */
+    val geoRefEvents: List<GeoRefEvent> = emptyList(),
     val coveragePercent: Double = 0.0,
     val closePercent: Double = 0.0,
     val steadinessFraction: Double = 1.0,

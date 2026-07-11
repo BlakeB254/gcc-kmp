@@ -21,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.ARKit.ARCoachingGoal
@@ -35,17 +36,16 @@ import platform.ARKit.ARSCNView
 import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
 import platform.CoreGraphics.CGPointMake
+import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
-import platform.SceneKit.SCNLookAtConstraint
 import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNMatrix4MakeScale
 import platform.SceneKit.SCNNode
 import platform.SceneKit.SCNPlane
-import platform.SceneKit.SCNPyramid
 import platform.SceneKit.SCNTorus
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIBezierPath
@@ -71,6 +71,7 @@ import platform.darwin.dispatch_get_main_queue
 import platform.darwin.simd_float4x4
 import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.cache.CaptureChunkStore
+import com.gcc.shared.model.GeoRefEvent
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import kotlinx.datetime.Clock
 import org.koin.mp.KoinPlatform
@@ -105,15 +106,33 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val SUPPRESS_RADIUS_METERS = 2.0
         /** Tap-to-focus (Task 5): how long a [focusAt] tap biases detection. */
         private const val FOCUS_DURATION_MS = 5_000L
+        /** Beacon placement cap (spec 2026-07-10): latLngToLocal error grows
+         *  with distance from the geo reference (compass-bias rotation), and
+         *  a misplaced beacon is worse than an absent one. Much tighter than
+         *  the 55m SEEN raycast ceiling on purpose. */
+        private const val BEACON_MAX_RANGE_METERS = 15.0
         /** Tap-to-focus: promotion streak relaxes to 1 tick for a candidate
          *  hit within this XZ-plane distance of the tapped world point.
          *  NEAR_DISTANCE_METERS (the range gate) is unchanged by focus. */
         private const val FOCUS_RADIUS_METERS = 1.5
-        /** Grid squares stay this size no matter how large the plane grows.
-         *  1.5m = a clean divisor of CoverageTracker's 3m cells; with the
-         *  world-axis alignment below, the on-camera lattice reads as the
-         *  same grid the north-up minimap draws. */
-        private const val GRID_TILE_METERS = 1.5f
+        /** Side of the square crop classified around a tap, as a fraction of the
+         *  image's smaller dimension. Wide enough to keep context (a bottle needs
+         *  the ground around it), tight enough to exclude the rest of the scene. */
+        private const val TAP_CROP_FRACTION = 0.35
+        /** Minor grid interval: one metre (constraint 7). The grid texture is a
+         *  3×3-cell tile — thin lines on the interior cell boundaries, a heavy
+         *  line on its outer edge — so ONE texture repeat spans
+         *  [GRID_MAJOR_TILE_METERS] (3m, CoverageTracker's cell size) and each
+         *  cell inside it spans this constant.
+         *  MUST MATCH `gridTileMeters` in GccArNative.swift — the RealityKit and
+         *  SceneKit paths phase the same lattice; the two are not read from a
+         *  shared constant, so keep them in sync by hand. */
+        private const val GRID_TILE_METERS = 1.0f
+        /** World size of ONE texture repeat (the 3m major interval). Every UV
+         *  scale and lattice snap for the ground grid must use THIS, not
+         *  [GRID_TILE_METERS] — dividing by the minor interval would render the
+         *  whole 3×3 texture per metre (minor lines at 0.33m, major at 1m). */
+        private const val GRID_MAJOR_TILE_METERS = GRID_TILE_METERS * 3f
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -160,6 +179,12 @@ actual class ArEnvScanOverlay actual constructor() {
     private val _trashCandidate = MutableStateFlow<TrashCandidate?>(null)
     actual val trashCandidate: StateFlow<TrashCandidate?> = _trashCandidate.asStateFlow()
 
+    private val _multiItemReticles = MutableStateFlow<List<DetectionReticle>>(emptyList())
+    actual val multiItemReticles: StateFlow<List<DetectionReticle>> = _multiItemReticles.asStateFlow()
+
+    private val _tapCandidate = MutableStateFlow(TapCandidateState())
+    actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
+
     // GPS <-> AR pairing, same model as ArRouteOverlay.
     private var hasGeoRef = false
     private var refLat = 0.0
@@ -194,10 +219,10 @@ actual class ArEnvScanOverlay actual constructor() {
     /** World Y of the lowest floor-classified plane (vector cells sit on it). */
     private var floorY: Float? = null
 
-    // Guidance arrow toward the next area worth scanning.
+    // Guidance target: the next area worth scanning. Rendered by the minimap
+    // cone and text prompt (global constraint 8) — no camera-attached node
+    // anymore, just the lat/lng handed to the native surface.
     private var guidanceLatLng: Pair<Double, Double>? = null
-    private var arrowNode: SCNNode? = null
-    private var frontierTarget: SCNNode? = null
 
     // Trash lock-on state.
     private var nearStreak = 0
@@ -459,32 +484,37 @@ actual class ArEnvScanOverlay actual constructor() {
         floorMaxX = null
         floorMinZ = null
         floorMaxZ = null
-        arrowNode?.removeFromParentNode()
-        arrowNode = null
-        frontierTarget?.removeFromParentNode()
-        frontierTarget = null
+        _multiItemReticles.value = emptyList()
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
         }
     }
 
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {
-        val position = cameraPosition() ?: return
-        // Fuse instead of last-fix-wins: 14m-accuracy fixes pass the 20m gate
-        // (common in real July manifests) and used to teleport the WHOLE geo
-        // frame street-ward. GeoRefFuser blends by accuracy so only good
-        // fixes move the frame decisively (see its KDoc).
-        val fused = if (hasGeoRef && accuracyMeters != null) {
-            val (curLat, curLng) = localToLatLng(position[0], position[2], refLat, refLng, refX, refZ, lngScale)
-            GeoRefFuser.fuse(GeoRefFuser.Anchor(curLat, curLng), GeoRefFuser.Anchor(lat, lng), accuracyMeters)
-        } else GeoRefFuser.Anchor(lat, lng)
-        refLat = fused.lat
-        refLng = fused.lng
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): GeoRefEvent? {
+        val position = cameraPosition() ?: return null
+        refLat = lat
+        refLng = lng
         refX = position[0]
         refY = position[1]
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // The pairing record the DGX splat pipeline registers the AR-local
+        // pose stream with: BOTH clocks (epoch ms + ARKit frame time, the
+        // pose sidecar's clock) and BOTH frames (lat/lng + AR-local camera
+        // position). Returned to the caller for the session manifest.
+        val arT = nativeSurface?.currentFrameTimestamp()?.takeIf { it > 0.0 }
+            ?: sceneView?.session?.currentFrame?.timestamp
+        val geoRefEvent = GeoRefEvent(
+            atMs = Clock.System.now().toEpochMilliseconds(),
+            lat = lat,
+            lng = lng,
+            accuracyMeters = accuracyMeters,
+            arX = position[0],
+            arY = position[1],
+            arZ = position[2],
+            arTimestampSeconds = arT,
+        )
         // Native mode has no ARSessionDelegate — mirror tracking quality on
         // the same cadence the route/spot overlays do.
         nativeSurface?.let { surface ->
@@ -497,11 +527,12 @@ actual class ArEnvScanOverlay actual constructor() {
             )
         }
         // Re-pairing shifts the whole geo-derived frame — re-place everything
-        // against the new reference so the grid/arrow don't lag a fix behind.
+        // against the new reference so the grid/guidance don't lag a fix behind.
         dispatch_async(dispatch_get_main_queue()) {
             pushGridPhase()
             renderGuidance()
         }
+        return geoRefEvent
     }
 
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {
@@ -546,7 +577,8 @@ actual class ArEnvScanOverlay actual constructor() {
     // (updateScannedCells) and the ground fog (updateFog) no longer render on
     // the camera surface — coverage + fog now live entirely on the minimap
     // (merged "painted" outlines + veil). Kept as no-op `actual`s to satisfy
-    // the ArEnvScanOverlay interface; the calm matte ground grid is unaffected.
+    // the ArEnvScanOverlay interface; the neon ground grid is unaffected.
+    // The fog stays deprecated on Blake's word (2026-07-11) — do not rewire.
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
 
     actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
@@ -559,6 +591,14 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun clearGuidanceTarget() {
         guidanceLatLng = null
         dispatch_async(dispatch_get_main_queue()) { renderGuidance() }
+    }
+
+    actual fun dissolveGuidanceBeacon() {
+        dispatch_async(dispatch_get_main_queue()) { nativeSurface?.dissolveGuidanceBeacon() }
+    }
+
+    actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {
+        dispatch_async(dispatch_get_main_queue()) { nativeSurface?.setBeaconSuppressed(suppressed) }
     }
 
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? {
@@ -604,7 +644,14 @@ actual class ArEnvScanOverlay actual constructor() {
      * signal that a following tap is expected to supersede anyway.
      */
     actual fun focusAt(x: Float, y: Float) {
+        // I1: a tap while the whole-frame lock-on confirm card is up must
+        // not advance the (hidden, since trashCandidate != null suppresses
+        // the pill in SpotScreen) tap state machine — otherwise it can reach
+        // AWAITING_CONFIRMATION invisibly and surface a stale pill the
+        // instant the confirm card is dismissed/confirmed.
+        if (_trashCandidate.value != null) return
         pendingFocusTap = x.toDouble() to y.toDouble()
+        _tapCandidate.update { it.reduce(TapEvent.Tapped(x, y)) }
     }
 
     /**
@@ -613,19 +660,79 @@ actual class ArEnvScanOverlay actual constructor() {
      * normalized image-space point, then raycast immediately. A hit
      * becomes the focus bias for [FOCUS_DURATION_MS] — see
      * [selectSalientObject] (saliency selection) and the promotion gate in
-     * [analyzeTrash] (lowered streak threshold). Haptic fires on FOCUS
-     * ACQUIRED (raycast hit), not on every tap; a miss silently leaves any
-     * previously active focus in place.
+     * [analyzeTrash] (lowered streak threshold) — and drives [tapCandidate]
+     * toward [TapPhase.AWAITING_CONFIRMATION] via [classifyTappedRegion].
+     * Haptic fires on FOCUS ACQUIRED (raycast hit), not on every tap. A miss
+     * is NEVER silent (global constraint 2): it reduces [TapEvent.RaycastMissed]
+     * so the pill can say so, instead of leaving the user staring at nothing.
      */
     private fun processPendingFocusTap(frame: ARFrame?) {
         val tap = pendingFocusTap ?: return
         pendingFocusTap = null
         val (imageX, imageY) = viewTapToImageCoords(tap.first, tap.second)
-        val hit = raycastImage(frame, imageX, imageY) ?: return
+        val hit = raycastImage(frame, imageX, imageY)
+        if (hit == null) {
+            // Global constraint 2: a tap is NEVER silent.
+            _tapCandidate.update { it.reduce(TapEvent.RaycastMissed) }
+            return
+        }
         focusImagePoint = imageX to imageY
         focusWorld = Triple(hit.x, hit.y, hit.z)
         focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
+        val latLng = localToLatLng(hit.x, hit.z) ?: run {
+            _tapCandidate.update { it.reduce(TapEvent.RaycastMissed) }
+            return
+        }
+        _tapCandidate.update {
+            it.reduce(TapEvent.RaycastHit(latLng.first, latLng.second, hit.distance))
+        }
         dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
+        classifyTappedRegion(frame, imageX, imageY)
+    }
+
+    /**
+     * Classify a crop centred on the tap, preserving surrounding context, and
+     * feed the result to the reducer. A tap bypasses
+     * [TrashDetectionRules.autoPromotionLabelFrom]'s parent-context suppression
+     * on purpose (constraint 11): the user may confirm a detached tire.
+     *
+     * A null label is NOT a failure — Option A: the candidate still reaches
+     * AWAITING_CONFIRMATION as "Unknown litter".
+     */
+    private fun classifyTappedRegion(frame: ARFrame?, imageX: Double, imageY: Double) {
+        val observations = classifyRegion(frame, imageX, imageY, TAP_CROP_FRACTION)
+        val label = TrashDetectionRules.trashLabelFrom(observations)
+        val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
+        _tapCandidate.update { it.reduce(TapEvent.Classified(label, confidence)) }
+    }
+
+    /**
+     * [localToLatLng] resolved against this session's live geo reference —
+     * the class-scoped convenience [processPendingFocusTap] needs, since the
+     * top-level function (see `ArGeoMath.kt`) takes the reference explicitly
+     * and has no notion of "not yet paired". Null before [hasGeoRef].
+     */
+    private fun localToLatLng(x: Float, z: Float): Pair<Double, Double>? {
+        if (!hasGeoRef) return null
+        return localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
+    }
+
+    actual fun confirmTapCandidate(): TapCandidateState? {
+        val pending = _tapCandidate.value
+        if (pending.phase != TapPhase.AWAITING_CONFIRMATION) return null
+        _tapCandidate.update { it.reduce(TapEvent.Confirmed) }
+        return pending
+    }
+
+    actual fun rejectTapCandidate(): TapCandidateState? {
+        val pending = _tapCandidate.value
+        if (pending.phase != TapPhase.AWAITING_CONFIRMATION) return null
+        _tapCandidate.update { it.reduce(TapEvent.Rejected) }
+        return pending
+    }
+
+    actual fun dismissTapCandidate() {
+        _tapCandidate.update { it.reduce(TapEvent.Dismissed) }
     }
 
     actual fun setElementObservedListener(
@@ -813,6 +920,46 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     /**
+     * Classify a square region-of-interest centred on a normalized image-space
+     * point (top-left origin, matching [imageX]/[imageY] everywhere else in
+     * this file) — the tap-to-identify crop [classifyTappedRegion] needs, as
+     * opposed to whole-frame classification. Supports both render backends,
+     * same precedent as [saliencyOnDemand]/[ArFrameFeedback]'s
+     * `native?.pixelBufferOrNull() ?: frame?.capturedImage` pattern: the
+     * native RealityKit surface when bound, the SceneKit `ARFrame` otherwise.
+     */
+    private fun classifyRegion(
+        frame: ARFrame?,
+        imageX: Double,
+        imageY: Double,
+        fraction: Double,
+    ): List<ClassificationObservation> {
+        val pixelBuffer = nativeSurface?.pixelBufferOrNull() ?: frame?.capturedImage ?: return emptyList()
+        val side = fraction.coerceIn(0.0, 1.0)
+        val half = side / 2.0
+        // Vision's regionOfInterest is bottom-left origin; imageX/imageY here
+        // are top-left, so flip Y (same conversion analyzeTrash uses). The
+        // origin is clamped to [0, 1 - side] so origin + size never exceeds
+        // 1.0 — an off-center tap slides the crop inward (keeping its full
+        // side length) instead of handing Vision an out-of-bounds ROI.
+        val visionY = 1.0 - imageY
+        val roi = CGRectMake(
+            (imageX - half).coerceIn(0.0, 1.0 - side),
+            (visionY - half).coerceIn(0.0, 1.0 - side),
+            side,
+            side,
+        )
+        val request = VNClassifyImageRequest()
+        request.regionOfInterest = roi
+        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
+        handler.performRequests(listOf(request), error = null)
+        return request.results
+            ?.filterIsInstance<VNClassificationObservation>()
+            ?.map { ClassificationObservation(it.identifier, it.confidence) }
+            ?: emptyList()
+    }
+
+    /**
      * Pick which salient candidate to lock onto: with no active focus, the
      * Vision-ranked first candidate (existing behavior, unchanged). With an
      * active [focusAt] focus, the candidate whose bounding-box center is
@@ -879,12 +1026,22 @@ actual class ArEnvScanOverlay actual constructor() {
     ) {
         // While a candidate is pending the loop idles: the card is on screen
         // and the reticle freezes on the locked item's projected position.
-        if (_trashCandidate.value != null) return
+        // Minor B: the multi-item layer must NOT freeze along with it — a
+        // stale box list left published here could mis-tag a photo captured
+        // during the confirm-card window against an item that's no longer
+        // (or never was) at that position.
+        if (_trashCandidate.value != null) {
+            _multiItemReticles.value = emptyList()
+            return
+        }
 
-        val trashLabel = TrashDetectionRules.trashLabelFrom(classifications)
+        // Global constraint 10/11: automatic promotion requires parent-context
+        // suppression. A user tap bypasses this entirely (see focusAt).
+        val trashLabel = TrashDetectionRules.autoPromotionLabelFrom(classifications)
         if (trashLabel == null) {
             nearStreak = 0
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
+            _multiItemReticles.value = emptyList()
             // No trash in view: a landmark element tick instead — trees,
             // fences, gates… register to the grid so future scans expect
             // them. (Only on trash-less ticks: a bag stuck in a bush must
@@ -919,6 +1076,10 @@ actual class ArEnvScanOverlay actual constructor() {
             ?.salientObjects
             ?.filterIsInstance<VNRectangleObservation>()
             ?: emptyList()
+        // Task 17: multi-item reticle layer — reuses [candidates] above
+        // (zero extra saliency cost); classifyRegion only spends extra Vision
+        // requests when there's actually more than one box to disambiguate.
+        updateMultiItemReticles(frame, candidates)
         val salient = selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
         salient?.boundingBox?.useContents {
             visionX = origin.x + size.width / 2.0
@@ -1014,6 +1175,79 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     /**
+     * Multi-item reticle layer (Task 17), additive to the single-candidate
+     * lock-on above: from the saliency boxes [analyzeTrash] already computed
+     * for [selectSalientObject] (zero extra saliency cost — this is called
+     * with the SAME `candidates` list), builds one [DetectionReticle] per
+     * box and publishes the deduped/capped result for the overlay + capture
+     * tagging.
+     *
+     * Performance guard: region classification ([classifyRegion]) is skipped
+     * entirely when there's 0-1 boxes. The 0-1 case is also where [analyzeTrash]'s
+     * own whole-frame lock-on (the single [TrashCandidate] reticle) already
+     * owns rendering, so this layer publishes nothing for it (I3) — only
+     * when saliency finds >= 2 boxes does this spend up to
+     * [MAX_MULTI_ITEM_RETICLES] additional Vision requests, one per box —
+     * see the task-17 report for the full per-tick Vision request-count
+     * accounting.
+     */
+    private fun updateMultiItemReticles(
+        frame: ARFrame?,
+        candidates: List<VNRectangleObservation>,
+    ) {
+        // I3: the 0-box AND 1-box cases both defer to the whole-frame
+        // lock-on path (analyzeTrash's own TrashCandidate promotion) — it
+        // already owns the single-object case end-to-end (reticle, streak,
+        // promotion). Publishing a reticle here too double-drew the same
+        // object via two independent overlays.
+        if (candidates.size <= 1) {
+            _multiItemReticles.value = emptyList()
+            return
+        }
+        val classified = candidates.take(MAX_MULTI_ITEM_RETICLES).map { obs ->
+            val box = obs.toReticleBox()
+            val fraction = box.side.coerceIn(0.2, 0.5)
+            val observations = classifyRegion(frame, box.imageX, box.imageY, fraction)
+            val label = TrashDetectionRules.autoPromotionLabelFrom(observations)
+            val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
+            DetectionReticle(
+                centerX = box.viewX, centerY = box.viewY,
+                width = box.side.toFloat(), height = box.side.toFloat(),
+                label = label, confidence = confidence, isLitter = label != null,
+            )
+        }
+        _multiItemReticles.value = dedupeReticles(classified)
+    }
+
+    /** A saliency box's geometry in both coordinate systems Task 17 needs:
+     *  [imageX]/[imageY] (Vision's bottom-left origin flipped to the top-left
+     *  "image" convention [classifyRegion] expects — same conversion
+     *  [analyzeTrash] uses for `imageX`/`imageY`) and [viewX]/[viewY] (the
+     *  portrait-screen convention [DetectionReticle]/`LiveDetection.cx`/`cy`
+     *  use, i.e. `viewX = 1 - imageY`, `viewY = imageX`). [side] is the
+     *  larger of the two normalized Vision bbox dimensions, clamped to
+     *  double [analyzeTrash]'s `radius` clamp ([0.06, 0.35]) since it plays
+     *  the same "full box size" role [DetectionReticle.width]/`height` need,
+     *  where `radius` there is a half-size. */
+    private class ReticleBox(val imageX: Double, val imageY: Double, val viewX: Float, val viewY: Float, val side: Double)
+
+    private fun VNRectangleObservation.toReticleBox(): ReticleBox {
+        var visionX = 0.5
+        var visionY = 0.5
+        var side = 0.2
+        boundingBox.useContents {
+            visionX = origin.x + size.width / 2.0
+            visionY = origin.y + size.height / 2.0
+            side = maxOf(size.width, size.height).coerceIn(0.12, 0.7)
+        }
+        val imageX = visionX
+        val imageY = 1.0 - visionY
+        val viewX = (1.0 - imageY).toFloat()
+        val viewY = imageX.toFloat()
+        return ReticleBox(imageX, imageY, viewX, viewY, side)
+    }
+
+    /**
      * Register a landmark element (vegetation/infrastructure) at its raycast
      * world position — auto, no confirm: these aren't actionable like trash,
      * they're the stable context the grid should expect next time. Deduped
@@ -1076,9 +1310,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // Vector-scan analysis effect (spec system 3): trash candidates get
         // this on lock-on (above); landmark elements never did, so a newly
         // identified tree/fence/gate registered silently with no on-screen
-        // acknowledgment. Every registration — litter or landmark — now
-        // fires the same effect at its world position.
-        native?.emitLockEffect(world[0].toDouble(), world[1].toDouble(), world[2].toDouble())
+        // acknowledgment.
         dispatch_async(dispatch_get_main_queue()) {
             listener(lat, lng, element.itemType, element.domain, confidence, widthMeters, yawDegrees)
         }
@@ -1204,9 +1436,12 @@ actual class ArEnvScanOverlay actual constructor() {
     /**
      * (Re)build the ONE grid's render geometry from the monotonic union AABB
      * — snapped OUTWARD to the coverage lattice once its phase is known
-     * (tracker origin set + geo-ref paired), so the grid edges — and every
-     * repeated [GRID_TILE_METERS] texture line between them — land exactly
-     * on the 3m cell lattice the minimap draws. Mirrors
+     * (tracker origin set + geo-ref paired). Snapping AND the UV scale both
+     * use [GRID_MAJOR_TILE_METERS]: this path has no UV offset, so texture
+     * repeats can only register with the lattice if the plane edges land on
+     * repeat boundaries — snapped edges sit on the 3m cell lattice the
+     * minimap draws (which is also the 1m minor lattice), and each repeat's
+     * interior lines land on [GRID_TILE_METERS] multiples. Mirrors
      * GccArNative.swift's applyPlaneGeometry. Called on union growth; mesh
      * width/height writes are skipped when the snapped size is unchanged.
      */
@@ -1215,7 +1450,10 @@ actual class ArEnvScanOverlay actual constructor() {
         val rawMaxX = floorMaxX ?: return
         val rawMinZ = floorMinZ ?: return
         val rawMaxZ = floorMaxZ ?: return
-        val tile = GRID_TILE_METERS.toDouble()
+        // One texture repeat = one MAJOR tile (3m). Dividing by the minor
+        // interval instead renders the whole 3×3 texture per metre (minor
+        // lines every 0.33m) — the review finding this constant fixes.
+        val tile = GRID_MAJOR_TILE_METERS.toDouble()
         val phase = gridPhase
         val (left, right) = if (phase != null) {
             snapRangeToLattice(rawMinX, rawMaxX, phase.first, tile)
@@ -1245,7 +1483,6 @@ actual class ArEnvScanOverlay actual constructor() {
                 1f,
             )
             plane.firstMaterial?.diffuse?.contentsTransform = uv
-            plane.firstMaterial?.emission?.contentsTransform = uv
         }
     }
 
@@ -1258,10 +1495,17 @@ actual class ArEnvScanOverlay actual constructor() {
         material.diffuse.contents = texture
         material.diffuse.wrapS = platform.SceneKit.SCNWrapModeRepeat
         material.diffuse.wrapT = platform.SceneKit.SCNWrapModeRepeat
+        // Neon restored on Blake's word (TestFlight 145: the emission-less
+        // grid read as a shadow — invisible in daylight). Mirrors the
+        // RealityKit path's emissive material; keep the two identical.
         material.emission.contents = texture
         material.emission.wrapS = platform.SceneKit.SCNWrapModeRepeat
         material.emission.wrapT = platform.SceneKit.SCNWrapModeRepeat
         material.doubleSided = true
+        // Obey the depth buffer so real geometry in front of the ground hides
+        // the grid. Still does NOT write depth: a translucent surface that
+        // writes depth occludes whatever is drawn after it.
+        material.readsFromDepthBuffer = true
         material.writesToDepthBuffer = false
         material.transparency = 0.55
         plane.materials = listOf(material)
@@ -1273,57 +1517,33 @@ actual class ArEnvScanOverlay actual constructor() {
         return container
     }
 
-    // ── Guidance arrow ───────────────────────────────────────────────
+    // ── Guidance ─────────────────────────────────────────────────────
 
-    /** Aim (or hide) the camera-attached arrow at the current guidance target. */
+    /**
+     * Guidance in the camera view is the frontier BEACON (spec 2026-07-10):
+     * a single pooled ground ring the native surface plants at the target —
+     * the home-walkthrough-style "scan here" landmark. (The camera-attached
+     * arrow stays deleted: it rendered as an unexplained neon green bar and
+     * performed no scanning.) The minimap ring + text prompt remain the
+     * far-range guidance; the beacon only plants within
+     * [BEACON_MAX_RANGE_METERS] of the geo reference — `latLngToLocal` is
+     * only trustworthy near the reference point, and a beacon planted on the
+     * wrong patch is worse than no beacon.
+     */
     private fun renderGuidance() {
         val target = guidanceLatLng
         if (!hasGeoRef || target == null) {
             nativeSurface?.clearGuidanceTarget()
-            arrowNode?.hidden = true
             return
         }
         val local = latLngToLocal(target.first, target.second, refLat, refLng, refX, refZ, lngScale)
-        nativeSurface?.let { surface ->
-            surface.setGuidanceTarget(local.first, local.second)
+        val dx = local.first - refX
+        val dz = local.second - refZ
+        if (dx * dx + dz * dz > BEACON_MAX_RANGE_METERS * BEACON_MAX_RANGE_METERS) {
+            nativeSurface?.clearGuidanceTarget()
             return
         }
-        // SceneKit fallback: pyramid on the camera with a LookAt constraint at
-        // an invisible world node — SceneKit re-aims it every frame for free
-        // (same construction as ArRouteOverlay's frontier arrow).
-        val scene = sceneView?.scene ?: return
-        val groundY = floorY ?: (refY - GROUND_OFFSET_METERS)
-        val targetNode = frontierTarget ?: SCNNode().also {
-            frontierTarget = it
-            scene.rootNode.addChildNode(it)
-        }
-        targetNode.position = SCNVector3Make(local.first.toFloat(), groundY, local.second.toFloat())
-        val arrow = arrowNode ?: makeArrowNode(targetNode) ?: return
-        arrow.hidden = false
-    }
-
-    private fun makeArrowNode(target: SCNNode): SCNNode? {
-        val camera = sceneView?.pointOfView ?: return null
-        val pyramid = SCNPyramid.pyramidWithWidth(0.12, 0.25, 0.12)
-        val material = SCNMaterial()
-        material.diffuse.contents = UIColor.greenColor
-        pyramid.materials = listOf(material)
-
-        // SCNPyramid points +Y; rotate so the tip points -Z, the axis
-        // SCNLookAtConstraint aims at its target.
-        val geometryNode = SCNNode.nodeWithGeometry(pyramid)
-        geometryNode.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
-
-        val container = SCNNode()
-        container.addChildNode(geometryNode)
-        container.position = SCNVector3Make(0f, -0.5f, -1.2f)
-        val constraint = SCNLookAtConstraint.lookAtConstraintWithTarget(target)
-        constraint.gimbalLockEnabled = true
-        container.constraints = listOf(constraint)
-
-        camera.addChildNode(container)
-        arrowNode = container
-        return container
+        nativeSurface?.setGuidanceTarget(local.first, local.second)
     }
 
     // ── Markers / capture / helpers ──────────────────────────────────
@@ -1390,31 +1610,62 @@ actual class ArEnvScanOverlay actual constructor() {
         floatArrayOf(vector.getFloatAt(0), vector.getFloatAt(1), vector.getFloatAt(2))
 
     /**
-     * A transparent tile with lines on its leading edges — repeat-wrapped it
-     * tiles into a seamless grid; [withDiagonals] adds an X for the denser
-     * "vector scan" look.
+     * A transparent 3×3-cell texture: a thin line on the interior cell
+     * boundaries (the 1 m minor interval, [GRID_TILE_METERS]) and a heavier
+     * line on the texture's own outer boundary. One texture repeat is scaled
+     * to span [GRID_MAJOR_TILE_METERS] (see applyFloorGridGeometry), so the
+     * heavy edge line lands on every repeat boundary — the 3 m major
+     * interval. [withDiagonals] adds an X per cell for the denser "vector
+     * scan" look. Minor lines draw at alpha 0.5, major lines at alpha 0.9 —
+     * both derived from [line]'s hue so callers keep passing one color.
+     * Mirrored by GccArNative.swift's makeGridTexture — keep them visually
+     * identical.
      */
     private fun makeGridTexture(
         line: UIColor,
         lineWidth: Double,
         withDiagonals: Boolean = false,
-        sizePx: Double = 128.0,
+        sizePx: Double = 129.0,
     ): UIImage? {
         UIGraphicsBeginImageContextWithOptions(CGSizeMake(sizePx, sizePx), false, 1.0)
-        val path = UIBezierPath.bezierPath()
-        path.moveToPoint(CGPointMake(0.0, 0.5))
-        path.addLineToPoint(CGPointMake(sizePx, 0.5))
-        path.moveToPoint(CGPointMake(0.5, 0.0))
-        path.addLineToPoint(CGPointMake(0.5, sizePx))
-        if (withDiagonals) {
-            path.moveToPoint(CGPointMake(0.0, 0.0))
-            path.addLineToPoint(CGPointMake(sizePx, sizePx))
-            path.moveToPoint(CGPointMake(sizePx, 0.0))
-            path.addLineToPoint(CGPointMake(0.0, sizePx))
+        val third = sizePx / 3.0
+
+        // Minor grid: one line per interior cell boundary.
+        val minorPath = UIBezierPath.bezierPath()
+        for (i in 1..2) {
+            val pos = third * i
+            minorPath.moveToPoint(CGPointMake(0.0, pos))
+            minorPath.addLineToPoint(CGPointMake(sizePx, pos))
+            minorPath.moveToPoint(CGPointMake(pos, 0.0))
+            minorPath.addLineToPoint(CGPointMake(pos, sizePx))
         }
-        path.lineWidth = lineWidth
-        line.setStroke()
-        path.stroke()
+        if (withDiagonals) {
+            for (row in 0..2) {
+                for (col in 0..2) {
+                    val x0 = third * col
+                    val y0 = third * row
+                    minorPath.moveToPoint(CGPointMake(x0, y0))
+                    minorPath.addLineToPoint(CGPointMake(x0 + third, y0 + third))
+                    minorPath.moveToPoint(CGPointMake(x0 + third, y0))
+                    minorPath.addLineToPoint(CGPointMake(x0, y0 + third))
+                }
+            }
+        }
+        minorPath.lineWidth = lineWidth
+        line.colorWithAlphaComponent(0.5).setStroke()
+        minorPath.stroke()
+
+        // Major grid: only the texture's outer boundary — repeats every 3rd
+        // tile once the material wraps this texture.
+        val majorPath = UIBezierPath.bezierPath()
+        majorPath.moveToPoint(CGPointMake(0.0, 0.5))
+        majorPath.addLineToPoint(CGPointMake(sizePx, 0.5))
+        majorPath.moveToPoint(CGPointMake(0.5, 0.0))
+        majorPath.addLineToPoint(CGPointMake(0.5, sizePx))
+        majorPath.lineWidth = lineWidth * 1.5
+        line.colorWithAlphaComponent(0.9).setStroke()
+        majorPath.stroke()
+
         val image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return image

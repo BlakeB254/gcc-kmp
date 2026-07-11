@@ -13,6 +13,7 @@ interface ArDetectedMarker {
   estimatedWeightGrams?: number
   estimatedWidthMeters?: number
   mediaUrl?: string | null
+  provenance?: string
 }
 
 export async function POST(request: NextRequest) {
@@ -51,7 +52,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid marker data' }, { status: 400 })
     }
 
+    let inserted = 0
     for (const marker of markers) {
+      const provenance = typeof marker.provenance === 'string' ? marker.provenance : 'auto_detected'
+      // A rejection ("Not litter") must never become a dirty observation —
+      // it's a negative training example, not a report of litter.
+      if (provenance === 'user_rejected') continue
       const estimatedWeightGrams = Number.isFinite(Number(marker.estimatedWeightGrams))
         ? Math.round(Number(marker.estimatedWeightGrams))
         : undefined
@@ -64,19 +70,19 @@ export async function POST(request: NextRequest) {
         lng: marker.lng,
         itemType: marker.label,
         state: 'dirty',
-        attributes: (estimatedWeightGrams !== undefined || estimatedWidthMeters !== undefined)
-          ? {
-              ...(estimatedWeightGrams !== undefined ? { estimatedWeightGrams } : {}),
-              ...(estimatedWidthMeters !== undefined ? { estimatedWidthMeters } : {}),
-            }
-          : undefined,
+        attributes: {
+          provenance,
+          ...(estimatedWeightGrams !== undefined ? { estimatedWeightGrams } : {}),
+          ...(estimatedWidthMeters !== undefined ? { estimatedWidthMeters } : {}),
+        },
         mediaUrl: marker.mediaUrl ?? undefined,
         capturedAt: marker.capturedAt,
       })
+      inserted++
     }
 
     return NextResponse.json(
-      { data: { inserted: markers.length, success: true }, success: true },
+      { data: { inserted, success: true }, success: true },
       { status: 201 },
     )
   } catch (error) {

@@ -1,5 +1,8 @@
 package com.gcc.app.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
@@ -34,6 +38,19 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
+
+// Field report (TestFlight 145, "minimap shaking"): the first smoothed-center
+// attempt animated ABSOLUTE lat/lng through a Double→AnimationVector1D
+// converter — but AnimationVector1D is Float-backed, and Float at latitude
+// 41.85° only resolves ~0.42m (longitude −87.7° ≈ 0.63m). The "smooth" glide
+// therefore quantized onto a half-meter lattice: 3–4px jumps per frame on the
+// minimap. The smoother below animates METER OFFSETS from a session-fixed
+// anchor instead (Float at session scale is sub-millimeter) and adds the
+// offset back to the anchor in Double space. One pair of Animatables still
+// feeds BOTH GccMap and ScanMinimapOverlay every frame, so the coverage
+// paint can never diverge from the basemap.
 
 /**
  * Reusable full-screen camera composable for capturing photos.
@@ -84,6 +101,10 @@ fun CameraCapture(
     guidanceTarget: Coordinates? = null,
     /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading, passed straight through to the minimap's
+     *  persistent facing cone (ScanMinimapOverlay draws it, not GccMap —
+     *  see the comment on GccMap's gpsHeading below). */
+    headingDegrees: Float? = null,
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -124,28 +145,25 @@ fun CameraCapture(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(atLimit) {
+                .pointerInput(atLimit, environmentScanMode) {
                     detectTapGestures { offset ->
-                        // AR tap-to-focus (Task 5): bias detection toward
-                        // whatever the user tapped before the existing
-                        // tap-anywhere-to-capture behavior runs. The Box is
-                        // full-size, so the tap normalizes directly against
-                        // this pointerInput scope's size. No-op when there's
-                        // no AR overlay (non-AR camera / off-iOS).
+                        if (environmentScanMode) {
+                            // Global constraint 2: in a scan, a tap TARGETS.
+                            // It never captures. Accidental taps (and the taps
+                            // users make to keep the screen awake — see
+                            // KeepScreenAwake) must cost nothing. The tap opens
+                            // a provisional candidate the user must confirm.
+                            arOverlay?.focusAt(offset.x / size.width, offset.y / size.height)
+                            return@detectTapGestures
+                        }
+                        // Non-scan flows keep tap-to-capture.
                         if (arOverlay != null) {
                             arOverlay.focusAt(offset.x / size.width, offset.y / size.height)
                         }
                         if (!isCapturing && !atLimit) {
                             isCapturing = true
                             coroutineScope.launch {
-                                // Environment scan: silent frame grab (no
-                                // shutter); other flows keep the photo output
-                                // (depth + attestation).
-                                val photo = if (environmentScanMode) {
-                                    manager.captureFrame()
-                                } else {
-                                    manager.capturePhoto()
-                                }
+                                val photo = manager.capturePhoto()
                                 if (photo != null) onCapture(photo)
                                 isCapturing = false
                             }
@@ -168,15 +186,19 @@ fun CameraCapture(
                 )
             }
 
-            // Scan status / instructions (top-center, under the status bar,
-            // clear of the corner chrome). ONE guidance-voice caption (spec
-            // system 4) — statusText is the single prioritized string the
-            // caller computes; no sibling caption stacks under it anymore.
+            // Scan status / instructions (top-center, under the status bar).
+            // ONE guidance-voice caption (spec system 4) — statusText is the
+            // single prioritized string the caller computes; no sibling
+            // caption stacks under it anymore. Horizontal padding so a long
+            // caption WRAPS inside its own band instead of running under the
+            // right-edge chrome (TestFlight 145: the caption overlapped the
+            // scan-quality badge and the 🐞 diagnostics badge, which now live
+            // on their own rows below — keep the three rows separated).
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 52.dp),
+                    .padding(top = 52.dp, start = 40.dp, end = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
@@ -194,6 +216,7 @@ fun CameraCapture(
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
+                        textAlign = TextAlign.Center,
                     )
                 }
                 if (captureState != null) {
@@ -225,6 +248,41 @@ fun CameraCapture(
             // Mini-map: lower-right corner over the feed (Pokémon-GO layout;
             // the primary action lives bottom-center).
             if (showMiniMap && currentLocation != null) {
+                // ADDENDUM (Blake, binding — supersedes Step 7's
+                // instantCamera-only approach): ONE smoothed center feeds
+                // BOTH layers identically every frame (see the Float-precision
+                // note at the top of this file for why it animates meter
+                // offsets, not absolute coordinates). The spring — instead of
+                // the old restarted 800ms linear tween — carries velocity
+                // across retargets, so each new GPS fix BENDS the glide
+                // instead of kinking it (the tween restarted from zero
+                // velocity on every fix, a visible ~1Hz stutter on top of the
+                // Float quantization shake).
+                val anchorLat = remember { currentLocation.lat }
+                val anchorLng = remember { currentLocation.lng }
+                val anchorLngScale = remember { cos(anchorLat * PI / 180.0) }
+                val smoothedNorthMeters = remember { Animatable(0f) }
+                val smoothedEastMeters = remember { Animatable(0f) }
+                LaunchedEffect(currentLocation.lat, currentLocation.lng) {
+                    val centerSpring = spring<Float>(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessVeryLow,
+                    )
+                    launch {
+                        smoothedNorthMeters.animateTo(
+                            ((currentLocation.lat - anchorLat) * 111_320.0).toFloat(),
+                            animationSpec = centerSpring,
+                        )
+                    }
+                    launch {
+                        smoothedEastMeters.animateTo(
+                            ((currentLocation.lng - anchorLng) * 111_320.0 * anchorLngScale).toFloat(),
+                            animationSpec = centerSpring,
+                        )
+                    }
+                }
+                val smoothedCenterLat = anchorLat + smoothedNorthMeters.value / 111_320.0
+                val smoothedCenterLng = anchorLng + smoothedEastMeters.value / (111_320.0 * anchorLngScale)
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -241,20 +299,27 @@ fun CameraCapture(
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
-                        centerLat = currentLocation.lat,
-                        centerLng = currentLocation.lng,
+                        centerLat = smoothedCenterLat,
+                        centerLng = smoothedCenterLng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         // currentLocation=null: ScanMinimapOverlay draws the one
                         // authoritative centered dot — the basemap puck here was
                         // a SECOND dot (field report). Framing uses centerLat/Lng.
                         currentLocation = null,
-                        gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
+                        gpsHeading = null, // the cone is drawn by ScanMinimapOverlay, on its own projection
+                        // The overlay and the basemap now consume the SAME
+                        // smoothed center every frame (see above); instantCamera
+                        // makes GccMap's own camera track it exactly instead of
+                        // re-easing on top of an already-eased value.
+                        instantCamera = true,
                     )
                     // Scan coverage + trash + ledger freshness, projected over
-                    // the fixed-zoom minimap.
+                    // the fixed-zoom minimap. Same smoothed center as GccMap
+                    // above — the shared value is what keeps this registered
+                    // tightly to the basemap's tiles frame to frame.
                     ScanMinimapOverlay(
-                        centerLat = currentLocation.lat,
-                        centerLng = currentLocation.lng,
+                        centerLat = smoothedCenterLat,
+                        centerLng = smoothedCenterLng,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         scanCellCenters = scanCellCenters,
                         cellSizeMeters = CoverageTracker.cellSizeMeters,
@@ -267,6 +332,7 @@ fun CameraCapture(
                         freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
                         visibilityBeam = visibilityBeam,
+                        headingDegrees = headingDegrees,
                     )
                     // WS6: the decorative "\uD83D\uDCCD You are here" bar was removed \u2014
                     // the overlay already draws the user dot; the bar was pure

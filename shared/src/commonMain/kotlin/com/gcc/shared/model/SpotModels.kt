@@ -55,6 +55,9 @@ data class ObservedSpotItem(
      * position, or a degenerate camera/hit position).
      */
     val yawDegrees: Double? = null,
+    /** How this observation came to exist: see ObservedItemCounts' PROVENANCE_* constants.
+     *  Null on legacy payloads written before provenance existed. */
+    val provenance: String? = null,
 )
 
 /**
