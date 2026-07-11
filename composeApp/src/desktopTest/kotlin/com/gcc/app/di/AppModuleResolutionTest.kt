@@ -1,5 +1,6 @@
 package com.gcc.app.di
 
+import com.gcc.app.viewmodel.AdminJobListViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
 import org.koin.dsl.koinApplication
 import kotlin.test.Test
@@ -29,5 +30,19 @@ class AppModuleResolutionTest {
     fun documentUploadViewModelResolvesFromOfflineAppModule() {
         val koin = koinApplication { modules(offlineAppModule) }.koin
         assertNotNull(koin.get<DocumentUploadViewModel>())
+    }
+
+    /** Resolved only when an admin taps an Operations row, so nothing else
+     *  would surface a missing definition until that screen opens. */
+    @Test
+    fun adminJobListViewModelResolvesFromAppModule() {
+        val koin = koinApplication { modules(appModule) }.koin
+        assertNotNull(koin.get<AdminJobListViewModel>())
+    }
+
+    @Test
+    fun adminJobListViewModelResolvesFromOfflineAppModule() {
+        val koin = koinApplication { modules(offlineAppModule) }.koin
+        assertNotNull(koin.get<AdminJobListViewModel>())
     }
 }

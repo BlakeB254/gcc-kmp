@@ -17,6 +17,7 @@ import com.gcc.app.navigation.RootComponent
 import com.gcc.app.navigation.Screen
 import com.gcc.app.ui.screens.*
 import com.gcc.app.ui.screens.admin.AdminPanelScreen
+import com.gcc.app.ui.screens.admin.AdminJobListScreen
 import com.gcc.app.ui.screens.admin.AdminBoundaryEditorScreen
 import com.gcc.app.ui.screens.admin.AdminRouteDetailScreen
 import com.gcc.app.ui.screens.admin.AdminSpotCreateScreen
@@ -183,8 +184,8 @@ fun App(component: RootComponent) {
                     onFallback = component::onBiometricFallback,
                 )
                 is Screen.AdminPanel -> AdminPanelScreen(
-                    onBack = component::navigateBack,
                     onLogout = component::signOut,
+                    onNavigateToJobList = component::navigateToAdminJobList,
                     onNavigateToSpotCreate = component::navigateToAdminSpotCreate,
                     onNavigateToSpotDetail = component::navigateToAdminSpotDetail,
                     onNavigateToRouteDetail = component::navigateToAdminRouteDetail,
@@ -193,6 +194,13 @@ fun App(component: RootComponent) {
                     onNavigateToDashboard = { component.switchToTab(Screen.Dashboard) },
                     onNavigateToMap = { component.switchToTab(Screen.MapFullScreen) },
                     onNavigateToProfile = { component.switchToTab(Screen.Profile) },
+                )
+                // Pushed, not switchToTab'd — so the back stack is non-empty here
+                // and popping is the right behaviour.
+                is Screen.AdminJobList -> AdminJobListScreen(
+                    title = screen.title,
+                    status = screen.status,
+                    onBack = component::navigateBack,
                 )
                 is Screen.AdminWorkerDetail -> AdminWorkerDetailScreen(
                     workerId = screen.workerId,

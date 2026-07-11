@@ -118,16 +118,20 @@ fun ProfileScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // Gradient header section
+            // Gradient header section. The background is declared before
+            // statusBarsPadding so the gradient still bleeds edge-to-edge behind the
+            // status bar, while the Back button and logo below are laid out clear of
+            // the clock and Dynamic Island.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(GccGreen, GccGreenDark)
                         )
-                    ),
+                    )
+                    .statusBarsPadding()
+                    .height(200.dp),
             ) {
                 // Back button
                 TextButton(

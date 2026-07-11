@@ -26,6 +26,7 @@ import com.gcc.app.viewmodel.BountyViewModel
 import com.gcc.app.viewmodel.LeaderboardViewModel
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.app.viewmodel.VolunteerCleanupViewModel
+import com.gcc.app.viewmodel.AdminJobListViewModel
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.FeedViewModel
 import com.gcc.app.viewmodel.RouteScanViewModel
@@ -122,4 +123,7 @@ val appModule = module {
     // so a shared instance would let two screens fight over the camera.
     factory { CameraManager() }
     factory { DocumentUploadViewModel(get(), get()) }
+    // `factory`: each Operations drill-in owns its own list state and cancels
+    // its scope on dispose.
+    factory { AdminJobListViewModel(get()) }
 }

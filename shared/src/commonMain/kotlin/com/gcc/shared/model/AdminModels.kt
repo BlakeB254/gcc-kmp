@@ -124,6 +124,30 @@ data class AddressChangeRequest(
     val reason: String? = null,
 )
 
+/**
+ * One row of the admin Operations drill-in list (GET /api/admin/jobs).
+ *
+ * Route fields are nullable because a job references a block, and the block's
+ * route is reached by join — a block with no route yields no route here.
+ */
+@Serializable
+data class AdminJobSummary(
+    val jobId: Int,
+    val status: JobStatus = JobStatus.AVAILABLE,
+    val workerId: Int? = null,
+    val workerName: String? = null,
+    val blockId: Int,
+    val blockName: String? = null,
+    val routeId: Int? = null,
+    val routeCode: String? = null,
+    val routeName: String? = null,
+    val payoutAmount: Double? = null,
+    val createdAt: Instant,
+    val claimedAt: Instant? = null,
+    val startedAt: Instant? = null,
+    val completedAt: Instant? = null,
+)
+
 // ─── Admin Response Models ──────────────────────────────────────────
 
 @Serializable
