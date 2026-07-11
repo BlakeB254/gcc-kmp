@@ -65,12 +65,26 @@ def download_artifact(task_id: str, name: str, base_url: str = DEFAULT_BASE_URL)
     return resp.content
 
 
-def reconstruct_session(image_bytes_list: list[bytes], base_url: str = DEFAULT_BASE_URL, target_size: int = 952) -> bytes:
-    """Full round-trip: submit -> poll -> download gaussians.ply. This is
-    the ONLY entry point splat_train.py needs; the pieces above exist
-    separately so a smoke test can exercise each stage independently."""
+def reconstruct_session(
+    image_bytes_list: list[bytes], base_url: str = DEFAULT_BASE_URL, target_size: int = 952,
+) -> tuple[bytes, list | None]:
+    """Full round-trip: submit -> poll -> download gaussians.ply plus the
+    per-camera extrinsics (camera_params.json) when available. The
+    extrinsics let splat_train Sim3-align the reconstruction (world-mirror's
+    own arbitrary frame AND scale) to the ARKit session frame — without
+    them, merged community splats don't share a ground plane."""
+    import json as _json
+
     task_id = submit_generate(image_bytes_list, target_size=target_size, base_url=base_url)
     artifacts = poll_until_done(task_id, base_url=base_url)
     if "gaussians.ply" not in artifacts:
         raise WorldMirrorError(f"task {task_id} finished without gaussians.ply (got {artifacts})")
-    return download_artifact(task_id, "gaussians.ply", base_url=base_url)
+    splat = download_artifact(task_id, "gaussians.ply", base_url=base_url)
+    cameras = None
+    if "camera_params.json" in artifacts:
+        try:
+            payload = _json.loads(download_artifact(task_id, "camera_params.json", base_url=base_url))
+            cameras = [c["matrix"] for c in payload.get("extrinsics", [])]
+        except Exception:
+            cameras = None
+    return splat, cameras

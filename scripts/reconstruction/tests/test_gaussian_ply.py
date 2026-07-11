@@ -114,3 +114,43 @@ def test_concatenate_rejects_mismatched_properties():
 
     with pytest.raises(ValueError):
         concatenate_gaussian_ply_bytes([a, b])
+
+
+def test_umeyama_recovers_known_similarity():
+    from scipy.spatial.transform import Rotation
+
+    from gaussian_ply import umeyama_sim3
+
+    rng = np.random.default_rng(7)
+    src = rng.uniform(-5, 5, (12, 3))
+    R_true = Rotation.from_euler("xyz", [20, -35, 60], degrees=True).as_matrix()
+    s_true, t_true = 2.4, np.array([1.5, -3.0, 0.7])
+    dst = s_true * (R_true @ src.T).T + t_true
+
+    s, R, t, rms = umeyama_sim3(src, dst)
+    assert abs(s - s_true) < 1e-9
+    assert np.allclose(R, R_true, atol=1e-9)
+    assert np.allclose(t, t_true, atol=1e-9)
+    assert rms < 1e-9
+
+
+def test_sim3_transform_scales_positions_and_log_scales():
+    import io
+
+    import numpy as _np
+    from plyfile import PlyData
+
+    from gaussian_ply import sim3_transform_gaussian_ply_bytes
+
+    positions = _np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [-1.0, 0.5, 2.0]])
+    quats = _np.tile(_np.array([1.0, 0.0, 0.0, 0.0]), (3, 1))
+    ply_bytes = _make_gaussian_ply_bytes(positions, quats)
+    s = 2.0
+    R = _np.eye(3)
+    t = _np.array([10.0, 0.0, 0.0])
+    out = sim3_transform_gaussian_ply_bytes(ply_bytes, s, R, t)
+
+    before = PlyData.read(io.BytesIO(ply_bytes))["vertex"].data
+    after = PlyData.read(io.BytesIO(out))["vertex"].data
+    assert _np.allclose(after["x"], before["x"] * 2.0 + 10.0, atol=1e-5)
+    assert _np.allclose(after["scale_0"], before["scale_0"] + _np.log(2.0), atol=1e-6)

@@ -95,3 +95,64 @@ def concatenate_gaussian_ply_bytes(ply_bytes_list: list[bytes]) -> bytes:
     out = io.BytesIO()
     PlyData([PlyElement.describe(merged, "vertex")], text=parsed[0].text, byte_order=parsed[0].byte_order).write(out)
     return out.getvalue()
+
+
+def umeyama_sim3(src: np.ndarray, dst: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, float]:
+    """Least-squares similarity fit (Umeyama 1991): returns (s, R, t, rms)
+    such that dst ≈ s · R @ src + t. Needs ≥3 non-degenerate points.
+
+    Used to map a world-mirror reconstruction (its own arbitrary frame AND
+    scale) into the ARKit session frame, by fitting the world-mirror camera
+    centers to the ARKit camera positions of the SAME submitted frames —
+    the fix for merged community splats not sharing a ground plane."""
+    src = np.asarray(src, dtype=np.float64)
+    dst = np.asarray(dst, dtype=np.float64)
+    assert src.shape == dst.shape and src.shape[0] >= 3, "need >=3 correspondences"
+    mu_s, mu_d = src.mean(axis=0), dst.mean(axis=0)
+    xs, xd = src - mu_s, dst - mu_d
+    cov = xd.T @ xs / len(src)
+    U, D, Vt = np.linalg.svd(cov)
+    S = np.eye(3)
+    if np.linalg.det(U) * np.linalg.det(Vt) < 0:
+        S[2, 2] = -1.0
+    R = U @ S @ Vt
+    var_s = (xs ** 2).sum() / len(src)
+    s = float(np.trace(np.diag(D) @ S) / var_s) if var_s > 0 else 1.0
+    t = mu_d - s * R @ mu_s
+    rms = float(np.sqrt(((dst - (s * (R @ src.T).T + t)) ** 2).sum(axis=1).mean()))
+    return s, R, t, rms
+
+
+def sim3_transform_gaussian_ply_bytes(ply_bytes: bytes, s: float, R: np.ndarray, t: np.ndarray) -> bytes:
+    """Similarity transform of a Gaussian splat: positions p' = s·R·p + t,
+    orientations rotated by R, and per-Gaussian LOG scales shifted by ln(s)
+    (the standard 3DGS convention stores scale_0..2 as logs)."""
+    import io
+
+    from plyfile import PlyData, PlyElement
+
+    ply = PlyData.read(io.BytesIO(ply_bytes))
+    vertex = ply["vertex"]
+    data = vertex.data.copy()
+
+    positions = np.stack([data["x"], data["y"], data["z"]], axis=1).astype(np.float64)
+    new_positions = s * (R @ positions.T).T + t
+    for i, axis in enumerate(("x", "y", "z")):
+        data[axis] = new_positions[:, i].astype(data[axis].dtype)
+
+    rotation_props = ("rot_0", "rot_1", "rot_2", "rot_3")
+    if all(p in vertex.data.dtype.names for p in rotation_props):
+        rot = Rotation.from_matrix(R)
+        quats_wxyz = np.stack([data[p] for p in rotation_props], axis=1).astype(np.float64)
+        new_q = (rot * Rotation.from_quat(quats_wxyz[:, [1, 2, 3, 0]])).as_quat()[:, [3, 0, 1, 2]]
+        for i, prop in enumerate(rotation_props):
+            data[prop] = new_q[:, i].astype(data[prop].dtype)
+
+    log_s = float(np.log(s))
+    for prop in ("scale_0", "scale_1", "scale_2"):
+        if prop in vertex.data.dtype.names:
+            data[prop] = (data[prop].astype(np.float64) + log_s).astype(data[prop].dtype)
+
+    out = io.BytesIO()
+    PlyData([PlyElement.describe(data, "vertex")], text=ply.text, byte_order=ply.byte_order).write(out)
+    return out.getvalue()
