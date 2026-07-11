@@ -88,6 +88,8 @@ fun CleanScreen(
     // Hotspot capture sheet state
     var captureHotspot by remember { mutableStateOf<ScanHotspot?>(null) }
     var captureError by remember { mutableStateOf<String?>(null) }
+    // Non-null while the zero-cleaning completion confirm is showing.
+    var completionWarning by remember { mutableStateOf<String?>(null) }
 
     // Authored per-building inner-exclusion islands; the synthetic 8m inset
     // may only render when the block has none.
@@ -158,6 +160,15 @@ fun CleanScreen(
                         Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
                     }
                 }
+
+                // Lap progress (top-center) -- persistent 2-lap marker.
+                LapProgressChip(
+                    phase = uiState.phase,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp),
+                )
             }
 
             // ── Bottom panel (40% height) ───────────────────────────────
@@ -279,10 +290,18 @@ fun CleanScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Complete scan button
+                    // Complete scan button. "All done" is satisfiable with
+                    // zero cleaning (no hotspots found, or every target
+                    // skipped) \u2014 those completions go through an explicit
+                    // confirm instead of firing on the first tap.
                     GccButton(
                         text = if (allDone) "Complete Scan" else "Cleaning\u2026 $cleaned/$totalCleanupTargets done",
-                        onClick = { if (allDone) onCompleteScan() },
+                        onClick = {
+                            if (allDone) {
+                                val warning = cleanLapCompletionWarning(uiState.hotspots)
+                                if (warning == null) onCompleteScan() else completionWarning = warning
+                            }
+                        },
                         variant = GccButtonVariant.PRIMARY,
                         enabled = allDone,
                         isLoading = uiState.isSubmitting,
@@ -332,6 +351,26 @@ fun CleanScreen(
                     .wrapContentHeight(),
             )
         }
+    }
+
+    // Zero-cleaning completion confirm (mirrors ScoutScreen's force-complete
+    // dialog): completing lap 2 with nothing cleaned is legitimate but must
+    // be an explicit choice.
+    completionWarning?.let { message ->
+        AlertDialog(
+            onDismissRequest = { completionWarning = null },
+            title = { Text("Complete the scan?") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    completionWarning = null
+                    onCompleteScan()
+                }) { Text("Complete anyway") }
+            },
+            dismissButton = {
+                TextButton(onClick = { completionWarning = null }) { Text("Keep working") }
+            },
+        )
     }
 }
 

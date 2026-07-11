@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { jobs } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { jobs, routeScans } from '@/db/schema'
+import { and, eq, or } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { generateBlockCompletionReport } from '@/lib/block-completion-report'
@@ -35,6 +35,37 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Job must be in progress to complete', success: false }, { status: 409 })
     }
 
+    // The 2-lap invariant, server side: a worker's job only completes once
+    // their scan session for the block's route reached COMPLETE (scout lap +
+    // cleanup lap submitted). Previously this was enforced only by client
+    // navigation, so a bare PATCH could complete a job with no scan at all —
+    // which also left completion-report generation permanently unable to run.
+    // Admin completion stays ungated (manual recovery path). Blocks without
+    // a linked route can't be scanned, so they skip the check.
+    const blockRouteMap = await routeIdsByBlockId([existing.blockId])
+    const blockRouteId = blockRouteMap.get(existing.blockId) ?? null
+    if (auth.role !== 'admin' && blockRouteId != null) {
+      const [completedScan] = await db
+        .select({ id: routeScans.id })
+        .from(routeScans)
+        .where(
+          and(
+            eq(routeScans.routeId, blockRouteId),
+            // Ownership was already enforced above, so on this (non-admin)
+            // path the job's worker IS the caller.
+            eq(routeScans.workerId, auth.workerId),
+            or(eq(routeScans.status, 'completed'), eq(routeScans.phase, 'complete')),
+          ),
+        )
+        .limit(1)
+      if (!completedScan) {
+        return NextResponse.json(
+          { error: 'Complete the block scan (both laps) before completing the job', success: false },
+          { status: 409 },
+        )
+      }
+    }
+
     const now = new Date().toISOString()
     const isTestAssignment = Number(existing.payoutAmount ?? 0) === 0
     const [updated] = await db
@@ -61,9 +92,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({
-      data: toMobileJob(updated, routeMap.get(updated.blockId) ?? null),
+      data: toMobileJob(updated, blockRouteId),
       success: true,
     })
   } catch (error) {

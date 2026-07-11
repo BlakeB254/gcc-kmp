@@ -155,6 +155,17 @@ fun ScoutScreen(
             )
         }
 
+        // ── Lap progress (top-center) — the persistent "where am I in the
+        // 2-lap flow" marker; previously the lap number only appeared in
+        // transient AR-overlay captions. ─────────────────────────────────
+        LapProgressChip(
+            phase = uiState.phase,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 56.dp),
+        )
+
         // ── Bottom panel: coverage bar + loop status + action buttons ─
         Column(
             modifier = Modifier

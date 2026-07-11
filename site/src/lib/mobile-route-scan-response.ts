@@ -25,6 +25,22 @@ export function normalizeScanPhase(phase: unknown): string {
   return 'scouting'
 }
 
+/** The 2-lap flow in phase form: lap 1 = scouting, lap 2 = cleaning. */
+const SCAN_PHASE_ORDER = ['scouting', 'scout_review', 'cleaning', 'submitting', 'complete']
+
+/**
+ * A scan phase may only stay put (idempotent client retries) or advance one
+ * step. The 2-lap invariant used to live entirely in client navigation — any
+ * PATCH could jump `scouting → complete` and skip the cleanup lap; now the
+ * server refuses out-of-order writes. `submitting → complete` normally
+ * happens via the scan-complete endpoint, but the step is legal here too.
+ */
+export function isValidScanPhaseTransition(from: unknown, to: unknown): boolean {
+  const fromIndex = SCAN_PHASE_ORDER.indexOf(normalizeScanPhase(from))
+  const toIndex = SCAN_PHASE_ORDER.indexOf(normalizeScanPhase(to))
+  return toIndex === fromIndex || toIndex === fromIndex + 1
+}
+
 export function normalizeDeviceType(deviceType: unknown): string {
   return String(deviceType ?? '').toLowerCase() === 'ar' ? 'ar' : 'gps'
 }
