@@ -112,6 +112,10 @@ data class EnvScanManifest(
      *  training examples for the litter detector — deliberately NOT sent to
      *  world_observations, where they would paint the map red. */
     val rejectedItems: List<ObservedSpotItem>? = null,
+    /** Tail of the on-device diagnostics/error log for this session. Ships with
+     *  the R2 bundle so scan problems are debuggable from the backend without
+     *  asking the tester for a screen recording. Capped — see DIAGNOSTICS_TAIL_MAX. */
+    val diagnosticsLog: List<String>? = null,
 )
 
 @Serializable
