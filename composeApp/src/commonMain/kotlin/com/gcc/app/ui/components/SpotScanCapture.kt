@@ -71,6 +71,9 @@ fun SpotScanCapture(
     guidanceTarget: Coordinates? = null,
     /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading, passed straight through to the minimap's
+     *  persistent facing cone. Mirrors the [visibilityBeam] pass-through. */
+    headingDegrees: Float? = null,
     environmentScanMode: Boolean = false,
     /** Single guidance-voice caption (spec system 4) — the DETAIL-phase
      *  "move closer — detail-scan the light areas" prompt is one branch of
@@ -232,6 +235,7 @@ fun SpotScanCapture(
             freshCloseCellCenters = freshCloseCellCenters,
             guidanceTarget = guidanceTarget,
             visibilityBeam = visibilityBeam,
+            headingDegrees = headingDegrees,
             environmentScanMode = environmentScanMode,
             statusText = statusText,
             arOverlay = arOverlay,

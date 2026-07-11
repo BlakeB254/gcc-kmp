@@ -1,9 +1,16 @@
 package com.gcc.app.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -16,9 +23,11 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.map.headingConePolygon
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.map.quantizeAndTraceOutlines
+import com.gcc.app.ui.map.unwrapHeading
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
@@ -28,6 +37,7 @@ import kotlin.math.cos
 private val StaleAmber = Color(0xFFF59E0B)
 private val TrashOrange = Color(0xFFF97316)
 private val VeilSlate = Color(0xFF1E293B)
+private val ConeBlue = Color(0xFF38BDF8)
 
 /**
  * Minimap overlay for the environment scan: draws (in map space, projected
@@ -81,8 +91,28 @@ fun ScanMinimapOverlay(
      *  dot out through the current tick's ray-hit envelope. Drawn UNDER the
      *  coverage shading, over the veil. Empty = no beam this tick. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading. The persistent 55° cone rotates with it and is
+     *  drawn even when [visibilityBeam] is empty (global constraint 5). */
+    headingDegrees: Float? = null,
     modifier: Modifier = Modifier,
 ) {
+    // ADDENDUM (Blake, binding): rotate the cone with a shortest-path
+    // unwrap so a heading crossing the 0/360 seam (350 -> 10) animates the
+    // short way (+20), not the long way around through 0. `cumulativeHeading`
+    // is intentionally NOT mod-360 — animateFloatAsState needs a monotonic
+    // target to interpolate the short step; unwrapHeading only depends on
+    // (next - previous) mod 360, so an ever-growing cumulative value is safe.
+    var cumulativeHeading by remember { mutableStateOf(headingDegrees ?: 0f) }
+    LaunchedEffect(headingDegrees) {
+        headingDegrees?.let { raw ->
+            cumulativeHeading += unwrapHeading(cumulativeHeading, raw)
+        }
+    }
+    val animatedHeading by animateFloatAsState(
+        targetValue = cumulativeHeading,
+        animationSpec = tween(durationMillis = 320, easing = LinearEasing),
+        label = "coneHeading",
+    )
     // Stable lattice anchor for the session-tier outline tracer (Pillar 7):
     // locked to whatever centerLat/Lng were at FIRST composition, never the
     // live/continuously-moving GPS fix `centerLat`/`centerLng` become on
@@ -200,7 +230,29 @@ fun ScanMinimapOverlay(
         // Field report (env scan): the minimap read "too darkened". Veil
         // lightened 0.45 -> 0.30 so unscanned ground still reads as fog without
         // drowning the beam, the painted coverage, and the user dot.
-        drawPath(veil, color = VeilSlate.copy(alpha = 0.30f))
+        // Field report (Blake, TestFlight): "too dark to see anything" in
+        // daylight. The basemap is already the light OpenFreeMap Liberty
+        // style — the dimness was entirely this scrim. Unscanned ground must
+        // still read as fog, so the veil stays; it just stops drowning the
+        // streets, the cone, and the coverage paint.
+        drawPath(veil, color = VeilSlate.copy(alpha = 0.18f))
+
+        // Persistent facing cone. Answers "where am I pointing?" — independent
+        // of whether any ray landed this tick (constraint 5). Drawn UNDER the
+        // beam so the brighter, scene-aware beam paints on top of it.
+        if (headingDegrees != null) {
+            val cone = headingConePolygon(centerLat, centerLng, animatedHeading)
+            if (cone.size >= 3) {
+                val conePath = Path()
+                cone.forEachIndexed { index, (lat, lng) ->
+                    val p = toOffset(lat, lng)
+                    if (index == 0) conePath.moveTo(p.x, p.y) else conePath.lineTo(p.x, p.y)
+                }
+                conePath.close()
+                drawPath(conePath, color = ConeBlue.copy(alpha = 0.16f))
+                drawPath(conePath, color = ConeBlue.copy(alpha = 0.55f), style = Stroke(width = 1.5.dp.toPx()))
+            }
+        }
 
         // Scene-aware flashlight beam (WS2): projected through the SAME
         // zoom-biased toOffset as every other layer so it stays glued to the

@@ -974,6 +974,7 @@ private fun CameraPhase(
                 freshCloseCellCenters = freshCloseCells,
                 guidanceTarget = guidanceTarget?.let { Coordinates(lat = it.first, lng = it.second) },
                 visibilityBeam = visibilityBeam,
+                headingDegrees = gpsHeading,
                 environmentScanMode = true,
                 statusText = scanStatus,
                 arOverlay = arOverlay,

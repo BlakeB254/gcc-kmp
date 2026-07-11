@@ -1,5 +1,10 @@
 package com.gcc.app.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +39,17 @@ import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
 import kotlinx.coroutines.launch
+
+// ADDENDUM (Blake, binding): Compose's Animatable only ships a Float
+// AnimationVector1D converter out of the box; lat/lng are Double. A minimal
+// TwoWayConverter lets us animate them directly with animateTo/tween, which
+// is what lets ONE Animatable feed both GccMap and ScanMinimapOverlay every
+// frame (see the smoothed-center block below) instead of one layer getting
+// the raw GPS fix and the other a differently-smoothed value.
+private val DoubleVectorConverter = TwoWayConverter<Double, AnimationVector1D>(
+    convertToVector = { AnimationVector1D(it.toFloat()) },
+    convertFromVector = { it.value.toDouble() },
+)
 
 /**
  * Reusable full-screen camera composable for capturing photos.
@@ -84,6 +100,10 @@ fun CameraCapture(
     guidanceTarget: Coordinates? = null,
     /** WS2 scene-aware flashlight beam ring (lat, lng) for the minimap. */
     visibilityBeam: List<Pair<Double, Double>> = emptyList(),
+    /** Live compass heading, passed straight through to the minimap's
+     *  persistent facing cone (ScanMinimapOverlay draws it, not GccMap —
+     *  see the comment on GccMap's gpsHeading below). */
+    headingDegrees: Float? = null,
     /** Environment-scan presentation: hides the photo-count/thumbnail chrome
      *  (captures are backend raw material, not a user-facing slideshow). */
     environmentScanMode: Boolean = false,
@@ -222,6 +242,30 @@ fun CameraCapture(
             // Mini-map: lower-right corner over the feed (Pokémon-GO layout;
             // the primary action lives bottom-center).
             if (showMiniMap && currentLocation != null) {
+                // ADDENDUM (Blake, binding — supersedes Step 7's
+                // instantCamera-only approach): the Compose overlay used to
+                // recentre on every raw GPS fix while GccMap's own camera
+                // eased past a minimum-delta threshold — the two visibly
+                // drifted apart in field video. ONE smoothed center (~800ms
+                // walking-pace glide) now feeds BOTH layers identically every
+                // frame, so the coverage paint registers tightly to the map
+                // tiles underneath and the two views cannot diverge.
+                val smoothedLat = remember { Animatable(currentLocation.lat, DoubleVectorConverter) }
+                val smoothedLng = remember { Animatable(currentLocation.lng, DoubleVectorConverter) }
+                LaunchedEffect(currentLocation.lat, currentLocation.lng) {
+                    launch {
+                        smoothedLat.animateTo(
+                            currentLocation.lat,
+                            animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+                        )
+                    }
+                    launch {
+                        smoothedLng.animateTo(
+                            currentLocation.lng,
+                            animationSpec = tween(durationMillis = 800, easing = LinearEasing),
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -238,20 +282,27 @@ fun CameraCapture(
                 ) {
                     GccMap(
                         modifier = Modifier.fillMaxSize(),
-                        centerLat = currentLocation.lat,
-                        centerLng = currentLocation.lng,
+                        centerLat = smoothedLat.value,
+                        centerLng = smoothedLng.value,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         // currentLocation=null: ScanMinimapOverlay draws the one
                         // authoritative centered dot — the basemap puck here was
                         // a SECOND dot (field report). Framing uses centerLat/Lng.
                         currentLocation = null,
-                        gpsHeading = null, // WS2: the scene-aware beam supersedes the fixed cone here
+                        gpsHeading = null, // the cone is drawn by ScanMinimapOverlay, on its own projection
+                        // The overlay and the basemap now consume the SAME
+                        // smoothed center every frame (see above); instantCamera
+                        // makes GccMap's own camera track it exactly instead of
+                        // re-easing on top of an already-eased value.
+                        instantCamera = true,
                     )
                     // Scan coverage + trash + ledger freshness, projected over
-                    // the fixed-zoom minimap.
+                    // the fixed-zoom minimap. Same smoothed center as GccMap
+                    // above — the shared value is what keeps this registered
+                    // tightly to the basemap's tiles frame to frame.
                     ScanMinimapOverlay(
-                        centerLat = currentLocation.lat,
-                        centerLng = currentLocation.lng,
+                        centerLat = smoothedLat.value,
+                        centerLng = smoothedLng.value,
                         zoom = MapStyles.ZOOM_ACTIVE_JOB,
                         scanCellCenters = scanCellCenters,
                         cellSizeMeters = CoverageTracker.cellSizeMeters,
@@ -264,6 +315,7 @@ fun CameraCapture(
                         freshCloseCellCenters = freshCloseCellCenters,
                         guidanceTarget = guidanceTarget,
                         visibilityBeam = visibilityBeam,
+                        headingDegrees = headingDegrees,
                     )
                     // WS6: the decorative "\uD83D\uDCCD You are here" bar was removed \u2014
                     // the overlay already draws the user dot; the bar was pure
