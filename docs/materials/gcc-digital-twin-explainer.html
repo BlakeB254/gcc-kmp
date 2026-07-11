@@ -4,158 +4,211 @@
 <meta charset="utf-8">
 <title>GCC — From Street Scans to a Living Digital Twin</title>
 <style>
-  @page { size: letter; margin: 0.55in 0.65in; }
+  @page { size: letter; margin: 0; }
   * { box-sizing: border-box; margin: 0; }
-  body { font: 10.5pt/1.45 Georgia, 'Times New Roman', serif; color: #1a2332; }
-  .page { page-break-after: always; }
+  :root { --g900:#052e16; --g700:#14532d; --g500:#16a34a; --g300:#4ade80; --g100:#dcfce7; --g50:#f0fdf4; --ink:#111827; --mut:#4b5563; }
+  body { font: 10pt/1.45 Georgia, 'Times New Roman', serif; color: var(--ink); }
+  .page { position: relative; width: 8.5in; height: 11in; page-break-after: always; overflow: hidden; background: #fff; }
   .page:last-child { page-break-after: auto; }
-  h1 { font: 700 21pt/1.15 Helvetica, Arial, sans-serif; letter-spacing: -.3pt; margin-bottom: 2pt; }
-  h2 { font: 700 13pt/1.2 Helvetica, Arial, sans-serif; color: #14532d; margin: 14pt 0 5pt; border-bottom: 1.5pt solid #16a34a; padding-bottom: 2pt; }
-  h3 { font: 700 10.5pt/1.2 Helvetica, Arial, sans-serif; margin: 9pt 0 3pt; }
+
+  /* Header band */
+  .band { background: linear-gradient(120deg, var(--g900) 0%, var(--g700) 55%, #1a7a3d 100%); color: #fff; padding: .42in .6in .3in; position: relative; }
+  .band::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 8pt;
+    background: linear-gradient(90deg, var(--g500) 0 30%, var(--g300) 30% 55%, #fbbf24 55% 70%, var(--g500) 70% 100%); }
+  .kicker { font: 700 8.5pt Helvetica, Arial, sans-serif; color: var(--g300); text-transform: uppercase; letter-spacing: 2pt; margin-bottom: 4pt; }
+  .band h1 { font: 800 22pt/1.08 Helvetica, Arial, sans-serif; letter-spacing: -.4pt; }
+  .band .sub { font: italic 10pt/1.35 Georgia, serif; color: #d1fae5; margin-top: 5pt; max-width: 6.6in; }
+  .body { padding: .22in .6in .2in; }
+
+  h2 { font: 800 12.5pt/1.2 Helvetica, Arial, sans-serif; color: var(--g700); margin: 11pt 0 5pt; display: flex; align-items: center; gap: 6pt; }
+  h2::before { content: ''; width: 14pt; height: 5pt; background: linear-gradient(90deg, var(--g500), var(--g300)); border-radius: 3pt; }
   p { margin-bottom: 6pt; }
-  .kicker { font: 700 9pt Helvetica, Arial, sans-serif; color: #16a34a; text-transform: uppercase; letter-spacing: 1.5pt; }
-  .sub { color: #4b5563; font-style: italic; margin-bottom: 10pt; }
-  .flow { display: flex; align-items: stretch; gap: 0; margin: 8pt 0 10pt; font-family: Helvetica, Arial, sans-serif; }
-  .flow .step { flex: 1; background: #f0fdf4; border: 1pt solid #bbf7d0; border-radius: 4pt; padding: 6pt 7pt; font-size: 8pt; line-height: 1.35; }
-  .flow .step b { display: block; font-size: 8.5pt; color: #14532d; margin-bottom: 2pt; }
-  .flow .arrow { align-self: center; padding: 0 3pt; color: #16a34a; font-weight: 700; font-size: 11pt; }
-  .cols { display: flex; gap: 14pt; }
-  .cols > div { flex: 1; }
-  table { width: 100%; border-collapse: collapse; font: 8.5pt Helvetica, Arial, sans-serif; margin: 5pt 0 8pt; }
-  th { text-align: left; background: #14532d; color: #fff; padding: 3.5pt 6pt; font-size: 8pt; }
-  td { padding: 3.5pt 6pt; border-bottom: .5pt solid #d1d5db; vertical-align: top; }
-  .stat-row { display: flex; gap: 10pt; margin: 8pt 0; }
-  .stat { flex: 1; border: 1pt solid #d1d5db; border-left: 3pt solid #16a34a; border-radius: 3pt; padding: 6pt 8pt; }
-  .stat .n { font: 700 15pt Helvetica, Arial, sans-serif; color: #14532d; }
-  .stat .l { font: 8pt Helvetica, Arial, sans-serif; color: #4b5563; }
-  .foot { margin-top: 10pt; padding-top: 5pt; border-top: .5pt solid #d1d5db; font: 7.5pt Helvetica, Arial, sans-serif; color: #6b7280; display: flex; justify-content: space-between; }
-  ul { margin: 0 0 6pt 14pt; }
-  li { margin-bottom: 3pt; }
-  .tag { font: 700 7.5pt Helvetica, Arial, sans-serif; background: #dcfce7; color: #14532d; border-radius: 3pt; padding: 1pt 5pt; }
+
+  /* Flow diagram */
+  .flow { display: flex; gap: 0; margin: 9pt 0; font-family: Helvetica, Arial, sans-serif; }
+  .flow .step { flex: 1; background: var(--g50); border: 1pt solid #bbf7d0; border-top: 3pt solid var(--g500); border-radius: 5pt; padding: 7pt 8pt 6pt; font-size: 7.8pt; line-height: 1.35; position: relative; }
+  .flow .step .num { position: absolute; top: -9pt; left: 8pt; width: 15pt; height: 15pt; border-radius: 50%; background: var(--g700); color: #fff; font: 800 9pt/15pt Helvetica; text-align: center; }
+  .flow .step .ico { font-size: 13pt; display: block; margin: 3pt 0 2pt; }
+  .flow .step b { display: block; font-size: 8.6pt; color: var(--g900); margin-bottom: 2pt; }
+  .flow .arrow { align-self: center; padding: 0 2pt; color: var(--g500); font-weight: 800; font-size: 13pt; }
+
+  /* Stat tiles */
+  .stat-row { display: flex; gap: 9pt; margin: 9pt 0; }
+  .stat { flex: 1; border-radius: 6pt; padding: 8pt 9pt 7pt; color: #fff; background: linear-gradient(150deg, var(--g700), var(--g900)); }
+  .stat:nth-child(2) { background: linear-gradient(150deg, #166534, #052e16); }
+  .stat:nth-child(3) { background: linear-gradient(150deg, #0f766e, #042f2e); }
+  .stat:nth-child(4) { background: linear-gradient(150deg, #a16207, #451a03); }
+  .stat .n { font: 800 16pt/1 Helvetica, Arial, sans-serif; }
+  .stat .l { font: 7.6pt/1.3 Helvetica, Arial, sans-serif; color: rgba(255,255,255,.85); margin-top: 3pt; }
+
+  table { width: 100%; border-collapse: collapse; font: 8.3pt/1.35 Helvetica, Arial, sans-serif; margin: 4pt 0 8pt; }
+  th { text-align: left; background: var(--g900); color: #fff; padding: 4pt 6pt; font-size: 7.8pt; text-transform: uppercase; letter-spacing: .5pt; }
+  td { padding: 4pt 6pt; border-bottom: .5pt solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: var(--g50); }
+  td b { color: var(--g900); }
+  .tag { font: 700 7.2pt Helvetica; background: var(--g100); color: var(--g900); border-radius: 3pt; padding: 1pt 4pt; white-space: nowrap; }
+
+  ul { margin: 0 0 6pt 13pt; }
+  li { margin-bottom: 3.5pt; }
+  li::marker { color: var(--g500); }
+
+  .foot { position: absolute; bottom: 0; left: 0; right: 0; background: var(--g900); color: #a7f3d0; padding: 6pt .6in; font: 7.5pt Helvetica, Arial, sans-serif; display: flex; justify-content: space-between; }
+
+  .cell-grid { display: inline-grid; grid-template-columns: repeat(8, 10pt); gap: 1.5pt; vertical-align: middle; }
+  .cell-grid i { width: 10pt; height: 10pt; border-radius: 1.5pt; background: #e5e7eb; }
+  .cg-c { background: var(--g700) !important; } .cg-g { background: var(--g300) !important; } .cg-r { background: #dc2626 !important; } .cg-k { background: #16a34a !important; }
+  .split { display: flex; gap: 12pt; align-items: flex-start; }
+  .split > div { flex: 1; }
+  .callout { background: var(--g50); border-left: 4pt solid var(--g500); border-radius: 0 5pt 5pt 0; padding: 7pt 9pt; font: 9pt/1.4 Georgia, serif; margin: 7pt 0; }
+  .callout b { color: var(--g900); }
 </style>
 </head>
 <body>
 
-<!-- ══════════════ PAGE 1 — MARKETING ══════════════ -->
+<!-- ══════ PAGE 1 — MARKETING ══════ -->
 <div class="page">
-  <div class="kicker">Global Community Cleaners × Codex Metatron</div>
-  <h1>Clean Blocks. Paid Neighbors. Proof You Can Walk Through.</h1>
-  <p class="sub">GCC pays community members to clean their own neighborhoods — and every job produces something no other program can offer: photoreal, walkable 3D evidence of the work.</p>
-
-  <h2>The problem with "trust us"</h2>
-  <p>Cleanup programs report numbers: bags collected, blocks serviced. Funders and residents
-  are asked to take it on faith. Cities log complaints as text tickets that close without
-  anyone seeing the result. <b>Nobody can point at the ground and show the change.</b></p>
-
-  <h2>What GCC delivers instead</h2>
-  <div class="flow">
-    <div class="step"><b>Local workers, paid fast</b>Verified neighbors claim block routes in the GCC app and get paid per completed, verified job</div>
-    <div class="arrow">→</div>
-    <div class="step"><b>Every job is scanned</b>The phone captures the street in 3D while they work — no extra effort, no special hardware</div>
-    <div class="arrow">→</div>
-    <div class="step"><b>Proof, not promises</b>Before/after imagery, condition maps, and walkable 3D reconstructions of the actual block</div>
-    <div class="arrow">→</div>
-    <div class="step"><b>A living map</b>Sponsors and residents watch coverage grow and problem spots resolve, block by block</div>
+  <div class="band">
+    <div class="kicker">Global Community Cleaners × Codex Metatron</div>
+    <h1>Clean Blocks. Paid Neighbors.<br>Proof You Can Walk Through.</h1>
+    <p class="sub">GCC pays community members to clean their own neighborhoods — and every job produces something no other program can offer: photoreal, walkable 3D evidence of the work.</p>
   </div>
+  <div class="body">
+    <h2>The problem with “trust us”</h2>
+    <p>Cleanup programs report numbers: bags collected, blocks serviced. Funders and residents are
+    asked to take it on faith. Cities log complaints as text tickets that close without anyone
+    seeing the result. <b>Nobody can point at the ground and show the change.</b></p>
 
-  <h2>Why partners choose this</h2>
-  <ul>
-    <li><b>Sponsors &amp; funders</b> — your dollars map to specific ground, with visual before/after evidence fit for reports and press.</li>
-    <li><b>City &amp; aldermanic offices</b> — open 311 complaints in your ward gain photographic and 3D follow-up, plus a public capture-rate metric per community area.</li>
-    <li><b>Community organizations</b> — residents earn income improving their own blocks, and the neighborhood keeps a permanent, improving 3D record of itself.</li>
-  </ul>
+    <h2>What GCC delivers instead</h2>
+    <div class="flow" style="margin-top:12pt">
+      <div class="step"><span class="num">1</span><span class="ico">💵</span><b>Local workers, paid fast</b>Verified neighbors claim block routes in the GCC app and get paid per completed, verified job</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">2</span><span class="ico">📱</span><b>Every job is scanned</b>The phone captures the street in 3D while they work — no extra effort, no special hardware</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">3</span><span class="ico">🏙️</span><b>Proof, not promises</b>Before/after imagery, condition maps, and walkable 3D reconstructions of the actual block</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">4</span><span class="ico">🗺️</span><b>A living map</b>Sponsors and residents watch coverage grow and problem spots resolve, block by block</div>
+    </div>
 
-  <div class="stat-row">
-    <div class="stat"><div class="n">$ same-day</div><div class="l">worker payouts on verified jobs</div></div>
-    <div class="stat"><div class="n">3D</div><div class="l">walkable reconstructions of every scanned block</div></div>
-    <div class="stat"><div class="n">5,400+</div><div class="l">open city 311 reports live on our map today</div></div>
-    <div class="stat"><div class="n">77</div><div class="l">community areas on one shared civic map</div></div>
+    <h2>Why partners choose this</h2>
+    <ul>
+      <li><b>Sponsors &amp; funders</b> — dollars map to specific ground, with visual before/after evidence fit for reports and press.</li>
+      <li><b>City &amp; aldermanic offices</b> — open 311 complaints gain photographic and 3D follow-up, plus a public capture-rate metric per community area.</li>
+      <li><b>Community organizations</b> — residents earn income improving their own blocks, and the neighborhood keeps a permanent, improving 3D record of itself.</li>
+    </ul>
+
+    <div class="stat-row">
+      <div class="stat"><div class="n">Same-day</div><div class="l">worker payouts on verified cleanup jobs</div></div>
+      <div class="stat"><div class="n">3D</div><div class="l">walkable reconstructions of every scanned block</div></div>
+      <div class="stat"><div class="n">5,400+</div><div class="l">open city 311 reports live on our map today</div></div>
+      <div class="stat"><div class="n">77</div><div class="l">community areas on one shared civic map</div></div>
+    </div>
+
+    <div class="callout"><b>The pilot is live.</b> North Lawndale today: paid block routes, environment
+    scans, a public coverage &amp; condition map, and the first photoreal street reconstructions.
+    The platform scales one neighborhood — and one partner — at a time.</div>
   </div>
-
-  <h2>The pilot is live</h2>
-  <p>North Lawndale today: paid block routes, environment scans, a public map of coverage and
-  conditions, and the first photoreal street reconstructions. The platform scales one
-  neighborhood — and one partner — at a time. <b>globalcommunitycleaners.org</b></p>
-
-  <div class="foot"><span>Global Community Cleaners — Digital Twin Program</span><span>Page 1 of 3 · July 2026</span></div>
+  <div class="foot"><span>GLOBAL COMMUNITY CLEANERS — DIGITAL TWIN PROGRAM</span><span>globalcommunitycleaners.org · Page 1 of 3 · July 2026</span></div>
 </div>
 
-<!-- ══════════════ PAGE 2 — TECHNICAL ══════════════ -->
+<!-- ══════ PAGE 2 — TECHNICAL ══════ -->
 <div class="page">
-  <div class="kicker">Technical Overview</div>
-  <h1>Record Storage, Processing Cycles &amp; the Location-Health Grid</h1>
+  <div class="band">
+    <div class="kicker">Technical Overview</div>
+    <h1>Record Storage, Processing Cycles<br>&amp; the Location-Health Grid</h1>
+  </div>
+  <div class="body">
+    <h2>The processing cycle</h2>
+    <div class="flow" style="margin-top:12pt">
+      <div class="step"><span class="num">1</span><b>Raw ingest</b>Presigned uploads to zero-egress object storage. <span class="tag">raw/…</span> is append-only — never modified, never deleted</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">2</span><b>Index + queue</b>30-min sweeps mirror every session to the DB and enqueue durable, lease-locked reconstruction jobs</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">3</span><b>GPU reconstruction</b>On-prem NVIDIA DGX fuses posed RGBD, registers sessions via GPS-seeded ICP, produces splats + meshes</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">4</span><b>Versioned publish</b><span class="tag">reconstructed/{cell}/{v}/</span> point cloud · splat · web splat, with full session provenance in Postgres</div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">5</span><b>Serving</b>Signed-URL delivery; the 3D viewer anchors assets at true GPS (ECEF) over photoreal base tiles</div>
+    </div>
 
-  <h2>Record storage &amp; the processing cycle</h2>
-  <table>
-    <tr><th>Stage</th><th>System</th><th>What happens</th></tr>
-    <tr><td><b>Raw ingest</b></td><td>Cloudflare R2 (zero-egress object store)</td><td>App uploads via short-lived presigned URLs: <span class="tag">raw/{cell}/{session}/chunk-N.mov|.bin|.jsonl</span> + manifest. Raw is append-only; lifecycle rules only transition to cold storage, never delete.</td></tr>
-    <tr><td><b>Index sweep</b></td><td>Always-on control-plane service (30&nbsp;min cycle)</td><td>Walks R2, mirrors every session &amp; artifact into the database (idempotent), and enqueues a reconstruction job for each completed, unprocessed session.</td></tr>
-    <tr><td><b>Durable queue</b></td><td>Postgres job table, lease-based</td><td>Jobs are leased with row-locking (<span class="tag">FOR UPDATE SKIP LOCKED</span>), survive restarts, retry up to 3× with recorded errors. Job = session; work unit = the whole cell.</td></tr>
-    <tr><td><b>GPU reconstruction</b></td><td>NVIDIA DGX workstation (on-prem)</td><td>Decodes video + LZFSE depth, fuses posed RGBD into a point cloud, registers multiple sessions via GPS-seeded ICP, produces per-session Gaussian splats (feed-forward world model) aligned into one cell frame, plus Poisson meshes.</td></tr>
-    <tr><td><b>Versioned publish</b></td><td>R2 + Postgres provenance</td><td><span class="tag">reconstructed/{cell}/{version}/</span> — point cloud (.ply), full splat (.ply), web splat (.spz ≈ 5× smaller). Versions are append-only; every asset row records exactly which sessions produced it.</td></tr>
-    <tr><td><b>Serving</b></td><td>Digital-twin services</td><td>Web/app clients get compressed assets via just-in-time signed URLs; the 3D viewer anchors them at true GPS (ECEF) over photorealistic base tiles.</td></tr>
-  </table>
+    <table>
+      <tr><th style="width:1.15in">Element</th><th>Design choice</th></tr>
+      <tr><td><b>Capture format</b></td><td>Rotating chunks: HEVC video + LiDAR depth keyframes (LZFSE) + per-frame pose/intrinsics sidecar — 30 posed frames/sec, thermal-aware.</td></tr>
+      <tr><td><b>Durable queue</b></td><td>Postgres row-locking (<span class="tag">FOR UPDATE SKIP LOCKED</span>), 30-min leases, 3 recorded attempts; job = session, work unit = the whole cell.</td></tr>
+      <tr><td><b>Web delivery</b></td><td>Compressed splats (<span class="tag">.spz</span> ≈ 5× smaller) for apps; full-fidelity archives retained for reprocessing.</td></tr>
+    </table>
 
-  <h2>The geographic scan cache — a health record per location</h2>
-  <p>Every point on the ground maps deterministically to a <b>~3–10 m grid cell ID</b> — one
-  shared formula across the phone app, the servers, and the storage paths, so a cell is the
-  same cell everywhere. Each cell accumulates a compact health record:</p>
-  <ul>
-    <li><b>Coverage tier</b> — <i>seen</i> (sighted at distance), <i>grazed</i> (scanned nearby), or <i>close</i>
-      (verified up-close with quality-gated tracking). Tiers only upgrade; an indoor
-      false-positive purge can retract them. The append-only event log is the source of truth —
-      the summary is always recomputable.</li>
-    <li><b>Freshness</b> — first/last scanned timestamps drive "needs rescan" prioritization and the fog-of-war map.</li>
-    <li><b>Observation lifecycle</b> — a finding (e.g. dumped debris) <i>displays until its cell is rescanned</i>,
-      then automatically resolves to <b>still-present</b> (confirmed by the new scan) or
-      <b>cleaned</b> (superseded) — no manual bookkeeping.</li>
-    <li><b>3D status</b> — which reconstruction version covers the cell, and whether it has met the
-      multi-session activation gate (independent scans agreeing) that marks it canonical.</li>
-  </ul>
+    <h2>The geographic scan cache — a health record per location</h2>
+    <div class="split">
+      <div>
+        <p>Every point on the ground maps deterministically to a <b>~3–10 m grid cell ID</b> — one
+        shared formula across the phone, servers, and storage paths. Each cell accumulates:</p>
+        <ul>
+          <li><b>Coverage tier</b> — <i>seen</i> → <i>grazed</i> → <i>close</i> (quality-gated). Tiers only upgrade; the append-only event log is the source of truth.</li>
+          <li><b>Freshness</b> — first/last scan timestamps drive “needs rescan” priority and the fog-of-war map.</li>
+          <li><b>Observation lifecycle</b> — findings display <i>until the cell is rescanned</i>, then auto-resolve to <b>still-present</b> or <b>cleaned</b>.</li>
+          <li><b>3D status</b> — which reconstruction version covers the cell; canonical only after multi-session agreement.</li>
+        </ul>
+      </div>
+      <div style="flex:0 0 1.9in; text-align:center; font: 7.5pt Helvetica;">
+        <div class="cell-grid">
+          <i></i><i class="cg-g"></i><i class="cg-g"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-g"></i><i></i><i></i>
+          <i class="cg-g"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-r"></i><i class="cg-g"></i><i class="cg-g"></i><i></i>
+          <i class="cg-g"></i><i class="cg-c"></i><i class="cg-k"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-g"></i><i></i>
+          <i></i><i class="cg-g"></i><i class="cg-c"></i><i class="cg-c"></i><i class="cg-g"></i><i class="cg-g"></i><i></i><i></i>
+          <i></i><i></i><i class="cg-g"></i><i class="cg-g"></i><i class="cg-g"></i><i></i><i></i><i></i>
+        </div>
+        <div style="margin-top:4pt; color:#4b5563">the cell health grid:<br>
+        <span style="color:#14532d">■ close</span> · <span style="color:#4ade80">■ grazed</span> · <span style="color:#dc2626">■ finding</span> · <span style="color:#16a34a">■ cleaned</span></div>
+      </div>
+    </div>
 
-  <h2>Trust &amp; integrity choices</h2>
-  <ul>
-    <li><b>Provenance-first:</b> every derived asset links back to its source sessions; nothing is untraceable.</li>
-    <li><b>Append-only everything:</b> raw scans, coverage events, and reconstruction versions never overwrite history.</li>
-    <li><b>Evidence validation:</b> visual evidence must be geographically consistent (within 150 m) with the report it claims to document.</li>
-    <li><b>Cross-session agreement:</b> a location's 3D model is only promoted to canonical once ≥3 independent sessions register consistently.</li>
-  </ul>
-
-  <div class="foot"><span>Global Community Cleaners — Digital Twin Program</span><span>Page 2 of 3 · July 2026</span></div>
+    <h2>Trust &amp; integrity choices</h2>
+    <ul>
+      <li><b>Provenance-first</b> — every derived asset links to its exact source sessions.</li>
+      <li><b>Append-only everything</b> — raw scans, coverage events, and versions never overwrite history.</li>
+      <li><b>Evidence validation</b> — visual evidence must be geographically consistent (≤150 m) with the report it documents.</li>
+      <li><b>Cross-session agreement</b> — a cell's model is canonical only once ≥3 independent scans register consistently.</li>
+    </ul>
+  </div>
+  <div class="foot"><span>GLOBAL COMMUNITY CLEANERS — DIGITAL TWIN PROGRAM</span><span>Page 2 of 3 · July 2026</span></div>
 </div>
 
-<!-- ══════════════ PAGE 3 — THE DATA ══════════════ -->
+<!-- ══════ PAGE 3 — THE DATA ══════ -->
 <div class="page">
-  <div class="kicker">The Data Asset</div>
-  <h1>What This Scan Technology Collects — and Makes Available</h1>
-  <p class="sub">Every paid cleanup doubles as a street-level survey. The result is a data asset that appreciates with every walk, available to partners in open formats with full provenance.</p>
+  <div class="band">
+    <div class="kicker">The Data Asset</div>
+    <h1>What This Scan Technology Collects —<br>and Makes Available</h1>
+    <p class="sub">Every paid cleanup doubles as a street-level survey: a data asset that appreciates with every walk, delivered in open formats with full provenance.</p>
+  </div>
+  <div class="body">
+    <h2>The datasets nobody else has</h2>
+    <table>
+      <tr><th style="width:1.25in">Data product</th><th>What it contains</th><th style="width:1.7in">Who needs it</th></tr>
+      <tr><td><b>📍 Location health record</b></td><td>Per ~3 m cell: coverage quality, freshness, findings with automatic still-present / cleaned resolution on rescan</td><td>City departments, CBOs, funders</td></tr>
+      <tr><td><b>🏙️ Photoreal 3D streetscapes</b></td><td>Gaussian-splat reconstructions + measurable LiDAR point clouds and meshes, versioned over time</td><td>Urban planning, digital twins, AR, media</td></tr>
+      <tr><td><b>✅ Before/after evidence</b></td><td>Timestamped, geo-anchored imagery and 3D tied to specific cleanup jobs and sponsors</td><td>ESG reporting, grants, press</td></tr>
+      <tr><td><b>🏛️ 311 visual-evidence ledger</b></td><td>City report numbers linked to our photos/scans; per-neighborhood capture-rate — a civic metric no one publishes</td><td>Aldermanic offices, journalists, researchers</td></tr>
+      <tr><td><b>🤖 Ground-truth training data</b></td><td>Posed RGBD video, LiDAR depth, labeled street-level litter — rare, real-world, consented capture</td><td>Computer-vision &amp; robotics teams</td></tr>
+      <tr><td><b>♿ Sidewalk &amp; surface condition</b></td><td>Close-range geometry of walking surfaces, cracks, and obstructions</td><td>Accessibility, risk &amp; real-estate analytics</td></tr>
+    </table>
 
-  <h2>The datasets nobody else has</h2>
-  <table>
-    <tr><th>Data product</th><th>What it contains</th><th>Who needs it</th></tr>
-    <tr><td><b>Location health record</b></td><td>Per ~3 m ground cell: coverage quality, scan freshness, litter/condition observations with automatic still-present / cleaned resolution on every rescan</td><td>City departments, CBOs, funders tracking real conditions over time</td></tr>
-    <tr><td><b>Photoreal 3D streetscapes</b></td><td>Gaussian-splat reconstructions + measurable LiDAR point clouds and meshes of actual blocks, versioned over time</td><td>Urban planning, digital-twin platforms, AR/insurance assessment, media</td></tr>
-    <tr><td><b>Verified before/after evidence</b></td><td>Timestamped, geo-anchored imagery and 3D tied to specific cleanup jobs and sponsors</td><td>ESG reporting, grant compliance, press &amp; storytelling</td></tr>
-    <tr><td><b>311 visual-evidence ledger</b></td><td>City report numbers linked to our photos/scans; per-neighborhood capture-rate — a civic accountability metric no one publishes</td><td>Aldermanic offices, journalists, civic researchers</td></tr>
-    <tr><td><b>Ground-truth training data</b></td><td>Posed RGBD video, LiDAR depth, and labeled street-level litter detections — rare, real-world, consented capture</td><td>Computer-vision &amp; robotics teams training outdoor models</td></tr>
-    <tr><td><b>Sidewalk &amp; surface condition</b></td><td>Close-range geometry of walking surfaces, cracks, and obstructions from LiDAR</td><td>Accessibility/mobility planning, risk &amp; real-estate analytics</td></tr>
-  </table>
+    <div class="callout"><b>Why it compounds:</b> raw captures are archived untouched, so the same walk can be
+    re-processed forever as reconstruction methods improve — and every additional scan sharpens a
+    block's canonical model through multi-session agreement. Text datasets go stale; <b>this one
+    gets more valuable every time a worker gets paid.</b></div>
 
-  <h2>Why it compounds</h2>
-  <p>Raw captures are archived untouched, so the same walk can be re-processed forever as
-  reconstruction methods improve — and every additional scan of a block sharpens its canonical
-  model through multi-session agreement. Text-based datasets go stale; <b>this one gets more
-  valuable every time a worker gets paid.</b></p>
-
-  <h2>Stewardship, built in</h2>
-  <ul>
-    <li><b>Provenance on everything</b> — every derived product traces to its source scans, sessions, and dates.</li>
-    <li><b>Open formats</b> — standard geospatial and 3D formats (GeoJSON, PLY/SPZ, open grid IDs), no lock-in for partners.</li>
-    <li><b>Community-first</b> — collected by paid neighborhood residents on public streets; the neighborhood's record belongs to its story. Face/plate redaction precedes any external release.</li>
-    <li><b>City-aligned</b> — organized by Chicago's own community areas and linked to its open-data premises, so our data plugs into every existing civic dashboard.</li>
-  </ul>
-
-  <div class="foot"><span>Global Community Cleaners — Digital Twin Program · globalcommunitycleaners.org</span><span>Page 3 of 3 · July 2026</span></div>
+    <h2>Stewardship, built in</h2>
+    <div class="flow" style="margin-top:12pt">
+      <div class="step"><span class="num">✓</span><b>Provenance on everything</b>Every product traces to its source scans, sessions, and dates</div>
+      <div class="arrow">·</div>
+      <div class="step"><span class="num">✓</span><b>Open formats</b>GeoJSON, PLY/SPZ, open grid IDs — no partner lock-in</div>
+      <div class="arrow">·</div>
+      <div class="step"><span class="num">✓</span><b>Community-first</b>Collected by paid residents on public streets; faces/plates redacted before any release</div>
+      <div class="arrow">·</div>
+      <div class="step"><span class="num">✓</span><b>City-aligned</b>Organized by Chicago's own community areas and open-data premises</div>
+    </div>
+  </div>
+  <div class="foot"><span>GLOBAL COMMUNITY CLEANERS — DIGITAL TWIN PROGRAM</span><span>globalcommunitycleaners.org · Page 3 of 3 · July 2026</span></div>
 </div>
 
 </body>
