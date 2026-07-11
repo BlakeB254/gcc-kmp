@@ -28,10 +28,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var recorder: ArSessionRecorder?
 
     /// Grid squares stay this size no matter how large a plane grows.
-    /// 1.5m = a clean divisor of CoverageTracker's 3m cells, and the grid is
+    /// 1.0m = a clean divisor of CoverageTracker's 3m cells (the minor
+    /// interval from global constraint 7's 1m/3m grid), and the grid is
     /// world-axis aligned (compass-true under gravityAndHeading), so the
     /// on-camera lattice visually registers with the north-up minimap grid.
-    private static let gridTileMeters: Float = 1.5
+    /// MUST MATCH `GRID_TILE_METERS` in ArEnvScan.kt — the RealityKit and
+    /// SceneKit paths phase the same lattice; the two are not read from a
+    /// shared constant, so keep them in sync by hand.
+    private static let gridTileMeters: Float = 1.0
 
     /// Only one ARSession may hold the camera at a time. The Kotlin factory
     /// (`ArNativeRegistry.surfaceFactory`) makes a fresh `RealityKitArSurface`
@@ -79,10 +83,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // here too as the defensive receiving-end limit.
     private static let maxFogCells = 400
     private let cameraAnchor = AnchorEntity(.camera)
-    private var arrowEntity: ModelEntity?
     private var veilEntity: ModelEntity?
+    /// Recorded but no longer aimed at by anything in this file — the camera-
+    /// attached guidance arrow was deleted (global constraint 8). Kept so the
+    /// surface still knows the frontier target if a future feature needs it;
+    /// the minimap cone and text prompt are the guidance UI now.
     private var guidanceTarget: SIMD3<Float>?
-    private var updateSubscription: Cancellable?
     private var coachingOverlay: ARCoachingOverlayView?
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
@@ -113,10 +119,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         arView.session.run(config)
 
         arView.scene.addAnchor(cameraAnchor)
-        // RealityKit has no LookAt constraint — a per-frame scene update
-        // re-aims the guidance arrow at the current frontier target.
-        updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
-            self?.aimArrow()
+        // Global constraint 7: the grid must not draw over plants, fences, or
+        // cars. On LiDAR devices ARKit's reconstructed mesh occludes it.
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            arView.environment.sceneUnderstanding.options.insert(.occlusion)
         }
 
         let coaching = ARCoachingOverlayView()
@@ -143,23 +149,19 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    /// Full teardown, not just pause: cancels the per-frame scene subscription
-    /// and removes EVERY created entity (planes, vector/fog cells, sector
-    /// posts, walls, arrow, veil) from the RealityKit scene graph. `pause()`
-    /// alone left `updateSubscription` live and every entity — potentially
-    /// 750+ on a large scan — still anchored in the scene holding GPU
-    /// resources, which is the scan-end crash-on-Complete-Scan root cause
-    /// this fixes. Called from Kotlin's `ArEnvScanOverlay.stop()` (and the
-    /// route/spot overlays) instead of `pause()` at composition teardown.
+    /// Full teardown, not just pause: removes EVERY created entity (planes,
+    /// vector/fog cells, sector posts, walls, veil) from the RealityKit scene
+    /// graph. `pause()` alone left every entity — potentially 750+ on a large
+    /// scan — still anchored in the scene holding GPU resources, which is the
+    /// scan-end crash-on-Complete-Scan root cause this fixes. Called from
+    /// Kotlin's `ArEnvScanOverlay.stop()` (and the route/spot overlays)
+    /// instead of `pause()` at composition teardown.
     func teardown() {
         // Kotlin's stop order calls stopCaptureAndDrain() BEFORE teardown;
         // if capture is somehow still live here, finalize + drop silently —
         // teardown must stay safe regardless of ordering.
         recorder?.finishSilently()
         recorder = nil
-
-        updateSubscription?.cancel()
-        updateSubscription = nil
 
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
@@ -177,8 +179,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         for wall in wallEntities { wall.removeFromParent() }
         wallEntities.removeAll()
 
-        arrowEntity?.removeFromParent()
-        arrowEntity = nil
         veilEntity?.removeFromParent()
         veilEntity = nil
         cameraAnchor.removeFromParent()
@@ -419,14 +419,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         DispatchQueue.main.async { [self] in
             let groundY = (floorWorldY ?? cameraFallbackGroundY())
             guidanceTarget = SIMD3(Float(x), groundY, Float(z))
-            arrow().isEnabled = true
         }
     }
 
     func clearGuidanceTarget() {
         DispatchQueue.main.async { [self] in
             guidanceTarget = nil
-            arrowEntity?.isEnabled = false
         }
     }
 
@@ -516,22 +514,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    // MARK: - Guidance arrow internals
-
-    /// Elongated emissive box pointer (cone/pyramid meshes are iOS 18+),
-    /// hanging below the camera; long axis is Z so look-style aiming works.
-    private func arrow() -> ModelEntity {
-        if let arrowEntity { return arrowEntity }
-        let entity = ModelEntity(
-            mesh: .generateBox(size: SIMD3(0.05, 0.05, 0.28)),
-            materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.95))]
-        )
-        entity.position = SIMD3(0, -0.4, -1.0)
-        cameraAnchor.addChild(entity)
-        arrowEntity = entity
-        return entity
-    }
-
     private func veil() -> ModelEntity {
         if let veilEntity { return veilEntity }
         let entity = ModelEntity(
@@ -543,18 +525,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         cameraAnchor.addChild(entity)
         veilEntity = entity
         return entity
-    }
-
-    private func aimArrow() {
-        guard let target = guidanceTarget, let arrow = arrowEntity, arrow.isEnabled else { return }
-        let from = arrow.position(relativeTo: nil)
-        let direction = target - from
-        let flat = SIMD3(direction.x, direction.y, direction.z)
-        guard simd_length(flat) > 0.01 else { return }
-        arrow.setOrientation(
-            simd_quatf(from: SIMD3(0, 0, -1), to: simd_normalize(flat)),
-            relativeTo: nil
-        )
     }
 
     func emitLockEffect(x: Double, y: Double, z: Double) {
@@ -767,7 +737,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         size: SIMD2<Float>,
         centerWorld: SIMD3<Float>
     ) -> PhysicallyBasedMaterial {
-        let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
+        let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.28)
         var material = gridMaterial(floorGridTexture, tint: tint, uvScale: 1)
         // Scale keeps tiles a constant gridTileMeters; the offset phases the
         // repeat so grid LINES land on multiples of the tile from the lattice
@@ -793,18 +763,18 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     // PhysicallyBasedMaterial rather than UnlitMaterial: only PBM has
     // textureCoordinateTransform before iOS 18, and tiling is what keeps
-    // grid squares a constant gridTileMeters as planes grow. Emissive channel
-    // keeps the glow regardless of scene lighting.
+    // grid squares a constant gridTileMeters as planes grow.
     private func gridMaterial(_ texture: TextureResource?, tint: UIColor, uvScale: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         if let texture {
             material.baseColor = .init(tint: tint, texture: .init(texture))
-            material.emissiveColor = .init(color: tint, texture: .init(texture))
         } else {
             material.baseColor = .init(tint: tint)
-            material.emissiveColor = .init(color: tint)
         }
-        material.emissiveIntensity = 2.0
+        // Global constraint 7: the grid is a surface marking, not a light source.
+        // It used to glow (emissiveIntensity 2.0) straight through vegetation,
+        // fences and parked cars.
+        material.emissiveIntensity = 0
         material.roughness = 1.0
         material.metallic = 0.0
         material.blending = .transparent(opacity: .init(floatLiteral: 1.0))

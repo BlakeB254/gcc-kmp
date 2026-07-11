@@ -42,12 +42,10 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
 import platform.SceneKit.SCNAction
-import platform.SceneKit.SCNLookAtConstraint
 import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNMatrix4MakeScale
 import platform.SceneKit.SCNNode
 import platform.SceneKit.SCNPlane
-import platform.SceneKit.SCNPyramid
 import platform.SceneKit.SCNTorus
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIBezierPath
@@ -115,11 +113,13 @@ actual class ArEnvScanOverlay actual constructor() {
          *  image's smaller dimension. Wide enough to keep context (a bottle needs
          *  the ground around it), tight enough to exclude the rest of the scene. */
         private const val TAP_CROP_FRACTION = 0.35
-        /** Grid squares stay this size no matter how large the plane grows.
-         *  1.5m = a clean divisor of CoverageTracker's 3m cells; with the
-         *  world-axis alignment below, the on-camera lattice reads as the
-         *  same grid the north-up minimap draws. */
-        private const val GRID_TILE_METERS = 1.5f
+        /** One texture tile == one metre (constraint 7's minor interval). The
+         *  texture itself draws a heavier line every 3rd tile for the major
+         *  interval, and 1.0 stays an exact divisor of CoverageTracker's 3m cells.
+         *  MUST MATCH `gridTileMeters` in GccArNative.swift — the RealityKit and
+         *  SceneKit paths phase the same lattice; the two are not read from a
+         *  shared constant, so keep them in sync by hand. */
+        private const val GRID_TILE_METERS = 1.0f
         /** Fallback ground offset when no floor plane is detected yet. */
         private const val GROUND_OFFSET_METERS = 1.4f
         /** Landmark elements: registration range, per-type dedupe, session cap. */
@@ -203,10 +203,10 @@ actual class ArEnvScanOverlay actual constructor() {
     /** World Y of the lowest floor-classified plane (vector cells sit on it). */
     private var floorY: Float? = null
 
-    // Guidance arrow toward the next area worth scanning.
+    // Guidance target: the next area worth scanning. Rendered by the minimap
+    // cone and text prompt (global constraint 8) — no camera-attached node
+    // anymore, just the lat/lng handed to the native surface.
     private var guidanceLatLng: Pair<Double, Double>? = null
-    private var arrowNode: SCNNode? = null
-    private var frontierTarget: SCNNode? = null
 
     // Trash lock-on state.
     private var nearStreak = 0
@@ -468,10 +468,6 @@ actual class ArEnvScanOverlay actual constructor() {
         floorMaxX = null
         floorMinZ = null
         floorMaxZ = null
-        arrowNode?.removeFromParentNode()
-        arrowNode = null
-        frontierTarget?.removeFromParentNode()
-        frontierTarget = null
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
         }
@@ -498,7 +494,7 @@ actual class ArEnvScanOverlay actual constructor() {
             )
         }
         // Re-pairing shifts the whole geo-derived frame — re-place everything
-        // against the new reference so the grid/arrow don't lag a fix behind.
+        // against the new reference so the grid/guidance don't lag a fix behind.
         dispatch_async(dispatch_get_main_queue()) {
             pushGridPhase()
             renderGuidance()
@@ -1362,12 +1358,14 @@ actual class ArEnvScanOverlay actual constructor() {
         material.diffuse.contents = texture
         material.diffuse.wrapS = platform.SceneKit.SCNWrapModeRepeat
         material.diffuse.wrapT = platform.SceneKit.SCNWrapModeRepeat
-        material.emission.contents = texture
-        material.emission.wrapS = platform.SceneKit.SCNWrapModeRepeat
-        material.emission.wrapT = platform.SceneKit.SCNWrapModeRepeat
+        // Global constraint 7: no emission channel — the grid is not a light.
         material.doubleSided = true
+        // Obey the depth buffer so real geometry in front of the ground hides
+        // the grid. Still does NOT write depth: a translucent surface that
+        // writes depth occludes whatever is drawn after it.
+        material.readsFromDepthBuffer = true
         material.writesToDepthBuffer = false
-        material.transparency = 0.55
+        material.transparency = 0.28
         plane.materials = listOf(material)
 
         val planeChild = SCNNode.nodeWithGeometry(plane)
@@ -1377,57 +1375,24 @@ actual class ArEnvScanOverlay actual constructor() {
         return container
     }
 
-    // ── Guidance arrow ───────────────────────────────────────────────
+    // ── Guidance ─────────────────────────────────────────────────────
 
-    /** Aim (or hide) the camera-attached arrow at the current guidance target. */
+    /**
+     * Guidance is a minimap ring and a text prompt (global constraint 8). The
+     * camera-attached arrow was deleted: it rendered as an unexplained neon
+     * green bar across the viewfinder and performed no scanning.
+     *
+     * The native target is still set so the surface can reason about the
+     * frontier; nothing is drawn in the camera view.
+     */
     private fun renderGuidance() {
         val target = guidanceLatLng
         if (!hasGeoRef || target == null) {
             nativeSurface?.clearGuidanceTarget()
-            arrowNode?.hidden = true
             return
         }
         val local = latLngToLocal(target.first, target.second, refLat, refLng, refX, refZ, lngScale)
-        nativeSurface?.let { surface ->
-            surface.setGuidanceTarget(local.first, local.second)
-            return
-        }
-        // SceneKit fallback: pyramid on the camera with a LookAt constraint at
-        // an invisible world node — SceneKit re-aims it every frame for free
-        // (same construction as ArRouteOverlay's frontier arrow).
-        val scene = sceneView?.scene ?: return
-        val groundY = floorY ?: (refY - GROUND_OFFSET_METERS)
-        val targetNode = frontierTarget ?: SCNNode().also {
-            frontierTarget = it
-            scene.rootNode.addChildNode(it)
-        }
-        targetNode.position = SCNVector3Make(local.first.toFloat(), groundY, local.second.toFloat())
-        val arrow = arrowNode ?: makeArrowNode(targetNode) ?: return
-        arrow.hidden = false
-    }
-
-    private fun makeArrowNode(target: SCNNode): SCNNode? {
-        val camera = sceneView?.pointOfView ?: return null
-        val pyramid = SCNPyramid.pyramidWithWidth(0.12, 0.25, 0.12)
-        val material = SCNMaterial()
-        material.diffuse.contents = UIColor.greenColor
-        pyramid.materials = listOf(material)
-
-        // SCNPyramid points +Y; rotate so the tip points -Z, the axis
-        // SCNLookAtConstraint aims at its target.
-        val geometryNode = SCNNode.nodeWithGeometry(pyramid)
-        geometryNode.eulerAngles = SCNVector3Make((-kotlin.math.PI / 2).toFloat(), 0f, 0f)
-
-        val container = SCNNode()
-        container.addChildNode(geometryNode)
-        container.position = SCNVector3Make(0f, -0.5f, -1.2f)
-        val constraint = SCNLookAtConstraint.lookAtConstraintWithTarget(target)
-        constraint.gimbalLockEnabled = true
-        container.constraints = listOf(constraint)
-
-        camera.addChildNode(container)
-        arrowNode = container
-        return container
+        nativeSurface?.setGuidanceTarget(local.first, local.second)
     }
 
     // ── Markers / capture / helpers ──────────────────────────────────
@@ -1494,31 +1459,56 @@ actual class ArEnvScanOverlay actual constructor() {
         floatArrayOf(vector.getFloatAt(0), vector.getFloatAt(1), vector.getFloatAt(2))
 
     /**
-     * A transparent tile with lines on its leading edges — repeat-wrapped it
-     * tiles into a seamless grid; [withDiagonals] adds an X for the denser
-     * "vector scan" look.
+     * A transparent 3×3-tile texture: a thin line on every cell boundary (the
+     * 1 m minor interval, [GRID_TILE_METERS]) and a heavier line on the
+     * texture's own outer boundary — which lands on every 3rd repeat once
+     * the material tiles this texture, giving the 3 m major interval for
+     * free. [withDiagonals] adds an X per cell for the denser "vector scan"
+     * look. Minor lines draw at alpha 0.5, major lines at alpha 0.9 — both
+     * derived from [line]'s hue so callers keep passing one color.
      */
     private fun makeGridTexture(
         line: UIColor,
         lineWidth: Double,
         withDiagonals: Boolean = false,
-        sizePx: Double = 128.0,
+        sizePx: Double = 129.0,
     ): UIImage? {
         UIGraphicsBeginImageContextWithOptions(CGSizeMake(sizePx, sizePx), false, 1.0)
-        val path = UIBezierPath.bezierPath()
-        path.moveToPoint(CGPointMake(0.0, 0.5))
-        path.addLineToPoint(CGPointMake(sizePx, 0.5))
-        path.moveToPoint(CGPointMake(0.5, 0.0))
-        path.addLineToPoint(CGPointMake(0.5, sizePx))
-        if (withDiagonals) {
-            path.moveToPoint(CGPointMake(0.0, 0.0))
-            path.addLineToPoint(CGPointMake(sizePx, sizePx))
-            path.moveToPoint(CGPointMake(sizePx, 0.0))
-            path.addLineToPoint(CGPointMake(0.0, sizePx))
+        val third = sizePx / 3.0
+
+        // Minor grid: one line per interior cell boundary.
+        val minorPath = UIBezierPath.bezierPath()
+        for (i in 1..2) {
+            val pos = third * i
+            minorPath.moveToPoint(CGPointMake(0.0, pos))
+            minorPath.addLineToPoint(CGPointMake(sizePx, pos))
+            minorPath.moveToPoint(CGPointMake(pos, 0.0))
+            minorPath.addLineToPoint(CGPointMake(pos, sizePx))
         }
-        path.lineWidth = lineWidth
-        line.setStroke()
-        path.stroke()
+        if (withDiagonals) {
+            for (i in 0..2) {
+                val x0 = third * i
+                minorPath.moveToPoint(CGPointMake(x0, 0.0))
+                minorPath.addLineToPoint(CGPointMake(x0 + third, third))
+                minorPath.moveToPoint(CGPointMake(x0 + third, 0.0))
+                minorPath.addLineToPoint(CGPointMake(x0, third))
+            }
+        }
+        minorPath.lineWidth = lineWidth
+        line.colorWithAlphaComponent(0.5).setStroke()
+        minorPath.stroke()
+
+        // Major grid: only the texture's outer boundary — repeats every 3rd
+        // tile once the material wraps this texture.
+        val majorPath = UIBezierPath.bezierPath()
+        majorPath.moveToPoint(CGPointMake(0.0, 0.5))
+        majorPath.addLineToPoint(CGPointMake(sizePx, 0.5))
+        majorPath.moveToPoint(CGPointMake(0.5, 0.0))
+        majorPath.addLineToPoint(CGPointMake(0.5, sizePx))
+        majorPath.lineWidth = lineWidth * 1.5
+        line.colorWithAlphaComponent(0.9).setStroke()
+        majorPath.stroke()
+
         val image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return image
