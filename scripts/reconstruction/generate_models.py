@@ -33,31 +33,24 @@ import r2_store
 WATERMARK = pathlib.Path(__file__).parent / ".generate_models_watermark"
 WM_PYTHON = os.path.expanduser("~/cdx-platform/services/cdx-world-mirror/.venv/bin/python")
 
-POISSON_SNIPPET = """
+# PoissonRecon's C++ error handler can TERMINATE the process (exit 0!)
+# mid-call on fragmented clouds ("Failed to close loop") — so in-process
+# fallbacks never run. Each strategy therefore runs in its OWN subprocess;
+# the parent falls through on a missing output file.
+_COMMON = """
 import os, sys
 import open3d as o3d
 pcd = o3d.io.read_point_cloud(sys.argv[1])
 print("points:", len(pcd.points), flush=True)
-# PoissonRecon hard-fails (C++ error, EXIT 0!) on multi-million-point
-# clouds on this box -- downsample first; detail beyond ~500k points adds
-# nothing at mesh depth 8-9 anyway.
 voxel = 0.02
 while len(pcd.points) > 500000:
     pcd = pcd.voxel_down_sample(voxel)
     voxel *= 1.6
     print("downsampled to:", len(pcd.points), flush=True)
 pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
-pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-try:
-    mesh, dens = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=8)
-except Exception:
-    mesh = o3d.geometry.TriangleMesh()
-if len(mesh.triangles) == 0:
-    # PoissonRecon "Failed to close loop" bug on fragmented clouds --
-    # alpha-shape fallback gives a usable (if chunkier) surface.
-    print("poisson empty -- alpha-shape fallback", flush=True)
-    pcd = pcd.voxel_down_sample(0.05)
-    mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha=0.15)
+"""
+
+_FINISH = """
 print("raw triangles:", len(mesh.triangles), flush=True)
 if len(mesh.triangles) > 150000:
     mesh = mesh.simplify_quadric_decimation(target_number_of_triangles=150000)
@@ -65,9 +58,18 @@ if len(mesh.triangles) > 150000:
 mesh.compute_vertex_normals()
 assert len(mesh.triangles) > 0, "empty mesh"
 assert o3d.io.write_triangle_mesh(sys.argv[2], mesh), "write failed"
-assert os.path.getsize(sys.argv[2]) > 0, "empty file"
 print("mesh written:", len(mesh.triangles), "triangles", flush=True)
 """
+
+POISSON_SNIPPET = _COMMON + """
+pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+mesh, dens = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=8)
+""" + _FINISH
+
+ALPHA_SNIPPET = _COMMON + """
+pcd = pcd.voxel_down_sample(0.04)
+mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha=0.15)
+""" + _FINISH
 
 
 def _cell_center(cell: str) -> tuple[float, float]:
@@ -110,12 +112,20 @@ def generate(cell: str, version: int, pc_key: str) -> str:
         dst = os.path.join(tmp, "mesh.obj")
         with open(src, "wb") as f:
             f.write(r2_store.download_bytes(pc_key))
-        proc = subprocess.run([WM_PYTHON, "-c", POISSON_SNIPPET, src, dst],
-                              check=True, timeout=1800, capture_output=True, text=True)
-        if not os.path.exists(dst):
-            # PoissonRecon can die internally and still exit 0 (observed:
-            # "Failed to close loop" on huge clouds) -- surface it honestly.
-            raise RuntimeError(f"poisson produced no mesh: {proc.stdout[-200:]} {proc.stderr[-200:]}")
+        for name, snippet in (("poisson", POISSON_SNIPPET), ("alpha-shape", ALPHA_SNIPPET)):
+            try:
+                proc = subprocess.run([WM_PYTHON, "-c", snippet, src, dst],
+                                      timeout=1800, capture_output=True, text=True)
+            except subprocess.TimeoutExpired:
+                print(f"  {name} timed out for {cell}@v{version}")
+                continue
+            if os.path.exists(dst) and os.path.getsize(dst) > 0:
+                print(f"  meshed via {name}: {proc.stdout.strip().splitlines()[-1] if proc.stdout else ''}")
+                break
+            print(f"  {name} produced no mesh (rc={proc.returncode}) "
+                  f"{(proc.stderr or proc.stdout or '')[-150:].strip()}")
+        else:
+            raise RuntimeError("all meshing strategies failed")
         key = r2_store.reconstructed_asset_key(cell, version=version, asset_type="mesh", fmt="obj")
         r2_store.upload_bytes(key, open(dst, "rb").read(), content_type="application/octet-stream")
         return key
