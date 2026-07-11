@@ -7,8 +7,13 @@ import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.ObjectCaptureOutcome
+import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
+import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
+import com.gcc.app.platform.PROVENANCE_USER_REJECTED
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.TapCandidateState
 import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.UNKNOWN_LITTER_LABEL
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
@@ -118,6 +123,9 @@ class SpotViewModel(
     // whatever was captured inside an INDOOR gate's trailing privacy window.
     private val observedItemStamps = mutableListOf<Long>()
     private val photoStamps = mutableListOf<Long>()
+    // Negative training examples (tapped + "Not litter") — never enter
+    // uiState.observedItems / world_observations, only the R2 manifest.
+    private val rejectedItems = mutableListOf<ObservedSpotItem>()
 
     init {
         // Catch up any session manifests that couldn't reach R2 last time
@@ -270,6 +278,7 @@ class SpotViewModel(
                             label = TrashItemCatalog.canonicalType(stamped.itemType),
                             capturedAt = Clock.System.now(),
                             mediaUrl = mediaUrl,
+                            provenance = stamped.provenance ?: PROVENANCE_AUTO_DETECTED,
                         ),
                     )
                     // Real-time streaming (spec system 3): flush immediately on
@@ -287,6 +296,40 @@ class SpotViewModel(
                 }
             }
         }
+    }
+
+    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
+    fun addConfirmedTapItem(candidate: TapCandidateState) {
+        val lat = candidate.lat ?: return
+        val lng = candidate.lng ?: return
+        addObservedItem(
+            ObservedSpotItem(
+                lat = lat,
+                lng = lng,
+                itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL),
+                confidence = candidate.confidence,
+                domain = "litter",
+                provenance = PROVENANCE_USER_CONFIRMED,
+            ),
+        )
+    }
+
+    /** The user tapped a candidate and pressed "Not litter" — a negative example.
+     *  Kept OUT of world_observations; it rides the R2 manifest only. */
+    fun addRejectedTapItem(candidate: TapCandidateState) {
+        val lat = candidate.lat ?: return
+        val lng = candidate.lng ?: return
+        rejectedItems.add(
+            ObservedSpotItem(
+                lat = lat,
+                lng = lng,
+                itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL),
+                confidence = candidate.confidence,
+                domain = "litter",
+                provenance = PROVENANCE_USER_REJECTED,
+            ),
+        )
+        DiagnosticsLog.info("env-scan", "negative example recorded at $lat,$lng")
     }
 
     fun removePhoto(index: Int) {
@@ -555,6 +598,7 @@ class SpotViewModel(
                     gateEvents = draft.gateEvents,
                     captureChunks = captureChunkKeys.ifEmpty { null },
                     captureSchema = if (captureChunkKeys.isNotEmpty()) 1 else null,
+                    rejectedItems = rejectedItems.toList().ifEmpty { null },
                 )
                 if (sessionUploader.uploadOrQueue(manifest)) {
                     DiagnosticsLog.info(

@@ -13,6 +13,9 @@ data class ArDetectedMarkerRequest(
      *  (uploaded before enqueueing — never null bytes persisted here). Null
      *  when no photo was captured or the upload failed. */
     val mediaUrl: String? = null,
+    /** "auto_detected" | "user_confirmed" | "user_rejected". Defaults to
+     *  auto_detected so a marker from an older client decodes unchanged. */
+    val provenance: String = "auto_detected",
 )
 
 @Serializable

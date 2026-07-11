@@ -108,6 +108,10 @@ data class EnvScanManifest(
      *  -- frames are best-effort like [photoKeys], never queued/retried, so
      *  this list only ever contains frames actually confirmed in R2. */
     val capturedFrames: List<CapturedFrame> = emptyList(),
+    /** Candidates the user tapped and explicitly marked "Not litter". Negative
+     *  training examples for the litter detector — deliberately NOT sent to
+     *  world_observations, where they would paint the map red. */
+    val rejectedItems: List<ObservedSpotItem>? = null,
 )
 
 @Serializable
