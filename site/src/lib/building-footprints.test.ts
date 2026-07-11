@@ -50,3 +50,20 @@ test('parseOverpassElements: skips ways with fewer than 3 geometry points', () =
     0,
   )
 })
+
+test('parseOverpassElements: drops non-occupiable building types (indoor-gate poison)', () => {
+  const geometry = [
+    { lat: 41.86, lon: -87.72 }, { lat: 41.86, lon: -87.71 },
+    { lat: 41.866, lon: -87.71 }, { lat: 41.86, lon: -87.72 },
+  ]
+  const p = parseOverpassElements({
+    elements: [
+      { type: 'way', id: 1, tags: { building: 'roof' }, geometry },
+      { type: 'way', id: 2, tags: { building: 'grandstand' }, geometry },
+      { type: 'way', id: 3, tags: { building: 'stadium' }, geometry },
+      { type: 'way', id: 4, tags: { building: 'house' }, geometry },
+      { type: 'way', id: 5, tags: { building: 'yes' }, geometry },
+    ],
+  })
+  assert.deepEqual(p.map((f) => f.osmId), [4, 5])
+})

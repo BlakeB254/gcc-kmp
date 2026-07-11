@@ -131,6 +131,16 @@ fun ScanMinimapOverlay(
     // so tracing only reruns when THAT tier's scan state changes.
     // Session tiers (3m grid) + coarser ledger/corridor tiers (10m
     // freshness grid) all route through the same engine (WS4 "paint the town").
+    // Litter-pattern zones: every known litter position (this session's
+    // confirmed items + the world model's dirty spots) quantized onto the
+    // coarse freshness grid and traced into merged organic shapes — clustered
+    // litter reads as a contiguous "problem zone" glued to the map tiles,
+    // not just individual glyph pins. Uses the same lattice anchor as every
+    // other tier so the shapes never drift against the coverage paint.
+    val litterCoords = remember(trashItems, typedTrashItems) {
+        (trashItems.map { it.lat to it.lng } + typedTrashItems.map { it.lat to it.lng }).distinct()
+    }
+    val litterRings = rememberRings(litterCoords, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
@@ -240,17 +250,39 @@ fun ScanMinimapOverlay(
         // Persistent facing cone. Answers "where am I pointing?" — independent
         // of whether any ray landed this tick (constraint 5). Drawn UNDER the
         // beam so the brighter, scene-aware beam paints on top of it.
+        // Field report (TestFlight 148): the flat 0.16 fill read as a barely-
+        // there wash in daylight — the cone now carries a radial gradient
+        // (saturated at the user dot, fading with distance) plus a heavier
+        // edge so the facing direction is unmissable at a glance.
         if (headingDegrees != null) {
             val cone = headingConePolygon(centerLat, centerLng, animatedHeading)
             if (cone.size >= 3) {
+                val coneCenter = Offset(size.width / 2f, size.height / 2f)
                 val conePath = Path()
+                var coneReachPx = 0f
                 cone.forEachIndexed { index, (lat, lng) ->
                     val p = toOffset(lat, lng)
                     if (index == 0) conePath.moveTo(p.x, p.y) else conePath.lineTo(p.x, p.y)
+                    val d = (p - coneCenter).getDistance()
+                    if (d > coneReachPx) coneReachPx = d
                 }
                 conePath.close()
-                drawPath(conePath, color = ConeBlue.copy(alpha = 0.16f))
-                drawPath(conePath, color = ConeBlue.copy(alpha = 0.55f), style = Stroke(width = 1.5.dp.toPx()))
+                if (coneReachPx > 1f) {
+                    drawPath(
+                        conePath,
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                ConeBlue.copy(alpha = 0.55f),
+                                ConeBlue.copy(alpha = 0.28f),
+                                ConeBlue.copy(alpha = 0.06f),
+                            ),
+                            center = coneCenter,
+                            radius = coneReachPx,
+                        ),
+                    )
+                }
+                drawPath(conePath, color = ConeBlue.copy(alpha = 0.9f), style = Stroke(width = 2.dp.toPx()))
+                drawPath(conePath, color = Color.White.copy(alpha = 0.35f), style = Stroke(width = 0.8.dp.toPx()))
             }
         }
 
@@ -316,6 +348,13 @@ fun ScanMinimapOverlay(
         drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
         drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
         drawPath(scanOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
+
+        // Litter-pattern zones over the coverage paint: merged orange shapes
+        // marking WHERE the litter concentrates, under the per-item glyphs
+        // (the glyphs say what; the zone shape says how it spreads).
+        val litterOutline = ringsToPath(litterRings)
+        drawPath(litterOutline, color = TrashOrange.copy(alpha = 0.24f))
+        drawPath(litterOutline, color = TrashOrange.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
 
         // Block boundaries over the fills: outer outline in the brand green,
         // inner exclusion islands in amber (the not-required areas).
