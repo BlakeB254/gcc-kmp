@@ -873,7 +873,9 @@ actual class ArEnvScanOverlay actual constructor() {
         // and the reticle freezes on the locked item's projected position.
         if (_trashCandidate.value != null) return
 
-        val trashLabel = TrashDetectionRules.trashLabelFrom(classifications)
+        // Global constraint 10/11: automatic promotion requires parent-context
+        // suppression. A user tap bypasses this entirely (see focusAt).
+        val trashLabel = TrashDetectionRules.autoPromotionLabelFrom(classifications)
         if (trashLabel == null) {
             nearStreak = 0
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
