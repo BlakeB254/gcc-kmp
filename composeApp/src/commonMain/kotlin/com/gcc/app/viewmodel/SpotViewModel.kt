@@ -6,6 +6,7 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionUploader
+import com.gcc.app.platform.hasUserConfirmedLitter
 import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
@@ -490,12 +491,13 @@ class SpotViewModel(
         if (state.phase != SpotPhase.CAMERA) return
         // A scan is a COVERAGE act, not an incident report: every location is
         // supposed to be scanned, so finishing one only files a report when
-        // the session produced litter evidence (a geo-tagged item or the
-        // on-device analyzer finding trash in a capture). Clean-area scans —
-        // photos or not — archive the full session bundle and land on the
-        // session summary.
-        val litterEvidence = state.observedItems.any { it.domain == null || it.domain == "litter" } ||
-            state.aiAnalysis?.trashTypes?.isNotEmpty() == true
+        // the session produced litter evidence. Clean-area scans — photos or
+        // not — archive the full session bundle and land on the session
+        // summary.
+        // Constraint 10: the whole-frame classifier (aiAnalysis.trashTypes) is a
+        // weak routing signal and may NOT file a report. Only a candidate the
+        // user explicitly confirmed is evidence.
+        val litterEvidence = hasUserConfirmedLitter(state.observedItems)
         if (state.capturedPhotos.isEmpty() || !litterEvidence) {
             // Complete Scan ALWAYS ends the session (product rule: the
             // bottom button is the only exit). The session manifest —

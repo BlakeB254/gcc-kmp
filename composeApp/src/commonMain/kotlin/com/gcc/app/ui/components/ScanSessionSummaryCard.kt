@@ -60,7 +60,8 @@ import kotlin.math.max
 @Composable
 fun ScanSessionSummaryCard(
     session: EnvScanSessionDraft?,
-    itemCount: Int,
+    litterCount: Int,
+    featureCount: Int,
     photoCount: Int,
 ) {
     GccCard(accentColor = CardAccentGreen) {
@@ -96,8 +97,20 @@ fun ScanSessionSummaryCard(
             val cellArea = CoverageTracker.cellSizeMeters * CoverageTracker.cellSizeMeters
             SessionStat(value = "${(cells.size * cellArea).toInt()} m²", label = "Area covered")
             SessionStat(value = sessionDurationLabel(session), label = "Duration")
-            SessionStat(value = "$itemCount", label = "Items tagged")
             SessionStat(value = "$photoCount", label = "Photos")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            // Split per constraint 10: litter (report-eligible) and mapped
+            // world features (vegetation/construction) are never the same
+            // number, so they get their own labeled stats instead of a
+            // combined "items tagged" count.
+            SessionStat(value = "$litterCount", label = "Litter identified")
+            SessionStat(value = "$featureCount", label = "Features mapped")
         }
 
         // A-F scan score (ScanScore — the completion-time sibling of the live

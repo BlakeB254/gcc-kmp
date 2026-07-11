@@ -49,6 +49,8 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.countFeatures
+import com.gcc.app.platform.countLitter
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
@@ -269,7 +271,8 @@ fun SpotScreen(
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
                     session = uiState.completedSession,
-                    itemCount = uiState.observedItems.size,
+                    litterCount = countLitter(uiState.observedItems),
+                    featureCount = countFeatures(uiState.observedItems),
                     photoCount = uiState.capturedPhotos.size,
                     matchingBounties = uiState.matchingBounties,
                     createdBounty = uiState.createdBounty,
@@ -1896,7 +1899,8 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
     session: EnvScanSessionDraft?,
-    itemCount: Int,
+    litterCount: Int,
+    featureCount: Int,
     photoCount: Int,
     matchingBounties: List<Bounty>,
     createdBounty: Bounty?,
@@ -1919,7 +1923,8 @@ private fun ResultPhase(
         item {
             ScanSessionSummaryCard(
                 session = session,
-                itemCount = itemCount,
+                litterCount = litterCount,
+                featureCount = featureCount,
                 photoCount = photoCount,
             )
         }
