@@ -1,9 +1,12 @@
 package com.gcc.app.viewmodel
 
+import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.PushNotificationManager
+import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.openUrl
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.model.*
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.CoroutineScope
@@ -27,12 +30,21 @@ data class SettingsUiState(
     val connectStatusLoading: Boolean = false,
     val connectOnboardLoading: Boolean = false,
     val connectError: String? = null,
+    // Scan-upload controls (capture chunks are policy-gated: Wi-Fi OR
+    // charging OR this cellular opt-in — see CaptureChunkUploader).
+    val cellularUploadEnabled: Boolean = false,
+    val pendingScanUploads: Int = 0,
+    val scanUploadFlushing: Boolean = false,
+    val scanUploadHint: String? = null,
 )
 
 class SettingsViewModel(
     private val apiClient: GccApiClient,
     private val tokenManager: TokenManager,
     private val pushNotificationManager: PushNotificationManager,
+    private val captureChunkUploader: CaptureChunkUploader,
+    private val envScanSessionUploader: EnvScanSessionUploader,
+    private val captureChunkStore: CaptureChunkStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val settings = Settings()
@@ -40,9 +52,57 @@ class SettingsViewModel(
         SettingsUiState(
             pushNotificationsEnabled = settings.getBoolean("push_notifications", true),
             biometricEnabled = settings.getBoolean("biometric_enabled", true),
+            cellularUploadEnabled = settings.getBoolean(
+                CaptureChunkUploader.KEY_CELLULAR_UPLOAD_OPT_IN, false
+            ),
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    fun loadPendingScanUploads() {
+        scope.launch {
+            val pending = try {
+                captureChunkStore.pendingChunks().size
+            } catch (_: Exception) {
+                0
+            }
+            _uiState.value = _uiState.value.copy(pendingScanUploads = pending)
+        }
+    }
+
+    fun toggleCellularUpload(enabled: Boolean) {
+        settings.putBoolean(CaptureChunkUploader.KEY_CELLULAR_UPLOAD_OPT_IN, enabled)
+        _uiState.value = _uiState.value.copy(cellularUploadEnabled = enabled, scanUploadHint = null)
+        if (enabled) flushScanUploadsNow() // opting in should start draining immediately
+    }
+
+    fun flushScanUploadsNow() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(scanUploadFlushing = true, scanUploadHint = null)
+            val before = _uiState.value.pendingScanUploads
+            try {
+                envScanSessionUploader.flushPending()
+                captureChunkUploader.flushPending()
+            } catch (_: Exception) {
+                // flushPending logs internally; the count below tells the truth
+            }
+            val after = try {
+                captureChunkStore.pendingChunks().size
+            } catch (_: Exception) {
+                before
+            }
+            _uiState.value = _uiState.value.copy(
+                pendingScanUploads = after,
+                scanUploadFlushing = false,
+                // The uploader's policy gate silently skips when neither Wi-Fi,
+                // charging, nor the cellular opt-in applies — say so instead of
+                // letting the tap look broken.
+                scanUploadHint = if (after > 0 && after == before && !_uiState.value.cellularUploadEnabled)
+                    "Still pending — connect to Wi-Fi, plug in, or enable cellular uploads"
+                else null,
+            )
+        }
+    }
 
     fun loadSettings() {
         scope.launch {
