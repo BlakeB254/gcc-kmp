@@ -42,6 +42,12 @@ class CaptureChunkUploader(
 ) {
     private val mutex = Mutex()
 
+    /** Human-readable reason the most recent upload attempt failed — the
+     *  Settings screen surfaces this so field failures stop being invisible.
+     *  Null after any fully successful flush. */
+    var lastError: String? = null
+        private set
+
     suspend fun flushPending() {
         mutex.withLock {
             if (!uploadPolicyAllows()) return
@@ -51,10 +57,12 @@ class CaptureChunkUploader(
                 DiagnosticsLog.error("capture-upload", "pendingChunks query failed", e)
                 return
             }
+            var failure: String? = null
             for (chunk in pending) {
                 try {
                     uploadOne(chunk)
                 } catch (e: CaptureStorageNotConfiguredException) {
+                    lastError = "scan storage not configured (501)"
                     return // still 501 (R2 not provisioned) — nothing else in the batch can succeed either
                 } catch (e: Exception) {
                     DiagnosticsLog.error(
@@ -62,8 +70,10 @@ class CaptureChunkUploader(
                         "chunk ${chunk.sessionId}/${chunk.chunkIndex}/${chunk.kind} upload failed (kept pending)",
                         e,
                     )
+                    failure = "chunk ${chunk.chunkIndex} ${chunk.kind}: ${e.message ?: e::class.simpleName}"
                 }
             }
+            lastError = failure
         }
     }
 

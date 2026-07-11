@@ -91,15 +91,20 @@ class SettingsViewModel(
             } catch (_: Exception) {
                 before
             }
+            // Prefer the REAL failure over guessing: the uploaders record why
+            // the most recent attempt failed (signature errors, timeouts, 4xx
+            // bodies) — surfacing it here is how field upload failures get
+            // diagnosed without a debugger on the phone.
+            val realError = captureChunkUploader.lastError ?: envScanSessionUploader.lastError
             _uiState.value = _uiState.value.copy(
                 pendingScanUploads = after,
                 scanUploadFlushing = false,
-                // The uploader's policy gate silently skips when neither Wi-Fi,
-                // charging, nor the cellular opt-in applies — say so instead of
-                // letting the tap look broken.
-                scanUploadHint = if (after > 0 && after == before && !_uiState.value.cellularUploadEnabled)
-                    "Still pending — connect to Wi-Fi, plug in, or enable cellular uploads"
-                else null,
+                scanUploadHint = when {
+                    realError != null && after > 0 -> "Upload failing: $realError"
+                    after > 0 && after == before && !_uiState.value.cellularUploadEnabled ->
+                        "Still pending — connect to Wi-Fi, plug in, or enable cellular uploads"
+                    else -> null
+                },
             )
         }
     }

@@ -31,6 +31,10 @@ class EnvScanSessionUploader(
     private val mutex = Mutex()
     private val pending = mutableListOf<EnvScanManifest>().apply { addAll(loadPersisted()) }
 
+    /** Most recent manifest-upload failure, for the Settings screen. */
+    var lastError: String? = null
+        private set
+
     private fun loadPersisted(): List<EnvScanManifest> {
         val json = settings.getStringOrNull(KEY_PENDING_MANIFESTS) ?: return emptyList()
         return try {
@@ -58,6 +62,7 @@ class EnvScanSessionUploader(
             false
         } catch (e: Exception) {
             DiagnosticsLog.error("env-capture", "manifest ${manifest.sessionId} upload failed — queued for retry", e)
+            lastError = "manifest: ${e.message ?: e::class.simpleName}"
             enqueue(manifest)
             false
         }
@@ -76,11 +81,14 @@ class EnvScanSessionUploader(
                     pending.remove(manifest)
                     persistLocked()
                 }
+                lastError = null
                 DiagnosticsLog.info("env-capture", "queued manifest ${manifest.sessionId} caught up to R2")
             } catch (e: CaptureStorageNotConfiguredException) {
+                lastError = "scan storage not configured (501)"
                 return // still 501 — nothing else in the queue can succeed either
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "queued manifest ${manifest.sessionId} retry failed (kept)", e)
+                lastError = "manifest: ${e.message ?: e::class.simpleName}"
             }
         }
     }
