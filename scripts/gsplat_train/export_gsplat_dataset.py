@@ -76,7 +76,12 @@ def main() -> None:
         _header, frames = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
         if not frames:
             continue
-        idxs = np.linspace(0, len(frames) - 1, min(per_chunk, len(frames)), dtype=int)
+        # Contract gate: only NORMAL-tracking frames train the splat.
+        usable = [i for i, f in enumerate(frames) if f.tracking == 0]
+        if not usable:
+            continue
+        idxs = [usable[j] for j in np.linspace(0, len(usable) - 1,
+                                               min(per_chunk, len(usable)), dtype=int)]
         imgs = chunk_io.extract_video_frames_at(video, [frames[i].t_video for i in idxs])
         for i, img in zip(idxs, imgs):
             if img is None:

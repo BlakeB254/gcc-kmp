@@ -60,7 +60,13 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
         _header, sidecar = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
         if not sidecar:
             continue
-        idxs = np.linspace(0, len(sidecar) - 1, min(per_chunk, len(sidecar)), dtype=int)
+        # Contract gate: only NORMAL-tracking frames may train the splat --
+        # LIMITED spans (fast turns, low light) carry mis-posed cameras.
+        usable = [i for i, f in enumerate(sidecar) if f.tracking == 0]
+        if not usable:
+            continue
+        idxs = [usable[j] for j in np.linspace(0, len(usable) - 1,
+                                               min(per_chunk, len(usable)), dtype=int)]
         imgs = chunk_io.extract_video_frames_at(video, [sidecar[i].t_video for i in idxs])
         for i, img in zip(idxs, imgs):
             if img is None:
