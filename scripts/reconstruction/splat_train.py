@@ -109,24 +109,46 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
     if wm_cameras and len(wm_cameras) == len(arkit_positions) and len(wm_cameras) >= 3:
         from gaussian_ply import sim3_transform_gaussian_ply_bytes, umeyama_sim3
 
-        dst = np.vstack(arkit_positions)
+        dst_all = np.vstack(arkit_positions)
         best = None
         for convention in ("world2cam", "cam2world"):
-            src = _camera_centers(wm_cameras, convention)
-            try:
-                s, R, t, rms = umeyama_sim3(src, dst)
-            except Exception:
-                continue
-            if best is None or rms < best[4]:
-                best = (convention, s, R, t, rms)
-        if best and best[4] <= MAX_SIM3_RMS_METERS:
-            convention, s, R, t, rms = best
-            print(f"splat_train: {session_id} sim3 [{convention}] scale={s:.3f} rms={rms:.2f}m")
+            src_all = _camera_centers(wm_cameras, convention)
+            src, dst = src_all, dst_all
+            fit = None
+            # Trimmed iterative fit: world-mirror pose estimates carry a few
+            # meters of drift on sparse frames over a street-long walk — drop
+            # the worst correspondences and refit so one bad pose can't tilt
+            # the whole alignment.
+            for _round in range(3):
+                try:
+                    s, R, t, rms = umeyama_sim3(src, dst)
+                except Exception:
+                    fit = None
+                    break
+                fit = (s, R, t, rms, len(src))
+                if len(src) <= 4:
+                    break
+                resid = np.sqrt((((s * (R @ src.T).T + t) - dst) ** 2).sum(axis=1))
+                keep = resid <= max(1.5 * float(np.median(resid)), 0.5)
+                if keep.all():
+                    break
+                src, dst = src[keep], dst[keep]
+            if fit and (best is None or fit[3] < best[4]):
+                best = (convention, *fit)
+        # Gate relative to the trajectory's own extent: what matters is that
+        # orientation/scale are right; a couple-meter residual over a long
+        # walk still lands every splat on the same ground plane.
+        extent = float(np.linalg.norm(dst_all.max(axis=0) - dst_all.min(axis=0)))
+        gate = max(MAX_SIM3_RMS_METERS, 0.15 * extent)
+        if best and best[4] <= gate:
+            convention, s, R, t, rms, n_used = best
+            print(f"splat_train: {session_id} sim3 [{convention}] scale={s:.3f} "
+                  f"rms={rms:.2f}m ({n_used}/{len(wm_cameras)} cams, gate {gate:.2f}m)")
             splat_bytes = sim3_transform_gaussian_ply_bytes(splat_bytes, s, R, t)
+        elif best:
+            print(f"splat_train: {session_id} sim3 fit rejected (rms={best[4]:.2f}m > gate {gate:.2f}m) -- splat left in world-mirror frame")
         else:
-            print(f"splat_train: {session_id} sim3 fit rejected "
-                  f"(rms={best[4]:.2f}m)" if best else f"splat_train: {session_id} sim3 fit failed"
-                  , "-- splat left in world-mirror frame")
+            print(f"splat_train: {session_id} sim3 fit failed -- splat left in world-mirror frame")
     else:
         print(f"splat_train: {session_id} no usable camera extrinsics -- splat left in world-mirror frame")
     return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes)
