@@ -331,3 +331,63 @@ def test_fuse_cell_without_api_base_url_never_calls_http(monkeypatch):
     monkeypatch.setattr(fuse_cell_module.requests, "post", _boom)
     result = fuse_cell_module.fuse_cell("1:2", api_base_url=None, train_splat=False)
     assert result.assets  # it still published to R2
+
+
+# ── World-registration path (scan-splat-registration-contract, PR #149) ──
+
+def _geo_events(lat0=41.85, lng0=-87.65, offset_e=0.0, offset_n=0.0, n=6):
+    """Events for a session whose AR frame coincides with ENU (theta=0) at
+    a given east/north offset from the shared origin — a straight 25m walk."""
+    import math
+    from geo_registration import GeoRef
+    events = []
+    for i in range(n):
+        east = offset_e + i * (25.0 / (n - 1))
+        north = offset_n + i * (8.0 / (n - 1))
+        events.append(GeoRef(
+            at_ms=1e12 + i * 1000,
+            lat=lat0 + north / 111_320.0,
+            lng=lng0 + east / (111_320.0 * math.cos(math.radians(lat0))),
+            accuracy_m=3.0,
+            ar_xyz=np.array([east - offset_e, 1.5, -(north - offset_n)]),
+            ar_t=100.0 + i,
+        ))
+    return events
+
+
+def test_world_registered_sessions_place_by_solved_transform():
+    a = _session("world-a", seed=1)
+    a.geo_ref_events = _geo_events(offset_e=2.0, offset_n=3.0)
+    b = _session("world-b", seed=1)  # same scene, so ICP overlap exists
+    b.geo_ref_events = _geo_events(offset_e=2.5, offset_n=3.5)
+
+    result = fuse_sessions([a, b])
+    assert result.world_eligible is True
+    assert result.north_aligned is True
+    assert set(result.accepted_session_ids) == {"world-a", "world-b"}
+    # The shared ENU origin is session a's FIRST event fix, so a's AR origin
+    # lands at ~(0, 0); b started 0.5m east / 0.5m north of it (ICP may snap
+    # the identical synthetic clouds together, hence the loose tolerance).
+    origin_a = result.session_transforms["world-a"] @ np.array([0, 0, 0, 1.0])
+    assert abs(origin_a[0]) < 0.5 and abs(origin_a[2]) < 0.5
+    origin_b = result.session_transforms["world-b"] @ np.array([0, 0, 0, 1.0])
+    assert np.hypot(origin_b[0] - 0.5, origin_b[2] - (-0.5)) < 1.2
+    assert result.session_registrations["world-a"]["status"] == "world"
+
+
+def test_local_only_session_excluded_from_world_merge():
+    a = _session("world-a", seed=1)
+    a.geo_ref_events = _geo_events()
+    legacy = _session("legacy-b", seed=2)  # no geoRefEvents at all
+
+    result = fuse_sessions([a, legacy])
+    assert result.world_eligible is True
+    assert result.accepted_session_ids == ["world-a"]
+    assert "legacy-b" in result.rejected_session_ids
+
+
+def test_all_legacy_sessions_take_legacy_path_and_stay_world_ineligible():
+    result = fuse_sessions([_session("s1", seed=1), _session("s2", seed=1)])
+    assert result.world_eligible is False
+    assert result.session_registrations == {}
+    assert "s1" in result.accepted_session_ids

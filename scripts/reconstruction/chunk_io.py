@@ -175,10 +175,19 @@ def extract_video_frames_at(video_bytes: bytes, target_times: list[float]) -> li
 
         best_frames: list[np.ndarray | None] = [None] * len(target_times)
         best_diffs = [float("inf")] * len(target_times)
+        # target_times are chunk-relative (seconds since the chunk's first
+        # frame -- SidecarFrame.t_video). Schema-1 videos have pts starting
+        # at 0; schema-2 writes pts on the ARKit boot clock
+        # (startSession(atSourceTime: firstTime) in ArSessionRecorder), so
+        # rebase every pts by the stream's first -- correct for both.
+        pts0: float | None = None
         for frame in container.decode(stream):
             if frame.pts is None:
                 continue
             pts_seconds = float(frame.pts * stream.time_base)
+            if pts0 is None:
+                pts0 = pts_seconds
+            pts_seconds -= pts0
             decoded = None  # converted at most once, only if some target improves
             for i, target in enumerate(target_times):
                 diff = abs(pts_seconds - target)
@@ -207,11 +216,14 @@ def extract_video_frame_at(video_bytes: bytes, target_time: float) -> np.ndarray
 
         best_frame = None
         best_diff = float("inf")
+        pts0 = None  # rebase pts to chunk-relative; see extract_video_frames_at
         for frame in container.decode(stream):
             pts_seconds = float(frame.pts * stream.time_base) if frame.pts is not None else None
             if pts_seconds is None:
                 continue
-            diff = abs(pts_seconds - target_time)
+            if pts0 is None:
+                pts0 = pts_seconds
+            diff = abs(pts_seconds - pts0 - target_time)
             if diff < best_diff:
                 best_diff = diff
                 best_frame = frame.to_ndarray(format="rgb24")

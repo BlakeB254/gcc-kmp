@@ -92,6 +92,7 @@ class ScanIndexer(
                         objectCaptureR2Key = manifest.objectCapture?.r2Key,
                         manifestR2Key = manifestKey,
                         totalBytes = totalBytes,
+                        geoRefEventCount = manifest.geoRefEvents?.size ?: 0,
                     )
                 )
                 repo.upsertChunks(chunkRows)

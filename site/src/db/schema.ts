@@ -11,6 +11,7 @@ import {
   jsonb,
   pgEnum,
   doublePrecision,
+  real,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
@@ -1800,6 +1801,12 @@ export const scanSessions = pgTable('scan_sessions', {
   totalBytes: bigint('total_bytes', { mode: 'number' }), // sum of indexed artifact sizes (est)
   reconstructionVersion: integer('reconstruction_version'), // set once a reconstruction exists (Phase 3)
   reconstructedAt: timestamp('reconstructed_at', { mode: 'string', withTimezone: true }),
+  // Session -> world-splat registration (docs/governance/scan-splat-registration-contract.md).
+  // Count set at index time by the Ktor indexer; the rest by the DGX worker's solve.
+  geoRefEventCount: integer('geo_ref_event_count').default(0).notNull(),
+  registrationStatus: varchar('registration_status', { length: 16 }), // 'world' | 'local-only' | null (unsolved)
+  registrationResidualM: real('registration_residual_m'),
+  worldRegistration: jsonb('world_registration'), // solve record: clock offset, segments, anchor, method
   indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({

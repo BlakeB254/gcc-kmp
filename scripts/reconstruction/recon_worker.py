@@ -111,6 +111,11 @@ def complete_cell(conn, cell: str, result: FusionResult, assets: list[ProducedAs
         "anchorLng": result.anchor_lng,
         "northAligned": result.north_aligned,
         "northRmsM": result.north_rms_m,
+        # World-layer eligibility (scan-splat-registration-contract): True
+        # only when every merged session solved a geoRefEvents world
+        # registration. The CDX World Mirror twin merges ONLY these; legacy
+        # GPS-track-aligned cells stay display-grade in GCC's own views.
+        "worldEligible": result.world_eligible,
     })
     with conn.transaction():
         with conn.cursor() as cur:
@@ -130,6 +135,20 @@ def complete_cell(conn, cell: str, result: FusionResult, assets: list[ProducedAs
                        SET reconstruction_version=%s, reconstructed_at=now()
                        WHERE session_id = ANY(%s)""",
                     (version, result.accepted_session_ids),
+                )
+            # Persist each session's world-registration solve (migration
+            # 0036): status + residual surface registrability in the scan
+            # index; the full solve record keeps the transform reproducible.
+            for sid, reg in result.session_registrations.items():
+                primary = max((s for s in reg["segments"] if s["passesGate"]),
+                              key=lambda s: s["events"], default=None)
+                cur.execute(
+                    """UPDATE scan_sessions
+                       SET registration_status=%s, registration_residual_m=%s,
+                           world_registration=%s::jsonb
+                       WHERE session_id=%s""",
+                    (reg["status"], primary["residualM"] if primary else None,
+                     json.dumps(reg), sid),
                 )
             cur.execute(
                 """UPDATE reconstruction_jobs

@@ -25,6 +25,9 @@ data class SessionRow(
     val objectCaptureR2Key: String?,
     val manifestR2Key: String,
     val totalBytes: Long?,
+    /** AR<->GPS pairings in the manifest (scan-splat-registration-contract).
+     *  The DGX worker's solve fills the registration_* columns later. */
+    val geoRefEventCount: Int = 0,
 )
 
 /** A row to upsert into `capture_chunks` (one R2 object). */
@@ -68,6 +71,7 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                 ps.setNullableString(i++, row.objectCaptureR2Key)
                 ps.setString(i++, row.manifestR2Key)
                 ps.setNullableLong(i++, row.totalBytes)
+                ps.setInt(i++, row.geoRefEventCount)
                 ps.executeUpdate()
             }
         }
@@ -153,8 +157,8 @@ class ScanIndexRepository(private val dataSource: DataSource) {
               (session_id, device_id, device_model, platform, os_version, lap_kind, route_id,
                location_cell_id, started_at, completed_at, photo_count, chunk_count,
                observed_item_count, scanned_cell_count, has_object_capture, object_capture_r2_key,
-               manifest_r2_key, total_bytes, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+               manifest_r2_key, total_bytes, geo_ref_event_count, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
             ON CONFLICT (session_id) DO UPDATE SET
                device_id = EXCLUDED.device_id,
                device_model = EXCLUDED.device_model,
@@ -173,6 +177,7 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                object_capture_r2_key = EXCLUDED.object_capture_r2_key,
                manifest_r2_key = EXCLUDED.manifest_r2_key,
                total_bytes = EXCLUDED.total_bytes,
+               geo_ref_event_count = EXCLUDED.geo_ref_event_count,
                indexed_at = now()
         """.trimIndent()
 

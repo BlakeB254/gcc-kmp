@@ -21,6 +21,7 @@ import requests
 
 import chunk_io
 import frame_io
+import geo_registration
 import r2_store
 from registration import GpsAnchor, gps_seeded_initial_transform, register_session_into_cell
 
@@ -61,6 +62,9 @@ class SessionFusionInput:
     track: list = field(default_factory=list)
     gps_path: list = field(default_factory=list)
     started_at_ms: float = 0.0
+    # manifest.geoRefEvents (PR #149) parsed into geo_registration.GeoRef --
+    # empty for legacy sessions, which the contract keeps LOCAL-ONLY.
+    geo_ref_events: list = field(default_factory=list)
 
 
 @dataclass
@@ -99,13 +103,106 @@ class FusionResult:
     anchor_lng: float | None = None
     north_aligned: bool = False
     north_rms_m: float | None = None
+    # Session -> world-splat registration (scan-splat-registration-contract):
+    # per-session solve records (WorldRegistration.to_json()) and whether the
+    # merged outputs are eligible for the world layer (True only when every
+    # merged session solved 'world' from its geoRefEvents; legacy GPS-track
+    # north fits are honest for display but NEVER world-mergeable).
+    session_registrations: dict = field(default_factory=dict)
+    world_eligible: bool = False
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
-    """Pure fusion logic, no R2/network access -- register each session in
-    order against whatever has accumulated so far, keep only accepted
-    registrations, gate activation on the accepted count."""
+    """Pure fusion logic, no R2/network access. Two paths:
+
+    WORLD PATH (scan-splat-registration-contract, PR #149): when any session
+    solves a world registration from its geoRefEvents, every world-solved
+    session is placed by its own solved transform -- all solved against ONE
+    shared ENU origin, so they land mutually consistent, north-true and
+    metric by construction -- then ICP-refined against the accumulation.
+    Local-only sessions are rejected from the merge (the contract's hard
+    rule: they never pollute the world layer).
+
+    LEGACY PATH (no world-solved session): register each session in order
+    against whatever has accumulated so far via GPS-seeded ICP, then fit a
+    north yaw from the anchor's GPS track. Honest for display; never
+    world-eligible."""
     result = FusionResult()
+
+    # ── Attempt world registration for every session ──
+    origin = next(((s.geo_ref_events[0].lat, s.geo_ref_events[0].lng)
+                   for s in sessions if s.geo_ref_events), None)
+    registrations = {}
+    if origin is not None:
+        for s in sessions:
+            registrations[s.session_id] = geo_registration.solve_registration(s.geo_ref_events, *origin)
+        result.session_registrations = {sid: r.to_json() for sid, r in registrations.items()}
+    world_sessions = [s for s in sessions
+                      if registrations.get(s.session_id) and registrations[s.session_id].world_eligible]
+
+    if world_sessions:
+        return _fuse_world_registered(sessions, world_sessions, registrations, origin, result)
+
+    return _fuse_legacy(sessions, result)
+
+
+def _fuse_world_registered(
+    sessions: list[SessionFusionInput],
+    world_sessions: list[SessionFusionInput],
+    registrations: dict,
+    origin: tuple[float, float],
+    result: FusionResult,
+) -> FusionResult:
+    accumulated_points: np.ndarray | None = None
+    accumulated_colors: np.ndarray | None = None
+
+    for session in world_sessions:
+        reg = registrations[session.session_id]
+        seed = reg.primary.transform()
+        transform = seed
+        if accumulated_points is not None:
+            # ICP refine within the registration's own accuracy envelope; a
+            # rejected refinement keeps the solved placement (it already
+            # passed the contract's gates) rather than dropping the session.
+            refinement = register_session_into_cell(
+                accumulated_points, session.points, initial_transform=seed)
+            if refinement.accepted:
+                transform = refinement.transform
+
+        transformed = frame_io.apply_transform(session.points, transform)
+        if accumulated_points is None:
+            accumulated_points, accumulated_colors = transformed, session.colors
+        else:
+            merged = frame_io.merge_session_point_clouds(
+                [frame_io.PointCloudArrays(points=accumulated_points, colors=accumulated_colors),
+                 frame_io.PointCloudArrays(points=transformed, colors=session.colors)],
+                voxel_size=MERGE_VOXEL_SIZE_METERS,
+            )
+            accumulated_points, accumulated_colors = merged.points, merged.colors
+        result.accepted_session_ids.append(session.session_id)
+        result.session_transforms[session.session_id] = transform
+        print(f"world registration: {session.session_id} placed "
+              f"(theta {np.degrees(reg.primary.theta_rad):.1f}deg, residual {reg.primary.residual_m:.2f}m)")
+
+    for session in sessions:
+        if session.session_id not in result.session_transforms:
+            result.rejected_session_ids.append(session.session_id)
+            reg = registrations.get(session.session_id)
+            print(f"world registration: {session.session_id} LOCAL-ONLY "
+                  f"({reg.reason if reg else 'no geoRefEvents'}) -- excluded from world merge")
+
+    result.merged_points = accumulated_points if accumulated_points is not None else np.zeros((0, 3))
+    result.merged_colors = accumulated_colors if accumulated_colors is not None else np.zeros((0, 3))
+    result.activated = len(result.accepted_session_ids) >= MIN_SESSIONS_FOR_ACTIVATION
+    result.anchor_lat, result.anchor_lng = origin
+    # The frame is ENU at the origin (+X=east, -Z=north) by construction.
+    result.north_aligned = True
+    result.north_rms_m = registrations[world_sessions[0].session_id].residual_m
+    result.world_eligible = True
+    return result
+
+
+def _fuse_legacy(sessions: list[SessionFusionInput], result: FusionResult) -> FusionResult:
     accumulated_points: np.ndarray | None = None
     accumulated_colors: np.ndarray | None = None
     accumulated_anchor: GpsAnchor | None = None
@@ -323,6 +420,7 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         track=track,
         gps_path=path,
         started_at_ms=float(manifest.get("startedAtMs") or 0),
+        geo_ref_events=geo_registration.GeoRef.from_manifest(manifest),
     )
 
 

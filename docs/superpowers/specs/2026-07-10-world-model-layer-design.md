@@ -117,3 +117,47 @@ writes storage, not this read layer.
 3. Where should these endpoints ultimately live — Next.js (today's API home) or the Ktor
    backend (which owns the index tables and is meant to absorb the API over time)? Design
    works in either; M1 is fastest in Next.js since the proven routes are Next.js.
+
+## 8. Addendum (2026-07-11): registration contract + ownership split
+
+Two decisions landed after the original draft; recorded here so the spec
+stays the single reference.
+
+### 8.1 World-layer eligibility now comes from the registration contract
+
+PR #149 ships `manifest.geoRefEvents[]` + `arFrameConvention`
+(`gravityAndHeading`) from the mobile client, and
+`docs/governance/scan-splat-registration-contract.md` is the source of
+truth for how a session earns world placement. The DGX side (merged into
+the Phase-3 pipeline 2026-07-11):
+
+- `scripts/reconstruction/geo_registration.py` — clock fit, re-pair
+  segmentation, accuracy-weighted 2D similarity (scale=1), gates
+  (≥3 events, spread, residual ≤ median GPS accuracy).
+- `fuse_cell.fuse_sessions` — world path: every world-solved session
+  placed by its own transform against one shared ENU origin, ICP-refined;
+  local-only sessions are rejected from the merge. Legacy path (no
+  geoRefEvents anywhere): GPS-track yaw fit, honest for display, never
+  world-eligible.
+- Migration 0036 — `scan_sessions.geo_ref_event_count` (indexer),
+  `registration_status` / `registration_residual_m` /
+  `world_registration` (worker).
+- Asset provenance gains `worldEligible`.
+
+### 8.2 Ownership split (Blake, 2026-07-11)
+
+The scans originate in the GCC app, but the DERIVED DATA has two owners:
+
+| Concern | Owner |
+|---|---|
+| Trash identification, litter classification/annotation, still-frame extraction for messes, close-scanned mess 3D models, block reports, points/rewards | **GCC backend** (this repo) |
+| The combined, geographically-registered splat world — the "cleaned world" reconstruction merged across sessions/cells | **CDX World Model** (cdx-platform; today surfaced through cdx-world-twin :7047) |
+
+The CDX World Model is cross-project: it receives world-eligible splats
+from GCC scans today, other data collections tomorrow, and extends the
+same geographically-true 3D layer to every client project's maps
+(Graphene Gangway business maps, contact-page embeds, etc.). Concretely:
+the twin's community/world merge consumes only assets whose provenance
+says `worldEligible` (with `northAligned` accepted during the transition
+while all existing cells are legacy) — GCC-local reconstructions remain
+available in GCC's own views regardless.
