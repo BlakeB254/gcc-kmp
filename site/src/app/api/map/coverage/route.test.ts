@@ -100,7 +100,82 @@ test('litterStatsFor: a cell with no observations yields zeroes, not undefined',
   assert.deepEqual(litterStatsFor('1:2', new Map()), { litterCount: 0, litterWeightGrams: 0 })
 })
 
-test('litterStatsFor: returns the rolled-up stats for a known cell', () => {
-  const stats = new Map([['1:2', { litterCount: 3, litterWeightGrams: 4200 }]])
-  assert.deepEqual(litterStatsFor('1:2', stats), { litterCount: 3, litterWeightGrams: 4200 })
+test('litterStatsFor: returns the rolled-up stats for a known cell, without lastLitterAt', () => {
+  // lastLitterAt is internal bookkeeping for the synthesized-cell path; it must
+  // not leak onto a coverage cell's wire shape.
+  const rollup = new Map([
+    ['1:2', { litterCount: 3, litterWeightGrams: 4200, lastLitterAt: '2026-07-09T17:00:00Z' }],
+  ])
+  assert.deepEqual(litterStatsFor('1:2', rollup), { litterCount: 3, litterWeightGrams: 4200 })
+})
+
+// ── Litter on never-scanned ground must still render ────────────────────────
+// Problem blobs are drawn from coverage cells, and a cell only exists once
+// somebody scanned it. 38 of 52 dirty litter observations around South Millard
+// were spot_reports on unswept ground — no cell, no blob, invisible.
+import { synthesizeObservationOnlyCells, type LitterCellStats } from './route'
+
+const HOUR = 60 * 60 * 1000
+const DAY = 24 * HOUR
+const NOW = Date.parse('2026-07-09T18:00:00Z')
+const fakeCenter = (cellId: string) => {
+  const [a, b] = cellId.split(':').map(Number)
+  return { lat: a / 10000, lng: b / 10000 }
+}
+const stats = (o: Partial<LitterCellStats> & { lastLitterAt: string }): LitterCellStats => ({
+  litterCount: 1,
+  litterWeightGrams: 0,
+  ...o,
+})
+
+test('synthesize: a litter cell with no coverage row becomes a problem cell', () => {
+  const litter = new Map([['464635:-721906', stats({ lastLitterAt: '2026-07-09T17:00:00Z', litterCount: 3 })]])
+  const out = synthesizeObservationOnlyCells(litter, new Set(), fakeCenter, NOW, DAY, null)
+  assert.equal(out.length, 1)
+  assert.equal(out[0].locationCellId, '464635:-721906')
+  assert.equal(out[0].litterCount, 3)
+  assert.equal(out[0].quality, 'seen', 'never walked')
+  assert.equal(out[0].totalDistanceMeters, 0, 'no sweep happened')
+  assert.equal(out[0].priority, 1, 'known litter on unswept ground is max urgency')
+  assert.equal(out[0].state, 'fresh', 'sighted an hour ago')
+})
+
+test('synthesize: an already-covered cell is NOT duplicated', () => {
+  const litter = new Map([['1:1', stats({ lastLitterAt: '2026-07-09T17:00:00Z' })]])
+  const out = synthesizeObservationOnlyCells(litter, new Set(['1:1']), fakeCenter, NOW, DAY, null)
+  assert.deepEqual(out, [], 'the real coverage row already carries this cell')
+})
+
+test('synthesize: an old sighting goes stale by the same 24h rule', () => {
+  const litter = new Map([['2:2', stats({ lastLitterAt: '2026-07-06T17:00:00Z' })]])
+  const out = synthesizeObservationOnlyCells(litter, new Set(), fakeCenter, NOW, DAY, null)
+  assert.equal(out[0].state, 'stale')
+  assert.equal(out[0].lastScannedAt, '2026-07-06T17:00:00Z')
+})
+
+test('synthesize: the `since` delta cursor filters synthesized cells too', () => {
+  const litter = new Map([
+    ['3:3', stats({ lastLitterAt: '2026-07-09T17:00:00Z' })], // after cursor
+    ['4:4', stats({ lastLitterAt: '2026-07-01T00:00:00Z' })], // before cursor
+  ])
+  const since = Date.parse('2026-07-09T00:00:00Z')
+  const out = synthesizeObservationOnlyCells(litter, new Set(), fakeCenter, NOW, DAY, since)
+  assert.deepEqual(out.map((c) => c.locationCellId), ['3:3'])
+})
+
+test('synthesize: an unparseable timestamp or bad cellId is skipped, never thrown', () => {
+  const litter = new Map([
+    ['5:5', stats({ lastLitterAt: 'not-a-date' })],
+    ['boom', stats({ lastLitterAt: '2026-07-09T17:00:00Z' })],
+  ])
+  const throwing = (id: string) => {
+    if (id === 'boom') throw new Error('bad cell id')
+    return fakeCenter(id)
+  }
+  const out = synthesizeObservationOnlyCells(litter, new Set(), throwing, NOW, DAY, null)
+  assert.deepEqual(out, [])
+})
+
+test('litterStatsFor: unknown cell still yields zeroes (lastLitterAt is not leaked)', () => {
+  assert.deepEqual(litterStatsFor('9:9', new Map()), { litterCount: 0, litterWeightGrams: 0 })
 })
