@@ -1183,9 +1183,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // Vector-scan analysis effect (spec system 3): trash candidates get
         // this on lock-on (above); landmark elements never did, so a newly
         // identified tree/fence/gate registered silently with no on-screen
-        // acknowledgment. Every registration — litter or landmark — now
-        // fires the same effect at its world position.
-        native?.emitLockEffect(world[0].toDouble(), world[1].toDouble(), world[2].toDouble())
+        // acknowledgment.
         dispatch_async(dispatch_get_main_queue()) {
             listener(lat, lng, element.itemType, element.domain, confidence, widthMeters, yawDegrees)
         }

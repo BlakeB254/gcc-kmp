@@ -542,11 +542,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 mesh: .generateSphere(radius: 0.06),
                 materials: [UnlitMaterial(color: UIColor.green.withAlphaComponent(0.8))]
             )
-            if #available(iOS 18.0, *) {
-                var emitter = ParticleEmitterComponent.Presets.sparks
-                emitter.isEmitting = true
-                pulse.components.set(emitter)
-            }
             anchor.addChild(pulse)
             arView.scene.addAnchor(anchor)
             // Grow-and-vanish pulse; works on every OS version.
