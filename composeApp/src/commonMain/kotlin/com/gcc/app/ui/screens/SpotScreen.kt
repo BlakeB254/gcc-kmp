@@ -49,6 +49,8 @@ import com.gcc.app.platform.CoverageEventQueue
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
+import com.gcc.app.platform.NearbyDirtyPromptGate
+import com.gcc.app.platform.clusterIdsAround
 import com.gcc.app.platform.countFeatures
 import com.gcc.app.platform.countLitter
 import com.gcc.app.platform.minimapLitterItems
@@ -647,6 +649,9 @@ private fun CameraPhase(
     fun isElementObservation(obs: WorldObservation) = obs.domain == "vegetation" || obs.domain == "construction"
     val resolvedObservationIds = remember { mutableSetOf<Int>() }
     var nearbyDirty by remember { mutableStateOf<WorldObservation?>(null) }
+    // Anti-spam gate (TestFlight 145 field report): one card at a time, quiet
+    // cooldown after an answer or a walk-away, cluster-resolve on answer.
+    val nearbyPromptGate = remember { NearbyDirtyPromptGate() }
 
     // Initialise the scan grid at the first real fix (single-point "route"
     // gives a ~15m-corridor zone around the spot). Keyed on Unit on purpose:
@@ -794,14 +799,15 @@ private fun CameraPhase(
                 bestFanQualitySinceLastEvent.value = null
             }
 
-            // Clean-confirm proximity (5m, unresolved only).
-            nearbyDirty = expectedDirty
-                .asSequence()
-                .filter { it.id !in resolvedObservationIds }
-                .map { it to GeofenceVerification.distanceMeters(loc.lat, loc.lng, it.lat, it.lng) }
-                .filter { (_, dist) -> dist <= 5.0 }
-                .minByOrNull { (_, dist) -> dist }
-                ?.first
+            // Clean-confirm proximity (5m, unresolved only), rate-limited by
+            // the gate so a walk past many old observations doesn't chain-
+            // prompt (TestFlight 145 spam report).
+            nearbyDirty = nearbyPromptGate.onLocation(
+                nowMs = Clock.System.now().toEpochMilliseconds(),
+                lat = loc.lat,
+                lng = loc.lng,
+                unresolved = expectedDirty.filter { it.id !in resolvedObservationIds },
+            )
         }
     }
     val scannedCells by tracker.scannedCells.collectAsState()
@@ -1040,7 +1046,13 @@ private fun CameraPhase(
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.White.copy(alpha = 0.15f))
                             .clickable {
-                                resolvedObservationIds.add(obs.id)
+                                // One answer settles every unresolved
+                                // observation of this ≤5m cluster — ten old
+                                // records of one mess cost one question.
+                                resolvedObservationIds.addAll(
+                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                )
+                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
                             }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -1053,8 +1065,15 @@ private fun CameraPhase(
                             .clip(RoundedCornerShape(20.dp))
                             .background(GccGreen)
                             .clickable {
-                                resolvedObservationIds.add(obs.id)
+                                // Cluster-resolve like "Still there": the
+                                // server rectify below targets the answered
+                                // location; its ≤5m neighbors just stop
+                                // re-prompting this session.
+                                resolvedObservationIds.addAll(
+                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                )
                                 expectedDirty = expectedDirty.filterNot { it.id == obs.id }
+                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
                                 rectifyScope.launch {
                                     try {

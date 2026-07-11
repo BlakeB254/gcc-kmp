@@ -306,11 +306,16 @@ fun ScanMinimapOverlay(
         // This session, three shades (Pillar 7 rendering hierarchy: SEEN
         // faintest → GRAZED light → CLOSE vivid) — every credited cell gets
         // the light grazed wash, close-tier cells re-cover vivid, and SEEN
-        // gets its own faint tint over the still-fogged veil. Alphas bumped
-        // (0.25→0.30, 0.60→0.65) for scanned-vs-unscanned contrast.
-        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.11f))
-        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.30f))
-        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.65f))
+        // gets its own faint tint over the still-fogged veil.
+        // Field report (TestFlight 145): with the veil lightened to 0.18 the
+        // live fill stopped reading at all in daylight — the punch-out no
+        // longer carries the contrast, so the session paint itself must.
+        // Alphas raised (0.30→0.42, 0.65→0.78) and the swept-territory blob
+        // gets a bright edge stroke so "where I've scanned" pops as it grows.
+        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.14f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
+        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
 
         // Block boundaries over the fills: outer outline in the brand green,
         // inner exclusion islands in amber (the not-required areas).
@@ -342,11 +347,19 @@ fun ScanMinimapOverlay(
         }
 
         // Lap-2 guidance target: a double ring marking the problem area the
-        // worker is being steered toward.
+        // worker is being steered toward. Field report (TestFlight 145): at
+        // scan start the frontier pick is the nearest uncredited cell — the
+        // ground underfoot — so the ring drew AS a circle around the user dot
+        // and read as a bug. Guidance to "right where you stand" carries no
+        // information; only draw the ring once the target clears the dot.
         guidanceTarget?.let { target ->
             val c = toOffset(target.lat, target.lng)
-            drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
-            drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+            val selfC = Offset(size.width / 2f, size.height / 2f)
+            val awayPx = (c - selfC).getDistance()
+            if (awayPx >= 26.dp.toPx()) {
+                drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
+                drawCircle(color = Color.White, radius = 12.dp.toPx(), center = c, style = Stroke(width = 1.5.dp.toPx()))
+            }
         }
 
         // User-position dot, drawn LAST so it always sits above the veil,

@@ -266,7 +266,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // WS5: the neon emissive coverage quads (green-rectangle bleed in the
     // camera view — field report) are removed. Coverage feedback lives on the
     // minimap now; this is a no-op kept for the ArNativeSurface protocol. The
-    // matte ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
+    // neon ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
     func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {}
 
     func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
@@ -741,7 +741,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         size: SIMD2<Float>,
         centerWorld: SIMD3<Float>
     ) -> PhysicallyBasedMaterial {
-        let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.28)
+        let tint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.55)
         var material = gridMaterial(floorGridTexture, tint: tint, uvScale: 1)
         // One texture repeat = one MAJOR tile (gridMajorTileMeters, 3m) — the
         // texture packs the 3×3 minor cells inside it, so dividing by the
@@ -775,13 +775,17 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         var material = PhysicallyBasedMaterial()
         if let texture {
             material.baseColor = .init(tint: tint, texture: .init(texture))
+            material.emissiveColor = .init(color: tint, texture: .init(texture))
         } else {
             material.baseColor = .init(tint: tint)
+            material.emissiveColor = .init(color: tint)
         }
-        // Global constraint 7: the grid is a surface marking, not a light source.
-        // It used to glow (emissiveIntensity 2.0) straight through vegetation,
-        // fences and parked cars.
-        material.emissiveIntensity = 0
+        // Neon restored on Blake's word (TestFlight 145: the non-emissive grid
+        // read as a shadow on the ground — invisible in daylight). The old
+        // glow-through-fences complaint is handled by scene-mesh occlusion
+        // (sceneUnderstanding .occlusion in init) on LiDAR devices, not by
+        // dimming the grid.
+        material.emissiveIntensity = 2.0
         material.roughness = 1.0
         material.metallic = 0.0
         material.blending = .transparent(opacity: .init(floatLiteral: 1.0))

@@ -554,7 +554,8 @@ actual class ArEnvScanOverlay actual constructor() {
     // (updateScannedCells) and the ground fog (updateFog) no longer render on
     // the camera surface — coverage + fog now live entirely on the minimap
     // (merged "painted" outlines + veil). Kept as no-op `actual`s to satisfy
-    // the ArEnvScanOverlay interface; the calm matte ground grid is unaffected.
+    // the ArEnvScanOverlay interface; the neon ground grid is unaffected.
+    // The fog stays deprecated on Blake's word (2026-07-11) — do not rewire.
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
 
     actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
@@ -1463,14 +1464,19 @@ actual class ArEnvScanOverlay actual constructor() {
         material.diffuse.contents = texture
         material.diffuse.wrapS = platform.SceneKit.SCNWrapModeRepeat
         material.diffuse.wrapT = platform.SceneKit.SCNWrapModeRepeat
-        // Global constraint 7: no emission channel — the grid is not a light.
+        // Neon restored on Blake's word (TestFlight 145: the emission-less
+        // grid read as a shadow — invisible in daylight). Mirrors the
+        // RealityKit path's emissive material; keep the two identical.
+        material.emission.contents = texture
+        material.emission.wrapS = platform.SceneKit.SCNWrapModeRepeat
+        material.emission.wrapT = platform.SceneKit.SCNWrapModeRepeat
         material.doubleSided = true
         // Obey the depth buffer so real geometry in front of the ground hides
         // the grid. Still does NOT write depth: a translucent surface that
         // writes depth occludes whatever is drawn after it.
         material.readsFromDepthBuffer = true
         material.writesToDepthBuffer = false
-        material.transparency = 0.28
+        material.transparency = 0.55
         plane.materials = listOf(material)
 
         val planeChild = SCNNode.nodeWithGeometry(plane)
