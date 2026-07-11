@@ -19,6 +19,7 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.pickFromLibrary
+import com.gcc.app.ui.components.GccCard
 import com.gcc.app.ui.components.NetworkImage
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -44,6 +45,7 @@ fun AdminRouteDetailScreen(
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
     val route = uiState.routes.find { it.id == routeId }
+    val snackbarHostState = remember { SnackbarHostState() }
     val apiClient = koinInject<GccApiClient>()
     // The admin routes list payload has blockId but no boundary geometry —
     // fetch the full route (GET /api/routes/{id}) to know whether an outer
@@ -108,6 +110,14 @@ fun AdminRouteDetailScreen(
         }
     }
 
+    LaunchedEffect(uiState.routeStatusNotice, uiState.routeStatusActionError) {
+        val message = uiState.routeStatusNotice ?: uiState.routeStatusActionError
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearRouteStatusFeedback()
+        }
+    }
+
     // Auto-dismiss success message after 3 seconds
     LaunchedEffect(uploadSuccess) {
         if (uploadSuccess) {
@@ -144,6 +154,7 @@ fun AdminRouteDetailScreen(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(route.displayName) },
@@ -256,6 +267,31 @@ fun AdminRouteDetailScreen(
                     ) {
                         Text("\uD83D\uDDBC Library")
                     }
+                }
+            }
+
+            item {
+                GccCard(accentColor = route.status.statusAccentColor()) {
+                    Text(
+                        "Route Status",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    AdminRouteStatusControls(
+                        route = route,
+                        isUpdating = route.id in uiState.updatingRouteStatusIds,
+                        actionError = uiState.routeStatusActionError,
+                        expanded = true,
+                        onStatusAction = { action, onResult ->
+                            viewModel.updateRouteStatus(
+                                routeId = route.id,
+                                newStatus = action.targetStatus,
+                                successNotice = action.successCopy(route.displayName),
+                                onResult = onResult,
+                            )
+                        },
+                    )
                 }
             }
 

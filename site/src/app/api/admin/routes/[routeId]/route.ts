@@ -8,6 +8,7 @@ import { db } from '@/db'
 import { blocks, blockExclusionZones, routes } from '@/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { parseAdminRouteStatus, eligibleBlockStatusForRouteStatus } from '@/lib/admin-route-status'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,13 +48,24 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json()
-    const updateData: Record<string, any> = {
-      updatedAt: new Date().toISOString(),
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Request body must be a JSON object' }, { status: 400 })
     }
 
-    if (body.status !== undefined) {
-      updateData.status = body.status
-      updateData.publishedAt = body.status === 'published' ? new Date().toISOString() : null
+    const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
+    const nextStatus = hasStatus ? parseAdminRouteStatus(body.status) : null
+    if (hasStatus && nextStatus === null) {
+      return NextResponse.json({ error: 'status must be draft, published, or archived' }, { status: 400 })
+    }
+
+    const now = new Date().toISOString()
+    const updateData: Record<string, any> = {
+      updatedAt: now,
+    }
+
+    if (nextStatus !== null) {
+      updateData.status = nextStatus
+      updateData.publishedAt = nextStatus === 'published' ? now : null
     }
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl
     if (body.displayName !== undefined) updateData.displayName = body.displayName
@@ -64,29 +76,35 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       updateData.payoutAmount = String(body.payoutAmount * 100) // Convert dollars to cents
     }
 
-    const [updated] = await db
-      .update(routes)
-      .set(updateData)
-      .where(eq(routes.id, routeId))
-      .returning()
+    const routeUpdate = db.update(routes).set(updateData).where(eq(routes.id, routeId)).returning()
+    let updated: typeof routes.$inferSelect | undefined
+
+    if (nextStatus !== null) {
+      const [updatedRoutes] = await db.batch([
+        routeUpdate,
+        db
+          .update(blocks)
+          .set({
+            status: eligibleBlockStatusForRouteStatus(nextStatus),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              inArray(
+                blocks.routeId,
+                db.select({ id: routes.id }).from(routes).where(eq(routes.id, routeId)),
+              ),
+              inArray(blocks.status, ['available', 'funded']),
+            ),
+          ),
+      ])
+      updated = updatedRoutes[0]
+    } else {
+      ;[updated] = await routeUpdate
+    }
 
     if (!updated) {
       return NextResponse.json({ error: 'Route not found' }, { status: 404 })
-    }
-
-    if (body.status !== undefined) {
-      await db
-        .update(blocks)
-        .set({
-          status: body.status === 'published' ? 'available' : 'funded',
-          updatedAt: new Date().toISOString(),
-        })
-        .where(
-          and(
-            eq(blocks.routeId, routeId),
-            inArray(blocks.status, ['available', 'funded']),
-          ),
-        )
     }
 
     return NextResponse.json({

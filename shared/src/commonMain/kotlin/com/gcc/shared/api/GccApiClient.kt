@@ -744,8 +744,8 @@ class GccApiClient(
     suspend fun updateRoute(routeId: Int, request: AdminRouteRequest): Route =
         putJson("/api/admin/routes/$routeId", request)
 
-    suspend fun updateRouteStatus(routeId: Int, status: String): Route =
-        putJson("/api/admin/routes/$routeId", mapOf("status" to status))
+    suspend fun updateRouteStatus(routeId: Int, status: RouteStatus): Route =
+        putJson("/api/admin/routes/$routeId", UpdateRouteStatusRequest(status))
 
     suspend fun updateRouteImage(routeId: Int, imageUrl: String?): Route =
         putJson("/api/admin/routes/$routeId", mapOf("imageUrl" to imageUrl))

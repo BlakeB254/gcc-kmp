@@ -47,6 +47,9 @@ data class ForceJobStatusRequest(
 )
 
 @Serializable
+data class UpdateRouteStatusRequest(val status: RouteStatus)
+
+@Serializable
 data class AdminRouteRequest(
     val code: String,
     val displayName: String,

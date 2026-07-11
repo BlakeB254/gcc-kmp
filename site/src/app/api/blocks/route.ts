@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/db'
-import { blocks, serviceAreas } from '@/db/schema'
-import { eq, desc, sql, and } from 'drizzle-orm'
+import { blocks, routes, serviceAreas } from '@/db/schema'
+import { eq, desc, sql, and, or, isNull } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
@@ -34,10 +34,16 @@ export async function GET(request: NextRequest) {
   const conditions = []
   if (status) conditions.push(eq(blocks.status, status))
   if (serviceAreaId) conditions.push(eq(blocks.serviceAreaId, parseInt(serviceAreaId)))
+  // Draft/archived routes are admin-only: their blocks must not exist as far
+  // as this PUBLIC endpoint is concerned (field report 2026-07-11: the
+  // Millard block rendered "available now" on the website and app map while
+  // its route sat in draft in the admin panel — the admin panel reads
+  // routes.status, this endpoint never joined routes at all). Blocks with no
+  // route (legacy, routeId null) stay visible, matching their pre-route
+  // behavior. Admin surfaces use /api/admin/* and are unaffected.
+  conditions.push(or(isNull(blocks.routeId), eq(routes.status, 'published'))!)
 
-  const whereClause = conditions.length > 0
-    ? conditions.length === 1 ? conditions[0] : and(...conditions)
-    : undefined
+  const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions)
 
   // Fetch blocks with service area info
   const blockList = await db
@@ -76,15 +82,18 @@ export async function GET(request: NextRequest) {
     })
     .from(blocks)
     .leftJoin(serviceAreas, eq(blocks.serviceAreaId, serviceAreas.id))
+    .leftJoin(routes, eq(blocks.routeId, routes.id))
     .where(whereClause)
     .orderBy(blocks.code) // Order by block code for consistent display
     .limit(limit)
     .offset(offset)
 
-  // Get total count
+  // Get total count (same joins as the page query — the route-status guard
+  // in whereClause references the routes table)
   const [countResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(blocks)
+    .leftJoin(routes, eq(blocks.routeId, routes.id))
     .where(whereClause)
 
   const total = Number(countResult?.count) || 0

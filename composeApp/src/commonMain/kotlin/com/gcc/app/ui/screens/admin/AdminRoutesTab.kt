@@ -25,7 +25,6 @@ import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.AdminRouteRequest
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
-import com.gcc.shared.model.RouteStatus
 import com.gcc.shared.model.Worker
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,7 +34,9 @@ internal fun AdminRoutesTab(
     workers: List<Worker>,
     currentWorker: Worker? = null,
     onRouteClick: (Int) -> Unit,
-    onStatusToggle: (routeId: Int, newStatus: String) -> Unit,
+    onStatusChange: (Route, AdminRouteStatusAction, (Boolean, String?) -> Unit) -> Unit,
+    updatingRouteStatusIds: Set<Int>,
+    routeStatusActionError: String?,
     onCreateRoute: (AdminRouteRequest) -> Unit = {},
     onAssignRoute: (routeId: Int, workerId: Int, isTest: Boolean, onResult: (Boolean) -> Unit) -> Unit = { _, _, _, onResult -> onResult(false) },
 ) {
@@ -204,16 +205,6 @@ internal fun AdminRoutesTab(
         // ── Route list ────────────────────────────────────────────────
         items(routes, key = { it.id }) { route ->
             val distMi = route.distanceMeters?.let { m -> val mi = (m / 1609.34 * 10).toInt() / 10.0; "${mi} mi" } ?: "N/A"
-            val statusColor = when (route.status) {
-                RouteStatus.PUBLISHED -> GccGreen
-                RouteStatus.DRAFT -> Color.Gray
-                RouteStatus.ARCHIVED -> GccSky
-            }
-            val nextStatus = when (route.status) {
-                RouteStatus.PUBLISHED -> "draft"
-                RouteStatus.DRAFT -> "published"
-                RouteStatus.ARCHIVED -> "draft"
-            }
 
             Surface(
                 modifier = Modifier
@@ -276,20 +267,18 @@ internal fun AdminRoutesTab(
                                 modifier = Modifier.padding(end = 8.dp),
                             )
                         }
-                        Surface(
-                            modifier = Modifier.clickable { onStatusToggle(route.id, nextStatus) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = statusColor.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                route.status.name.lowercase(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = statusColor,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            )
-                        }
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    AdminRouteStatusControls(
+                        route = route,
+                        isUpdating = route.id in updatingRouteStatusIds,
+                        actionError = routeStatusActionError,
+                        onStatusAction = { action, onResult ->
+                            onStatusChange(route, action, onResult)
+                        },
+                    )
 
                     Spacer(modifier = Modifier.height(10.dp))
 

@@ -34,6 +34,7 @@ fun AdminPanelScreen(
     val viewModel = koinInject<AdminPanelViewModel>()
     val uiState by viewModel.uiState.collectAsState()
     val tokenManager = koinInject<TokenManager>()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.selectedTab) {
         if (uiState.selectedTab == AdminTab.ROUTES) {
@@ -42,8 +43,17 @@ fun AdminPanelScreen(
         }
     }
 
+    LaunchedEffect(uiState.routeStatusNotice, uiState.routeStatusActionError) {
+        val message = uiState.routeStatusNotice ?: uiState.routeStatusActionError
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearRouteStatusFeedback()
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Admin Panel") },
@@ -138,7 +148,16 @@ fun AdminPanelScreen(
                             workers = uiState.workers,
                             currentWorker = uiState.currentWorker,
                             onRouteClick = onNavigateToRouteDetail,
-                            onStatusToggle = { routeId, newStatus -> viewModel.updateRouteStatus(routeId, newStatus) },
+                            onStatusChange = { route, action, onResult ->
+                                viewModel.updateRouteStatus(
+                                    routeId = route.id,
+                                    newStatus = action.targetStatus,
+                                    successNotice = action.successCopy(route.displayName),
+                                    onResult = onResult,
+                                )
+                            },
+                            updatingRouteStatusIds = uiState.updatingRouteStatusIds,
+                            routeStatusActionError = uiState.routeStatusActionError,
                             onCreateRoute = viewModel::createRoute,
                             onAssignRoute = viewModel::assignRouteToWorker,
                         )
