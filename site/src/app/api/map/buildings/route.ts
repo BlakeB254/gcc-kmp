@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { buildingFootprints } from '@/db/schema'
 import { and, gte, lte } from 'drizzle-orm'
-import { parseBboxString, tilesForBbox } from '@/lib/building-footprints'
+import { NON_OCCUPIABLE_BUILDING_TYPES, parseBboxString, tilesForBbox } from '@/lib/building-footprints'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,11 +47,16 @@ export async function GET(request: NextRequest) {
       ))
       .limit(5000)
 
-    const buildings = rows.map((r) => ({
-      polygon: r.polygon,
-      buildingType: r.buildingType,
-      source: r.source,
-    }))
+    // Rows ingested before the parse-time filter existed can still carry
+    // non-occupiable structures (roof/grandstand/…) — drop them at serve time
+    // so stale cache rows can't feed the scan screens' indoor gate.
+    const buildings = rows
+      .filter((r) => !r.buildingType || !NON_OCCUPIABLE_BUILDING_TYPES.has(r.buildingType))
+      .map((r) => ({
+        polygon: r.polygon,
+        buildingType: r.buildingType,
+        source: r.source,
+      }))
     return NextResponse.json({ buildings, success: true })
   } catch (error) {
     console.error('GET /api/map/buildings error:', error)

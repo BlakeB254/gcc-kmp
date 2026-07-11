@@ -99,8 +99,13 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
         private const val DISABLED_VOTE_EVERY_TICKS = 2
-        /** Candidate promotion: this close, for this many consecutive ticks. */
-        private const val NEAR_DISTANCE_METERS = 2.0
+        /** Candidate promotion: this close, for this many consecutive ticks.
+         *  Field report (TestFlight 148): at 2.0m the auto path never fired on
+         *  litter lying on open ground a few strides away — widened to match
+         *  TAP_IDENTIFY_MAX_METERS so anything close enough to identify by
+         *  tap is also close enough to auto-promote. LiDAR raycast distance
+         *  is reliable well past 4m; the streak requirement stays. */
+        private const val NEAR_DISTANCE_METERS = TAP_IDENTIFY_MAX_METERS
         private const val NEAR_STREAK_TICKS = 2
         /** Don't re-offer a candidate within this range of a dismissed/confirmed one. */
         private const val SUPPRESS_RADIUS_METERS = 2.0

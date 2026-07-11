@@ -227,13 +227,24 @@ class OutdoorGate {
     fun onMapEvidence(insideBuilding: Boolean, timestampMs: Long) {
         if (insideBuilding) {
             insideBuildingStreak += 1
+            // Footprint data can be flat-out wrong (2012 bulk imports of
+            // since-demolished houses sit over park ground), and the GPS dot
+            // re-enters a false polygon on every fix — so containment must
+            // NOT clear the manual pin, or "I'm outside" re-prompts in a ~1s
+            // loop. The user standing there outranks the map; only the
+            // ceiling plane (direct camera evidence) clears the pin.
+            if (manualOverride) {
+                if (insideBuildingStreak == MAP_STREAK_TO_FLIP) {
+                    DiagnosticsLog.info(
+                        "outdoor-gate",
+                        "map containment suppressed by manual override",
+                    )
+                }
+                return
+            }
             repeat(SCENE_VOTE_WEIGHT) { indoorTs.addLast(timestampMs) }
             if (insideBuildingStreak >= MAP_STREAK_TO_FLIP && _state.value != OutdoorState.INDOOR) {
                 DiagnosticsLog.info("outdoor-gate", "INDOOR (GPS inside mapped building ×$insideBuildingStreak)")
-                if (manualOverride) {
-                    manualOverride = false
-                    DiagnosticsLog.info("outdoor-gate", "manual override cleared by map containment")
-                }
                 setState(OutdoorState.INDOOR, timestampMs)
                 return
             }
@@ -272,9 +283,10 @@ class OutdoorGate {
             } else OutdoorState.INDOOR
             else -> when {
                 // Sustained degraded GPS alone must not re-flip a manual
-                // override (e.g. "I'm outside" under an awning) — strong
-                // evidence (map containment, ceiling plane) already clears
-                // the override explicitly and bypasses this path entirely.
+                // override (e.g. "I'm outside" under an awning). Of the
+                // strong signals, only the ceiling plane clears the pin —
+                // map containment is suppressed while overridden because
+                // footprint data can be wrong (stale imports).
                 indoorFlip && !manualOverride -> OutdoorState.INDOOR
                 outdoorFlip -> OutdoorState.OUTDOOR
                 else -> _state.value

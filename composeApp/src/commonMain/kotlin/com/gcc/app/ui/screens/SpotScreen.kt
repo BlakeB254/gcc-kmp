@@ -1203,6 +1203,17 @@ private fun CameraPhase(
             )
         }
         if (isScanMode) {
+            // Live session tally (litter incidents + summed weight estimate)
+            // — top-start mirror of the quality badge's row so neither
+            // collides with the caption band (row 1, 52dp).
+            ScanSessionStatsChip(
+                itemCount = litterItems.size,
+                totalWeightGrams = litterItems.sumOf { it.estimatedWeightGrams ?: 0 },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(top = 96.dp, start = 16.dp),
+            )
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates
             // capture or Complete Scan.

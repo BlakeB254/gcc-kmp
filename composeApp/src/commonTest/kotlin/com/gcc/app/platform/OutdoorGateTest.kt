@@ -218,11 +218,27 @@ class OutdoorGateV4Test {
     }
 
     @Test
-    fun overrideYieldsToMapContainment() {
+    fun overrideSurvivesMapContainment() {
+        // Field regression (Douglass Park 2026-07-11): a stale 2012 footprint
+        // import sat over the running track, so every GPS fix re-cleared the
+        // override and re-showed "Go outside" in a ~1s loop. The user's
+        // explicit confirmation must outrank map data for the session.
         val gate = OutdoorGate()
         gate.forceOutdoors()
         gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+    }
+
+    @Test
+    fun overridePinsThroughRepeatedContainmentFixes() {
+        val gate = OutdoorGate()
+        gate.onMapEvidence(insideBuilding = true, timestampMs = t0)
         assertEquals(OutdoorState.INDOOR, gate.state.value)
+        gate.forceOutdoors()
+        // One containment sample per GPS fix for a minute of walking.
+        for (i in 1..60) gate.onMapEvidence(insideBuilding = true, timestampMs = t0 + i * 1000L)
+        assertEquals(OutdoorState.OUTDOOR, gate.state.value)
+        assertEquals(true, gate.captureAllowed.value)
     }
 
     @Test

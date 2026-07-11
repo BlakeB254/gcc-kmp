@@ -61,10 +61,32 @@ export interface ParsedFootprint {
   maxLat: number
 }
 
+/**
+ * building=* values that are NOT enclosed, occupiable structures — standing
+ * "inside" their polygon says nothing about being indoors, so they must never
+ * feed the scan screens' indoor gate. (Field incident 2026-07-11: park
+ * structures over the Douglass Park running track flipped the gate INDOOR on
+ * every GPS fix.)
+ */
+export const NON_OCCUPIABLE_BUILDING_TYPES = new Set([
+  'roof',
+  'grandstand',
+  'stadium',
+  'bridge',
+  'shelter',
+  'carport',
+  'gazebo',
+  'greenhouse',
+  'ruins',
+  'construction',
+  'no',
+])
+
 export function parseOverpassElements(json: any): ParsedFootprint[] {
   const out: ParsedFootprint[] = []
   for (const el of json?.elements ?? []) {
     if (el.type !== 'way' || !Array.isArray(el.geometry) || el.geometry.length < 3) continue
+    if (NON_OCCUPIABLE_BUILDING_TYPES.has(el.tags?.building)) continue
     const ring: number[][] = el.geometry.map((g: any) => [g.lon, g.lat])
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
     for (const [lng, lat] of ring) {

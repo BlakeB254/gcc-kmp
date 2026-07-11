@@ -475,6 +475,7 @@ fun ArRouteScreen(
                     corridorCellCenters = corridorCenters,
                     guidanceTarget = ui.guidanceTarget?.center,
                     visibilityBeam = visibilityBeam,
+                    headingDegrees = gpsHeading,
                 )
             }
         }
