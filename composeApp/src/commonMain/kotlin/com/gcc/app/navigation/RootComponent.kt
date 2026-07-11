@@ -192,6 +192,7 @@ class RootComponent(
     }
 
     fun navigateToDocumentUpload() {
+        if (childStack.value.active.configuration == Screen.DocumentUpload) return
         navigation.push(Screen.DocumentUpload)
     }
 
