@@ -24,9 +24,41 @@ platform :ios do
       in_house: false,
     )
 
+    # Headless signing (2026-07-11): SSH sessions can't use the locked login
+    # keychain (codesign dies with errSecInternalComponent), which blocked
+    # DGX-triggered TestFlight builds. A dedicated build keychain whose
+    # password lives at ~/.config/gcc/build-keychain-pass (0600, generated
+    # once) lets this lane unlock signing itself in ANY session — GUI or SSH.
+    keychain_password_file = File.expand_path("~/.config/gcc/build-keychain-pass")
+    if File.exist?(keychain_password_file)
+      keychain_password = File.read(keychain_password_file).strip
+      keychain_db = File.expand_path("~/Library/Keychains/gcc-build.keychain-db")
+      unless File.exist?(keychain_db)
+        create_keychain(
+          name: "gcc-build",
+          password: keychain_password,
+          default_keychain: false,
+          unlock: true,
+          timeout: 0,          # never auto-lock — this keychain holds ONLY the build cert
+          add_to_search_list: true,
+        )
+      end
+      unlock_keychain(path: "gcc-build", password: keychain_password)
+      ENV["GCC_BUILD_KEYCHAIN"] = keychain_db
+      ENV["GCC_BUILD_KEYCHAIN_PASSWORD"] = keychain_password
+    end
+
     # Ensure distribution cert + profile exist. Set FORCE_PROFILE_RENEWAL=1
     # after capability changes so Apple regenerates the entitlement payload.
-    get_certificates(development: false, force: false, api_key: api_key)
+    if ENV["GCC_BUILD_KEYCHAIN"]
+      get_certificates(
+        development: false, force: false, api_key: api_key,
+        keychain_path: ENV["GCC_BUILD_KEYCHAIN"],
+        keychain_password: ENV["GCC_BUILD_KEYCHAIN_PASSWORD"],
+      )
+    else
+      get_certificates(development: false, force: false, api_key: api_key)
+    end
     get_provisioning_profile(
       development: false,
       force: ENV["FORCE_PROFILE_RENEWAL"] == "1",
