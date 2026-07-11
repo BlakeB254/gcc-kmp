@@ -103,6 +103,30 @@ class EnvScanSessionJournalTest {
     }
 
     @Test
+    fun geoRefEventsJournalRoundTripAndRateLimit() = runBlocking {
+        val path = tempJournalPath()
+        val recorder = EnvScanSessionRecorder(journalPath = path)
+        fun event(atMs: Long) = com.gcc.shared.model.GeoRefEvent(
+            atMs = atMs, lat = 41.85, lng = -87.68, accuracyMeters = 4.0,
+            arX = 1.5f, arY = 0.1f, arZ = -3.25f, arTimestampSeconds = 1234.5,
+        )
+        recorder.addGeoRefEvent(event(atMs = 10_000))
+        recorder.addGeoRefEvent(event(atMs = 12_000)) // <5s after previous — thinned
+        recorder.addGeoRefEvent(event(atMs = 16_000)) // ≥5s — kept
+        recorder.awaitJournalIdle()
+
+        val draft = recorder.draft(emptyList())
+        assertEquals(listOf(10_000L, 16_000L), draft.geoRefEvents.map { it.atMs })
+
+        // Disk round-trip: recovery salvages the pairings so an app kill
+        // never produces a pose stream the DGX can't register.
+        val parsed = parseSessionJournal(File(path).readLines())
+        assertEquals(draft.geoRefEvents, parsed.geoRefEvents)
+        assertEquals(1.5f, parsed.geoRefEvents.first().arX)
+        assertEquals(1234.5, parsed.geoRefEvents.first().arTimestampSeconds)
+    }
+
+    @Test
     fun corruptLineIsSkippedByRecoveryParser() = runBlocking {
         val path = tempJournalPath()
         val recorder = EnvScanSessionRecorder(journalPath = path)

@@ -22,12 +22,14 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun confirmTapCandidate(): TapCandidateState? = null
     actual fun rejectTapCandidate(): TapCandidateState? = null
     actual fun dismissTapCandidate() {}
-    actual fun updateGeoReference(lat: Double, lng: Double) {}
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? = null
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
     actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
     actual fun setGuidanceTarget(lat: Double, lng: Double) {}
     actual fun clearGuidanceTarget() {}
+    actual fun dissolveGuidanceBeacon() {}
+    actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {}
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? = null
     actual fun dismissCandidate() {}
     actual fun focusAt(x: Float, y: Float) {}

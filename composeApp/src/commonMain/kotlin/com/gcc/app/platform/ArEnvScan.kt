@@ -94,8 +94,15 @@ expect class ArEnvScanOverlay() {
     /** Drop the pending tapped candidate. Records nothing (accidental tap). */
     fun dismissTapCandidate()
 
-    /** Pair the worker's latest GPS fix with the AR camera's current position. */
-    fun updateGeoReference(lat: Double, lng: Double)
+    /**
+     * Pair the worker's latest GPS fix with the AR camera's current position.
+     * Returns the recorded pairing (both clocks + both coordinate frames) so
+     * the caller can persist it into the session manifest — the DGX splat
+     * pipeline needs these events to place the AR-local pose stream into the
+     * world splat layer (see [com.gcc.shared.model.GeoRefEvent]). Null when
+     * no AR camera frame exists yet (nothing was paired).
+     */
+    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null): com.gcc.shared.model.GeoRefEvent?
 
     /** Cells credited this session — rendered as the vector-scan ground overlay. */
     fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
@@ -106,11 +113,23 @@ expect class ArEnvScanOverlay() {
      */
     fun updateFog(cellCenters: List<Pair<Double, Double>>)
 
-    /** Aim the AR guidance arrow at the next area worth scanning. */
+    /** Plant the frontier beacon at the next area worth scanning (a pooled
+     *  ground ring in the camera view — the home-walkthrough-style "scan
+     *  here" landmark; spec 2026-07-10 AR frontier beacons). No-op off-iOS. */
     fun setGuidanceTarget(lat: Double, lng: Double)
 
-    /** Hide the AR guidance arrow (no frontier left, or no usable geo-ref). */
+    /** Hide the frontier beacon (no frontier left, or no usable geo-ref). */
     fun clearGuidanceTarget()
+
+    /** Fade the beacon out because its patch was properly scanned (reached
+     *  CLOSE credit) — the reward cue, distinct from a plain target change.
+     *  The next [setGuidanceTarget] re-shows it at the new frontier. */
+    fun dissolveGuidanceBeacon()
+
+    /** Hide/restore the beacon while a confirm flow owns the screen (tap
+     *  reticle pill or lock-on card) — it must never compete with a
+     *  confirmation for attention. */
+    fun setGuidanceBeaconSuppressed(suppressed: Boolean)
 
     /**
      * Geographic origin of the CoverageTracker cell lattice. The AR ground

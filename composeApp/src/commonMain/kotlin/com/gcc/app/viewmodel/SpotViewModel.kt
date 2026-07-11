@@ -697,7 +697,11 @@ class SpotViewModel(
                     objectCapture = state.objectCapture,
                     gateEvents = draft.gateEvents,
                     captureChunks = captureChunkKeys.ifEmpty { null },
-                    captureSchema = if (captureChunkKeys.isNotEmpty()) 1 else null,
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 2 else null,
+                    // World-splat registration (DGX): AR↔world pairings +
+                    // the AR axes convention the pose sidecar uses.
+                    geoRefEvents = draft.geoRefEvents.ifEmpty { null },
+                    arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     rejectedItems = rejectedSnapshot.ifEmpty { null },
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
                     multiItemPhotoKeys = multiItemPhotoKeys,

@@ -55,6 +55,15 @@ interface ArNativeSurface {
     fun cameraPosition(): List<Double>?
 
     /**
+     * ARKit timestamp of the latest frame (boot-relative seconds — the SAME
+     * clock the capture recorder's pose sidecar stamps every `t` with), or
+     * -1.0 before the first frame. Paired with a wall-clock read at geo-ref
+     * time, this is what lets the DGX pipeline align the pose stream with
+     * the GPS track (see GeoRefEvent).
+     */
+    fun currentFrameTimestamp(): Double
+
+    /**
      * Raycast from a normalized image-space point (top-left origin) onto
      * estimated planes. Returns the world hit as [x, y, z], or null.
      */
@@ -97,10 +106,22 @@ interface ArNativeSurface {
      */
     fun updateFogCells(flatXZ: List<Double>, cellSizeMeters: Double)
 
-    /** Aim the camera-attached guidance arrow at an AR-local ground point. */
+    /**
+     * Plant the frontier beacon (ONE pooled world-anchored ground ring —
+     * spec 2026-07-10; never an entity per target) at an AR-local ground
+     * point. Repeat calls MOVE the same entity.
+     */
     fun setGuidanceTarget(x: Double, z: Double)
 
     fun clearGuidanceTarget()
+
+    /** Fade the beacon out (its patch reached CLOSE credit) without
+     *  destroying the pooled entity; the next [setGuidanceTarget] re-shows it. */
+    fun dissolveGuidanceBeacon()
+
+    /** Temporarily hide (true) / restore (false) the beacon while a confirm
+     *  flow owns the screen. Restore only re-shows if a target is live. */
+    fun setBeaconSuppressed(suppressed: Boolean)
 
     /** Camera-attached red warning veil (worker outside the boundary). */
     fun setBoundaryVeilVisible(visible: Boolean)

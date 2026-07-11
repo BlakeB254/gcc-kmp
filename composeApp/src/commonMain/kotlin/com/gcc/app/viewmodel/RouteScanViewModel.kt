@@ -1264,6 +1264,11 @@ class RouteScanViewModel(
                     lapKind = lapKind,
                     routeId = state.routeId,
                     gateEvents = draft.gateEvents,
+                    // Route laps don't run background capture today, so this
+                    // is normally empty — carried anyway so the manifest shape
+                    // stays uniform for the DGX pipeline.
+                    geoRefEvents = draft.geoRefEvents.ifEmpty { null },
+                    arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
                 )
                 sessionUploader.uploadOrQueue(manifest)

@@ -92,12 +92,24 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private static let maxFogCells = 400
     private let cameraAnchor = AnchorEntity(.camera)
     private var veilEntity: ModelEntity?
-    /// Recorded but no longer aimed at by anything in this file — the camera-
-    /// attached guidance arrow was deleted (global constraint 8). Kept so the
-    /// surface still knows the frontier target if a future feature needs it;
-    /// the minimap cone and text prompt are the guidance UI now.
+    /// The frontier target the beacon sits on. (The camera-attached guidance
+    /// arrow stays deleted — global constraint 8; the beacon is world-anchored
+    /// ground UI, not camera chrome.)
     private var guidanceTarget: SIMD3<Float>?
     private var coachingOverlay: ARCoachingOverlayView?
+
+    // Frontier beacon (spec 2026-07-10): ONE pooled world-anchored ground
+    // ring, moved on every target change — NEVER an entity per target (the
+    // fog/sector-post per-cell dictionaries are the anti-pattern that caused
+    // the Complete Scan entity blowup). Torn down in teardown() alongside
+    // the veil.
+    private var beaconAnchor: AnchorEntity?
+    private var beaconModel: ModelEntity?
+    private var beaconSuppressed = false
+    /// Cool blue — deliberately outside the litter color language (green =
+    /// confirmed, orange = expected/litter, red = warning).
+    private static let beaconTint = UIColor(red: 0.3, green: 0.6, blue: 1.0, alpha: 0.7)
+    private lazy var beaconTexture: TextureResource? = Self.makeBeaconRingTexture()
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -189,6 +201,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
         veilEntity?.removeFromParent()
         veilEntity = nil
+        beaconAnchor?.removeFromParent()
+        beaconAnchor = nil
+        beaconModel = nil
+        guidanceTarget = nil
         cameraAnchor.removeFromParent()
 
         coachingOverlay?.setActive(false, animated: false)
@@ -213,6 +229,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         guard let frame = lastFrame else { return nil }
         let t = frame.camera.transform.columns.3
         return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
+    }
+
+    /// ARKit clock of the latest frame — the SAME clock the pose sidecar
+    /// stamps `t` with, so a (wall-clock, this) pair at geo-ref time lets the
+    /// DGX pipeline align the pose stream with the GPS track.
+    func currentFrameTimestamp() -> Double {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        return lastFrame?.timestamp ?? -1.0
     }
 
     func raycast(imageX: Double, imageY: Double) -> [KotlinDouble]? {
@@ -426,14 +451,82 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     func setGuidanceTarget(x: Double, z: Double) {
         DispatchQueue.main.async { [self] in
             let groundY = (floorWorldY ?? cameraFallbackGroundY())
-            guidanceTarget = SIMD3(Float(x), groundY, Float(z))
+            let position = SIMD3(Float(x), groundY + 0.02, Float(z))
+            let firstShow = guidanceTarget == nil
+            guidanceTarget = position
+            let model = beacon()
+            beaconAnchor?.setPosition(position, relativeTo: nil)
+            let show = !beaconSuppressed
+            if show && (firstShow || !model.isEnabled) {
+                model.isEnabled = true
+                animateIn(model, duration: 0.4)
+            } else {
+                model.isEnabled = show
+            }
         }
     }
 
     func clearGuidanceTarget() {
         DispatchQueue.main.async { [self] in
             guidanceTarget = nil
+            beaconModel?.isEnabled = false
         }
+    }
+
+    /// Credit-triggered dissolve: the patch was properly scanned. Shrinks the
+    /// pooled ring out (≥0.4s, spec) then disables it — the entity is reused,
+    /// never removed, so this can run every target for free.
+    func dissolveGuidanceBeacon() {
+        DispatchQueue.main.async { [self] in
+            guard let model = beaconModel, model.isEnabled else { return }
+            let restore = model.transform
+            var end = restore
+            end.scale = SIMD3(repeating: 0.01)
+            model.move(to: end, relativeTo: beaconAnchor, duration: 0.4, timingFunction: .easeIn)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                guard let self, let model = self.beaconModel else { return }
+                model.isEnabled = false
+                model.transform = restore
+            }
+        }
+    }
+
+    /// Confirm flows own the screen: hide while a tap pill / lock-on card is
+    /// up, restore afterward only if a frontier target is still live.
+    func setBeaconSuppressed(suppressed: Bool) {
+        DispatchQueue.main.async { [self] in
+            beaconSuppressed = suppressed
+            beaconModel?.isEnabled = !suppressed && guidanceTarget != nil
+        }
+    }
+
+    /// Lazy singleton (arrow()/veil() pattern): one flat ring on a
+    /// free-standing world anchor, gently pulsing. Non-emissive on purpose —
+    /// it should read as sitting IN the scene (and LiDAR mesh occlusion
+    /// hides it behind real objects), unlike the deliberately-neon grid.
+    private func beacon() -> ModelEntity {
+        if let beaconModel { return beaconModel }
+        var material = PhysicallyBasedMaterial()
+        if let beaconTexture {
+            material.baseColor = .init(tint: Self.beaconTint, texture: .init(beaconTexture))
+        } else {
+            material.baseColor = .init(tint: Self.beaconTint)
+        }
+        material.roughness = 1.0
+        material.metallic = 0.0
+        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        let model = ModelEntity(
+            mesh: .generatePlane(width: 0.9, depth: 0.9, cornerRadius: 0.45),
+            materials: [material]
+        )
+        model.isEnabled = false
+        let anchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+        anchor.addChild(model)
+        arView.scene.addAnchor(anchor)
+        addPulse(to: model, scale: 1.18, duration: 1.1)
+        beaconAnchor = anchor
+        beaconModel = model
+        return model
     }
 
     func setBoundaryVeilVisible(visible: Bool) {
@@ -851,6 +944,25 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             line.withAlphaComponent(0.9).setStroke()
             majorPath.stroke()
             _ = ctx // renderer context retained for the draw
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .color))
+    }
+
+    /// Frontier-beacon ring: a white annulus + soft center dot on a clear
+    /// ground plane; the material tints it beacon-blue. White-on-clear so the
+    /// tint fully owns the color (same texture×tint pattern as the grid).
+    private static func makeBeaconRingTexture() -> TextureResource? {
+        let side: CGFloat = 256
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { _ in
+            let ring = UIBezierPath(ovalIn: CGRect(x: 28, y: 28, width: side - 56, height: side - 56))
+            ring.lineWidth = 26
+            UIColor.white.setStroke()
+            ring.stroke()
+            let core = UIBezierPath(ovalIn: CGRect(x: side / 2 - 26, y: side / 2 - 26, width: 52, height: 52))
+            UIColor.white.withAlphaComponent(0.35).setFill()
+            core.fill()
         }
         guard let cg = image.cgImage else { return nil }
         return try? TextureResource.generate(from: cg, options: .init(semantic: .color))

@@ -71,6 +71,7 @@ import platform.darwin.dispatch_get_main_queue
 import platform.darwin.simd_float4x4
 import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.cache.CaptureChunkStore
+import com.gcc.shared.model.GeoRefEvent
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import kotlinx.datetime.Clock
 import org.koin.mp.KoinPlatform
@@ -105,6 +106,11 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val SUPPRESS_RADIUS_METERS = 2.0
         /** Tap-to-focus (Task 5): how long a [focusAt] tap biases detection. */
         private const val FOCUS_DURATION_MS = 5_000L
+        /** Beacon placement cap (spec 2026-07-10): latLngToLocal error grows
+         *  with distance from the geo reference (compass-bias rotation), and
+         *  a misplaced beacon is worse than an absent one. Much tighter than
+         *  the 55m SEEN raycast ceiling on purpose. */
+        private const val BEACON_MAX_RANGE_METERS = 15.0
         /** Tap-to-focus: promotion streak relaxes to 1 tick for a candidate
          *  hit within this XZ-plane distance of the tapped world point.
          *  NEAR_DISTANCE_METERS (the range gate) is unchanged by focus. */
@@ -484,8 +490,8 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    actual fun updateGeoReference(lat: Double, lng: Double) {
-        val position = cameraPosition() ?: return
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): GeoRefEvent? {
+        val position = cameraPosition() ?: return null
         refLat = lat
         refLng = lng
         refX = position[0]
@@ -493,6 +499,22 @@ actual class ArEnvScanOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // The pairing record the DGX splat pipeline registers the AR-local
+        // pose stream with: BOTH clocks (epoch ms + ARKit frame time, the
+        // pose sidecar's clock) and BOTH frames (lat/lng + AR-local camera
+        // position). Returned to the caller for the session manifest.
+        val arT = nativeSurface?.currentFrameTimestamp()?.takeIf { it > 0.0 }
+            ?: sceneView?.session?.currentFrame?.timestamp
+        val geoRefEvent = GeoRefEvent(
+            atMs = Clock.System.now().toEpochMilliseconds(),
+            lat = lat,
+            lng = lng,
+            accuracyMeters = accuracyMeters,
+            arX = position[0],
+            arY = position[1],
+            arZ = position[2],
+            arTimestampSeconds = arT,
+        )
         // Native mode has no ARSessionDelegate — mirror tracking quality on
         // the same cadence the route/spot overlays do.
         nativeSurface?.let { surface ->
@@ -510,6 +532,7 @@ actual class ArEnvScanOverlay actual constructor() {
             pushGridPhase()
             renderGuidance()
         }
+        return geoRefEvent
     }
 
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {
@@ -568,6 +591,14 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun clearGuidanceTarget() {
         guidanceLatLng = null
         dispatch_async(dispatch_get_main_queue()) { renderGuidance() }
+    }
+
+    actual fun dissolveGuidanceBeacon() {
+        dispatch_async(dispatch_get_main_queue()) { nativeSurface?.dissolveGuidanceBeacon() }
+    }
+
+    actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {
+        dispatch_async(dispatch_get_main_queue()) { nativeSurface?.setBeaconSuppressed(suppressed) }
     }
 
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? {
@@ -1489,12 +1520,15 @@ actual class ArEnvScanOverlay actual constructor() {
     // ── Guidance ─────────────────────────────────────────────────────
 
     /**
-     * Guidance is a minimap ring and a text prompt (global constraint 8). The
-     * camera-attached arrow was deleted: it rendered as an unexplained neon
-     * green bar across the viewfinder and performed no scanning.
-     *
-     * The native target is still set so the surface can reason about the
-     * frontier; nothing is drawn in the camera view.
+     * Guidance in the camera view is the frontier BEACON (spec 2026-07-10):
+     * a single pooled ground ring the native surface plants at the target —
+     * the home-walkthrough-style "scan here" landmark. (The camera-attached
+     * arrow stays deleted: it rendered as an unexplained neon green bar and
+     * performed no scanning.) The minimap ring + text prompt remain the
+     * far-range guidance; the beacon only plants within
+     * [BEACON_MAX_RANGE_METERS] of the geo reference — `latLngToLocal` is
+     * only trustworthy near the reference point, and a beacon planted on the
+     * wrong patch is worse than no beacon.
      */
     private fun renderGuidance() {
         val target = guidanceLatLng
@@ -1503,6 +1537,12 @@ actual class ArEnvScanOverlay actual constructor() {
             return
         }
         val local = latLngToLocal(target.first, target.second, refLat, refLng, refX, refZ, lngScale)
+        val dx = local.first - refX
+        val dz = local.second - refZ
+        if (dx * dx + dz * dz > BEACON_MAX_RANGE_METERS * BEACON_MAX_RANGE_METERS) {
+            nativeSurface?.clearGuidanceTarget()
+            return
+        }
         nativeSurface?.setGuidanceTarget(local.first, local.second)
     }
 

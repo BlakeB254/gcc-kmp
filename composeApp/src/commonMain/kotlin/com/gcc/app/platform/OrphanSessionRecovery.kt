@@ -4,6 +4,7 @@ import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.model.EnvScanManifest
 import com.gcc.shared.model.EnvScanPathSample
+import com.gcc.shared.model.GeoRefEvent
 import com.gcc.shared.serialization.GccJson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,16 +42,24 @@ suspend fun runOrphanRecoverySweepOnce(
     recoverOrphanScanSessions(sessionUploader, captureChunkStore)
 }
 
+/** What [parseSessionJournal] salvages from a journal's surviving lines. */
+data class ParsedSessionJournal(
+    val samples: List<EnvScanPathSample>,
+    val gateEvents: List<String>,
+    val geoRefEvents: List<GeoRefEvent>,
+)
+
 /**
- * Parses a session journal's surviving lines into (samples, gateEvents).
- * Any line that fails to decode — a partially-written last line from an app
- * kill mid-`write`, or any other on-disk corruption — is skipped rather than
- * aborting the whole parse: recovery must salvage everything that DID land
- * cleanly, not throw the entire journal away for one bad line.
+ * Parses a session journal's surviving lines. Any line that fails to decode
+ * — a partially-written last line from an app kill mid-`write`, or any other
+ * on-disk corruption — is skipped rather than aborting the whole parse:
+ * recovery must salvage everything that DID land cleanly, not throw the
+ * entire journal away for one bad line.
  */
-fun parseSessionJournal(lines: List<String>): Pair<List<EnvScanPathSample>, List<String>> {
+fun parseSessionJournal(lines: List<String>): ParsedSessionJournal {
     val samples = mutableListOf<EnvScanPathSample>()
     val gateEvents = mutableListOf<String>()
+    val geoRefEvents = mutableListOf<GeoRefEvent>()
     for (line in lines) {
         if (line.isBlank()) continue
         val entry = try {
@@ -61,13 +70,14 @@ fun parseSessionJournal(lines: List<String>): Pair<List<EnvScanPathSample>, List
         when (entry.type) {
             "sample" -> entry.sample?.let(samples::add)
             "gate" -> entry.gate?.let(gateEvents::add)
+            "georef" -> entry.geoRef?.let(geoRefEvents::add)
         }
     }
-    return samples.toList() to gateEvents.toList()
+    return ParsedSessionJournal(samples.toList(), gateEvents.toList(), geoRefEvents.toList())
 }
 
 /** Reads and parses the journal for [sessionId], or null if it's missing/unreadable. */
-private fun readJournal(sessionId: String): Pair<List<EnvScanPathSample>, List<String>>? {
+private fun readJournal(sessionId: String): ParsedSessionJournal? {
     val path = sessionJournalPath(sessionId) ?: return null
     val bytes = readLocalFileBytes(path) ?: return null
     return parseSessionJournal(bytes.decodeToString().split("\n"))
@@ -117,7 +127,7 @@ internal suspend fun recoverOrphanScanSessions(
         if (sessionId.isBlank()) continue
         try {
             val bytes = readLocalFileBytes(path) ?: continue
-            val (samples, gateEvents) = parseSessionJournal(bytes.decodeToString().split("\n"))
+            val (samples, gateEvents, geoRefEvents) = parseSessionJournal(bytes.decodeToString().split("\n"))
             if (samples.isEmpty()) {
                 // Nothing worth restoring (e.g. the scan never got a single
                 // GPS fix before the app died) — just clean up.
@@ -145,7 +155,9 @@ internal suspend fun recoverOrphanScanSessions(
                 lapKind = "recovered",
                 gateEvents = gateEvents,
                 captureChunks = chunkKeys.ifEmpty { null },
-                captureSchema = if (chunkKeys.isNotEmpty()) 1 else null,
+                captureSchema = if (chunkKeys.isNotEmpty()) 2 else null,
+                geoRefEvents = geoRefEvents.ifEmpty { null },
+                arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                 // Crash-adjacent sessions are exactly where the diagnostics
                 // tail matters most — though on a fresh launch it holds this
                 // run's recovery-sweep lines, not the crashed run's (the ring
@@ -210,7 +222,7 @@ internal suspend fun bookOrphanCaptureSessions(captureChunkStore: CaptureChunkSt
         try {
             val existing = captureChunkStore.chunksForSession(sessionId)
             if (existing.isNotEmpty()) continue // already booked — leave it alone
-            val cellId = readJournal(sessionId)?.first?.firstOrNull()?.let {
+            val cellId = readJournal(sessionId)?.samples?.firstOrNull()?.let {
                 val cell = SessionPointsEstimator.gridCell10m(it.lat, it.lng)
                 "${cell.first}:${cell.second}"
             } ?: UNKNOWN_LOCATION_CELL_ID

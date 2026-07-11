@@ -24,6 +24,41 @@ data class EnvScanPathSample(
 data class EnvScanCell(val lat: Double, val lng: Double)
 
 /**
+ * One AR↔world registration pairing: the AR camera's local position at the
+ * instant a usable GPS fix arrived, with BOTH clocks. This is the record
+ * that lets the DGX splat pipeline place an AR-local reconstruction into the
+ * world splat layer:
+ *
+ *  - the capture-chunk pose sidecar is entirely AR-LOCAL (`transform[16]`
+ *    stamped with ARKit's boot-relative `t`);
+ *  - the manifest [EnvScanPathSample]s are entirely WORLD (lat/lng at epoch
+ *    ms);
+ *  - each GeoRefEvent bridges the two: `(arX, arY, arZ) @ arTimestampSeconds`
+ *    is the same instant as `(lat, lng) @ atMs`, so poses↔GPS can be aligned
+ *    in time AND the AR frame can be anchored in the world frame. Multiple
+ *    events over a session over-determine the alignment (least-squares over
+ *    pairings beats trusting any single fix).
+ *
+ * Axes: see [EnvScanManifest.AR_FRAME_CONVENTION].
+ */
+@Serializable
+data class GeoRefEvent(
+    /** Wall-clock epoch millis of the pairing (same clock as [EnvScanPathSample.atMs]). */
+    val atMs: Long,
+    val lat: Double,
+    val lng: Double,
+    /** GPS horizontal accuracy at the fix, meters; null when unknown. */
+    val accuracyMeters: Double? = null,
+    /** AR-local camera position at the pairing instant, meters. */
+    val arX: Float,
+    val arY: Float,
+    val arZ: Float,
+    /** ARKit frame timestamp (boot-relative seconds — the SAME clock as the
+     *  pose sidecar's per-frame `t`); null when no frame was available. */
+    val arTimestampSeconds: Double? = null,
+)
+
+/**
  * One periodically-captured color+depth frame pair from an active
  * environment scan, for the DGX reconstruction pipeline (Task 7 — before
  * this, a session uploaded only detection metadata and a couple of manual
@@ -127,7 +162,32 @@ data class EnvScanManifest(
      * qualified.
      */
     val multiItemPhotoKeys: List<String>? = null,
-)
+    /**
+     * AR↔world registration pairings recorded during the session — the
+     * bridge between the pose sidecar's AR-local frame and the world frame
+     * (see [GeoRefEvent]). Null for sessions recorded before this existed;
+     * a session with capture chunks but no events (e.g. geo-ref never
+     * paired) is NOT world-registrable and the reconstruction pipeline
+     * should treat its splat as local-only.
+     */
+    val geoRefEvents: List<GeoRefEvent>? = null,
+    /**
+     * Axes/alignment convention of every AR-local value in this manifest
+     * (pose sidecar transforms, [geoRefEvents] positions). Always
+     * [AR_FRAME_CONVENTION] when written by current clients; null on older
+     * manifests (same convention, just undeclared).
+     */
+    val arFrameConvention: String? = null,
+) {
+    companion object {
+        /** ARKit `gravityAndHeading`: +X = east, +Y = up (gravity-aligned),
+         *  -Z = true north; units meters. The pose sidecar's `transform[16]`
+         *  is the camera-to-world simd_float4x4 flattened COLUMN-major
+         *  (columns.0.xyzw, columns.1.xyzw, …), `intrinsics[9]` likewise
+         *  column-major. */
+        const val AR_FRAME_CONVENTION = "gravityAndHeading:+x=east,+y=up,-z=north;meters;colmajor"
+    }
+}
 
 @Serializable
 data class CaptureUploadTicket(

@@ -349,16 +349,9 @@ private fun CameraPhase(
     // and geo-references pair every GPS fix with the AR camera position —
     // except fixes worse than MAX_GEO_REF_ACCURACY_METERS, which must not
     // re-anchor the frame (one wild fix drags all geo-derived AR geometry).
+    // (The pairing collector itself lives below the session recorder, which
+    // persists each pairing for the DGX world-splat registration.)
     var geoRefPaired by remember { mutableStateOf(false) }
-    LaunchedEffect(arOverlay) {
-        if (arOverlay == null) return@LaunchedEffect
-        locationProvider.locationFlow.collect { loc ->
-            if (isGeoRefFixUsable(locationProvider.horizontalAccuracyMeters.value)) {
-                arOverlay.updateGeoReference(loc.lat, loc.lng)
-                geoRefPaired = true
-            }
-        }
-    }
     // Steadiness accumulator for the end-of-session A-F score (ScanScore):
     // a plain (non-Compose) counter pair, not state — sampled once/sec so a
     // steady session doesn't recompose per sample. ArSessionHealth's
@@ -395,6 +388,21 @@ private fun CameraPhase(
     val sessionRecorder = remember {
         val sessionId = EnvScanSessionRecorder.generateSessionId()
         EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
+    }
+    // Geo-ref pairing collector (see geoRefPaired above): every usable fix
+    // re-anchors the AR frame AND records the AR↔world pairing into the
+    // session recorder — the metadata the DGX splat pipeline registers this
+    // session's pose stream into the world splat layer with.
+    LaunchedEffect(arOverlay) {
+        if (arOverlay == null) return@LaunchedEffect
+        locationProvider.locationFlow.collect { loc ->
+            val accuracy = locationProvider.horizontalAccuracyMeters.value
+            if (isGeoRefFixUsable(accuracy)) {
+                arOverlay.updateGeoReference(loc.lat, loc.lng, accuracy)
+                    ?.let(sessionRecorder::addGeoRefEvent)
+                geoRefPaired = true
+            }
+        }
     }
     // Coverage tracker: hoisted above the AR-overlay DisposableEffect below
     // (rather than down with its other env-scan state) because the
@@ -855,6 +863,22 @@ private fun CameraPhase(
                 coveragePercent = coveragePercentValue,
             )
         }
+        // Beacon dissolve (spec 2026-07-10): when the PREVIOUS frontier
+        // target's patch — its cell or an immediate neighbor, tolerating
+        // hysteresis re-picks a cell over — reached CLOSE credit, fade the
+        // AR beacon out as the "you finished this patch" reward BEFORE the
+        // new target teleports it. A plain target change (something closer
+        // appeared) moves the beacon without ceremony.
+        val previousTarget = guidanceTarget
+        if (arOverlay != null && previousTarget != null) {
+            val prevCell = tracker.cellForLatLng(previousTarget.first, previousTarget.second)
+            val closeCells = creditedCells
+                .filterValues { it.quality == CoverageQuality.CLOSE }.keys
+            val patchDone = prevCell != null && closeCells.any { (r, c) ->
+                kotlin.math.abs(r - prevCell.first) <= 1 && kotlin.math.abs(c - prevCell.second) <= 1
+            }
+            if (patchDone) arOverlay.dissolveGuidanceBeacon()
+        }
         guidanceTarget = pick?.target
         guidancePhase = pick?.phase ?: GuidancePhase.COVER
         if (arOverlay != null) {
@@ -862,6 +886,14 @@ private fun CameraPhase(
             if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
             else arOverlay.clearGuidanceTarget()
         }
+    }
+    // The beacon yields to confirm flows: while the tap pill or the lock-on
+    // card owns the screen it must not compete for attention; restored the
+    // moment the flow resolves (spec 2026-07-10 positioning constraints).
+    LaunchedEffect(tapCandidate.phase, trashCandidate) {
+        arOverlay?.setGuidanceBeaconSuppressed(
+            tapCandidate.phase == TapPhase.AWAITING_CONFIRMATION || trashCandidate != null
+        )
     }
     // Idle nudge: no new cell credited for a while → steer via the status chip.
     // Restarting on scannedCells.size IS the idle timer reset.
