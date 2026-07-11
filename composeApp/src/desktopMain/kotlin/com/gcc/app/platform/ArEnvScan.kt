@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Desktop ArEnvScanOverlay stub: the environment scan keeps the plain
@@ -15,6 +16,11 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
+    private val _tapCandidate = MutableStateFlow(TapCandidateState())
+    actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
+    actual fun confirmTapCandidate(): TapCandidateState? = null
+    actual fun rejectTapCandidate(): TapCandidateState? = null
+    actual fun dismissTapCandidate() {}
     actual fun updateGeoReference(lat: Double, lng: Double) {}
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}

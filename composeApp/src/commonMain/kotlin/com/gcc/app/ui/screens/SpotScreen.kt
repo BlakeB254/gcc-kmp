@@ -30,6 +30,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
+import com.gcc.app.platform.TapCandidateState
+import com.gcc.app.platform.TapPhase
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
@@ -206,6 +208,8 @@ fun SpotScreen(
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
+                    onConfirmedTapItem = { candidate -> viewModel.addConfirmedTapItem(candidate) },
+                    onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
                     onFlushMarkers = { viewModel.flushArMarkers() },
@@ -302,6 +306,10 @@ private fun CameraPhase(
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
+    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
+    onConfirmedTapItem: (TapCandidateState) -> Unit = {},
+    /** The user tapped a candidate and pressed "Not litter" — a negative example. */
+    onRejectedTapItem: (TapCandidateState) -> Unit = {},
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
     /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
@@ -323,6 +331,8 @@ private fun CameraPhase(
     val arOverlay = remember { if (isScanMode && arEnvScanSupported()) ArEnvScanOverlay() else null }
     val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
+    val tapCandidate by (arOverlay?.tapCandidate ?: remember { MutableStateFlow(TapCandidateState()) })
+        .collectAsState()
     // Gate pauses AR frame analysis indoors (same behavior the route AR has),
     // and geo-references pair every GPS fix with the AR camera position —
     // except fixes worse than MAX_GEO_REF_ACCURACY_METERS, which must not
@@ -1091,6 +1101,24 @@ private fun CameraPhase(
         // (see confirmCandidate/dismissCandidate), so this only ever hides
         // the reticle for the duration the card itself is visible.
         if (trashCandidate == null) DetectionReticleOverlay(detections = liveDetections)
+        // A tapped candidate outranks the passive auto-detect reticle.
+        if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
+            TapCandidatePill(
+                state = tapCandidate,
+                onConfirm = {
+                    arOverlay?.confirmTapCandidate()?.let { confirmed ->
+                        onConfirmedTapItem(confirmed)
+                    }
+                },
+                onReject = {
+                    arOverlay?.rejectTapCandidate()?.let { rejected ->
+                        onRejectedTapItem(rejected)
+                    }
+                },
+                onDismiss = { arOverlay?.dismissTapCandidate() },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
+            )
+        }
         if (isScanMode) {
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates

@@ -68,6 +68,24 @@ expect class ArEnvScanOverlay() {
     /** Non-null while a close-range candidate awaits Confirm / Not trash. */
     val trashCandidate: StateFlow<TrashCandidate?>
 
+    /** The one pending user-tapped candidate. See [TapCandidateState]. */
+    val tapCandidate: StateFlow<TapCandidateState>
+
+    /**
+     * Persist the pending tapped candidate as user-confirmed litter and reset.
+     * Returns the state that was confirmed, or null if nothing was pending.
+     */
+    fun confirmTapCandidate(): TapCandidateState?
+
+    /**
+     * Record the pending tapped candidate as a negative training example and
+     * reset. Returns the rejected state, or null if nothing was pending.
+     */
+    fun rejectTapCandidate(): TapCandidateState?
+
+    /** Drop the pending tapped candidate. Records nothing (accidental tap). */
+    fun dismissTapCandidate()
+
     /** Pair the worker's latest GPS fix with the AR camera's current position. */
     fun updateGeoReference(lat: Double, lng: Double)
 
