@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid marker data' }, { status: 400 })
     }
 
+    let inserted = 0
     for (const marker of markers) {
       const provenance = typeof marker.provenance === 'string' ? marker.provenance : 'auto_detected'
       // A rejection ("Not litter") must never become a dirty observation —
@@ -77,10 +78,11 @@ export async function POST(request: NextRequest) {
         mediaUrl: marker.mediaUrl ?? undefined,
         capturedAt: marker.capturedAt,
       })
+      inserted++
     }
 
     return NextResponse.json(
-      { data: { inserted: markers.length, success: true }, success: true },
+      { data: { inserted, success: true }, success: true },
       { status: 201 },
     )
   } catch (error) {

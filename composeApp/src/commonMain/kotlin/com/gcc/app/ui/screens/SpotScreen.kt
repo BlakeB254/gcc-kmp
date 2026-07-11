@@ -66,6 +66,7 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.KeepScreenAwake
+import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1115,13 +1116,24 @@ private fun CameraPhase(
             TapCandidatePill(
                 state = tapCandidate,
                 onConfirm = {
-                    arOverlay?.confirmTapCandidate()?.let { confirmed ->
-                        onConfirmedTapItem(confirmed)
+                    // I2: mirror TrashConfirmCard's outdoor-gate guard — a
+                    // confirm/reject that lands after an outdoor->indoor flip
+                    // must not persist or record; treat it as a dismiss.
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.dismissTapCandidate()
+                    } else {
+                        arOverlay?.confirmTapCandidate()?.let { confirmed ->
+                            onConfirmedTapItem(confirmed)
+                        }
                     }
                 },
                 onReject = {
-                    arOverlay?.rejectTapCandidate()?.let { rejected ->
-                        onRejectedTapItem(rejected)
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.dismissTapCandidate()
+                    } else {
+                        arOverlay?.rejectTapCandidate()?.let { rejected ->
+                            onRejectedTapItem(rejected)
+                        }
                     }
                 },
                 onDismiss = { arOverlay?.dismissTapCandidate() },
@@ -1171,6 +1183,12 @@ private fun CameraPhase(
                                 estimatedWeightGrams = final.estimatedWeightGrams,
                                 estimatedWidthMeters = final.estimatedWidthMeters,
                                 yawDegrees = final.yawDegrees,
+                                // C1: this is the primary lock-on confirm flow —
+                                // an explicit user confirmation — so it must
+                                // carry provenance, or hasUserConfirmedLitter()
+                                // never sees it and report filing silently
+                                // never triggers off this path.
+                                provenance = PROVENANCE_USER_CONFIRMED,
                             )
                         )
                     }

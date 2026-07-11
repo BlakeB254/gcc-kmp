@@ -1,7 +1,57 @@
 package com.gcc.app.platform
 
+import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.ObservedSpotItem
 import com.gcc.shared.model.WorldObservation
+
+/** Same-type items within this radius are considered the same physical pile
+ *  — the scanner path projects along heading, the analyzer fallback tags
+ *  the user position, and both can fire for the same pile. */
+private const val OBSERVED_ITEM_DEDUP_RADIUS_METERS = 4.0
+
+/** What [addObservedItem] (SpotViewModel) should do with an incoming item
+ *  against the session's existing observed items. */
+sealed interface DedupDecision {
+    /** No same-type match within the dedup radius — add the incoming item as new. */
+    object Add : DedupDecision
+
+    /** A same-type match within radius, and the incoming item adds no new
+     *  evidence over it (auto-vs-anything, or confirmed-vs-confirmed) — drop. */
+    object Drop : DedupDecision
+
+    /** A same-type match within radius exists at [index] in the existing
+     *  list, but the incoming item is a fresh user confirmation and the
+     *  match isn't already one — upgrade the match in place instead of
+     *  dropping the confirmation on the floor (C2). */
+    data class Upgrade(val index: Int) : DedupDecision
+}
+
+/**
+ * Pure decision seam for [addObservedItem]'s dedup step (C2). A same-type
+ * match within [OBSERVED_ITEM_DEDUP_RADIUS_METERS] normally just dedups —
+ * except when [incoming] is a user confirmation (provenance ==
+ * [PROVENANCE_USER_CONFIRMED]) and the matched item is NOT already one: a
+ * user confirmation is the only evidence [hasUserConfirmedLitter] accepts
+ * to file a report, so silently dropping it because an earlier
+ * auto-detected tick already claimed the same spot would break report
+ * filing for that pile. A confirmed-vs-confirmed match still dedups
+ * plainly — it carries no new evidence.
+ */
+fun dedupUpgradeDecision(existing: List<ObservedSpotItem>, incoming: ObservedSpotItem): DedupDecision {
+    val matchIndex = existing.indexOfFirst { prior ->
+        prior.itemType == incoming.itemType &&
+            GeofenceVerification.distanceMeters(
+                prior.lat, prior.lng, incoming.lat, incoming.lng,
+            ) < OBSERVED_ITEM_DEDUP_RADIUS_METERS
+    }
+    if (matchIndex < 0) return DedupDecision.Add
+    val matched = existing[matchIndex]
+    return if (incoming.provenance == PROVENANCE_USER_CONFIRMED && matched.provenance != PROVENANCE_USER_CONFIRMED) {
+        DedupDecision.Upgrade(matchIndex)
+    } else {
+        DedupDecision.Drop
+    }
+}
 
 /** An automatic detection. Never sufficient to file a report (constraint 10). */
 const val PROVENANCE_AUTO_DETECTED = "auto_detected"

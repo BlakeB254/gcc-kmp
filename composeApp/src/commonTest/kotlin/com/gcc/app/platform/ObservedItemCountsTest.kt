@@ -56,4 +56,67 @@ class ObservedItemCountsTest {
     fun aRejectedConfirmationIsNotReportEvidence() {
         assertTrue(!hasUserConfirmedLitter(listOf(item("litter", provenance = PROVENANCE_USER_REJECTED))))
     }
+
+    // C2: dedupUpgradeDecision — the pure seam addObservedItem's 4m/same-type
+    // dedup check delegates to.
+
+    @Test
+    fun noMatchAddsTheIncomingItem() {
+        val existing = listOf(item("litter", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun autoDetectedIncomingAgainstAnyMatchJustDedups() {
+        // Regression guard: an auto-detected tick landing on an existing
+        // confirmed (or auto-detected) item must keep dedupping plainly —
+        // only a USER CONFIRMATION is allowed to upgrade.
+        val existing = listOf(item("litter", provenance = PROVENANCE_USER_CONFIRMED))
+        val incoming = item("litter", provenance = PROVENANCE_AUTO_DETECTED)
+        assertEquals(DedupDecision.Drop, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun confirmedVsConfirmedStillDedups() {
+        val existing = listOf(item("litter", provenance = PROVENANCE_USER_CONFIRMED))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Drop, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun userConfirmedIncomingAgainstAutoDetectedMatchUpgrades() {
+        // C2: the bug — a user confirmation matching a prior auto-detected
+        // tick used to be silently dropped, losing the only evidence that
+        // gates report filing.
+        val existing = listOf(item("litter", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Upgrade(0), dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun userConfirmedIncomingAgainstNullProvenanceMatchUpgrades() {
+        // Legacy rows carry a null provenance, same weak-evidence status as
+        // auto_detected — still eligible for upgrade.
+        val existing = listOf(item("litter", provenance = null))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Upgrade(0), dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun differentItemTypeNeverMatches() {
+        val existing = listOf(item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun matchIsSelectedByIndexAmongMultipleExisting() {
+        val existing = listOf(
+            item("litter", itemType = "can", provenance = PROVENANCE_AUTO_DETECTED),
+            item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED),
+        )
+        val incoming = item("litter", itemType = "bottle", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Upgrade(1), dedupUpgradeDecision(existing, incoming))
+    }
 }

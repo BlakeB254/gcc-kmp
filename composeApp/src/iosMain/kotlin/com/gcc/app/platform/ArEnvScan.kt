@@ -612,6 +612,12 @@ actual class ArEnvScanOverlay actual constructor() {
      * signal that a following tap is expected to supersede anyway.
      */
     actual fun focusAt(x: Float, y: Float) {
+        // I1: a tap while the whole-frame lock-on confirm card is up must
+        // not advance the (hidden, since trashCandidate != null suppresses
+        // the pill in SpotScreen) tap state machine — otherwise it can reach
+        // AWAITING_CONFIRMATION invisibly and surface a stale pill the
+        // instant the confirm card is dismissed/confirmed.
+        if (_trashCandidate.value != null) return
         pendingFocusTap = x.toDouble() to y.toDouble()
         _tapCandidate.update { it.reduce(TapEvent.Tapped(x, y)) }
     }
@@ -988,7 +994,14 @@ actual class ArEnvScanOverlay actual constructor() {
     ) {
         // While a candidate is pending the loop idles: the card is on screen
         // and the reticle freezes on the locked item's projected position.
-        if (_trashCandidate.value != null) return
+        // Minor B: the multi-item layer must NOT freeze along with it — a
+        // stale box list left published here could mis-tag a photo captured
+        // during the confirm-card window against an item that's no longer
+        // (or never was) at that position.
+        if (_trashCandidate.value != null) {
+            _multiItemReticles.value = emptyList()
+            return
+        }
 
         // Global constraint 10/11: automatic promotion requires parent-context
         // suppression. A user tap bypasses this entirely (see focusAt).
@@ -1034,7 +1047,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // Task 17: multi-item reticle layer — reuses [candidates] above
         // (zero extra saliency cost); classifyRegion only spends extra Vision
         // requests when there's actually more than one box to disambiguate.
-        updateMultiItemReticles(frame, candidates, trashLabel, confidence)
+        updateMultiItemReticles(frame, candidates)
         val salient = selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
         salient?.boundingBox?.useContents {
             visionX = origin.x + size.width / 2.0
@@ -1138,32 +1151,25 @@ actual class ArEnvScanOverlay actual constructor() {
      * tagging.
      *
      * Performance guard: region classification ([classifyRegion]) is skipped
-     * entirely when there's 0-1 boxes — the whole-frame classify that
-     * produced [wholeFrameLabel]/[wholeFrameConfidence] already covers that
-     * case, so reusing it costs nothing extra. Only when saliency finds >= 2
-     * boxes does this spend up to [MAX_MULTI_ITEM_RETICLES] additional Vision
-     * requests, one per box — see the task-17 report for the full per-tick
-     * Vision request-count accounting.
+     * entirely when there's 0-1 boxes. The 0-1 case is also where [analyzeTrash]'s
+     * own whole-frame lock-on (the single [TrashCandidate] reticle) already
+     * owns rendering, so this layer publishes nothing for it (I3) — only
+     * when saliency finds >= 2 boxes does this spend up to
+     * [MAX_MULTI_ITEM_RETICLES] additional Vision requests, one per box —
+     * see the task-17 report for the full per-tick Vision request-count
+     * accounting.
      */
     private fun updateMultiItemReticles(
         frame: ARFrame?,
         candidates: List<VNRectangleObservation>,
-        wholeFrameLabel: String,
-        wholeFrameConfidence: Float,
     ) {
-        if (candidates.isEmpty()) {
+        // I3: the 0-box AND 1-box cases both defer to the whole-frame
+        // lock-on path (analyzeTrash's own TrashCandidate promotion) — it
+        // already owns the single-object case end-to-end (reticle, streak,
+        // promotion). Publishing a reticle here too double-drew the same
+        // object via two independent overlays.
+        if (candidates.size <= 1) {
             _multiItemReticles.value = emptyList()
-            return
-        }
-        if (candidates.size == 1) {
-            val box = candidates[0].toReticleBox()
-            _multiItemReticles.value = listOf(
-                DetectionReticle(
-                    centerX = box.viewX, centerY = box.viewY,
-                    width = box.side.toFloat(), height = box.side.toFloat(),
-                    label = wholeFrameLabel, confidence = wholeFrameConfidence, isLitter = true,
-                )
-            )
             return
         }
         val classified = candidates.take(MAX_MULTI_ITEM_RETICLES).map { obs ->
