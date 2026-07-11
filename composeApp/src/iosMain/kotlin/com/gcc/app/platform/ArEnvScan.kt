@@ -890,15 +890,19 @@ actual class ArEnvScanOverlay actual constructor() {
         fraction: Double,
     ): List<ClassificationObservation> {
         val pixelBuffer = nativeSurface?.pixelBufferOrNull() ?: frame?.capturedImage ?: return emptyList()
-        val half = fraction / 2.0
+        val side = fraction.coerceIn(0.0, 1.0)
+        val half = side / 2.0
         // Vision's regionOfInterest is bottom-left origin; imageX/imageY here
-        // are top-left, so flip Y (same conversion analyzeTrash uses).
+        // are top-left, so flip Y (same conversion analyzeTrash uses). The
+        // origin is clamped to [0, 1 - side] so origin + size never exceeds
+        // 1.0 — an off-center tap slides the crop inward (keeping its full
+        // side length) instead of handing Vision an out-of-bounds ROI.
         val visionY = 1.0 - imageY
         val roi = CGRectMake(
-            (imageX - half).coerceIn(0.0, 1.0),
-            (visionY - half).coerceIn(0.0, 1.0),
-            fraction.coerceIn(0.0, 1.0),
-            fraction.coerceIn(0.0, 1.0),
+            (imageX - half).coerceIn(0.0, 1.0 - side),
+            (visionY - half).coerceIn(0.0, 1.0 - side),
+            side,
+            side,
         )
         val request = VNClassifyImageRequest()
         request.regionOfInterest = roi

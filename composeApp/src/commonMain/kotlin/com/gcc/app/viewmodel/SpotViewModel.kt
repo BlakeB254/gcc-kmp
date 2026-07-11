@@ -934,6 +934,7 @@ class SpotViewModel(
         _uiState.value = SpotUiState()
         observedItemStamps.clear()
         photoStamps.clear()
+        rejectedItems.clear()
         pendingSessionDraft = null
         archivedSessionIds.clear()
     }
