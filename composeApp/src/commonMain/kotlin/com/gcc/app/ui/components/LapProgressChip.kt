@@ -19,13 +19,30 @@ import com.gcc.shared.model.ScanPhase
 /**
  * The persistent "where am I in the 2-lap flow" label. Null for phases where
  * a lap chip carries no information (submitting/complete screens narrate
- * themselves).
+ * themselves). [lapElapsedSeconds] (elapsed within the CURRENT lap, not the
+ * whole session) appends a live mm:ss timer — block assignments are timed
+ * work, and the worker should always see the lap clock.
  */
-fun lapProgressLabel(phase: ScanPhase): String? = when (phase) {
-    ScanPhase.SCOUTING -> "Lap 1 of 2 · Document"
-    ScanPhase.SCOUT_REVIEW -> "Lap 1 done · Review"
-    ScanPhase.CLEANING -> "Lap 2 of 2 · Clean"
-    ScanPhase.SUBMITTING, ScanPhase.COMPLETE -> null
+fun lapProgressLabel(phase: ScanPhase, lapElapsedSeconds: Long? = null): String? {
+    val base = when (phase) {
+        ScanPhase.SCOUTING -> "Lap 1 of 2 · Document"
+        ScanPhase.SCOUT_REVIEW -> "Lap 1 done · Review"
+        ScanPhase.CLEANING -> "Lap 2 of 2 · Clean"
+        ScanPhase.SUBMITTING, ScanPhase.COMPLETE -> return null
+    }
+    // The review interstitial isn't a timed lap — no clock there.
+    if (lapElapsedSeconds == null || phase == ScanPhase.SCOUT_REVIEW) return base
+    return "$base · ${formatLapClock(lapElapsedSeconds)}"
+}
+
+/** mm:ss, rolling to h:mm:ss past an hour. */
+fun formatLapClock(totalSeconds: Long): String {
+    val s = totalSeconds.coerceAtLeast(0)
+    val hours = s / 3600
+    val minutes = (s % 3600) / 60
+    val seconds = s % 60
+    fun two(n: Long) = n.toString().padStart(2, '0')
+    return if (hours > 0) "$hours:${two(minutes)}:${two(seconds)}" else "${two(minutes)}:${two(seconds)}"
 }
 
 /**
@@ -47,8 +64,12 @@ fun cleanLapCompletionWarning(hotspots: List<ScanHotspot>): String? {
 
 /** Small pill showing the current lap of the 2-lap scout → clean flow. */
 @Composable
-fun LapProgressChip(phase: ScanPhase, modifier: Modifier = Modifier) {
-    val label = lapProgressLabel(phase) ?: return
+fun LapProgressChip(
+    phase: ScanPhase,
+    modifier: Modifier = Modifier,
+    lapElapsedSeconds: Long? = null,
+) {
+    val label = lapProgressLabel(phase, lapElapsedSeconds) ?: return
     Text(
         text = label,
         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),

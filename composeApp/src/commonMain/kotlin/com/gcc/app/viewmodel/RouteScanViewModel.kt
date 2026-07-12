@@ -119,6 +119,9 @@ data class RouteScanUiState(
     val sectionPrompt: String? = null,
     /** 1 = baseline documentation lap; 2 = cleanup lap guided by landmarks. */
     val lapNumber: Int = 1,
+    /** [elapsedSeconds] value when the CURRENT lap started — lap clock =
+     *  elapsedSeconds - this. 0 for lap 1 (the session clock IS its clock). */
+    val lapStartedAtElapsedSeconds: Long = 0,
     /** Landmark clusters from lap 1, largest problem first. */
     val problemAreas: List<ProblemArea> = emptyList(),
     /** The problem area lap 2 is currently steering the worker toward. */
@@ -936,6 +939,7 @@ class RouteScanViewModel(
                     phase = ScanPhase.CLEANING,
                     error = null,
                     lapNumber = 2,
+                    lapStartedAtElapsedSeconds = currentState.elapsedSeconds,
                     problemAreas = areas,
                     guidanceTarget = areas.firstOrNull(),
                     sectionPrompt = if (areas.isNotEmpty()) {

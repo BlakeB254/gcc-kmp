@@ -161,9 +161,11 @@ fun CleanScreen(
                     }
                 }
 
-                // Lap progress (top-center) -- persistent 2-lap marker.
+                // Lap progress + lap clock (top-center) -- persistent 2-lap
+                // marker; the clock restarts at the lap-2 transition.
                 LapProgressChip(
                     phase = uiState.phase,
+                    lapElapsedSeconds = uiState.elapsedSeconds - uiState.lapStartedAtElapsedSeconds,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .statusBarsPadding()

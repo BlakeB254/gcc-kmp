@@ -155,16 +155,32 @@ fun ScoutScreen(
             )
         }
 
-        // ── Lap progress (top-center) — the persistent "where am I in the
-        // 2-lap flow" marker; previously the lap number only appeared in
-        // transient AR-overlay captions. ─────────────────────────────────
-        LapProgressChip(
-            phase = uiState.phase,
+        // ── Lap progress + lap clock (top-center) — the persistent "where
+        // am I in the 2-lap flow" marker; block assignments are timed work.
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
                 .padding(top = 56.dp),
-        )
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            LapProgressChip(
+                phase = uiState.phase,
+                lapElapsedSeconds = uiState.elapsedSeconds - uiState.lapStartedAtElapsedSeconds,
+            )
+            // Lap-1 tally: what the documentation lap has found so far.
+            if (uiState.hotspots.isNotEmpty()) {
+                val foundLbs = uiState.hotspots.sumOf { it.estimatedWeightLbs ?: 0.0 }
+                StatusChip(
+                    text = "${uiState.hotspots.size} found" +
+                        if (foundLbs > 0) " · ≈${(foundLbs * 10).toInt() / 10.0} lbs" else "",
+                    dotColor = Color.White,
+                    backgroundColor = Color.Black.copy(alpha = 0.55f),
+                    emoji = "🗑",
+                )
+            }
+        }
 
         // ── Bottom panel: coverage bar + loop status + action buttons ─
         Column(

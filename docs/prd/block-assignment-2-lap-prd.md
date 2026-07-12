@@ -66,6 +66,15 @@ claim job (block available → in_progress, 24 h window)
 
 - A persistent lap chip shows the current stage on every lap screen:
   "Lap 1 of 2 · Document" → "Lap 1 done · Review" → "Lap 2 of 2 · Clean".
+- **Laps are timed and the clock is visible**: the lap chip carries a live
+  lap clock (mm:ss, restarting at the lap-2 transition); per-lap durations
+  land server-side via the phase timestamps (scout/clean started/completed).
+- **Lap 1's findings are visible while scouting**: a tally chip (items found
+  + estimated lbs) rides under the lap chip and carries into review.
+- The block boundary is a visible **scan limit** everywhere: AR barrier
+  walls in the camera (green outer / amber exclusions + outside-boundary
+  veil) and a heavier out-of-bounds wash on the minimap beyond the outer
+  ring.
 - Lap transitions are prompted, never hidden: hitting the lap-1 threshold
   auto-advances into review; review's primary button enters lap 2.
 

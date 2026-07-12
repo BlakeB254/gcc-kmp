@@ -239,6 +239,26 @@ fun ScanMinimapOverlay(
         // streets, the cone, and the coverage paint.
         drawPath(veil, color = VeilSlate.copy(alpha = 0.18f))
 
+        // ── Scan limit (block assignments) ───────────────────────────
+        // Everything OUTSIDE the block's outer boundary is out of scope for
+        // the assignment: a heavier slate wash over the base veil makes the
+        // boundary read as a hard limit, mirroring the AR barrier walls in
+        // the camera view. Geometric difference like the veil (no BlendMode).
+        if (outerBoundary.size >= 3) {
+            val boundaryPath = Path()
+            outerBoundary.forEachIndexed { index, (lat, lng) ->
+                val p = toOffset(lat, lng)
+                if (index == 0) boundaryPath.moveTo(p.x, p.y) else boundaryPath.lineTo(p.x, p.y)
+            }
+            boundaryPath.close()
+            val outside = Path.combine(
+                PathOperation.Difference,
+                Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
+                boundaryPath,
+            )
+            drawPath(outside, color = VeilSlate.copy(alpha = 0.35f))
+        }
+
         // Persistent facing cone. Answers "where am I pointing?" — independent
         // of whether any ray landed this tick (constraint 5). Drawn UNDER the
         // beam so the brighter, scene-aware beam paints on top of it.
