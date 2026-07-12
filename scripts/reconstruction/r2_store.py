@@ -1,6 +1,7 @@
 """R2 access for the fusion pipeline — reads raw session manifests/frames for
 a location cell, writes fused outputs back. Read-only against `raw/`, the
-mobile app's namespace; this pipeline only ever writes under `reconstructed/`.
+mobile app's namespace; this pipeline only ever writes under `reconstructed/`
+(and the privacy scrub worker, scripts/privacy_scrub/, under `scrubbed/`).
 
 Env vars (same names as site/src/lib/r2.ts, so one bucket/one set of
 credentials serves both the app and this pipeline):
@@ -104,6 +105,44 @@ def list_manifests_for_cell(cell_id: str) -> list[ManifestObject]:
 def download_bytes(key: str) -> bytes:
     c = client()
     return c.get_object(Bucket=bucket_name(), Key=key)["Body"].read()
+
+
+SCRUBBED_PREFIX = "scrubbed/"
+_RAW_PREFIX = "raw/"
+
+
+def scrubbed_key_for(raw_key: str) -> str:
+    """Privacy-scrubbed rendition key for a raw capture artifact: same key
+    with the leading 'raw/' segment swapped for 'scrubbed/'. This is THE
+    naming contract the review UI and the scrub worker share — change it in
+    lockstep with scripts/privacy_scrub/ and any UI preference logic."""
+    if not raw_key.startswith(_RAW_PREFIX):
+        raise ValueError(f"not a raw/ capture key: {raw_key!r}")
+    return SCRUBBED_PREFIX + raw_key[len(_RAW_PREFIX):]
+
+
+def object_exists(key: str) -> bool:
+    c = client()
+    try:
+        c.head_object(Bucket=bucket_name(), Key=key)
+        return True
+    except c.exceptions.ClientError:
+        return False
+
+
+def download_video_bytes(raw_key: str) -> bytes:
+    """Download a capture video chunk, preferring its privacy-scrubbed
+    rendition when one exists (PRD docs/prd/scan-session-replay-devops-prd.md
+    decision #2: scrubbed imagery feeds reconstruction and review surfaces;
+    raw stays admin-only). PREFER_SCRUBBED_VIDEO=0 is the kill switch."""
+    if os.environ.get("PREFER_SCRUBBED_VIDEO", "1") != "0" and is_configured():
+        try:
+            candidate = scrubbed_key_for(raw_key)
+        except ValueError:
+            candidate = None
+        if candidate and object_exists(candidate):
+            return download_bytes(candidate)
+    return download_bytes(raw_key)
 
 
 def upload_bytes(key: str, data: bytes, content_type: str) -> None:

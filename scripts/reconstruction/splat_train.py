@@ -54,7 +54,7 @@ def gather_session_frames(
     frames: list[bytes] = []
     positions: list[np.ndarray] = []
     for kinds in chunks_with_video.values():
-        video_bytes = r2_store.download_bytes(kinds["mov"])
+        video_bytes = r2_store.download_video_bytes(kinds["mov"])
         sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
         _header, sidecar_frames = chunk_io.parse_sidecar(sidecar_bytes)
         if not sidecar_frames:

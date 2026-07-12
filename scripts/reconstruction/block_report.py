@@ -70,7 +70,7 @@ class SessionMedia:
             _header, frames = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
             if frames:
                 self._sidecars[idx] = frames
-                self._videos[idx] = r2_store.download_bytes(kinds["mov"])
+                self._videos[idx] = r2_store.download_video_bytes(kinds["mov"])
 
     def sidecar_epoch(self) -> tuple[float, float] | None:
         """(first sidecar t, its wall-clock epoch ms) — the clock bridge.

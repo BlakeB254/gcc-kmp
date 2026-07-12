@@ -15,6 +15,20 @@ pipeline's original placeholder design (periodic JPEG+PNG frame pairs via a
 deleted, Kotlin scaffolding and all, once the real capture code landed and
 turned out to use a materially different (and better-engineered) format.
 
+## Privacy scrub stage (2026-07-12)
+
+Per `docs/prd/scan-session-replay-devops-prd.md` (branch `scan-replay-plan`)
+decision #2, capture video is privacy-scrubbed (bystanders + vehicles
+blurred) on this box before feeding reconstruction or review surfaces. The
+worker lives in `../privacy_scrub/` (own venv — torch nightly for the YOLO
+pass); the naming contract (`raw/…chunk-N.mov` → `scrubbed/…chunk-N.mov`)
+is `r2_store.scrubbed_key_for()`. Every video consumer here downloads via
+`r2_store.download_video_bytes()`, which prefers the scrubbed rendition
+when it exists (`PREFER_SCRUBBED_VIDEO=0` to disable). Scrubbed renditions
+preserve per-frame pts, so `chunk_io`'s first-pts rebasing and depth↔video
+matching behave identically on either rendition. See
+`../privacy_scrub/README.md`.
+
 ## Status: two things to know before trusting this on real data
 
 **1. Open3D 0.18.0 (the only aarch64 wheel that exists at all) segfaults on

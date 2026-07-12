@@ -72,7 +72,7 @@ def main() -> None:
 
     poses, intrinsics, n = [], [], 0
     for kinds in chunks.values():
-        video = r2_store.download_bytes(kinds["mov"])
+        video = r2_store.download_video_bytes(kinds["mov"])
         _header, frames = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
         if not frames:
             continue

@@ -394,7 +394,7 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         kinds = chunks[index]
         if "jsonl" not in kinds or "depth" not in kinds:
             continue  # no pose or no depth for this chunk -- nothing to fuse
-        video_bytes = r2_store.download_bytes(kinds["mov"]) if "mov" in kinds else None
+        video_bytes = r2_store.download_video_bytes(kinds["mov"]) if "mov" in kinds else None
         sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
         depth_bytes = r2_store.download_bytes(kinds["depth"])
 

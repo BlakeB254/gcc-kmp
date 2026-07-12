@@ -70,3 +70,4 @@ dist/
 target/
 .cache/
 scripts/reconstruction/.venv/
+scripts/privacy_scrub/.venv/
