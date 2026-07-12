@@ -74,10 +74,9 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// geogrid registers with the minimap's cell grid. Nil until the first
     /// geo-reference pairing — the grid phases to the AR world origin until
     /// then. TERMINAL once set (see `setGridPhaseOrigin`) — "stability beats
-    /// accuracy for the grid": content (fog/vector cells/guidance) keeps
+    /// accuracy for the grid": content (sector posts/guidance) keeps
     /// re-anchoring on every re-pair, the grid itself never does.
     private var gridPhaseOrigin: SIMD2<Float>?
-    private var fogCellEntities: [String: AnchorEntity] = [:]
     private var sectorPostEntities: [String: AnchorEntity] = [:]
     private var wallEntities: [AnchorEntity] = []
     private var floorWorldY: Float?
@@ -85,11 +84,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var groundGridVisible = true
 
     // Route-mode extras: camera-attached guidance arrow + warning veil.
-    // Mirrors the Kotlin SceneKit path's MAX_FOG_NODES (ArEnvScan.kt) — one
-    // shared cap (was 600 vs 400, audit finding) even though Kotlin already
-    // truncates the shipped list to this count before it reaches Swift; kept
-    // here too as the defensive receiving-end limit.
-    private static let maxFogCells = 400
     private let cameraAnchor = AnchorEntity(.camera)
     private var veilEntity: ModelEntity?
     /// The frontier target the beacon sits on. (The camera-attached guidance
@@ -100,7 +94,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
     // Frontier beacon (spec 2026-07-10): ONE pooled world-anchored ground
     // ring, moved on every target change — NEVER an entity per target (the
-    // fog/sector-post per-cell dictionaries are the anti-pattern that caused
+    // sector-post per-cell dictionary is the anti-pattern that caused
     // the Complete Scan entity blowup). Torn down in teardown() alongside
     // the veil.
     private var beaconAnchor: AnchorEntity?
@@ -170,7 +164,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     }
 
     /// Full teardown, not just pause: removes EVERY created entity (planes,
-    /// vector/fog cells, sector posts, walls, veil) from the RealityKit scene
+    /// sector posts, walls, veil) from the RealityKit scene
     /// graph. `pause()` alone left every entity — potentially 750+ on a large
     /// scan — still anchored in the scene holding GPU resources, which is the
     /// scan-end crash-on-Complete-Scan root cause this fixes. Called from
@@ -189,9 +183,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         floorMaxX = nil
         floorMinZ = nil
         floorMaxZ = nil
-
-        for (_, anchor) in fogCellEntities { anchor.removeFromParent() }
-        fogCellEntities.removeAll()
 
         for (_, anchor) in sectorPostEntities { anchor.removeFromParent() }
         sectorPostEntities.removeAll()
@@ -288,12 +279,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             .map { "\($0.identifier)|\($0.confidence)" }
     }
 
-    // WS5: the neon emissive coverage quads (green-rectangle bleed in the
-    // camera view — field report) are removed. Coverage feedback lives on the
-    // minimap now; this is a no-op kept for the ArNativeSurface protocol. The
-    // neon ground grid is a separate path (setGridPhaseOrigin) and stays crisp.
-    func updateVectorCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {}
-
     func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
         DispatchQueue.main.async { [self] in
             let anchor = AnchorEntity(world: SIMD3(Float(x), Float(y), Float(z)))
@@ -335,7 +320,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         DispatchQueue.main.async { [self] in
             groundGridVisible = visible
             // The plane-acquisition coaching prompt is an env-scan affordance;
-            // in route/spot mode (grid hidden, fog/posts own the ground) an
+            // in route/spot mode (grid hidden, posts own the ground) an
             // auto-activating "find a surface" overlay is intrusive — and the
             // SceneKit fallbacks never had one.
             coachingOverlay?.activatesAutomatically = visible
@@ -357,7 +342,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// grid on each one (the pre-fix behavior) is exactly what produced the
     /// reported flashing/overlapping grid spam, since every re-phase
     /// regenerates the mesh and repositions the anchor. "Stability beats
-    /// accuracy for the grid": fog/vector cells/guidance keep re-anchoring on
+    /// accuracy for the grid": sector posts/guidance keep re-anchoring on
     /// every re-pair; the grid locks to wherever it first landed and stays
     /// there for the rest of the session.
     func setGridPhaseOrigin(x: Double, z: Double) {
@@ -365,46 +350,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             if gridPhaseOrigin != nil { return }
             gridPhaseOrigin = SIMD2(Float(x), Float(z))
             if let grid = floorGrid { applyPlaneGeometry(grid) }
-        }
-    }
-
-    func updateFogCells(flatXZ: [KotlinDouble], cellSizeMeters: Double) {
-        DispatchQueue.main.async { [self] in
-            let groundY = (floorWorldY ?? cameraFallbackGroundY())
-            var wanted = Set<String>()
-            var index = 0
-            while index + 1 < flatXZ.count {
-                let x = Float(truncating: flatXZ[index])
-                let z = Float(truncating: flatXZ[index + 1])
-                index += 2
-                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
-                wanted.insert(key)
-                if let existing = fogCellEntities[key] {
-                    if abs(existing.position.y - groundY) > 0.08 {
-                        existing.position.y = groundY
-                    }
-                    continue
-                }
-                if fogCellEntities.count >= Self.maxFogCells { continue }
-                let anchor = AnchorEntity(world: SIMD3(x, groundY, z))
-                var material = PhysicallyBasedMaterial()
-                material.baseColor = .init(tint: UIColor(white: 0.5, alpha: 0.45))
-                material.roughness = 1.0
-                material.metallic = 0.0
-                material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
-                let mesh = MeshResource.generatePlane(
-                    width: Float(cellSizeMeters), depth: Float(cellSizeMeters)
-                )
-                anchor.addChild(ModelEntity(mesh: mesh, materials: [material]))
-                arView.scene.addAnchor(anchor)
-                fogCellEntities[key] = anchor
-            }
-            // Reveal-by-omission: scanned cells shrink away — walking a cell
-            // visibly "clears" the world instead of blinking out.
-            for (key, anchor) in fogCellEntities where !wanted.contains(key) {
-                fogCellEntities.removeValue(forKey: key)
-                animateOutAndRemove(anchor)
-            }
         }
     }
 
@@ -724,7 +669,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         case .none: isFloor = true
         default: isFloor = false
         }
-        // Floor height feeds fog/walls/posts/cells in EVERY mode — track it
+        // Floor height feeds walls/posts in EVERY mode — track it
         // even when the grid itself is hidden (route/spot), otherwise those
         // entities sit at the camera-offset estimate forever.
         if isFloor {

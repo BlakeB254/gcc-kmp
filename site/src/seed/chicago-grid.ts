@@ -14,6 +14,7 @@
  */
 
 import { COMMUNITY_AREAS, type CommunityAreaGeo } from '../lib/chicago-geo-data'
+import { pointInPolygon } from '../lib/geo-utils'
 
 // Chicago grid spacing in degrees (approximate at Chicago latitude)
 // 1 block ≈ 100m ≈ 0.0009° lat, 0.0012° lng
@@ -23,19 +24,6 @@ const BLOCK_LNG = 0.0012
 // Grid spacing: every 2 blocks for intersections
 const GRID_LAT = BLOCK_LAT * 2
 const GRID_LNG = BLOCK_LNG * 2
-
-/** Ray-casting point-in-polygon */
-function pointInPolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [yi, xi] = polygon[i]
-    const [yj, xj] = polygon[j]
-    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
-      inside = !inside
-    }
-  }
-  return inside
-}
 
 /** Get all valid grid intersections within a community area polygon */
 function getGridPoints(area: CommunityAreaGeo): [number, number][] {

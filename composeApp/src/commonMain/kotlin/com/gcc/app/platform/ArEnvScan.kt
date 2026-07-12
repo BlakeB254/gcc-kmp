@@ -104,15 +104,6 @@ expect class ArEnvScanOverlay() {
      */
     fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null): com.gcc.shared.model.GeoRefEvent?
 
-    /** Cells credited this session — rendered as the vector-scan ground overlay. */
-    fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
-
-    /**
-     * Uncredited cells near the worker — rendered as translucent AR fog planes
-     * on the ground that dissipate as cells get credited (route-scan parity).
-     */
-    fun updateFog(cellCenters: List<Pair<Double, Double>>)
-
     /** Plant the frontier beacon at the next area worth scanning (a pooled
      *  ground ring in the camera view — the home-walkthrough-style "scan
      *  here" landmark; spec 2026-07-10 AR frontier beacons). No-op off-iOS. */

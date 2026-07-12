@@ -5,6 +5,8 @@
  * via Douglas-Peucker (~0.0005° ≈ 55m tolerance). Ported from CommunityAreaData.kt.
  */
 
+import { pointInPolygon } from './geo-utils'
+
 export interface CommunityAreaGeo {
   number: number       // Official 1-77
   name: string         // snake_case key
@@ -250,19 +252,6 @@ export const COMMUNITY_AREAS: CommunityAreaGeo[] = [
 /** Map community area name → official number */
 export const AREA_NAME_TO_NUMBER: Record<string, number> = {}
 for (const a of COMMUNITY_AREAS) AREA_NAME_TO_NUMBER[a.displayName] = a.number
-
-/** Ray-casting point-in-polygon test */
-function pointInPolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [yi, xi] = polygon[i]
-    const [yj, xj] = polygon[j]
-    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
-      inside = !inside
-    }
-  }
-  return inside
-}
 
 /** Find which community area contains a given lat/lng coordinate */
 export function findCommunityArea(lat: number, lng: number): CommunityAreaGeo | null {

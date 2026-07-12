@@ -189,6 +189,31 @@ fun metersToPixels(meters: Double, lat: Double, zoom: Double): Float {
 fun mapOverlayZoomBias(density: Float): Double = log2(density.toDouble() * 2.0)
 
 /**
+ * Projection closure for Compose Canvas overlays drawn over a GccMap:
+ * geo (lat, lng) → physical-pixel [Offset] from the canvas center, at
+ * [overlayZoom] = cameraZoom + [mapOverlayZoomBias]. Precomputes the
+ * longitude scale once — build the closure per draw pass, then call it
+ * per point.
+ */
+fun geoToCanvasProjector(
+    centerLat: Double,
+    centerLng: Double,
+    overlayZoom: Double,
+    canvasWidthPx: Float,
+    canvasHeightPx: Float,
+): (Double, Double) -> androidx.compose.ui.geometry.Offset {
+    val lngScale = cos(centerLat * kotlin.math.PI / 180.0)
+    return { lat, lng ->
+        val eastMeters = (lng - centerLng) * 111_320.0 * lngScale
+        val northMeters = (lat - centerLat) * 111_320.0
+        androidx.compose.ui.geometry.Offset(
+            canvasWidthPx / 2f + metersToPixels(eastMeters, centerLat, overlayZoom),
+            canvasHeightPx / 2f - metersToPixels(northMeters, centerLat, overlayZoom),
+        )
+    }
+}
+
+/**
  * Per-axis fit zoom for framing a lat/lng bounding box in a viewport: the
  * north-south span fits the viewport HEIGHT, the east-west span fits the
  * WIDTH, and the tighter of the two wins — an elongated boundary is fully

@@ -50,7 +50,7 @@ fun buildCommunityAreasGeoJson(areas: List<CommunityArea> = chicagoCommunityArea
  * the path isn't already closed, forming a complete circuit.
  */
 fun buildRoutesGeoJson(routeCoordinates: List<List<Coordinates>>): String {
-    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (routeCoordinates.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 2) return@mapIndexedNotNull null // LineString needs >= 2 positions
         val closed = closeLoop(coords)
@@ -79,7 +79,7 @@ private fun closeLoop(coords: List<Coordinates>): List<Coordinates> {
  * zoom levels where thin LineStrings become invisible.
  */
 fun buildRoutePolygonsGeoJson(routeCoordinates: List<List<Coordinates>>): String {
-    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (routeCoordinates.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null // Polygon ring needs >= 4 positions (3 unique + close)
         val closed = closeLoop(coords)
@@ -106,7 +106,7 @@ fun buildRouteInnerBoundariesGeoJson(
      *  ring the admin can't select or edit. */
     fallbackInset: Boolean = true,
 ): String {
-    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (routeCoordinates.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
         val rings = innerRingsForLoop(coords, overrideRings, setbackMeters, fallbackInset)
@@ -153,7 +153,7 @@ fun buildRouteCorridorGeoJson(
     overrideRings: List<List<Coordinates>> = emptyList(),
     setbackMeters: Double = 8.0,
 ): String {
-    if (routeCoordinates.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (routeCoordinates.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = routeCoordinates.mapIndexedNotNull { index, coords ->
         if (coords.size < 3) return@mapIndexedNotNull null
         val outer = closeLoop(coords)
@@ -264,7 +264,7 @@ internal fun insetRingByEdgeOffset(ring: List<Coordinates>, insetMeters: Double)
  * Only includes public/open bounties (secret bounties are never shown on map).
  */
 fun buildBountyMarkersGeoJson(bounties: List<com.gcc.shared.model.Bounty>): String {
-    if (bounties.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (bounties.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = bounties
         .filter { it.status == com.gcc.shared.model.BountyStatus.OPEN }
         .map { b ->
@@ -281,7 +281,7 @@ fun buildBountyMarkersGeoJson(bounties: List<com.gcc.shared.model.Bounty>): Stri
  * Only includes pending/verified spots (not resolved ones).
  */
 fun buildSpotMarkersGeoJson(spots: List<CommunityReport>): String {
-    if (spots.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (spots.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val features = spots
         .filter { it.status != CommunityReportStatus.RESOLVED }
         .map { s ->
@@ -419,7 +419,7 @@ private fun buildSpotHeatZoneGeoJson(
     maxRadiusMeters: Double,
 ): String {
     val activeSpots = spots.filter { it.status != CommunityReportStatus.RESOLVED }
-    if (activeSpots.isEmpty() && activityCoords.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (activeSpots.isEmpty() && activityCoords.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
 
     val spotFeatures = activeSpots.map { spot ->
         val radiusMeters = spotHeatZoneRadiusMeters(
@@ -701,7 +701,7 @@ fun buildObservationFootprintsGeoJson(
     observations: List<WorldObservation>,
     centerLat: Double,
 ): String {
-    if (observations.isEmpty()) return """{"type":"FeatureCollection","features":[]}"""
+    if (observations.isEmpty()) return EMPTY_GEOJSON_FEATURE_COLLECTION
     val metersPerDegreeLat = 111_320.0
     val metersPerDegreeLng = (metersPerDegreeLat * cos(centerLat * PI / 180.0)).coerceAtLeast(1.0)
 

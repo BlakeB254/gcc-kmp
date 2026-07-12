@@ -101,12 +101,6 @@ interface ArNativeSurface {
     fun setGridPhaseOrigin(x: Double, z: Double)
 
     /**
-     * Fog-of-war: unscanned cells as a flat [x0, z0, x1, z1, …] AR-local
-     * list (Kotlin applies the 35m/600 policy). Removed keys reveal.
-     */
-    fun updateFogCells(flatXZ: List<Double>, cellSizeMeters: Double)
-
-    /**
      * Plant the frontier beacon (ONE pooled world-anchored ground ring —
      * spec 2026-07-10; never an entity per target) at an AR-local ground
      * point. Repeat calls MOVE the same entity.
@@ -138,13 +132,6 @@ interface ArNativeSurface {
      * segment sampling policy; each call replaces the previous walls.
      */
     fun updateBoundaryWalls(flatSegments: List<Double>)
-
-    /**
-     * Vector-scan overlay: credited cells as a flat [x0, z0, x1, z1, …]
-     * AR-local list. The surface places quads on its own detected floor
-     * height and owns the pulse animation + node cap.
-     */
-    fun updateVectorCells(flatXZ: List<Double>, cellSizeMeters: Double)
 
     /** Persistent trash marker: kind 0 = confirmed (green), 1 = expected (orange). */
     fun addMarker(x: Double, y: Double, z: Double, kind: Int)

@@ -6,13 +6,11 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Full-screen AR overlay for the "Begin Route" experience: directional
- * guidance toward the nearest unscanned frontier, a red boundary veil when
- * the worker steps outside the route's assigned polygon, and a fog-of-war
- * ground overlay driven by CoverageTracker's existing per-cell coverage grid.
+ * guidance toward the nearest unscanned frontier and a red boundary veil when
+ * the worker steps outside the route's assigned polygon.
  *
- * Call order: [updateGeoReference] on every GPS fix (pairs the fix with the
- * AR camera position — placement is a no-op until the first pairing), then
- * [updateFog] whenever coverage changes.
+ * Call [updateGeoReference] on every GPS fix (pairs the fix with the AR
+ * camera position — placement is a no-op until the first pairing).
  *
  * iOS: SceneKit (`ARSCNView`) overlay via platform.ARKit/platform.SceneKit.
  * Android/Desktop: no-op stub — on-screen AR rendering is iOS-only for v1.
@@ -32,15 +30,6 @@ expect class ArRouteOverlay() {
      * no-op on Android/Desktop and on the SceneKit fallback (no grid there).
      */
     fun setGridLatticeOrigin(lat: Double, lng: Double)
-
-    /** Render fog over [unscannedCells]; cells absent from the set are revealed. */
-    fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>)
-
-    /** "Digitized" vector quads over cells this session has credited — the
-     *  positive counterpart of [updateFog]'s reveal-by-omission, matching the
-     *  env-scan surface so both scan modes give the same scanned-ground
-     *  feedback. iOS only; no-op on Android/Desktop. */
-    fun updateScannedCells(cellCenters: List<Pair<Double, Double>>)
 
     /**
      * World-anchored boundary walls: the route/block edge rendered as vertical
@@ -101,7 +90,7 @@ expect class ArRouteOverlay() {
  * Hosts the platform AR view that [ArRouteOverlay] renders into.
  *
  * iOS: a Compose `UIKitView` wrapping an `ARSCNView`, bound to [overlay] so
- * fog/boundary updates land on live SceneKit nodes.
+ * boundary updates land on live SceneKit nodes.
  * Android/Desktop: an empty placeholder — on-screen AR is iOS-only for v1.
  */
 @Composable

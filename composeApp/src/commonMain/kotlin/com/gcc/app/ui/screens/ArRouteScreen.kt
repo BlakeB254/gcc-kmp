@@ -73,7 +73,6 @@ import com.gcc.shared.model.Coordinates
  * Drives [ArRouteOverlay] from the ViewModel's read-only state projections:
  *  - GPS fixes (uiState.currentLat/Lng) → [ArRouteOverlay.updateGeoReference]
  *  - [RouteScanViewModel.isOutsideBoundary] → boundary-crossing veil
- *  - [RouteScanViewModel.unscannedCells] + cellCenterLatLng → fog-of-war
  *  - [ArRouteOverlay.trackingState] → "hold steady" recovery prompt
  *
  * On Android/Desktop [ArRouteOverlayView] is an empty box and the overlay
@@ -156,11 +155,9 @@ fun ArRouteScreen(
         DiagnosticsLog.info("ar-tracking", "route AR tracking → $trackingState")
     }
 
-    // Pair every GPS fix with the AR camera position, then refresh the fog so
-    // it appears as soon as the first pairing exists (fog placement is a no-op
-    // until then — see ArRouteOverlay's geo-reference contract). Fixes worse
-    // than MAX_GEO_REF_ACCURACY_METERS must not re-anchor the frame: one wild
-    // fix would drag every fog/vector/wall node with it.
+    // Pair every GPS fix with the AR camera position. Fixes worse than
+    // MAX_GEO_REF_ACCURACY_METERS must not re-anchor the frame: one wild
+    // fix would drag every anchored node (grid, walls, markers) with it.
     LaunchedEffect(ui.currentLat, ui.currentLng) {
         if (ui.currentLat != 0.0 || ui.currentLng != 0.0) {
             // Lattice origin first, geo-ref second: updateGeoReference
@@ -173,9 +170,6 @@ fun ArRouteScreen(
             if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
                 overlay.updateGeoReference(ui.currentLat, ui.currentLng, viewModel.gpsAccuracyMeters.value)
             }
-            overlay.updateFog(viewModel.unscannedCells()) { row, col ->
-                viewModel.cellCenterLatLng(row, col)
-            }
         }
     }
     LaunchedEffect(isOutsideBoundary) {
@@ -187,17 +181,6 @@ fun ArRouteScreen(
     // outerRing (boundary-less corridor routes) yields no walls.
     LaunchedEffect(outerRing, innerRings) {
         overlay.updateBoundaries(outerRing, innerRings)
-    }
-    LaunchedEffect(scannedCells) {
-        overlay.updateFog(viewModel.unscannedCells()) { row, col ->
-            viewModel.cellCenterLatLng(row, col)
-        }
-    }
-    // Positive feedback for credited ground: CLOSE-tier cells only render as
-    // the vector-scan quads (fog still lifts on any credit above) — fog =
-    // unscanned, clear ground = grazed, vivid quad = close (spec §4).
-    LaunchedEffect(closeCellCenters) {
-        overlay.updateScannedCells(closeCellCenters)
     }
 
     // Expected-trash markers from the digital twin. Re-run on GPS ticks:

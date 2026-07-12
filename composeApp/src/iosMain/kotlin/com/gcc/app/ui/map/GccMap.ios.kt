@@ -1099,7 +1099,7 @@ actual fun GccMap(
                 val dLat = 0.00006  // ~7m vertical arm
                 val dLng = 0.00008  // ~7m horizontal arm
                 val diamondJson = remember(imageStars) {
-                    if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    if (imageStars.isEmpty()) EMPTY_GEOJSON_FEATURE_COLLECTION
                     else {
                         val features = imageStars.joinToString(",") { c ->
                             val top = "[${c.lng},${c.lat + dLat}]"
@@ -1114,7 +1114,7 @@ actual fun GccMap(
                 // Smaller inner diamond for contrast
                 val innerScale = 0.5
                 val innerDiamondJson = remember(imageStars) {
-                    if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                    if (imageStars.isEmpty()) EMPTY_GEOJSON_FEATURE_COLLECTION
                     else {
                         val features = imageStars.joinToString(",") { c ->
                             val d2Lat = dLat * innerScale

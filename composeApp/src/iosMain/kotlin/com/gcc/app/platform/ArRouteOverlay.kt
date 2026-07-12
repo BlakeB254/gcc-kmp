@@ -21,11 +21,9 @@ import kotlinx.coroutines.launch
 import platform.ARKit.ARSCNView
 import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
-import platform.SceneKit.SCNLookAtConstraint
 import platform.SceneKit.SCNMaterial
 import platform.SceneKit.SCNNode
 import platform.SceneKit.SCNPlane
-import platform.SceneKit.SCNPyramid
 import platform.SceneKit.SCNScene
 import platform.SceneKit.SCNVector3Make
 import platform.UIKit.UIColor
@@ -36,7 +34,6 @@ import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.hypot
-import kotlin.math.roundToLong
 
 /**
  * iOS SceneKit-based AR overlay for the "Begin Route" experience.
@@ -60,11 +57,7 @@ import kotlin.math.roundToLong
 actual class ArRouteOverlay actual constructor() {
 
     companion object {
-        /** Only render fog planes within this radius of the worker — caps node count. */
-        private const val FOG_RENDER_RADIUS_METERS = 35.0
-        /** Hard ceiling on live fog nodes, matching the native RealityKit receiving cap. */
-        private const val MAX_FOG_NODES = 400
-        /** Fog planes sit this far below the camera (approx. phone-at-chest ground offset). */
+        /** Ground-anchored nodes sit this far below the camera (approx. phone-at-chest ground offset). */
         private const val GROUND_OFFSET_METERS = 1.4f
 
         /** Only build wall strips for boundary edges within this radius of the camera. */
@@ -78,9 +71,6 @@ actual class ArRouteOverlay actual constructor() {
         /** Hard ceiling on live wall nodes, protects the SceneKit frame rate. */
         private const val MAX_WALL_SEGMENTS = 200
 
-        /** Vector-scan quads over credited cells — same policy as env scan. */
-        private const val MAX_VECTOR_NODES = 350
-        private const val VECTOR_RENDER_RADIUS_METERS = 30.0
         /** Rebuild walls after at most this many geo-reference updates… */
         private const val WALL_REBUILD_GEO_INTERVAL = 3
         /** …or as soon as the camera reference has moved more than this. */
@@ -90,12 +80,7 @@ actual class ArRouteOverlay actual constructor() {
     private var sceneView: ARSCNView? = null
     /** Native RealityKit render surface — when set, SceneKit paths are inert. */
     private var nativeSurface: ArNativeSurface? = null
-    private val fogNodes = mutableMapOf<Pair<Int, Int>, SCNNode>()
     private var boundaryVeil: SCNNode? = null
-
-    // Credited-cell vector quads (see [updateScannedCells]).
-    private var latestScannedCells: List<Pair<Double, Double>> = emptyList()
-    private val vectorNodes = mutableMapOf<Pair<Long, Long>, SCNNode>()
 
     // World-anchored boundary walls (see [updateBoundaries]).
     private var boundaryOuter: List<Pair<Double, Double>> = emptyList()
@@ -105,9 +90,6 @@ actual class ArRouteOverlay actual constructor() {
     private var geoUpdatesSinceWallRebuild = 0
     private var lastWallRebuildX = 0f
     private var lastWallRebuildZ = 0f
-
-    private var arrowNode: SCNNode? = null
-    private var frontierTarget: SCNNode? = null
 
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
@@ -184,18 +166,10 @@ actual class ArRouteOverlay actual constructor() {
         nativeSurface = null
         sceneView?.session?.pause()
         // SceneKit fallback: release every node this overlay created.
-        for ((_, node) in fogNodes) node.removeFromParentNode()
-        fogNodes.clear()
-        for ((_, node) in vectorNodes) node.removeFromParentNode()
-        vectorNodes.clear()
         for (node in boundaryWallNodes) node.removeFromParentNode()
         boundaryWallNodes.clear()
         boundaryVeil?.removeFromParentNode()
         boundaryVeil = null
-        arrowNode?.removeFromParentNode()
-        arrowNode = null
-        frontierTarget?.removeFromParentNode()
-        frontierTarget = null
     }
 
     actual fun setSceneVoteListener(listener: ((SceneVote) -> Unit)?) {
@@ -283,7 +257,7 @@ actual class ArRouteOverlay actual constructor() {
     /**
      * Pair the worker's latest GPS fix with the camera's current AR position.
      * Must be called on every location update (ArRouteScreen wires this) —
-     * fog/arrow placement is a no-op until the first pairing exists.
+     * world-anchored node placement is a no-op until the first pairing exists.
      */
     actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {
         val position = cameraPosition() ?: return
@@ -324,8 +298,7 @@ actual class ArRouteOverlay actual constructor() {
      * Re-derive the AR-local grid phase from the lattice origin + current geo
      * reference and hand it to the native surface, which snaps its ground-grid
      * planes onto the lattice. SceneKit fallback renders no ground grid in
-     * route mode (fog/vector quads own the ground there and are already placed
-     * at lattice cell centers), so there is nothing to phase on that path.
+     * route mode, so there is nothing to phase on that path.
      */
     private fun pushGridPhase() {
         if (gridPhaseSent) return
@@ -335,149 +308,6 @@ actual class ArRouteOverlay actual constructor() {
         val local = latLngToLocal(lat, lng)
         nativeSurface?.setGridPhaseOrigin(local.first, local.second)
         gridPhaseSent = true
-    }
-
-    /**
-     * One translucent SCNPlane per unscanned cell near the worker; cells no
-     * longer in [unscannedCells] (scanned = revealed) have their node removed.
-     * Also retargets the guidance arrow at the nearest unscanned cell.
-     */
-    actual fun updateFog(unscannedCells: Set<Pair<Int, Int>>, cellCenter: (Int, Int) -> Pair<Double, Double>) {
-        if (!hasGeoRef) return
-        nativeSurface?.let { surface ->
-            // Native mode: ship nearby cells (same radius/cap policy) as
-            // AR-local coords; the surface owns reveal-by-omission.
-            val flat = ArrayList<Double>()
-            var nearestDistSq = Double.MAX_VALUE
-            var nearest: Pair<Double, Double>? = null
-            var shipped = 0
-            for (cell in unscannedCells) {
-                val (lat, lng) = cellCenter(cell.first, cell.second)
-                val local = latLngToLocal(lat, lng)
-                val dx = local.first - refX.toDouble()
-                val dz = local.second - refZ.toDouble()
-                val distSq = dx * dx + dz * dz
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq
-                    nearest = local
-                }
-                if (distSq > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
-                if (shipped >= MAX_FOG_NODES) continue
-                flat.add(local.first)
-                flat.add(local.second)
-                shipped++
-            }
-            surface.updateFogCells(flat, CoverageTracker.cellSizeMeters)
-            val target = nearest
-            if (target != null) surface.setGuidanceTarget(target.first, target.second)
-            else surface.clearGuidanceTarget()
-            return
-        }
-        val scene = sceneView?.scene ?: return
-
-        // Reveal: drop nodes for cells that are no longer unscanned.
-        for ((cell, node) in fogNodes.toMap()) {
-            if (cell !in unscannedCells) {
-                node.removeFromParentNode()
-                fogNodes.remove(cell)
-            }
-        }
-
-        // Cover: create planes for nearby unscanned cells that lack one.
-        var nearestDistSq = Double.MAX_VALUE
-        var nearestLocal: Pair<Double, Double>? = null
-        for (cell in unscannedCells) {
-            val (lat, lng) = cellCenter(cell.first, cell.second)
-            val local = latLngToLocal(lat, lng)
-            val dx = local.first - refX.toDouble()
-            val dz = local.second - refZ.toDouble()
-            val distSq = dx * dx + dz * dz
-            if (distSq < nearestDistSq) {
-                nearestDistSq = distSq
-                nearestLocal = local
-            }
-            if (cell in fogNodes) continue
-            if (distSq > FOG_RENDER_RADIUS_METERS * FOG_RENDER_RADIUS_METERS) continue
-            if (fogNodes.size >= MAX_FOG_NODES) continue
-            fogNodes[cell] = makeFogNode(local.first.toFloat(), local.second.toFloat()).also {
-                scene.rootNode.addChildNode(it)
-            }
-        }
-
-        updateFrontierTarget(nearestLocal)
-    }
-
-    /**
-     * "Digitized" quads over cells this session has credited — the positive
-     * counterpart of [updateFog]'s reveal-by-omission, mirroring the env-scan
-     * surface's vector-scan overlay (same cap/radius policy).
-     */
-    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {
-        latestScannedCells = cellCenters
-        renderVectorCells()
-    }
-
-    private fun renderVectorCells() {
-        if (!hasGeoRef) return
-        nativeSurface?.let { surface ->
-            // Native mode: hand AR-local cell centers to the Swift renderer
-            // (it owns floor height, pulse animation and the node cap).
-            val flat = ArrayList<Double>(latestScannedCells.size * 2)
-            var shipped = 0
-            for ((lat, lng) in latestScannedCells) {
-                val local = latLngToLocal(lat, lng)
-                val dx = local.first - refX.toDouble()
-                val dz = local.second - refZ.toDouble()
-                if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
-                if (shipped >= MAX_VECTOR_NODES) break
-                flat.add(local.first)
-                flat.add(local.second)
-                shipped++
-            }
-            surface.updateVectorCells(flat, CoverageTracker.cellSizeMeters)
-            return
-        }
-        val scene = sceneView?.scene ?: return
-        val groundY = refY - GROUND_OFFSET_METERS + 0.02f
-
-        val wanted = mutableSetOf<Pair<Long, Long>>()
-        for ((lat, lng) in latestScannedCells) {
-            val key = (lat * 1e6).roundToLong() to (lng * 1e6).roundToLong()
-            wanted.add(key)
-            if (key in vectorNodes) continue
-            if (vectorNodes.size >= MAX_VECTOR_NODES) continue
-            val local = latLngToLocal(lat, lng)
-            val dx = local.first - refX.toDouble()
-            val dz = local.second - refZ.toDouble()
-            if (dx * dx + dz * dz > VECTOR_RENDER_RADIUS_METERS * VECTOR_RENDER_RADIUS_METERS) continue
-            vectorNodes[key] = makeVectorCellNode(local.first.toFloat(), groundY, local.second.toFloat())
-                .also { scene.rootNode.addChildNode(it) }
-        }
-        for ((key, node) in vectorNodes.toMap()) {
-            if (key !in wanted) {
-                node.removeFromParentNode()
-                vectorNodes.remove(key)
-            }
-        }
-    }
-
-    private fun makeVectorCellNode(x: Float, y: Float, z: Float): SCNNode {
-        val plane = SCNPlane.planeWithWidth(
-            CoverageTracker.cellSizeMeters,
-            CoverageTracker.cellSizeMeters,
-        )
-        val material = SCNMaterial()
-        // Plain translucent green (the SceneKit fallback skips the textured
-        // grid the env overlay draws — degraded mode keeps node cost minimal).
-        material.diffuse.contents = UIColor.colorWithRed(0.15, 0.95, 0.55, 1.0).colorWithAlphaComponent(0.35)
-        material.doubleSided = true
-        material.writesToDepthBuffer = false
-        plane.materials = listOf(material)
-
-        val node = SCNNode.nodeWithGeometry(plane)
-        node.eulerAngles = SCNVector3Make((-PI / 2).toFloat(), 0f, 0f)
-        node.position = SCNVector3Make(x, y, z)
-        return node
     }
 
     actual fun updateBoundaryStatus(isOutside: Boolean) {
@@ -522,23 +352,6 @@ actual class ArRouteOverlay actual constructor() {
     private fun hasBoundaryData(): Boolean = boundaryOuter.size >= 3 || boundaryIslands.isNotEmpty()
 
     // ── SceneKit node construction ───────────────────────────────────
-
-    private fun makeFogNode(x: Float, z: Float): SCNNode {
-        val plane = SCNPlane.planeWithWidth(
-            CoverageTracker.cellSizeMeters,
-            CoverageTracker.cellSizeMeters,
-        )
-        val material = SCNMaterial()
-        material.diffuse.contents = UIColor.grayColor.colorWithAlphaComponent(0.45)
-        material.doubleSided = true
-        plane.materials = listOf(material)
-
-        val node = SCNNode.nodeWithGeometry(plane)
-        // SCNPlane is vertical (XY) by default — lay it flat on the ground.
-        node.eulerAngles = SCNVector3Make((-PI / 2).toFloat(), 0f, 0f)
-        node.position = SCNVector3Make(x, refY - GROUND_OFFSET_METERS, z)
-        return node
-    }
 
     /**
      * Rebuild the world-anchored boundary walls against the current geo
@@ -716,57 +529,6 @@ actual class ArRouteOverlay actual constructor() {
         camera.addChildNode(node)
         boundaryVeil = node
         return node
-    }
-
-    /**
-     * Guidance arrow: a camera-attached pyramid with an SCNLookAtConstraint
-     * aimed at an invisible node on the nearest unscanned frontier. SceneKit
-     * re-evaluates the constraint every frame, so the arrow tracks smoothly
-     * between GPS/coverage ticks with no per-frame Kotlin work.
-     */
-    private fun updateFrontierTarget(local: Pair<Double, Double>?) {
-        val scene = sceneView?.scene ?: return
-        if (local == null) {
-            arrowNode?.hidden = true
-            return
-        }
-
-        val target = frontierTarget ?: SCNNode().also {
-            frontierTarget = it
-            scene.rootNode.addChildNode(it)
-        }
-        target.position = SCNVector3Make(
-            local.first.toFloat(),
-            refY - GROUND_OFFSET_METERS,
-            local.second.toFloat(),
-        )
-
-        val arrow = arrowNode ?: makeArrowNode(target) ?: return
-        arrow.hidden = false
-    }
-
-    private fun makeArrowNode(target: SCNNode): SCNNode? {
-        val camera = sceneView?.pointOfView ?: return null
-        val pyramid = SCNPyramid.pyramidWithWidth(0.12, 0.25, 0.12)
-        val material = SCNMaterial()
-        material.diffuse.contents = UIColor.greenColor
-        pyramid.materials = listOf(material)
-
-        // SCNPyramid points +Y; rotate so the tip points -Z, the axis
-        // SCNLookAtConstraint aims at its target.
-        val geometryNode = SCNNode.nodeWithGeometry(pyramid)
-        geometryNode.eulerAngles = SCNVector3Make((-PI / 2).toFloat(), 0f, 0f)
-
-        val container = SCNNode()
-        container.addChildNode(geometryNode)
-        container.position = SCNVector3Make(0f, -0.5f, -1.2f)
-        val constraint = SCNLookAtConstraint.lookAtConstraintWithTarget(target)
-        constraint.gimbalLockEnabled = true
-        container.constraints = listOf(constraint)
-
-        camera.addChildNode(container)
-        arrowNode = container
-        return container
     }
 
     // ── Coordinate math ──────────────────────────────────────────────

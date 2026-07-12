@@ -572,7 +572,7 @@ actual fun GccMap(
 
             // ── Image location star markers: amber dots for display image locations ──
             val imageStarJson = remember(imageStars) {
-                if (imageStars.isEmpty()) """{"type":"FeatureCollection","features":[]}"""
+                if (imageStars.isEmpty()) EMPTY_GEOJSON_FEATURE_COLLECTION
                 else {
                     val features = imageStars.joinToString(",") { coord ->
                         """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${coord.lng},${coord.lat}]}}"""

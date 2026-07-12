@@ -221,7 +221,7 @@ actual class ArEnvScanOverlay actual constructor() {
     private var floorMaxX: Double? = null
     private var floorMinZ: Double? = null
     private var floorMaxZ: Double? = null
-    /** World Y of the lowest floor-classified plane (vector cells sit on it). */
+    /** World Y of the lowest floor-classified plane. */
     private var floorY: Float? = null
 
     // Guidance target: the next area worth scanning. Rendered by the minimap
@@ -577,16 +577,6 @@ actual class ArEnvScanOverlay actual constructor() {
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
         }
     }
-
-    // Env-scan AR ground overlays removed: the neon "digitized" coverage quads
-    // (updateScannedCells) and the ground fog (updateFog) no longer render on
-    // the camera surface — coverage + fog now live entirely on the minimap
-    // (merged "painted" outlines + veil). Kept as no-op `actual`s to satisfy
-    // the ArEnvScanOverlay interface; the neon ground grid is unaffected.
-    // The fog stays deprecated on Blake's word (2026-07-11) — do not rewire.
-    actual fun updateScannedCells(cellCenters: List<Pair<Double, Double>>) {}
-
-    actual fun updateFog(cellCenters: List<Pair<Double, Double>>) {}
 
     actual fun setGuidanceTarget(lat: Double, lng: Double) {
         guidanceLatLng = lat to lng

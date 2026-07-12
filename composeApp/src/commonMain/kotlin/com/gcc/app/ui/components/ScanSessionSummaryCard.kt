@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.ScanScore
 import com.gcc.app.ui.map.GccMap
+import com.gcc.app.ui.map.geoToCanvasProjector
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.map.quantizeAndTraceOutlines
@@ -272,15 +273,13 @@ private fun SessionCoverageMap(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val fill = GccGreen.copy(alpha = 0.4f)
             val edge = GccGreen.copy(alpha = 0.8f)
+            val toOffset = geoToCanvasProjector(centerLat, centerLng, overlayZoom, size.width, size.height)
             val path = Path().apply { fillType = PathFillType.EvenOdd }
             for (ring in rings) {
                 if (ring.size < 3) continue
                 ring.forEachIndexed { index, (lat, lng) ->
-                    val eastMeters = (lng - centerLng) * 111_320.0 * cosLat
-                    val northMeters = (lat - centerLat) * 111_320.0
-                    val x = size.width / 2f + metersToPixels(eastMeters, centerLat, overlayZoom)
-                    val y = size.height / 2f - metersToPixels(northMeters, centerLat, overlayZoom)
-                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    val p = toOffset(lat, lng)
+                    if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
                 }
                 path.close()
             }

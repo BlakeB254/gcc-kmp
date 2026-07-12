@@ -588,16 +588,12 @@ class RouteScanViewModel(
     val seenCells: StateFlow<Set<Pair<Int, Int>>> get() = coverageTracker.seenCells
 
     /** Per-cell credit (row, col) → tier/timestamp — the source ArRouteScreen
-     *  mirrors to build CLOSE-tier cell centers for the minimap + AR quads
-     *  (spec §4: fog = unscanned, clear = grazed, vivid quad = close). */
+     *  mirrors to build CLOSE-tier cell centers for the minimap. */
     val creditedCells: StateFlow<Map<Pair<Int, Int>, CellCredit>> get() = coverageTracker.creditedCells
 
     /** Real-world (lat, lng) center of a coverage-grid cell. */
     fun cellCenterLatLng(row: Int, col: Int): Pair<Double, Double> =
         coverageTracker.cellCenterLatLng(row, col)
-
-    /** Corridor cells (row, col) not yet scanned — the AR fog overlay's node set. */
-    fun unscannedCells(): Set<Pair<Int, Int>> = coverageTracker.getUnscannedCells()
 
     /** Geographic origin of the coverage cell lattice (null before the route
      *  grid initializes) — phases the AR ground grid onto the same lattice

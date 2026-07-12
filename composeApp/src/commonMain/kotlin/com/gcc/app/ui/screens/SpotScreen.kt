@@ -691,7 +691,7 @@ private fun CameraPhase(
         ).joinToString(",")
         // Ledger presence lifts fog regardless of freshness or quality tier
         // (owner law) — seed BOTH fresh and stale cells as fog-exempt so the
-        // AR/minimap fog reads "never scanned in the system", not "never
+        // minimap fog reads "never scanned in the system", not "never
         // scanned this session". Fog-exempt only: seeded cells do NOT count
         // toward this session's own coveragePercent. Shared by the live-fetch
         // and cache-fallback branches below.
@@ -831,16 +831,8 @@ private fun CameraPhase(
     val seenCellCenters = remember(seenCells) {
         seenCells.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
     }
-    // Vector-scan effect: CLOSE-tier cells render as "digitized" ground quads
-    // in the AR camera view, mirroring the minimap's vivid fill — fog still
-    // lifts on any credit (below), so the AR read becomes: fog = unscanned,
-    // clear ground = grazed, vivid quad = close (spec §4).
-    LaunchedEffect(closeCellCenters) {
-        arOverlay?.updateScannedCells(closeCellCenters)
-    }
-    // AR fog + steering: uncredited cells render as ground fog on the camera
-    // that dissipates as they credit, and the frontier pick aims the minimap
-    // ring + AR arrow at the nearest remaining patch (sticky vs GPS jitter).
+    // Frontier steering: the frontier pick aims the minimap ring + AR arrow
+    // at the nearest remaining patch (sticky vs GPS jitter).
     var guidanceTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var guidancePhase by remember { mutableStateOf(GuidancePhase.COVER) }
     val coveragePercentValue by tracker.coveragePercent.collectAsState()
@@ -849,7 +841,6 @@ private fun CameraPhase(
         if (!trackerReady) return@LaunchedEffect
         val uncredited = tracker.getUnscannedCells()
             .map { (row, col) -> tracker.cellCenterLatLng(row, col) }
-        arOverlay?.updateFog(uncredited)
         val grazedNotClose = creditedCells
             .filterValues { it.quality == CoverageQuality.GRAZED }
             .keys.map { (row, col) -> tracker.cellCenterLatLng(row, col) }
@@ -980,7 +971,7 @@ private fun CameraPhase(
                 "Hold steady — AR tracking is settling"
             trashCandidate != null -> "Item locked — confirm below"
             liveDetections.isNotEmpty() -> "Trash spotted — walk up close to identify it"
-            // Geo-ref can't pair on a >20m fix — AR fog/cells/arrow are all
+            // Geo-ref can't pair on a >20m fix — world-anchored AR content is
             // suppressed until it does, so say WHY instead of failing silently.
             arOverlay != null && !geoRefPaired &&
                 (gpsAccuracy ?: 0.0) > MAX_GEO_REF_ACCURACY_METERS ->

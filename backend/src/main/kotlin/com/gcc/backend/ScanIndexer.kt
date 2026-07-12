@@ -60,12 +60,6 @@ class ScanIndexer(
                     manifest.captureChunks?.forEach {
                         add(chunkRow(manifest.sessionId, it, artifactTypeForKey(it), cellOr(it, sessionCell), raw[it], null))
                     }
-                    manifest.capturedFrames.forEach { frame ->
-                        add(chunkRow(manifest.sessionId, frame.colorKey, "frame_color", cellOr(frame.colorKey, sessionCell), raw[frame.colorKey], frame.capturedAtMs))
-                        frame.depthKey?.let {
-                            add(chunkRow(manifest.sessionId, it, "frame_depth", cellOr(it, sessionCell), raw[it], frame.capturedAtMs))
-                        }
-                    }
                     manifest.objectCapture?.r2Key?.let {
                         add(chunkRow(manifest.sessionId, it, "usdz", cellOr(it, sessionCell), raw[it], manifest.completedAtMs))
                     }
@@ -85,7 +79,7 @@ class ScanIndexer(
                         startedAtMs = manifest.startedAtMs,
                         completedAtMs = manifest.completedAtMs,
                         photoCount = manifest.photoKeys.size,
-                        chunkCount = (manifest.captureChunks?.size ?: 0) + manifest.capturedFrames.size,
+                        chunkCount = manifest.captureChunks?.size ?: 0,
                         observedItemCount = manifest.observedItems.size,
                         scannedCellCount = manifest.scannedCells.size,
                         hasObjectCapture = manifest.objectCapture != null,

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.gcc.app.ui.map.geoToCanvasProjector
 import com.gcc.app.ui.map.headingConePolygon
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
@@ -150,20 +151,11 @@ fun ScanMinimapOverlay(
     val staleRings = rememberRings(staleCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        val lngScale = cos(centerLat * PI / 180.0)
         // DrawScope works in physical pixels; the basemap camera zoom is
         // point-space. One biased zoom keeps every layer aligned to the
         // streets MapLibre actually draws.
         val overlayZoom = zoom + mapOverlayZoomBias(density)
-
-        fun toOffset(lat: Double, lng: Double): Offset {
-            val eastMeters = (lng - centerLng) * 111_320.0 * lngScale
-            val northMeters = (lat - centerLat) * 111_320.0
-            return Offset(
-                size.width / 2f + metersToPixels(eastMeters, centerLat, overlayZoom),
-                size.height / 2f - metersToPixels(northMeters, centerLat, overlayZoom),
-            )
-        }
+        val toOffset = geoToCanvasProjector(centerLat, centerLng, overlayZoom, size.width, size.height)
 
         fun drawRing(ring: List<Pair<Double, Double>>, color: Color, widthPx: Float) {
             if (ring.size < 3) return
