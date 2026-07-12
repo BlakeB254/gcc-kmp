@@ -79,7 +79,10 @@ class CaptureChunkUploader(
 
     private fun uploadPolicyAllows(): Boolean {
         if (isCharging()) return true
-        if (settings.getBoolean(KEY_CELLULAR_UPLOAD_OPT_IN, false)) return true
+        // Blake 2026-07-12: scans upload automatically as soon as the scan
+        // ends — cellular is allowed BY DEFAULT and the setting is an
+        // opt-OUT for anyone who wants to hold big uploads for Wi-Fi.
+        if (settings.getBoolean(KEY_CELLULAR_UPLOAD_OPT_IN, true)) return true
         return currentNetworkStatus() == NetworkStatus.WIFI
     }
 

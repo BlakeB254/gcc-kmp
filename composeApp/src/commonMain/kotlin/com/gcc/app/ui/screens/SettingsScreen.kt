@@ -173,10 +173,10 @@ fun SettingsScreen(
                 }
             }
 
-            // Scan Uploads Section — capture chunks (video/pose/depth) are
-            // policy-gated to Wi-Fi/charging unless the user opts into
-            // cellular here; the pending row + button make held uploads
-            // visible and recoverable instead of silently queued.
+            // Scan Uploads Section — uploads are AUTOMATIC (scan end + app
+            // launch + opening this screen all flush the queue). The toggle
+            // is an opt-OUT that holds big uploads for Wi-Fi/charging; the
+            // status row exists only so a failure is never invisible.
             SectionHeader(title = "Scan Uploads")
             GccCard {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -191,8 +191,8 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                "Scan captures upload on Wi-Fi or while charging. " +
-                                    "Enable to upload right after scanning (can use 100+ MB per scan).",
+                                "Scans upload automatically when a scan ends. " +
+                                    "Turn off to hold uploads for Wi-Fi or charging (scans can be 100+ MB).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
@@ -210,7 +210,10 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "${uiState.pendingScanUploads} capture file(s) waiting",
+                                if (uiState.scanUploadFlushing)
+                                    "Uploading ${uiState.pendingScanUploads} capture file(s)…"
+                                else
+                                    "${uiState.pendingScanUploads} capture file(s) waiting — retries automatically",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextMuted,
                             )
@@ -220,10 +223,6 @@ fun SettingsScreen(
                                     color = GccGreen,
                                     strokeWidth = 2.dp,
                                 )
-                            } else {
-                                TextButton(onClick = { viewModel.flushScanUploadsNow() }) {
-                                    Text("Upload now", color = GccGreen)
-                                }
                             }
                         }
                     }

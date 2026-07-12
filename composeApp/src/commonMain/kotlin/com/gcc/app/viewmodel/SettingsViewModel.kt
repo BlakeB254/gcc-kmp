@@ -53,7 +53,7 @@ class SettingsViewModel(
             pushNotificationsEnabled = settings.getBoolean("push_notifications", true),
             biometricEnabled = settings.getBoolean("biometric_enabled", true),
             cellularUploadEnabled = settings.getBoolean(
-                CaptureChunkUploader.KEY_CELLULAR_UPLOAD_OPT_IN, false
+                CaptureChunkUploader.KEY_CELLULAR_UPLOAD_OPT_IN, true
             ),
         )
     )
@@ -67,6 +67,10 @@ class SettingsViewModel(
                 0
             }
             _uiState.value = _uiState.value.copy(pendingScanUploads = pending)
+            // Uploads are automatic — anything still pending here means a
+            // previous attempt failed, so retry NOW rather than waiting for
+            // the next scan (no manual button; visiting Settings self-heals).
+            if (pending > 0 && !_uiState.value.scanUploadFlushing) flushScanUploadsNow()
         }
     }
 
