@@ -368,6 +368,28 @@ class RouteScanViewModel(
     val captureAllowed: StateFlow<Boolean> = outdoorGate.captureAllowed
     private var accuracyJob: Job? = null
 
+    /** Current lap's capture/session id — background capture keys its R2
+     *  artifacts on this, so the AR screen reads it when starting capture.
+     *  Rotates with the recorder (new id per lap). */
+    fun lapSessionId(): String = lapSessionRecorder.sessionId
+
+    /** AR↔world pairing from [ArRouteOverlay.updateGeoReference] — persisted
+     *  onto the lap manifest for the DGX world-splat registration. */
+    fun recordGeoRefEvent(event: com.gcc.shared.model.GeoRefEvent) {
+        lapSessionRecorder.addGeoRefEvent(event)
+    }
+
+    /**
+     * Set by the AR screen while it hosts a capturing overlay: stops the
+     * lap's background capture and books the final chunks. Invoked at the
+     * TOP of [uploadLapSession] so chunk rows exist before the manifest's
+     * captureChunks lookup runs — the same stop-before-manifest ordering
+     * SpotScreen uses at scan completion. Nullable + non-fatal: laps without
+     * an AR surface (or after screen dispose) upload manifests exactly as
+     * before.
+     */
+    var stopCaptureForLap: (() -> Unit)? = null
+
     /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
     /** Field escape hatch — user confirmed they're outdoors. */
     fun forceOutdoors() {
@@ -1225,6 +1247,14 @@ class RouteScanViewModel(
         val state = _uiState.value
         scope.launch {
             try {
+                // Stop background capture FIRST so the final chunks are booked
+                // into CaptureChunkStore before the captureChunks lookup below
+                // (late uploads still key on sessionId in R2 either way).
+                try {
+                    stopCaptureForLap?.invoke()
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("capture", "$lapKind lap capture stop failed (manifest continues)", e)
+                }
                 val draft = recorder.draft(
                     coverageTracker.getScannedCorridorCells()
                         .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
@@ -1235,6 +1265,15 @@ class RouteScanViewModel(
                 // is always null there).
                 sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
                 if (draft.path.isEmpty()) return@launch // nothing recorded — nothing to archive
+                // Uploaded-so-far capture-chunk R2 keys (route-lap capture):
+                // late uploads are still keyed by sessionId in R2 regardless
+                // of whether they made it into this manifest snapshot.
+                val captureChunkKeys = try {
+                    captureChunkStore.chunksForSession(draft.sessionId).mapNotNull { it.r2Key }
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("env-capture", "lap captureChunks lookup failed (manifest continues without)", e)
+                    emptyList()
+                }
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,
                     deviceId = CoverageDeviceId.value,
@@ -1264,9 +1303,10 @@ class RouteScanViewModel(
                     lapKind = lapKind,
                     routeId = state.routeId,
                     gateEvents = draft.gateEvents,
-                    // Route laps don't run background capture today, so this
-                    // is normally empty — carried anyway so the manifest shape
-                    // stays uniform for the DGX pipeline.
+                    captureChunks = captureChunkKeys.ifEmpty { null },
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 2 else null,
+                    // World-splat registration (DGX): AR↔world pairings +
+                    // the AR axes convention the pose sidecar uses.
                     geoRefEvents = draft.geoRefEvents.ifEmpty { null },
                     arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),

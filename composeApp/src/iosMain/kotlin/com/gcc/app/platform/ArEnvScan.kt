@@ -428,31 +428,8 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     private fun insertChunksAsync(sessionId: String, cellId: String, infos: List<CaptureChunkInfo>) {
-        scope.launch {
-            try {
-                val koin = KoinPlatform.getKoin()
-                val store = koin.getOrNull<CaptureChunkStore>() ?: return@launch
-                val nowMs = Clock.System.now().toEpochMilliseconds()
-                for (info in infos) {
-                    store.insertChunk(
-                        CaptureChunkRecord(
-                            sessionId = sessionId,
-                            chunkIndex = info.index,
-                            kind = info.kind,
-                            filePath = info.filePath,
-                            sizeBytes = info.sizeBytes,
-                            locationCellId = cellId,
-                            r2Key = null,
-                            uploadedAtMs = null,
-                            createdAtMs = nowMs,
-                        )
-                    )
-                }
-                koin.getOrNull<CaptureChunkUploader>()?.flushPending()
-            } catch (e: Throwable) {
-                DiagnosticsLog.error("capture", "chunk bookkeeping failed for $sessionId (${infos.size} chunk(s))", e)
-            }
-        }
+        // Shared with ArRouteOverlay's capture path — see CaptureChunkBooking.kt.
+        bookCaptureChunksAsync(scope, sessionId, cellId, infos)
     }
 
     actual fun stop() {

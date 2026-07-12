@@ -110,6 +110,11 @@ actual class ArRouteOverlay actual constructor() {
     private var coverageFanJob: Job? = null
     private val coverageFanScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Background session capture (route-lap parity with ArEnvScanOverlay):
+    // the same native recorder, drained on the existing 1s coverage-fan tick.
+    private var captureSessionId: String? = null
+    private var captureLocationCellId: String? = null
+
     // Geographic origin of the CoverageTracker cell lattice — the ground grid
     // (native path) phases its lines to it so AR grid == minimap grid.
     private var latticeLat: Double? = null
@@ -155,6 +160,11 @@ actual class ArRouteOverlay actual constructor() {
     }
 
     actual fun stop() {
+        // Abandoned/backgrounded lap: drop the Kotlin-side capture state —
+        // native teardown owns finalizing or discarding whatever the recorder
+        // was mid-writing (same policy as ArEnvScanOverlay.stop()).
+        captureSessionId = null
+        captureLocationCellId = null
         coverageFanJob?.cancel()
         coverageFanJob = null
         frameFeedback.stop()
@@ -206,6 +216,22 @@ actual class ArRouteOverlay actual constructor() {
         coverageFanJob = coverageFanScope.launch {
             while (true) {
                 delay(1_000L)
+                // Poll-drain finished capture chunks (route-lap parity with
+                // the env scan's tick drain) — a locked list swap, no-op
+                // while capture isn't running.
+                val capSession = captureSessionId
+                val capCell = captureLocationCellId
+                if (capSession != null && capCell != null) {
+                    nativeSurface?.let { surface ->
+                        try {
+                            val packets = surface.drainFinishedCaptureChunks()
+                            val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+                            if (infos.isNotEmpty()) bookCaptureChunksAsync(coverageFanScope, capSession, capCell, infos)
+                        } catch (e: Throwable) {
+                            DiagnosticsLog.error("capture", "route chunk drain failed", e)
+                        }
+                    }
+                }
                 if (!hasGeoRef) continue
                 val listenerNow = coverageHitListener ?: continue
                 val frame = if (nativeSurface == null) sceneView?.session?.currentFrame else null
@@ -219,6 +245,70 @@ actual class ArRouteOverlay actual constructor() {
                     dispatch_async(dispatch_get_main_queue()) { listenerNow(fanHits) }
                 }
             }
+        }
+    }
+
+    // ── Background session capture (route-lap parity) ────────────────
+    // Same shape as ArEnvScanOverlay's capture block; booking goes through
+    // the shared bookCaptureChunksAsync so the two paths can't drift.
+
+    actual fun startCapture(sessionId: String): Boolean {
+        val surface = nativeSurface ?: return false // SceneKit fallback: no recorder
+        return try {
+            if (!hasGeoRef) {
+                DiagnosticsLog.info("capture", "route startCapture($sessionId) skipped — no geo reference yet")
+                return false
+            }
+            val (latIdx, lngIdx) = SessionPointsEstimator.gridCell10m(refLat, refLng)
+            val cellId = "$latIdx:$lngIdx"
+            val outputDir = documentsPath() + "/capture-sessions/" + sessionId
+            platform.Foundation.NSFileManager.defaultManager.createDirectoryAtPath(
+                outputDir, withIntermediateDirectories = true, attributes = null, error = null,
+            )
+            captureSessionId = sessionId
+            captureLocationCellId = cellId
+            surface.startCapture(sessionId, outputDir)
+            DiagnosticsLog.info("capture", "route lap capture started: $sessionId (cell $cellId)")
+            true
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route startCapture($sessionId) failed — capture disabled for this lap", e)
+            captureSessionId = null
+            captureLocationCellId = null
+            false
+        }
+    }
+
+    actual fun stopCapture(): List<CaptureChunkInfo> {
+        val surface = nativeSurface
+        val sessionId = captureSessionId
+        val cellId = captureLocationCellId
+        captureSessionId = null
+        captureLocationCellId = null
+        if (surface == null || sessionId == null || cellId == null) return emptyList()
+        return try {
+            val packets = surface.stopCaptureAndDrain()
+            val infos = packets.mapNotNull(::parseCaptureChunkPacket)
+            if (infos.isNotEmpty()) bookCaptureChunksAsync(coverageFanScope, sessionId, cellId, infos)
+            infos
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route stopCapture failed for $sessionId", e)
+            emptyList()
+        }
+    }
+
+    actual fun discardCurrentCaptureChunk() {
+        try {
+            nativeSurface?.discardCurrentCaptureChunk()
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route discardCurrentCaptureChunk failed", e)
+        }
+    }
+
+    actual fun setCaptureEnabled(enabled: Boolean) {
+        try {
+            nativeSurface?.setCaptureEnabled(enabled)
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route setCaptureEnabled($enabled) failed", e)
         }
     }
 
@@ -259,8 +349,8 @@ actual class ArRouteOverlay actual constructor() {
      * Must be called on every location update (ArRouteScreen wires this) —
      * world-anchored node placement is a no-op until the first pairing exists.
      */
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?) {
-        val position = cameraPosition() ?: return
+    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? {
+        val position = cameraPosition() ?: return null
         // Accuracy-fused anchor — see ArEnvScan.updateGeoReference / GeoRefFuser.
         val fused = if (hasGeoRef && accuracyMeters != null) {
             val (curLat, curLng) = localToLatLng(position[0], position[2])
@@ -286,6 +376,21 @@ actual class ArRouteOverlay actual constructor() {
         }
         pushGridPhase()
         maybeRebuildWallsOnGeoUpdate()
+        // The AR↔world pairing record for the DGX splat pipeline — RAW fix
+        // coordinates, not the fused anchor: registration wants the actual
+        // GPS observation paired with the camera position; the fusion above
+        // is a display/placement smoothing concern.
+        return com.gcc.shared.model.GeoRefEvent(
+            atMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+            lat = lat,
+            lng = lng,
+            accuracyMeters = accuracyMeters,
+            arX = position[0],
+            arY = position[1],
+            arZ = position[2],
+            arTimestampSeconds = nativeSurface?.currentFrameTimestamp()?.takeIf { it > 0.0 }
+                ?: sceneView?.session?.currentFrame?.timestamp,
+        )
     }
 
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {

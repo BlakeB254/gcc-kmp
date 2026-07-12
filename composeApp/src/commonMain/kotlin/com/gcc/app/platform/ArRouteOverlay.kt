@@ -19,8 +19,15 @@ expect class ArRouteOverlay() {
     /** AR tracking quality; LIMITED should surface a "hold steady" prompt. */
     val trackingState: StateFlow<TrackingState>
 
-    /** Pair the worker's latest GPS fix with the AR camera's current position. */
-    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null)
+    /**
+     * Pair the worker's latest GPS fix with the AR camera's current position.
+     * Returns the recorded pairing (both clocks + both coordinate frames) so
+     * the caller can persist it into the lap's session manifest — the DGX
+     * splat pipeline registers the lap's pose stream into the world splat
+     * layer with these (see [com.gcc.shared.model.GeoRefEvent]). Null when no
+     * AR camera frame exists yet.
+     */
+    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null): com.gcc.shared.model.GeoRefEvent?
 
     /**
      * Geographic origin of the CoverageTracker cell lattice. The AR ground
@@ -84,6 +91,32 @@ expect class ArRouteOverlay() {
     /** Drop a persistent world-anchored marker at a lat/lng (no-op off-iOS,
      *  and before the first geo-reference pairing exists). */
     fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind)
+
+    // ── Background session capture (route-lap parity with the env scan) ──
+    // Same reconstruction-grade recorder the environment scan runs (HEVC
+    // video + per-frame pose sidecar + LiDAR depth keyframes, spooled as
+    // rotating chunks): the route lap's walk IS raw multi-view input for the
+    // DGX world-splat pipeline, and until this seam existed block-route laps
+    // recorded no video/depth/pose at all (known gap, closed 2026-07-11).
+    // iOS native (RealityKit) surface only: SceneKit fallback and
+    // Android/Desktop return false / no-op — callers key the REC chip off
+    // startCapture's honest return value.
+
+    /** Begin background capture for this lap. False = capture did NOT start
+     *  (no native surface, no geo-ref yet, or a native failure). */
+    fun startCapture(sessionId: String): Boolean
+
+    /** Stop capture, finalize the in-progress chunk, book every not-yet-
+     *  drained chunk for upload, and return them. Call BEFORE the lap
+     *  manifest is built so chunk keys can ride it. */
+    fun stopCapture(): List<CaptureChunkInfo>
+
+    /** Privacy path (INDOOR gate flip): delete the in-progress chunk's files
+     *  entirely (≤60s over-purge, deliberate). */
+    fun discardCurrentCaptureChunk()
+
+    /** Pause/resume capture without teardown (outdoor-gate driven). */
+    fun setCaptureEnabled(enabled: Boolean)
 }
 
 /**

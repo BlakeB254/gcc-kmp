@@ -144,6 +144,64 @@ fun ArRouteScreen(
         overlay.setFrameAnalysisEnabled(!isIndoor)
     }
 
+    // ── Background session capture (route-lap parity with the env scan) ──
+    // The lap's walk is reconstruction input: HEVC video + pose sidecar +
+    // LiDAR depth spool exactly like SpotScreen's env scan. Start once the
+    // gate allows and the geo-ref has paired; restart per lap (the recorder
+    // — and so the session id — rotates between laps); honest REC state only
+    // when startCapture actually began.
+    val captureAllowedState by viewModel.captureAllowed.collectAsState()
+    var geoRefPaired by remember { mutableStateOf(false) }
+    var captureSessionStarted by remember { mutableStateOf<String?>(null) }
+    var captureRecState by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(ui.phase, captureAllowedState, geoRefPaired) {
+        if (!captureAllowedState || !geoRefPaired) return@LaunchedEffect
+        val lapId = viewModel.lapSessionId()
+        if (captureSessionStarted == lapId) return@LaunchedEffect
+        try {
+            if (captureSessionStarted != null) overlay.stopCapture() // lap rotated — close the old spool
+            if (overlay.startCapture(lapId)) {
+                captureSessionStarted = lapId
+                captureRecState = "rec"
+            }
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route startCapture failed — capture disabled for this lap", e)
+            captureRecState = null
+        }
+    }
+    // Gate-driven pause/resume + privacy: INDOOR discards the in-progress
+    // chunk entirely (≤60s over-purge, same policy as the env scan).
+    LaunchedEffect(captureAllowedState, captureSessionStarted) {
+        if (captureSessionStarted == null) return@LaunchedEffect
+        try {
+            overlay.setCaptureEnabled(captureAllowedState)
+        } catch (e: Throwable) {
+            DiagnosticsLog.error("capture", "route setCaptureEnabled failed", e)
+        }
+        captureRecState = if (captureAllowedState) "rec" else "paused"
+    }
+    LaunchedEffect(isIndoor) {
+        if (isIndoor && captureSessionStarted != null) overlay.discardCurrentCaptureChunk()
+    }
+    // The ViewModel stops capture at the TOP of every lap upload so the final
+    // chunks are booked before the manifest's captureChunks lookup; also stop
+    // on screen dispose (abandoned lap) so the spool never outlives the screen.
+    DisposableEffect(overlay) {
+        viewModel.stopCaptureForLap = {
+            overlay.stopCapture()
+            captureSessionStarted = null
+            captureRecState = null
+        }
+        onDispose {
+            viewModel.stopCaptureForLap = null
+            try {
+                overlay.stopCapture()
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("capture", "route stopCapture on dispose failed", e)
+            }
+        }
+    }
+
     // Fast scene-vote cadence while not yet confirmed OUTDOOR (UNCERTAIN or
     // INDOOR) — faster recovery once the worker actually steps outside.
     LaunchedEffect(outdoorState) {
@@ -169,6 +227,8 @@ fun ArRouteScreen(
             }
             if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
                 overlay.updateGeoReference(ui.currentLat, ui.currentLng, viewModel.gpsAccuracyMeters.value)
+                    ?.let(viewModel::recordGeoRefEvent) // AR↔world pairing → lap manifest (DGX splat registration)
+                geoRefPaired = true
             }
         }
     }
@@ -209,6 +269,34 @@ fun ArRouteScreen(
                 .statusBarsPadding()
                 .padding(top = 8.dp, end = 12.dp),
         )
+        // Background-capture indicator (route-lap parity with the env scan's
+        // REC chip): red dot = spooling video/pose/depth, grey = gate-paused.
+        // Only rendered when startCapture honestly began (never a fake REC).
+        captureRecState?.let { state ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 44.dp, end = 12.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (state == "rec") Color.Red else Color.Gray),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (state == "rec") "REC" else "REC ⏸",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+            }
+        }
         PointsPipOverlay(
             pips = pips,
             onExpired = { id -> pips = pips.filterNot { it.id == id } },
