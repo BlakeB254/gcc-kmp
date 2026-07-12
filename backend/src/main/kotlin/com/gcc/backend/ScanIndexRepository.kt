@@ -28,6 +28,11 @@ data class SessionRow(
     /** AR<->GPS pairings in the manifest (scan-splat-registration-contract).
      *  The DGX worker's solve fills the registration_* columns later. */
     val geoRefEventCount: Int = 0,
+    /** Flight-recorder artifact + headline metrics (PRD Phase 1, migration
+     *  0037). Both null when the session predates the recorder; metrics
+     *  alone null when the artifact wasn't fetchable this sweep. */
+    val eventLogR2Key: String? = null,
+    val eventMetrics: EventLogMetrics? = null,
 )
 
 /** A row to upsert into `capture_chunks` (one R2 object). */
@@ -72,6 +77,17 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                 ps.setString(i++, row.manifestR2Key)
                 ps.setNullableLong(i++, row.totalBytes)
                 ps.setInt(i++, row.geoRefEventCount)
+                ps.setNullableString(i++, row.eventLogR2Key)
+                ps.setNullableInt(i++, row.eventMetrics?.eventCount)
+                ps.setNullableInt(i++, row.eventMetrics?.gateFlipCount)
+                ps.setNullableInt(i++, row.eventMetrics?.tapCount)
+                ps.setNullableInt(i++, row.eventMetrics?.confirmCount)
+                ps.setNullableInt(i++, row.eventMetrics?.rejectCount)
+                ps.setNullableInt(i++, row.eventMetrics?.raycastMissCount)
+                ps.setNullableInt(i++, row.eventMetrics?.detectionCount)
+                ps.setNullableInt(i++, row.eventMetrics?.uploadAttemptCount)
+                ps.setNullableInt(i++, row.eventMetrics?.uploadFailureCount)
+                ps.setNullableInt(i++, row.eventMetrics?.errorCount)
                 ps.executeUpdate()
             }
         }
@@ -157,8 +173,11 @@ class ScanIndexRepository(private val dataSource: DataSource) {
               (session_id, device_id, device_model, platform, os_version, lap_kind, route_id,
                location_cell_id, started_at, completed_at, photo_count, chunk_count,
                observed_item_count, scanned_cell_count, has_object_capture, object_capture_r2_key,
-               manifest_r2_key, total_bytes, geo_ref_event_count, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+               manifest_r2_key, total_bytes, geo_ref_event_count,
+               event_log_r2_key, event_count, gate_flip_count, tap_count, confirm_count,
+               reject_count, raycast_miss_count, detection_count, upload_attempt_count,
+               upload_failure_count, error_count, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
             ON CONFLICT (session_id) DO UPDATE SET
                device_id = EXCLUDED.device_id,
                device_model = EXCLUDED.device_model,
@@ -178,6 +197,17 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                manifest_r2_key = EXCLUDED.manifest_r2_key,
                total_bytes = EXCLUDED.total_bytes,
                geo_ref_event_count = EXCLUDED.geo_ref_event_count,
+               event_log_r2_key = COALESCE(EXCLUDED.event_log_r2_key, scan_sessions.event_log_r2_key),
+               event_count = COALESCE(EXCLUDED.event_count, scan_sessions.event_count),
+               gate_flip_count = COALESCE(EXCLUDED.gate_flip_count, scan_sessions.gate_flip_count),
+               tap_count = COALESCE(EXCLUDED.tap_count, scan_sessions.tap_count),
+               confirm_count = COALESCE(EXCLUDED.confirm_count, scan_sessions.confirm_count),
+               reject_count = COALESCE(EXCLUDED.reject_count, scan_sessions.reject_count),
+               raycast_miss_count = COALESCE(EXCLUDED.raycast_miss_count, scan_sessions.raycast_miss_count),
+               detection_count = COALESCE(EXCLUDED.detection_count, scan_sessions.detection_count),
+               upload_attempt_count = COALESCE(EXCLUDED.upload_attempt_count, scan_sessions.upload_attempt_count),
+               upload_failure_count = COALESCE(EXCLUDED.upload_failure_count, scan_sessions.upload_failure_count),
+               error_count = COALESCE(EXCLUDED.error_count, scan_sessions.error_count),
                indexed_at = now()
         """.trimIndent()
 

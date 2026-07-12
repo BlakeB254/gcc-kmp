@@ -107,6 +107,24 @@ const ARTIFACT_PATH_MAX_LENGTH = 200
  * outright rather than sanitized, since a caller-supplied path is exactly
  * the kind of input directory-traversal attacks target.
  */
+/**
+ * MetricKit crash/hang diagnostic key (scan-session-replay PRD Phase 1):
+ * `diagnostics/metrickit/{deviceId}/{fileName}`. Deliberately OUTSIDE the
+ * `raw/` prefix — the backend scan indexer sweeps `raw/` on a schedule and
+ * these are not scan artifacts. fileName is hard-validated (single segment,
+ * strict allowlist) like artifactPath segments: it composes into an R2 key
+ * straight from request-body input.
+ */
+export function metricKitDiagnosticKey(deviceId: string, fileName: string): string {
+  if (!DEVICE_ID_PATTERN.test(deviceId)) {
+    throw new Error(`invalid deviceId: ${deviceId}`)
+  }
+  if (fileName === '..' || fileName.length > 128 || !ARTIFACT_PATH_SEGMENT_PATTERN.test(fileName)) {
+    throw new Error(`invalid diagnostic fileName: ${fileName}`)
+  }
+  return `diagnostics/metrickit/${deviceId}/${fileName}`
+}
+
 export function rawSessionArtifactKey(locationCellId: string, sessionId: string, artifactPath: string): string {
   if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
     throw new Error(`invalid locationCellId: ${locationCellId}`)

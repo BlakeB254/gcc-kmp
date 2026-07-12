@@ -1052,6 +1052,10 @@ export const crashReports = pgTable('crash_reports', {
   stackTrace: text('stack_trace').notNull(),
   occurredAt: timestamp('occurred_at', { mode: 'string', withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  // Full MetricKit diagnostic JSON in R2 (diagnostics/metrickit/…) when this
+  // row came from POST /api/crashes/diagnostics; stackTrace then holds a
+  // truncated inline snippet. Null for plain crash reports. Migration 0037.
+  r2Key: varchar('r2_key', { length: 500 }),
 }, (table) => ({
   // Per-device throttle check (POST /api/crashes) queries recent rows for a
   // device — without this, that's a sequential scan over the whole table.
@@ -1807,6 +1811,22 @@ export const scanSessions = pgTable('scan_sessions', {
   registrationStatus: varchar('registration_status', { length: 16 }), // 'world' | 'local-only' | null (unsolved)
   registrationResidualM: real('registration_residual_m'),
   worldRegistration: jsonb('world_registration'), // solve record: clock offset, segments, anchor, method
+  // Flight recorder (scan-session-replay PRD Phase 1, migration 0037): the
+  // session's gzipped JSONL event stream in R2, plus headline metrics the
+  // Ktor indexer extracts from it at index time. All nullable — null means
+  // "session predates the flight recorder or the log isn't uploaded yet",
+  // never zero activity.
+  eventLogR2Key: varchar('event_log_r2_key', { length: 500 }),
+  eventCount: integer('event_count'),
+  gateFlipCount: integer('gate_flip_count'),
+  tapCount: integer('tap_count'),
+  confirmCount: integer('confirm_count'),
+  rejectCount: integer('reject_count'),
+  raycastMissCount: integer('raycast_miss_count'),
+  detectionCount: integer('detection_count'),
+  uploadAttemptCount: integer('upload_attempt_count'),
+  uploadFailureCount: integer('upload_failure_count'),
+  errorCount: integer('error_count'),
   indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({

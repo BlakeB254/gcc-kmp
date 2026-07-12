@@ -107,6 +107,13 @@ expect fun listFilesInDir(dirPath: String): List<String>
  *  in-memory, matching pre-Pillar-6 behavior). */
 expect fun sessionJournalPath(sessionId: String): String?
 
+/** Absolute path for [sessionId]'s on-disk flight-recorder event stream
+ *  (Documents/scan-sessions/{sessionId}.events.jsonl on iOS — beside the
+ *  session journal so orphan recovery sweeps both in one listing), or null
+ *  where session journaling isn't wired up (desktop/android), matching
+ *  [sessionJournalPath]. */
+expect fun sessionEventLogPath(sessionId: String): String?
+
 /** Directory [sessionJournalPath] entries live under — the launch-recovery
  *  sweep lists this directly rather than re-deriving it from a sessionId. */
 expect fun scanSessionsDirPath(): String?

@@ -138,6 +138,20 @@ data class EnvScanManifest(
      * manifests (same convention, just undeclared).
      */
     val arFrameConvention: String? = null,
+    /**
+     * R2 key of this session's flight-recorder event stream — a gzipped JSONL
+     * file (`…/events.jsonl.gz`) with one structured entry per UX/system
+     * event (captions, tap→raycast→pill transitions, confirm/reject,
+     * auto-detections, gate changes, coverage milestones, lap transitions,
+     * upload results, errors), timestamped session-relative. Uploaded ALWAYS
+     * on completion (scan-session-replay PRD Phase 1); the backend indexer
+     * fetches it to extract headline metrics at index time. Null for sessions
+     * recorded before the flight recorder existed, or when the upload is
+     * still pending retry.
+     */
+    val eventLogKey: String? = null,
+    /** Event-stream schema version for [eventLogKey] (currently 1). */
+    val eventLogSchema: Int? = null,
 ) {
     companion object {
         /** ARKit `gravityAndHeading`: +X = east, +Y = up (gravity-aligned),

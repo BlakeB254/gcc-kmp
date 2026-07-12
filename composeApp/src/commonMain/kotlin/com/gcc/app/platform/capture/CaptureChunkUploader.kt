@@ -2,6 +2,7 @@ package com.gcc.app.platform.capture
 
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
 import com.gcc.shared.api.CaptureStorageNotConfiguredException
@@ -70,6 +71,13 @@ class CaptureChunkUploader(
                         "chunk ${chunk.sessionId}/${chunk.chunkIndex}/${chunk.kind} upload failed (kept pending)",
                         e,
                     )
+                    // Flight recorder: a mid-session chunk failure is a
+                    // headline metric (upload failures at index time).
+                    ScanSessionTelemetry.forSession(chunk.sessionId)?.upload(
+                        kind = "chunk-${chunk.kind}",
+                        ok = false,
+                        detail = e.message?.take(120),
+                    )
                     failure = "chunk ${chunk.chunkIndex} ${chunk.kind}: ${e.message ?: e::class.simpleName}"
                 }
             }
@@ -130,6 +138,11 @@ class CaptureChunkUploader(
             kind = chunk.kind,
             r2Key = ticket.r2Key,
             uploadedAtMs = Clock.System.now().toEpochMilliseconds(),
+        )
+        ScanSessionTelemetry.forSession(chunk.sessionId)?.upload(
+            kind = "chunk-${chunk.kind}",
+            ok = true,
+            key = ticket.r2Key,
         )
         deleteLocalFile(chunk.filePath)
     }

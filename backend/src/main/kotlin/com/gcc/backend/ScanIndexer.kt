@@ -63,6 +63,27 @@ class ScanIndexer(
                     manifest.objectCapture?.r2Key?.let {
                         add(chunkRow(manifest.sessionId, it, "usdz", cellOr(it, sessionCell), raw[it], manifest.completedAtMs))
                     }
+                    manifest.eventLogKey?.let {
+                        add(chunkRow(manifest.sessionId, it, "event_log", cellOr(it, sessionCell), raw[it], manifest.completedAtMs))
+                    }
+                }
+
+                // Flight recorder (PRD Phase 1 §3): fetch the session's small
+                // gzipped event stream and extract headline metrics. Gated on
+                // the listing (a manifest can reference a log whose upload is
+                // still retrying client-side — skip the guaranteed 404); any
+                // fetch/parse failure leaves the metrics NULL and the upsert's
+                // COALESCE keeps previously-extracted values, so the next
+                // sweep self-heals once the artifact exists.
+                val eventMetrics = manifest.eventLogKey?.takeIf { raw.containsKey(it) }?.let { key ->
+                    try {
+                        EventLogMetricsExtractor.extract(
+                            EventLogMetricsExtractor.gunzipLines(r2.getBytes(key)).asSequence()
+                        )
+                    } catch (e: Exception) {
+                        log.warn("failed to extract event log {}: {}", key, e.message)
+                        null
+                    }
                 }
 
                 val totalBytes = chunkRows.mapNotNull { it.byteSize }.sum().takeIf { it > 0 }
@@ -87,6 +108,8 @@ class ScanIndexer(
                         manifestR2Key = manifestKey,
                         totalBytes = totalBytes,
                         geoRefEventCount = manifest.geoRefEvents?.size ?: 0,
+                        eventLogR2Key = manifest.eventLogKey,
+                        eventMetrics = eventMetrics,
                     )
                 )
                 repo.upsertChunks(chunkRows)

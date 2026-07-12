@@ -58,6 +58,8 @@ actual fun listFilesInDir(dirPath: String): List<String> =
 
 actual fun sessionJournalPath(sessionId: String): String? = null
 
+actual fun sessionEventLogPath(sessionId: String): String? = null
+
 actual fun scanSessionsDirPath(): String? = null
 
 actual fun captureSessionsDirPath(): String? = null

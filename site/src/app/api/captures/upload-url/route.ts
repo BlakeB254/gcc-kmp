@@ -24,6 +24,9 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   json: 'application/json',
   jsonl: 'application/x-ndjson',
   usdz: 'model/vnd.usdz+zip',
+  // Flight-recorder event stream (scan-session-replay PRD Phase 1):
+  // gzipped JSONL uploaded as `…/events.jsonl.gz` alongside the manifest.
+  gz: 'application/gzip',
 }
 const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
 const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/

@@ -20,7 +20,9 @@ import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.RaycastCoverageHit
+import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.SceneVote
+import com.gcc.app.platform.SessionEventLog
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.classifyFogAndStale
@@ -33,6 +35,7 @@ import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
+import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.shared.api.GccApiClient
@@ -239,7 +242,12 @@ class RouteScanViewModel(
     // their own session manifest (route-v2 design step 1/5). journalPath is
     // computed from a pre-generated sessionId (Pillar 6) — null on desktop/
     // android, where the recorder stays pure in-memory.
-    private var lapSessionRecorder = newLapSessionRecorder()
+    // The flight recorder ([SessionEventLog]) rotates WITH the lap recorder —
+    // each lap uploads its own events.jsonl.gz. Declared before
+    // lapSessionRecorder: newLapSessionRecorder() assigns it, and a later
+    // property initializer would silently null it back out.
+    private var lapEventLog: SessionEventLog? = null
+    private var lapSessionRecorder = newLapSessionRecorder("baseline")
     private var lapTransitionFired = false
 
     private val coverageTracker = CoverageTracker()
@@ -311,10 +319,22 @@ class RouteScanViewModel(
     }
 
     /** Pre-generates the sessionId so [sessionJournalPath] can be resolved
-     *  BEFORE constructing the recorder (journalPath is a constructor arg). */
-    private fun newLapSessionRecorder(): EnvScanSessionRecorder {
+     *  BEFORE constructing the recorder (journalPath is a constructor arg).
+     *  Also rotates the lap's flight recorder ([lapEventLog]) and takes the
+     *  telemetry slot so DiagnosticsLog lines and chunk-upload outcomes land
+     *  in THIS lap's event stream; the lap transition is its first event. */
+    private fun newLapSessionRecorder(lapKind: String): EnvScanSessionRecorder {
         val sessionId = EnvScanSessionRecorder.generateSessionId()
-        return EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
+        val recorder = EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
+        lapEventLog = SessionEventLog(
+            sessionId = sessionId,
+            startedAtMs = recorder.startedAtMs,
+            logPath = sessionEventLogPath(sessionId),
+        ).also {
+            ScanSessionTelemetry.activate(it)
+            it.lap(lapKind)
+        }
+        return recorder
     }
 
     /** Live-detected AR marker (ArRouteScreen), with its converted lat/lng and
@@ -718,7 +738,7 @@ class RouteScanViewModel(
         }
         _minimapBoundaries.value =
             outerRing.map { it.lat to it.lng } to innerRings.map { ring -> ring.map { it.lat to it.lng } }
-        lapSessionRecorder = newLapSessionRecorder()
+        lapSessionRecorder = newLapSessionRecorder("baseline")
         lapTransitionFired = false
         visitedProblemAreas.clear()
         lap1Observations = emptyList()
@@ -730,6 +750,8 @@ class RouteScanViewModel(
         coverageJob = scope.launch {
             coverageTracker.coveragePercent.collect { pct ->
                 _uiState.value = _uiState.value.copy(coveragePercent = pct)
+                // Flight recorder: 25/50/75/95% milestones (log dedupes).
+                lapEventLog?.coverage(pct)
             }
         }
         scope.launch {
@@ -953,7 +975,7 @@ class RouteScanViewModel(
                     AdvancePhaseRequest(phase = ScanPhase.CLEANING)
                 )
                 cleanPath.clear()
-                lapSessionRecorder = newLapSessionRecorder() // lap 2 = its own session
+                lapSessionRecorder = newLapSessionRecorder("clean") // lap 2 = its own session
                 val currentState = _uiState.value
                 val areas = currentState.problemAreas
                     .ifEmpty { clusterProblemAreas(currentState.hotspots) }
@@ -1244,6 +1266,10 @@ class RouteScanViewModel(
      */
     private fun uploadLapSession(lapKind: String) {
         val recorder = lapSessionRecorder
+        // Captured synchronously: startCleaning() rotates lapEventLog to the
+        // NEXT lap's log, and this coroutine may run after that — the
+        // baseline lap's events must not be read from (or lost to) lap 2.
+        val eventLog = lapEventLog?.takeIf { it.sessionId == recorder.sessionId }
         val state = _uiState.value
         scope.launch {
             try {
@@ -1259,11 +1285,18 @@ class RouteScanViewModel(
                     coverageTracker.getScannedCorridorCells()
                         .map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
                 )
+                // Flight recorder: the lap's event stream is complete once the
+                // lap-end event lands; snapshot before any early return so a
+                // path-less lap still cleans up its file.
+                eventLog?.lap(lapKind, "lap completed")
+                val eventLines = eventLog?.snapshotLines()
+                eventLog?.let(ScanSessionTelemetry::deactivate)
                 // Pillar 6: this recorder's session is done either way (an
                 // empty draft archives nothing below) — its on-disk journal
                 // has no further use. No-op on desktop/android (journalPath
                 // is always null there).
                 sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
+                sessionEventLogPath(draft.sessionId)?.let { deleteLocalFile(it) }
                 if (draft.path.isEmpty()) return@launch // nothing recorded — nothing to archive
                 // Uploaded-so-far capture-chunk R2 keys (route-lap capture):
                 // late uploads are still keyed by sessionId in R2 regardless
@@ -1311,7 +1344,7 @@ class RouteScanViewModel(
                     arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
                 )
-                sessionUploader.uploadOrQueue(manifest)
+                sessionUploader.uploadOrQueue(manifest, eventLines)
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "$lapKind lap session archive failed", e)
             }
@@ -1370,6 +1403,8 @@ class RouteScanViewModel(
                     // Audit trail rides with whichever lap recorder is current
                     // at event time — a lap boundary may have swapped it out.
                     lapSessionRecorder.noteGateEvent("gate@$nowMs state=$gateState")
+                    // Causes arrive as `diag` events via DiagnosticsLog's sink.
+                    lapEventLog?.gate(gateState.name)
                     if (gateState == OutdoorState.INDOOR) {
                         // Privacy purge: drop the trailing walk-inside seconds
                         // recorded just before this flip so they never upload.

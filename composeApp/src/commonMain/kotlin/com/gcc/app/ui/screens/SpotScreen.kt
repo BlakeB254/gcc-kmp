@@ -61,6 +61,9 @@ import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionRecorder
+import com.gcc.app.platform.ScanSessionTelemetry
+import com.gcc.app.platform.SessionEventLog
+import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.getPlatformName
@@ -389,6 +392,35 @@ private fun CameraPhase(
         val sessionId = EnvScanSessionRecorder.generateSessionId()
         EnvScanSessionRecorder(sessionId = sessionId, journalPath = sessionJournalPath(sessionId))
     }
+    // Flight recorder (scan-session-replay PRD Phase 1): the structured
+    // event stream riding beside the recorder — captions, tap→pill
+    // transitions, gate changes, coverage milestones, upload outcomes —
+    // uploaded ALWAYS at Complete Scan as events.jsonl.gz. Registered
+    // globally so the ViewModels and upload workers reach it, and as
+    // DiagnosticsLog's sink so every diagnostics line lands in the replay.
+    val sessionEventLog = remember {
+        SessionEventLog(
+            sessionId = sessionRecorder.sessionId,
+            startedAtMs = sessionRecorder.startedAtMs,
+            logPath = sessionEventLogPath(sessionRecorder.sessionId),
+        )
+    }
+    DisposableEffect(sessionEventLog) {
+        ScanSessionTelemetry.activate(sessionEventLog)
+        onDispose { ScanSessionTelemetry.deactivate(sessionEventLog) }
+    }
+    // Tap authority replay (P3): the tap itself, then every pill phase —
+    // LOCATING → CHECKING → AWAITING_CONFIRMATION (with label/confidence/
+    // distance) or NO_RAYCAST (the "hold steady" miss).
+    LaunchedEffect(tapCandidate.phase) {
+        if (tapCandidate.phase == TapPhase.LOCATING) sessionEventLog.tap()
+        sessionEventLog.pillPhase(
+            phase = tapCandidate.phase.name,
+            label = tapCandidate.label,
+            confidence = tapCandidate.confidence,
+            distanceM = tapCandidate.distanceMeters?.toDouble(),
+        )
+    }
     // Geo-ref pairing collector (see geoRefPaired above): every usable fix
     // re-anchors the AR frame AND records the AR↔world pairing into the
     // session recorder — the metadata the DGX splat pipeline registers this
@@ -482,6 +514,7 @@ private fun CameraPhase(
         // grid expects them next scan.
         arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence, widthMeters, yawDegrees ->
             if (!gate.captureAllowed.value) return@setElementObservedListener
+            sessionEventLog.detection(label = itemType, confidence = confidence, distanceM = null)
             onTrashObserved(
                 ObservedSpotItem(
                     lat = lat,
@@ -611,6 +644,10 @@ private fun CameraPhase(
             }
         }
         sessionRecorder.noteGateEvent("gate@${Clock.System.now().toEpochMilliseconds()} state=$outdoorState")
+        // Causes arrive separately as `diag` events — OutdoorGate logs every
+        // signal (scene votes, ceiling plane, containment) to DiagnosticsLog,
+        // which the flight recorder mirrors while this session is active.
+        sessionEventLog.gate(outdoorState.name)
     }
 
     // ── Environment-scan session: coverage credit + minimap layers ──
@@ -837,6 +874,9 @@ private fun CameraPhase(
     var guidancePhase by remember { mutableStateOf(GuidancePhase.COVER) }
     val coveragePercentValue by tracker.coveragePercent.collectAsState()
     val closePercentValue by tracker.closePercent.collectAsState()
+    // Coverage milestones (25/50/75/95%) for the flight recorder — the log
+    // itself tracks which milestones have already been crossed.
+    LaunchedEffect(coveragePercentValue) { sessionEventLog.coverage(coveragePercentValue) }
     LaunchedEffect(scanCellCenters, closeCellCenters, trackerReady, currentLocation) {
         if (!trackerReady) return@LaunchedEffect
         val uncredited = tracker.getUnscannedCells()
@@ -994,6 +1034,9 @@ private fun CameraPhase(
                 "Move closer — detail-scan the light areas"
             else -> "Environment scan active — sweep the camera slowly"
         }
+        // Every caption the worker saw, in order — the flight recorder
+        // dedupes consecutive repeats itself.
+        LaunchedEffect(scanStatus) { sessionEventLog.caption(scanStatus) }
         if (!showObjectCapture) if (isScanMode) {
             SpotScanCapture(
                 spotLocation = scanLocation,

@@ -49,6 +49,55 @@ data class ParsedSessionJournal(
     val geoRefEvents: List<GeoRefEvent>,
 )
 
+/** One orphaned session's on-disk remains: its journal and/or its
+ *  flight-recorder event log (either may be missing — a crash before the
+ *  first GPS fix leaves an event log with no journal, and pre-flight-recorder
+ *  builds leave a journal with no event log). */
+data class OrphanSessionFiles(
+    val sessionId: String,
+    val journalPath: String?,
+    val eventLogPath: String?,
+)
+
+private const val EVENT_LOG_SUFFIX = ".events.jsonl"
+private const val JOURNAL_SUFFIX = ".jsonl"
+
+/**
+ * Pairs a scan-sessions directory listing into per-session recovery units.
+ * Pure — the sweep's filename semantics live here so they're testable:
+ * `{id}.events.jsonl` is an event log (NOT a journal, despite also ending in
+ * `.jsonl`), `{id}.jsonl` is a journal, anything else is ignored.
+ */
+fun planOrphanSessionRecovery(paths: List<String>): List<OrphanSessionFiles> {
+    val journals = mutableMapOf<String, String>()
+    val eventLogs = mutableMapOf<String, String>()
+    for (path in paths) {
+        val name = path.substringAfterLast('/')
+        when {
+            name.endsWith(EVENT_LOG_SUFFIX) -> {
+                val id = name.removeSuffix(EVENT_LOG_SUFFIX)
+                if (id.isNotBlank()) eventLogs[id] = path
+            }
+            name.endsWith(JOURNAL_SUFFIX) -> {
+                val id = name.removeSuffix(JOURNAL_SUFFIX)
+                if (id.isNotBlank()) journals[id] = path
+            }
+        }
+    }
+    return (journals.keys + eventLogs.keys).map { id ->
+        OrphanSessionFiles(sessionId = id, journalPath = journals[id], eventLogPath = eventLogs[id])
+    }.sortedBy { it.sessionId }
+}
+
+/** Recovers a session's start time from [EnvScanSessionRecorder.generateSessionId]'s
+ *  `env-{epochMs}-{suffix}` format — the fallback when a crashed session left
+ *  an event log but no journal samples to date it by. */
+fun sessionIdEpochMs(sessionId: String): Long? {
+    val parts = sessionId.split('-')
+    if (parts.size < 3 || parts[0] != "env") return null
+    return parts[1].toLongOrNull()
+}
+
 /**
  * Parses a session journal's surviving lines. Any line that fails to decode
  * — a partially-written last line from an app kill mid-`write`, or any other
@@ -119,33 +168,48 @@ private fun readJournal(sessionId: String): ParsedSessionJournal? {
 internal suspend fun recoverOrphanScanSessions(
     sessionUploader: EnvScanSessionUploader,
     captureChunkStore: CaptureChunkStore,
+    /** Tests only: desktop's [scanSessionsDirPath] is null, so the suite
+     *  points the sweep at a temp directory instead. */
+    dirOverride: String? = null,
 ) {
-    val dir = scanSessionsDirPath() ?: return
-    for (path in listFilesInDir(dir)) {
-        if (!path.endsWith(".jsonl")) continue
-        val sessionId = path.substringAfterLast('/').removeSuffix(".jsonl")
-        if (sessionId.isBlank()) continue
+    val dir = dirOverride ?: scanSessionsDirPath() ?: return
+    for (orphan in planOrphanSessionRecovery(listFilesInDir(dir))) {
         try {
-            val bytes = readLocalFileBytes(path) ?: continue
-            val (samples, gateEvents, geoRefEvents) = parseSessionJournal(bytes.decodeToString().split("\n"))
-            if (samples.isEmpty()) {
+            val journal = orphan.journalPath
+                ?.let { readLocalFileBytes(it) }
+                ?.let { parseSessionJournal(it.decodeToString().split("\n")) }
+            val samples = journal?.samples.orEmpty()
+            // The flight-recorder mirror rides along raw: its lines are
+            // already the wire format, and salvage must not drop entries a
+            // newer build wrote with fields this build doesn't know.
+            val eventLines = orphan.eventLogPath
+                ?.let { readLocalFileBytes(it) }
+                ?.decodeToString()?.split("\n")?.filter { it.isNotBlank() }
+                .orEmpty()
+            if (samples.isEmpty() && eventLines.isEmpty()) {
                 // Nothing worth restoring (e.g. the scan never got a single
                 // GPS fix before the app died) — just clean up.
-                deleteLocalFile(path)
+                orphan.journalPath?.let { deleteLocalFile(it) }
+                orphan.eventLogPath?.let { deleteLocalFile(it) }
                 continue
             }
             val chunkKeys = try {
-                captureChunkStore.chunksForSession(sessionId).mapNotNull { it.r2Key }
+                captureChunkStore.chunksForSession(orphan.sessionId).mapNotNull { it.r2Key }
             } catch (e: Exception) {
-                DiagnosticsLog.error("env-capture", "recovery: captureChunks lookup failed for $sessionId", e)
+                DiagnosticsLog.error("env-capture", "recovery: captureChunks lookup failed for ${orphan.sessionId}", e)
                 emptyList()
             }
             val manifest = EnvScanManifest(
-                sessionId = sessionId,
+                sessionId = orphan.sessionId,
                 deviceId = CoverageDeviceId.value,
                 deviceModel = getDeviceModel(),
                 osVersion = getOsVersion(),
-                startedAtMs = samples.first().atMs,
+                // A sample-less session (crash before the first GPS fix —
+                // gate never opened, exactly the crash the event log
+                // explains) is dated from the sessionId's embedded epoch.
+                startedAtMs = samples.firstOrNull()?.atMs
+                    ?: sessionIdEpochMs(orphan.sessionId)
+                    ?: Clock.System.now().toEpochMilliseconds(),
                 completedAtMs = Clock.System.now().toEpochMilliseconds(),
                 path = samples,
                 scannedCells = emptyList(),
@@ -153,10 +217,10 @@ internal suspend fun recoverOrphanScanSessions(
                 observedItems = emptyList(),
                 photoKeys = emptyList(),
                 lapKind = "recovered",
-                gateEvents = gateEvents,
+                gateEvents = journal?.gateEvents ?: emptyList(),
                 captureChunks = chunkKeys.ifEmpty { null },
                 captureSchema = if (chunkKeys.isNotEmpty()) 2 else null,
-                geoRefEvents = geoRefEvents.ifEmpty { null },
+                geoRefEvents = journal?.geoRefEvents?.ifEmpty { null },
                 arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                 // Crash-adjacent sessions are exactly where the diagnostics
                 // tail matters most — though on a fresh launch it holds this
@@ -164,15 +228,20 @@ internal suspend fun recoverOrphanScanSessions(
                 // buffer is in-memory only).
                 diagnosticsLog = DiagnosticsLog.tailForManifest(),
             )
-            // uploadOrQueue never throws (it queues internally on failure) —
-            // safe to delete the journal right after, in every case.
-            sessionUploader.uploadOrQueue(manifest)
-            deleteLocalFile(path)
-            DiagnosticsLog.info("env-capture", "recovered orphaned session $sessionId (${samples.size} samples)")
+            // uploadOrQueue never throws (it queues internally on failure —
+            // including the event log, which persists beside the manifest) —
+            // safe to delete both files right after, in every case.
+            sessionUploader.uploadOrQueue(manifest, eventLines.ifEmpty { null })
+            orphan.journalPath?.let { deleteLocalFile(it) }
+            orphan.eventLogPath?.let { deleteLocalFile(it) }
+            DiagnosticsLog.info(
+                "env-capture",
+                "recovered orphaned session ${orphan.sessionId} (${samples.size} samples, ${eventLines.size} events)",
+            )
         } catch (e: Exception) {
             DiagnosticsLog.error(
                 "env-capture",
-                "orphan journal recovery failed for $path (left in place, retried next launch)",
+                "orphan journal recovery failed for ${orphan.sessionId} (left in place, retried next launch)",
                 e,
             )
         }

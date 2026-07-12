@@ -17,10 +17,12 @@ import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.TapCandidateState
 import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.app.platform.UNKNOWN_LITTER_LABEL
+import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
+import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
@@ -345,6 +347,7 @@ class SpotViewModel(
     fun addConfirmedTapItem(candidate: TapCandidateState) {
         val lat = candidate.lat ?: return
         val lng = candidate.lng ?: return
+        ScanSessionTelemetry.active?.confirm(candidate.label ?: UNKNOWN_LITTER_LABEL)
         addObservedItem(
             ObservedSpotItem(
                 lat = lat,
@@ -362,6 +365,7 @@ class SpotViewModel(
     fun addRejectedTapItem(candidate: TapCandidateState) {
         val lat = candidate.lat ?: return
         val lng = candidate.lng ?: return
+        ScanSessionTelemetry.active?.reject(candidate.label ?: UNKNOWN_LITTER_LABEL)
         rejectedItems.add(
             ObservedSpotItem(
                 lat = lat,
@@ -626,6 +630,11 @@ class SpotViewModel(
         // observe (or cause) a torn read.
         val rejectedSnapshot = rejectedItems.toList()
         val multiItemPhotoIndicesSnapshot = multiItemPhotoIndices.toSet()
+        // Flight recorder: capture the session's event log SYNCHRONOUSLY —
+        // the screen's dispose (navigation away) deactivates the registry,
+        // and this coroutine may not run until after that. The reference
+        // stays snapshottable regardless of registry state.
+        val sessionEventLog = ScanSessionTelemetry.forSession(draft.sessionId)
         scope.launch {
             try {
                 val anchorLat = state.spotLat ?: state.currentLat
@@ -706,7 +715,15 @@ class SpotViewModel(
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
                     multiItemPhotoKeys = multiItemPhotoKeys,
                 )
-                if (sessionUploader.uploadOrQueue(manifest)) {
+                // Flight recorder (scan-session-replay PRD Phase 1): the
+                // session's event stream ALWAYS ships on completion — the
+                // uploader gzips it, uploads it as its own R2 artifact
+                // BEFORE the manifest (which references it via eventLogKey),
+                // and queues the pair together on failure. Snapshot before
+                // deactivating so the stream is complete.
+                val eventLines = sessionEventLog?.snapshotLines()
+                ScanSessionTelemetry.deactivateSession(draft.sessionId)
+                if (sessionUploader.uploadOrQueue(manifest, eventLines)) {
                     DiagnosticsLog.info(
                         "env-capture",
                         "session ${draft.sessionId} archived to R2: ${photoKeys.size} photo(s) + manifest " +
@@ -716,10 +733,12 @@ class SpotViewModel(
                 // Pillar 6: the manifest is now durable either in R2 or in
                 // EnvScanSessionUploader's own persistent retry queue — the
                 // on-disk journal's only job (surviving an app kill before
-                // this point) is done, so delete it. A missing journal
-                // (desktop/android — journalPath is always null there) is a
-                // no-op.
+                // this point) is done, so delete it. Same for the event-log
+                // mirror: its lines are durable in R2 or the uploader's
+                // pending-event-log store. A missing journal (desktop/android
+                // — journalPath is always null there) is a no-op.
                 sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
+                sessionEventLogPath(draft.sessionId)?.let { deleteLocalFile(it) }
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
             }

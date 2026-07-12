@@ -1,5 +1,6 @@
 package com.gcc.app.platform
 
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,18 @@ object DiagnosticsLog {
     private val _errorCount = MutableStateFlow(0)
     val errorCount: StateFlow<Int> = _errorCount.asStateFlow()
 
+    /**
+     * Flight-recorder mirror (scan-session-replay PRD Phase 1): while a scan
+     * session is active, its [SessionEventLog] registers here and every entry
+     * appended to this log is also mirrored into the session's event stream
+     * (`diag` events) — gate causes, upload errors, and lifecycle notes reach
+     * the replay with zero per-call-site churn. Set at session start, cleared
+     * at completion by the owning ViewModel; @Volatile because appends can
+     * come from any thread. Must never throw (see [append]).
+     */
+    @Volatile
+    var sessionSink: ((Entry) -> Unit)? = null
+
     /** Cap on the diagnostics-log tail shipped in an
      *  [com.gcc.shared.model.EnvScanManifest] — bounds the manifest size; the
      *  ring buffer itself ([MAX_ENTRIES]) is sized for the on-screen panel
@@ -84,6 +97,12 @@ object DiagnosticsLog {
         val entry = Entry(Clock.System.now().toEpochMilliseconds(), level, tag, message)
         _entries.value = (listOf(entry) + _entries.value).take(MAX_ENTRIES)
         if (level == Level.ERROR) _errorCount.value += 1
+        // A sink failure must never take down the code path that logged —
+        // the event log is telemetry, the log line is the product.
+        try {
+            sessionSink?.invoke(entry)
+        } catch (_: Throwable) {
+        }
         // Console mirror for tethered runs (NSLog on iOS, stdout elsewhere).
         println("GCC-DIAG ${entry.format()}")
     }

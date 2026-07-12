@@ -71,5 +71,11 @@ class R2Storage(private val config: R2Config) : AutoCloseable {
         client.getObject(GetObjectRequest.builder().bucket(config.bucket).key(key).build())
             .use { it.readBytes().toString(Charsets.UTF_8) }
 
+    /** Fetch a small binary object — used for the gzipped flight-recorder
+     *  event stream (`events.jsonl.gz`, <200KB by contract). */
+    fun getBytes(key: String): ByteArray =
+        client.getObject(GetObjectRequest.builder().bucket(config.bucket).key(key).build())
+            .use { it.readBytes() }
+
     override fun close() = client.close()
 }

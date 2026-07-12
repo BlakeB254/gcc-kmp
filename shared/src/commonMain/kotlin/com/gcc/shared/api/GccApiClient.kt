@@ -702,6 +702,27 @@ class GccApiClient(
     suspend fun getAdminDailyStats(days: Int = 30): List<AdminDailyStats> =
         get("/api/admin/analytics/daily") { parameter("days", days) }
 
+    // Scan-session review surface (flight recorder, scan-session-replay PRD
+    // Phase 2) — same endpoints the site admin panel consumes; red flags are
+    // server-derived so both admin clients render identical triage state.
+    suspend fun getAdminScanSessions(
+        lapKind: String? = null,
+        deviceId: String? = null,
+        routeId: Int? = null,
+        days: Int? = null,
+    ): List<AdminScanSessionSummary> =
+        get("/api/admin/scan-sessions") {
+            lapKind?.let { parameter("lapKind", it) }
+            deviceId?.let { parameter("deviceId", it) }
+            routeId?.let { parameter("routeId", it) }
+            days?.let { parameter("days", it) }
+        }
+
+    /** Full replay payload: indexed row + artifacts (expiring presigned GET
+     *  URLs) + manifest + parsed flight-recorder event stream. */
+    suspend fun getAdminScanSession(sessionId: String): AdminScanSessionDetail =
+        get("/api/admin/scan-sessions/${sessionId.encodeURLPathPart()}")
+
     // Jobs (Operations drill-in). `status` must be an enum_jobs_status value —
     // the server answers 400 for anything else.
     suspend fun getAdminJobs(status: String? = null, page: Int = 1, limit: Int = 50): List<AdminJobSummary> =
@@ -1052,6 +1073,12 @@ class GccApiClient(
 
     suspend fun reportCrash(report: CrashReportRequest): Unit =
         postJson("/api/crashes", report)
+
+    /** MetricKit crash/hang diagnostic JSON (previous sessions) → R2 +
+     *  crash_reports index. Same unauthenticated-ingest contract as
+     *  [reportCrash]; the caller deletes the local file only on success. */
+    suspend fun uploadCrashDiagnostic(diagnostic: MetricKitDiagnosticRequest): Unit =
+        postJson("/api/crashes/diagnostics", diagnostic)
 
     // Admin: Add photos to an existing spot report
     suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =

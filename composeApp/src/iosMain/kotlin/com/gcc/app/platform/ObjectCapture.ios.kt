@@ -251,6 +251,11 @@ actual fun sessionJournalPath(sessionId: String): String? {
     return "$dir/$sessionId.jsonl"
 }
 
+actual fun sessionEventLogPath(sessionId: String): String? {
+    val dir = scanSessionsDirPath() ?: return null
+    return "$dir/$sessionId.events.jsonl"
+}
+
 actual fun scanSessionsDirPath(): String? = documentsPath() + "/scan-sessions"
 
 actual fun captureSessionsDirPath(): String? = documentsPath() + "/capture-sessions"

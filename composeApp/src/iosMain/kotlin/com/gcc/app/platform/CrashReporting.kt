@@ -4,6 +4,7 @@ package com.gcc.app.platform
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.model.CrashReportRequest
+import com.gcc.shared.model.MetricKitDiagnosticRequest
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.datetime.Clock
@@ -109,12 +110,59 @@ actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
         DiagnosticsLog.error(
             "crash",
             "${metricKitFiles.size} MetricKit crash/hang diagnostic(s) from earlier sessions " +
-                "(latest: ${metricKitFiles.last()}) — full JSON in Files app → GCC → gcc-crash-diagnostics",
+                "(latest: ${metricKitFiles.last()}) — uploading to the backend",
         )
+        // Flight recorder Phase 1: these JSONs used to strand on-device
+        // (Files app only). Upload each — full payload to R2 via
+        // POST /api/crashes/diagnostics — and delete ONLY on success, same
+        // retry-until-delivered contract as the Kotlin crash file above.
+        var uploadedCount = 0
+        for (name in metricKitFiles.filter { it.endsWith(".json") }) {
+            val path = metricKitDirPath() + "/" + name
+            val json = NSString.stringWithContentsOfFile(path, encoding = NSUTF8StringEncoding, error = null)
+                ?: continue
+            val result = runCatching {
+                apiClient.uploadCrashDiagnostic(
+                    MetricKitDiagnosticRequest(
+                        deviceId = CoverageDeviceId.value,
+                        platform = "ios",
+                        fileName = name,
+                        payload = json,
+                    ),
+                )
+            }
+            val message = result.exceptionOrNull()?.message.orEmpty()
+            when {
+                result.isSuccess -> {
+                    fm.removeItemAtPath(path, error = null)
+                    uploadedCount++
+                }
+                // 429 = shared per-device throttle — transient, retry next launch.
+                message.contains("HTTP 429") -> break
+                // Other 4xx (413 too large, 400 bad name) are PERMANENT by the
+                // route's contract — delete so one bad file can't wedge the
+                // retry loop forever.
+                message.contains("HTTP 4") -> {
+                    DiagnosticsLog.error("crash", "MetricKit diagnostic $name rejected ($message) — dropped")
+                    fm.removeItemAtPath(path, error = null)
+                }
+                // Offline / 500 / 501 (R2 unprovisioned): keep everything,
+                // retry next launch — later files would fail the same way.
+                else -> break
+            }
+        }
+        if (uploadedCount > 0) {
+            DiagnosticsLog.info("crash", "$uploadedCount MetricKit diagnostic(s) uploaded to the backend")
+        }
     }
-    // Prune so the folder can't grow unbounded across many test sessions.
-    if (metricKitFiles.size > 20) {
-        metricKitFiles.dropLast(20).forEach { name ->
+    // Prune so the folder can't grow unbounded across many test sessions
+    // (e.g. a device that stays offline for weeks).
+    val remaining = fm.contentsOfDirectoryAtPath(metricKitDirPath(), error = null)
+        ?.filterIsInstance<String>()
+        .orEmpty()
+        .sorted()
+    if (remaining.size > 20) {
+        remaining.dropLast(20).forEach { name ->
             fm.removeItemAtPath(metricKitDirPath() + "/" + name, error = null)
         }
     }
