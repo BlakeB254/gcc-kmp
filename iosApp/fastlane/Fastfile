@@ -32,8 +32,14 @@ platform :ios do
     keychain_password_file = File.expand_path("~/.config/gcc/build-keychain-pass")
     if File.exist?(keychain_password_file)
       keychain_password = File.read(keychain_password_file).strip
-      keychain_db = File.expand_path("~/Library/Keychains/gcc-build.keychain-db")
-      unless File.exist?(keychain_db)
+      # fastlane's create_keychain names the file "gcc-build-db" (no
+      # ".keychain" infix) on modern macOS; accept either spelling.
+      keychain_candidates = [
+        File.expand_path("~/Library/Keychains/gcc-build-db"),
+        File.expand_path("~/Library/Keychains/gcc-build.keychain-db"),
+      ]
+      keychain_db = keychain_candidates.find { |f| File.exist?(f) }
+      unless keychain_db
         create_keychain(
           name: "gcc-build",
           password: keychain_password,
@@ -42,6 +48,7 @@ platform :ios do
           timeout: 0,          # never auto-lock — this keychain holds ONLY the build cert
           add_to_search_list: true,
         )
+        keychain_db = keychain_candidates.find { |f| File.exist?(f) }
       end
       unlock_keychain(path: "gcc-build", password: keychain_password)
       ENV["GCC_BUILD_KEYCHAIN"] = keychain_db
