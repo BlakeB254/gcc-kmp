@@ -30,6 +30,8 @@ data class Worker(
     val stripe: WorkerStripe = WorkerStripe(),
     /** Ad-hoc payout routing preference: "stripe" | "check". */
     val payoutMethod: String = "stripe",
+    /** In-app wallet available balance (integer cents). */
+    val walletBalanceCents: Int = 0,
     val stats: WorkerStats = WorkerStats(),
     val earlyAdopterTier: EarlyAdopterTier = EarlyAdopterTier.STANDARD,
     val twoFactorEnabled: Boolean = false,

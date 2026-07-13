@@ -46,6 +46,23 @@ data class ForceJobStatusRequest(
     val reason: String,
 )
 
+/** POST /api/admin/jobs/[id]/reassign — move a job (and its wallet credit) to the worker who really did it. */
+@Serializable
+data class ReassignJobRequest(
+    val toWorkerId: Int,
+)
+
+@Serializable
+data class ReassignJobResponse(
+    val ok: Boolean = false,
+    val jobId: Int = 0,
+    val fromWorkerId: Int = 0,
+    val toWorkerId: Int = 0,
+    /** Cents moved between wallets (0 when the job hadn't been credited yet). */
+    val movedCents: Int = 0,
+    val creditMoved: Boolean = false,
+)
+
 @Serializable
 data class UpdateRouteStatusRequest(val status: RouteStatus)
 

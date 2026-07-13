@@ -1,31 +1,30 @@
 /**
  * POST /api/admin/workers/[id]/payout
  *
- * Admin sends a one-off payout to a worker. Routing depends on the worker's
- * payout method preference:
- *  - 'stripe': transfer + payout via Stripe Connect (instant w/ standard
- *    fallback), same failure semantics as the job-approve route.
- *  - 'check': lands in the payouts table as 'check_pending' — the admin
- *    "checks to mail" queue — and push-alerts all admins.
+ * Admin credits a worker's in-app wallet (bonus / correction / manual job
+ * payment). Since the wallet-ledger rework this NEVER touches Stripe and has
+ * no Stripe-Connect or mailing-address prerequisites: the credit lands in the
+ * worker's wallet balance immediately, and the worker cashes out on their own
+ * schedule (Stripe direct deposit or mailed check) from the app.
  *
  * Body: { amountCents: number, note?: string, idempotencyKey: string }
  *
- * Idempotency: the payouts.idempotency_key unique index makes the INSERT the
- * atomic claim. A retried request with the same key gets the original row
- * back (200, alreadyProcessed) and can never move money twice.
+ * Idempotency: the unique index on workerWalletEntries.idempotency_key makes
+ * the ledger INSERT the atomic claim. A retried request with the same key
+ * credits nothing and returns alreadyProcessed=true.
  *
- * Stripe failure: the row stays 'processing' (blocks retries — the transfer
- * may have partially completed), 502, manual reconciliation. Mirrors
- * api/admin/jobs/[id]/approve.
+ * Response keeps the legacy CreatePayoutResponse shape ({ payout, ... }) so
+ * pre-rework mobile builds continue to parse it; `payout.method` is 'wallet'
+ * and `payout.status` is 'completed'.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { payouts, workers } from '@/db/schema'
+import { workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
-import { processAdminPayout } from '@/lib/stripe/connect'
-import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
-import { MAX_PAYOUT_CENTS, MAX_NOTE_LEN, resolveMailingAddress } from '@/lib/payouts'
+import { creditWallet } from '@/lib/wallet'
+import { notifyWorker, notificationTemplates } from '@/lib/notifications'
+import { MAX_PAYOUT_CENTS, MAX_NOTE_LEN } from '@/lib/payouts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -89,15 +88,10 @@ export async function POST(
     .select({
       id: workers.id,
       name: workers.name,
-      payoutMethod: workers.payoutMethod,
-      payoutMailingAddress: workers.payoutMailingAddress,
-      addressStreet: workers.addressStreet,
-      addressCity: workers.addressCity,
-      addressState: workers.addressState,
-      addressZip: workers.addressZip,
-      stripeAccountId: workers.stripeAccountId,
-      stripeOnboardingStatus: workers.stripeOnboardingStatus,
-      stripeInstantPayoutsEnabled: workers.stripeInstantPayoutsEnabled,
+      phone: workers.phone,
+      notificationsPushEnabled: workers.notificationsPushEnabled,
+      notificationsPushSubscription: workers.notificationsPushSubscription,
+      notificationsSmsEnabled: workers.notificationsSmsEnabled,
     })
     .from(workers)
     .where(eq(workers.id, targetWorkerId))
@@ -110,160 +104,61 @@ export async function POST(
     )
   }
 
-  const method = worker.payoutMethod === 'check' ? 'check' : 'stripe'
+  const result = await creditWallet({
+    workerId: targetWorkerId,
+    amountCents,
+    kind: 'admin_credit',
+    note: note || null,
+    createdByAdminId: auth.workerId,
+    idempotencyKey,
+  })
 
-  // ── Method-specific read-only guards, BEFORE any write or Stripe call ────
-  let mailingAddress: ReturnType<typeof resolveMailingAddress> = null
-  if (method === 'stripe') {
-    if (!worker.stripeAccountId || worker.stripeOnboardingStatus !== 'completed') {
-      return NextResponse.json(
-        {
-          data: null,
-          success: false,
-          message:
-            'Worker has not completed Stripe payout setup. Ask them to finish setup in Wallet, or have them switch to paper checks.',
-        },
-        { status: 409 }
-      )
-    }
-  } else {
-    mailingAddress = resolveMailingAddress(worker)
-    if (!mailingAddress) {
-      return NextResponse.json(
-        {
-          data: null,
-          success: false,
-          message:
-            'Worker chose paper checks but has no complete mailing address on file.',
-        },
-        { status: 409 }
-      )
-    }
+  // Legacy-compatible payout object (old builds read data.payout.status).
+  const payout = {
+    id: result.entryId ?? 0,
+    workerId: targetWorkerId,
+    amountCents,
+    note: note || null,
+    method: 'wallet',
+    status: 'completed',
+    initiatedByAdminId: auth.workerId,
+    createdAt: new Date().toISOString(),
   }
 
-  // ── Atomic claim: INSERT with unique idempotency key ─────────────────────
-  const inserted = await db
-    .insert(payouts)
-    .values({
-      workerId: targetWorkerId,
-      amountCents,
-      note: note || null,
-      method,
-      status: method === 'check' ? 'check_pending' : 'processing',
-      initiatedByAdminId: auth.workerId,
-      idempotencyKey,
-      mailingAddress: mailingAddress ?? null,
-    })
-    .onConflictDoNothing({ target: payouts.idempotencyKey })
-    .returning()
-
-  if (inserted.length === 0) {
-    // Retried request: return the original outcome, never re-send money.
-    const [existing] = await db
-      .select()
-      .from(payouts)
-      .where(eq(payouts.idempotencyKey, idempotencyKey))
-      .limit(1)
+  if (!result.credited) {
     return NextResponse.json({
-      data: { payout: existing ?? null, alreadyProcessed: true },
+      data: { payout, alreadyProcessed: true, balanceCents: result.balanceCents },
       success: true,
       message: null,
     })
   }
 
-  const payoutRow = inserted[0]
-
-  // ── Check path: queued for manual mailing; alert admins ──────────────────
-  if (method === 'check') {
-    // Fire-and-forget-with-logging: the queue row is the source of truth; a
-    // notification failure must not fail the request.
-    try {
-      await notifyAdmins(
-        notificationTemplates.checkToMail(
-          worker.name,
-          (amountCents / 100).toFixed(2),
-          payoutRow.id
-        )
-      )
-    } catch (notifyErr) {
-      console.error(
-        '[admin-payout] Failed to send checkToMail alert for payout ' + payoutRow.id,
-        notifyErr
-      )
-    }
-    return NextResponse.json({
-      data: { payout: payoutRow, alreadyProcessed: false },
-      success: true,
-      message: null,
-    })
-  }
-
-  // ── Stripe path: transfer + payout ────────────────────────────────────────
-  let transferId: string
-  let stripePayoutId: string | undefined
+  // Fire-and-forget-with-logging: the ledger row is the source of truth; a
+  // notification failure must not fail the request.
   try {
-    const result = await processAdminPayout(
-      worker.stripeAccountId!,
-      amountCents,
-      String(payoutRow.id),
-      String(targetWorkerId),
-      worker.stripeInstantPayoutsEnabled ?? false
-    )
-    transferId = result.transfer.id
-    stripePayoutId = result.payout.id
-  } catch (err) {
-    // CRITICAL: do NOT mark 'failed' — the transfer may have partially
-    // completed. 'processing' blocks retries (idempotency key + status);
-    // reconcile manually or via the payout.paid/failed webhook.
-    console.error(
-      '[admin-payout] CRITICAL: Stripe payout failed for payout ' + payoutRow.id +
-        ' — transfer may have partially completed; manual reconciliation required',
-      err
-    )
-    return NextResponse.json(
+    await notifyWorker(
       {
-        data: { payout: payoutRow, alreadyProcessed: false },
-        success: false,
-        message:
-          'Stripe payout failed — payout recorded but money status unknown. Do NOT retry; manual reconciliation required.',
+        phone: worker.phone ?? undefined,
+        pushSubscription: (worker.notificationsPushSubscription as any) ?? undefined,
+        preferences: {
+          pushEnabled: worker.notificationsPushEnabled ?? undefined,
+          smsEnabled: worker.notificationsSmsEnabled ?? undefined,
+        },
       },
-      { status: 502 }
+      notificationTemplates.walletCredited(
+        `$${(amountCents / 100).toFixed(2)}`,
+        note || 'your work'
+      )
     )
-  }
-
-  // Money has moved. If persisting IDs fails, still return them to the caller;
-  // the payout.paid webhook reconciles status → completed.
-  try {
-    await db
-      .update(payouts)
-      .set({
-        stripeTransferId: transferId,
-        stripePayoutId: stripePayoutId ?? null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(payouts.id, payoutRow.id))
-  } catch (e) {
+  } catch (notifyErr) {
     console.error(
-      '[admin-payout] CRITICAL: transfer ' + transferId +
-        ' created but failed to persist for payout ' + payoutRow.id,
-      e
+      '[admin-payout] Failed to send walletCredited notification for entry ' + result.entryId,
+      notifyErr
     )
-    return NextResponse.json({
-      data: {
-        payout: { ...payoutRow, stripeTransferId: transferId },
-        alreadyProcessed: false,
-        persistFailed: true,
-      },
-      success: true,
-      message: null,
-    })
   }
 
   return NextResponse.json({
-    data: {
-      payout: { ...payoutRow, stripeTransferId: transferId, stripePayoutId },
-      alreadyProcessed: false,
-    },
+    data: { payout, alreadyProcessed: false, balanceCents: result.balanceCents },
     success: true,
     message: null,
   })

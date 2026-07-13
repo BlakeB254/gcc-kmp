@@ -750,9 +750,10 @@ class AdminPanelViewModel(
     // ── Ad-hoc Payout Actions ──────────────────────────────────────────
 
     /**
-     * One-off payout to a worker. Server routes by the worker's payout
-     * method (Stripe vs checks-to-mail queue). idempotencyKey is generated
-     * once per dialog open so a retried tap can't double-send money.
+     * One-off payment to a worker — credits their in-app wallet immediately
+     * (no Stripe Connect prerequisite; they cash out from the app on their
+     * own schedule). idempotencyKey is generated once per dialog open so a
+     * retried tap can't double-send money.
      */
     fun sendPayout(
         workerId: Int,
@@ -772,11 +773,15 @@ class AdminPanelViewModel(
                     ),
                 )
                 invalidateTab(AdminTab.PAYOUTS)
+                invalidateTab(AdminTab.WORKERS)
                 val message = when {
                     response.alreadyProcessed -> "Payout was already sent"
+                    response.payout?.method == "wallet" ->
+                        "Added to the worker's wallet — they can cash out any time"
+                    // Pre-rework server fallbacks:
                     response.payout?.status == "check_pending" ->
                         "Queued as a check to mail — see Payouts tab"
-                    else -> "Payout sent via Stripe"
+                    else -> "Payout sent"
                 }
                 onResult(true, message)
             } catch (e: Exception) {

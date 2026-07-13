@@ -15,6 +15,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 // Enums (matching Payload's generated enums)
 export const earlyAdopterTierEnum = pgEnum('enum_workers_early_adopter_tier', [
@@ -156,11 +157,18 @@ export const workers = pgTable('workers', {
   stripeInstantPayoutsEnabled: boolean('stripe_instant_payouts_enabled').default(false),
   stripeDefaultPayoutMethod: varchar('stripe_default_payout_method').default('standard'),
 
-  // Payout preference: how ad-hoc admin payouts reach this worker.
+  // Payout preference: how cash-outs reach this worker.
   // 'check' payouts mail to payoutMailingAddress when set, else the home
   // address fields above.
   payoutMethod: payoutMethodEnum('payout_method').default('stripe'),
   payoutMailingAddress: jsonb('payout_mailing_address'), // { name, street, city, state, zip }
+
+  // In-app wallet: the worker's available balance. Authoritative for spend
+  // checks — every mutation is a single conditional UPDATE (neon-http has no
+  // interactive transactions), with workerWalletEntries as the audit ledger.
+  // Funds credited here stay in the platform Stripe balance until the worker
+  // cashes out; the ledger row is the internal earmark of that liability.
+  walletBalanceCents: integer('wallet_balance_cents').default(0).notNull(),
 
   // Stats
   statsJobsCompleted: numeric('stats_jobs_completed').default('0'),
@@ -1991,10 +1999,12 @@ export const walletTransactions = pgTable('wallet_transactions', {
   walletIdx: index('wallet_transactions_wallet_id_idx').on(table.walletId),
 }))
 
-// Ad-hoc admin-initiated payouts to workers (bonuses, corrections, off-platform
-// work). Job payouts are NOT recorded here — their state lives on the jobs row
-// (payoutStatus/payoutStripeTransferId). Amounts are integer cents, matching
-// the wallet tables above.
+// Money leaving the platform to a worker (cash-outs). Historically these were
+// admin-initiated ad-hoc payouts; since the wallet-ledger rework they are
+// primarily worker-initiated withdrawals from the in-app wallet balance.
+// Job payouts are NOT recorded here — their state lives on the jobs row
+// (payoutStatus) and, post-rework, on workerWalletEntries. Amounts are
+// integer cents, matching the wallet tables above.
 export const payouts = pgTable('payouts', {
   id: serial('id').primaryKey(),
   workerId: integer('worker_id').notNull(),
@@ -2004,7 +2014,10 @@ export const payouts = pgTable('payouts', {
   status: payoutStatusEnum('status').notNull(),
   stripeTransferId: varchar('stripe_transfer_id'),
   stripePayoutId: varchar('stripe_payout_id'),
-  initiatedByAdminId: integer('initiated_by_admin_id').notNull(),
+  // Nullable since the wallet rework: worker-initiated withdrawals have no
+  // admin. Exactly one of the two initiated-by columns should be set.
+  initiatedByAdminId: integer('initiated_by_admin_id'),
+  initiatedByWorkerId: integer('initiated_by_worker_id'),
   // Client-supplied key so a retried request can never double-send money.
   idempotencyKey: varchar('idempotency_key').notNull(),
   // Snapshot of where the check goes, frozen at creation (worker edits to
@@ -2018,6 +2031,49 @@ export const payouts = pgTable('payouts', {
   workerIdx: index('payouts_worker_id_idx').on(table.workerId),
   statusIdx: index('payouts_status_idx').on(table.status),
   idempotencyUnique: uniqueIndex('payouts_idempotency_key_unique').on(table.idempotencyKey),
+}))
+
+// Audit ledger behind workers.walletBalanceCents. amountCents is signed:
+// positive = credit into the wallet, negative = debit out of it.
+//
+// kind values:
+//   'job_earning'         — credited when an admin approves a job (one per job,
+//                           enforced by the partial unique index below)
+//   'admin_credit'        — ad-hoc admin credit (bonus / correction)
+//   'withdrawal'          — worker cash-out; payoutId links the payouts row
+//   'withdrawal_reversal' — refund when a Stripe payout fails after debit
+//   'adjustment'          — manual moves (e.g. reassigning a completed job)
+//
+// The balance column on workers is authoritative for spend checks; this table
+// is the trail that explains it. Kept as varchar (not a pg enum) so adding a
+// kind later is a code change, not a migration.
+export const workerWalletEntries = pgTable('worker_wallet_entries', {
+  id: serial('id').primaryKey(),
+  workerId: integer('worker_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  kind: varchar('kind').notNull(),
+  jobId: integer('job_id'),
+  payoutId: integer('payout_id'),
+  note: varchar('note'),
+  createdByAdminId: integer('created_by_admin_id'),
+  // Client-supplied key for admin credits so a retried request can never
+  // double-credit. NULL for server-generated entries (Postgres unique indexes
+  // treat NULLs as distinct).
+  idempotencyKey: varchar('idempotency_key'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  workerIdx: index('worker_wallet_entries_worker_id_idx').on(table.workerId),
+  idempotencyUnique: uniqueIndex('worker_wallet_entries_idempotency_key_unique').on(table.idempotencyKey),
+  // A job can only ever produce one primal earning credit — approve-route
+  // races collapse onto this index.
+  jobEarningUnique: uniqueIndex('worker_wallet_entries_job_earning_unique')
+    .on(table.jobId)
+    .where(sql`kind = 'job_earning'`),
+  // A failed withdrawal can only be refunded once — webhook redeliveries
+  // collapse onto this index.
+  withdrawalReversalUnique: uniqueIndex('worker_wallet_entries_withdrawal_reversal_unique')
+    .on(table.payoutId)
+    .where(sql`kind = 'withdrawal_reversal'`),
 }))
 
 export const bountyPledges = pgTable('bounty_pledges', {

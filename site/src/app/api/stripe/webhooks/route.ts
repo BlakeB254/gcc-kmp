@@ -10,8 +10,10 @@ import {
   sponsorDeliverablePackages,
   payouts,
   stripeEvents,
+  workerWalletEntries,
 } from '@/db/schema'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { creditWallet } from '@/lib/wallet'
 import Stripe from 'stripe'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { sendEmail } from '@/lib/email'
@@ -414,8 +416,8 @@ export async function POST(request: NextRequest) {
         const workerId = payout.metadata?.workerId
         const adhocPayoutId = payout.metadata?.payoutId
 
-        // Ad-hoc admin payout: reconcile the payouts row, bump earnings
-        // (NOT jobs-completed — this isn't a job), notify the worker.
+        // Payouts-table payout (wallet withdrawal, or legacy ad-hoc admin
+        // payout): reconcile the row and notify the worker.
         if (adhocPayoutId) {
           const [payoutRow] = await db
             .update(payouts)
@@ -435,13 +437,30 @@ export async function POST(request: NextRequest) {
               .limit(1)
 
             if (worker) {
-              await db
-                .update(workers)
-                .set({
-                  statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${payoutRow.amountCents}`,
-                  updatedAt: new Date().toISOString(),
-                })
-                .where(eq(workers.id, payoutRow.workerId))
+              // Wallet withdrawals were already counted as earnings when the
+              // wallet was credited — bumping here would double-count. Only
+              // legacy pre-wallet ad-hoc payouts (no withdrawal ledger entry)
+              // still bump on payment.
+              const [withdrawalEntry] = await db
+                .select({ id: workerWalletEntries.id })
+                .from(workerWalletEntries)
+                .where(
+                  and(
+                    eq(workerWalletEntries.payoutId, Number(adhocPayoutId)),
+                    eq(workerWalletEntries.kind, 'withdrawal')
+                  )
+                )
+                .limit(1)
+
+              if (!withdrawalEntry) {
+                await db
+                  .update(workers)
+                  .set({
+                    statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${payoutRow.amountCents}`,
+                    updatedAt: new Date().toISOString(),
+                  })
+                  .where(eq(workers.id, payoutRow.workerId))
+              }
 
               // Fire-and-forget-with-logging, same pattern as the job branch.
               try {
@@ -537,7 +556,7 @@ export async function POST(request: NextRequest) {
         const adhocPayoutId = payout.metadata?.payoutId
 
         if (adhocPayoutId) {
-          await db
+          const [payoutRow] = await db
             .update(payouts)
             .set({
               status: 'failed',
@@ -545,6 +564,65 @@ export async function POST(request: NextRequest) {
               updatedAt: new Date().toISOString(),
             })
             .where(eq(payouts.id, Number(adhocPayoutId)))
+            .returning({ amountCents: payouts.amountCents, workerId: payouts.workerId })
+
+          // Wallet withdrawal that failed after the funds were held: put the
+          // money back. The partial unique index on (payout_id) WHERE
+          // kind='withdrawal_reversal' makes redeliveries refund only once,
+          // and we only refund when a matching 'withdrawal' debit exists
+          // (legacy ad-hoc payouts never debited a wallet).
+          if (payoutRow) {
+            const [withdrawalEntry] = await db
+              .select({ id: workerWalletEntries.id })
+              .from(workerWalletEntries)
+              .where(
+                and(
+                  eq(workerWalletEntries.payoutId, Number(adhocPayoutId)),
+                  eq(workerWalletEntries.kind, 'withdrawal')
+                )
+              )
+              .limit(1)
+
+            if (withdrawalEntry) {
+              const refund = await creditWallet({
+                workerId: payoutRow.workerId,
+                amountCents: payoutRow.amountCents,
+                kind: 'withdrawal_reversal',
+                payoutId: Number(adhocPayoutId),
+                note: 'Cash out failed — funds returned to wallet',
+              })
+
+              if (refund.credited) {
+                try {
+                  const [worker] = await db
+                    .select()
+                    .from(workers)
+                    .where(eq(workers.id, payoutRow.workerId))
+                    .limit(1)
+                  if (worker) {
+                    await notifyWorker(
+                      {
+                        phone: worker.phone ?? undefined,
+                        pushSubscription: (worker.notificationsPushSubscription as any) ?? undefined,
+                        preferences: {
+                          pushEnabled: worker.notificationsPushEnabled ?? undefined,
+                          smsEnabled: worker.notificationsSmsEnabled ?? undefined,
+                        },
+                      },
+                      notificationTemplates.withdrawalFailed(
+                        `$${(payoutRow.amountCents / 100).toFixed(2)}`
+                      )
+                    )
+                  }
+                } catch (notifyErr) {
+                  console.error(
+                    '[webhook] Failed to send withdrawalFailed notification for payout ' + adhocPayoutId,
+                    notifyErr
+                  )
+                }
+              }
+            }
+          }
           break
         }
 

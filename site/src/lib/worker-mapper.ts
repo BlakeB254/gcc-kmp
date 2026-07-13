@@ -38,6 +38,8 @@ export function mapWorkerToMobile(row: Record<string, unknown>) {
     },
     // Ad-hoc payout routing preference: 'stripe' | 'check'
     payoutMethod: row.payoutMethod ?? 'stripe',
+    // In-app wallet available balance (integer cents)
+    walletBalanceCents: Number(row.walletBalanceCents ?? 0),
     stats: {
       jobsCompleted: Number(row.statsJobsCompleted ?? 0),
       totalEarnings: Number(row.statsTotalEarnings ?? 0),

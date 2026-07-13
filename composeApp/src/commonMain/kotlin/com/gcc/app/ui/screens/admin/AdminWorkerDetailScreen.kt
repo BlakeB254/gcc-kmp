@@ -226,22 +226,29 @@ fun AdminWorkerDetailScreen(
                         }
                     }
 
-                    // Ad-hoc payout (bonus / correction / off-platform work)
+                    // Wallet: balance + ad-hoc credit (bonus / correction / off-platform work)
                     item {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                        Text("Payouts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Wallet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                payoutRoutingSummary(w),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted,
-                                modifier = Modifier.weight(1f),
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Balance: ${com.gcc.shared.util.GccFormatters.formatCents(w.walletBalanceCents)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GccGreen,
+                                )
+                                Text(
+                                    payoutRoutingSummary(w),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                )
+                            }
                             Button(
                                 onClick = { showSendPayoutDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
@@ -502,13 +509,15 @@ fun AdminWorkerDetailScreen(
 }
 
 /** One-line summary of where a payout to this worker would go. */
+/** How this worker's cash-outs leave the platform (informational only — money
+ *  lands in their wallet regardless). */
 private fun payoutRoutingSummary(worker: Worker): String = when {
     worker.payoutMethod == "check" ->
-        "Gets paid by mailed paper check"
+        "Cashes out by mailed paper check"
     worker.stripe.onboardingStatus == StripeOnboardingStatus.COMPLETED ->
-        "Gets paid by direct deposit (Stripe)"
+        "Cashes out by direct deposit (Stripe)"
     else ->
-        "Hasn't finished Stripe payout setup"
+        "Hasn't set up direct deposit yet — can still be paid; funds wait in their wallet"
 }
 
 @Composable
@@ -533,9 +542,9 @@ private fun SendPayoutDialog(
     }
 
     val amountCents = parsePayoutDollarsToCents(amountText)
-    val stripeNotReady = worker.payoutMethod != "check" &&
-        worker.stripe.onboardingStatus != StripeOnboardingStatus.COMPLETED
-    val canSubmit = !sending && !stripeNotReady &&
+    // Wallet-ledger rework: payouts credit the worker's in-app wallet, so
+    // there is no Stripe-Connect prerequisite anymore.
+    val canSubmit = !sending &&
         amountCents != null && amountCents > 0 && amountCents <= MAX_ADHOC_PAYOUT_CENTS
 
     AlertDialog(
@@ -544,16 +553,9 @@ private fun SendPayoutDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    when {
-                        worker.payoutMethod == "check" ->
-                            "${worker.name} gets paid by paper check — this payout will join the checks-to-mail queue in the Payouts tab."
-                        !stripeNotReady ->
-                            "${worker.name} will be paid by direct deposit via Stripe immediately."
-                        else ->
-                            "${worker.name} hasn't finished Stripe payout setup, so a payout can't be sent. Ask them to finish setup in Wallet, or have them switch to paper checks."
-                    },
+                    "The money lands in ${worker.name}'s GCC wallet instantly — even if they haven't set up Stripe. They cash out from the app by direct deposit or paper check.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (stripeNotReady) GccError else TextMuted,
+                    color = TextMuted,
                 )
 
                 GccTextField(

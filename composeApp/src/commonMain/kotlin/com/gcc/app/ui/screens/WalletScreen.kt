@@ -47,6 +47,28 @@ fun WalletScreen(
         viewModel.loadConnectStatus()
         viewModel.loadPayoutMethod()
         viewModel.loadMyPayouts()
+        viewModel.loadWorkerWallet()
+    }
+
+    // Cash-out bottom sheet
+    if (uiState.showCashOutSheet) {
+        CashOutSheet(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissCashOutSheet() },
+        )
+    }
+
+    // Cash-out confirmation
+    uiState.cashOutSuccess?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCashOutSuccess() },
+            title = { Text("Cash out requested") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearCashOutSuccess() }) { Text("OK") }
+            },
+        )
     }
 
     // Paper-check mailing address form
@@ -118,18 +140,62 @@ fun WalletScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                // ── Earnings & payouts (worker) — how the money reaches you.
-                // Payouts are automatic on job approval via Stripe Connect, so
-                // the "cash out" story is payout readiness, front and center.
+                // ── Earnings & payouts (worker). Approved work is credited to
+                // the in-app wallet balance below — no Stripe setup needed to
+                // get paid. Cashing out is the worker-initiated step (direct
+                // deposit or paper check; more methods coming).
                 item {
                     SectionHeader(title = "Your Earnings")
                 }
+                item {
+                    val balance = uiState.workerWallet?.balanceCents
+                    GccCard(accentColor = CardAccentGreen, elevation = 4.dp) {
+                        Text(
+                            "Wallet Balance",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                balance?.let { formatCents(it) } ?: "—",
+                                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                                color = GccGreen,
+                            )
+                            if (uiState.workerWalletLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = GccGreen,
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Approved routes and bounties land here the moment an admin " +
+                                "approves them — no bank setup needed. Cash out whenever you like.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        GccButton(
+                            text = "Cash Out",
+                            onClick = { viewModel.openCashOutSheet() },
+                            enabled = (balance ?: 0) > 0 && !uiState.workerWalletLoading,
+                        )
+                    }
+                }
+
+                // ── Direct deposit readiness (optional — speeds up cash outs) ──
                 item {
                     val connectStatus = uiState.connectStatus
                     val payoutsReady = connectStatus?.payoutsReady == true
                     GccCard(
                         accentColor = if (payoutsReady) CardAccentGreen else CardAccentSky,
-                        elevation = 4.dp,
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -138,16 +204,16 @@ fun WalletScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (payoutsReady) "Payouts active ✓" else "Get paid for your work",
+                                    if (payoutsReady) "Direct deposit ready ✓" else "Set up direct deposit",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = if (payoutsReady) GccGreen else MaterialTheme.colorScheme.onSurface,
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     if (payoutsReady) {
-                                        "Route and bounty earnings are deposited to your bank automatically as soon as your work is approved."
+                                        "Cash outs go straight to your bank — instant when available."
                                     } else {
-                                        "Connect your bank once — after that, every approved route or bounty pays out to you automatically. No cash-out step."
+                                        "Optional: connect your bank once and cash outs arrive in minutes instead of a mailed check."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted,
@@ -166,9 +232,9 @@ fun WalletScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             GccButton(
                                 text = if (connectStatus != null && connectStatus.onboardingStatus != "not_started") {
-                                    "Finish payout setup"
+                                    "Finish direct deposit setup"
                                 } else {
-                                    "Set up payouts"
+                                    "Set up direct deposit"
                                 },
                                 onClick = { viewModel.startConnectOnboard() },
                                 enabled = !uiState.connectOnboardLoading,
@@ -186,10 +252,21 @@ fun WalletScreen(
                     PayoutMethodCard(uiState = uiState, viewModel = viewModel)
                 }
 
-                // ── Recent ad-hoc payouts (bonuses/corrections sent by admins) ──
+                // ── Wallet activity (earnings in, cash outs out) ──
+                val walletEntries = uiState.workerWallet?.entries.orEmpty()
+                if (walletEntries.isNotEmpty()) {
+                    item {
+                        SectionHeader(title = "Wallet Activity")
+                    }
+                    items(walletEntries.take(10)) { entry ->
+                        WalletEntryRow(entry)
+                    }
+                }
+
+                // ── Recent cash outs / ad-hoc payouts ──
                 if (uiState.myPayouts.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "Recent Payouts")
+                        SectionHeader(title = "Recent Cash Outs")
                     }
                     items(uiState.myPayouts.take(10)) { payout ->
                         WorkerPayoutRow(payout)
@@ -1580,6 +1657,213 @@ private fun CheckAddressDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+/**
+ * Cash-out flow: amount + destination. Money is held from the wallet balance
+ * the moment the server accepts the request. Methods beyond direct deposit
+ * and paper checks are visible but disabled ("coming soon") so workers know
+ * what's on the way.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CashOutSheet(
+    uiState: com.gcc.app.viewmodel.WalletUiState,
+    viewModel: WalletViewModel,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val balanceCents = uiState.workerWallet?.balanceCents ?: 0
+    val amountCents = parseDollarsToCents(uiState.cashOutAmount)
+    val payoutsReady = uiState.connectStatus?.payoutsReady == true
+    val checkAddress = uiState.payoutMethodInfo?.effectiveMailingAddress
+    val hasCheckAddress = checkAddress?.isComplete == true
+
+    val minCents = if (uiState.cashOutMethod == "check") MIN_CHECK_CASH_OUT_CENTS else 100
+    val methodUsable = when (uiState.cashOutMethod) {
+        "stripe" -> payoutsReady
+        "check" -> hasCheckAddress
+        else -> false
+    }
+    val canSubmit = !uiState.cashOutInFlight && methodUsable &&
+        amountCents != null && amountCents in minCents..balanceCents
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Cash Out",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            )
+            Text(
+                "Available: ${formatCents(balanceCents)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GccGreen,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = uiState.cashOutAmount,
+                    onValueChange = { input ->
+                        if (input.isEmpty() || input.matches(Regex("^\\d{0,5}(\\.\\d{0,2})?$"))) {
+                            viewModel.updateCashOutAmount(input)
+                        }
+                    },
+                    label = { Text("Amount in dollars") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    viewModel.updateCashOutAmount(
+                        if (balanceCents % 100 == 0) "${balanceCents / 100}"
+                        else "${balanceCents / 100}.${(balanceCents % 100).padTwo()}"
+                    )
+                }) { Text("Max") }
+            }
+
+            Text(
+                "Send it to",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            )
+
+            PayoutMethodOption(
+                selected = uiState.cashOutMethod == "stripe",
+                title = "Direct deposit / debit card",
+                subtitle = if (payoutsReady) {
+                    "To your bank via Stripe — instant when available"
+                } else {
+                    "Finish direct deposit setup on the Wallet screen to use this"
+                },
+                enabled = payoutsReady,
+                onSelect = { viewModel.selectCashOutMethod("stripe") },
+            )
+            PayoutMethodOption(
+                selected = uiState.cashOutMethod == "check",
+                title = "Paper check in the mail",
+                subtitle = if (hasCheckAddress) {
+                    "To ${checkAddress?.oneLine()} · $${MIN_CHECK_CASH_OUT_CENTS / 100} minimum · 5–7 business days"
+                } else {
+                    "Add a mailing address to use this"
+                },
+                enabled = true,
+                onSelect = {
+                    if (hasCheckAddress) {
+                        viewModel.selectCashOutMethod("check")
+                    } else {
+                        viewModel.openCheckAddressForm()
+                    }
+                },
+            )
+
+            // Roadmap methods — visible so workers know what's coming.
+            PayoutMethodOption(
+                selected = false,
+                title = "Venmo",
+                subtitle = "Coming soon",
+                enabled = false,
+                onSelect = {},
+            )
+            PayoutMethodOption(
+                selected = false,
+                title = "PayPal",
+                subtitle = "Coming soon",
+                enabled = false,
+                onSelect = {},
+            )
+            PayoutMethodOption(
+                selected = false,
+                title = "Cash App",
+                subtitle = "Coming soon",
+                enabled = false,
+                onSelect = {},
+            )
+
+            uiState.cashOutError?.let { err ->
+                Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+            }
+            if (amountCents != null && amountCents > balanceCents) {
+                Text(
+                    "That's more than your balance.",
+                    color = GccError,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            GccButton(
+                text = when {
+                    uiState.cashOutInFlight -> "Sending…"
+                    amountCents != null -> "Cash Out ${formatCents(amountCents)}"
+                    else -> "Cash Out"
+                },
+                onClick = { amountCents?.let { viewModel.submitCashOut(it) } },
+                enabled = canSubmit,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** Mirrors the server's MIN_CHECK_WITHDRAWAL_CENTS. */
+private const val MIN_CHECK_CASH_OUT_CENTS = 2500
+
+@Composable
+private fun WalletEntryRow(entry: WalletEntry) {
+    val isCredit = entry.amountCents >= 0
+    GccCard(accentColor = if (isCredit) CardAccentGreen else CardAccentSky) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    walletEntryLabel(entry.kind),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+                entry.note?.takeIf { it.isNotBlank() }?.let { note ->
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                entry.createdAt?.let {
+                    Text(
+                        formatShortDate(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted.copy(alpha = 0.7f),
+                    )
+                }
+            }
+            Text(
+                (if (isCredit) "+" else "−") + formatCents(kotlin.math.abs(entry.amountCents)),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (isCredit) GccGreen else TextMuted,
+            )
+        }
+    }
+}
+
+private fun walletEntryLabel(kind: String): String = when (kind) {
+    "job_earning" -> "Job payout"
+    "admin_credit" -> "Bonus / credit"
+    "withdrawal" -> "Cash out"
+    "withdrawal_reversal" -> "Cash out refunded"
+    "adjustment" -> "Adjustment"
+    else -> kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 
 @Composable

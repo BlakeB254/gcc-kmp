@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { and, eq, isNull, ne, notInArray, or } from 'drizzle-orm'
+import { and, eq, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
-import { processJobPayout } from '@/lib/stripe/connect'
+import { creditWallet } from '@/lib/wallet'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 
 export const runtime = 'nodejs'
@@ -14,30 +14,27 @@ type RouteContext = { params: Promise<{ id: string }> }
 /**
  * POST /api/admin/jobs/[id]/approve
  *
- * Approve a pending_review job and trigger a Stripe payout to the worker.
+ * Approve a pending_review job and credit the payout to the worker's in-app
+ * wallet. Since the wallet-ledger rework this NEVER calls Stripe and does NOT
+ * require the worker to have set up Stripe Connect — the money is earmarked
+ * in the wallet immediately and leaves our Stripe balance only when the
+ * worker cashes out.
  *
- * Read-only guards (checked BEFORE any state change or Stripe call):
+ * Read-only guards (checked BEFORE any state change):
  *  1. Job exists and status === 'pending_review'            → 404 / 409
  *  2. reviewStatus !== 'denied' (denied is terminal)        → 409
- *  3. Worker has stripeAccountId + onboardingStatus=done    → 409
+ *  3. Job has an assigned worker                            → 409
  *  4. amountCents is finite and > 0                         → 409
  *
  * Atomic claim (TOCTOU-safe):
  *  - Single conditional UPDATE with .returning():
  *    payoutStatus NOT IN ('completed','processing') AND payoutStripeTransferId IS NULL
- *  - claimed.length === 0 → 409 (already being paid or paid)
+ *  - claimed.length === 0 → 409 (already credited or being paid)
  *
  * On successful claim:
- *  - Calls processJobPayout (transfer + payout)
- *  - Persists payoutStripeTransferId; returns { ok, payoutMethod, transferId }
- *
- * On Stripe failure:
- *  - Does NOT roll back payoutStatus — leaves 'processing' to block retries
- *  - Returns 502; admin must reconcile manually
- *
- * On persist failure:
- *  - Money already moved; returns 200 with transferId so caller has it
- *  - Logs CRITICAL; webhook reconciles payoutStatus → 'completed'
+ *  - creditWallet(kind='job_earning') — double-credit is additionally blocked
+ *    by the partial unique index on (job_id) WHERE kind='job_earning'
+ *  - payoutStatus → 'completed' (the wallet credit IS delivery), stats bumped
  */
 export async function POST(request: Request, context: RouteContext) {
   const auth = await requireAdmin(request)
@@ -60,9 +57,6 @@ export async function POST(request: Request, context: RouteContext) {
       payoutAmount: jobs.payoutAmount,
       workerId: jobs.workerId,
       // worker fields
-      stripeAccountId: workers.stripeAccountId,
-      stripeOnboardingStatus: workers.stripeOnboardingStatus,
-      stripeInstantPayoutsEnabled: workers.stripeInstantPayoutsEnabled,
       workerPhone: workers.phone,
       workerNotificationsPushEnabled: workers.notificationsPushEnabled,
       workerNotificationsPushSubscription: workers.notificationsPushSubscription,
@@ -92,15 +86,9 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Job was denied' }, { status: 409 })
   }
 
-  // ── Guard 3: worker must be payouts-ready ─────────────────────────────────
+  // ── Guard 3: job must have a worker to pay ────────────────────────────────
   if (!row.workerId) {
     return NextResponse.json({ error: 'Job has no assigned worker' }, { status: 409 })
-  }
-  if (!row.stripeAccountId || row.stripeOnboardingStatus !== 'completed') {
-    return NextResponse.json(
-      { error: 'Worker has not completed payout setup' },
-      { status: 409 }
-    )
   }
 
   // ── Guard 4: payout amount must be finite and positive ────────────────────
@@ -113,11 +101,9 @@ export async function POST(request: Request, context: RouteContext) {
     )
   }
 
-  const useInstant = row.stripeInstantPayoutsEnabled ?? false
-
   // ── Atomic claim: single conditional UPDATE to prevent TOCTOU race ────────
   // Only succeeds if payoutStatus is not already 'completed'/'processing' AND
-  // no transfer ID exists yet. Concurrent approve calls will see claimed.length === 0.
+  // no legacy Stripe transfer exists. Concurrent approve calls see claimed.length === 0.
   const claimed = await db
     .update(jobs)
     .set({
@@ -142,41 +128,50 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (claimed.length === 0) {
     return NextResponse.json(
-      { error: 'Job already being paid or paid' },
+      { error: 'Job already credited or being paid' },
       { status: 409 }
     )
   }
 
-  // ── Stripe payout (transfer + payout to bank) ────────────────────────────
-  let transferId: string
-  let payoutMethod: string
-  try {
-    const result = await processJobPayout(
-      row.stripeAccountId,
-      amountCents,
-      String(jobId),
-      useInstant,
-      String(row.workerId)
-    )
-    transferId = result.transfer.id
-    payoutMethod = result.payout.method ?? (useInstant ? 'instant' : 'standard')
-  } catch (err) {
-    // CRITICAL: Do NOT roll back payoutStatus to 'failed' — the transfer may have
-    // partially completed. Leave payoutStatus='processing' to block auto-retries.
-    // The atomic claim's notInArray + isNull conditions prevent double transfers.
-    console.error(
-      '[approve] CRITICAL: payout failed for job ' + jobId +
-      ' — transfer may have partially completed; manual reconciliation required',
-      err
-    )
-    return NextResponse.json(
-      { error: 'Stripe payout failed — job approved but payout status unknown. Do NOT retry; manual reconciliation required.' },
-      { status: 502 }
-    )
+  // ── Credit the worker's wallet ────────────────────────────────────────────
+  // The partial unique index (job_id WHERE kind='job_earning') makes this
+  // idempotent even if the claim above were somehow re-run.
+  const credit = await creditWallet({
+    workerId: row.workerId,
+    amountCents,
+    kind: 'job_earning',
+    jobId,
+    note: row.blockCode ? `Job payout — block ${row.blockCode}` : `Job payout — job #${jobId}`,
+    createdByAdminId: auth.workerId,
+  })
+
+  // Mark delivery. The wallet credit IS the payout landing (money leaves
+  // Stripe later, at cash-out). payoutStatus 'completed' keeps every legacy
+  // reader (worker history, admin lists) consistent.
+  await db
+    .update(jobs)
+    .set({
+      payoutStatus: 'completed',
+      payoutCompletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(jobs.id, jobId))
+
+  // ── Worker stats (previously bumped by the payout.paid webhook) ──────────
+  if (credit.credited) {
+    await db
+      .update(workers)
+      .set({
+        statsJobsCompleted: sql`COALESCE(${workers.statsJobsCompleted}, 0) + 1`,
+        statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${amountCents}`,
+        statsLastJobAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(workers.id, row.workerId))
   }
 
-  // ── Notify worker: job approved, payout processing ──────────────────────
-  // Fire-and-forget-with-logging: the payout already succeeded above: a
+  // ── Notify worker: job approved, money in wallet ─────────────────────────
+  // Fire-and-forget-with-logging: the credit already landed above; a
   // notification failure must never mask that success or block the response.
   try {
     await notifyWorker(
@@ -188,27 +183,19 @@ export async function POST(request: Request, context: RouteContext) {
           smsEnabled: row.workerNotificationsSmsEnabled ?? undefined,
         },
       },
-      notificationTemplates.jobApproved(row.blockCode ?? `job #${jobId}`)
+      notificationTemplates.walletCredited(
+        `$${(amountCents / 100).toFixed(2)}`,
+        row.blockCode ? `block ${row.blockCode}` : `job #${jobId}`
+      )
     )
   } catch (notifyErr) {
-    console.error('[approve] Failed to send jobApproved notification for job ' + jobId, notifyErr)
+    console.error('[approve] Failed to send walletCredited notification for job ' + jobId, notifyErr)
   }
 
-  // ── Persist transfer ID ───────────────────────────────────────────────────
-  // Money has already moved. If persist fails, return 200 with transferId so
-  // the caller has it. Leave payoutStatus='processing'; webhook reconciles.
-  try {
-    await db
-      .update(jobs)
-      .set({ payoutStripeTransferId: transferId, updatedAt: new Date().toISOString() })
-      .where(eq(jobs.id, jobId))
-  } catch (e) {
-    console.error(
-      '[approve] CRITICAL: transfer ' + transferId + ' created but failed to persist for job ' + jobId,
-      e
-    )
-    return NextResponse.json({ ok: true, payoutMethod, transferId, persistFailed: true })
-  }
-
-  return NextResponse.json({ ok: true, payoutMethod, transferId })
+  return NextResponse.json({
+    ok: true,
+    payoutMethod: 'wallet',
+    balanceCents: credit.balanceCents,
+    alreadyCredited: !credit.credited,
+  })
 }

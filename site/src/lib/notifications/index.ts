@@ -134,6 +134,18 @@ export const notificationTemplates = {
     url: '/worker/dashboard',
   }),
 
+  walletCredited: (amount: string, reason: string) => ({
+    title: 'You got paid! 💰',
+    body: `${amount} for ${reason} is in your GCC wallet. Cash out any time from the Wallet tab.`,
+    url: '/worker/dashboard',
+  }),
+
+  withdrawalFailed: (amount: string) => ({
+    title: 'Cash out failed ⚠️',
+    body: `Your ${amount} cash out could not be completed. The money is back in your GCC wallet — try again or contact support.`,
+    url: '/worker/dashboard',
+  }),
+
   // Sponsor notifications
   blockCleaned: (blockCode: string) => ({
     title: 'Your Block is Clean! ✨',

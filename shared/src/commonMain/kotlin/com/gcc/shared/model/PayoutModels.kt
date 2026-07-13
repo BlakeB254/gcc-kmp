@@ -9,12 +9,18 @@ import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
 /**
- * Ad-hoc admin payouts + worker payout-method preference.
- * Spec: docs/superpowers/specs/2026-07-06-admin-payouts-design.md
+ * Wallet, cash-outs (withdrawals), admin wallet credits + worker
+ * payout-method preference.
  *
- * method: "stripe" | "check". status: "processing" | "completed" | "failed"
- * | "check_pending" | "check_mailed". Kept as strings (not enums) so an
- * older client won't crash deserializing a status added later.
+ * Since the wallet-ledger rework (2026-07-13): earnings are credited to an
+ * in-app wallet balance with NO Stripe Connect prerequisite; the worker
+ * cashes out on their own schedule via POST /api/workers/me/withdraw.
+ * Original ad-hoc payout spec: docs/superpowers/specs/2026-07-06-admin-payouts-design.md
+ *
+ * method: "stripe" | "check" (and "wallet" on admin-credit responses).
+ * status: "processing" | "completed" | "failed" | "check_pending" |
+ * "check_mailed". Kept as strings (not enums) so an older client won't crash
+ * deserializing a value added later.
  */
 
 @Serializable
@@ -79,6 +85,8 @@ data class AdminPayout(
     val status: String,
     val stripeTransferId: String? = null,
     val initiatedByAdminId: Int = 0,
+    /** Set on worker-initiated cash-outs (wallet withdrawals). */
+    val initiatedByWorkerId: Int? = null,
     val mailingAddress: MailingAddress? = null,
     val checkMailedAt: Instant? = null,
     val createdAt: Instant? = null,
@@ -104,9 +112,61 @@ data class CreatePayoutResponse(
     val payout: AdminPayout? = null,
     val alreadyProcessed: Boolean = false,
     val persistFailed: Boolean = false,
+    /** Worker's wallet balance after the credit (wallet-rework servers). */
+    val balanceCents: Int = 0,
 )
 
 @Serializable
 data class MarkMailedResponse(
     val payout: AdminPayout? = null,
+)
+
+// ─── Worker wallet (in-app balance + cash out) ──────────────────────────
+
+/**
+ * One row of the wallet audit ledger. amountCents is signed: positive =
+ * money into the wallet (job earning, admin credit, refund), negative =
+ * money out (cash out, adjustment).
+ *
+ * kind: "job_earning" | "admin_credit" | "withdrawal" |
+ * "withdrawal_reversal" | "adjustment" — string, not enum, so older clients
+ * tolerate new kinds.
+ */
+@Serializable
+data class WalletEntry(
+    val id: Int,
+    val amountCents: Int,
+    val kind: String,
+    val jobId: Int? = null,
+    val payoutId: Int? = null,
+    val note: String? = null,
+    val createdAt: Instant? = null,
+)
+
+/** GET /api/workers/me/wallet response. */
+@Serializable
+data class WorkerWallet(
+    val balanceCents: Int = 0,
+    val entries: List<WalletEntry> = emptyList(),
+)
+
+/**
+ * POST /api/workers/me/withdraw request. method: "stripe" (direct deposit,
+ * requires completed Connect onboarding) | "check" (mailed paper check,
+ * requires a mailing address; $25 minimum).
+ */
+@Serializable
+data class WithdrawRequest(
+    val amountCents: Int,
+    val method: String,
+    /** Client-generated; the server dedupes on it so retries can't double-pay. */
+    val idempotencyKey: String,
+)
+
+@Serializable
+data class WithdrawResponse(
+    val payout: WorkerPayout? = null,
+    val alreadyProcessed: Boolean = false,
+    /** Wallet balance after the hold. */
+    val balanceCents: Int = 0,
 )

@@ -32,6 +32,15 @@ data class WalletUiState(
     val checkAddressState: String = "",
     val checkAddressZip: String = "",
     val myPayouts: List<WorkerPayout> = emptyList(),
+    // Worker wallet: in-app earnings balance + cash-out flow
+    val workerWallet: WorkerWallet? = null,
+    val workerWalletLoading: Boolean = false,
+    val showCashOutSheet: Boolean = false,
+    val cashOutAmount: String = "",
+    val cashOutMethod: String = "stripe", // "stripe" | "check"
+    val cashOutInFlight: Boolean = false,
+    val cashOutError: String? = null,
+    val cashOutSuccess: String? = null,
     val depositAmount: String = "",
     val isDepositing: Boolean = false,
     val depositError: String? = null,
@@ -106,6 +115,94 @@ class WalletViewModel(
                 )
             }
         }
+    }
+
+    // ── Worker wallet: balance + cash out ──────────────────────────────
+
+    fun loadWorkerWallet() {
+        scope.launch {
+            _uiState.value = _uiState.value.copy(workerWalletLoading = true)
+            try {
+                val wallet = apiClient.getWorkerWallet()
+                _uiState.value = _uiState.value.copy(
+                    workerWallet = wallet,
+                    workerWalletLoading = false,
+                )
+            } catch (_: Exception) {
+                // Older servers don't have the endpoint yet; the card just
+                // hides the balance until the API is deployed.
+                _uiState.value = _uiState.value.copy(workerWalletLoading = false)
+            }
+        }
+    }
+
+    fun openCashOutSheet() {
+        _uiState.value = _uiState.value.copy(
+            showCashOutSheet = true,
+            cashOutAmount = "",
+            cashOutMethod = if (_uiState.value.connectStatus?.payoutsReady == true) "stripe" else "check",
+            cashOutError = null,
+            cashOutSuccess = null,
+        )
+    }
+
+    fun dismissCashOutSheet() {
+        _uiState.value = _uiState.value.copy(showCashOutSheet = false)
+    }
+
+    fun updateCashOutAmount(v: String) {
+        _uiState.value = _uiState.value.copy(cashOutAmount = v, cashOutError = null)
+    }
+
+    fun selectCashOutMethod(method: String) {
+        _uiState.value = _uiState.value.copy(cashOutMethod = method, cashOutError = null)
+    }
+
+    /**
+     * Submit the cash out. The server holds the funds atomically; the
+     * idempotency key (one per call) means a network retry can't double-pay.
+     */
+    fun submitCashOut(amountCents: Int) {
+        val method = _uiState.value.cashOutMethod
+        val key = buildString(32) {
+            val hex = "0123456789abcdef"
+            repeat(32) { append(hex[kotlin.random.Random.nextInt(16)]) }
+        }
+        scope.launch {
+            _uiState.value = _uiState.value.copy(cashOutInFlight = true, cashOutError = null)
+            try {
+                val response = apiClient.requestWithdrawal(
+                    WithdrawRequest(
+                        amountCents = amountCents,
+                        method = method,
+                        idempotencyKey = key,
+                    )
+                )
+                val amount = com.gcc.shared.util.GccFormatters.formatCents(amountCents)
+                _uiState.value = _uiState.value.copy(
+                    cashOutInFlight = false,
+                    showCashOutSheet = false,
+                    cashOutSuccess = when (method) {
+                        "check" -> "$amount check requested — it will be mailed to your address on file."
+                        else -> "$amount is on the way to your bank."
+                    },
+                    workerWallet = _uiState.value.workerWallet?.copy(
+                        balanceCents = response.balanceCents,
+                    ),
+                )
+                loadWorkerWallet()
+                loadMyPayouts()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    cashOutInFlight = false,
+                    cashOutError = e.message ?: "Cash out failed",
+                )
+            }
+        }
+    }
+
+    fun clearCashOutSuccess() {
+        _uiState.value = _uiState.value.copy(cashOutSuccess = null)
     }
 
     // ── Payout method (how ad-hoc payouts reach this worker) ──────────

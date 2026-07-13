@@ -90,16 +90,118 @@ fun AdminJobListScreen(
                     verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
                     items(uiState.jobs, key = { it.jobId }) { job ->
-                        AdminJobRow(job)
+                        AdminJobRow(
+                            job = job,
+                            onReassign = if (job.workerId != null) {
+                                { viewModel.openReassign(job) }
+                            } else null,
+                        )
                     }
                 }
             }
         }
     }
+
+    uiState.reassignJob?.let { job ->
+        ReassignWorkerDialog(
+            job = job,
+            uiState = uiState,
+            onSearchChange = viewModel::updateReassignSearch,
+            onPick = viewModel::reassign,
+            onDismiss = viewModel::dismissReassign,
+        )
+    }
+
+    uiState.reassignSuccess?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearReassignSuccess() },
+            title = { Text("Job reassigned") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearReassignSuccess() }) { Text("OK") }
+            },
+        )
+    }
+}
+
+/**
+ * Pick the worker who really did this job. Reassigning a completed job also
+ * moves the wallet credit (and stats) from the old worker to the new one.
+ */
+@Composable
+private fun ReassignWorkerDialog(
+    job: AdminJobSummary,
+    uiState: com.gcc.app.viewmodel.AdminJobListUiState,
+    onSearchChange: (String) -> Unit,
+    onPick: (com.gcc.shared.model.Worker) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!uiState.reassignInFlight) onDismiss() },
+        title = { Text("Reassign job #${job.jobId}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Currently credited to ${job.workerName ?: "unassigned"}. " +
+                        "Pick who really did the work — any payout already in the old " +
+                        "worker's wallet moves to the new worker.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+                OutlinedTextField(
+                    value = uiState.reassignSearch,
+                    onValueChange = onSearchChange,
+                    label = { Text("Search workers") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (uiState.reassignSearching) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp).align(Alignment.CenterHorizontally),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                uiState.reassignError?.let { err ->
+                    Text(err, color = GccError, style = MaterialTheme.typography.bodySmall)
+                }
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 260.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(
+                        uiState.reassignCandidates.filter { it.id != job.workerId },
+                        key = { it.id },
+                    ) { worker ->
+                        TextButton(
+                            onClick = { onPick(worker) },
+                            enabled = !uiState.reassignInFlight,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(worker.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    worker.email,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !uiState.reassignInFlight) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
-private fun AdminJobRow(job: AdminJobSummary) {
+private fun AdminJobRow(
+    job: AdminJobSummary,
+    onReassign: (() -> Unit)? = null,
+) {
     val spacing = GccTheme.spacing
 
     GccCard {
@@ -121,11 +223,20 @@ private fun AdminJobRow(job: AdminJobSummary) {
 
         Spacer(modifier = Modifier.height(spacing.sm))
 
-        Text(
-            job.workerName ?: "Unassigned",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                job.workerName ?: "Unassigned",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            if (onReassign != null) {
+                TextButton(onClick = onReassign) { Text("Reassign") }
+            }
+        }
 
         Spacer(modifier = Modifier.height(spacing.xxs))
 
@@ -204,10 +315,11 @@ private fun jobTimestampLabel(job: AdminJobSummary): String {
     return "Created ${formatTimestamp(job.createdAt)}"
 }
 
-private fun formatUsd(amount: Double): String {
-    val cents = (amount * 100).toLong()
-    return "$${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
-}
+// payoutAmount arrives in CENTS (jobs.payout_amount, e.g. 10000 = $100). The
+// old implementation multiplied by 100 again and showed $100 routes as
+// "$10000.00" in the completed-jobs list.
+private fun formatUsd(amountCents: Double): String =
+    com.gcc.shared.util.GccFormatters.formatCentsLong(amountCents.toLong())
 
 /** commonMain-safe (no java.text) — kotlinx.datetime plus a month table. */
 private fun formatTimestamp(instant: Instant): String {

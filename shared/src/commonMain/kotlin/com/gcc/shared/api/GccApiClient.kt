@@ -603,12 +603,31 @@ class GccApiClient(
         }
     }
 
-    // ── Admin: Ad-hoc Payouts ──────────────────────────────────────────
+    /**
+     * Reassign a job — including a completed one — to the worker who really
+     * did it. Moves the wallet credit (and stats) when the job was already
+     * paid out.
+     */
+    suspend fun adminReassignJob(jobId: Int, toWorkerId: Int): ReassignJobResponse {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/reassign") {
+            contentType(ContentType.Application.Json)
+            setBody(ReassignJobRequest(toWorkerId = toWorkerId))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return response.body<ReassignJobResponse>()
+    }
+
+    // ── Admin: Wallet credits (ad-hoc payouts) ─────────────────────────
 
     /**
-     * One-off payout to a worker (bonus/correction). Routes by the
-     * worker's payout method: Stripe transfer+payout, or queued as a
-     * check to mail. idempotencyKey dedupes retries server-side.
+     * One-off payment to a worker (bonus/correction/manual job payment).
+     * Credits the worker's in-app wallet immediately — no Stripe Connect or
+     * mailing-address prerequisite; the worker cashes out from the app.
+     * idempotencyKey dedupes retries server-side.
      */
     suspend fun adminCreatePayout(workerId: Int, request: CreatePayoutRequest): CreatePayoutResponse =
         postJson("/api/admin/workers/$workerId/payout", request)
@@ -634,6 +653,20 @@ class GccApiClient(
 
     suspend fun getMyPayouts(): WorkerPayoutsResponse =
         get("/api/workers/me/payouts")
+
+    // ── Worker: wallet (in-app balance + cash out) ─────────────────────
+
+    /** Available balance + recent ledger activity. */
+    suspend fun getWorkerWallet(): WorkerWallet =
+        get("/api/workers/me/wallet")
+
+    /**
+     * Cash out from the wallet. "stripe" needs completed Connect
+     * onboarding; "check" needs a mailing address ($25 minimum). The server
+     * holds the funds atomically — a 409 with a message means nothing moved.
+     */
+    suspend fun requestWithdrawal(request: WithdrawRequest): WithdrawResponse =
+        postJson("/api/workers/me/withdraw", request)
 
     // ── Admin: Block Proposals ──────────────────────────────────────────
     // AI-generated block candidates staged for review — see

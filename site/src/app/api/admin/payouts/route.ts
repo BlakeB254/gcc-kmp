@@ -1,12 +1,13 @@
 /**
  * GET /api/admin/payouts?status=check_pending&page=1&limit=50
  *
- * Lists ad-hoc admin payouts (newest first) with worker name/email joined.
- * status filter powers the "checks to mail" queue (status=check_pending);
- * omit it for full history.
+ * Lists cash-outs from the payouts table (worker withdrawals + legacy ad-hoc
+ * admin payouts), newest first, with worker name/email joined. status filter
+ * powers the "checks to mail" queue (status=check_pending); omit it for full
+ * history.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { payouts, workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
@@ -45,7 +46,10 @@ export async function GET(request: NextRequest) {
       method: payouts.method,
       status: payouts.status,
       stripeTransferId: payouts.stripeTransferId,
-      initiatedByAdminId: payouts.initiatedByAdminId,
+      // Coalesced for pre-wallet mobile builds that parse this as a non-null
+      // int; worker-initiated withdrawals have no admin.
+      initiatedByAdminId: sql<number>`COALESCE(${payouts.initiatedByAdminId}, 0)`,
+      initiatedByWorkerId: payouts.initiatedByWorkerId,
       mailingAddress: payouts.mailingAddress,
       checkMailedAt: payouts.checkMailedAt,
       createdAt: payouts.createdAt,

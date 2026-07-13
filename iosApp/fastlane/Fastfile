@@ -1,4 +1,5 @@
 require "xcodeproj"
+require "shellwords"
 
 default_platform(:ios)
 
@@ -51,6 +52,15 @@ platform :ios do
         keychain_db = keychain_candidates.find { |f| File.exist?(f) }
       end
       unlock_keychain(path: "gcc-build", password: keychain_password)
+      # Open the keys' partition list so codesign can use them without a UI
+      # prompt (otherwise headless runs die with errSecInternalComponent even
+      # on an unlocked keychain). NOTE: after a FRESH key import this stamp
+      # itself needs one GUI-session run — SSH sessions get "User interaction
+      # is not allowed" and the stamp is silently a no-op. Harmless when
+      # already stamped, hence unconditional with a soft failure.
+      if keychain_db
+        sh("security set-key-partition-list -S apple-tool:,apple: -s -k #{keychain_password.shellescape} #{keychain_db.shellescape} >/dev/null 2>&1 || true")
+      end
       ENV["GCC_BUILD_KEYCHAIN"] = keychain_db
       ENV["GCC_BUILD_KEYCHAIN_PASSWORD"] = keychain_password
     end

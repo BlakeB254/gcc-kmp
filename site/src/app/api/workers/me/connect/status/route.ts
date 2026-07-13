@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { isStripeConfigured } from '@/lib/stripe/client'
-import { checkAccountStatus } from '@/lib/stripe/connect'
+import { syncConnectStatus } from '@/lib/stripe/sync-connect-status'
 
 export const runtime = 'nodejs'
 
@@ -58,14 +58,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const status = await checkAccountStatus(worker.stripeAccountId)
-
-    const payoutsReady =
-      status.chargesEnabled && status.payoutsEnabled && status.detailsSubmitted
+    // Live check + persist. Self-heals rows the account.updated webhook never
+    // reached (Connect events need a Connect-scoped endpoint), and drops the
+    // old chargesEnabled requirement — Express accounts created with only the
+    // transfers capability never enable charges, so requiring it wrongly
+    // reported fully-onboarded workers as not set up.
+    const status = await syncConnectStatus(workerId, worker.stripeAccountId)
 
     return NextResponse.json({
-      payoutsReady,
-      onboardingStatus: worker.stripeOnboardingStatus ?? 'not_started',
+      payoutsReady: status.payoutsReady,
+      onboardingStatus: status.onboardingStatus,
       instantPayoutsEnabled: status.instantPayoutsEnabled,
     })
   } catch (error) {
