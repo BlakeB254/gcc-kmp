@@ -108,6 +108,16 @@ class CoverageTracker {
         const val scanRadiusMeters = 5.0
         const val corridorWidthMeters = 15.0
 
+        /**
+         * [initFromRoute] padding for FREE environment scans, whose "route"
+         * is the single session-anchor point — the padding IS the walkable
+         * universe there (env-scan PRD P4: the blob grows wherever the user
+         * goes). ~300m radius ≈ a 200×200-cell grid; every hot structure
+         * (credit map, scanned sets) stays sparse, and the one dense pass
+         * (corridor identification at init) is a single cheap sweep.
+         */
+        const val FREE_SCAN_PADDING_METERS = 300.0
+
         /** Raycast hits at or under this surface distance credit CLOSE (detail-scan tier). */
         const val CLOSE_RANGE_METERS = 4.0
         /** Raycast hits at or under this surface distance (and beyond CLOSE) credit GRAZED. */
@@ -171,10 +181,19 @@ class CoverageTracker {
      * Build the grid from route waypoints.
      * Typically called with route path coordinates in sequence order.
      */
-    fun initFromRoute(waypoints: List<Coordinates>) {
+    /**
+     * @param paddingMeters bounding-box padding around the waypoints. The
+     *   default keeps route/block laps tightly scoped to their corridor.
+     *   Free env scans pass [FREE_SCAN_PADDING_METERS]: their "route" is a
+     *   single anchor point, so the padding IS the walkable universe — with
+     *   the old 20m default the creditable grid was a ~40m box and walking
+     *   beyond it silently dropped every credit (2026-07-12 field bug: the
+     *   minimap blob froze and idle guidance nagged forever).
+     */
+    fun initFromRoute(waypoints: List<Coordinates>, paddingMeters: Double = 20.0) {
         if (waypoints.isEmpty()) return
 
-        // Compute bounding box with a 20m padding
+        // Compute bounding box with the requested padding
         val minLat = waypoints.minOf { it.lat }
         val maxLat = waypoints.maxOf { it.lat }
         val minLng = waypoints.minOf { it.lng }
@@ -184,8 +203,8 @@ class CoverageTracker {
         latPerMeter = 1.0 / 111_320.0
         lngPerMeter = 1.0 / (111_320.0 * cos(minLat * PI / 180.0))
 
-        val paddingLat = 20.0 * latPerMeter
-        val paddingLng = 20.0 * lngPerMeter
+        val paddingLat = paddingMeters * latPerMeter
+        val paddingLng = paddingMeters * lngPerMeter
 
         originLat = minLat - paddingLat
         originLng = minLng - paddingLng

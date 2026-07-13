@@ -710,7 +710,11 @@ private fun CameraPhase(
         if (trackerReady) return@LaunchedEffect
         val anchor = spotLocation
             ?: locationProvider.currentLocation.filterNotNull().first()
-        tracker.initFromRoute(listOf(anchor))
+        // Free scan: the "route" is one anchor point, so the padding is the
+        // whole walkable universe — the exploration padding lets the blob
+        // follow the user ~300m in any direction instead of freezing at the
+        // old 20m box edge (2026-07-12 field bug).
+        tracker.initFromRoute(listOf(anchor), paddingMeters = CoverageTracker.FREE_SCAN_PADDING_METERS)
         trackerReady = true
         // Phase the AR ground grid to the tracker's cell lattice so the
         // on-camera grid lines register with the minimap's grid (the overlay
@@ -926,14 +930,24 @@ private fun CameraPhase(
             tapCandidate.phase == TapPhase.AWAITING_CONFIRMATION || trashCandidate != null
         )
     }
-    // Idle nudge: no new cell credited for a while → steer via the status chip.
-    // Restarting on scannedCells.size IS the idle timer reset.
+    // Idle nudge: no new cell credited for a while → a BRIEF advisory via the
+    // status chip, then back to the default caption. Restarting on
+    // scannedCells.size IS the idle timer reset. Deliberately transient with
+    // a long cooldown (Blake, 2026-07-12): exploration is free-form — the
+    // caption must never read as a standing order to go somewhere (the old
+    // sticky nudge held "turn toward the highlighted area" on screen for
+    // minutes when crediting stalled).
     var idleNudge by remember { mutableStateOf(false) }
     LaunchedEffect(trackerReady, scannedCells.size, captureAllowed) {
         idleNudge = false
         if (!trackerReady || !captureAllowed) return@LaunchedEffect
         delay(8_000)
-        idleNudge = true
+        while (true) {
+            idleNudge = true
+            delay(10_000) // visible long enough to read, then yield the chip
+            idleNudge = false
+            delay(60_000) // a quiet minute before nudging the same idle stretch again
+        }
     }
     // Litter vs landmark elements: elements ride the same submission packet
     // but must never read as trash in the UI (dots, toasts, points).
@@ -1023,12 +1037,14 @@ private fun CameraPhase(
             // underfoot at scan start — TestFlight 145 "circle around me"),
             // so a near target gets a plain sweep prompt instead of a
             // reference to a ring that isn't drawn.
+            // Advisory, not an order (Blake, 2026-07-12): the worker roams
+            // freely; the ring is a suggestion for anyone who wants a target.
             idleNudge && guidanceTarget != null && currentLocation?.let {
                 GeofenceVerification.distanceMeters(
                     it.lat, it.lng, guidanceTarget!!.first, guidanceTarget!!.second,
                 ) > 12.0
             } == true ->
-                "Turn toward the highlighted area on the minimap"
+                "Tip: the minimap ring marks an unscanned patch nearby"
             idleNudge -> "Keep sweeping — scan the ground around you"
             guidancePhase == GuidancePhase.DETAIL ->
                 "Move closer — detail-scan the light areas"
