@@ -54,6 +54,14 @@ CREATE TABLE reconstruction_assets (
   activated_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE capture_chunks (
+  id serial PRIMARY KEY,
+  session_id varchar(64) NOT NULL,
+  location_cell_id varchar(32) NOT NULL,
+  artifact_type varchar(24) NOT NULL,
+  r2_key varchar(500) NOT NULL UNIQUE,
+  format varchar(16)
+);
 """
 
 
@@ -254,3 +262,75 @@ def test_compress_splat_returns_none_when_all_paths_fail(monkeypatch):
 
     monkeypatch.setattr(recon_worker.subprocess, "run", lambda cmd, **k: _FakeProc(1))
     assert recon_worker.compress_splat_for_web(b"fake-ply") is None
+
+
+def _add_chunk(conn, session_id: str, cell: str, r2_key: str, fmt: str = "mov"):
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO capture_chunks (session_id, location_cell_id, artifact_type, r2_key, format)
+               VALUES (%s, %s, 'video', %s, %s)""",
+            (session_id, cell, r2_key, fmt),
+        )
+    conn.commit()
+
+
+def test_unscrubbed_video_chunks_joins_by_session_not_chunk_cell(db, monkeypatch):
+    """Chunk keys can live under a NEIGHBORING cell prefix (GPS drift between
+    manifest and chunk upload) — the gate must find them via the session's
+    cell, and must ignore non-video artifacts."""
+    import recon_worker
+
+    dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    _add_chunk(conn, "sess-1", "1:3", "raw/1:3/sess-1/capture/chunk-0.mov", "mov")
+    _add_chunk(conn, "sess-1", "1:2", "raw/1:2/sess-1/capture/chunk-0.jsonl", "jsonl")
+
+    monkeypatch.setattr(recon_worker.r2_store, "object_exists", lambda key: False)
+    assert recon_worker.unscrubbed_video_chunks(conn, "1:2") == [
+        "raw/1:3/sess-1/capture/chunk-0.mov"
+    ]
+
+    monkeypatch.setattr(recon_worker.r2_store, "object_exists", lambda key: True)
+    assert recon_worker.unscrubbed_video_chunks(conn, "1:2") == []
+
+
+def test_scrub_pending_defers_without_burning_attempts(db, monkeypatch):
+    """A job whose chunks aren't scrubbed yet is re-leased into the future
+    (invisible to claim_job) with its attempt refunded — waiting on the scrub
+    timer must never walk a job to 'failed'."""
+    import recon_worker
+
+    dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    _add_chunk(conn, "sess-1", "1:2", "raw/1:2/sess-1/capture/chunk-0.mov")
+    monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "1")
+    monkeypatch.setenv("PREFER_SCRUBBED_VIDEO", "1")
+    monkeypatch.setattr(recon_worker.r2_store, "object_exists", lambda key: False)
+
+    assert recon_worker.run_once(conn) is True
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, attempts, leased_until > now(), last_error FROM reconstruction_jobs"
+        )
+        status, attempts, lease_in_future, last_error = cur.fetchone()
+    assert status == "leased"
+    assert attempts == 0  # the claim's increment was refunded
+    assert lease_in_future
+    assert "lack scrubbed renditions" in last_error
+
+    # Deferred job is invisible to the next claim until the lease expires.
+    with conn.transaction():
+        assert recon_worker.claim_job(conn) is None
+
+
+def test_scrub_gate_disabled_by_either_env_switch(db, monkeypatch):
+    import recon_worker
+
+    dsn, conn = db
+    for var in ("PREFER_SCRUBBED_VIDEO", "REQUIRE_SCRUBBED_VIDEO"):
+        monkeypatch.setenv("PREFER_SCRUBBED_VIDEO", "1")
+        monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "1")
+        assert recon_worker.scrub_gate_enabled() is True
+        monkeypatch.setenv(var, "0")
+        assert recon_worker.scrub_gate_enabled() is False

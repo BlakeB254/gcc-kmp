@@ -84,6 +84,21 @@ Central model repo only (never in the project tree):
 - `/home/codex450/models/ultralytics/bbox/face_yolov8m.pt` (pre-existing,
   read-only)
 
+## Ordering enforcement (scrub BEFORE reconstruction)
+
+Two mechanisms, shipped together, enforce the PRD's ordering requirement:
+
+1. **`ops/systemd/gcc-privacy-scrub.timer`** runs `scrub_worker.py --sweep`
+   every 10 minutes (user scope on the DGX), so new chunks get renditions
+   shortly after the index sweep sees them. Install:
+   `ln -sf ~/cdx/dev-projects/gcc/ops/systemd/gcc-privacy-scrub.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now gcc-privacy-scrub.timer`
+2. **`recon_worker`'s scrub gate** (`REQUIRE_SCRUBBED_VIDEO`, default on):
+   a claimed job whose cell still has unscrubbed video chunks is *deferred* —
+   re-leased 10 minutes into the future with the attempt refunded — so
+   reconstruction waits for the scrub instead of falling back to raw, and a
+   slow scrub can never starve a job into `failed`. Disable with
+   `REQUIRE_SCRUBBED_VIDEO=0` (or the blanket `PREFER_SCRUBBED_VIDEO=0`).
+
 ## Follow-ups
 
 - `capture_chunks.scrubbed_r2_key` (+ scrub status) column so the review UI
@@ -92,5 +107,3 @@ Central model repo only (never in the project tree):
   repo-wide schema policy; deferred to land with the Phase-2 review surface.
 - Photo artifacts (`…-photoN.jpg`) aren't scrubbed yet — same convention
   would apply if they ever feed a review surface.
-- Run the scrub automatically after each index sweep (systemd timer or a
-  `scrub_jobs` queue mirroring `reconstruction_jobs`) instead of on demand.

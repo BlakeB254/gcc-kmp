@@ -1,0 +1,21 @@
+# Privacy scrub sweep (PRD docs/prd/scan-session-replay-devops-prd.md
+# decision #2): produce blurred renditions for any raw capture video chunk
+# that lacks one. Paired with gcc-privacy-scrub.timer (every 10 min);
+# recon_worker's REQUIRE_SCRUBBED_VIDEO gate defers reconstruction until
+# this has caught up, so together they enforce scrub-before-reconstruction.
+#
+# Install (user scope, on the DGX):
+#   ln -sf ~/cdx/dev-projects/gcc/ops/systemd/gcc-privacy-scrub.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now gcc-privacy-scrub.timer
+[Unit]
+Description=GCC privacy scrub sweep (blur bystanders/vehicles in new capture chunks)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/codex450/cdx/dev-projects/gcc/scripts/privacy_scrub
+EnvironmentFile=/home/codex450/cdx/dev-projects/gcc/backend/deploy/.env
+ExecStart=/home/codex450/cdx/dev-projects/gcc/scripts/privacy_scrub/.venv/bin/python -u scrub_worker.py --sweep
+# YOLO on the GB10 shares unified memory with everything else — don't let a
+# runaway sweep take the box down, and don't make it the OOM killer's pet.
+MemoryMax=32G
+TimeoutStartSec=3600

@@ -15,6 +15,9 @@ Env:
   WORLD_MIRROR_URL   default http://127.0.0.1:7027 — cdx-world-mirror service
   SPLAT_REQUIRE_ACTIVATION  default '0' — '1' restores the activation-count
                      gate before spending GPU on splat production
+  REQUIRE_SCRUBBED_VIDEO  default '1' — jobs wait (defer, not fail) until the
+                     privacy scrub pass has renditions for every video chunk
+                     of the cell; '0' (or PREFER_SCRUBBED_VIDEO=0) disables
 
 Usage:
   python recon_worker.py --once            # process at most one job
@@ -36,6 +39,7 @@ import psycopg
 import requests
 
 import fuse_cell as fuse_cell_module
+import r2_store
 from fuse_cell import FusionResult, ProducedAsset
 
 # Must outlast the slowest job: gsplat training runs up to 3h (its
@@ -44,6 +48,10 @@ from fuse_cell import FusionResult, ProducedAsset
 LEASE_MINUTES = 240
 MAX_ATTEMPTS = 3
 DEFAULT_WORLD_MIRROR_URL = "http://127.0.0.1:7027"
+# How long a job waits before re-checking that the privacy scrub pass has
+# produced renditions for its chunks (scripts/privacy_scrub/ runs on a
+# 10-minute timer — see ops/systemd/gcc-privacy-scrub.timer).
+SCRUB_DEFER_MINUTES = 10
 
 CLAIM_SQL = f"""
 UPDATE reconstruction_jobs
@@ -90,6 +98,68 @@ def fail_job(conn, job: Job, err: BaseException) -> None:
                SET status=%s, leased_until=NULL, last_error=%s, updated_at=now()
                WHERE id=%s""",
             (status, message, job.id),
+        )
+    conn.commit()
+
+
+class ScrubPending(Exception):
+    """The privacy scrub pass hasn't produced renditions for every video
+    chunk this job's cell will fuse — the PRD's ordering requirement
+    (docs/prd/scan-session-replay-devops-prd.md decision #2: scrub BEFORE
+    reconstruction) says wait, not fall back to raw."""
+
+    def __init__(self, missing: list[str]):
+        self.missing = missing
+        super().__init__(
+            f"{len(missing)} video chunk(s) lack scrubbed renditions "
+            f"(first: {missing[0] if missing else '?'})"
+        )
+
+
+# Fusion consumes every session manifest under the cell's raw/ prefix; those
+# sessions are indexed with that same cell id, so their mov chunk rows are
+# the gate's ground truth (chunk keys can live under a NEIGHBORING cell
+# prefix when GPS drifted between manifest and chunk upload — joining via
+# session_id covers that; filtering capture_chunks.location_cell_id would not).
+UNSCRUBBED_SQL = """
+SELECT c.r2_key FROM capture_chunks c
+JOIN scan_sessions s ON s.session_id = c.session_id
+WHERE s.location_cell_id = %s AND c.format = 'mov'
+ORDER BY c.r2_key
+"""
+
+
+def scrub_gate_enabled() -> bool:
+    """On unless either the preference (PREFER_SCRUBBED_VIDEO=0) or the gate
+    itself (REQUIRE_SCRUBBED_VIDEO=0) is explicitly disabled — a gate that
+    holds jobs for renditions nobody will consume is pure starvation."""
+    return (
+        os.environ.get("PREFER_SCRUBBED_VIDEO", "1") != "0"
+        and os.environ.get("REQUIRE_SCRUBBED_VIDEO", "1") != "0"
+    )
+
+
+def unscrubbed_video_chunks(conn, cell: str) -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute(UNSCRUBBED_SQL, (cell,))
+        keys = [row[0] for row in cur.fetchall()]
+    return [k for k in keys if not r2_store.object_exists(r2_store.scrubbed_key_for(k))]
+
+
+def defer_job(conn, job: Job, reason: str) -> None:
+    """Back off without burning an attempt: re-lease the row SCRUB_DEFER_MINUTES
+    into the future (invisible to claim_job until then) and undo this claim's
+    attempts increment, so a slow scrub pipeline can never starve a job into
+    'failed'. fail_job is for errors; this is a wait state."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """UPDATE reconstruction_jobs
+               SET status='leased',
+                   leased_until=now() + make_interval(mins => %s),
+                   attempts=greatest(attempts - 1, 0),
+                   last_error=%s, updated_at=now()
+               WHERE id=%s""",
+            (SCRUB_DEFER_MINUTES, reason[:2000], job.id),
         )
     conn.commit()
 
@@ -200,6 +270,11 @@ def compress_splat_for_web(splat_ply: bytes) -> tuple[bytes, str] | None:
 def process_job(conn, job: Job) -> None:
     """Fuse the job's whole cell, publish, record. Raises on failure —
     run_once translates that into fail_job."""
+    if scrub_gate_enabled():
+        missing = unscrubbed_video_chunks(conn, job.location_cell_id)
+        if missing:
+            raise ScrubPending(missing)
+
     train_splat = os.environ.get("RECON_TRAIN_SPLAT", "1") == "1"
     require_activation = os.environ.get("SPLAT_REQUIRE_ACTIVATION", "0") == "1"
     world_mirror_url = os.environ.get("WORLD_MIRROR_URL", DEFAULT_WORLD_MIRROR_URL)
@@ -264,6 +339,10 @@ def run_once(conn) -> bool:
     print(f"claimed job {job.id}: session {job.session_id}, cell {job.location_cell_id}, attempt {job.attempts}")
     try:
         process_job(conn, job)
+    except ScrubPending as pending:
+        conn.rollback()
+        print(f"job {job.id} deferred {SCRUB_DEFER_MINUTES}min: {pending}")
+        defer_job(conn, job, str(pending))
     except Exception as err:
         conn.rollback()
         traceback.print_exc()
