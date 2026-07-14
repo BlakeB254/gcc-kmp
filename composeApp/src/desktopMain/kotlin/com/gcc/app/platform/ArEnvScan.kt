@@ -46,6 +46,9 @@ actual class ArEnvScanOverlay actual constructor() {
             ) -> Unit
         )?,
     ) {}
+    actual fun setGroundCandidateCompletedListener(
+        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+    ) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}
     actual fun setSceneVoteCadence(fast: Boolean) {}

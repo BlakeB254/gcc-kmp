@@ -15,12 +15,17 @@ import kotlinx.serialization.json.Json
  *
  * `type` vocabulary (eventLogSchema 1):
  *  - `caption`   — instruction/status text shown to the worker (`msg`)
- *  - `tap`       — screen tap seeking a litter candidate
+ *  - `tap`       — screen tap seeking a litter candidate; `state` =
+ *                  "suppressed" when the auto-lock confirm card was already
+ *                  up (tap never reached the tap-candidate state machine)
  *  - `pill`      — tap-candidate pill phase transition (`state` =
  *                  LOCATING/CHECKING/AWAITING_CONFIRMATION/NO_RAYCAST/IDLE;
  *                  `label`/`confidence`/`distanceM` when classified)
  *  - `confirm` / `reject` — explicit user verdict on a candidate (`label`)
- *  - `detection` — auto-detection (`label`, `confidence`, `distanceM`)
+ *  - `detection` — ground-candidate classification (`label`, `confidence`,
+ *                  `distanceM`; `source` = geometry/dwell/tap/vision names
+ *                  which intent path produced it; `outcome` =
+ *                  accepted/excluded:<label>/timeout is the verdict)
  *  - `gate`      — outdoor-gate state change (`state`, cause in `msg`)
  *  - `coverage`  — coverage milestone crossed (`pct` = 25/50/75/95)
  *  - `lap`       — block-route lap transition (`state` = baseline/clean/…)
@@ -44,6 +49,8 @@ data class ScanSessionEvent(
     val pct: Int? = null,
     val ok: Boolean? = null,
     val key: String? = null,
+    val source: String? = null,
+    val outcome: String? = null,
 )
 
 /**

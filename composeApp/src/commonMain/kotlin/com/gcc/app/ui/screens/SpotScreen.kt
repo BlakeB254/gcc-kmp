@@ -71,7 +71,9 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.KeepScreenAwake
+import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
+import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +95,7 @@ import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.GeofenceVerification
+import com.gcc.shared.model.LitterWeightEstimator
 import com.gcc.shared.model.MapCoverageCell
 import com.gcc.shared.model.ObservedSpotItem
 import com.gcc.shared.model.ScanCoverageEventRequest
@@ -217,6 +220,7 @@ fun SpotScreen(
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
+                    onScannedItemCompleted = { item, photoBytes -> viewModel.addObservedItem(item, photoBytes) },
                     onConfirmedTapItem = { candidate -> viewModel.addConfirmedTapItem(candidate) },
                     onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
@@ -318,6 +322,10 @@ private fun CameraPhase(
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
     onTrashObserved: (ObservedSpotItem) -> Unit = {},
+    /** A completed ground-candidate scan's item plus its best-effort
+     *  completion-frame photo (null when no frame could be grabbed) — the
+     *  photo rides the same upload-then-enqueue path tap-path photos use. */
+    onScannedItemCompleted: (ObservedSpotItem, ByteArray?) -> Unit = { _, _ -> },
     /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
     onConfirmedTapItem: (TapCandidateState) -> Unit = {},
     /** The user tapped a candidate and pressed "Not litter" — a negative example. */
@@ -414,11 +422,13 @@ private fun CameraPhase(
         ScanSessionTelemetry.activate(sessionEventLog)
         onDispose { ScanSessionTelemetry.deactivate(sessionEventLog) }
     }
-    // Tap authority replay (P3): the tap itself, then every pill phase —
-    // LOCATING → CHECKING → AWAITING_CONFIRMATION (with label/confidence/
-    // distance) or NO_RAYCAST (the "hold steady" miss).
+    // Tap authority replay (P3): every pill phase — LOCATING → CHECKING →
+    // AWAITING_CONFIRMATION (with label/confidence/distance) or NO_RAYCAST
+    // (the "hold steady" miss). The tap event itself is emitted at the
+    // source (ArEnvScanOverlay.focusAt / t2-task-1) instead of derived from
+    // this transient phase, which Compose snapshot conflation could skip
+    // entirely and which never advanced on the auto-lock early-return path.
     LaunchedEffect(tapCandidate.phase) {
-        if (tapCandidate.phase == TapPhase.LOCATING) sessionEventLog.tap()
         sessionEventLog.pillPhase(
             phase = tapCandidate.phase.name,
             label = tapCandidate.label,
@@ -525,7 +535,7 @@ private fun CameraPhase(
         // grid expects them next scan.
         arOverlay?.setElementObservedListener { lat, lng, itemType, domain, confidence, widthMeters, yawDegrees ->
             if (!gate.captureAllowed.value) return@setElementObservedListener
-            sessionEventLog.detection(label = itemType, confidence = confidence, distanceM = null)
+            sessionEventLog.detection(label = itemType, confidence = confidence, distanceM = null, source = "vision")
             onTrashObserved(
                 ObservedSpotItem(
                     lat = lat,
@@ -536,6 +546,42 @@ private fun CameraPhase(
                     domain = domain,
                     yawDegrees = yawDegrees,
                 )
+            )
+        }
+        // Completed ground-candidate scans (Task 4/6): a LiDAR-tracked
+        // candidate that reached 100% scan progress, with a REAL measured
+        // bounding box — files as confirmed litter (auto-detected, not user-
+        // tapped) with a size-derived weight instead of the confirm card's
+        // per-type typical-weight lookup, plus a best-effort completion-frame
+        // photo grabbed by the overlay's captureFrame seam. No detection
+        // event here: Task 6 already emitted the candidate's "accepted"
+        // detection when it entered SCANNING, so another one would
+        // double-count it — the completion is logged as a diagnostics line
+        // instead. itemType canonicalization matters: the tracker carries
+        // GroundExclusionRules' raw tokens ("bottle"/"bag"/"box"/…), which
+        // must land on the same canonical strings the tap path files, or the
+        // minimap glyph `when` misses and dedupUpgradeDecision never matches
+        // a later tap-confirm of the same pile.
+        arOverlay?.setGroundCandidateCompletedListener { lat, lng, photoBytes, completed ->
+            if (!gate.captureAllowed.value) return@setGroundCandidateCompletedListener
+            val itemType = TrashItemCatalog.canonicalType(completed.itemType)
+            val weightGrams = LitterWeightEstimator.estimateGrams(
+                itemType, completed.widthM, completed.heightM, completed.depthM,
+            )
+            DiagnosticsLog.info("env-scan", "scan complete: $itemType ${weightGrams}g")
+            onScannedItemCompleted(
+                ObservedSpotItem(
+                    lat = lat,
+                    lng = lng,
+                    itemType = itemType,
+                    domain = "litter",
+                    confidence = null,
+                    estimatedWeightGrams = weightGrams,
+                    estimatedWidthMeters = completed.widthM.toDouble(),
+                    atMs = Clock.System.now().toEpochMilliseconds(),
+                    provenance = PROVENANCE_AUTO_DETECTED,
+                ),
+                photoBytes,
             )
         }
         arOverlay?.setCeilingListener { detected ->
@@ -559,6 +605,7 @@ private fun CameraPhase(
         }
         onDispose {
             arOverlay?.setElementObservedListener(null)
+            arOverlay?.setGroundCandidateCompletedListener(null)
             arOverlay?.setCeilingListener(null)
             arOverlay?.setCoverageHitListener(null)
             arOverlay?.stop()

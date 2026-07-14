@@ -202,6 +202,80 @@ interface ArNativeSurface {
      * Default: surfaces without a recorder.
      */
     fun captureHealthJson(): String? = null
+
+    // ── Ground-anomaly detection (LiDAR) ─────────────────────────────
+    // Litter detection goes geometric: Swift's GroundAnomalyDetector finds
+    // on-ground protrusions from depth alone (pixel work ONLY — no
+    // filtering beyond its documented geometric gates, no classification,
+    // no lifecycle); Kotlin decides everything else from the packets
+    // these return. Parsed with [parseGroundCandidatePacket] (commonMain,
+    // see [GroundCandidatePacket] for why it lives there).
+
+    /**
+     * Drain LiDAR ground-anomaly candidate packets found since the last
+     * call — see [GroundCandidatePacket]. The Swift side runs the detector
+     * at most once every 0.5s on the current frame and backs off under
+     * thermal pressure; callers should poll this off the main thread.
+     * Default: surfaces without a native detector.
+     */
+    fun drainGroundCandidates(): List<String> = emptyList()
+
+    /**
+     * Swift-side `VNClassifyImageRequest` over a NORMALIZED (top-left
+     * origin) crop of the current frame's `capturedImage` — top-10
+     * "identifier|confidence" entries, same format as [classifySceneLabels].
+     * `cx`/`cy` are the crop center, `halfW`/`halfH` its half-extents, all
+     * normalized to the image dimensions (matches a [GroundCandidatePacket]'s
+     * `imageCx`/`imageCy`/`imageHalfW`/`imageHalfH`). Default: surfaces
+     * without frames.
+     */
+    fun classifyRegionLabels(cx: Double, cy: Double, halfW: Double, halfH: Double): List<String> = emptyList()
+
+    /** Camera forward ray in AR world space as [x, y, z] (the -Z column of
+     *  the camera transform), or empty before the first frame. */
+    fun cameraForward(): List<Float> = emptyList()
+
+    // ── Scan reticle pool (spec Task 5) ──────────────────────────────
+    // Accepted litter candidates get a pooled AR reticle (pool of 3, LRU
+    // evict) with a fill bar that grows with scan evidence; at 100% a
+    // scan-complete treatment holds 1.5s then dissolves (Blake's UX,
+    // verbatim). EXCLUDED candidates never acquire one -- a later task
+    // wires GroundCandidateTracker's activeScanning()/completedCandidates()/
+    // timedOut() into this trio and must only ever route SCANNING/COMPLETED
+    // ids through it. Default: no-op for surfaces without a reticle pool
+    // (SceneKit fallback, tests).
+
+    /**
+     * Position/update the pooled scan reticle for candidate [id] at an
+     * AR-local ground point, filling its progress bar to [progress] (0..1).
+     * Acquires a pooled entity on first call for a given id (pool of 3); a
+     * 4th distinct id LRU-evicts the oldest active reticle. Repeat calls for
+     * an id already showing just move/refill it.
+     *
+     * Callers MUST stop streaming an id the moment it COMPLETES (the same
+     * tick [completeScanReticle] is issued -- not after the 1.5s complete
+     * treatment finishes): during the treatment the surface ignores updates
+     * for the id, but once the treatment releases the pooled entity a
+     * straggler call for the released id would re-acquire a slot and
+     * re-show it as a fresh reticle. Same rule for timed-out ids after
+     * [clearScanReticle].
+     */
+    fun setScanReticle(id: Long, x: Float, y: Float, z: Float, progress: Float) {}
+
+    /**
+     * Scan-complete treatment for [id]'s reticle: swap to the complete tint
+     * with a brief pulse, hold for 1.5s, then shrink-dissolve and release
+     * the pooled entity back to the pool.
+     */
+    fun completeScanReticle(id: Long) {}
+
+    /**
+     * Immediate dissolve + release of [id]'s reticle -- the timeout path (a
+     * SCANNING candidate that never completed). Excluded candidates never
+     * acquire a reticle in the first place, so this is never their cleanup
+     * path, but it's safe to call on an id with no reticle (no-op).
+     */
+    fun clearScanReticle(id: Long) {}
 }
 
 /**

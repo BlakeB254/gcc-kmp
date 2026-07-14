@@ -27,6 +27,27 @@ class TrashItemCatalogTest {
     }
 
     @Test
+    fun `ground candidate trash tokens canonicalize to the same types the tap path produces`() {
+        // The completed-ground-candidate path (SpotScreen) files
+        // GroundExclusionRules.trashTypeFrom's raw tokens through
+        // canonicalType() — they must land on the EXACT canonical strings
+        // the tap-confirm path produces, or the minimap glyph `when` misses
+        // (generic dot) and dedupUpgradeDecision's itemType compare never
+        // matches (double-add instead of upgrade).
+        assertEquals("plastic_bottle", TrashItemCatalog.canonicalType("bottle"))
+        assertEquals("glass_bottle", TrashItemCatalog.canonicalType("glass"))
+        assertEquals("plastic_bag", TrashItemCatalog.canonicalType("bag"))
+        assertEquals("carton", TrashItemCatalog.canonicalType("box"))
+        assertEquals("cup", TrashItemCatalog.canonicalType("cup"))
+        assertEquals("can", TrashItemCatalog.canonicalType("can"))
+        assertEquals("paper", TrashItemCatalog.canonicalType("paper"))
+        assertEquals("wrapper", TrashItemCatalog.canonicalType("wrapper"))
+        assertEquals("carton", TrashItemCatalog.canonicalType("carton"))
+        // The no-classification fallback label canonicalizes to the generic type.
+        assertEquals(TrashItemCatalog.FALLBACK_TYPE, TrashItemCatalog.canonicalType(UNKNOWN_LITTER_LABEL))
+    }
+
+    @Test
     fun `unknown labels fall back to other`() {
         assertEquals(TrashItemCatalog.FALLBACK_TYPE, TrashItemCatalog.canonicalType("zebra"))
         assertEquals(TrashItemCatalog.FALLBACK_TYPE, TrashItemCatalog.canonicalType(""))

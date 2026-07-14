@@ -1,4 +1,5 @@
 import Combine
+import CoreImage
 import Foundation
 import ARKit
 import RealityKit
@@ -26,6 +27,16 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// `startCapture`. Lives entirely off the render path: `append(frame:)`
     /// is allocation-light on the delegate thread and can never throw.
     private var recorder: ArSessionRecorder?
+
+    /// LiDAR ground-anomaly detector (litter candidates from depth geometry
+    /// alone — see GroundAnomalyDetector.swift). Stateless per-call; owned
+    /// here purely so `drainGroundCandidates()` has something to call.
+    private let groundAnomalyDetector = GroundAnomalyDetector()
+    /// Throttle for `drainGroundCandidates()`: the detector is CPU-heavy
+    /// (unprojects + labels up to 3072 grid cells), so it runs at most once
+    /// per `groundAnalyzeInterval` no matter how often Kotlin polls.
+    private var lastGroundAnalyzeTime: CFAbsoluteTime = 0
+    private static let groundAnalyzeInterval: CFTimeInterval = 0.5
 
     /// Minor grid interval — stays this size no matter how large a plane
     /// grows. 1.0m = a clean divisor of CoverageTracker's 3m cells (the minor
@@ -64,6 +75,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// entity makes "how many grids exist" a static invariant instead of a
     /// function of how ARKit happens to be segmenting the room right now.
     private var floorGrid: PlaneGridEntity?
+    // The floor AABB fields below (+ floorWorldY) are guarded by `frameLock`
+    // on BOTH sides: written on the session-delegate/main thread
+    // (upsertPlane / teardown / setGroundGridVisible) and read off-main by
+    // drainGroundCandidates() — lock every mutation AND every off-main read.
     private var floorMinX: Float?
     private var floorMaxX: Float?
     private var floorMinZ: Float?
@@ -104,6 +119,35 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// confirmed, orange = expected/litter, red = warning).
     private static let beaconTint = UIColor(red: 0.3, green: 0.6, blue: 1.0, alpha: 0.7)
     private lazy var beaconTexture: TextureResource? = Self.makeBeaconRingTexture()
+
+    // Pooled scan reticles (spec Task 5): accepted litter candidates get a
+    // ground reticle with a fill bar that grows with scan evidence; at 100%
+    // a scan-complete treatment holds 1.5s then dissolves. Pool of 3 —
+    // matches the beacon's anti-pattern warning (never an entity per
+    // candidate): entities are created once, lazily, on first use (see
+    // `ensureReticlePool()`), then reused via `reticleIndexByCandidate` +
+    // an LRU list. Torn down in `teardown()` alongside the beacon.
+    private static let reticlePoolSize = 3
+    private static let reticleGroundOffset: Float = 0.02
+    private static let reticleRingDiameter: Float = 0.28
+    private static let reticleFillBarWidth: Float = 0.22
+    private static let reticleFillBarDepth: Float = 0.045
+    private static let reticleFillBarHalfWidth: Float = reticleFillBarWidth / 2
+    private static let reticleFillBarZOffset: Float = reticleRingDiameter / 2 + 0.09
+    private static let reticleRingTint = UIColor.white.withAlphaComponent(0.9)
+    // Matches the existing "confirmed = green" litter color language (the
+    // grid line tint / confirmed marker color elsewhere in this file).
+    private static let reticleCompleteTint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.95)
+    // Cool blue, same system-chrome family as the frontier beacon — outside
+    // the litter color language (green = confirmed, orange = expected,
+    // red = warning) on purpose.
+    private static let reticleFillTint = UIColor(red: 0.3, green: 0.65, blue: 1.0, alpha: 0.9)
+    private var reticlePool: [PooledReticle] = []
+    private var reticleIndexByCandidate: [Int64: Int] = [:]
+    /// Active reticle ids, oldest-touched first — `acquireReticle` moves an
+    /// id to the end on every call (new bind AND re-touch), so index 0 is
+    /// always the LRU-eviction target when a 4th distinct id arrives.
+    private var reticleLru: [Int64] = []
 
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
@@ -176,13 +220,17 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // teardown must stay safe regardless of ordering.
         recorder?.finishSilently()
         recorder = nil
+        lastGroundAnalyzeTime = 0
 
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
+        // frameLock: the floor AABB fields are read off-main (see their kdoc).
+        frameLock.lock()
         floorMinX = nil
         floorMaxX = nil
         floorMinZ = nil
         floorMaxZ = nil
+        frameLock.unlock()
 
         for (_, anchor) in sectorPostEntities { anchor.removeFromParent() }
         sectorPostEntities.removeAll()
@@ -196,6 +244,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         beaconAnchor = nil
         beaconModel = nil
         guidanceTarget = nil
+
+        for reticle in reticlePool { reticle.anchor.removeFromParent() }
+        reticlePool.removeAll()
+        reticleIndexByCandidate.removeAll()
+        reticleLru.removeAll()
+
         cameraAnchor.removeFromParent()
 
         coachingOverlay?.setActive(false, animated: false)
@@ -279,6 +333,84 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             .map { "\($0.identifier)|\($0.confidence)" }
     }
 
+    /// LiDAR ground-anomaly candidates (see GroundAnomalyDetector.swift):
+    /// runs at most every `groundAnalyzeInterval`, skips under thermal
+    /// pressure, and needs a floor established. Called SYNCHRONOUSLY on the
+    /// caller's thread (Kotlin polls this off-main) — grabs `lastFrame` and
+    /// the floor AABB fields under `frameLock`, then releases the lock
+    /// before doing any of the detector's pixel work.
+    func drainGroundCandidates() -> [String] {
+        if ProcessInfo.processInfo.thermalState.rawValue >= 2 { return [] }
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastGroundAnalyzeTime < Self.groundAnalyzeInterval { return [] }
+
+        frameLock.lock()
+        let frame = lastFrame
+        let minX = floorMinX
+        let maxX = floorMaxX
+        let minZ = floorMinZ
+        let maxZ = floorMaxZ
+        let floorY = floorWorldY
+        frameLock.unlock()
+
+        guard let frame, let minX, let maxX, let minZ, let maxZ, let floorY else { return [] }
+        lastGroundAnalyzeTime = now
+        return groundAnomalyDetector.analyze(
+            frame: frame,
+            floorY: floorY,
+            floorBounds: (minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ)
+        )
+    }
+
+    /// Vision classification over a NORMALIZED-coordinate crop of the
+    /// current frame (top-left origin, matching a `GroundCandidatePacket`'s
+    /// image fields) — same request handling and error posture as
+    /// `classifySceneLabels`: any failure returns `[]`, never throws.
+    func classifyRegionLabels(cx: Double, cy: Double, halfW: Double, halfH: Double) -> [String] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+
+        let pixelBuffer = frame.capturedImage
+        let width = Double(CVPixelBufferGetWidth(pixelBuffer))
+        let height = Double(CVPixelBufferGetHeight(pixelBuffer))
+        let minXTopDown = max(0, cx - halfW)
+        let maxXTopDown = min(1, cx + halfW)
+        let minYTopDown = max(0, cy - halfH)
+        let maxYTopDown = min(1, cy + halfH)
+        guard maxXTopDown > minXTopDown, maxYTopDown > minYTopDown else { return [] }
+
+        // CIImage's coordinate space is bottom-left origin, y UP — flip the
+        // normalized top-down (video-orientation) rect before cropping.
+        let cropRect = CGRect(
+            x: minXTopDown * width,
+            y: (1 - maxYTopDown) * height,
+            width: (maxXTopDown - minXTopDown) * width,
+            height: (maxYTopDown - minYTopDown) * height
+        )
+        let cropped = CIImage(cvPixelBuffer: pixelBuffer).cropped(to: cropRect)
+
+        let request = VNClassifyImageRequest()
+        let handler = VNImageRequestHandler(ciImage: cropped, options: [:])
+        guard (try? handler.perform([request])) != nil, let results = request.results else { return [] }
+        return results
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(10)
+            .map { "\($0.identifier)|\($0.confidence)" }
+    }
+
+    /// Camera forward ray in AR world space — the -Z column of the camera
+    /// transform (camera looks down -Z), or empty before the first frame.
+    func cameraForward() -> [KotlinFloat] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+        let c = frame.camera.transform.columns.2
+        return [KotlinFloat(float: -c.x), KotlinFloat(float: -c.y), KotlinFloat(float: -c.z)]
+    }
+
     func addMarker(x: Double, y: Double, z: Double, kind: Int32) {
         DispatchQueue.main.async { [self] in
             let anchor = AnchorEntity(world: SIMD3(Float(x), Float(y), Float(z)))
@@ -328,10 +460,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 coachingOverlay?.setActive(false, animated: false)
                 floorGrid?.anchor.removeFromParent()
                 floorGrid = nil
+                // frameLock: floor AABB fields are read off-main (see kdoc).
+                frameLock.lock()
                 floorMinX = nil
                 floorMaxX = nil
                 floorMinZ = nil
                 floorMaxZ = nil
+                frameLock.unlock()
                 groundLive = false
             }
         }
@@ -442,6 +577,357 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         DispatchQueue.main.async { [self] in
             beaconSuppressed = suppressed
             beaconModel?.isEnabled = !suppressed && guidanceTarget != nil
+        }
+    }
+
+    // MARK: - Scan reticle pool (spec Task 5)
+    //
+    // Called from Kotlin's tick loop, off-main — every entry hops to the
+    // main queue first, exactly like the beacon methods above.
+
+    /// Position/update the pooled scan reticle for candidate `id` at an
+    /// AR-local ground point, filling its bar to `progress` (0...1).
+    /// Acquires a pooled entity on first call for a given id (pool of 3,
+    /// LRU-evicting the oldest active reticle past that); repeat calls for
+    /// an id already showing just move/refill it.
+    func setScanReticle(id: Int64, x: Float, y: Float, z: Float, progress: Float) {
+        DispatchQueue.main.async { [self] in
+            // Phase gate: a COMPLETING scan is done. The Kotlin tick keeps
+            // streaming setScanReticle while completeScanReticle's 1.5s
+            // hold + dissolve run; letting those late updates through would
+            // drag the green complete bar back down (or rebind the slot
+            // mid-dissolve). They must not touch the slot at all.
+            if let idx = reticleIndexByCandidate[id], reticlePool[idx].phase == .completing {
+                return
+            }
+            let (reticle, didBind) = acquireReticle(for: id)
+            reticle.anchor.position = SIMD3(x, y + Self.reticleGroundOffset, z)
+            if didBind {
+                // FULL unconditional reset on every (re)bind, independent
+                // of isEnabled — the slot may be mid-dissolve (shrink tween
+                // in flight, complete material still applied, deferred
+                // cleanup generation-invalidated) and only a hard reset
+                // guarantees a sane starting state for the new occupant.
+                reticle.ring.stopAllAnimations()
+                reticle.fillBar.stopAllAnimations()
+                reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
+                reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
+                reticle.ring.isEnabled = true
+                reticle.fillBar.isEnabled = true
+                animateIn(reticle.ring)
+            }
+            applyReticleFill(reticle, progress: progress)
+        }
+    }
+
+    /// Scan-complete treatment for `id`'s reticle: swap to the complete
+    /// tint with a brief 1.15x pulse, hold 1.5s, then shrink-dissolve and
+    /// release the pooled entity. A no-op if `id` has no active reticle
+    /// (already cleared/evicted, or never acquired one — e.g. exclusions).
+    func completeScanReticle(id: Int64) {
+        DispatchQueue.main.async { [self] in
+            guard let idx = reticleIndexByCandidate[id],
+                  reticlePool[idx].phase == .active,
+                  reticlePool[idx].ring.isEnabled else { return }
+            let reticle = reticlePool[idx]
+            // From here until release, the slot is COMPLETING: late
+            // setScanReticle ticks for this id are ignored (see the phase
+            // gate there) and a second completeScanReticle is a no-op via
+            // the phase guard above.
+            reticle.phase = .completing
+            reticle.ring.model?.materials = [reticle.ringCompleteMaterial]
+            applyReticleFill(reticle, progress: 1.0)
+            reticle.ring.stopAllAnimations()
+            reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
+            pulseOnce(reticle.ring, scale: 1.15, duration: 0.3)
+            // Stale-callback guard: capture the PooledReticle OBJECT (never
+            // an index into `reticlePool` — `teardown()` empties the array,
+            // so a deferred closure firing after the user exits the scan
+            // screen mid-completion would fatalError on the subscript; and
+            // a pool rebuilt after teardown restarts generations at 0, so
+            // an index+generation pair could collide with a fresh bind and
+            // dissolve an innocent reticle — object identity makes both
+            // impossible; the beacon closures use the optional
+            // `self.beaconModel` the same way) plus its generation now, and
+            // compare when each deferred closure fires. If `id` gets
+            // cleared, LRU-evicted, or a new id rebinds this slot in the
+            // meantime, `bindReticle`/`releaseReticle` will have bumped
+            // `generation` — the mismatch means the closure must do
+            // nothing. A torn-down reticle passes the guard, but it is
+            // detached from the scene, so mutating it is a harmless no-op.
+            let generationAtSchedule = reticle.generation
+            // Pulse settle: pulseOnce SHOULD autoreverse back to 1.0x on
+            // its own, but a single non-repeated autoreverse playback
+            // settling at `from` can't be verified off-device — so after
+            // the full up-and-back window (2 x 0.3s, + margin) explicitly
+            // restore the rest transform. Harmless if the pulse already
+            // settled; corrective if it parked at 1.15x. Fires well before
+            // the 1.5s dissolve below, and never on a rebound slot
+            // (generation guard). Touches only the captured object — no
+            // `self` needed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                guard reticle.generation == generationAtSchedule else { return }
+                reticle.ring.stopAllAnimations()
+                reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, reticle.generation == generationAtSchedule else { return }
+                self.dissolveAndReleaseReticle(reticle, id: id)
+            }
+        }
+    }
+
+    /// Immediate dissolve + release of `id`'s reticle — the timeout path (a
+    /// SCANNING candidate that never completed). A no-op if `id` has no
+    /// active reticle.
+    func clearScanReticle(id: Int64) {
+        DispatchQueue.main.async { [self] in
+            guard let idx = reticleIndexByCandidate[id] else { return }
+            dissolveAndReleaseReticle(reticlePool[idx], id: id)
+        }
+    }
+
+    /// One fixed pool slot: a world anchor holding a tinted ring, with the
+    /// fill bar as its child (so the ring's grow-in/pulse animations carry
+    /// the bar along for free — no separate tween needed for it).
+    private final class PooledReticle {
+        /// Where this slot is in its occupant's lifecycle. ACTIVE = normal
+        /// fill/position updates apply; COMPLETING = `completeScanReticle`
+        /// ran and the 1.5s-hold/dissolve sequence owns the slot — a
+        /// completing scan is DONE, so late `setScanReticle` ticks (the
+        /// Kotlin tick keeps streaming them while the hold runs) must not
+        /// drag the green complete bar back down or move the ring.
+        enum Phase { case active, completing }
+
+        let anchor: AnchorEntity
+        let ring: ModelEntity
+        let fillBar: ModelEntity
+        let ringDefaultMaterial: PhysicallyBasedMaterial
+        let ringCompleteMaterial: PhysicallyBasedMaterial
+        var candidateId: Int64?
+        var phase: Phase = .active
+        /// Bumped every time this slot's occupant changes — bind (new id),
+        /// release (clear/dissolve), or forced eviction. Deferred callbacks
+        /// (the completeScanReticle hold + pulse-settle, the dissolve's
+        /// trailing cleanup) capture this value at schedule time and compare
+        /// it when they fire; a mismatch means the slot moved on and the
+        /// closure must no-op rather than mutate whatever (or nobody) owns
+        /// it now.
+        var generation = 0
+
+        init(
+            anchor: AnchorEntity,
+            ring: ModelEntity,
+            fillBar: ModelEntity,
+            ringDefaultMaterial: PhysicallyBasedMaterial,
+            ringCompleteMaterial: PhysicallyBasedMaterial
+        ) {
+            self.anchor = anchor
+            self.ring = ring
+            self.fillBar = fillBar
+            self.ringDefaultMaterial = ringDefaultMaterial
+            self.ringCompleteMaterial = ringCompleteMaterial
+        }
+    }
+
+    /// Builds the fixed 3-slot pool on first use (arrow()/veil()/beacon()
+    /// laziness pattern) — every entity is created exactly once and reused
+    /// for the life of the surface via `isEnabled` toggling, never
+    /// recreated per candidate.
+    private func ensureReticlePool() {
+        guard reticlePool.isEmpty else { return }
+        for _ in 0..<Self.reticlePoolSize {
+            var ringMaterial = PhysicallyBasedMaterial()
+            ringMaterial.baseColor = .init(tint: Self.reticleRingTint)
+            ringMaterial.roughness = 1.0
+            ringMaterial.metallic = 0.0
+            ringMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+            let ring = ModelEntity(
+                mesh: .generatePlane(
+                    width: Self.reticleRingDiameter,
+                    depth: Self.reticleRingDiameter,
+                    cornerRadius: Self.reticleRingDiameter / 2
+                ),
+                materials: [ringMaterial]
+            )
+            ring.isEnabled = false
+
+            var completeMaterial = PhysicallyBasedMaterial()
+            completeMaterial.baseColor = .init(tint: Self.reticleCompleteTint)
+            completeMaterial.roughness = 1.0
+            completeMaterial.metallic = 0.0
+            completeMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+
+            var fillMaterial = PhysicallyBasedMaterial()
+            fillMaterial.baseColor = .init(tint: Self.reticleFillTint)
+            fillMaterial.roughness = 1.0
+            fillMaterial.metallic = 0.0
+            fillMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+            let fillBar = ModelEntity(
+                mesh: .generatePlane(width: Self.reticleFillBarWidth, depth: Self.reticleFillBarDepth),
+                materials: [fillMaterial]
+            )
+            // Sits just outside the ring's footprint (offset along Z) and a
+            // hair above it (0.002m) so the two coplanar ground quads never
+            // z-fight.
+            fillBar.position = SIMD3(0, 0.002, Self.reticleFillBarZOffset)
+            ring.addChild(fillBar)
+
+            let anchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+            anchor.addChild(ring)
+            arView.scene.addAnchor(anchor)
+
+            reticlePool.append(PooledReticle(
+                anchor: anchor,
+                ring: ring,
+                fillBar: fillBar,
+                ringDefaultMaterial: ringMaterial,
+                ringCompleteMaterial: completeMaterial
+            ))
+        }
+    }
+
+    /// Acquire the pool slot for `id`: an already-bound id just gets
+    /// LRU-touched (`didBind` false — the slot is already showing);
+    /// otherwise a free slot is taken (`didBind` true — the caller MUST run
+    /// its full unconditional reset), and if the pool is full (3 active)
+    /// the oldest-touched active reticle is evicted to make room.
+    private func acquireReticle(for id: Int64) -> (reticle: PooledReticle, didBind: Bool) {
+        ensureReticlePool()
+        if let idx = reticleIndexByCandidate[id] {
+            touchReticleLru(id)
+            return (reticlePool[idx], false)
+        }
+        if let idx = reticlePool.firstIndex(where: { $0.candidateId == nil }) {
+            bindReticle(at: idx, to: id)
+            return (reticlePool[idx], true)
+        }
+        // Pool full — LRU-evict the oldest-touched active reticle. Evicted
+        // INSTANTLY (no shrink tween): this same call immediately re-binds
+        // and re-shows the identical slot for the new id via the caller's
+        // bind-reset + `animateIn`, so an animated dissolve on the outgoing
+        // entity would race the incoming grow-in on the SAME ModelEntity.
+        let oldestId = reticleLru[0]
+        let idx = reticleIndexByCandidate[oldestId]!
+        let evicted = reticlePool[idx]
+        evicted.ring.stopAllAnimations()
+        evicted.fillBar.stopAllAnimations()
+        evicted.ring.isEnabled = false
+        evicted.fillBar.isEnabled = false
+        evicted.ring.transform = Transform(scale: SIMD3(repeating: 1))
+        evicted.ring.model?.materials = [evicted.ringDefaultMaterial]
+        releaseReticle(evicted, id: oldestId) // bumps generation — invalidates any pending completeScanReticle/dissolve callback for oldestId
+        bindReticle(at: idx, to: id)
+        return (reticlePool[idx], true)
+    }
+
+    private func bindReticle(at idx: Int, to id: Int64) {
+        reticlePool[idx].candidateId = id
+        reticlePool[idx].phase = .active
+        reticleIndexByCandidate[id] = idx
+        reticleLru.append(id)
+        reticlePool[idx].generation += 1
+    }
+
+    private func touchReticleLru(_ id: Int64) {
+        if let pos = reticleLru.firstIndex(of: id) {
+            reticleLru.remove(at: pos)
+        }
+        reticleLru.append(id)
+    }
+
+    /// Vacates `reticle` and bumps its generation. The id-keyed maps are
+    /// only touched when they still point at THIS object — after a
+    /// teardown (or teardown + pool rebuild) a stale deferred callback may
+    /// hand in a detached reticle whose id has since been bound to a fresh
+    /// slot, and blindly removing by id would release the new occupant's
+    /// binding out from under it.
+    private func releaseReticle(_ reticle: PooledReticle, id: Int64) {
+        reticle.candidateId = nil
+        reticle.phase = .active
+        reticle.generation += 1
+        if let idx = reticleIndexByCandidate[id], reticlePool.indices.contains(idx), reticlePool[idx] === reticle {
+            reticleIndexByCandidate.removeValue(forKey: id)
+            if let pos = reticleLru.firstIndex(of: id) { reticleLru.remove(at: pos) }
+        }
+    }
+
+    /// Sets the fill bar's visible width to `progress` while keeping its
+    /// LEFT edge fixed: the bar's own mesh is generated once at full width
+    /// (mesh regen is the expensive part elsewhere in this file, so this
+    /// only ever touches `transform`), scaled by `progress` on X, and
+    /// shifted left by the shrunk half-width so growth reads left-to-right
+    /// instead of from the center.
+    private func applyReticleFill(_ reticle: PooledReticle, progress: Float) {
+        let clamped = min(max(progress, 0), 1)
+        var t = reticle.fillBar.transform
+        // Never fully zero — a literal 0 scale would leave the bar mesh
+        // permanently degenerate-invisible instead of just "empty-looking".
+        t.scale.x = max(clamped, 0.02)
+        t.translation.x = -(1 - clamped) * Self.reticleFillBarHalfWidth
+        reticle.fillBar.transform = t
+    }
+
+    /// Mirrors `dissolveGuidanceBeacon`'s shrink-out, but the reticle is
+    /// released back to the pool afterward instead of just re-hidden (the
+    /// beacon has exactly one instance; reticles are shared across
+    /// candidates). The id is freed from the pool SYNCHRONOUSLY so a
+    /// same-id `setScanReticle` call arriving right after never mistakes
+    /// this slot for "still showing" and skips its reset.
+    private func dissolveAndReleaseReticle(_ reticle: PooledReticle, id: Int64) {
+        let wasVisible = reticle.ring.isEnabled
+        releaseReticle(reticle, id: id)
+        guard wasVisible else { return }
+        // Kill any in-flight tween (the completion pulse, a previous
+        // dissolve) before starting the shrink so nothing competes for
+        // ring.transform, and restore to the CANONICAL rest transform
+        // (scale 1) rather than a snapshot that might have been taken
+        // mid-pulse at 1.15x.
+        reticle.ring.stopAllAnimations()
+        let restore = Transform(scale: SIMD3(repeating: 1))
+        var end = restore
+        end.scale = SIMD3(repeating: 0.01)
+        reticle.ring.move(to: end, relativeTo: reticle.anchor, duration: 0.3, timingFunction: .easeIn)
+        // Same stale-callback guard as completeScanReticle, with the same
+        // object-not-index capture (teardown empties `reticlePool`, so a
+        // pool subscript in a deferred closure is a post-teardown crash):
+        // `releaseReticle` just bumped `generation`, so a re-`setScanReticle`
+        // or re-eviction of this slot before the trailing cleanup fires
+        // will bump it again and this closure will correctly skip. Touches
+        // only the captured object — no `self` needed; on a torn-down
+        // (scene-detached) reticle the mutations are harmless no-ops.
+        let generationAtDissolve = reticle.generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard reticle.generation == generationAtDissolve else { return }
+            reticle.ring.isEnabled = false
+            reticle.fillBar.isEnabled = false
+            reticle.ring.transform = restore
+            reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
+        }
+    }
+
+    /// One-shot up-then-back pulse — unlike `addPulse`'s endless
+    /// `.repeat()`, this plays the autoreverse exactly once. Whether a
+    /// single non-repeated autoreverse playback settles back at `from`
+    /// can't be verified off-device, so callers must not RELY on it:
+    /// `completeScanReticle` schedules a generation-guarded explicit
+    /// restore of the rest transform after the pulse window as a backstop.
+    /// Used for the scan-complete "brief 1.15x pulse" (spec Task 5).
+    private func pulseOnce(_ entity: Entity, scale: Float, duration: TimeInterval) {
+        let start = entity.transform
+        var end = start
+        end.scale = start.scale * scale
+        let animation = FromToByAnimation<Transform>(
+            name: "gcc-reticle-complete-pulse",
+            from: start,
+            to: end,
+            duration: duration,
+            timing: .easeOut,
+            bindTarget: .transform,
+            repeatMode: .autoReverse
+        )
+        if let resource = try? AnimationResource.generate(with: animation) {
+            entity.playAnimation(resource, transitionDuration: 0, startsPaused: false)
         }
     }
 
@@ -687,7 +1173,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // entities sit at the camera-offset estimate forever.
         if isFloor {
             let y = plane.transform.columns.3.y + plane.center.y
+            // frameLock: drainGroundCandidates() reads floorWorldY off-main.
+            frameLock.lock()
             if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
+            frameLock.unlock()
         }
         guard groundGridVisible, isFloor else { return }
 
@@ -715,10 +1204,14 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // must never make the single grid entity flicker, shrink or spawn a
         // sibling.
         var grew = false
+        // frameLock: drainGroundCandidates() reads these bounds off-main —
+        // held only for the four field mutations, never the entity work below.
+        frameLock.lock()
         if floorMinX == nil || planeMinX < floorMinX! { floorMinX = planeMinX; grew = true }
         if floorMaxX == nil || planeMaxX > floorMaxX! { floorMaxX = planeMaxX; grew = true }
         if floorMinZ == nil || planeMinZ < floorMinZ! { floorMinZ = planeMinZ; grew = true }
         if floorMaxZ == nil || planeMaxZ > floorMaxZ! { floorMaxZ = planeMaxZ; grew = true }
+        frameLock.unlock()
 
         let entry: PlaneGridEntity
         if let existing = floorGrid {

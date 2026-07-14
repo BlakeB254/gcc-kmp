@@ -179,6 +179,33 @@ expect class ArEnvScanOverlay() {
         )?,
     )
 
+    /**
+     * Fires when a ground candidate (Task 4's [GroundCandidateTracker]) reaches
+     * 100% scan progress and is retired to COMPLETED — the payload carries
+     * everything needed to file it as a confirmed litter item (world position,
+     * physical extents, classified [CompletedCandidate.itemType], and the
+     * image-space crop geometry for a follow-up photo). [lat]/[lng] are
+     * [CompletedCandidate.x]/[CompletedCandidate.z] resolved through the
+     * session's live geo reference — the same `localToLatLng` conversion
+     * [setElementObservedListener]'s registration path uses — because
+     * [GroundCandidateTracker] is deliberately geo-ref-free (no platform
+     * imports, per its class doc), so the conversion has to happen here at
+     * the iOS invocation site instead of inside [CompletedCandidate] itself.
+     * Only fires once a geo reference is paired and the conversion is
+     * finite; a candidate that completes before pairing or resolving to a
+     * non-finite coordinate is dropped (mirrors
+     * [setElementObservedListener]'s `hasGeoRef` + finiteness guards).
+     * [photoBytes] is a best-effort silent frame grab (the same
+     * `captureFrame` seam CameraManager's external frame source uses) taken
+     * at completion time — the item's photo per spec §4; null when no frame
+     * could be captured. Called on the main thread; iOS only. No-op on
+     * Android/Desktop — there is no LiDAR ground-candidate pipeline off the
+     * native RealityKit surface.
+     */
+    fun setGroundCandidateCompletedListener(
+        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+    )
+
     /** Pause/resume frame sampling without tearing down the ARSession. */
     fun setFrameAnalysisEnabled(enabled: Boolean)
 

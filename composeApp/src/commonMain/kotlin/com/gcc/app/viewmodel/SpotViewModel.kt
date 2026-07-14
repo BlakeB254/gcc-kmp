@@ -326,6 +326,7 @@ class SpotViewModel(
                         capturedAt = Clock.System.now(),
                         mediaUrl = mediaUrl,
                         provenance = stamped.provenance ?: PROVENANCE_AUTO_DETECTED,
+                        estimatedWeightGrams = stamped.estimatedWeightGrams,
                     ),
                 )
                 // Real-time streaming (spec system 3): flush immediately on

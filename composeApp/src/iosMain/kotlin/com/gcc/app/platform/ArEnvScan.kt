@@ -264,6 +264,20 @@ actual class ArEnvScanOverlay actual constructor() {
     private var ceilingListener: ((Boolean) -> Unit)? = null
     private var coverageHitListener: ((List<RaycastCoverageHit>) -> Unit)? = null
 
+    // Ground-candidate flow (Task 6): LiDAR anomaly packets -> tracker
+    // lifecycle -> native reticle pool. Native-surface only; var (not val)
+    // so [stop] can retire this session's tracker instead of letting a
+    // torn-down session's PROPOSED/SCANNING backlog bleed into whatever
+    // reuses this overlay instance next.
+    private var groundCandidateTracker = GroundCandidateTracker(nowMs = { Clock.System.now().toEpochMilliseconds() })
+    // Latest known geometry per non-terminal candidate id -- activeScanning()
+    // only returns (id, progress), so reticle placement needs this side
+    // table, keyed off the same packets fed to [groundCandidateTracker].ingest.
+    private val groundCandidatePackets = mutableMapOf<Long, GroundCandidatePacket>()
+    private var groundCandidateCompletedListener: (
+        (lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit
+    )? = null
+
     private var floorGridTexture: UIImage? = null
 
     /**
@@ -471,6 +485,14 @@ actual class ArEnvScanOverlay actual constructor() {
         floorMaxX = null
         floorMinZ = null
         floorMaxZ = null
+        // Ground-candidate flow (Task 6): retire this session's tracker/
+        // side-table/listener rather than leaving a PROPOSED/SCANNING
+        // backlog (and a stale consumer callback) live for whatever reuses
+        // this overlay instance next. The native reticle pool itself is
+        // already fully released by [nativeSurface]?.teardown() above.
+        groundCandidateTracker = GroundCandidateTracker(nowMs = { Clock.System.now().toEpochMilliseconds() })
+        groundCandidatePackets.clear()
+        groundCandidateCompletedListener = null
         _multiItemReticles.value = emptyList()
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
@@ -629,12 +651,21 @@ actual class ArEnvScanOverlay actual constructor() {
      * signal that a following tap is expected to supersede anyway.
      */
     actual fun focusAt(x: Float, y: Float) {
+        // Tap telemetry at the source (t2-task-1): emit BEFORE the early
+        // return below so EVERY screen tap is visible to the flight
+        // recorder, not just the ones that reach the tap-candidate state
+        // machine — the old LaunchedEffect(tapCandidate.phase) approach in
+        // SpotScreen missed the transient LOCATING phase on Compose
+        // snapshot conflation and never fired at all on this early-return
+        // path (2026-07-13 field walk: tap_count = 0 despite repeated taps).
+        val suppressed = _trashCandidate.value != null
+        ScanSessionTelemetry.active?.tap(state = if (suppressed) "suppressed" else null)
         // I1: a tap while the whole-frame lock-on confirm card is up must
         // not advance the (hidden, since trashCandidate != null suppresses
         // the pill in SpotScreen) tap state machine — otherwise it can reach
         // AWAITING_CONFIRMATION invisibly and surface a stale pill the
         // instant the confirm card is dismissed/confirmed.
-        if (_trashCandidate.value != null) return
+        if (suppressed) return
         pendingFocusTap = x.toDouble() to y.toDouble()
         _tapCandidate.update { it.reduce(TapEvent.Tapped(x, y)) }
     }
@@ -673,6 +704,25 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
         classifyTappedRegion(frame, imageX, imageY)
+
+        // Ground-candidate tap-adoption (Task 6): user intent is
+        // authoritative -- a tap within adoptTap's 1m gate promotes the
+        // nearest non-terminal ground candidate straight to SCANNING, on top
+        // of (and independent of) the tap-pill flow above. adoptTap can also
+        // re-select an already-SCANNING candidate (a repeat tap near it),
+        // which must NOT re-emit an "accepted" event -- only ids that were
+        // outside [scanningBeforeTap] just now made a genuine
+        // PROPOSED -> SCANNING transition.
+        val scanningBeforeTap = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
+        groundCandidateTracker.adoptTap(hit.x, hit.y, hit.z)?.let { adoptedId ->
+            if (adoptedId !in scanningBeforeTap) {
+                ScanSessionTelemetry.active?.detection(
+                    label = null, confidence = null,
+                    distanceM = groundCandidatePackets[adoptedId]?.distanceM?.toDouble(),
+                    source = "tap", outcome = "accepted",
+                )
+            }
+        }
     }
 
     /**
@@ -729,6 +779,12 @@ actual class ArEnvScanOverlay actual constructor() {
         )?,
     ) {
         elementObservedListener = listener
+    }
+
+    actual fun setGroundCandidateCompletedListener(
+        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+    ) {
+        groundCandidateCompletedListener = listener
     }
 
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {
@@ -887,8 +943,180 @@ actual class ArEnvScanOverlay actual constructor() {
         // saliency, trash/element detection, or candidate promotion below.
         if (!analysisEnabled) return false
 
+        // Ground-candidate flow (Task 6): LiDAR-only, native-surface only —
+        // see [driveGroundCandidates]. Placed here, not earlier alongside the
+        // capture/diag drains: thermal < 2 (checked above) AND analysisEnabled
+        // (checked just above, same gate [analyzeTrash] below observes) both
+        // hold at this point — a privacy/outdoor-gate pause of frame sampling
+        // must stop the classification-crop Vision work this does exactly
+        // like it stops [analyzeTrash]'s, not just on the fast path but also
+        // on a labels-only vote-due tick, which is otherwise allowed past the
+        // EARLIER `!analysisEnabled && !voteDue` guard. The detector itself
+        // also thermal-gates Swift-side — skipping the whole flow above
+        // thermal 2 is cheap belt-and-suspenders insurance regardless.
+        if (native != null) {
+            driveGroundCandidates(native, Clock.System.now().toEpochMilliseconds())
+        }
+
         analyzeTrash(frame, native, commonObs, saliencyRequest)
         return false
+    }
+
+    /**
+     * Ground-candidate flow (Task 6): drains Swift's LiDAR ground-anomaly
+     * packets into [groundCandidateTracker], spends up to 2 classification
+     * requests per tick resolving unclassified candidates
+     * ([GroundCandidateTracker.candidatesAwaitingClassification] already caps
+     * this — PROPOSED first, then any dwell/tap-promoted SCANNING candidate
+     * that was never vetted), folds in this tick's dwell gaze, and mirrors
+     * the tracker's SCANNING/COMPLETED/TIMED_OUT state onto the native
+     * reticle pool. Tap-adoption (the tracker's 4th input) is wired
+     * separately in [processPendingFocusTap] — it fires off the tap itself,
+     * at the START of the tick, not here.
+     *
+     * Every detection event this emits fires at most once per candidate
+     * lifecycle transition. Classification's accept/exclude diffs
+     * [GroundCandidateTracker.activeScanning] before the loop
+     * (`scanningBeforeClassify`) so it can tell the two candidatesAwaitingClassification
+     * cases apart: an id NOT in that set is a genuine PROPOSED -> SCANNING
+     * (or -> EXCLUDED) transition happening right now and gets an "accepted"/
+     * "excluded:<label>" event; an id already IN that set is a dwell/tap-
+     * promoted candidate that already emitted "accepted" (source=dwell/tap)
+     * when IT transitioned earlier — classifying it now only types it (no
+     * second "accepted") on a non-exclusion result, or retro-excludes it
+     * (still emits "excluded:<label>" — that transition is new) and clears
+     * its now-dead reticle via [ArNativeSurface.clearScanReticle], since it
+     * had an active one (see `activeScanning` guaranteeing EXCLUDED ids are
+     * never returned, mirrored the same way [timedOut] ids are cleared just
+     * below in step 5). The dwell-accept diff below repeats the same
+     * before/after pattern for its own bucket of ids; timeout and completion
+     * are each terminal, emit-once transitions per the tracker's own
+     * contract.
+     */
+    private fun driveGroundCandidates(native: ArNativeSurface, nowMs: Long) {
+        // Step 1: ingest this tick's LiDAR anomaly packets. groundCandidatePackets
+        // mirrors the latest geometry for every id fed to the tracker — see its
+        // field kdoc for why: activeScanning() only returns (id, progress).
+        val packets = native.drainGroundCandidates().mapNotNull(::parseGroundCandidatePacket)
+        for (packet in packets) groundCandidatePackets[packet.id] = packet
+        groundCandidateTracker.ingest(packets)
+
+        // Step 2: classify up to 2 unclassified candidates this tick (PROPOSED,
+        // or a dwell/tap-promoted SCANNING candidate still awaiting vetting).
+        val scanningBeforeClassify = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
+        for (candidate in groundCandidateTracker.candidatesAwaitingClassification()) {
+            val alreadyScanning = candidate.id in scanningBeforeClassify
+            val labels = parseSceneLabels(
+                native.classifyRegionLabels(
+                    candidate.imageCx, candidate.imageCy,
+                    candidate.imageHalfW * 1.15, candidate.imageHalfH * 1.15,
+                )
+            )
+            val exclusionLabel = GroundExclusionRules.exclusionLabelFrom(labels)
+            val trashType = GroundExclusionRules.trashTypeFrom(labels)
+            groundCandidateTracker.recordClassification(candidate.id, exclusionLabel, trashType)
+            if (exclusionLabel != null) {
+                // Silent, terminal — no caption either way. A PROPOSED id
+                // never had a reticle; a dwell/tap-promoted (already-SCANNING)
+                // id did, and this retro-exclude just killed it — clear it
+                // explicitly, since activeScanning() will simply stop
+                // reporting the id rather than signal the transition.
+                groundCandidatePackets.remove(candidate.id)
+                if (alreadyScanning) native.clearScanReticle(candidate.id)
+                ScanSessionTelemetry.active?.detection(
+                    label = exclusionLabel, confidence = null, distanceM = candidate.distanceM.toDouble(),
+                    source = "geometry", outcome = "excluded:$exclusionLabel",
+                )
+            } else if (!alreadyScanning) {
+                // Only a genuine PROPOSED -> SCANNING transition is a fresh
+                // acceptance; a dwell/tap-promoted candidate already emitted
+                // "accepted" (source=dwell/tap) when IT transitioned — this
+                // call just types it.
+                ScanSessionTelemetry.active?.detection(
+                    label = trashType ?: UNKNOWN_LITTER_LABEL, confidence = null,
+                    distanceM = candidate.distanceM.toDouble(),
+                    source = "geometry", outcome = "accepted",
+                )
+            }
+        }
+
+        // Step 3: dwell. Camera pose is required for both the gaze gate and
+        // the angle-bucket accrual — skip the frame entirely (rather than
+        // faking a position) when no camera frame exists yet.
+        val camPos = native.cameraPosition()
+        if (camPos != null) {
+            val scanningBeforeDwell = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
+            groundCandidateTracker.recordDwell(
+                cameraPos = floatArrayOf(camPos[0].toFloat(), camPos[1].toFloat(), camPos[2].toFloat()),
+                cameraForward = native.cameraForward().toFloatArray(),
+                frameNowMs = nowMs,
+            )
+            for ((id, _) in groundCandidateTracker.activeScanning()) {
+                if (id in scanningBeforeDwell) continue // already SCANNING before this call — not a new promotion.
+                ScanSessionTelemetry.active?.detection(
+                    label = null, confidence = null,
+                    distanceM = groundCandidatePackets[id]?.distanceM?.toDouble(),
+                    source = "dwell", outcome = "accepted",
+                )
+            }
+        }
+
+        // Step 5: render. Ids that COMPLETE or TIME OUT this call must stop
+        // streaming to setScanReticle in this SAME tick (ArNativeSurface's
+        // setScanReticle contract) — activeScanning() only reports ids still
+        // SCANNING as of this call, so a just-completed/just-timed-out id
+        // never reaches the loop below.
+        groundCandidateTracker.activeScanning().forEach { (id, progress) ->
+            val packet = groundCandidatePackets[id] ?: return@forEach
+            native.setScanReticle(id, packet.x, packet.y, packet.z, progress)
+        }
+        groundCandidateTracker.timedOut().forEach { id ->
+            native.clearScanReticle(id)
+            val packet = groundCandidatePackets.remove(id)
+            ScanSessionTelemetry.active?.detection(
+                label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
+                source = "geometry", outcome = "timeout",
+            )
+        }
+        groundCandidateTracker.completedCandidates().forEach { completed ->
+            groundCandidatePackets.remove(completed.id)
+            native.completeScanReticle(completed.id)
+            val listener = groundCandidateCompletedListener
+            if (listener != null) {
+                // Same conversion the element-registration path uses
+                // (registerElementIfAny below) -- GroundCandidateTracker
+                // itself stays platform/geo-free, so the AR-local x/z ->
+                // lat/lng resolution happens here, at the listener
+                // invocation site, against the session's live geo
+                // reference. Drop (never fire) if no geo-ref is paired yet
+                // or the resolved coordinate is non-finite (same finiteness
+                // gate registerElementIfAny applies) -- an unresolvable
+                // position can't be filed as a world observation.
+                val latLng = localToLatLng(completed.x, completed.z)
+                if (latLng != null && latLng.first.isFinite() && latLng.second.isFinite()) {
+                    val (lat, lng) = latLng
+                    // Best-effort completion photo (spec item photo): the
+                    // same silent captureFrame seam CameraManager's external
+                    // frame source rides. Captured off the tick loop; a
+                    // failed/timed-out grab degrades to a null photo, never
+                    // blocks or drops the item itself.
+                    scope.launch {
+                        val photoBytes = try {
+                            captureFrame()?.bytes?.takeIf { it.isNotEmpty() }
+                        } catch (e: Throwable) {
+                            DiagnosticsLog.error("env-ar", "completion photo captureFrame failed (item kept, no photo)", e)
+                            null
+                        }
+                        dispatch_async(dispatch_get_main_queue()) { listener(lat, lng, photoBytes, completed) }
+                    }
+                } else {
+                    DiagnosticsLog.info(
+                        "env-ar",
+                        "ground candidate ${completed.id} (${completed.itemType}) completed with no usable geo-ref -- dropped",
+                    )
+                }
+            }
+        }
     }
 
     /**

@@ -13,6 +13,7 @@
 		7C0DDE11AA24E70190CCA011 /* GccArNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0DDE22AA24E70190CCA022 /* GccArNative.swift */; };
 		8D1EEF11BB35F80201DDB011 /* ObjectCapturePhotogrammetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1EEF22BB35F80201DDB022 /* ObjectCapturePhotogrammetry.swift */; };
 		9B394AFAF97842079AD45E20 /* CrashDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E5D06565BFCF8AAE37CEEC /* CrashDiagnostics.swift */; };
+		1C2D3E4F5A6B7C8D9E0F1A2B /* GroundAnomalyDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */; };
 		AAAA000100010001 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA000100010002 /* MapLibre */; };
 		BBBB000100010001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBBB000100010002 /* Assets.xcassets */; };
 		DDDD000100010001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DDDD000100010002 /* PrivacyInfo.xcprivacy */; };
@@ -28,6 +29,7 @@
 		7C0DDE22AA24E70190CCA022 /* GccArNative.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GccArNative.swift; sourceTree = "<group>"; };
 		8D1EEF22BB35F80201DDB022 /* ObjectCapturePhotogrammetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ObjectCapturePhotogrammetry.swift; sourceTree = "<group>"; };
 		A6E5D06565BFCF8AAE37CEEC /* CrashDiagnostics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CrashDiagnostics.swift; sourceTree = "<group>"; };
+		1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GroundAnomalyDetector.swift; sourceTree = "<group>"; };
 		BBBB000100010002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CCCC000100010001 /* iosApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iosApp.entitlements; sourceTree = "<group>"; };
 		DDDD000100010002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				A6E5D06565BFCF8AAE37CEEC /* CrashDiagnostics.swift */,
 				7C0DDE22AA24E70190CCA022 /* GccArNative.swift */,
 				8D1EEF22BB35F80201DDB022 /* ObjectCapturePhotogrammetry.swift */,
+				1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -195,6 +198,7 @@
 				9B394AFAF97842079AD45E20 /* CrashDiagnostics.swift in Sources */,
 				7C0DDE11AA24E70190CCA011 /* GccArNative.swift in Sources */,
 				8D1EEF11BB35F80201DDB011 /* ObjectCapturePhotogrammetry.swift in Sources */,
+				1C2D3E4F5A6B7C8D9E0F1A2B /* GroundAnomalyDetector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

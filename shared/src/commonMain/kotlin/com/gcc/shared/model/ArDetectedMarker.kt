@@ -16,6 +16,10 @@ data class ArDetectedMarkerRequest(
     /** "auto_detected" | "user_confirmed" | "user_rejected". Defaults to
      *  auto_detected so a marker from an older client decodes unchanged. */
     val provenance: String = "auto_detected",
+    /** LiDAR-size-derived mass estimate (see [LitterWeightEstimator]); the
+     *  server already records this into world_observations.attributes when
+     *  present. Null on older clients/legacy payloads. */
+    val estimatedWeightGrams: Int? = null,
 )
 
 @Serializable

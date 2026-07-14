@@ -79,8 +79,14 @@ class SessionEventLog(
         record(ScanSessionEvent(t = elapsed(), type = "caption", msg = text))
     }
 
-    /** A screen tap seeking a litter candidate (Option A tap authority). */
-    fun tap() = record(ScanSessionEvent(t = elapsed(), type = "tap"))
+    /**
+     * A screen tap seeking a litter candidate (Option A tap authority),
+     * emitted at the source ([ArEnvScanOverlay.focusAt]) so EVERY tap is
+     * visible — [state] = "suppressed" when the auto-lock confirm card was
+     * already up (the tap never reaches the tap-candidate state machine),
+     * null for a tap that proceeds normally.
+     */
+    fun tap(state: String? = null) = record(ScanSessionEvent(t = elapsed(), type = "tap", state = state))
 
     /** Tap-candidate pill phase transition; consecutive duplicates collapse. */
     fun pillPhase(phase: String, label: String? = null, confidence: Float? = null, distanceM: Double? = null) {
@@ -98,9 +104,25 @@ class SessionEventLog(
 
     fun reject(label: String?) = record(ScanSessionEvent(t = elapsed(), type = "reject", label = label))
 
-    /** Auto-detection surfaced to the worker (reticle/observation). */
-    fun detection(label: String?, confidence: Float?, distanceM: Double?) =
-        record(ScanSessionEvent(t = elapsed(), type = "detection", label = label, confidence = confidence, distanceM = distanceM))
+    /**
+     * Ground-candidate classification surfaced to the worker
+     * (reticle/observation). [source] identifies which intent path produced
+     * it (geometry/dwell/tap/vision); [outcome] is the verdict
+     * (accepted/excluded:<label>/timeout).
+     */
+    fun detection(
+        label: String?,
+        confidence: Float?,
+        distanceM: Double?,
+        source: String? = null,
+        outcome: String? = null,
+    ) = record(
+        ScanSessionEvent(
+            t = elapsed(), type = "detection",
+            label = label, confidence = confidence, distanceM = distanceM,
+            source = source, outcome = outcome,
+        )
+    )
 
     /** Outdoor-gate state change; [cause] explains WHY (scene votes, ceiling plane, override…). */
     fun gate(state: String, cause: String? = null) =
