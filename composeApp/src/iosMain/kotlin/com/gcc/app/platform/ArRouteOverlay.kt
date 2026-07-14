@@ -232,6 +232,9 @@ actual class ArRouteOverlay actual constructor() {
                         }
                     }
                 }
+                nativeSurface?.let { surface ->
+                    forwardCaptureDiagnostics(surface.drainCaptureDiagnostics())
+                }
                 if (!hasGeoRef) continue
                 val listenerNow = coverageHitListener ?: continue
                 val frame = if (nativeSurface == null) sceneView?.session?.currentFrame else null

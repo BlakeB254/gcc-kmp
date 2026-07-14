@@ -787,6 +787,7 @@ actual class ArEnvScanOverlay actual constructor() {
                 val packets = native.drainFinishedCaptureChunks()
                 if (packets.isNotEmpty()) listener(packets)
             }
+            forwardCaptureDiagnostics(native.drainCaptureDiagnostics())
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }

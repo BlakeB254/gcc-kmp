@@ -181,6 +181,11 @@ interface ArNativeSurface {
 
     /** Pause/resume capture without teardown (outdoor-gate driven). */
     fun setCaptureEnabled(enabled: Boolean)
+
+    /** Capture-layer diagnostics queued Swift-side ("LEVEL|tag|message");
+     *  drained per tick and forwarded into DiagnosticsLog so they reach the
+     *  session flight recorder. Default: surfaces without a recorder. */
+    fun drainCaptureDiagnostics(): List<String> = emptyList()
 }
 
 /**
@@ -222,4 +227,17 @@ internal fun parseCaptureChunkPacket(packet: String): CaptureChunkInfo? {
     val index = parts[0].toLongOrNull() ?: return null
     val sizeBytes = parts[3].toLongOrNull() ?: return null
     return CaptureChunkInfo(index = index, kind = parts[1], filePath = parts[2], sizeBytes = sizeBytes)
+}
+
+/** Forwards Swift's `"LEVEL|tag|message"` capture-diagnostic packets (see
+ *  [ArNativeSurface.drainCaptureDiagnostics]) into [DiagnosticsLog] so they
+ *  reach the session flight recorder's events.jsonl. Malformed entries are
+ *  dropped rather than thrown. */
+internal fun forwardCaptureDiagnostics(packets: List<String>) {
+    for (packet in packets) {
+        val parts = packet.split('|', limit = 3)
+        if (parts.size != 3) continue
+        if (parts[0] == "ERROR") DiagnosticsLog.error(parts[1], parts[2])
+        else DiagnosticsLog.info(parts[1], parts[2])
+    }
 }

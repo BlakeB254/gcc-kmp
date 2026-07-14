@@ -606,6 +606,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         recorder?.drainFinishedChunks() ?? []
     }
 
+    func drainCaptureDiagnostics() -> [String] {
+        recorder?.drainDiagnostics() ?? []
+    }
+
     func discardCurrentCaptureChunk() {
         recorder?.discardCurrentChunk()
     }

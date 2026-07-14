@@ -88,6 +88,30 @@ final class ArSessionRecorder {
     private let finishedLock = NSLock()
     private var finishedChunks: [String] = []
 
+    // MARK: - Capture diagnostics for the Kotlin flight recorder (diagLock)
+    // Swift NSLog never reaches events.jsonl; Kotlin drains these per tick.
+    private let diagLock = NSLock()
+    private var pendingDiagnostics: [String] = []
+
+    /// Thread-safe from any lane. Packet: "LEVEL|tag|message" (pipes in the
+    /// message are flattened). Bounded so a pathological loop can't grow it.
+    func enqueueDiagnostic(level: String, tag: String, message: String) {
+        let flat = message.replacingOccurrences(of: "|", with: "/")
+        diagLock.lock()
+        if pendingDiagnostics.count < 64 {
+            pendingDiagnostics.append("\(level)|\(tag)|\(flat)")
+        }
+        diagLock.unlock()
+    }
+
+    func drainDiagnostics() -> [String] {
+        diagLock.lock()
+        defer { diagLock.unlock() }
+        let drained = pendingDiagnostics
+        pendingDiagnostics.removeAll()
+        return drained
+    }
+
     // MARK: - Serial-queue-confined state
 
     private let queue = DispatchQueue(label: "gcc.capture.recorder", qos: .utility)
@@ -111,6 +135,7 @@ final class ArSessionRecorder {
     private var videoSampleCount = 0
     private var lastVideoTime: TimeInterval = -.greatestFiniteMagnitude
     private var sizeCheckCountdown = ArSessionRecorder.sizeCheckEvery
+    private var writerErrorCount = 0
 
     /// Delegate-thread-only (append is always the ARSession delegate thread).
     private var lastDepthTime: TimeInterval = -.greatestFiniteMagnitude
@@ -128,6 +153,7 @@ final class ArSessionRecorder {
                 NSLog("GCC-DIAG [capture] start ignored — already capturing")
                 return
             }
+            resetWriterStack(context: "session start")
             let dir = URL(fileURLWithPath: outputDirPath, isDirectory: true)
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -314,6 +340,7 @@ final class ArSessionRecorder {
     /// chunk recorded entirely under `.serious` thermal is sidecar-only and
     /// must not leave an empty .mov behind.
     private func startChunk(at time: TimeInterval, sourceWidth: Int, sourceHeight: Int) {
+        resetWriterStack(context: "chunk \(chunkIndex) start")
         guard let outputDir else { return }
         let base = String(format: "chunk-%03d", chunkIndex)
         let vURL = outputDir.appendingPathComponent(base + ".mov")
@@ -379,6 +406,22 @@ final class ArSessionRecorder {
     }
 
     private func appendVideo(_ buffer: CVPixelBuffer, time: TimeInterval, sourceWidth: Int, sourceHeight: Int) {
+        if let existing = writer, Self.writerIsDead(existing.status) {
+            if existing.status == .failed {
+                failCapture("writer failed: \(String(describing: existing.error))")
+                return
+            }
+            // .completed/.cancelled writer left behind: recreate mid-chunk
+            // instead of silently dropping every remaining frame.
+            NSLog("GCC-DIAG ERR [capture] dead video writer (status=%d) — recreating",
+                  existing.status.rawValue)
+            enqueueDiagnostic(level: "ERROR", tag: "capture",
+                              message: "dead video writer (status=\(existing.status.rawValue)) — recreated mid-chunk")
+            noteWriterError()
+            writer = nil
+            writerInput = nil
+            adaptor = nil
+        }
         if writer == nil {
             createWriter(sourceWidth: sourceWidth, sourceHeight: sourceHeight, firstTime: time)
         }
@@ -449,6 +492,38 @@ final class ArSessionRecorder {
             failCapture("writer init failed: \(error)")
         }
     }
+
+    /// A writer in a terminal state can never accept another sample —
+    /// .completed/.cancelled/.failed writers must be discarded, not retried.
+    /// (.unknown never occurs here: createWriter calls startWriting()
+    /// immediately; kept in the dead set defensively.)
+    static func writerIsDead(_ status: AVAssetWriter.Status) -> Bool {
+        switch status {
+        case .writing: return false
+        default: return true
+        }
+    }
+
+    /// Serial-queue only. Drop any surviving writer stack. A stale writer
+    /// outside a chunk boundary is always a bug (the chunk-0 regression):
+    /// log loudly so the flight recorder's diag tail carries the evidence.
+    private func resetWriterStack(context: String) {
+        guard writer != nil || writerInput != nil || adaptor != nil else { return }
+        NSLog("GCC-DIAG ERR [capture] stale video writer at %@ — cancelled (status=%d)",
+              context, writer?.status.rawValue ?? -1)
+        enqueueDiagnostic(level: "ERROR", tag: "capture",
+                          message: "stale video writer at \(context) — cancelled")
+        noteWriterError()
+        if let writer, writer.status == .writing { writer.cancelWriting() }
+        writer = nil
+        writerInput = nil
+        adaptor = nil
+        videoURL = nil
+    }
+
+    /// Counter seam: Task 5 (captureHealth) accumulates this into the
+    /// manifest; until then it only exists so call sites don't change later.
+    private func noteWriterError() { writerErrorCount += 1 }
 
     /// Long edge `targetLongEdge`, aspect preserved, even dimensions (encoder
     /// requirement). Never upscales a smaller source.
@@ -585,6 +660,7 @@ final class ArSessionRecorder {
     /// drainable; the scan itself never notices.
     private func failCapture(_ reason: String) {
         NSLog("GCC-DIAG ERR [capture] %@ — capture disabled for this session", reason)
+        enqueueDiagnostic(level: "ERROR", tag: "capture", message: reason)
         stateLock.lock()
         failed = true
         stateLock.unlock()
