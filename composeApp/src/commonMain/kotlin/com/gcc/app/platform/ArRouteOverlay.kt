@@ -24,10 +24,18 @@ expect class ArRouteOverlay() {
      * Returns the recorded pairing (both clocks + both coordinate frames) so
      * the caller can persist it into the lap's session manifest — the DGX
      * splat pipeline registers the lap's pose stream into the world splat
-     * layer with these (see [com.gcc.shared.model.GeoRefEvent]). Null when no
-     * AR camera frame exists yet.
+     * layer with these (see [com.gcc.shared.model.GeoRefEvent]). [headingDegrees]
+     * and [headingAccuracyDegrees] are the device compass reading at the same
+     * instant, carried through onto the returned event. Null when no AR
+     * camera frame exists yet.
      */
-    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null): com.gcc.shared.model.GeoRefEvent?
+    fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double? = null,
+        headingDegrees: Double? = null,
+        headingAccuracyDegrees: Double? = null,
+    ): com.gcc.shared.model.GeoRefEvent?
 
     /**
      * Geographic origin of the CoverageTracker cell lattice. The AR ground
@@ -107,9 +115,11 @@ expect class ArRouteOverlay() {
     fun startCapture(sessionId: String): Boolean
 
     /** Stop capture, finalize the in-progress chunk, book every not-yet-
-     *  drained chunk for upload, and return them. Call BEFORE the lap
+     *  drained chunk for upload, and return them alongside the session's
+     *  captureHealth JSON (splat-capture reliability spec, Task 5) — null
+     *  off-iOS/no recorder/capture never started. Call BEFORE the lap
      *  manifest is built so chunk keys can ride it. */
-    fun stopCapture(): List<CaptureChunkInfo>
+    fun stopCapture(): Pair<List<CaptureChunkInfo>, String?>
 
     /** Privacy path (INDOOR gate flip): delete the in-progress chunk's files
      *  entirely (≤60s over-purge, deliberate). */

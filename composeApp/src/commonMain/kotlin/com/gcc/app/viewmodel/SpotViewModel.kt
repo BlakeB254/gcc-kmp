@@ -29,6 +29,7 @@ import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.serialization.GccJson
 import kotlinx.datetime.Clock
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -469,6 +470,12 @@ class SpotViewModel(
     /** The session snapshot travelling with the next successful submission. */
     private var pendingSessionDraft: EnvScanSessionDraft? = null
 
+    /** The captureHealth JSON (Task 5) travelling alongside [pendingSessionDraft]
+     *  — set once at [completeScan] time, read by every [uploadEnvScanSession]
+     *  call site that consumes the pending draft. Null off-iOS/no capture/
+     *  failure. */
+    private var pendingCaptureHealthJson: String? = null
+
     /** Session ids whose manifest already shipped — a submit retry after a
      *  409/failure archive must not double-archive the same session. */
     private val archivedSessionIds = mutableSetOf<String>()
@@ -543,7 +550,7 @@ class SpotViewModel(
         }
     }
 
-    fun completeScan(sessionDraft: EnvScanSessionDraft? = null) {
+    fun completeScan(sessionDraft: EnvScanSessionDraft? = null, captureHealthJson: String? = null) {
         val state = _uiState.value
         if (state.phase != SpotPhase.CAMERA) return
         // A scan is a COVERAGE act, not an incident report: every location is
@@ -565,7 +572,7 @@ class SpotViewModel(
                 "Complete Scan: coverage-only session (${state.capturedPhotos.size} photo(s), " +
                     "litterEvidence=$litterEvidence) — archiving, no incident report",
             )
-            sessionDraft?.let { uploadEnvScanSession(it, reportId = null) }
+            sessionDraft?.let { uploadEnvScanSession(it, reportId = null, captureHealthJson = captureHealthJson) }
             if (sessionDraft != null && sessionDraft.scannedCells.isNotEmpty()) {
                 // Ground WAS covered — show the session-complete summary
                 // with the shaded coverage map instead of silently dropping
@@ -603,6 +610,7 @@ class SpotViewModel(
             return
         }
         pendingSessionDraft = sessionDraft
+        pendingCaptureHealthJson = captureHealthJson
         DiagnosticsLog.info(
             "spot-submit",
             "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s) + litter evidence — filing report",
@@ -617,7 +625,7 @@ class SpotViewModel(
      * tagged items. Fire-and-forget after the report submits — a 501 means R2
      * env vars aren't provisioned yet, which is expected and only logged.
      */
-    private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int?) {
+    private fun uploadEnvScanSession(draft: EnvScanSessionDraft, reportId: Int?, captureHealthJson: String? = null) {
         if (!archivedSessionIds.add(draft.sessionId)) return
         val state = _uiState.value
         // I4: rejectedItems/multiItemPhotoIndices are mutable session-scoped
@@ -690,13 +698,28 @@ class SpotViewModel(
                     emptyList()
                 }
 
+                val completedAtMs = Clock.System.now().toEpochMilliseconds()
+                // Splat-capture reliability spec, Task 5: the native health
+                // JSON carries everything except sessionSeconds, which only
+                // Kotlin can compute (it needs both manifest timestamps).
+                // Decode failures (malformed JSON, off-iOS null) drop the
+                // whole block rather than ship a garbage partial summary.
+                val captureHealth = captureHealthJson?.let { json ->
+                    runCatching { GccJson.decodeFromString(CaptureHealth.serializer(), json) }
+                        .onFailure { e ->
+                            DiagnosticsLog.error("env-capture", "captureHealth decode failed (manifest continues without)", e)
+                        }
+                        .getOrNull()
+                        ?.copy(sessionSeconds = (completedAtMs - draft.startedAtMs) / 1000.0)
+                }
+
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,
                     deviceId = deviceId,
                     deviceModel = com.gcc.app.platform.getDeviceModel(),
                     osVersion = com.gcc.app.platform.getOsVersion(),
                     startedAtMs = draft.startedAtMs,
-                    completedAtMs = Clock.System.now().toEpochMilliseconds(),
+                    completedAtMs = completedAtMs,
                     path = draft.path,
                     scannedCells = draft.scannedCells,
                     scannedCellSizeMeters = 3.0,
@@ -706,7 +729,8 @@ class SpotViewModel(
                     objectCapture = state.objectCapture,
                     gateEvents = draft.gateEvents,
                     captureChunks = captureChunkKeys.ifEmpty { null },
-                    captureSchema = if (captureChunkKeys.isNotEmpty()) 2 else null,
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 3 else null,
+                    captureHealth = captureHealth,
                     // World-splat registration (DGX): AR↔world pairings +
                     // the AR axes convention the pose sidecar uses.
                     geoRefEvents = draft.geoRefEvents.ifEmpty { null },
@@ -909,7 +933,7 @@ class SpotViewModel(
                     // cells, items) so no completed scan ever vanishes.
                     pendingSessionDraft?.let { draft ->
                         pendingSessionDraft = null
-                        uploadEnvScanSession(draft, reportId = null)
+                        uploadEnvScanSession(draft, reportId = null, captureHealthJson = pendingCaptureHealthJson)
                     }
                     // World-scan model: failures land back on the camera, not
                     // the legacy manual-details forms.
@@ -945,7 +969,7 @@ class SpotViewModel(
                 // One session = one capture: archive the full bundle to R2.
                 pendingSessionDraft?.let { draft ->
                     pendingSessionDraft = null
-                    uploadEnvScanSession(draft, rewardedReport.id)
+                    uploadEnvScanSession(draft, rewardedReport.id, captureHealthJson = pendingCaptureHealthJson)
                 }
             } catch (e: Exception) {
                 DiagnosticsLog.error("spot-submit", "report submission failed", e)
@@ -954,7 +978,9 @@ class SpotViewModel(
                 // session (geo/heading/timestamps) reaches the backend either
                 // way. A retry that later succeeds skips the re-archive via
                 // archivedSessionIds.
-                pendingSessionDraft?.let { draft -> uploadEnvScanSession(draft, reportId = null) }
+                pendingSessionDraft?.let { draft ->
+                    uploadEnvScanSession(draft, reportId = null, captureHealthJson = pendingCaptureHealthJson)
+                }
                 // Back to the camera with the error surfaced as a popup —
                 // Complete Scan can simply be tapped again.
                 _uiState.value = _uiState.value.copy(
@@ -1066,6 +1092,7 @@ class SpotViewModel(
         rejectedItems.clear()
         multiItemPhotoIndices.clear()
         pendingSessionDraft = null
+        pendingCaptureHealthJson = null
         archivedSessionIds.clear()
     }
 

@@ -35,6 +35,10 @@ class SessionSplatResult:
     splat_bytes: bytes | None  # None when this session didn't have enough frames
     skip_reason: str | None = None
     aligned: bool = False      # sim3 into the ARKit frame succeeded
+    # Usable posed frames this session contributed, set on every return path
+    # -- lets train_splat_for_cell classify a whole-cell miss (see
+    # splat_outcome.py's vocabulary) without re-deriving frame counts.
+    frames_gathered: int = 0
 
 
 def gather_session_frames(
@@ -95,12 +99,12 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
     session_id = session_manifest.get("sessionId", "unknown")
     frames, arkit_positions = gather_session_frames(session_manifest)
     if len(frames) < MIN_FRAMES_PER_SESSION:
-        return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=f"only {len(frames)} usable frames (need {MIN_FRAMES_PER_SESSION}+)")
+        return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=f"only {len(frames)} usable frames (need {MIN_FRAMES_PER_SESSION}+)", frames_gathered=len(frames))
 
     try:
         splat_bytes, wm_cameras = world_mirror_client.reconstruct_session(frames, base_url=world_mirror_base_url)
     except world_mirror_client.WorldMirrorError as e:
-        return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=str(e))
+        return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=str(e), frames_gathered=len(frames))
 
     # Sim3-align world-mirror's arbitrary frame/scale to the ARKit session
     # frame (gravity-aligned Y-up, metric) by fitting its camera centers to
@@ -157,14 +161,14 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
             print(f"splat_train: {session_id} sim3 [{convention}] scale={s:.3f} "
                   f"rms={rms:.2f}m ({n_used}/{len(wm_cameras)} cams, gate {gate:.2f}m)")
             splat_bytes = sim3_transform_gaussian_ply_bytes(splat_bytes, s, R, t)
-            return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes, aligned=True)
+            return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes, aligned=True, frames_gathered=len(frames))
         elif best:
             print(f"splat_train: {session_id} sim3 fit rejected (rms={best[4]:.2f}m > gate {gate:.2f}m) -- splat left in world-mirror frame")
         else:
             print(f"splat_train: {session_id} sim3 fit failed -- splat left in world-mirror frame")
     else:
         print(f"splat_train: {session_id} no usable camera extrinsics -- splat left in world-mirror frame")
-    return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes)
+    return SessionSplatResult(session_id=session_id, splat_bytes=splat_bytes, frames_gathered=len(frames))
 
 
 def train_splat_for_cell(
@@ -172,19 +176,27 @@ def train_splat_for_cell(
     fusion_result: FusionResult,
     session_manifests_by_id: dict[str, dict],
     world_mirror_base_url: str = world_mirror_client.DEFAULT_BASE_URL,
-) -> bytes | None:
+) -> tuple[bytes | None, str | None]:
     """For every ACCEPTED session (fusion_result.accepted_session_ids), get
     its own world-mirror splat, transform it into the shared cell frame with
-    the exact transform fuse_sessions() already computed, and merge. None if
-    no session produced a usable splat (e.g. world-mirror unreachable, or no
-    session had enough frames -- not fatal to the point-cloud output
-    fuse_cell.py already writes regardless)."""
+    the exact transform fuse_sessions() already computed, and merge. Returns
+    (bytes, None) on success, or (None, reason) if no session produced a
+    usable splat (e.g. world-mirror unreachable, or no session had enough
+    frames -- not fatal to the point-cloud output fuse_cell.py already
+    writes regardless). reason is one of splat_outcome.py's vocabulary,
+    classified from how many usable posed frames were gathered across all
+    attempted sessions: "no-video-frames" (zero), "too-few-frames" (some,
+    but under gsplat's 8-frame bar, kept as the shared threshold across
+    engines), else "training-failed" (frames existed but no session
+    produced a trustworthy, aligned splat)."""
     transformed_splats = []
+    total_frames_gathered = 0
     for session_id in fusion_result.accepted_session_ids:
         manifest = session_manifests_by_id.get(session_id)
         if manifest is None:
             continue
         result = train_splat_for_session(manifest, world_mirror_base_url)
+        total_frames_gathered += result.frames_gathered
         if result.splat_bytes is None:
             print(f"splat_train: session {session_id} skipped -- {result.skip_reason}")
             continue
@@ -198,7 +210,11 @@ def train_splat_for_cell(
         transformed_splats.append(transform_gaussian_ply_bytes(result.splat_bytes, transform))
 
     if not transformed_splats:
-        return None
+        if total_frames_gathered == 0:
+            return None, "no-video-frames"
+        if total_frames_gathered < 8:
+            return None, "too-few-frames"
+        return None, "training-failed"
     if len(transformed_splats) == 1:
-        return transformed_splats[0]
-    return concatenate_gaussian_ply_bytes(transformed_splats)
+        return transformed_splats[0], None
+    return concatenate_gaussian_ply_bytes(transformed_splats), None

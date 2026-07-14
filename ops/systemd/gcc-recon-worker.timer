@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the GCC reconstruction queue drain every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+# A missed window (box asleep, long drain) should fire on wake, not skip.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

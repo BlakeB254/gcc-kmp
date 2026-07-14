@@ -33,6 +33,13 @@ data class SessionRow(
      *  alone null when the artifact wasn't fetchable this sweep. */
     val eventLogR2Key: String? = null,
     val eventMetrics: EventLogMetrics? = null,
+    /** Capture-health headline summary (splat-capture reliability spec,
+     *  migration 0039), extracted from the manifest's `captureHealth` block.
+     *  All null when the session predates capture health or the native
+     *  health JSON failed to decode. */
+    val videoCoveragePct: Double? = null,
+    val maxThermalState: String? = null,
+    val droppedVideoChunks: Int? = null,
 )
 
 /** A row to upsert into `capture_chunks` (one R2 object). */
@@ -88,6 +95,9 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                 ps.setNullableInt(i++, row.eventMetrics?.uploadAttemptCount)
                 ps.setNullableInt(i++, row.eventMetrics?.uploadFailureCount)
                 ps.setNullableInt(i++, row.eventMetrics?.errorCount)
+                ps.setNullableReal(i++, row.videoCoveragePct)
+                ps.setNullableString(i++, row.maxThermalState)
+                ps.setNullableInt(i++, row.droppedVideoChunks)
                 ps.executeUpdate()
             }
         }
@@ -164,6 +174,10 @@ class ScanIndexRepository(private val dataSource: DataSource) {
     private fun java.sql.PreparedStatement.setNullableLong(idx: Int, v: Long?) =
         if (v == null) setNull(idx, Types.BIGINT) else setLong(idx, v)
 
+    /** `real` columns (e.g. video_coverage_pct) are single-precision in Postgres. */
+    private fun java.sql.PreparedStatement.setNullableReal(idx: Int, v: Double?) =
+        if (v == null) setNull(idx, Types.REAL) else setFloat(idx, v.toFloat())
+
     private fun java.sql.PreparedStatement.setNullableTs(idx: Int, ms: Long?) =
         if (ms == null) setNull(idx, Types.TIMESTAMP) else setTimestamp(idx, Timestamp(ms))
 
@@ -176,8 +190,9 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                manifest_r2_key, total_bytes, geo_ref_event_count,
                event_log_r2_key, event_count, gate_flip_count, tap_count, confirm_count,
                reject_count, raycast_miss_count, detection_count, upload_attempt_count,
-               upload_failure_count, error_count, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+               upload_failure_count, error_count,
+               video_coverage_pct, max_thermal_state, dropped_video_chunks, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
             ON CONFLICT (session_id) DO UPDATE SET
                device_id = EXCLUDED.device_id,
                device_model = EXCLUDED.device_model,
@@ -208,6 +223,9 @@ class ScanIndexRepository(private val dataSource: DataSource) {
                upload_attempt_count = COALESCE(EXCLUDED.upload_attempt_count, scan_sessions.upload_attempt_count),
                upload_failure_count = COALESCE(EXCLUDED.upload_failure_count, scan_sessions.upload_failure_count),
                error_count = COALESCE(EXCLUDED.error_count, scan_sessions.error_count),
+               video_coverage_pct = COALESCE(EXCLUDED.video_coverage_pct, scan_sessions.video_coverage_pct),
+               max_thermal_state = COALESCE(EXCLUDED.max_thermal_state, scan_sessions.max_thermal_state),
+               dropped_video_chunks = COALESCE(EXCLUDED.dropped_video_chunks, scan_sessions.dropped_video_chunks),
                indexed_at = now()
         """.trimIndent()
 

@@ -22,6 +22,10 @@ Env:
 Usage:
   python recon_worker.py --once            # process at most one job
   python recon_worker.py --loop [SECONDS]  # poll forever (default 60s idle)
+  python recon_worker.py --drain           # process claimable jobs until the
+                                            # queue is empty, then exit 0
+                                            # (systemd timer mode -- see
+                                            # ops/systemd/gcc-recon-worker.timer)
 """
 from __future__ import annotations
 
@@ -222,9 +226,10 @@ def complete_cell(conn, cell: str, result: FusionResult, assets: list[ProducedAs
                 )
             cur.execute(
                 """UPDATE reconstruction_jobs
-                   SET status='done', completed_at=now(), updated_at=now()
+                   SET status='done', completed_at=now(), updated_at=now(),
+                       splat_skip_reason=%s
                    WHERE location_cell_id=%s AND status IN ('queued', 'leased')""",
-                (cell,),
+                (result.splat_skip_reason, cell),
             )
 
 
@@ -356,6 +361,8 @@ def main() -> None:
     group.add_argument("--once", action="store_true", help="process at most one job, then exit")
     group.add_argument("--loop", nargs="?", const=60, type=int, metavar="SECONDS",
                        help="poll forever, sleeping SECONDS (default 60) when idle")
+    group.add_argument("--drain", action="store_true",
+                       help="process jobs until the queue is empty, then exit (systemd timer mode)")
     args = parser.parse_args()
 
     dsn = os.environ.get("DATABASE_URL")
@@ -366,6 +373,11 @@ def main() -> None:
         if args.once:
             processed = run_once(conn)
             print("queue empty" if not processed else "done")
+            return
+        if args.drain:
+            while run_once(conn):
+                pass
+            print("queue empty, draining done")
             return
         while True:
             if not run_once(conn):

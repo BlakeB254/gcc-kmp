@@ -188,9 +188,10 @@ fun ArRouteScreen(
     // on screen dispose (abandoned lap) so the spool never outlives the screen.
     DisposableEffect(overlay) {
         viewModel.stopCaptureForLap = {
-            overlay.stopCapture()
+            val (_, captureHealthJson) = overlay.stopCapture()
             captureSessionStarted = null
             captureRecState = null
+            captureHealthJson
         }
         onDispose {
             viewModel.stopCaptureForLap = null
@@ -226,7 +227,13 @@ fun ArRouteScreen(
                 overlay.setGridLatticeOrigin(lat0, lng0)
             }
             if (isGeoRefFixUsable(viewModel.gpsAccuracyMeters.value)) {
-                overlay.updateGeoReference(ui.currentLat, ui.currentLng, viewModel.gpsAccuracyMeters.value)
+                overlay.updateGeoReference(
+                    ui.currentLat,
+                    ui.currentLng,
+                    viewModel.gpsAccuracyMeters.value,
+                    viewModel.headingDegrees.value?.toDouble(),
+                    viewModel.headingAccuracyDegrees.value?.toDouble(),
+                )
                     ?.let(viewModel::recordGeoRefEvent) // AR↔world pairing → lap manifest (DGX splat registration)
                 geoRefPaired = true
             }

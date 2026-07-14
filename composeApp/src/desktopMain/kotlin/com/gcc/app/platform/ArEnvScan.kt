@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 actual class ArEnvScanOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
+    actual val captureVideoDegraded: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)
     actual val multiItemReticles: StateFlow<List<DetectionReticle>> = MutableStateFlow(emptyList())
     private val _tapCandidate = MutableStateFlow(TapCandidateState())
@@ -22,7 +23,13 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun confirmTapCandidate(): TapCandidateState? = null
     actual fun rejectTapCandidate(): TapCandidateState? = null
     actual fun dismissTapCandidate() {}
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? = null
+    actual fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double?,
+        headingDegrees: Double?,
+        headingAccuracyDegrees: Double?,
+    ): com.gcc.shared.model.GeoRefEvent? = null
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun setGuidanceTarget(lat: Double, lng: Double) {}
     actual fun clearGuidanceTarget() {}
@@ -46,7 +53,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // No AR raycasting off-iOS — GPS-tier crediting (updatePosition) covers these targets.
     }
     actual fun startCapture(sessionId: String): Boolean = false
-    actual fun stopCapture(): List<CaptureChunkInfo> = emptyList()
+    actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> = emptyList<CaptureChunkInfo>() to null
     actual fun discardCurrentCaptureChunk() {}
     actual fun setCaptureEnabled(enabled: Boolean) {}
     actual fun thermalPausedLikely(): Boolean = false

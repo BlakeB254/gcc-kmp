@@ -281,21 +281,23 @@ actual class ArRouteOverlay actual constructor() {
         }
     }
 
-    actual fun stopCapture(): List<CaptureChunkInfo> {
+    actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> {
         val surface = nativeSurface
         val sessionId = captureSessionId
         val cellId = captureLocationCellId
         captureSessionId = null
         captureLocationCellId = null
-        if (surface == null || sessionId == null || cellId == null) return emptyList()
+        if (surface == null || sessionId == null || cellId == null) return emptyList<CaptureChunkInfo>() to null
         return try {
             val packets = surface.stopCaptureAndDrain()
             val infos = packets.mapNotNull(::parseCaptureChunkPacket)
             if (infos.isNotEmpty()) bookCaptureChunksAsync(coverageFanScope, sessionId, cellId, infos)
-            infos
+            // Read AFTER stopCaptureAndDrain — the recorder's serial queue is
+            // idle by then (see ArSessionRecorder.healthJson doc).
+            infos to surface.captureHealthJson()
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "route stopCapture failed for $sessionId", e)
-            emptyList()
+            emptyList<CaptureChunkInfo>() to null
         }
     }
 
@@ -352,7 +354,13 @@ actual class ArRouteOverlay actual constructor() {
      * Must be called on every location update (ArRouteScreen wires this) —
      * world-anchored node placement is a no-op until the first pairing exists.
      */
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? {
+    actual fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double?,
+        headingDegrees: Double?,
+        headingAccuracyDegrees: Double?,
+    ): com.gcc.shared.model.GeoRefEvent? {
         val position = cameraPosition() ?: return null
         // Accuracy-fused anchor — see ArEnvScan.updateGeoReference / GeoRefFuser.
         val fused = if (hasGeoRef && accuracyMeters != null) {
@@ -393,6 +401,8 @@ actual class ArRouteOverlay actual constructor() {
             arZ = position[2],
             arTimestampSeconds = nativeSurface?.currentFrameTimestamp()?.takeIf { it > 0.0 }
                 ?: sceneView?.session?.currentFrame?.timestamp,
+            headingDegrees = headingDegrees,
+            headingAccuracyDegrees = headingAccuracyDegrees,
         )
     }
 

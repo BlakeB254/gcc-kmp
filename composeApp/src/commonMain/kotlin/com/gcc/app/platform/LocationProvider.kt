@@ -38,6 +38,13 @@ expect class LocationProvider() {
     val headingDegrees: StateFlow<Float?>
 
     /**
+     * Accuracy of [headingDegrees] in degrees (larger = less reliable). Null
+     * when unavailable (desktop, android — rotation-vector sensor exposes no
+     * accuracy figure) or not yet acquired.
+     */
+    val headingAccuracyDegrees: StateFlow<Float?>
+
+    /**
      * Horizontal accuracy of the latest fix in meters (68% confidence radius).
      * Null when unknown (no fix yet, invalid reading, or desktop). Sustained
      * degradation is the OutdoorGate's indoor-detection signal.

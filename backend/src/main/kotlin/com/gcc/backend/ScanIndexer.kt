@@ -110,6 +110,12 @@ class ScanIndexer(
                         geoRefEventCount = manifest.geoRefEvents?.size ?: 0,
                         eventLogR2Key = manifest.eventLogKey,
                         eventMetrics = eventMetrics,
+                        videoCoveragePct = videoCoveragePct(
+                            manifest.captureHealth?.sessionSeconds,
+                            manifest.captureHealth?.videoCoveredSeconds,
+                        ),
+                        maxThermalState = manifest.captureHealth?.maxThermalState,
+                        droppedVideoChunks = manifest.captureHealth?.droppedVideoChunkCount,
                     )
                 )
                 repo.upsertChunks(chunkRows)
@@ -184,5 +190,20 @@ class ScanIndexer(
 
     companion object {
         private val CELL_ID_PATTERN = Regex("""^-?\d+:-?\d+$""")
+
+        /**
+         * Fraction of the session actually covered by encoded video, as a
+         * percentage (splat-capture reliability spec, migration 0039).
+         * Requires both inputs and a positive [sessionSeconds] — a session
+         * with zero/negative wall-clock length (clock skew, bad manifest)
+         * yields null rather than a divide-by-zero or a nonsensical ratio.
+         * Clamped to 0..100: a recorder bug that double-counts coverage
+         * (e.g. overlapping chunks) must not write a percentage above 100,
+         * and a negative coverage figure must not slip through either.
+         */
+        fun videoCoveragePct(sessionSeconds: Double?, videoCoveredSeconds: Double?): Double? {
+            if (sessionSeconds == null || videoCoveredSeconds == null || sessionSeconds <= 0) return null
+            return (videoCoveredSeconds / sessionSeconds * 100.0).coerceIn(0.0, 100.0)
+        }
     }
 }

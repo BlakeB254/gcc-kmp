@@ -85,16 +85,19 @@ def train_gsplat_for_cell(
     cell_id: str,
     fusion_result: FusionResult,
     session_manifests_by_id: dict[str, dict],
-) -> bytes | None:
+) -> tuple[bytes | None, str | None]:
     """Train one splat for the whole cell: every accepted session's frames,
     posed through its fusion transform into the shared cell frame, with the
-    already-merged cell point cloud as gaussian init. None when gsplat isn't
-    set up or training fails — the point-cloud asset is unaffected."""
+    already-merged cell point cloud as gaussian init. Returns
+    (bytes, None) on success, or (None, reason) when gsplat isn't set up or
+    training fails -- the point-cloud asset is unaffected either way. reason
+    is one of splat_outcome.py's vocabulary: "no-video-frames",
+    "too-few-frames", or "training-failed"."""
     if not available():
         print(f"gsplat_runner: no venv at {GSPLAT_PYTHON} -- run gsplat_train/setup.sh", file=sys.stderr)
-        return None
+        return None, "training-failed"
     if fusion_result.merged_points.shape[0] == 0:
-        return None
+        return None, "training-failed"
 
     with tempfile.TemporaryDirectory(prefix="gsplat_") as tmp:
         frames_dir = os.path.join(tmp, "frames")
@@ -109,9 +112,12 @@ def train_gsplat_for_cell(
                 manifest, fusion_result.session_transforms[sid], frames_dir, n, budget)
             poses.extend(p)
             intrinsics.extend(K)
+        if n == 0:
+            print(f"gsplat_runner: cell {cell_id}: no posed frames")
+            return None, "no-video-frames"
         if n < 8:
             print(f"gsplat_runner: cell {cell_id}: only {n} posed frames (need 8+)")
-            return None
+            return None, "too-few-frames"
 
         sample = Image.open(os.path.join(frames_dir, "0000.jpg"))
         np.save(os.path.join(tmp, "poses.npy"), np.stack(poses).astype(np.float64))
@@ -137,6 +143,6 @@ def train_gsplat_for_cell(
         out_ply = os.path.join(tmp, "splat_gsplat.ply")
         if proc.returncode != 0 or not os.path.exists(out_ply):
             print(f"gsplat_runner: cell {cell_id}: training failed (rc={proc.returncode})", file=sys.stderr)
-            return None
+            return None, "training-failed"
         with open(out_ply, "rb") as f:
-            return f.read()
+            return f.read(), None

@@ -219,7 +219,10 @@ internal suspend fun recoverOrphanScanSessions(
                 lapKind = "recovered",
                 gateEvents = journal?.gateEvents ?: emptyList(),
                 captureChunks = chunkKeys.ifEmpty { null },
-                captureSchema = if (chunkKeys.isNotEmpty()) 2 else null,
+                captureSchema = if (chunkKeys.isNotEmpty()) 3 else null,
+                // Recovered from an on-disk journal, not a live recorder —
+                // no health JSON ever existed for this session to decode.
+                captureHealth = null,
                 geoRefEvents = journal?.geoRefEvents?.ifEmpty { null },
                 arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                 // Crash-adjacent sessions are exactly where the diagnostics

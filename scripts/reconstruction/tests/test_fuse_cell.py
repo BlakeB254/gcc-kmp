@@ -333,6 +333,39 @@ def test_fuse_cell_without_api_base_url_never_calls_http(monkeypatch):
     assert result.assets  # it still published to R2
 
 
+# --- Task 7 (splat_skip_reason): trainer (bytes | None, reason | None) tuple ---
+
+def test_fuse_cell_splat_skip_reason_disabled_when_train_splat_off(monkeypatch):
+    from fuse_cell import fuse_cell
+
+    _mock_cell_with_one_session(monkeypatch, run_version=1)
+    result = fuse_cell("1:2", api_base_url=None, train_splat=False)
+    assert result.splat_skip_reason == "disabled"
+    assert not any(a.asset_type == "splat" for a in result.assets)
+
+
+def test_fuse_cell_splat_skip_reason_records_trainer_failure(monkeypatch):
+    from fuse_cell import fuse_cell
+    import gsplat_runner
+
+    _mock_cell_with_one_session(monkeypatch, run_version=1)
+    monkeypatch.setattr(gsplat_runner, "train_gsplat_for_cell", lambda *a, **k: (None, "training-failed"))
+    result = fuse_cell("1:2", api_base_url=None, train_splat=True, require_activation_for_splat=False)
+    assert result.splat_skip_reason == "training-failed"
+    assert not any(a.asset_type == "splat" for a in result.assets)
+
+
+def test_fuse_cell_splat_skip_reason_none_when_splat_produced(monkeypatch):
+    from fuse_cell import fuse_cell
+    import gsplat_runner
+
+    _mock_cell_with_one_session(monkeypatch, run_version=1)
+    monkeypatch.setattr(gsplat_runner, "train_gsplat_for_cell", lambda *a, **k: (b"fake-splat-ply", None))
+    result = fuse_cell("1:2", api_base_url=None, train_splat=True, require_activation_for_splat=False)
+    assert result.splat_skip_reason is None
+    assert any(a.asset_type == "splat" for a in result.assets)
+
+
 # ── World-registration path (scan-splat-registration-contract, PR #149) ──
 
 def _geo_events(lat0=41.85, lng0=-87.65, offset_e=0.0, offset_n=0.0, n=6):

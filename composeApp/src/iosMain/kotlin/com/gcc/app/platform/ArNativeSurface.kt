@@ -186,6 +186,22 @@ interface ArNativeSurface {
      *  drained per tick and forwarded into DiagnosticsLog so they reach the
      *  session flight recorder. Default: surfaces without a recorder. */
     fun drainCaptureDiagnostics(): List<String> = emptyList()
+
+    /** Current recorder video tier (0 full, 1 reduced — thermal degrade,
+     *  then warn, spec §1), or -1 when no recorder exists yet. Polled on
+     *  the tick loop to drive [ArEnvScanOverlay.captureVideoDegraded].
+     *  Default: surfaces without a recorder. */
+    fun captureVideoTierRaw(): Int = -1
+
+    /**
+     * JSON mirror of the manifest's `CaptureHealth` block (splat-capture
+     * reliability spec, Task 5) — video coverage seconds, max thermal
+     * state, degraded/dropped chunk counts, writer errors. Call AFTER
+     * [stopCaptureAndDrain] so the native recorder's serial queue has
+     * drained. Null when no recorder exists yet (capture never started).
+     * Default: surfaces without a recorder.
+     */
+    fun captureHealthJson(): String? = null
 }
 
 /**

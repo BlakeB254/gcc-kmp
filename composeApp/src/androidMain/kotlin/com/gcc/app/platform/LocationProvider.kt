@@ -56,6 +56,10 @@ actual class LocationProvider actual constructor() {
     private val _headingDegrees = MutableStateFlow<Float?>(null)
     actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
 
+    /** The rotation-vector sensor exposes no accuracy figure — always null. */
+    private val _headingAccuracyDegrees = MutableStateFlow<Float?>(null)
+    actual val headingAccuracyDegrees: StateFlow<Float?> = _headingAccuracyDegrees.asStateFlow()
+
     private val _horizontalAccuracyMeters = MutableStateFlow<Double?>(null)
     actual val horizontalAccuracyMeters: StateFlow<Double?> = _horizontalAccuracyMeters.asStateFlow()
 

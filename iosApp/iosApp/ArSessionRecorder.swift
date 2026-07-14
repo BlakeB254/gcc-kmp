@@ -40,8 +40,11 @@ import Foundation
 ///    bounded wait for writer finalization) — it runs on the Kotlin tick /
 ///    scan-stop path, never inside the delegate callback.
 ///
-/// Thermal policy (checked per append, no timers):
-///  - `.serious`  → skip video+depth appends; the cheap sidecar continues.
+/// Thermal policy (checked per append, no timers — spec §1 "degrade, then
+/// warn"):
+///  - `.serious`  → video AND depth continue, but the video encodes at the
+///                  reduced tier (see `VideoTier`): half the long edge,
+///                  ~1.2 Mbps instead of dropping to sidecar-only.
 ///  - `.critical` → auto-pause capture entirely; auto-resumes once thermal
 ///                  drops below `.serious`. Distinct from the user pause
 ///                  (`setEnabled`), which never auto-resumes.
@@ -51,6 +54,13 @@ import Foundation
 /// chunk (already-finished chunks stay drainable) and disables capture for
 /// the rest of the session.
 final class ArSessionRecorder {
+
+    // MARK: - Thermal video tier (degrade, then warn — spec §1)
+
+    enum VideoTier: Int { case full = 0, reduced = 1 }
+    static func tier(for thermal: ProcessInfo.ThermalState) -> VideoTier {
+        thermal == .serious ? .reduced : .full
+    }
 
     // MARK: - Tunables
 
@@ -62,6 +72,9 @@ final class ArSessionRecorder {
     /// exists to preserve).
     private static let targetLongEdge = 1280
     private static let averageBitRate = 3_000_000
+    /// Reduced tier (thermal .serious): half the long edge, ~1.2 Mbps.
+    private static let reducedLongEdge = 640
+    private static let reducedBitRate = 1_200_000
     private static let depthIntervalSeconds: TimeInterval = 0.5
     /// Serial-queue backlog cap: beyond this, frames are dropped at the
     /// delegate thread. Also bounds how many ARKit-pool pixel buffers the
@@ -82,6 +95,16 @@ final class ArSessionRecorder {
     private var userPaused = false
     private var thermalPaused = false
     private var pendingSamples = 0
+    /// Video tier as of the most recent append(), read by
+    /// `currentTierRaw()` from any thread (surface polling).
+    private var lastAppendTierRaw: Int = VideoTier.full.rawValue
+    /// Last-seen raw thermal state, used to detect transitions worth an
+    /// enqueueDiagnostic (spec §1: thermal transitions are flight-recorder
+    /// events).
+    private var lastThermalRaw: Int = ProcessInfo.ThermalState.nominal.rawValue
+    /// Highest raw thermal state observed this session (Task 5 reads this
+    /// into the capture-health summary).
+    private var maxThermalRaw = 0
 
     // MARK: - Finished-chunk packets (finishedLock)
 
@@ -136,6 +159,25 @@ final class ArSessionRecorder {
     private var lastVideoTime: TimeInterval = -.greatestFiniteMagnitude
     private var sizeCheckCountdown = ArSessionRecorder.sizeCheckEvery
     private var writerErrorCount = 0
+    /// Video tier the in-progress chunk was opened at (serial-queue
+    /// confined) — a mid-chunk tier change rotates instead of switching
+    /// encoders under an open writer.
+    private var currentChunkTier: VideoTier = .full
+    /// ARKit timestamp of the in-progress chunk's first successful video
+    /// append (Task 5 captureHealth) — `finalizeCurrentChunk` subtracts this
+    /// from `lastVideoTime` to accumulate `videoCoveredSeconds`. Nil outside
+    /// an open chunk (and whenever no video has appended yet this chunk).
+    private var chunkFirstVideoTime: TimeInterval?
+    /// Total video-covered seconds across every finalized chunk this session
+    /// (Task 5 captureHealth): sum of each chunk's last-minus-first
+    /// successful video-append time.
+    private var videoCoveredSeconds: Double = 0
+    /// Chunks finalized at the thermal-reduced video tier this session
+    /// (Task 5 captureHealth).
+    private var degradedChunkCount = 0
+    /// Chunks finalized with zero video samples this session — the writer
+    /// never got a usable frame (Task 5 captureHealth).
+    private var droppedVideoChunkCount = 0
 
     /// Delegate-thread-only (append is always the ARSession delegate thread).
     private var lastDepthTime: TimeInterval = -.greatestFiniteMagnitude
@@ -165,6 +207,17 @@ final class ArSessionRecorder {
             self.outputDir = dir
             self.chunkIndex = 0
             self.chunkActive = false
+            // Session-scoped capture-health counters (Task 5): this recorder
+            // instance is reused across capture sessions on the same
+            // surface, so every high-water mark / accumulator must reset
+            // here or a stale value leaks into the NEXT session's
+            // captureHealth. Queue-confined counters reset directly (this
+            // whole block already runs on `queue`, single-threaded).
+            chunkFirstVideoTime = nil
+            videoCoveredSeconds = 0
+            degradedChunkCount = 0
+            droppedVideoChunkCount = 0
+            writerErrorCount = 0
             finishedLock.lock()
             finishedChunks.removeAll()
             finishedLock.unlock()
@@ -173,6 +226,12 @@ final class ArSessionRecorder {
             userPaused = false
             thermalPaused = false
             capturing = true
+            // Thermal/tier high-water marks are stateLock-confined (read
+            // from other threads) — reset alongside the other stateLock
+            // flags above, same reuse-across-sessions reasoning.
+            maxThermalRaw = 0
+            lastThermalRaw = ProcessInfo.ThermalState.nominal.rawValue
+            lastAppendTierRaw = VideoTier.full.rawValue
             stateLock.unlock()
             NSLog("GCC-DIAG [capture] recording started session=%@", sessionId)
         }
@@ -185,6 +244,15 @@ final class ArSessionRecorder {
         let drained = finishedChunks
         finishedChunks.removeAll()
         return drained
+    }
+
+    /// Thread-safe from any lane: the video tier as of the most recent
+    /// append() (see [VideoTier]). Polled by the Kotlin overlay's tick loop
+    /// to drive the "phone hot" REC chip.
+    func currentTierRaw() -> Int32 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return Int32(lastAppendTierRaw)
     }
 
     /// Privacy path (INDOOR flip): delete the in-progress chunk's files
@@ -206,6 +274,25 @@ final class ArSessionRecorder {
             NSLog("GCC-DIAG ERR [capture] video finalize timed out — last chunk may be missing")
         }
         return drainFinishedChunks()
+    }
+
+    /// JSON mirror of the manifest's CaptureHealth block (Kotlin fills
+    /// sessionSeconds). Read after stopAndDrain — serial queue is idle then,
+    /// so the queue-confined counters are safe to read without a queue hop.
+    /// maxThermalRaw is stateLock-confined (updated from the delegate
+    /// thread), not queue-confined, so it's read under stateLock here even
+    /// though the rest of this method needs no lock.
+    func healthJson() -> String {
+        stateLock.lock()
+        let rawThermal = maxThermalRaw
+        stateLock.unlock()
+        let thermalName = ["nominal", "fair", "serious", "critical"]
+        let maxThermal = thermalName[min(max(rawThermal, 0), 3)]
+        return "{\"videoCoveredSeconds\":\(videoCoveredSeconds)," +
+               "\"maxThermalState\":\"\(maxThermal)\"," +
+               "\"degradedChunkCount\":\(degradedChunkCount)," +
+               "\"droppedVideoChunkCount\":\(droppedVideoChunkCount)," +
+               "\"writerErrorCount\":\(writerErrorCount)}"
     }
 
     /// User pause/resume (scan-gate driven) without teardown. Distinct from
@@ -236,28 +323,44 @@ final class ArSessionRecorder {
     /// busy. See the class doc for the thermal ladder applied here.
     func append(frame: ARFrame) {
         let thermal = ProcessInfo.processInfo.thermalState
+        let tier = Self.tier(for: thermal)
         stateLock.lock()
         if !capturing || failed {
             stateLock.unlock()
             return
         }
+        // CONSTRAINT: thermal-transition detection and the session high-water
+        // mark run on EVERY call while capturing, before the pause/backlog
+        // early returns below — the →critical transition and maxThermalRaw
+        // must be recorded even on frames the critical pause drops (those are
+        // exactly the episodes the flight recorder exists to explain, spec §1).
+        if thermal.rawValue > maxThermalRaw { maxThermalRaw = thermal.rawValue }
+        let thermalChanged = thermal.rawValue != lastThermalRaw
+        if thermalChanged { lastThermalRaw = thermal.rawValue }
         if thermal == .critical {
             thermalPaused = true
         } else if thermalPaused, thermal.rawValue < ProcessInfo.ThermalState.serious.rawValue {
             thermalPaused = false
         }
-        if thermalPaused || userPaused {
-            stateLock.unlock()
-            return
+        // paused → thermal/user pause; busy → writer backlog: drop, never queue.
+        // lastAppendTierRaw deliberately updates only on frames that proceed:
+        // it is "tier as of the most recent append", and .critical maps to
+        // tier .full — updating it on paused frames would clear the "phone
+        // hot" chip at the exact moment capture is thermal-paused.
+        let dropFrame = thermalPaused || userPaused || pendingSamples >= Self.maxPendingSamples
+        if !dropFrame {
+            pendingSamples += 1
+            lastAppendTierRaw = tier.rawValue
         }
-        if pendingSamples >= Self.maxPendingSamples {
-            stateLock.unlock()
-            return // writer busy: drop, never queue
-        }
-        pendingSamples += 1
         stateLock.unlock()
+        // Thermal transitions are flight-recorder events (spec §1) — enqueued
+        // outside stateLock (never nest it with diagLock).
+        if thermalChanged {
+            enqueueDiagnostic(level: "INFO", tag: "thermal",
+                message: "thermal state → \(thermal.rawValue) (videoTier=\(tier.rawValue))")
+        }
+        if dropFrame { return }
 
-        let skipHeavy = thermal == .serious // sidecar-only under thermal pressure
         let time = frame.timestamp
         let camera = frame.camera
         let transform = camera.transform
@@ -270,15 +373,18 @@ final class ArSessionRecorder {
         }
         let sourceWidth = CVPixelBufferGetWidth(frame.capturedImage)
         let sourceHeight = CVPixelBufferGetHeight(frame.capturedImage)
-        // Retain ONLY the pixel buffers (never the ARFrame) across the hop.
-        let video: CVPixelBuffer? = skipHeavy ? nil : frame.capturedImage
+
+        // Video AND depth continue at .serious now — reduced tier instead of
+        // the old skipHeavy drop (spec: degrade, then warn).
+        let video: CVPixelBuffer? = frame.capturedImage
         var depth: CVPixelBuffer?
-        if !skipHeavy, time - lastDepthTime >= Self.depthIntervalSeconds,
+        if time - lastDepthTime >= Self.depthIntervalSeconds,
            let depthMap = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap {
             depth = depthMap
             lastDepthTime = time
         }
 
+        // Retain ONLY the pixel buffers (never the ARFrame) across the hop.
         queue.async { [self] in
             processSample(
                 time: time,
@@ -286,6 +392,7 @@ final class ArSessionRecorder {
                 intrinsics: intrinsics,
                 tracking: tracking,
                 thermal: thermal.rawValue,
+                tierRaw: tier.rawValue,
                 sourceWidth: sourceWidth,
                 sourceHeight: sourceHeight,
                 video: video,
@@ -305,6 +412,7 @@ final class ArSessionRecorder {
         intrinsics: simd_float3x3,
         tracking: Int,
         thermal: Int,
+        tierRaw: Int,
         sourceWidth: Int,
         sourceHeight: Int,
         video: CVPixelBuffer?,
@@ -315,11 +423,13 @@ final class ArSessionRecorder {
         stateLock.unlock()
         guard live else { return }
 
-        if chunkActive, time - chunkStartTime >= Self.chunkMaxSeconds {
+        let tier = VideoTier(rawValue: tierRaw) ?? .full
+        if chunkActive,
+           time - chunkStartTime >= Self.chunkMaxSeconds || tier != currentChunkTier {
             finalizeCurrentChunk()
         }
         if !chunkActive {
-            startChunk(at: time, sourceWidth: sourceWidth, sourceHeight: sourceHeight)
+            startChunk(at: time, tier: tier, sourceWidth: sourceWidth, sourceHeight: sourceHeight)
             guard chunkActive else { return } // startChunk failed → capture disabled
         }
 
@@ -336,10 +446,11 @@ final class ArSessionRecorder {
     }
 
     /// Open the chunk's sidecar + depth files and write the sidecar header.
-    /// The AVAssetWriter is created lazily on the first VIDEO sample — a
-    /// chunk recorded entirely under `.serious` thermal is sidecar-only and
-    /// must not leave an empty .mov behind.
-    private func startChunk(at time: TimeInterval, sourceWidth: Int, sourceHeight: Int) {
+    /// The AVAssetWriter is created lazily on the first VIDEO sample.
+    /// [tier] is fixed for the chunk's lifetime — a thermal-driven tier
+    /// change rotates to a fresh chunk (see `processSample`) rather than
+    /// switching encoder settings under an open writer.
+    private func startChunk(at time: TimeInterval, tier: VideoTier, sourceWidth: Int, sourceHeight: Int) {
         resetWriterStack(context: "chunk \(chunkIndex) start")
         guard let outputDir else { return }
         let base = String(format: "chunk-%03d", chunkIndex)
@@ -362,19 +473,34 @@ final class ArSessionRecorder {
         chunkStartTime = time
         videoSampleCount = 0
         lastVideoTime = -.greatestFiniteMagnitude
+        // Belt-and-suspenders alongside finalizeCurrentChunk's own reset:
+        // discardCurrentChunkOnQueue (privacy purge) closes a chunk WITHOUT
+        // going through finalizeCurrentChunk, so chunkFirstVideoTime must
+        // also reset here or a stale value from the discarded chunk would
+        // leak into this chunk's videoCoveredSeconds accumulation.
+        chunkFirstVideoTime = nil
         sizeCheckCountdown = Self.sizeCheckEvery
         chunkActive = true
-        let (videoW, videoH) = Self.outputDimensions(sourceWidth: sourceWidth, sourceHeight: sourceHeight)
+        currentChunkTier = tier
+        let longEdge = tier == .reduced ? Self.reducedLongEdge : Self.targetLongEdge
+        let (videoW, videoH) = Self.outputDimensions(
+            sourceWidth: sourceWidth, sourceHeight: sourceHeight, targetLongEdge: longEdge
+        )
         // Schema 2 (additive): epochMs + arT anchor BOTH clocks at chunk
         // open — per-frame `t` is ARKit's boot-relative clock, the manifest's
         // GPS path is epoch ms, and without this pair the DGX pipeline
         // cannot align poses with GPS (world-splat registration).
         writeSidecar(
             "{\"schema\":2,\"sessionId\":\"\(sessionId)\",\"chunk\":\(chunkIndex)," +
+            "\"videoTier\":\(tier.rawValue)," +
             "\"sourceWidth\":\(sourceWidth),\"sourceHeight\":\(sourceHeight)," +
             "\"videoWidth\":\(videoW),\"videoHeight\":\(videoH)," +
             "\"epochMs\":\(Int64(Date().timeIntervalSince1970 * 1000)),\"arT\":\(time)}"
         )
+        if tier == .reduced {
+            enqueueDiagnostic(level: "INFO", tag: "capture",
+                message: "chunk \(chunkIndex) at reduced video tier (thermal)")
+        }
     }
 
     private func appendSidecarLine(
@@ -423,7 +549,7 @@ final class ArSessionRecorder {
             adaptor = nil
         }
         if writer == nil {
-            createWriter(sourceWidth: sourceWidth, sourceHeight: sourceHeight, firstTime: time)
+            createWriter(tier: currentChunkTier, sourceWidth: sourceWidth, sourceHeight: sourceHeight, firstTime: time)
         }
         guard let writer, let input = writerInput, let adaptor, chunkActive else { return }
         if writer.status == .failed {
@@ -440,6 +566,10 @@ final class ArSessionRecorder {
             return
         }
         lastVideoTime = time
+        // First successful append of the in-progress chunk (Task 5
+        // captureHealth) — finalizeCurrentChunk turns this into coverage
+        // seconds. `??` so only the FIRST append of the chunk sets it.
+        chunkFirstVideoTime = chunkFirstVideoTime ?? time
         videoSampleCount += 1
         sizeCheckCountdown -= 1
         if sizeCheckCountdown <= 0 {
@@ -452,15 +582,19 @@ final class ArSessionRecorder {
         }
     }
 
-    private func createWriter(sourceWidth: Int, sourceHeight: Int, firstTime: TimeInterval) {
+    private func createWriter(tier: VideoTier, sourceWidth: Int, sourceHeight: Int, firstTime: TimeInterval) {
         guard let videoURL else { return }
-        let (width, height) = Self.outputDimensions(sourceWidth: sourceWidth, sourceHeight: sourceHeight)
+        let longEdge = tier == .reduced ? Self.reducedLongEdge : Self.targetLongEdge
+        let bitRate = tier == .reduced ? Self.reducedBitRate : Self.averageBitRate
+        let (width, height) = Self.outputDimensions(
+            sourceWidth: sourceWidth, sourceHeight: sourceHeight, targetLongEdge: longEdge
+        )
         let settings: [String: Any] = [
             AVVideoCodecKey: Self.hevcSupported ? AVVideoCodecType.hevc : AVVideoCodecType.h264,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: Self.averageBitRate,
+                AVVideoAverageBitRateKey: bitRate,
                 AVVideoExpectedSourceFrameRateKey: 60,
                 AVVideoMaxKeyFrameIntervalKey: 120,
             ],
@@ -521,13 +655,14 @@ final class ArSessionRecorder {
         videoURL = nil
     }
 
-    /// Counter seam: Task 5 (captureHealth) accumulates this into the
-    /// manifest; until then it only exists so call sites don't change later.
+    /// Accumulated into `healthJson()`'s `writerErrorCount` (Task 5
+    /// captureHealth).
     private func noteWriterError() { writerErrorCount += 1 }
 
-    /// Long edge `targetLongEdge`, aspect preserved, even dimensions (encoder
-    /// requirement). Never upscales a smaller source.
-    static func outputDimensions(sourceWidth: Int, sourceHeight: Int) -> (Int, Int) {
+    /// Long edge [targetLongEdge] (the tier's — full or reduced), aspect
+    /// preserved, even dimensions (encoder requirement). Never upscales a
+    /// smaller source.
+    static func outputDimensions(sourceWidth: Int, sourceHeight: Int, targetLongEdge: Int) -> (Int, Int) {
         guard sourceWidth > 0, sourceHeight > 0 else { return (targetLongEdge, targetLongEdge * 3 / 4) }
         let scale = min(1.0, Double(targetLongEdge) / Double(max(sourceWidth, sourceHeight)))
         let width = max(2, Int((Double(sourceWidth) * scale / 2).rounded()) * 2)
@@ -587,6 +722,14 @@ final class ArSessionRecorder {
     /// writing while the previous one is still wrapping its moov atom.
     private func finalizeCurrentChunk() {
         guard chunkActive else { return }
+        // Task 5 captureHealth: accumulate this chunk's coverage/degrade
+        // counters BEFORE the lifecycle resets below touch chunkFirstVideoTime.
+        if let first = chunkFirstVideoTime, lastVideoTime > first {
+            videoCoveredSeconds += lastVideoTime - first
+        }
+        if videoSampleCount == 0 { droppedVideoChunkCount += 1 }
+        if currentChunkTier == .reduced { degradedChunkCount += 1 }
+        chunkFirstVideoTime = nil
         chunkActive = false
         let index = chunkIndex
         chunkIndex += 1

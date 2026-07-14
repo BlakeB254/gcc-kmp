@@ -12,7 +12,13 @@ import kotlinx.coroutines.flow.StateFlow
  */
 actual class ArRouteOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): com.gcc.shared.model.GeoRefEvent? = null
+    actual fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double?,
+        headingDegrees: Double?,
+        headingAccuracyDegrees: Double?,
+    ): com.gcc.shared.model.GeoRefEvent? = null
     actual fun setGridLatticeOrigin(lat: Double, lng: Double) {}
     actual fun updateBoundaries(outer: List<Pair<Double, Double>>, islands: List<List<Pair<Double, Double>>>) {}
     actual fun updateBoundaryStatus(isOutside: Boolean) {}
@@ -30,7 +36,7 @@ actual class ArRouteOverlay actual constructor() {
     }
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
     actual fun startCapture(sessionId: String): Boolean = false
-    actual fun stopCapture(): List<CaptureChunkInfo> = emptyList()
+    actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> = emptyList<CaptureChunkInfo>() to null
     actual fun discardCurrentCaptureChunk() {}
     actual fun setCaptureEnabled(enabled: Boolean) {}
 }

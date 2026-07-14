@@ -24,6 +24,7 @@ import frame_io
 import geo_registration
 import r2_store
 from registration import GpsAnchor, gps_seeded_initial_transform, register_session_into_cell
+from splat_outcome import resolve_splat_outcome
 
 # Only ~2Hz depth keyframes actually get fused (video is much higher rate) --
 # a depth record more than this far from its nearest sidecar pose sample, or
@@ -110,6 +111,11 @@ class FusionResult:
     # north fits are honest for display but NEVER world-mergeable).
     session_registrations: dict = field(default_factory=dict)
     world_eligible: bool = False
+    # Why no splat asset was produced this run -- None iff a splat asset IS
+    # in `assets`. See splat_outcome.py's module docstring for the exact
+    # vocabulary; recon_worker.py's complete_cell() writes this into
+    # reconstruction_jobs.splat_skip_reason (migration 0039).
+    splat_skip_reason: str | None = None
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
@@ -527,6 +533,8 @@ def fuse_cell(
     splat_wanted = train_splat and result.accepted_session_ids and (
         result.activated or not require_activation_for_splat
     )
+    splat_bytes: bytes | None = None
+    trainer_reason: str | None = None
     if splat_wanted:
         # Default engine is gsplat (trains from ARKit poses in the cell
         # frame — geo-true by construction). SPLAT_ENGINE=world-mirror
@@ -537,11 +545,14 @@ def fuse_cell(
             import gsplat_runner  # deferred: keeps plyfile/torch-venv
             # checks out of point-cloud-only callers (e.g. the test suite).
 
-            splat_bytes = gsplat_runner.train_gsplat_for_cell(cell_id, result, manifests_by_session_id)
+            splat_bytes, trainer_reason = gsplat_runner.train_gsplat_for_cell(cell_id, result, manifests_by_session_id)
         else:
             import splat_train
 
-            splat_bytes = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
+            splat_bytes, trainer_reason = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
+
+    result.splat_skip_reason = resolve_splat_outcome(splat_wanted, splat_bytes, trainer_reason)
+    if splat_wanted:
         if splat_bytes is not None:
             version = _run_version()
             splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes, version)

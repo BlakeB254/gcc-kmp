@@ -1835,6 +1835,13 @@ export const scanSessions = pgTable('scan_sessions', {
   uploadAttemptCount: integer('upload_attempt_count'),
   uploadFailureCount: integer('upload_failure_count'),
   errorCount: integer('error_count'),
+  // Capture health (splat-capture reliability spec, migration 0039): headline
+  // quality summary the Ktor indexer extracts from the manifest's
+  // `captureHealth` block. Nullable — null means "session predates capture
+  // health or the summary failed to decode", never zero degradation.
+  videoCoveragePct: real('video_coverage_pct'), // videoCoveredSeconds / sessionSeconds * 100, clamped 0..100
+  maxThermalState: varchar('max_thermal_state', { length: 16 }), // nominal|fair|serious|critical
+  droppedVideoChunks: integer('dropped_video_chunks'),
   indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -1884,6 +1891,9 @@ export const reconstructionJobs = pgTable('reconstruction_jobs', {
   attempts: integer('attempts').default(0).notNull(),
   leasedUntil: timestamp('leased_until', { mode: 'string', withTimezone: true }),
   lastError: text('last_error'),
+  // Set by Task 7 (DGX reconstruction worker) when a job is skipped on
+  // capture-health grounds (e.g. 'thermal', 'low_coverage'). Migration 0039.
+  splatSkipReason: varchar('splat_skip_reason', { length: 32 }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),

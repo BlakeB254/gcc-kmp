@@ -36,6 +36,9 @@ actual class LocationProvider actual constructor() {
     private val _headingDegrees = MutableStateFlow<Float?>(null)
     actual val headingDegrees: StateFlow<Float?> = _headingDegrees.asStateFlow()
 
+    private val _headingAccuracyDegrees = MutableStateFlow<Float?>(null)
+    actual val headingAccuracyDegrees: StateFlow<Float?> = _headingAccuracyDegrees.asStateFlow()
+
     private val _horizontalAccuracyMeters = MutableStateFlow<Double?>(null)
     actual val horizontalAccuracyMeters: StateFlow<Double?> = _horizontalAccuracyMeters.asStateFlow()
 
@@ -84,6 +87,8 @@ actual class LocationProvider actual constructor() {
             val trueHeading = didUpdateHeading.trueHeading
             val heading = if (trueHeading >= 0) trueHeading else didUpdateHeading.magneticHeading
             _headingDegrees.value = heading.toFloat()
+            // CLHeading reports negative headingAccuracy for invalid headings.
+            _headingAccuracyDegrees.value = didUpdateHeading.headingAccuracy.toFloat().takeIf { it >= 0f }
         }
 
         override fun locationManager(

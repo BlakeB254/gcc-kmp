@@ -181,6 +181,9 @@ actual class ArEnvScanOverlay actual constructor() {
     private val _groundDetected = MutableStateFlow(false)
     actual val groundDetected: StateFlow<Boolean> = _groundDetected.asStateFlow()
 
+    private val _captureVideoDegraded = MutableStateFlow(false)
+    actual val captureVideoDegraded: StateFlow<Boolean> = _captureVideoDegraded.asStateFlow()
+
     private val _trashCandidate = MutableStateFlow<TrashCandidate?>(null)
     actual val trashCandidate: StateFlow<TrashCandidate?> = _trashCandidate.asStateFlow()
 
@@ -351,7 +354,7 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    actual fun stopCapture(): List<CaptureChunkInfo> {
+    actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> {
         val surface = nativeSurface
         val sessionId = captureSessionId
         val cellId = captureLocationCellId
@@ -359,15 +362,17 @@ actual class ArEnvScanOverlay actual constructor() {
         captureChunkListener = null
         captureSessionId = null
         captureLocationCellId = null
-        if (surface == null || sessionId == null || cellId == null) return emptyList()
+        if (surface == null || sessionId == null || cellId == null) return emptyList<CaptureChunkInfo>() to null
         return try {
             val packets = surface.stopCaptureAndDrain()
             val infos = packets.mapNotNull(::parseCaptureChunkPacket)
             if (infos.isNotEmpty()) insertChunksAsync(sessionId, cellId, infos)
-            infos
+            // Read AFTER stopCaptureAndDrain — the recorder's serial queue is
+            // idle by then (see ArSessionRecorder.healthJson doc).
+            infos to surface.captureHealthJson()
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "stopCapture failed for $sessionId", e)
-            emptyList()
+            emptyList<CaptureChunkInfo>() to null
         }
     }
 
@@ -472,7 +477,13 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
-    actual fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double?): GeoRefEvent? {
+    actual fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double?,
+        headingDegrees: Double?,
+        headingAccuracyDegrees: Double?,
+    ): GeoRefEvent? {
         val position = cameraPosition() ?: return null
         refLat = lat
         refLng = lng
@@ -496,6 +507,8 @@ actual class ArEnvScanOverlay actual constructor() {
             arY = position[1],
             arZ = position[2],
             arTimestampSeconds = arT,
+            headingDegrees = headingDegrees,
+            headingAccuracyDegrees = headingAccuracyDegrees,
         )
         // Native mode has no ARSessionDelegate — mirror tracking quality on
         // the same cadence the route/spot overlays do.
@@ -788,6 +801,10 @@ actual class ArEnvScanOverlay actual constructor() {
                 if (packets.isNotEmpty()) listener(packets)
             }
             forwardCaptureDiagnostics(native.drainCaptureDiagnostics())
+            // Thermal degrade chip (spec §1 degrade-then-warn): mirror the
+            // recorder's live video tier onto the overlay state. -1 (no
+            // recorder) and 0 (full) both read as "not degraded".
+            _captureVideoDegraded.value = (native.captureVideoTierRaw() == 1)
         } else if (frame != null) {
             // Ground grid tracks detected planes even while Vision is paused.
             dispatch_async(dispatch_get_main_queue()) { updatePlaneNodes(frame) }

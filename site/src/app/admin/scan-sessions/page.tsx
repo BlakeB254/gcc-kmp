@@ -36,6 +36,9 @@ export interface ScanSessionListRow {
   uploadAttemptCount: number | null
   uploadFailureCount: number | null
   errorCount: number | null
+  videoCoveragePct: number | null
+  maxThermalState: string | null
+  droppedVideoChunks: number | null
   indexedAt: string
   /** Server-derived (lib/scan-session-flags.ts) so the site panel and the
    *  iOS admin (GccApiClient/AdminScanSessionSummary) render identical
@@ -55,6 +58,14 @@ function fmtBytes(bytes: number | null): string {
   if (bytes == null) return '—'
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+function fmtVideo(coveragePct: number | null, maxThermalState: string | null): string {
+  if (coveragePct == null) return '—'
+  const pct = `${Math.round(coveragePct)}%`
+  return maxThermalState === 'serious' || maxThermalState === 'critical'
+    ? `${pct} (${maxThermalState})`
+    : pct
 }
 
 export default function AdminScanSessionsPage() {
@@ -164,6 +175,7 @@ export default function AdminScanSessionsPage() {
                 <th className="px-3 py-2 font-medium text-right">Confirms</th>
                 <th className="px-3 py-2 font-medium text-right">Gate flips</th>
                 <th className="px-3 py-2 font-medium text-right">Bytes</th>
+                <th className="px-3 py-2 font-medium text-right">Video</th>
                 <th className="px-3 py-2 font-medium">Flags</th>
               </tr>
             </thead>
@@ -206,6 +218,15 @@ export default function AdminScanSessionsPage() {
                       {s.gateFlipCount ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-neutral-400">{fmtBytes(s.totalBytes)}</td>
+                    <td
+                      className={`px-3 py-2 text-right whitespace-nowrap ${
+                        s.maxThermalState === 'serious' || s.maxThermalState === 'critical'
+                          ? 'text-amber-400'
+                          : ''
+                      }`}
+                    >
+                      {fmtVideo(s.videoCoveragePct, s.maxThermalState)}
+                    </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
                         {flags.map((f) => (

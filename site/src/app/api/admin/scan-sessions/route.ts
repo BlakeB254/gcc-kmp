@@ -68,6 +68,9 @@ export async function GET(request: Request) {
         uploadAttemptCount: scanSessions.uploadAttemptCount,
         uploadFailureCount: scanSessions.uploadFailureCount,
         errorCount: scanSessions.errorCount,
+        videoCoveragePct: scanSessions.videoCoveragePct,
+        maxThermalState: scanSessions.maxThermalState,
+        droppedVideoChunks: scanSessions.droppedVideoChunks,
         indexedAt: scanSessions.indexedAt,
       })
       .from(scanSessions)

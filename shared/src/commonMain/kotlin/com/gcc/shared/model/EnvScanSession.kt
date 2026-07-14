@@ -37,7 +37,10 @@ data class EnvScanCell(val lat: Double, val lng: Double)
  *    is the same instant as `(lat, lng) @ atMs`, so poses↔GPS can be aligned
  *    in time AND the AR frame can be anchored in the world frame. Multiple
  *    events over a session over-determine the alignment (least-squares over
- *    pairings beats trusting any single fix).
+ *    pairings beats trusting any single fix). [headingDegrees] and
+ *    [headingAccuracyDegrees] carry the device's own compass reading at the
+ *    same instant — an independent check on the heading implied by the AR
+ *    pose.
  *
  * Axes: see [EnvScanManifest.AR_FRAME_CONVENTION].
  */
@@ -56,6 +59,50 @@ data class GeoRefEvent(
     /** ARKit frame timestamp (boot-relative seconds — the SAME clock as the
      *  pose sidecar's per-frame `t`); null when no frame was available. */
     val arTimestampSeconds: Double? = null,
+    /** Compass heading at the fix, degrees (0=north); null when unavailable.
+     *  Explicit alongside (arX, arY, arZ) so the DGX splat pipeline can
+     *  cross-check the AR-local heading implied by the pose against the
+     *  device's own compass reading at the same pairing instant. */
+    val headingDegrees: Double? = null,
+    /** Compass heading accuracy in degrees (larger = less reliable); null
+     *  when unknown OR when the device reported the heading as invalid
+     *  (e.g. magnetic interference — never negative here). Lets the
+     *  pipeline down-weight noisy compass readings the same way
+     *  [accuracyMeters] down-weights noisy GPS fixes. */
+    val headingAccuracyDegrees: Double? = null,
+)
+
+/**
+ * Session-level capture-quality summary from the native session recorder
+ * (splat-capture reliability spec, Task 5) — lets the backend flag
+ * splat-degraded sessions at index time without parsing the pose sidecar.
+ * Every field is independently optional: the native recorder may never have
+ * run (off-iOS, SceneKit fallback, capture never started), or the health
+ * JSON it emitted may have failed to decode — a partial summary is still
+ * worth shipping rather than dropping the whole block.
+ */
+@Serializable
+data class CaptureHealth(
+    /** Wall-clock session length in seconds ((completedAtMs - startedAtMs) /
+     *  1000) — filled in by Kotlin at manifest-build time; the native health
+     *  JSON does not carry this. */
+    val sessionSeconds: Double? = null,
+    /** Total seconds of video actually encoded across every finalized chunk
+     *  this session (sum of each chunk's last-minus-first append time). */
+    val videoCoveredSeconds: Double? = null,
+    /** Highest `ProcessInfo.ThermalState` reached this session: "nominal",
+     *  "fair", "serious", or "critical". */
+    val maxThermalState: String? = null,
+    /** Chunks finalized while the recorder was at the thermal-reduced video
+     *  tier (see `ArSessionRecorder.VideoTier.reduced`). */
+    val degradedChunkCount: Int? = null,
+    /** Chunks finalized with zero video samples — the writer never got a
+     *  usable frame (distinct from a chunk that legitimately carries no
+     *  video, e.g. depth-only). */
+    val droppedVideoChunkCount: Int? = null,
+    /** AVAssetWriter/file errors logged this session (stale-writer
+     *  recreates, write failures — see `ArSessionRecorder.noteWriterError`). */
+    val writerErrorCount: Int? = null,
 )
 
 @Serializable
@@ -152,6 +199,13 @@ data class EnvScanManifest(
     val eventLogKey: String? = null,
     /** Event-stream schema version for [eventLogKey] (currently 1). */
     val eventLogSchema: Int? = null,
+    /**
+     * Session-level capture-quality summary (video coverage, thermal
+     * high-water mark, degraded/dropped chunk counts, writer errors) — see
+     * [CaptureHealth]. Null for sessions recorded before this existed,
+     * off-iOS, or when the native health JSON failed to decode.
+     */
+    val captureHealth: CaptureHealth? = null,
 ) {
     companion object {
         /** ARKit `gravityAndHeading`: +X = east, +Y = up (gravity-aligned),

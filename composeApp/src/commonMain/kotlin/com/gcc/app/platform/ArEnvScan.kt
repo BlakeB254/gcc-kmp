@@ -65,6 +65,13 @@ expect class ArEnvScanOverlay() {
     /** True once ARKit has recognized ground and the grid effect is live. */
     val groundDetected: StateFlow<Boolean>
 
+    /** True while the session recorder is encoding video at the reduced
+     *  thermal tier (device at/above `.serious` — degrade, then warn). Drives
+     *  the "Phone hot — 3D capture reduced" chip; informational only, never
+     *  gates capture (the Swift recorder owns the degrade decision). Always
+     *  false off-iOS and on the SceneKit fallback. */
+    val captureVideoDegraded: StateFlow<Boolean>
+
     /** Non-null while a close-range candidate awaits Confirm / Not trash. */
     val trashCandidate: StateFlow<TrashCandidate?>
 
@@ -99,10 +106,18 @@ expect class ArEnvScanOverlay() {
      * Returns the recorded pairing (both clocks + both coordinate frames) so
      * the caller can persist it into the session manifest — the DGX splat
      * pipeline needs these events to place the AR-local pose stream into the
-     * world splat layer (see [com.gcc.shared.model.GeoRefEvent]). Null when
-     * no AR camera frame exists yet (nothing was paired).
+     * world splat layer (see [com.gcc.shared.model.GeoRefEvent]). [headingDegrees]
+     * and [headingAccuracyDegrees] are the device compass reading at the same
+     * instant, carried through onto the returned event. Null when no AR
+     * camera frame exists yet (nothing was paired).
      */
-    fun updateGeoReference(lat: Double, lng: Double, accuracyMeters: Double? = null): com.gcc.shared.model.GeoRefEvent?
+    fun updateGeoReference(
+        lat: Double,
+        lng: Double,
+        accuracyMeters: Double? = null,
+        headingDegrees: Double? = null,
+        headingAccuracyDegrees: Double? = null,
+    ): com.gcc.shared.model.GeoRefEvent?
 
     /** Plant the frontier beacon at the next area worth scanning (a pooled
      *  ground ring in the camera view — the home-walkthrough-style "scan
@@ -202,11 +217,13 @@ expect class ArEnvScanOverlay() {
 
     /**
      * Stop capture, finalize the in-progress chunk, and return every
-     * not-yet-drained finished chunk. Bounded ~5s (video writer finalize) —
+     * not-yet-drained finished chunk alongside the session's captureHealth
+     * JSON (splat-capture reliability spec, Task 5) — null off-iOS/no
+     * recorder/capture never started. Bounded ~5s (video writer finalize) —
      * callers MUST invoke this from a background/Default coroutine, never
      * the main thread, and BEFORE tearing the overlay down via [stop].
      */
-    fun stopCapture(): List<CaptureChunkInfo>
+    fun stopCapture(): Pair<List<CaptureChunkInfo>, String?>
 
     /** Privacy path (INDOOR gate flip): discard the in-progress chunk
      *  entirely (~60s over-purge, deliberate) rather than trim it. */

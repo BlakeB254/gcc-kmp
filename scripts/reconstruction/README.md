@@ -318,11 +318,40 @@ cleanly.
 ```bash
 # Enqueue happens automatically after every backend index sweep
 curl -X POST localhost:8080/admin/index-scans -H "Authorization: Bearer $INDEX_SECRET"
+```
 
-# Worker (this box):
+### Running unattended: the systemd timer (primary)
+
+`ops/systemd/gcc-recon-worker.{service,timer}` runs `recon_worker.py --drain`
+every 10 minutes (user scope, on the DGX) — it claims and fuses queued
+`reconstruction_jobs` until none remain, then exits 0, mirroring
+`ops/systemd/gcc-privacy-scrub.{service,timer}`'s pattern. The
+`REQUIRE_SCRUBBED_VIDEO` defer gate (#176) already serializes
+scrub-before-reconstruction, so the two timers need no explicit ordering
+between them.
+
+Install:
+
+```bash
+ln -sf ~/cdx/dev-projects/gcc/ops/systemd/gcc-recon-worker.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now gcc-recon-worker.timer
+```
+
+Verify: `systemctl --user list-timers | grep recon` and
+`journalctl --user -u gcc-recon-worker.service -f` on the next fire.
+
+### Manual runs (debugging appendix)
+
+For one-off runs or interactive debugging against real data, bypass the
+timer and invoke the worker directly:
+
+```bash
 cd scripts/reconstruction && source .venv/bin/activate
 export DATABASE_URL=...           # Neon (unpooled)
 export R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET_NAME=gcc-scan-storage
 export WORLD_MIRROR_URL=http://127.0.0.1:7027 SPLAT_REQUIRE_ACTIVATION=0
-python recon_worker.py --once     # or --loop 60
+python recon_worker.py --once     # process at most one job
+python recon_worker.py --loop 60  # poll forever, 60s idle sleep
+python recon_worker.py --drain    # process until the queue is empty, then exit
+                                   # (what the timer runs)
 ```

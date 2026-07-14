@@ -622,6 +622,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         recorder?.setEnabled(enabled)
     }
 
+    /// Current video tier (see `ArSessionRecorder.VideoTier`) as of the most
+    /// recent append, or -1 when no recorder exists yet.
+    func captureVideoTierRaw() -> Int32 { recorder?.currentTierRaw() ?? -1 }
+
+    /// JSON mirror of the manifest's CaptureHealth block (Task 5) — call
+    /// after `stopCaptureAndDrain()` so the recorder's serial queue is idle.
+    /// Nil when no recorder exists yet (capture never started).
+    func captureHealthJson() -> String? { recorder?.healthJson() }
+
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {

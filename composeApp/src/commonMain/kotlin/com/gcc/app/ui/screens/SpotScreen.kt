@@ -210,7 +210,7 @@ fun SpotScreen(
                     onCapture = { photo -> viewModel.addPhoto(photo) },
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
-                    onCompleteScan = { draft -> viewModel.completeScan(draft) },
+                    onCompleteScan = { draft, captureHealthJson -> viewModel.completeScan(draft, captureHealthJson) },
                     onObjectCaptured = { outcome -> viewModel.attachObjectCapture(outcome) },
                     onBack = onBack,
                     spotLocation = currentLocation,
@@ -309,7 +309,9 @@ private fun CameraPhase(
     onCapture: (CapturedPhoto) -> Unit,
     onRemovePhoto: (Int) -> Unit,
     onNext: () -> Unit,
-    onCompleteScan: (EnvScanSessionDraft) -> Unit,
+    /** Second param is the session's captureHealth JSON (Task 5) from
+     *  [ArEnvScanOverlay.stopCapture] — null off-iOS/no capture/failure. */
+    onCompleteScan: (EnvScanSessionDraft, String?) -> Unit,
     onBack: () -> Unit,
     onObjectCaptured: (com.gcc.app.platform.ObjectCaptureOutcome) -> Unit = {},
     spotLocation: Coordinates? = null,
@@ -340,6 +342,9 @@ private fun CameraPhase(
     // trash lock-on). Null on unsupported hardware → AVCapture viewfinder.
     val arOverlay = remember { if (isScanMode && arEnvScanSupported()) ArEnvScanOverlay() else null }
     val groundDetected by (arOverlay?.groundDetected ?: remember { MutableStateFlow(false) }).collectAsState()
+    // Thermal degrade-then-warn (spec §1): true while the capture recorder
+    // is encoding at the reduced video tier — drives the "phone hot" chip.
+    val captureVideoDegraded by (arOverlay?.captureVideoDegraded ?: remember { MutableStateFlow(false) }).collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
     // Multi-item reticle layer (Task 17) — additive display alongside
     // trashCandidate's single lock-on; never drives approach/confirm.
@@ -430,7 +435,13 @@ private fun CameraPhase(
         locationProvider.locationFlow.collect { loc ->
             val accuracy = locationProvider.horizontalAccuracyMeters.value
             if (isGeoRefFixUsable(accuracy)) {
-                arOverlay.updateGeoReference(loc.lat, loc.lng, accuracy)
+                arOverlay.updateGeoReference(
+                    loc.lat,
+                    loc.lng,
+                    accuracy,
+                    locationProvider.headingDegrees.value?.toDouble(),
+                    locationProvider.headingAccuracyDegrees.value?.toDouble(),
+                )
                     ?.let(sessionRecorder::addGeoRefEvent)
                 geoRefPaired = true
             }
@@ -1264,6 +1275,23 @@ private fun CameraPhase(
                     .statusBarsPadding()
                     .padding(top = 96.dp, start = 16.dp),
             )
+            // Thermal degrade warning (spec §1 degrade-then-warn): the
+            // recorder dropped to the reduced video tier — tell the worker
+            // honestly, but never gate the scan on it. Top-start row 3
+            // (140dp): below the stats chip's row 2, mirroring the 🐞
+            // badge's row on the top-end side, so no chrome overlaps.
+            if (captureVideoDegraded) {
+                StatusChip(
+                    text = "Phone hot — 3D capture reduced",
+                    dotColor = GccClaimed,
+                    backgroundColor = GccClaimed.copy(alpha = 0.15f),
+                    emoji = "🌡",
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(top = 140.dp, start = 16.dp),
+                )
+            }
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates
             // capture or Complete Scan.
@@ -1392,21 +1420,22 @@ private fun CameraPhase(
                         // ~5s finalize + network — acceptable).
                         flushScope.launch {
                             withContext(kotlinx.coroutines.NonCancellable) {
-                                try {
-                                    arOverlay.stopCapture()
+                                val captureHealthJson = try {
+                                    arOverlay.stopCapture().second
                                 } catch (e: Throwable) {
                                     DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
+                                    null
                                 }
                                 try {
                                     captureUploader.flushPending()
                                 } catch (e: Throwable) {
                                     DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
                                 }
-                                onCompleteScan(draft)
+                                onCompleteScan(draft, captureHealthJson)
                             }
                         }
                     } else {
-                        onCompleteScan(draft)
+                        onCompleteScan(draft, null)
                     }
                 }
                 .padding(horizontal = 28.dp, vertical = 16.dp),

@@ -1,0 +1,27 @@
+# Reconstruction queue drain (docs/superpowers/specs/
+# 2026-07-10-phase3-reconstruction-queue-and-prototype-design.md §3-§7):
+# claim and fuse queued reconstruction_jobs until none remain, then exit.
+# Paired with gcc-recon-worker.timer (every 10 min). recon_worker's
+# REQUIRE_SCRUBBED_VIDEO gate (#176) already defers a job until
+# gcc-privacy-scrub has produced renditions for every video chunk of its
+# cell, so together the two timers enforce scrub-before-reconstruction
+# without any explicit ordering between these two units.
+#
+# Install (user scope, on the DGX):
+#   ln -sf ~/cdx/dev-projects/gcc/ops/systemd/gcc-recon-worker.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now gcc-recon-worker.timer
+[Unit]
+Description=GCC reconstruction queue drain (fuse cells whose jobs are claimable)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/codex450/cdx/dev-projects/gcc/scripts/reconstruction
+EnvironmentFile=/home/codex450/cdx/dev-projects/gcc/backend/deploy/.env
+ExecStart=/home/codex450/cdx/dev-projects/gcc/scripts/reconstruction/.venv/bin/python -u recon_worker.py --drain
+# The GB10's unified memory is shared with everything else on the box --
+# don't let a runaway drain (or a pile of queued jobs) take it down, and
+# don't make this the OOM killer's pet.
+MemoryMax=64G
+# gsplat training runs up to 3h/job and a drain may work through several
+# queued jobs back to back before the queue is empty.
+TimeoutStartSec=8h

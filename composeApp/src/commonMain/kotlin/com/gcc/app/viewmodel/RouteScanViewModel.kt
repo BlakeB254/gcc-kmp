@@ -49,6 +49,7 @@ import com.gcc.shared.geo.pointInPolygon
 import com.gcc.shared.geo.routeCenterCoordinates
 import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.*
+import com.gcc.shared.serialization.GccJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +63,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.serialization.decodeFromString
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -401,14 +403,15 @@ class RouteScanViewModel(
 
     /**
      * Set by the AR screen while it hosts a capturing overlay: stops the
-     * lap's background capture and books the final chunks. Invoked at the
-     * TOP of [uploadLapSession] so chunk rows exist before the manifest's
-     * captureChunks lookup runs — the same stop-before-manifest ordering
-     * SpotScreen uses at scan completion. Nullable + non-fatal: laps without
-     * an AR surface (or after screen dispose) upload manifests exactly as
-     * before.
+     * lap's background capture, books the final chunks, and returns the
+     * session's captureHealth JSON (Task 5; null off-iOS/no capture/
+     * failure). Invoked at the TOP of [uploadLapSession] so chunk rows exist
+     * before the manifest's captureChunks lookup runs — the same
+     * stop-before-manifest ordering SpotScreen uses at scan completion.
+     * Nullable + non-fatal: laps without an AR surface (or after screen
+     * dispose) upload manifests exactly as before.
      */
-    var stopCaptureForLap: (() -> Unit)? = null
+    var stopCaptureForLap: (() -> String?)? = null
 
     /** Scene-classification vote from the AR camera feed (ArRouteScreen). */
     /** Field escape hatch — user confirmed they're outdoors. */
@@ -647,6 +650,9 @@ class RouteScanViewModel(
 
     /** Device compass heading in degrees, or null when unavailable. */
     val headingDegrees: StateFlow<Float?> get() = locationProvider.headingDegrees
+
+    /** Accuracy of [headingDegrees] in degrees, or null when unavailable. */
+    val headingAccuracyDegrees: StateFlow<Float?> get() = locationProvider.headingAccuracyDegrees
 
     /** GPS horizontal accuracy in meters (null = no valid fix) — screens gate
      *  AR geo-reference pairing on this (see [isGeoRefFixUsable]). */
@@ -1276,10 +1282,11 @@ class RouteScanViewModel(
                 // Stop background capture FIRST so the final chunks are booked
                 // into CaptureChunkStore before the captureChunks lookup below
                 // (late uploads still key on sessionId in R2 either way).
-                try {
+                val captureHealthJson = try {
                     stopCaptureForLap?.invoke()
                 } catch (e: Exception) {
                     DiagnosticsLog.error("capture", "$lapKind lap capture stop failed (manifest continues)", e)
+                    null
                 }
                 val draft = recorder.draft(
                     coverageTracker.getScannedCorridorCells()
@@ -1307,13 +1314,27 @@ class RouteScanViewModel(
                     DiagnosticsLog.error("env-capture", "lap captureChunks lookup failed (manifest continues without)", e)
                     emptyList()
                 }
+                val completedAtMs = Clock.System.now().toEpochMilliseconds()
+                // Splat-capture reliability spec, Task 5: the native health
+                // JSON carries everything except sessionSeconds, which only
+                // Kotlin can compute (it needs both manifest timestamps).
+                // Decode failures (malformed JSON, off-iOS null) drop the
+                // whole block rather than ship a garbage partial summary.
+                val captureHealth = captureHealthJson?.let { json ->
+                    runCatching { GccJson.decodeFromString(CaptureHealth.serializer(), json) }
+                        .onFailure { e ->
+                            DiagnosticsLog.error("env-capture", "lap captureHealth decode failed (manifest continues without)", e)
+                        }
+                        .getOrNull()
+                        ?.copy(sessionSeconds = (completedAtMs - draft.startedAtMs) / 1000.0)
+                }
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,
                     deviceId = CoverageDeviceId.value,
                     deviceModel = getDeviceModel(),
                     osVersion = getOsVersion(),
                     startedAtMs = draft.startedAtMs,
-                    completedAtMs = Clock.System.now().toEpochMilliseconds(),
+                    completedAtMs = completedAtMs,
                     path = draft.path,
                     scannedCells = draft.scannedCells,
                     scannedCellSizeMeters = CoverageTracker.cellSizeMeters,
@@ -1337,7 +1358,8 @@ class RouteScanViewModel(
                     routeId = state.routeId,
                     gateEvents = draft.gateEvents,
                     captureChunks = captureChunkKeys.ifEmpty { null },
-                    captureSchema = if (captureChunkKeys.isNotEmpty()) 2 else null,
+                    captureSchema = if (captureChunkKeys.isNotEmpty()) 3 else null,
+                    captureHealth = captureHealth,
                     // World-splat registration (DGX): AR↔world pairings +
                     // the AR axes convention the pose sidecar uses.
                     geoRefEvents = draft.geoRefEvents.ifEmpty { null },

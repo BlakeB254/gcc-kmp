@@ -34,7 +34,8 @@ CREATE TABLE reconstruction_jobs (
   last_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  completed_at timestamptz
+  completed_at timestamptz,
+  splat_skip_reason varchar(32)
 );
 CREATE TABLE scan_sessions (
   id serial PRIMARY KEY,
@@ -184,6 +185,7 @@ def test_complete_cell_records_assets_stamps_sessions_closes_sibling_jobs(db):
         merged_points=np.zeros((0, 3)),
         merged_colors=np.zeros((0, 3)),
         activated=False,
+        splat_skip_reason="too-few-frames",
     )
     assets = [
         ProducedAsset("pointcloud", "ply", "reconstructed/1:2/1/pointcloud.ply", 1, None),
@@ -217,6 +219,13 @@ def test_complete_cell_records_assets_stamps_sessions_closes_sibling_jobs(db):
     assert statuses["sess-1"] == "done"
     assert statuses["sess-2"] == "done"   # sibling closed by the same run
     assert statuses["sess-3"] == "queued"
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT session_id, splat_skip_reason FROM reconstruction_jobs ORDER BY session_id")
+        skip_reasons = dict(cur.fetchall())
+    assert skip_reasons["sess-1"] == "too-few-frames"
+    assert skip_reasons["sess-2"] == "too-few-frames"  # sibling job, same cell/run
+    assert skip_reasons["sess-3"] is None  # untouched job for an unrelated cell
 
 
 # --- compress_splat_for_web fallback logic (subprocess mocked; no DB) ---
