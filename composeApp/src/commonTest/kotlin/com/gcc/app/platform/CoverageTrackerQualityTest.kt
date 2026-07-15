@@ -166,6 +166,49 @@ class CoverageTrackerQualityTest {
     }
 
     @Test
+    fun walkingOverASeenCellUpgradesItToGrazed() {
+        // Regression (walked-strip gap): heading down a narrow path, the
+        // fan's forward rays credit the path ground ahead as SEEN (10-55m)
+        // before the user reaches it. The GPS walk-disc must then upgrade
+        // those cells to GRAZED when the user physically walks over them —
+        // otherwise the walked strip stays fogged forever while the nearby
+        // side surfaces (fan-GRAZED at <10m) render as scanned.
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 1_000L)
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell !in t.scannedCells.value)
+        t.updatePosition(41.8600, -87.7200, nowMs = 2_000L)
+        assertEquals(CoverageQuality.GRAZED, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell in t.scannedCells.value)
+    }
+
+    @Test
+    fun updatePositionNeverDowngradesGrazedOrClose() {
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 2.0)), nowMs = 1_000L)
+        t.updatePosition(41.8600, -87.7200, nowMs = 2_000L)
+        val credit = t.creditedCells.value[cell]!!
+        assertEquals(CoverageQuality.CLOSE, credit.quality)
+        assertEquals(1_000L, credit.creditedAtMs)
+    }
+
+    @Test
+    fun gpsUpgradeOfSeenCellRevertsToSeenOnPurge() {
+        // The GPS upgrade participates in the purge prior-chain like any
+        // other credit: an INDOOR-flip purge covering the walk must revert
+        // the cell to its pre-walk SEEN credit, not delete it.
+        val t = tracker()
+        val cell = t.cellForLatLng(41.8600, -87.7200)!!
+        t.updateWithRaycastHits(listOf(RaycastCoverageHit(41.8600, -87.7200, 40.0)), nowMs = 1_000L)
+        t.updatePosition(41.8600, -87.7200, nowMs = 5_000L)
+        t.purgeSince(cutoffMs = 4_000L)
+        assertEquals(CoverageQuality.SEEN, t.creditedCells.value[cell]?.quality)
+        assertTrue(cell !in t.scannedCells.value)
+    }
+
+    @Test
     fun purgeRemovesWindowCreditsAndRevertsUpgrades() {
         val t = tracker()
         // Cell A: grazed BEFORE the window, upgraded to close INSIDE it — purge reverts to grazed.

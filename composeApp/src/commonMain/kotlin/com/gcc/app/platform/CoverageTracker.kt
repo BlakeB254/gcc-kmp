@@ -475,7 +475,14 @@ class CoverageTracker {
                 val c = currentCol + dc
                 if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) continue
                 val cell = Pair(r, c)
-                if (map[cell] != null) continue  // GPS tier can never upgrade — skip credited cells
+                // GPS credits GRAZED, so only cells still below GRAZED (uncredited
+                // or fan-SEEN) can gain anything — skip the rest before the
+                // distance math. SEEN cells MUST stay eligible: the fan tags the
+                // path ground ahead as SEEN before the user reaches it, and
+                // walking over it has to upgrade it to GRAZED or the walked
+                // strip stays fogged (creditCell keeps upgrades monotonic).
+                val existing = map[cell]
+                if (existing != null && existing.quality >= CoverageQuality.GRAZED) continue
 
                 val cellLat = originLat + (r + 0.5) * cellSizeMeters * latPerMeter
                 val cellLng = originLng + (c + 0.5) * cellSizeMeters * lngPerMeter
