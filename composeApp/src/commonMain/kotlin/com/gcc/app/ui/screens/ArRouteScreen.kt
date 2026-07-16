@@ -41,6 +41,7 @@ import kotlin.math.cos
 import kotlin.math.log2
 import com.gcc.app.platform.ArRouteOverlay
 import com.gcc.app.platform.ArRouteOverlayView
+import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.OutdoorState
@@ -181,7 +182,15 @@ fun ArRouteScreen(
         captureRecState = if (captureAllowedState) "rec" else "paused"
     }
     LaunchedEffect(isIndoor) {
-        if (isIndoor && captureSessionStarted != null) overlay.discardCurrentCaptureChunk()
+        // Debounced like SpotScreen's env-scan purge: appends are already
+        // paused via setCaptureEnabled (captureAllowedState goes false off-
+        // OUTDOOR), so a false INDOOR blip that reverts within the window
+        // cancels this effect and keeps the chunk instead of destroying up
+        // to ~60s of street footage. See OutdoorGate.CAPTURE_DISCARD_DEBOUNCE_MS.
+        if (isIndoor && captureSessionStarted != null) {
+            kotlinx.coroutines.delay(OutdoorGate.CAPTURE_DISCARD_DEBOUNCE_MS)
+            overlay.discardCurrentCaptureChunk()
+        }
     }
     // The ViewModel stops capture at the TOP of every lap upload so the final
     // chunks are booked before the manifest's captureChunks lookup; also stop

@@ -253,7 +253,10 @@ expect class ArEnvScanOverlay() {
     fun stopCapture(): Pair<List<CaptureChunkInfo>, String?>
 
     /** Privacy path (INDOOR gate flip): discard the in-progress chunk
-     *  entirely (~60s over-purge, deliberate) rather than trim it. */
+     *  entirely (~60s over-purge, deliberate) rather than trim it. Callers
+     *  debounce by [OutdoorGate.CAPTURE_DISCARD_DEBOUNCE_MS] — appends are
+     *  already paused via [setCaptureEnabled] the moment the gate leaves
+     *  OUTDOOR, so waiting out a false INDOOR flip records nothing indoor. */
     fun discardCurrentCaptureChunk()
 
     /** Pause/resume capture without discarding the in-progress chunk —

@@ -91,6 +91,7 @@ import kotlin.math.pow
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AreaMode
 import com.gcc.app.viewmodel.DuplicateMatch
+import com.gcc.app.viewmodel.SessionUploadStatus
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
 import com.gcc.shared.api.GccApiClient
@@ -282,6 +283,7 @@ fun SpotScreen(
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
                     session = uiState.completedSession,
+                    uploadStatus = uiState.uploadStatus,
                     litterCount = countLitter(uiState.observedItems),
                     featureCount = countFeatures(uiState.observedItems),
                     photoCount = uiState.capturedPhotos.size,
@@ -692,16 +694,6 @@ private fun CameraPhase(
             val cutoff = (gate.lastIndoorFlipAtMs ?: nowMs) - OutdoorGate.PURGE_WINDOW_MS
             sessionRecorder.purgeSince(cutoff)      // SpotScreen only (owns the recorder)
             onPurgeRecentCaptures(cutoff)           // new param → AppNavigation → viewModel::purgeRecentCaptures
-            // Background capture (Pillar 1): discard the in-progress chunk
-            // entirely rather than trim it (~60s over-purge, deliberate —
-            // see the plan's privacy semantics note).
-            if (captureStarted) {
-                try {
-                    arOverlay?.discardCurrentCaptureChunk()
-                } catch (e: Throwable) {
-                    DiagnosticsLog.error("capture", "discardCurrentCaptureChunk failed", e)
-                }
-            }
             // Coverage companion purges (spec §2): local cells, pending
             // events, and a server retraction for anything already flushed.
             tracker.purgeSince(cutoff)
@@ -714,6 +706,27 @@ private fun CameraPhase(
         // signal (scene votes, ceiling plane, containment) to DiagnosticsLog,
         // which the flight recorder mirrors while this session is active.
         sessionEventLog.gate(outdoorState.name)
+        // Background capture (Pillar 1): discard the in-progress chunk
+        // entirely rather than trim it (~60s over-purge, deliberate — see the
+        // plan's privacy semantics note) — but only once INDOOR has been
+        // sustained for the debounce window. Appends are already paused the
+        // instant the gate leaves OUTDOOR (setCaptureEnabled above via
+        // captureAllowed), so nothing indoor is recorded while we wait; a
+        // false flip that reverts within the window (gate recovery or the
+        // user's manual outdoor override — see the 87x3ug 1.3s INDOOR blip
+        // that cost a whole chunk of street footage) cancels this effect and
+        // keeps the chunk. A genuine indoor entry still discards, just
+        // CAPTURE_DISCARD_DEBOUNCE_MS later, with the recorder paused
+        // throughout.
+        if (outdoorState == OutdoorState.INDOOR && captureStarted) {
+            delay(OutdoorGate.CAPTURE_DISCARD_DEBOUNCE_MS)
+            try {
+                arOverlay?.discardCurrentCaptureChunk()
+                DiagnosticsLog.info("capture", "in-progress chunk discarded (INDOOR sustained ${OutdoorGate.CAPTURE_DISCARD_DEBOUNCE_MS}ms)")
+            } catch (e: Throwable) {
+                DiagnosticsLog.error("capture", "discardCurrentCaptureChunk failed", e)
+            }
+        }
     }
 
     // ── Environment-scan session: coverage credit + minimap layers ──
@@ -2131,9 +2144,72 @@ private fun OnDeviceAiCard(analysis: OnDeviceAnalysisResult) {
 }
 
 @Composable
+private fun UploadProgressCard(status: SessionUploadStatus) {
+    when (status.state) {
+        SessionUploadStatus.State.UPLOADING -> GccCard(accentColor = CardAccentSky) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Uploading scan data…",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                )
+                Text(
+                    "${status.doneSteps} of ${status.totalSteps}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextMuted,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { status.fraction },
+                modifier = Modifier.fillMaxWidth(),
+                color = GccGreen,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "Keep the app open until this finishes — your scan builds the 3D neighborhood map.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSubtle,
+            )
+        }
+        SessionUploadStatus.State.DONE -> GccCard(accentColor = CardAccentGreen) {
+            Text(
+                "✓ Scan data uploaded",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = GccGreen,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "All ${status.totalSteps} items reached the cloud — 3D reconstruction runs automatically from here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        SessionUploadStatus.State.QUEUED -> GccCard(accentColor = CardAccentSky) {
+            Text(
+                "Upload will finish later",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = GccClaimed,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "${status.doneSteps} of ${status.totalSteps} uploaded so far. The rest is saved on your phone " +
+                    "and retries automatically when you reopen the app or start your next scan.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
     session: EnvScanSessionDraft?,
+    uploadStatus: SessionUploadStatus?,
     litterCount: Int,
     featureCount: Int,
     photoCount: Int,
@@ -2162,6 +2238,14 @@ private fun ResultPhase(
                 featureCount = featureCount,
                 photoCount = photoCount,
             )
+        }
+
+        // Upload progress: the scan's artifacts (photos, capture chunks,
+        // manifest) are still moving to R2 while this screen shows — make
+        // that visible instead of fire-and-forget silence, so a user who's
+        // about to pocket the phone knows whether their scan is safe.
+        if (uploadStatus != null) item {
+            UploadProgressCard(uploadStatus)
         }
 
         // Report confirmation (only when a report was actually filed).

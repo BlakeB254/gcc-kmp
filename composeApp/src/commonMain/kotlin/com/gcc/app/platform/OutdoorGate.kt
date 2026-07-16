@@ -63,6 +63,14 @@ class OutdoorGate {
         /** On an INDOOR flip, callers purge data recorded in this trailing
          *  window (frames/observations captured while walking inside). */
         const val PURGE_WINDOW_MS = 10_000L
+        /** How long INDOOR must be sustained before the privacy purge
+         *  destroys the in-progress capture chunk. The gate false-positives
+         *  on street canyons / scaffolding, and a 1-2s blip the user
+         *  immediately overrides used to cost up to ~60s of outdoor splat
+         *  footage (87x3ug postmortem, 2026-07-16). Privacy holds during the
+         *  window because capture appends pause the instant the gate leaves
+         *  OUTDOOR (setCaptureEnabled). */
+        const val CAPTURE_DISCARD_DEBOUNCE_MS = 3_000L
     }
 
     private val indoorTs = ArrayDeque<Long>()

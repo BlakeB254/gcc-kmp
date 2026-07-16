@@ -8,6 +8,11 @@ import com.gcc.shared.serialization.GccJson
 import com.russhwolf.settings.Settings
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -31,10 +36,18 @@ import kotlinx.serialization.encodeToString
 class EnvScanSessionUploader(
     private val apiClient: GccApiClient,
     private val settings: Settings = Settings(),
+    /** In-process retry ladder after a failed upload queues (transient LTE
+     *  flakiness right at scan end is the dominant field failure — see the
+     *  87x3ug postmortem: event log landed, manifest failed seconds later
+     *  and then sat queued until the next scan-screen open). Empty disables
+     *  (tests). */
+    private val retryDelaysMs: List<Long> = DEFAULT_RETRY_DELAYS_MS,
 ) {
     private val mutex = Mutex()
     private val pending = mutableListOf<EnvScanManifest>().apply { addAll(loadPersisted()) }
     private val pendingEventLogs = mutableMapOf<String, PendingEventLog>().apply { putAll(loadPersistedEventLogs()) }
+    private val retryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var retryScheduled = false
 
     /** Most recent manifest-upload failure, for the Settings screen. */
     var lastError: String? = null
@@ -185,6 +198,37 @@ class EnvScanSessionUploader(
             while (pending.size > MAX_QUEUED) pending.removeAt(0)
             persistLocked()
         }
+        scheduleRetryFlush()
+    }
+
+    /**
+     * In-process catch-up after a queued failure: retry [flushPending] on the
+     * [retryDelaysMs] ladder while the app is still alive, instead of parking
+     * the manifest until the next scan-screen open. The dominant field
+     * failure is a transient network blip seconds after the scan ends (the
+     * user is still on the session summary — the process lives for minutes),
+     * so the first rung usually delivers. At most one ladder runs at a time;
+     * a new failure while one is in flight rides the existing ladder. Rungs
+     * stop early once the queue is empty. 501 (storage unprovisioned) keeps
+     * climbing but each rung is one cheap early-returning call.
+     */
+    private suspend fun scheduleRetryFlush() {
+        if (retryDelaysMs.isEmpty()) return
+        mutex.withLock {
+            if (retryScheduled) return
+            retryScheduled = true
+        }
+        retryScope.launch {
+            try {
+                for (delayMs in retryDelaysMs) {
+                    delay(delayMs)
+                    if (mutex.withLock { pending.isEmpty() }) break
+                    flushPending()
+                }
+            } finally {
+                mutex.withLock { retryScheduled = false }
+            }
+        }
     }
 
     private fun locationCellIdFor(manifest: EnvScanManifest): String {
@@ -233,6 +277,9 @@ class EnvScanSessionUploader(
         private const val KEY_PENDING_MANIFESTS = "pending_env_manifests"
         private const val KEY_PENDING_EVENT_LOGS = "pending_env_event_logs"
         private const val MAX_QUEUED = 12
+        /** 30s / 2min / 5min — front-loaded because the common failure is a
+         *  momentary LTE blip right at scan end. */
+        val DEFAULT_RETRY_DELAYS_MS = listOf(30_000L, 120_000L, 300_000L)
         const val EVENT_LOG_ARTIFACT = "events.jsonl.gz"
         const val EVENT_LOG_SCHEMA = 1
     }

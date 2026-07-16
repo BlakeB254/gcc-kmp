@@ -50,6 +50,7 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,6 +101,9 @@ data class SpotUiState(
     /** The finished session's track + credited cells — drives the shaded
      *  coverage map on the Scan Session Complete screen. */
     val completedSession: EnvScanSessionDraft? = null,
+    /** Live post-scan upload progress (photos + capture chunks + manifest)
+     *  for the Scan Session Complete screen's upload card. */
+    val uploadStatus: SessionUploadStatus? = null,
 )
 
 data class DuplicateMatch(
@@ -118,6 +122,10 @@ class SpotViewModel(
 ) {
     companion object {
         const val MAX_PHOTOS = 3
+        /** How long the session-summary upload card watches the concurrent
+         *  capture-chunk drain before resolving to QUEUED. */
+        const val CHUNK_WATCH_TIMEOUT_MS = 120_000L
+        const val CHUNK_WATCH_POLL_MS = 750L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -653,6 +661,35 @@ class SpotViewModel(
                 val deviceId = CoverageDeviceId.value
                 val stamp = "${draft.sessionId}"
 
+                // Upload-progress card (Scan Session Complete screen): one
+                // step per photo, per capture-chunk file, plus one for the
+                // manifest+event-log bundle. Chunk uploads run concurrently
+                // in CaptureChunkUploader (kicked at scan completion and by
+                // the activation flush) — their progress is polled from the
+                // store, everything else is updated inline below.
+                val initialChunks = try {
+                    captureChunkStore.chunksForSession(draft.sessionId)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                val chunkTotal = initialChunks.size
+                var chunksDone = initialChunks.count { it.uploadedAtMs != null }
+                val photoTotal = state.capturedPhotos.size
+                val totalSteps = photoTotal + chunkTotal + 1
+                var photosDone = 0
+                var manifestDelivered = false
+                fun publishProgress(uploadState: SessionUploadStatus.State) {
+                    _uiState.value = _uiState.value.copy(
+                        uploadStatus = SessionUploadStatus(
+                            sessionId = draft.sessionId,
+                            doneSteps = photosDone + chunksDone + (if (manifestDelivered) 1 else 0),
+                            totalSteps = totalSteps,
+                            state = uploadState,
+                        ),
+                    )
+                }
+                publishProgress(SessionUploadStatus.State.UPLOADING)
+
                 // Photos upload inline (their bytes only exist in memory now);
                 // a 501/offline here just means the manifest ships photoless —
                 // the photos are already durable on the community report.
@@ -669,6 +706,8 @@ class SpotViewModel(
                         )
                         apiClient.uploadToPresignedUrl(ticket.uploadUrl, photo.bytes, "image/jpeg")
                         photoKeys.add(ticket.r2Key)
+                        photosDone++
+                        publishProgress(SessionUploadStatus.State.UPLOADING)
                     }
                 } catch (e: CaptureStorageNotConfiguredException) {
                     DiagnosticsLog.info("env-capture", "R2 not provisioned — photos skipped, manifest will queue")
@@ -748,13 +787,15 @@ class SpotViewModel(
                 // deactivating so the stream is complete.
                 val eventLines = sessionEventLog?.snapshotLines()
                 ScanSessionTelemetry.deactivateSession(draft.sessionId)
-                if (sessionUploader.uploadOrQueue(manifest, eventLines)) {
+                manifestDelivered = sessionUploader.uploadOrQueue(manifest, eventLines)
+                if (manifestDelivered) {
                     DiagnosticsLog.info(
                         "env-capture",
                         "session ${draft.sessionId} archived to R2: ${photoKeys.size} photo(s) + manifest " +
                             "(${draft.path.size} track samples, ${draft.scannedCells.size} cells)",
                     )
                 }
+                publishProgress(SessionUploadStatus.State.UPLOADING)
                 // Pillar 6: the manifest is now durable either in R2 or in
                 // EnvScanSessionUploader's own persistent retry queue — the
                 // on-disk journal's only job (surviving an app kill before
@@ -764,8 +805,38 @@ class SpotViewModel(
                 // — journalPath is always null there) is a no-op.
                 sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
                 sessionEventLogPath(draft.sessionId)?.let { deleteLocalFile(it) }
+
+                // Watch the concurrent chunk drain so the summary card can
+                // resolve instead of hanging at "uploading" forever. Poisoned
+                // rows (uploadedAtMs = -1, permanent 4xx skip) count as
+                // terminal. On timeout with rows still pending the card reads
+                // QUEUED — accurate: they persist in CaptureChunkStore and
+                // retry on the next flush trigger (activation, next scan).
+                val watchDeadline = Clock.System.now().toEpochMilliseconds() + CHUNK_WATCH_TIMEOUT_MS
+                while (chunksDone < chunkTotal && Clock.System.now().toEpochMilliseconds() < watchDeadline) {
+                    delay(CHUNK_WATCH_POLL_MS)
+                    val records = try {
+                        captureChunkStore.chunksForSession(draft.sessionId)
+                    } catch (e: Exception) {
+                        break
+                    }
+                    chunksDone = records.count { it.uploadedAtMs != null }
+                    publishProgress(SessionUploadStatus.State.UPLOADING)
+                }
+                publishProgress(
+                    if (manifestDelivered && chunksDone >= chunkTotal) SessionUploadStatus.State.DONE
+                    else SessionUploadStatus.State.QUEUED
+                )
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "session archive to R2 failed (report unaffected)", e)
+                // Resolve the progress card to QUEUED rather than leaving it
+                // stuck mid-bar — uploadOrQueue/the chunk store persist
+                // everything that failed, so "will retry" is the truth.
+                _uiState.value.uploadStatus?.takeIf { it.sessionId == draft.sessionId }?.let { s ->
+                    _uiState.value = _uiState.value.copy(
+                        uploadStatus = s.copy(state = SessionUploadStatus.State.QUEUED),
+                    )
+                }
             }
         }
     }
