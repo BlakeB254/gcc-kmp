@@ -36,7 +36,7 @@ private const val MAX_CLASSIFICATION_REQUESTS_PER_TICK = 2
 /** Tolerance for the "progress >= 1.0" completion gate, to absorb float-sum rounding (0.4f+0.4f+0.2f is not always bit-exact 1.0f). */
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
 
-private enum class CandidateState { PROPOSED, SCANNING, EXCLUDED, COMPLETED, TIMED_OUT }
+private enum class CandidateState { PROPOSED, SCANNING, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN }
 
 private class TrackedCandidate(
     var packet: GroundCandidatePacket,
@@ -53,6 +53,11 @@ private class TrackedCandidate(
      *  from one that already went through classification -- see that
      *  method's kdoc. */
     var classified: Boolean = false,
+    /** True once [GroundCandidateTracker.adoptTap] claimed this candidate:
+     *  explicit user intent, the only thing that lets an appearance-unknown
+     *  candidate still complete as [UNKNOWN_LITTER_LABEL] instead of being
+     *  unknown-dismissed (TestFlight 157 — see [GroundCandidateTracker.dismissedUnknown]). */
+    var adoptedByTap: Boolean = false,
 )
 
 /** A candidate whose scan progress reached 1.0 -- ready to file as a real litter item. */
@@ -78,11 +83,12 @@ data class CompletedCandidate(
  * [nowMs] (or, for [recordDwell], an explicit per-call timestamp), so this
  * runs identically in commonTest, on iOS, and on Android.
  *
- * State transitions, once terminal, are permanent: EXCLUDED, COMPLETED and
- * TIMED_OUT candidates are never revisited by [ingest], [recordClassification],
- * [recordDwell] or [adoptTap] -- every one of those guards on the candidate's
- * current state before touching it. This is what guarantees an EXCLUDED
- * candidate can never later appear in [activeScanning] or [completedCandidates].
+ * State transitions, once terminal, are permanent: EXCLUDED, COMPLETED,
+ * TIMED_OUT and DISMISSED_UNKNOWN candidates are never revisited by [ingest],
+ * [recordClassification], [recordDwell] or [adoptTap] -- every one of those
+ * guards on the candidate's current state before touching it. This is what
+ * guarantees an EXCLUDED candidate can never later appear in [activeScanning]
+ * or [completedCandidates].
  *
  * Constraint: [ingest] packets carry no camera position, so "observation"
  * and "close frame" (distanceM < 2m, the packet's own field) are counted
@@ -152,11 +158,13 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
      *  wins (silent, terminal EXCLUDED) even if the candidate was already
      *  promoted to SCANNING by dwell/tap -- this is the "retro-exclude" path.
      *  Otherwise the candidate becomes/stays SCANNING. [itemType] is set only
-     *  if it isn't already: a dwell/tap-promoted candidate (itemType still
-     *  null) gets typed by this call; a candidate classified the ordinary way
-     *  (PROPOSED, itemType already set by an earlier call) keeps its type --
-     *  this also means calling this twice with two different [trashType]s
-     *  never re-types an already-typed candidate. Sets [TrackedCandidate.classified]
+     *  if it isn't already AND [trashType] actually named something: a
+     *  no-match classification leaves itemType null on purpose (TestFlight
+     *  157) -- "the classifier recognized nothing" is NOT evidence of litter,
+     *  and an untyped candidate is unknown-dismissed at full progress unless
+     *  the user tapped it (see [dismissedUnknown]/[completedCandidates]).
+     *  Calling this twice with two different [trashType]s never re-types an
+     *  already-typed candidate. Sets [TrackedCandidate.classified]
      *  unconditionally so [candidatesAwaitingClassification] stops offering
      *  the id up, whichever branch runs. Unknown or already-terminal ids are
      *  ignored (and leave classified untouched). */
@@ -168,7 +176,7 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
             candidate.state = CandidateState.EXCLUDED
         } else {
             candidate.state = CandidateState.SCANNING
-            if (candidate.itemType == null) candidate.itemType = trashType ?: UNKNOWN_LITTER_LABEL
+            if (candidate.itemType == null && trashType != null) candidate.itemType = trashType
         }
     }
 
@@ -254,19 +262,37 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                 bestId = id
             }
         }
-        bestId?.let { candidates[it]?.state = CandidateState.SCANNING }
+        bestId?.let {
+            candidates[it]?.apply {
+                state = CandidateState.SCANNING
+                adoptedByTap = true
+            }
+        }
         return bestId
     }
 
     /** Scan evidence 0..1 for candidate [id] (0 if unknown/never observed). See [progressOf] for the weighting. */
     fun progress(id: Long): Float = candidates[id]?.let(::progressOf) ?: 0f
 
-    /** SCANNING candidates whose [progress] reached 1.0, transitioned to terminal COMPLETED and returned. Emit-once: a candidate returned here never appears again from any query method. */
+    /** SCANNING candidates whose [progress] reached 1.0 AND that carry filing
+     *  evidence — a positive trash-type classification, or explicit user
+     *  intent ([adoptTap]) — transitioned to terminal COMPLETED and returned.
+     *  Emit-once: a candidate returned here never appears again from any
+     *  query method.
+     *
+     *  Appearance gating (TestFlight 157): geometry alone must never file.
+     *  An untyped, untapped candidate at full progress is either HELD (still
+     *  SCANNING, classification hasn't run yet — the awaiting-classification
+     *  queue will get to it, or the 20s timeout reaps it) or, once
+     *  classification ran and named nothing, unknown-dismissed via
+     *  [dismissedUnknown]. Only a tap lets an untyped candidate through, as
+     *  [UNKNOWN_LITTER_LABEL] (intent overrides). */
     fun completedCandidates(): List<CompletedCandidate> {
         val result = mutableListOf<CompletedCandidate>()
         for (candidate in candidates.values) {
             if (candidate.state != CandidateState.SCANNING) continue
             if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
+            if (candidate.itemType == null && !candidate.adoptedByTap) continue
             candidate.state = CandidateState.COMPLETED
             val p = candidate.packet
             result.add(
@@ -279,6 +305,27 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                     imageHalfW = p.imageHalfW, imageHalfH = p.imageHalfH,
                 ),
             )
+        }
+        return result
+    }
+
+    /** SCANNING candidates at full [progress] whose classification RAN and
+     *  named neither a fixture nor a trash type, and that the user never
+     *  tapped: a ground bump the scanner finished examining and found no
+     *  reason to call litter (TestFlight 157 — dirt clods, roots, curb
+     *  chips were filing as "Unknown litter"). Transitioned to terminal
+     *  DISMISSED_UNKNOWN and returned as ids so the caller clears the
+     *  reticle. Emit-once, same contract as [completedCandidates]; mutually
+     *  exclusive with it by construction (typed-or-tapped goes there, this
+     *  requires untyped AND untapped AND classified). */
+    fun dismissedUnknown(): List<Long> {
+        val result = mutableListOf<Long>()
+        for (candidate in candidates.values) {
+            if (candidate.state != CandidateState.SCANNING) continue
+            if (!candidate.classified || candidate.itemType != null || candidate.adoptedByTap) continue
+            if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
+            candidate.state = CandidateState.DISMISSED_UNKNOWN
+            result.add(candidate.packet.id)
         }
         return result
     }

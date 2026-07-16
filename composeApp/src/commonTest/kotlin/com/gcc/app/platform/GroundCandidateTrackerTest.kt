@@ -414,4 +414,97 @@ class GroundCandidateTrackerTest {
         now = 30_000
         assertTrue(tracker.timedOut().isEmpty()) // only 15s since last observation
     }
+
+    /** Drive [id] (already SCANNING at the origin) to progress 1.0: six
+     *  close re-observations + three distinct approach bearings. */
+    private fun driveToFullProgress(tracker: GroundCandidateTracker, id: Long, startMs: Long): Long {
+        var now = startMs
+        repeat(6) {
+            now += 100
+            tracker.ingest(listOf(packet(id, x = 0f, y = 0f, z = 0f, distanceM = 1.0f)))
+        }
+        tracker.recordDwell(floatArrayOf(0f, 0f, 3f), floatArrayOf(0f, 0f, -1f), now)
+        tracker.recordDwell(floatArrayOf(3f, 0f, 0f), floatArrayOf(0f, 0f, -1f), now)
+        tracker.recordDwell(floatArrayOf(0f, 0f, -3f), floatArrayOf(0f, 0f, -1f), now)
+        return now
+    }
+
+    // ── Unknown-appearance gating (TestFlight 157 phantom detections) ──
+    // Geometry alone must never file: a candidate whose classification named
+    // neither a fixture (exclusion) nor a trash type is a ground bump, not
+    // litter — unless the USER tapped it (intent overrides).
+
+    @Test
+    fun unknownClassifiedCandidateIsDismissedNotCompleted() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        // Classification ran and matched nothing either way.
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+
+        assertTrue(tracker.completedCandidates().isEmpty(), "unknown appearance must not auto-file")
+        assertEquals(listOf(1L), tracker.dismissedUnknown())
+        // Emit-once, terminal, gone from every other query.
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertTrue(tracker.activeScanning().none { it.first == 1L })
+        assertTrue(tracker.completedCandidates().isEmpty())
+    }
+
+    @Test
+    fun dismissedUnknownIdNeverResurrects() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+        assertEquals(listOf(1L), tracker.dismissedUnknown())
+
+        now += 1_000
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 1.0f)))
+        assertTrue(tracker.candidatesAwaitingClassification().none { it.id == 1L })
+        assertTrue(tracker.activeScanning().none { it.first == 1L })
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+    }
+
+    @Test
+    fun unclassifiedCandidateAtFullProgressIsHeldUntilClassified() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        // Dwell-promote straight to SCANNING — classification hasn't run yet.
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = -1f)))
+        tracker.recordDwell(floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, -1f), now)
+        now = 1_900
+        tracker.recordDwell(floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, -1f), now)
+        assertEquals(listOf(1L), tracker.activeScanning().map { it.first })
+        // Re-observations move it back to the origin used by driveToFullProgress.
+        now = driveToFullProgress(tracker, 1L, now)
+
+        // Full progress but unvetted: neither completed nor dismissed — held.
+        assertTrue(tracker.completedCandidates().isEmpty())
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertEquals(listOf(1L), tracker.activeScanning().map { it.first })
+
+        // Vetting arrives with a trash type: completes normally.
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = "bottle")
+        val completed = tracker.completedCandidates()
+        assertEquals(listOf(1L), completed.map { it.id })
+        assertEquals("bottle", completed[0].itemType)
+    }
+
+    @Test
+    fun tapAdoptedUnknownStillCompletesAsUnknownLitter() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        // Intent overrides: the user tapped it.
+        assertEquals(1L, tracker.adoptTap(0f, 0f, 0f))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+
+        assertTrue(tracker.dismissedUnknown().isEmpty(), "tapped candidates are never unknown-dismissed")
+        val completed = tracker.completedCandidates()
+        assertEquals(listOf(1L), completed.map { it.id })
+        assertEquals(UNKNOWN_LITTER_LABEL, completed[0].itemType)
+    }
 }

@@ -87,6 +87,24 @@ fun hasUserConfirmedLitter(items: List<ObservedSpotItem>): Boolean =
     items.any { it.provenance == PROVENANCE_USER_CONFIRMED && it.isLitter() }
 
 /**
+ * Everything except the session litter items within [radiusMeters] of
+ * ([lat], [lng]) — the local half of answering "Already clean" on a
+ * session-detected item (TestFlight 157: a phantom auto-detection had no
+ * correction path). Non-litter items and rejected candidates are kept
+ * regardless of distance: rejections are negative training labels the
+ * manifest must still carry, and features aren't litter to begin with.
+ */
+fun removeLitterItemsNear(
+    items: List<ObservedSpotItem>,
+    lat: Double,
+    lng: Double,
+    radiusMeters: Double = 5.0,
+): List<ObservedSpotItem> = items.filterNot { item ->
+    !item.isRejected() && item.isLitter() &&
+        GeofenceVerification.distanceMeters(lat, lng, item.lat, item.lng) <= radiusMeters
+}
+
+/**
  * Litter-only glyphs for the scan minimap. Landmark/world-feature
  * observations (fence, pole, sign, bench, gate, tree, bush — domain
  * "vegetation"/"construction") are real world-observation data and still

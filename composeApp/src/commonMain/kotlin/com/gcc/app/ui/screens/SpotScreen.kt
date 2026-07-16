@@ -50,6 +50,7 @@ import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.NearbyDirtyPromptGate
+import com.gcc.app.platform.SessionAutoDetectPromptSource
 import com.gcc.app.platform.clusterIdsAround
 import com.gcc.app.platform.countFeatures
 import com.gcc.app.platform.countLitter
@@ -227,6 +228,7 @@ fun SpotScreen(
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
                     onFlushMarkers = { viewModel.flushArMarkers() },
+                    onMarkObservedItemsClean = { lat, lng -> viewModel.markObservedItemsCleanNear(lat, lng) },
                 )
 
                 SpotPhase.LOCATION -> LocationPhase(
@@ -336,6 +338,10 @@ private fun CameraPhase(
     onPurgeRecentCaptures: (Long) -> Unit = {},
     /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
     onFlushMarkers: () -> Unit = {},
+    /** "Already clean" answered near (lat, lng): drop this session's litter
+     *  items within the cluster radius so the minimap/summary correct
+     *  immediately (TestFlight 157 phantom-detection correction path). */
+    onMarkObservedItemsClean: (Double, Double) -> Unit = { _, _ -> },
 ) {
     val locationProvider = koinInject<LocationProvider>()
     val deviceCapabilities = koinInject<DeviceCapabilities>()
@@ -776,6 +782,17 @@ private fun CameraPhase(
     // Anti-spam gate (TestFlight 145 field report): one card at a time, quiet
     // cooldown after an answer or a walk-away, cluster-resolve on answer.
     val nearbyPromptGate = remember { NearbyDirtyPromptGate() }
+    // THIS session's auto-detections join the prompt pool once the user has
+    // walked away from them (TestFlight 157: a phantom detection had no
+    // correction path — re-scanning the spot did nothing because the gate
+    // only ever saw server observations). Synthetic negative ids.
+    val sessionPromptSource = remember { SessionAutoDetectPromptSource() }
+    // The exact list the visible card was picked from — answer handlers
+    // cluster-resolve against it so session + server records co-resolve.
+    var promptPool by remember { mutableStateOf(listOf<WorldObservation>()) }
+    // The location collector below is keyed on trackerReady and would
+    // otherwise capture the composition-time observedItems list forever.
+    val currentObservedItems by rememberUpdatedState(observedItems)
 
     // Initialise the scan grid at the first real fix (single-point "route"
     // gives a ~15m-corridor zone around the spot). Keyed on Unit on purpose:
@@ -929,12 +946,16 @@ private fun CameraPhase(
 
             // Clean-confirm proximity (5m, unresolved only), rate-limited by
             // the gate so a walk past many old observations doesn't chain-
-            // prompt (TestFlight 145 spam report).
+            // prompt (TestFlight 145 spam report). The pool is server
+            // expected-dirty plus this session's own walked-away-from auto
+            // detections (TestFlight 157 correction path).
+            promptPool = expectedDirty +
+                sessionPromptSource.promptableObservations(currentObservedItems, loc.lat, loc.lng)
             nearbyDirty = nearbyPromptGate.onLocation(
                 nowMs = Clock.System.now().toEpochMilliseconds(),
                 lat = loc.lat,
                 lng = loc.lng,
-                unresolved = expectedDirty.filter { it.id !in resolvedObservationIds },
+                unresolved = promptPool.filter { it.id !in resolvedObservationIds },
             )
         }
     }
@@ -1207,7 +1228,11 @@ private fun CameraPhase(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    text = "Trash was reported here — is it still there?",
+                    text = if (SessionAutoDetectPromptSource.isSessionObservationId(obs.id)) {
+                        "Your scan flagged litter here — is it still there?"
+                    } else {
+                        "Trash was reported here — is it still there?"
+                    },
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                 )
@@ -1221,8 +1246,10 @@ private fun CameraPhase(
                                 // One answer settles every unresolved
                                 // observation of this ≤5m cluster — ten old
                                 // records of one mess cost one question.
+                                // Clustered over promptPool so co-located
+                                // session detections settle with it.
                                 resolvedObservationIds.addAll(
-                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                    clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
                                 )
                                 nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
@@ -1242,11 +1269,20 @@ private fun CameraPhase(
                                 // location; its ≤5m neighbors just stop
                                 // re-prompting this session.
                                 resolvedObservationIds.addAll(
-                                    clusterIdsAround(obs, expectedDirty.filter { it.id !in resolvedObservationIds })
+                                    clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
                                 )
                                 expectedDirty = expectedDirty.filterNot { it.id == obs.id }
+                                // Local half of the answer: drop this
+                                // session's litter items near the answered
+                                // spot so the minimap zone and summary counts
+                                // correct immediately — the phantom-detection
+                                // fix (TestFlight 157). A no-op when nothing
+                                // from this session sits in the cluster.
+                                onMarkObservedItemsClean(obs.lat, obs.lng)
                                 nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
                                 nearbyDirty = null
+                                val isSessionObs =
+                                    SessionAutoDetectPromptSource.isSessionObservationId(obs.id)
                                 rectifyScope.launch {
                                     try {
                                         val result = apiClient.rectifyObservationAtLocation(obs.lat, obs.lng)
@@ -1257,9 +1293,24 @@ private fun CameraPhase(
                                         }
                                     } catch (e: Exception) {
                                         DiagnosticsLog.error("rectify", "env-scan rectify failed", e)
-                                        toast = "⚠ Couldn't record the clean update"
-                                        resolvedObservationIds.remove(obs.id)
-                                        expectedDirty = expectedDirty + obs
+                                        if (isSessionObs) {
+                                            // The session marker may not even
+                                            // have reached the server yet (30s
+                                            // queue) — a failed rectify is
+                                            // expected there, the local removal
+                                            // stands, and nothing is restored:
+                                            // re-adding a synthetic id to
+                                            // expectedDirty would duplicate the
+                                            // prompt-pool entry.
+                                            DiagnosticsLog.info(
+                                                "rectify",
+                                                "session-item rectify failed (marker may not be server-side yet) — local clean kept",
+                                            )
+                                        } else {
+                                            toast = "⚠ Couldn't record the clean update"
+                                            resolvedObservationIds.remove(obs.id)
+                                            expectedDirty = expectedDirty + obs
+                                        }
                                     }
                                 }
                             }
@@ -1453,6 +1504,11 @@ private fun CameraPhase(
         // taken; capture itself is already gated upstream, so an always-on
         // exit leaks no indoor data. Dim = "nothing to submit yet" cue only.
         val canComplete = photos.isNotEmpty() && captureAllowed
+        // Field report (TestFlight 157): guards the ~5s stop+drain window so
+        // repeated taps don't stack completion coroutines, and flips the pill
+        // label to show the tap landed. Without it the button read as dead —
+        // Blake pressed it repeatedly, then force-quit the app.
+        var completingScan by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -1466,6 +1522,7 @@ private fun CameraPhase(
                 // dimmer than the fully-active pill.
                 .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
                 .clickable {
+                    if (completingScan) return@clickable
                     val draft = sessionRecorder.draft(
                         scanCellCenters,
                         coveragePercent = coveragePercentValue,
@@ -1473,6 +1530,7 @@ private fun CameraPhase(
                         steadinessFraction = trackingTickCounts.steadinessFraction(),
                     )
                     if (arOverlay != null && captureStarted) {
+                        completingScan = true
                         // Stop+drain capture BEFORE the overlay tears down: the
                         // native writer finalize is bounded ~5s and must run off
                         // main (flushScope = Dispatchers.Default) — Task 4's
@@ -1483,9 +1541,19 @@ private fun CameraPhase(
                         // cancels flushScope (invokeOnCompletion after its exit
                         // flush) — a mid-window disposal could otherwise cancel
                         // AFTER stopCapture but BEFORE onCompleteScan, stranding
-                        // the scan with no completion. Once this sequence
-                        // starts it always reaches onCompleteScan (bounded
-                        // ~5s finalize + network — acceptable).
+                        // the scan with no completion.
+                        //
+                        // flushPending runs AFTER onCompleteScan, not before:
+                        // it uploads every pending chunk sequentially with a
+                        // 3-minute per-request timeout, so gating the summary
+                        // on it left the button visually dead for minutes on a
+                        // weak network (field report, TestFlight 157). The
+                        // manifest tolerates chunks that upload late — they're
+                        // keyed by sessionId in R2 regardless — so only the
+                        // drain (which books the chunks) must precede
+                        // completion. NonCancellable also covers the flush:
+                        // the dispose path cancels flushScope right after the
+                        // phase flips, and the uploads must survive that.
                         flushScope.launch {
                             withContext(kotlinx.coroutines.NonCancellable) {
                                 val captureHealthJson = try {
@@ -1494,12 +1562,12 @@ private fun CameraPhase(
                                     DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
                                     null
                                 }
+                                onCompleteScan(draft, captureHealthJson)
                                 try {
                                     captureUploader.flushPending()
                                 } catch (e: Throwable) {
                                     DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
                                 }
-                                onCompleteScan(draft, captureHealthJson)
                             }
                         }
                     } else {
@@ -1509,7 +1577,7 @@ private fun CameraPhase(
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
             Text(
-                text = "Complete Scan ✓",
+                text = if (completingScan) "Finishing Scan…" else "Complete Scan ✓",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,

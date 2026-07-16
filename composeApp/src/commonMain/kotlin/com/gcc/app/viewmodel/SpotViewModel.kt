@@ -13,6 +13,7 @@ import com.gcc.app.platform.ObjectCaptureOutcome
 import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
 import com.gcc.app.platform.PROVENANCE_USER_REJECTED
+import com.gcc.app.platform.removeLitterItemsNear
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.TapCandidateState
 import com.gcc.app.platform.TrashItemCatalog
@@ -302,6 +303,24 @@ class SpotViewModel(
                 enqueueLitterMarker(stamped, photoBytes)
             }
         }
+    }
+
+    /**
+     * The user answered "Already clean" on a scan-detected item (TestFlight
+     * 157 phantom-detection correction path): drop this session's litter
+     * items within [radiusMeters] of the answered spot so the minimap zone,
+     * glyphs and summary counts correct immediately. The server half (the
+     * uploaded marker, if it landed) is rectified separately by the caller.
+     */
+    fun markObservedItemsCleanNear(lat: Double, lng: Double, radiusMeters: Double = 5.0) {
+        val existing = _uiState.value.observedItems
+        val remaining = removeLitterItemsNear(existing, lat, lng, radiusMeters)
+        if (remaining.size == existing.size) return
+        DiagnosticsLog.info(
+            "env-scan",
+            "marked ${existing.size - remaining.size} session item(s) clean near $lat, $lng",
+        )
+        _uiState.value = _uiState.value.copy(observedItems = remaining)
     }
 
     /**

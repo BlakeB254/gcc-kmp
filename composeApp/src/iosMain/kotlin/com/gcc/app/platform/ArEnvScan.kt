@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.ARKit.ARCoachingGoal
 import platform.ARKit.ARCoachingOverlayView
@@ -111,6 +113,14 @@ actual class ArEnvScanOverlay actual constructor() {
         private const val SUPPRESS_RADIUS_METERS = 2.0
         /** Tap-to-focus (Task 5): how long a [focusAt] tap biases detection. */
         private const val FOCUS_DURATION_MS = 5_000L
+        /** Evidence-photo trigger (TestFlight 157): grab the candidate's
+         *  frame the first tick its packet reports the camera this close —
+         *  mirrors the tracker's CLOSE_FRAME_MAX_METERS, when the item is
+         *  actually in view. */
+        private const val CANDIDATE_PHOTO_MAX_DISTANCE_M = 2.0f
+        /** Full camera frames are megabytes each — bound the stash; anything
+         *  past the cap degrades to the completion-time fallback grab. */
+        private const val CANDIDATE_PHOTO_CACHE_MAX = 6
         /** Beacon placement cap (spec 2026-07-10): latLngToLocal error grows
          *  with distance from the geo reference (compass-bias rotation), and
          *  a misplaced beacon is worse than an absent one. Much tighter than
@@ -277,6 +287,18 @@ actual class ArEnvScanOverlay actual constructor() {
     private var groundCandidateCompletedListener: (
         (lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit
     )? = null
+    // Close-range evidence photos (TestFlight 157): the completion-time
+    // captureFrame fires AFTER the camera has panned off the item, so the
+    // filed observation usually carried no usable photo. Instead, grab ONE
+    // frame per SCANNING candidate the first tick it's observed close
+    // (<2m — the camera is pointed at it by construction), stash it here,
+    // and prefer it at completion. `candidatePhotoRequested` is touched only
+    // from the tick coroutine; the byte cache crosses coroutines and is
+    // mutex-guarded. Bounded: completion/timeout/exclusion evict, and the
+    // cache never grows past [CANDIDATE_PHOTO_CACHE_MAX].
+    private val candidatePhotoMutex = Mutex()
+    private val candidatePhotoCache = mutableMapOf<Long, ByteArray>()
+    private val candidatePhotoRequested = mutableSetOf<Long>()
 
     private var floorGridTexture: UIImage? = null
 
@@ -496,6 +518,11 @@ actual class ArEnvScanOverlay actual constructor() {
         groundCandidateTracker = GroundCandidateTracker(nowMs = { Clock.System.now().toEpochMilliseconds() })
         groundCandidatePackets.clear()
         groundCandidateCompletedListener = null
+        // Evidence-photo stash: the tick loop is cancelled above, so the
+        // request set is safe to clear here; the byte cache goes through its
+        // mutex like every other access.
+        candidatePhotoRequested.clear()
+        scope.launch { candidatePhotoMutex.withLock { candidatePhotoCache.clear() } }
         _multiItemReticles.value = emptyList()
         dispatch_async(dispatch_get_main_queue()) {
             CameraDetectionBus.update(emptyList())
@@ -1026,6 +1053,7 @@ actual class ArEnvScanOverlay actual constructor() {
                 // reporting the id rather than signal the transition.
                 groundCandidatePackets.remove(candidate.id)
                 if (alreadyScanning) native.clearScanReticle(candidate.id)
+                evictCandidatePhoto(candidate.id)
                 ScanSessionTelemetry.active?.detection(
                     label = exclusionLabel, confidence = null, distanceM = candidate.distanceM.toDouble(),
                     source = "geometry", outcome = "excluded:$exclusionLabel",
@@ -1064,6 +1092,32 @@ actual class ArEnvScanOverlay actual constructor() {
             }
         }
 
+        // Step 4: evidence photos (TestFlight 157). The first tick a SCANNING
+        // candidate's latest packet puts the camera within
+        // [CANDIDATE_PHOTO_MAX_DISTANCE_M], grab the frame NOW — the packet
+        // was produced from the current frame, so the item is in view —
+        // rather than at completion, by which point the camera has usually
+        // panned away and the filed observation shipped photoless. One
+        // request per candidate id; failures degrade silently to the
+        // completion-time fallback grab below.
+        for ((id, _) in groundCandidateTracker.activeScanning()) {
+            val packet = groundCandidatePackets[id] ?: continue
+            if (packet.distanceM >= CANDIDATE_PHOTO_MAX_DISTANCE_M) continue
+            if (!candidatePhotoRequested.add(id)) continue
+            scope.launch {
+                try {
+                    val bytes = captureFrame()?.bytes?.takeIf { it.isNotEmpty() } ?: return@launch
+                    candidatePhotoMutex.withLock {
+                        if (candidatePhotoCache.size < CANDIDATE_PHOTO_CACHE_MAX) {
+                            candidatePhotoCache[id] = bytes
+                        }
+                    }
+                } catch (e: Throwable) {
+                    DiagnosticsLog.error("env-ar", "close-range candidate photo failed (completion fallback remains)", e)
+                }
+            }
+        }
+
         // Step 5: render. Ids that COMPLETE or TIME OUT this call must stop
         // streaming to setScanReticle in this SAME tick (ArNativeSurface's
         // setScanReticle contract) — activeScanning() only reports ids still
@@ -1075,10 +1129,24 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         groundCandidateTracker.timedOut().forEach { id ->
             native.clearScanReticle(id)
+            evictCandidatePhoto(id)
             val packet = groundCandidatePackets.remove(id)
             ScanSessionTelemetry.active?.detection(
                 label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
                 source = "geometry", outcome = "timeout",
+            )
+        }
+        // Appearance gating (TestFlight 157): fully-scanned candidates whose
+        // classification named nothing and that the user never tapped are
+        // ground bumps, not litter — dismissed silently, same reticle-clear
+        // contract as timeout. See GroundCandidateTracker.dismissedUnknown.
+        groundCandidateTracker.dismissedUnknown().forEach { id ->
+            native.clearScanReticle(id)
+            evictCandidatePhoto(id)
+            val packet = groundCandidatePackets.remove(id)
+            ScanSessionTelemetry.active?.detection(
+                label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
+                source = "geometry", outcome = "dismissed:unknown",
             )
         }
         groundCandidateTracker.completedCandidates().forEach { completed ->
@@ -1098,13 +1166,16 @@ actual class ArEnvScanOverlay actual constructor() {
                 val latLng = localToLatLng(completed.x, completed.z)
                 if (latLng != null && latLng.first.isFinite() && latLng.second.isFinite()) {
                     val (lat, lng) = latLng
-                    // Best-effort completion photo (spec item photo): the
-                    // same silent captureFrame seam CameraManager's external
-                    // frame source rides. Captured off the tick loop; a
-                    // failed/timed-out grab degrades to a null photo, never
+                    // Item photo: prefer the close-range frame stashed while
+                    // the candidate was actually in view (Step 4) — the
+                    // completion-time grab below is a fallback only, since by
+                    // now the camera has usually panned off the item
+                    // (TestFlight 157: observations filed photoless). Either
+                    // way a failed grab degrades to a null photo, never
                     // blocks or drops the item itself.
                     scope.launch {
-                        val photoBytes = try {
+                        val stashed = candidatePhotoMutex.withLock { candidatePhotoCache.remove(completed.id) }
+                        val photoBytes = stashed ?: try {
                             captureFrame()?.bytes?.takeIf { it.isNotEmpty() }
                         } catch (e: Throwable) {
                             DiagnosticsLog.error("env-ar", "completion photo captureFrame failed (item kept, no photo)", e)
@@ -1120,6 +1191,13 @@ actual class ArEnvScanOverlay actual constructor() {
                 }
             }
         }
+    }
+
+    /** Tick-coroutine helper: forget a now-terminal candidate's photo state
+     *  (request flag synchronously; the mutex-guarded byte cache async). */
+    private fun evictCandidatePhoto(id: Long) {
+        candidatePhotoRequested.remove(id)
+        scope.launch { candidatePhotoMutex.withLock { candidatePhotoCache.remove(id) } }
     }
 
     /**

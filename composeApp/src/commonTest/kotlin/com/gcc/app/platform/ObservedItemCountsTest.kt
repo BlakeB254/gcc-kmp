@@ -119,4 +119,27 @@ class ObservedItemCountsTest {
         val incoming = item("litter", itemType = "bottle", provenance = PROVENANCE_USER_CONFIRMED)
         assertEquals(DedupDecision.Upgrade(1), dedupUpgradeDecision(existing, incoming))
     }
+
+    @Test
+    fun removeLitterItemsNearRemovesOnlyLitterInsideRadius() {
+        val near = item("litter", provenance = PROVENANCE_AUTO_DETECTED)
+        // ~22m north of the shared (41.86, -87.72) test position.
+        val far = near.copy(lat = 41.86 + 22.0 / 111_320.0)
+        val feature = item("vegetation")
+        val rejected = item("litter", provenance = PROVENANCE_USER_REJECTED)
+        val remaining = removeLitterItemsNear(
+            listOf(near, far, feature, rejected),
+            lat = 41.86, lng = -87.72, radiusMeters = 5.0,
+        )
+        assertEquals(listOf(far, feature, rejected), remaining)
+    }
+
+    @Test
+    fun removeLitterItemsNearTreatsNullDomainAsLitter() {
+        val legacy = item(domain = null, provenance = PROVENANCE_AUTO_DETECTED)
+        assertEquals(
+            emptyList(),
+            removeLitterItemsNear(listOf(legacy), lat = 41.86, lng = -87.72),
+        )
+    }
 }

@@ -69,6 +69,12 @@ fun ScanMinimapOverlay(
     /** Cells the ledger marks freshly scanned — punched out of the veil. */
     freshCellCenters: List<Pair<Double, Double>> = emptyList(),
     freshnessCellSizeMeters: Double = 10.0,
+    /** Litter-pattern zone grid. Deliberately finer than the 10m freshness
+     *  grid: quantizing litter on 10m cells inflated a SINGLE ~20cm item into
+     *  a ~10m blob — field report (TestFlight 157) read it as a "big red
+     *  circle" over nothing. 5m keeps genuine clusters merging (adjacent-cell
+     *  items still fuse into one zone) while a lone item stays a modest mark. */
+    litterZoneCellSizeMeters: Double = 5.0,
     /** Session cells credited at CLOSE tier — drawn vivid over the grazed shade. */
     closeCellCenters: List<Pair<Double, Double>> = emptyList(),
     /** Session cells credited at SEEN tier only (sighted at distance, never
@@ -134,14 +140,14 @@ fun ScanMinimapOverlay(
     // freshness grid) all route through the same engine (WS4 "paint the town").
     // Litter-pattern zones: every known litter position (this session's
     // confirmed items + the world model's dirty spots) quantized onto the
-    // coarse freshness grid and traced into merged organic shapes — clustered
+    // litter-zone grid and traced into merged organic shapes — clustered
     // litter reads as a contiguous "problem zone" glued to the map tiles,
     // not just individual glyph pins. Uses the same lattice anchor as every
     // other tier so the shapes never drift against the coverage paint.
     val litterCoords = remember(trashItems, typedTrashItems) {
         (trashItems.map { it.lat to it.lng } + typedTrashItems.map { it.lat to it.lng }).distinct()
     }
-    val litterRings = rememberRings(litterCoords, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    val litterRings = rememberRings(litterCoords, litterZoneCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
@@ -356,7 +362,13 @@ fun ScanMinimapOverlay(
         // longer carries the contrast, so the session paint itself must.
         // Alphas raised (0.30→0.42, 0.65→0.78) and the swept-territory blob
         // gets a bright edge stroke so "where I've scanned" pops as it grows.
-        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.14f))
+        // Field report (TestFlight 157): SEEN at 0.14 was invisible over the
+        // basemap, so the swept ground CONNECTING the walked/close patches
+        // rendered as nothing — the live map read as disconnected green
+        // islands while the summary (final GRAZED+ set, auto-fit zoom) showed
+        // one blob. SEEN must stay clearly below GRAZED (0.42) — it's credit-
+        // less sweep, not coverage — but high enough to read as tissue.
+        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.26f))
         drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
         drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
         drawPath(scanOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
