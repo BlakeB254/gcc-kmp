@@ -452,8 +452,16 @@ private fun CameraPhase(
                     locationProvider.headingDegrees.value?.toDouble(),
                     locationProvider.headingAccuracyDegrees.value?.toDouble(),
                 )
-                    ?.let(sessionRecorder::addGeoRefEvent)
-                geoRefPaired = true
+                    ?.let { event ->
+                        sessionRecorder.addGeoRefEvent(event)
+                        // Only flag paired on a REAL pairing: updateGeoReference
+                        // returns null until the AR camera delivers frames, and a
+                        // usable GPS fix often lands first. Flipping the flag on
+                        // that null path saturated the capture-retry key below —
+                        // startCapture was never retried once pairing actually
+                        // existed (capture-never-starts race, 2026-07-15).
+                        geoRefPaired = true
+                    }
             }
         }
     }

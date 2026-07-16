@@ -234,8 +234,14 @@ fun ArRouteScreen(
                     viewModel.headingDegrees.value?.toDouble(),
                     viewModel.headingAccuracyDegrees.value?.toDouble(),
                 )
-                    ?.let(viewModel::recordGeoRefEvent) // AR↔world pairing → lap manifest (DGX splat registration)
-                geoRefPaired = true
+                    ?.let { event ->
+                        // AR↔world pairing → lap manifest (DGX splat registration).
+                        viewModel.recordGeoRefEvent(event)
+                        // Only flag paired on a REAL pairing — updateGeoReference
+                        // returns null until the AR camera delivers frames. Same
+                        // capture-retry saturation race as SpotScreen (2026-07-15).
+                        geoRefPaired = true
+                    }
             }
         }
     }

@@ -344,7 +344,10 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun startCapture(sessionId: String): Boolean {
         // SceneKit fallback: capture unsupported — report honestly so the
         // caller never shows a REC chip for a recording that isn't happening.
-        val surface = nativeSurface ?: return false
+        val surface = nativeSurface ?: run {
+            DiagnosticsLog.info("capture", "startCapture($sessionId) skipped — no native surface (SceneKit fallback)")
+            return false
+        }
         return try {
             val cellId = geoCellIdOrNull()
             if (cellId == null) {

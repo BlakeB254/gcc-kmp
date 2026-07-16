@@ -256,7 +256,10 @@ actual class ArRouteOverlay actual constructor() {
     // the shared bookCaptureChunksAsync so the two paths can't drift.
 
     actual fun startCapture(sessionId: String): Boolean {
-        val surface = nativeSurface ?: return false // SceneKit fallback: no recorder
+        val surface = nativeSurface ?: run {
+            DiagnosticsLog.info("capture", "route startCapture($sessionId) skipped — no native surface (SceneKit fallback)")
+            return false
+        }
         return try {
             if (!hasGeoRef) {
                 DiagnosticsLog.info("capture", "route startCapture($sessionId) skipped — no geo reference yet")
