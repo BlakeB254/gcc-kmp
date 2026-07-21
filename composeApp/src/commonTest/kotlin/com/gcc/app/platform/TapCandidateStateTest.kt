@@ -37,6 +37,21 @@ class TapCandidateStateTest {
     }
 
     @Test
+    fun noGeoRefTellsTheTruthInsteadOfBlamingSteadiness() {
+        // The surface WAS hit — the session just has no AR↔GPS pairing yet.
+        // "Hold steady" would be a lie; no amount of steadiness helps.
+        val state = idle.reduce(TapEvent.Tapped(0.5f, 0.5f)).reduce(TapEvent.NoGeoRef)
+        assertEquals(TapPhase.GPS_SYNCING, state.phase)
+        assertEquals("GPS is syncing — try again in a few seconds", tapPillCopy(state)?.title)
+    }
+
+    @Test
+    fun noGeoRefOutsideLocatingIsIgnored() {
+        val state = tappedAndLocated().reduce(TapEvent.NoGeoRef)
+        assertEquals(TapPhase.CHECKING, state.phase)
+    }
+
+    @Test
     fun unknownClassificationStillCreatesAConfirmableCandidate() {
         // Option A: a tap is authoritative even when the model names nothing.
         val state = tappedAndLocated().reduce(TapEvent.Classified(label = null, confidence = null))

@@ -43,6 +43,7 @@ import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.TextMuted
 import com.gcc.app.platform.EnvScanSessionDraft
+import com.gcc.shared.model.ObservedSpotItem
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
@@ -66,6 +67,11 @@ fun ScanSessionSummaryCard(
     litterCount: Int,
     featureCount: Int,
     photoCount: Int,
+    /** The session's identified litter — drawn on the summary map as typed
+     *  glyphs + a 5m zone blob, matching the live minimap's language. Without
+     *  these the finds vanish from the map the moment the scan ends, and the
+     *  card's own "Litter identified" stat has no visual anchor. */
+    litterItems: List<ObservedSpotItem> = emptyList(),
 ) {
     GccCard(accentColor = CardAccentGreen) {
         Text(
@@ -75,7 +81,11 @@ fun ScanSessionSummaryCard(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Shaded areas show the ground you covered this session.",
+            if (litterItems.isEmpty()) {
+                "Shaded areas show the ground you covered this session."
+            } else {
+                "Green is the ground you covered; orange marks the litter you identified."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
@@ -85,6 +95,7 @@ fun ScanSessionSummaryCard(
             Spacer(modifier = Modifier.height(12.dp))
             SessionCoverageMap(
                 cellCenters = cells.map { it.lat to it.lng },
+                litterItems = litterItems,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(240.dp)
@@ -203,6 +214,7 @@ private fun sessionDurationLabel(session: EnvScanSessionDraft?): String {
 @Composable
 private fun SessionCoverageMap(
     cellCenters: List<Pair<Double, Double>>,
+    litterItems: List<ObservedSpotItem> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -269,22 +281,52 @@ private fun SessionCoverageMap(
         val rings = remember(cellCenters) {
             quantizeAndTraceOutlines(cellCenters, CoverageTracker.cellSizeMeters, anchor.first, anchor.second)
         }
+        // Litter zone: same 5m-grid marching-squares shapes as the live
+        // minimap, anchored to the SAME lattice as the coverage rings so the
+        // zone never drifts against the green blob.
+        val litterRings = remember(litterItems, cellCenters) {
+            quantizeAndTraceOutlines(
+                litterItems.map { it.lat to it.lng }.distinct(),
+                cellSizeMeters = 5.0,
+                anchorLat = anchor.first,
+                anchorLng = anchor.second,
+            )
+        }
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val fill = GccGreen.copy(alpha = 0.4f)
             val edge = GccGreen.copy(alpha = 0.8f)
             val toOffset = geoToCanvasProjector(centerLat, centerLng, overlayZoom, size.width, size.height)
-            val path = Path().apply { fillType = PathFillType.EvenOdd }
-            for (ring in rings) {
-                if (ring.size < 3) continue
-                ring.forEachIndexed { index, (lat, lng) ->
-                    val p = toOffset(lat, lng)
-                    if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+            fun ringsToPath(rings: List<List<Pair<Double, Double>>>): Path {
+                val path = Path().apply { fillType = PathFillType.EvenOdd }
+                for (ring in rings) {
+                    if (ring.size < 3) continue
+                    ring.forEachIndexed { index, (lat, lng) ->
+                        val p = toOffset(lat, lng)
+                        if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+                    }
+                    path.close()
                 }
-                path.close()
+                return path
             }
+            val path = ringsToPath(rings)
             drawPath(path, color = fill)
             drawPath(path, color = edge, style = Stroke(width = 1.5.dp.toPx()))
+
+            // The session's finds, in the live minimap's visual language:
+            // orange zone shapes for where litter concentrates, per-type
+            // glyphs for what was identified. The summary is the payoff
+            // moment — the finds must not vanish from the map at the end.
+            if (litterItems.isNotEmpty()) {
+                val litterPath = ringsToPath(litterRings)
+                drawPath(litterPath, color = TrashOrange.copy(alpha = 0.24f))
+                drawPath(litterPath, color = TrashOrange.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
+                for (item in litterItems) {
+                    val c = toOffset(item.lat, item.lng)
+                    if (c.x !in 0f..size.width || c.y !in 0f..size.height) continue
+                    drawTrashGlyph(item.itemType, c)
+                }
+            }
         }
     }
 }

@@ -28,6 +28,20 @@ data class TrashCandidate(
 )
 
 /**
+ * A fully-scanned ground candidate whose appearance the classifier could not
+ * name and that the user hasn't tapped — parked by [GroundCandidateTracker]
+ * in its awaiting-intent stage and surfaced as an "is this litter?" prompt.
+ * The reticle stays on screen (full) as the prompt's visual anchor. One
+ * prompt at a time; unanswered prompts self-dismiss after
+ * [INTENT_PROMPT_TIMEOUT_SECONDS].
+ */
+data class GroundIntentPrompt(
+    val id: Long,
+    /** Camera distance at last observation — copy hint only. */
+    val distanceM: Float? = null,
+)
+
+/**
  * One finished background-capture artifact chunk (Pillar 1 session capture)
  * drained from the native recorder. Mirrors the Swift/iosMain
  * `"index|kind|path|sizeBytes"` packet convention (kind: video|sidecar|
@@ -100,6 +114,24 @@ expect class ArEnvScanOverlay() {
 
     /** Drop the pending tapped candidate. Records nothing (accidental tap). */
     fun dismissTapCandidate()
+
+    /** The one pending "is this litter?" prompt for a fully-scanned,
+     *  appearance-unknown ground candidate. Always null off-iOS. */
+    val groundIntentPrompt: StateFlow<GroundIntentPrompt?>
+
+    /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
+     *  completes through the normal filing path (evidence photo, geo-ref,
+     *  weight) with user-intent provenance. No-op when nothing is pending. */
+    fun confirmGroundIntentPrompt()
+
+    /** The user answered "not litter" on [groundIntentPrompt]: terminal
+     *  dismissal, reticle cleared, nothing files. No-op when nothing pending. */
+    fun rejectGroundIntentPrompt()
+
+    /** Best-effort current-frame grab to attach as evidence to a tap
+     *  confirmation — a full [CapturedPhoto] so it can join the report's
+     *  photo set. Null when no frame is available (and always off-iOS). */
+    suspend fun captureTapEvidencePhoto(): CapturedPhoto?
 
     /**
      * Pair the worker's latest GPS fix with the AR camera's current position.
@@ -195,15 +227,17 @@ expect class ArEnvScanOverlay() {
      * finite; a candidate that completes before pairing or resolving to a
      * non-finite coordinate is dropped (mirrors
      * [setElementObservedListener]'s `hasGeoRef` + finiteness guards).
-     * [photoBytes] is a best-effort silent frame grab (the same
+     * [photo] is a best-effort silent frame grab (the same
      * `captureFrame` seam CameraManager's external frame source uses) taken
-     * at completion time — the item's photo per spec §4; null when no frame
-     * could be captured. Called on the main thread; iOS only. No-op on
-     * Android/Desktop — there is no LiDAR ground-candidate pipeline off the
-     * native RealityKit surface.
+     * at the first close-range SCANNING tick (completion-time fallback) —
+     * the item's photo per spec §4, a full [CapturedPhoto] so a user-intent
+     * completion can also land in the report's photo set; null when no
+     * frame could be captured. Called on the main thread; iOS only. No-op
+     * on Android/Desktop — there is no LiDAR ground-candidate pipeline off
+     * the native RealityKit surface.
      */
     fun setGroundCandidateCompletedListener(
-        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+        listener: ((lat: Double, lng: Double, photo: CapturedPhoto?, candidate: CompletedCandidate) -> Unit)?,
     )
 
     /** Pause/resume frame sampling without tearing down the ARSession. */

@@ -34,6 +34,15 @@ object GroundExclusionRules {
         // never reaches LitterWeightEstimator's solid-glass density bucket
         // (canonicalType("glass") -> "glass_bottle" -> 300 g/L).
         "glass",
+        // Field rounds on TestFlight 157/158: the original 9 tokens covered
+        // clean, isolated containers but missed most real-world litter —
+        // crumpled/soft items and anything the classifier names generically.
+        // These stay SPECIFIC (each token affirmatively names refuse or a
+        // common litter item); deliberately NOT added: "plastic",
+        // "container", "packaging" and similar broad material words, which
+        // would type planters/bins/fixtures as litter.
+        "trash", "garbage", "litter", "waste", "debris", "napkin", "tissue",
+        "foil", "styrofoam", "straw", "lid", "jug",
     )
 
     /** Token-set match for [identifier]: first whole word from [vocab] found
@@ -70,4 +79,23 @@ object GroundExclusionRules {
      */
     fun trashTypeFrom(labels: List<ClassificationObservation>): String? =
         labels.firstNotNullOfOrNull { obs -> matchToken(obs.identifier, TRASH_TOKENS) }
+
+    /**
+     * The one classification decision for a ground candidate. A positive
+     * trash-type match SUPPRESSES a fixture exclusion: the candidate crop
+     * always includes ground context, so a bottle lying on grass classifies
+     * as BOTH "bottle" and "grass" — and grass clears [EXCLUSION_CONFIDENCE]
+     * easily. Running the exclusion check first (the pre-158 call-site order)
+     * silently killed exactly the candidates the detector was built for:
+     * litter on grass, next to a curb, or near a parked car. A specific
+     * trash token is the stronger signal — background context never
+     * outvotes it.
+     */
+    data class GroundClassification(val exclusionLabel: String?, val trashType: String?)
+
+    fun classify(labels: List<ClassificationObservation>): GroundClassification {
+        val trashType = trashTypeFrom(labels)
+        val exclusionLabel = if (trashType != null) null else exclusionLabelFrom(labels)
+        return GroundClassification(exclusionLabel = exclusionLabel, trashType = trashType)
+    }
 }

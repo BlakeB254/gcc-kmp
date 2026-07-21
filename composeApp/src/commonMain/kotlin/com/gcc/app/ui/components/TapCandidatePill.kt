@@ -39,8 +39,12 @@ fun TapCandidatePill(
     onReject: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Replaces the phase-derived title — used by the ground-scan intent
+     *  prompt, which reuses this pill with its own question. */
+    titleOverride: String? = null,
 ) {
-    val copy = tapPillCopy(state) ?: return
+    val derived = tapPillCopy(state) ?: return
+    val copy = if (titleOverride != null) derived.copy(title = titleOverride) else derived
 
     // Any phase change restarts the timer; an untouched candidate expires.
     LaunchedEffect(state.phase, state.normalizedX, state.normalizedY) {

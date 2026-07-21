@@ -1,6 +1,5 @@
 package com.gcc.app.platform
 
-import com.gcc.app.ui.screens.neverScannedGrid
 import com.gcc.shared.model.Coordinates
 import kotlin.math.abs
 import kotlin.math.floor
@@ -109,45 +108,5 @@ class GridLatticeRegistrationTest {
             assertEquals(1, kotlin.math.round(ux).toInt().mod(2), "x center must be an odd tile multiple")
             assertEquals(1, kotlin.math.round(uz).toInt().mod(2), "z center must be an odd tile multiple")
         }
-    }
-
-    @Test
-    fun neverScannedGridSitsOnCanonicalLedgerLattice() {
-        val anchor = Coordinates(lat = 41.86012, lng = -87.71988)
-        val cells = neverScannedGrid(anchor, serverCells = emptyList())
-        assertTrue(cells.isNotEmpty())
-        val latStep = 10.0 / 111_000.0
-        val lngStep = 10.0 / 82_300.0
-        for ((lat, lng) in cells) {
-            // Each fog center must BE a canonical cell center: quantizing it
-            // through gridCell10m and re-deriving the center is the identity.
-            val (latIdx, lngIdx) = SessionPointsEstimator.gridCell10m(lat, lng)
-            assertTrue(abs((latIdx + 0.5) * latStep - lat) < 1e-9, "fog lat $lat off-lattice")
-            assertTrue(abs((lngIdx + 0.5) * lngStep - lng) < 1e-9, "fog lng $lng off-lattice")
-        }
-        // And the anchor's own cell is part of the fog disk when uncovered.
-        val anchorCell = SessionPointsEstimator.gridCell10m(anchor.lat, anchor.lng)
-        assertTrue(
-            cells.any { (lat, lng) -> SessionPointsEstimator.gridCell10m(lat, lng) == anchorCell },
-            "anchor cell missing from fog disk",
-        )
-    }
-
-    @Test
-    fun neverScannedGridSkipsCoveredCells() {
-        val anchor = Coordinates(lat = 41.86012, lng = -87.71988)
-        val uncovered = neverScannedGrid(anchor, serverCells = emptyList())
-        // Mark every fog cell as fresh on the server → nothing left to fog.
-        val allCovered = uncovered.map { (lat, lng) ->
-            com.gcc.shared.model.MapCoverageCell(
-                locationCellId = "${floor(lat * 1e5)}:${floor(lng * 1e5)}",
-                lat = lat,
-                lng = lng,
-                state = "fresh",
-                lastScannedAt = "2026-07-06T00:00:00Z",
-                totalDistanceMeters = 12.0,
-            )
-        }
-        assertTrue(neverScannedGrid(anchor, allCovered).isEmpty())
     }
 }

@@ -33,10 +33,16 @@ private const val TIMEOUT_SECONDS = 20.0
 /** Candidates pulled off the PROPOSED-then-unclassified-SCANNING queue per [GroundCandidateTracker.candidatesAwaitingClassification] call. */
 private const val MAX_CLASSIFICATION_REQUESTS_PER_TICK = 2
 
+/** Seconds an appearance-unknown, fully-scanned candidate waits in
+ *  AWAITING_INTENT (the "is this litter?" prompt) before being unknown-
+ *  dismissed. Long enough to read the prompt and answer, short enough that
+ *  an ignored prompt never trails the user down the block. */
+const val INTENT_PROMPT_TIMEOUT_SECONDS = 10.0
+
 /** Tolerance for the "progress >= 1.0" completion gate, to absorb float-sum rounding (0.4f+0.4f+0.2f is not always bit-exact 1.0f). */
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
 
-private enum class CandidateState { PROPOSED, SCANNING, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN }
+private enum class CandidateState { PROPOSED, SCANNING, AWAITING_INTENT, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN }
 
 private class TrackedCandidate(
     var packet: GroundCandidatePacket,
@@ -53,11 +59,15 @@ private class TrackedCandidate(
      *  from one that already went through classification -- see that
      *  method's kdoc. */
     var classified: Boolean = false,
-    /** True once [GroundCandidateTracker.adoptTap] claimed this candidate:
+    /** True once [GroundCandidateTracker.adoptTap] or
+     *  [GroundCandidateTracker.confirmIntent] claimed this candidate:
      *  explicit user intent, the only thing that lets an appearance-unknown
      *  candidate still complete as [UNKNOWN_LITTER_LABEL] instead of being
      *  unknown-dismissed (TestFlight 157 — see [GroundCandidateTracker.dismissedUnknown]). */
     var adoptedByTap: Boolean = false,
+    /** When this candidate entered AWAITING_INTENT — drives the
+     *  [INTENT_PROMPT_TIMEOUT_SECONDS] reaper in [GroundCandidateTracker.dismissedUnknown]. */
+    var awaitingIntentSinceMs: Long = 0L,
 )
 
 /** A candidate whose scan progress reached 1.0 -- ready to file as a real litter item. */
@@ -74,6 +84,11 @@ data class CompletedCandidate(
     val imageCy: Double,
     val imageHalfW: Double,
     val imageHalfH: Double,
+    /** True when the user explicitly claimed this candidate (world tap or the
+     *  "is this litter?" intent prompt) — the filing site must set
+     *  user_confirmed provenance so [hasUserConfirmedLitter] counts it as
+     *  report evidence; a purely autonomous completion stays auto_detected. */
+    val userIntent: Boolean = false,
 )
 
 /**
@@ -249,12 +264,15 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         }
     }
 
-    /** A user tap at a world point immediately promotes the nearest non-terminal candidate within [TAP_ADOPT_MAX_METERS] to SCANNING (user intent is authoritative), returning its id -- or null if nothing is close enough. */
+    /** A user tap at a world point immediately promotes the nearest non-terminal candidate within [TAP_ADOPT_MAX_METERS] to SCANNING (user intent is authoritative), returning its id -- or null if nothing is close enough. AWAITING_INTENT candidates qualify too: a world tap near the prompted item IS the answer the prompt is asking for. */
     fun adoptTap(worldX: Float, worldY: Float, worldZ: Float): Long? {
         var bestId: Long? = null
         var bestDistance = Float.MAX_VALUE
         for ((id, candidate) in candidates) {
-            if (candidate.state != CandidateState.PROPOSED && candidate.state != CandidateState.SCANNING) continue
+            if (candidate.state != CandidateState.PROPOSED &&
+                candidate.state != CandidateState.SCANNING &&
+                candidate.state != CandidateState.AWAITING_INTENT
+            ) continue
             val p = candidate.packet
             val distance = distance3D(p.x, p.y, p.z, worldX, worldY, worldZ)
             if (distance <= TAP_ADOPT_MAX_METERS && distance < bestDistance) {
@@ -303,31 +321,83 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                     widthM = p.widthM, heightM = p.heightM, depthM = p.depthM,
                     imageCx = p.imageCx, imageCy = p.imageCy,
                     imageHalfW = p.imageHalfW, imageHalfH = p.imageHalfH,
+                    userIntent = candidate.adoptedByTap,
                 ),
             )
         }
         return result
     }
 
-    /** SCANNING candidates at full [progress] whose classification RAN and
-     *  named neither a fixture nor a trash type, and that the user never
-     *  tapped: a ground bump the scanner finished examining and found no
-     *  reason to call litter (TestFlight 157 — dirt clods, roots, curb
-     *  chips were filing as "Unknown litter"). Transitioned to terminal
-     *  DISMISSED_UNKNOWN and returned as ids so the caller clears the
-     *  reticle. Emit-once, same contract as [completedCandidates]; mutually
-     *  exclusive with it by construction (typed-or-tapped goes there, this
-     *  requires untyped AND untapped AND classified). */
+    /** Appearance-unknown handling, two stages (TestFlight 157 → 158 UX fix):
+     *
+     *  Stage 1 — a SCANNING candidate at full [progress] whose classification
+     *  RAN and named neither a fixture nor a trash type, untapped, moves to
+     *  AWAITING_INTENT instead of being silently discarded: the user just
+     *  watched the reticle's fill bar complete, so "…and then nothing" read
+     *  as a broken scanner in the field. The caller surfaces those ids
+     *  (via [awaitingIntent]) as an "is this litter?" prompt — geometry
+     *  still never files on its own, but the user's answer is one tap away.
+     *
+     *  Stage 2 — an AWAITING_INTENT candidate the user ignored for
+     *  [INTENT_PROMPT_TIMEOUT_SECONDS] transitions to terminal
+     *  DISMISSED_UNKNOWN and is returned so the caller clears the reticle.
+     *  Emit-once for the RETURNED ids, same contract as
+     *  [completedCandidates]; mutually exclusive with it by construction
+     *  (typed-or-tapped completes, this path requires untyped AND untapped
+     *  AND classified). */
     fun dismissedUnknown(): List<Long> {
+        val now = nowMs()
         val result = mutableListOf<Long>()
         for (candidate in candidates.values) {
-            if (candidate.state != CandidateState.SCANNING) continue
-            if (!candidate.classified || candidate.itemType != null || candidate.adoptedByTap) continue
-            if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
-            candidate.state = CandidateState.DISMISSED_UNKNOWN
-            result.add(candidate.packet.id)
+            when (candidate.state) {
+                CandidateState.SCANNING -> {
+                    if (!candidate.classified || candidate.itemType != null || candidate.adoptedByTap) continue
+                    if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
+                    candidate.state = CandidateState.AWAITING_INTENT
+                    candidate.awaitingIntentSinceMs = now
+                }
+                CandidateState.AWAITING_INTENT -> {
+                    if (now - candidate.awaitingIntentSinceMs < INTENT_PROMPT_TIMEOUT_SECONDS * 1000) continue
+                    candidate.state = CandidateState.DISMISSED_UNKNOWN
+                    result.add(candidate.packet.id)
+                }
+                else -> continue
+            }
         }
         return result
+    }
+
+    /** Ids currently AWAITING_INTENT (fully scanned, appearance-unknown,
+     *  waiting on the "is this litter?" prompt). Stable across calls — NOT
+     *  emit-once — so the caller can keep one prompt mounted until the user
+     *  answers or the [INTENT_PROMPT_TIMEOUT_SECONDS] reaper fires. */
+    fun awaitingIntent(): List<Long> =
+        candidates.values
+            .filter { it.state == CandidateState.AWAITING_INTENT }
+            .map { it.packet.id }
+
+    /** The user answered "yes, it's litter" on an AWAITING_INTENT prompt:
+     *  marks explicit intent and returns the candidate to SCANNING, where the
+     *  next [completedCandidates] sweep completes it (full progress + intent)
+     *  as [UNKNOWN_LITTER_LABEL] with [CompletedCandidate.userIntent] set.
+     *  False when [id] is not awaiting intent (already reaped or answered). */
+    fun confirmIntent(id: Long): Boolean {
+        val candidate = candidates[id] ?: return false
+        if (candidate.state != CandidateState.AWAITING_INTENT) return false
+        candidate.adoptedByTap = true
+        candidate.state = CandidateState.SCANNING
+        return true
+    }
+
+    /** The user answered "not litter" on an AWAITING_INTENT prompt: terminal
+     *  DISMISSED_UNKNOWN immediately (the caller clears the reticle itself —
+     *  this id is NOT re-emitted by [dismissedUnknown]). False when [id] is
+     *  not awaiting intent. */
+    fun rejectIntent(id: Long): Boolean {
+        val candidate = candidates[id] ?: return false
+        if (candidate.state != CandidateState.AWAITING_INTENT) return false
+        candidate.state = CandidateState.DISMISSED_UNKNOWN
+        return true
     }
 
     /** SCANNING candidates not re-observed for [TIMEOUT_SECONDS], transitioned to terminal TIMED_OUT and returned as ids. Emit-once, same contract as [completedCandidates]. */
@@ -343,10 +413,13 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         return result
     }
 
-    /** (id, progress) for every currently-SCANNING candidate, for reticle rendering. */
+    /** (id, progress) for every currently-SCANNING or AWAITING_INTENT
+     *  candidate, for reticle rendering — an intent-prompted candidate keeps
+     *  its (full) reticle on screen so the "is this litter?" prompt has a
+     *  visible anchor instead of asking about something that just vanished. */
     fun activeScanning(): List<Pair<Long, Float>> =
         candidates.values
-            .filter { it.state == CandidateState.SCANNING }
+            .filter { it.state == CandidateState.SCANNING || it.state == CandidateState.AWAITING_INTENT }
             .map { it.packet.id to progressOf(it) }
 
     private fun progressOf(candidate: TrackedCandidate): Float {

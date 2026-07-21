@@ -9,7 +9,7 @@ const val TAP_IDENTIFY_MIN_CONFIDENCE = 0.5f
 /** The label a tapped candidate carries when the classifier names nothing. */
 const val UNKNOWN_LITTER_LABEL = "Unknown litter"
 
-enum class TapPhase { IDLE, LOCATING, CHECKING, AWAITING_CONFIRMATION, NO_RAYCAST }
+enum class TapPhase { IDLE, LOCATING, CHECKING, AWAITING_CONFIRMATION, NO_RAYCAST, GPS_SYNCING }
 
 /**
  * The one pending tap-to-identify candidate. A tap is authoritative (Option A):
@@ -31,6 +31,12 @@ sealed interface TapEvent {
     data class Tapped(val normalizedX: Float, val normalizedY: Float) : TapEvent
     data class RaycastHit(val lat: Double, val lng: Double, val distanceMeters: Float) : TapEvent
     object RaycastMissed : TapEvent
+
+    /** The raycast HIT a surface but no AR↔GPS geo-reference is paired yet,
+     *  so the hit can't resolve to a world coordinate. Distinct from
+     *  [RaycastMissed]: "hold steady and tap again" is a lie here — no
+     *  amount of steadiness helps until the GPS pairing lands. */
+    object NoGeoRef : TapEvent
     data class Classified(val label: String?, val confidence: Float?) : TapEvent
     object Confirmed : TapEvent
     object Rejected : TapEvent
@@ -65,6 +71,8 @@ fun TapCandidateState.reduce(event: TapEvent): TapCandidateState = when (event) 
         )
     TapEvent.RaycastMissed ->
         if (phase != TapPhase.LOCATING) this else copy(phase = TapPhase.NO_RAYCAST)
+    TapEvent.NoGeoRef ->
+        if (phase != TapPhase.LOCATING) this else copy(phase = TapPhase.GPS_SYNCING)
     is TapEvent.Classified ->
         if (phase != TapPhase.CHECKING) this
         else copy(
@@ -94,6 +102,7 @@ fun tapPillCopy(state: TapCandidateState): TapPillCopy? = when (state.phase) {
     TapPhase.LOCATING -> TapPillCopy("Locating…", null, null)
     TapPhase.CHECKING -> TapPillCopy("Checking…", null, null)
     TapPhase.NO_RAYCAST -> TapPillCopy("Hold steady and tap the item again", null, null)
+    TapPhase.GPS_SYNCING -> TapPillCopy("GPS is syncing — try again in a few seconds", null, null)
     TapPhase.AWAITING_CONFIRMATION -> TapPillCopy(
         title = if (state.isIdentified) {
             "${state.label} — is this litter?"

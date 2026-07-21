@@ -90,4 +90,42 @@ class GroundExclusionRulesTest {
         assertEquals("bench", GroundExclusionRules.exclusionLabelFrom(listOf(obs("bench", 0.45f))))
         assertNull(GroundExclusionRules.exclusionLabelFrom(listOf(obs("bench", 0.44f))))
     }
+
+    // ── classify(): the one combined decision (TestFlight 158 field round) ──
+
+    @Test
+    fun positiveTrashMatchSuppressesBackgroundExclusion() {
+        // A bottle lying on grass classifies as BOTH — the crop always
+        // includes ground context. Exclusion-first silently killed exactly
+        // the candidates the detector exists for.
+        val labels = listOf(obs("grass", 0.9f), obs("bottle", 0.3f))
+        val decision = GroundExclusionRules.classify(labels)
+        assertNull(decision.exclusionLabel)
+        assertEquals("bottle", decision.trashType)
+    }
+
+    @Test
+    fun fixtureWithoutAnyTrashSignalStillExcludes() {
+        val decision = GroundExclusionRules.classify(listOf(obs("bench", 0.9f)))
+        assertEquals("bench", decision.exclusionLabel)
+        assertNull(decision.trashType)
+    }
+
+    @Test
+    fun noMatchEitherWayLeavesBothNull() {
+        val decision = GroundExclusionRules.classify(listOf(obs("rock", 0.9f)))
+        assertNull(decision.exclusionLabel)
+        assertNull(decision.trashType)
+    }
+
+    @Test
+    fun expandedTrashVocabularyCoversSoftAndGenericLitter() {
+        val cases = listOf(
+            "trash", "garbage", "litter", "waste", "debris", "napkin",
+            "tissue", "foil", "styrofoam", "straw", "lid", "jug",
+        )
+        for (identifier in cases) {
+            assertEquals(identifier, GroundExclusionRules.trashTypeFrom(listOf(obs(identifier, 0.2f))), identifier)
+        }
+    }
 }

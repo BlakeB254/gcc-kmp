@@ -92,7 +92,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// accuracy for the grid": content (sector posts/guidance) keeps
     /// re-anchoring on every re-pair, the grid itself never does.
     private var gridPhaseOrigin: SIMD2<Float>?
-    private var sectorPostEntities: [String: AnchorEntity] = [:]
     private var wallEntities: [AnchorEntity] = []
     private var floorWorldY: Float?
     private var groundLive = false
@@ -232,8 +231,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         floorMaxZ = nil
         frameLock.unlock()
 
-        for (_, anchor) in sectorPostEntities { anchor.removeFromParent() }
-        sectorPostEntities.removeAll()
 
         for wall in wallEntities { wall.removeFromParent() }
         wallEntities.removeAll()
@@ -488,45 +485,6 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
-    func updateSectorPosts(flatXZ: [KotlinDouble]) {
-        DispatchQueue.main.async { [self] in
-            let groundY = (floorWorldY ?? cameraFallbackGroundY())
-            var wanted = Set<String>()
-            var index = 0
-            while index + 1 < flatXZ.count {
-                let x = Float(truncating: flatXZ[index])
-                let z = Float(truncating: flatXZ[index + 1])
-                index += 2
-                let key = "\(Int((x * 10).rounded())):\(Int((z * 10).rounded()))"
-                wanted.insert(key)
-                if let existing = sectorPostEntities[key] {
-                    if abs(existing.position.y - (groundY + 0.25)) > 0.08 {
-                        existing.position.y = groundY + 0.25
-                    }
-                    continue
-                }
-                // Thin emissive pillar (cylinder mesh is iOS 18+).
-                let anchor = AnchorEntity(world: SIMD3(x, groundY + 0.25, z))
-                let post = ModelEntity(
-                    mesh: .generateBox(size: SIMD3(0.06, 0.5, 0.06)),
-                    materials: [UnlitMaterial(color: UIColor.orange.withAlphaComponent(0.9))]
-                )
-                anchor.addChild(post)
-                arView.scene.addAnchor(anchor)
-                sectorPostEntities[key] = anchor
-                animateIn(post)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak post] in
-                    guard let post else { return }
-                    self.addPulse(to: post, scale: 1.12, duration: 0.9)
-                }
-            }
-            // Covered sectors shrink away — progress reads spatially.
-            for (key, anchor) in sectorPostEntities where !wanted.contains(key) {
-                sectorPostEntities.removeValue(forKey: key)
-                animateOutAndRemove(anchor)
-            }
-        }
-    }
 
     func setGuidanceTarget(x: Double, z: Double) {
         DispatchQueue.main.async { [self] in

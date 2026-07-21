@@ -32,6 +32,8 @@ import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
 import com.gcc.app.platform.TapCandidateState
 import com.gcc.app.platform.TapPhase
+import com.gcc.app.platform.GroundIntentPrompt
+import com.gcc.app.platform.UNKNOWN_LITTER_LABEL
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.MAX_GEO_REF_ACCURACY_METERS
 import com.gcc.app.platform.EnvScanGuidance
@@ -74,6 +76,7 @@ import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.KeepScreenAwake
 import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
+import com.gcc.app.platform.PROVENANCE_USER_REJECTED
 import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
@@ -222,8 +225,8 @@ fun SpotScreen(
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
-                    onScannedItemCompleted = { item, photoBytes -> viewModel.addObservedItem(item, photoBytes) },
-                    onConfirmedTapItem = { candidate -> viewModel.addConfirmedTapItem(candidate) },
+                    onScannedItemCompleted = { item, photo -> viewModel.addScannedItem(item, photo) },
+                    onConfirmedTapItem = { candidate, photo -> viewModel.addConfirmedTapItem(candidate, photo) },
                     onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
@@ -289,6 +292,12 @@ fun SpotScreen(
                     litterCount = countLitter(uiState.observedItems),
                     featureCount = countFeatures(uiState.observedItems),
                     photoCount = uiState.capturedPhotos.size,
+                    // Session litter only — same rule as countLitter/the live
+                    // minimap: landmark features out, rejected candidates out.
+                    litterItems = uiState.observedItems.filter {
+                        (it.domain == null || it.domain == "litter") &&
+                            it.provenance != PROVENANCE_USER_REJECTED
+                    },
                     matchingBounties = uiState.matchingBounties,
                     createdBounty = uiState.createdBounty,
                     isCreatingBounty = uiState.isCreatingBounty,
@@ -329,9 +338,9 @@ private fun CameraPhase(
     /** A completed ground-candidate scan's item plus its best-effort
      *  completion-frame photo (null when no frame could be grabbed) — the
      *  photo rides the same upload-then-enqueue path tap-path photos use. */
-    onScannedItemCompleted: (ObservedSpotItem, ByteArray?) -> Unit = { _, _ -> },
+    onScannedItemCompleted: (ObservedSpotItem, CapturedPhoto?) -> Unit = { _, _ -> },
     /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
-    onConfirmedTapItem: (TapCandidateState) -> Unit = {},
+    onConfirmedTapItem: (TapCandidateState, CapturedPhoto?) -> Unit = { _, _ -> },
     /** The user tapped a candidate and pressed "Not litter" — a negative example. */
     onRejectedTapItem: (TapCandidateState) -> Unit = {},
     submitError: String? = null,
@@ -578,13 +587,13 @@ private fun CameraPhase(
         // must land on the same canonical strings the tap path files, or the
         // minimap glyph `when` misses and dedupUpgradeDecision never matches
         // a later tap-confirm of the same pile.
-        arOverlay?.setGroundCandidateCompletedListener { lat, lng, photoBytes, completed ->
+        arOverlay?.setGroundCandidateCompletedListener { lat, lng, photo, completed ->
             if (!gate.captureAllowed.value) return@setGroundCandidateCompletedListener
             val itemType = TrashItemCatalog.canonicalType(completed.itemType)
             val weightGrams = LitterWeightEstimator.estimateGrams(
                 itemType, completed.widthM, completed.heightM, completed.depthM,
             )
-            DiagnosticsLog.info("env-scan", "scan complete: $itemType ${weightGrams}g")
+            DiagnosticsLog.info("env-scan", "scan complete: $itemType ${weightGrams}g (intent=${completed.userIntent})")
             onScannedItemCompleted(
                 ObservedSpotItem(
                     lat = lat,
@@ -595,9 +604,13 @@ private fun CameraPhase(
                     estimatedWeightGrams = weightGrams,
                     estimatedWidthMeters = completed.widthM.toDouble(),
                     atMs = Clock.System.now().toEpochMilliseconds(),
-                    provenance = PROVENANCE_AUTO_DETECTED,
+                    // A world tap or an "is this litter?" prompt answer is an
+                    // explicit user confirmation — the only evidence that can
+                    // file a report. Purely autonomous completions stay
+                    // auto_detected (constraint 10).
+                    provenance = if (completed.userIntent) PROVENANCE_USER_CONFIRMED else PROVENANCE_AUTO_DETECTED,
                 ),
-                photoBytes,
+                photo,
             )
         }
         arOverlay?.setCeilingListener { detected ->
@@ -738,7 +751,6 @@ private fun CameraPhase(
     // ── Environment-scan session: coverage credit + minimap layers ──
     val scanAreaCache = koinInject<ScanAreaCacheStore>()
     var trackerReady by remember { mutableStateOf(false) }
-    var fogCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var staleCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     var freshCells by remember { mutableStateOf(listOf<Pair<Double, Double>>()) }
     /** Ledger-fresh cells whose best-recorded quality is "close" — the
@@ -842,11 +854,10 @@ private fun CameraPhase(
             staleCells = serverCells.filter { it.state == "stale" }.map { it.lat to it.lng }
             freshCells = serverCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
             freshCloseCells = serverCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
-            fogCells = neverScannedGrid(anchor, serverCells)
             seedFogFromLedger(serverCells)
             DiagnosticsLog.info(
                 "env-scan",
-                "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale, ${fogCells.size} fog",
+                "freshness: ${serverCells.size} ledger cells, ${staleCells.size} stale",
             )
         } catch (e: CancellationException) {
             throw e // scan screen closing — not a fetch failure
@@ -859,7 +870,6 @@ private fun CameraPhase(
                 staleCells = cached.coverageCells.filter { it.state == "stale" }.map { it.lat to it.lng }
                 freshCells = cached.coverageCells.filter { it.state == "fresh" && it.quality != "close" }.map { it.lat to it.lng }
                 freshCloseCells = cached.coverageCells.filter { it.state == "fresh" && it.quality == "close" }.map { it.lat to it.lng }
-                fogCells = neverScannedGrid(anchor, cached.coverageCells)
                 seedFogFromLedger(cached.coverageCells)
                 DiagnosticsLog.info("env-scan", "freshness from cache (${cached.coverageCells.size} cells)")
             }
@@ -1354,24 +1364,36 @@ private fun CameraPhase(
         // above (frozen/hidden while the confirm card is up).
         if (trashCandidate == null) MultiItemDetectionOverlay(reticles = multiItemReticles)
         // A tapped candidate outranks the passive auto-detect reticle.
+        val confirmScope = rememberCoroutineScope()
         if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
             TapCandidatePill(
                 state = tapCandidate,
                 onConfirm = {
                     // I2: mirror TrashConfirmCard's outdoor-gate guard — a
                     // confirm/reject that lands after an outdoor->indoor flip
-                    // must not persist or record; treat it as a dismiss.
+                    // must not persist or record. But NEVER silently (field
+                    // report: "I tapped confirm and nothing happened") — say
+                    // why the confirmation didn't take.
                     if (!gate.captureAllowed.value) {
                         arOverlay?.dismissTapCandidate()
+                        toast = "Scan paused indoors — step outside and tap the item again"
                     } else {
                         arOverlay?.confirmTapCandidate()?.let { confirmed ->
-                            onConfirmedTapItem(confirmed)
+                            // Evidence frame at confirm time (the item is
+                            // still in view): rides the marker upload AND
+                            // the report's photo set. Confirm-first so the
+                            // pill clears instantly; the photo is async.
+                            confirmScope.launch {
+                                val photo = arOverlay?.captureTapEvidencePhoto()
+                                onConfirmedTapItem(confirmed, photo)
+                            }
                         }
                     }
                 },
                 onReject = {
                     if (!gate.captureAllowed.value) {
                         arOverlay?.dismissTapCandidate()
+                        toast = "Scan paused indoors — step outside and tap the item again"
                     } else {
                         arOverlay?.rejectTapCandidate()?.let { rejected ->
                             onRejectedTapItem(rejected)
@@ -1379,6 +1401,34 @@ private fun CameraPhase(
                     }
                 },
                 onDismiss = { arOverlay?.dismissTapCandidate() },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
+            )
+        }
+        // "Is this litter?" prompt for a fully-scanned candidate the
+        // classifier couldn't name (tracker stage-1 park). Field report
+        // (TestFlight 157/158): the fill bar completed and then NOTHING —
+        // the item was silently unknown-dismissed. Geometry still never
+        // files on its own; the user's answer is now one tap away. Shown
+        // only when no tap pill and no lock-on card outranks it.
+        val groundIntentPrompt by (arOverlay?.groundIntentPrompt
+            ?: remember { MutableStateFlow<GroundIntentPrompt?>(null) }).collectAsState()
+        if (trashCandidate == null && tapCandidate.phase == TapPhase.IDLE && groundIntentPrompt != null) {
+            TapCandidatePill(
+                state = TapCandidateState(
+                    phase = TapPhase.AWAITING_CONFIRMATION,
+                    label = UNKNOWN_LITTER_LABEL,
+                ),
+                titleOverride = "Scanned an item I can't identify — is this litter?",
+                onConfirm = {
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.rejectGroundIntentPrompt()
+                        toast = "Scan paused indoors — step outside and rescan the item"
+                    } else {
+                        arOverlay?.confirmGroundIntentPrompt()
+                    }
+                },
+                onReject = { arOverlay?.rejectGroundIntentPrompt() },
+                onDismiss = { arOverlay?.rejectGroundIntentPrompt() },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }
@@ -1444,27 +1494,35 @@ private fun CameraPhase(
             TrashConfirmCard(
                 candidate = candidate,
                 onConfirm = { selectedType ->
-                    if (!gate.captureAllowed.value) return@TrashConfirmCard
+                    if (!gate.captureAllowed.value) {
+                        toast = "Scan paused indoors — step outside to confirm"
+                        return@TrashConfirmCard
+                    }
                     val final = arOverlay?.confirmCandidate(selectedType)
                     if (final != null) {
-                        onTrashObserved(
-                            ObservedSpotItem(
-                                lat = final.lat,
-                                lng = final.lng,
-                                itemType = final.itemType,
-                                severity = null,
-                                confidence = final.confidence,
-                                estimatedWeightGrams = final.estimatedWeightGrams,
-                                estimatedWidthMeters = final.estimatedWidthMeters,
-                                yawDegrees = final.yawDegrees,
-                                // C1: this is the primary lock-on confirm flow —
-                                // an explicit user confirmation — so it must
-                                // carry provenance, or hasUserConfirmedLitter()
-                                // never sees it and report filing silently
-                                // never triggers off this path.
-                                provenance = PROVENANCE_USER_CONFIRMED,
-                            )
+                        val item = ObservedSpotItem(
+                            lat = final.lat,
+                            lng = final.lng,
+                            itemType = final.itemType,
+                            severity = null,
+                            confidence = final.confidence,
+                            estimatedWeightGrams = final.estimatedWeightGrams,
+                            estimatedWidthMeters = final.estimatedWidthMeters,
+                            yawDegrees = final.yawDegrees,
+                            // C1: this is the primary lock-on confirm flow —
+                            // an explicit user confirmation — so it must
+                            // carry provenance, or hasUserConfirmedLitter()
+                            // never sees it and report filing silently
+                            // never triggers off this path.
+                            provenance = PROVENANCE_USER_CONFIRMED,
                         )
+                        // Confirm-time evidence frame, same as the tap pill:
+                        // the confirmed item must carry a photo (marker +
+                        // report set), not file photoless.
+                        confirmScope.launch {
+                            val photo = arOverlay?.captureTapEvidencePhoto()
+                            onScannedItemCompleted(item, photo)
+                        }
                     }
                 },
                 onDismiss = { arOverlay?.dismissCandidate() },
@@ -2281,6 +2339,7 @@ private fun ResultPhase(
     litterCount: Int,
     featureCount: Int,
     photoCount: Int,
+    litterItems: List<ObservedSpotItem> = emptyList(),
     matchingBounties: List<Bounty>,
     createdBounty: Bounty?,
     isCreatingBounty: Boolean,
@@ -2305,6 +2364,7 @@ private fun ResultPhase(
                 litterCount = litterCount,
                 featureCount = featureCount,
                 photoCount = photoCount,
+                litterItems = litterItems,
             )
         }
 
@@ -2731,41 +2791,6 @@ private fun BountyMatchCard(
     }
 }
 
-
-/**
- * Display-only "never scanned" fog for the minimap: canonical ~10m ledger
- * cells within ~75m of the anchor that have no ledger cell (fresh OR stale)
- * within 7m. Cell centers are quantized to the SAME fixed-constant lattice
- * as [SessionPointsEstimator.gridCell10m] / the server's `gridCell`
- * (111_000 / 82_300, floor-indexed), so fog tiles sit flush with the
- * fresh/stale cells the server returns instead of on an anchor-relative
- * grid that straddles them.
- */
-internal fun neverScannedGrid(
-    anchor: Coordinates,
-    serverCells: List<MapCoverageCell>,
-): List<Pair<Double, Double>> {
-    val latStep = 10.0 / 111_000.0
-    val lngStep = 10.0 / 82_300.0
-    val baseRow = floor(anchor.lat / latStep).toInt()
-    val baseCol = floor(anchor.lng / lngStep).toInt()
-    val cosLat = cos(anchor.lat * kotlin.math.PI / 180.0)
-    val out = mutableListOf<Pair<Double, Double>>()
-    for (dr in -7..7) {
-        for (dc in -7..7) {
-            if (dr * dr + dc * dc > 7 * 7) continue
-            val lat = (baseRow + dr + 0.5) * latStep
-            val lng = (baseCol + dc + 0.5) * lngStep
-            val covered = serverCells.any { cell ->
-                val dLatM = (cell.lat - lat) * 111_320.0
-                val dLngM = (cell.lng - lng) * 111_320.0 * cosLat
-                dLatM * dLatM + dLngM * dLngM < 7.0 * 7.0
-            }
-            if (!covered) out.add(lat to lng)
-        }
-    }
-    return out
-}
 
 /** Plain (non-Compose) counter pair for the ScanScore steadiness signal —
  *  mutated off-composition by CameraPhase's once-per-second sampling loop. */

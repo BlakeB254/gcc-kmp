@@ -85,6 +85,37 @@ class ObservedItemCountsTest {
     }
 
     @Test
+    fun secondConfirmationBeyondDuplicateRadiusIsARealSecondItem() {
+        // Field report: two real bottles a sidewalk-width (~3m) apart — the
+        // second explicit confirmation was silently swallowed by the 4m
+        // auto-fusion radius. Deliberate confirmations only fuse when nearly
+        // co-located (< 1.5m).
+        val existing = listOf(item("litter", provenance = PROVENANCE_USER_CONFIRMED))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+            .copy(lat = 41.86 + 3.0 / 111_320.0) // ~3m north
+        assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun doubleTapOfTheSameItemStillDedups() {
+        val existing = listOf(item("litter", provenance = PROVENANCE_USER_CONFIRMED))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+            .copy(lat = 41.86 + 1.0 / 111_320.0) // ~1m — same physical item
+        assertEquals(DedupDecision.Drop, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun confirmedUpgradeOverAutoStillAppliesAcrossTheFullFusionRadius() {
+        // The tighter confirmed-duplicate radius must NOT shrink the upgrade
+        // window: a confirmation 3m from a prior auto tick is still the same
+        // pile the auto producer smeared, and must upgrade, not duplicate.
+        val existing = listOf(item("litter", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", provenance = PROVENANCE_USER_CONFIRMED)
+            .copy(lat = 41.86 + 3.0 / 111_320.0)
+        assertEquals(DedupDecision.Upgrade(0), dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
     fun userConfirmedIncomingAgainstAutoDetectedMatchUpgrades() {
         // C2: the bug — a user confirmation matching a prior auto-detected
         // tick used to be silently dropped, losing the only evidence that

@@ -20,6 +20,11 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val multiItemReticles: StateFlow<List<DetectionReticle>> = MutableStateFlow(emptyList())
     private val _tapCandidate = MutableStateFlow(TapCandidateState())
     actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
+
+    actual val groundIntentPrompt: StateFlow<GroundIntentPrompt?> = MutableStateFlow(null)
+    actual fun confirmGroundIntentPrompt() {}
+    actual fun rejectGroundIntentPrompt() {}
+    actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = null
     actual fun confirmTapCandidate(): TapCandidateState? = null
     actual fun rejectTapCandidate(): TapCandidateState? = null
     actual fun dismissTapCandidate() {}
@@ -47,7 +52,7 @@ actual class ArEnvScanOverlay actual constructor() {
         )?,
     ) {}
     actual fun setGroundCandidateCompletedListener(
-        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+        listener: ((lat: Double, lng: Double, photo: CapturedPhoto?, candidate: CompletedCandidate) -> Unit)?,
     ) {}
     actual fun setFrameAnalysisEnabled(enabled: Boolean) {}
     actual fun setCeilingListener(listener: ((Boolean) -> Unit)?) {}

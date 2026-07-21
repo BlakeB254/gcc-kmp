@@ -372,21 +372,42 @@ class SpotViewModel(
         }
     }
 
-    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
-    fun addConfirmedTapItem(candidate: TapCandidateState) {
+    /** The user tapped a candidate and pressed "Confirm litter" (constraint 2).
+     *  [photo] is the confirm-time evidence frame (best-effort): it rides the
+     *  marker upload AND joins [capturedPhotos], so a taps-only session
+     *  carries report-grade evidence — before this, tap confirmations filed
+     *  photoless and weightless, and a session with only taps could never
+     *  pass completeScan's photos+evidence report gate at all. */
+    fun addConfirmedTapItem(candidate: TapCandidateState, photo: CapturedPhoto? = null) {
         val lat = candidate.lat ?: return
         val lng = candidate.lng ?: return
         ScanSessionTelemetry.active?.confirm(candidate.label ?: UNKNOWN_LITTER_LABEL)
+        val itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL)
+        photo?.let { addPhoto(it) }
         addObservedItem(
             ObservedSpotItem(
                 lat = lat,
                 lng = lng,
-                itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL),
+                itemType = itemType,
                 confidence = candidate.confidence,
                 domain = "litter",
                 provenance = PROVENANCE_USER_CONFIRMED,
+                // No LiDAR box on the tap path — use the type's typical mass
+                // so the live weight tally and the marker's weight field stop
+                // reading a confirmed item as 0 g.
+                estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
             ),
+            photoBytes = photo?.bytes,
         )
+    }
+
+    /** A ground-candidate scan completed (auto or via the intent prompt). A
+     *  user-intent completion is explicit confirmation: its evidence photo
+     *  also joins [capturedPhotos] so the report gate and the filed report
+     *  see it, exactly like a tap confirm's frame. */
+    fun addScannedItem(item: ObservedSpotItem, photo: CapturedPhoto?) {
+        if (item.provenance == PROVENANCE_USER_CONFIRMED) photo?.let { addPhoto(it) }
+        addObservedItem(item, photo?.bytes)
     }
 
     /** The user tapped a candidate and pressed "Not litter" — a negative example.

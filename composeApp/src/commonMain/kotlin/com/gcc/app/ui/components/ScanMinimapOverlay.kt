@@ -36,7 +36,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 
 private val StaleAmber = Color(0xFFF59E0B)
-private val TrashOrange = Color(0xFFF97316)
+internal val TrashOrange = Color(0xFFF97316)
 private val VeilSlate = Color(0xFF1E293B)
 private val ConeBlue = Color(0xFF38BDF8)
 
@@ -151,6 +151,18 @@ fun ScanMinimapOverlay(
     val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
+    // Session UNION (GRAZED+ ∪ SEEN): one silhouette for the whole territory
+    // this session has touched. Field report (post-157, SEEN raised to 0.26):
+    // walked/close patches STILL read as separate green islands, because the
+    // veil punch-out and the bright edge stroke both followed the GRAZED-only
+    // outline — every island got its own glowing border, and the SEEN tissue
+    // between them sat under fog. Tracing the union gives the map ONE
+    // connected blob whose edge is the sweep frontier; the tiers stay legible
+    // as interior shading (SEEN wash → GRAZED → CLOSE vivid).
+    val sessionUnionCells = remember(scanCellCenters, seenCellCenters) {
+        (scanCellCenters + seenCellCenters).distinct()
+    }
+    val sessionUnionRings = rememberRings(sessionUnionCells, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val corridorRings = rememberRings(corridorCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val freshRings = rememberRings(freshCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val freshCloseRings = rememberRings(freshCloseCellCenters, freshnessCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
@@ -197,14 +209,19 @@ fun ScanMinimapOverlay(
             }
             return path
         }
-        // scanCellCenters is already GRAZED+ (CLOSE cells included) — its own
-        // outline IS the full session union the veil needs punched out.
+        // scanCellCenters is already GRAZED+ (CLOSE cells included).
         val scanOutline = ringsToPath(scanRings)
         val closeOutline = ringsToPath(closeRings)
-        // SEEN cells are NOT punched out of the veil (sight alone leaves the
-        // ground still fogged, spec Pillar 7) — only used for the faint wash
-        // drawn on TOP of the veil below.
         val seenOutline = ringsToPath(seenRings)
+        // GRAZED+ ∪ SEEN: the one connected silhouette the veil is punched
+        // out of and the bright frontier edge follows. Pillar 7 originally
+        // kept SEEN under fog ("sight still leaves fog on the ground"), but
+        // two field rounds showed the cost: the credited patches read as
+        // disconnected islands, each with its own glowing border. The tier
+        // hierarchy still holds — SEEN is the faintest interior wash and
+        // carries no coverage credit — but the fog frontier now recedes at
+        // the sweep boundary, so the session paints ONE growing blob.
+        val sessionUnionOutline = ringsToPath(sessionUnionRings)
         // WS4: coarse ledger/corridor tiers as merged organic outlines too.
         val corridorOutline = ringsToPath(corridorRings)
         val freshOutline = ringsToPath(freshRings)
@@ -225,7 +242,7 @@ fun ScanMinimapOverlay(
         holes.addPath(corridorOutline)
         holes.addPath(freshOutline)
         holes.addPath(freshCloseOutline)
-        holes.addPath(scanOutline)
+        holes.addPath(sessionUnionOutline)
         val veil = Path.combine(
             PathOperation.Difference,
             Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) },
@@ -368,10 +385,14 @@ fun ScanMinimapOverlay(
         // islands while the summary (final GRAZED+ set, auto-fit zoom) showed
         // one blob. SEEN must stay clearly below GRAZED (0.42) — it's credit-
         // less sweep, not coverage — but high enough to read as tissue.
+        // Field report (post-157): raising SEEN alone wasn't enough — the
+        // bright edge stroke around each GRAZED island kept the map reading
+        // as separate blobs. The frontier stroke now follows the session
+        // UNION, so the whole swept territory reads as one connected shape.
         drawPath(seenOutline, color = GccGreen.copy(alpha = 0.26f))
         drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
         drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
-        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
+        drawPath(sessionUnionOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
 
         // Litter-pattern zones over the coverage paint: merged orange shapes
         // marking WHERE the litter concentrates, under the per-item glyphs
@@ -459,7 +480,7 @@ private fun rememberRings(
         quantizeAndTraceOutlines(cells, cellSizeMeters, anchorLat, anchorLng)
     }
 
-private fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
+internal fun DrawScope.drawTrashGlyph(itemType: String, c: Offset) {
     val u = 3.dp.toPx() // half-size unit
     val outline = Color.White
     val stroke = Stroke(width = 1.dp.toPx())

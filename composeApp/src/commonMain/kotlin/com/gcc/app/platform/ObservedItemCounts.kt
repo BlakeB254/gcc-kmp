@@ -9,6 +9,15 @@ import com.gcc.shared.model.WorldObservation
  *  the user position, and both can fire for the same pile. */
 private const val OBSERVED_ITEM_DEDUP_RADIUS_METERS = 4.0
 
+/** Tighter radius for CONFIRMED-vs-CONFIRMED matches: two explicit user
+ *  confirmations of the same type are only the same item when nearly
+ *  co-located. The 4m radius exists to fuse noisy AUTO producers; applying
+ *  it to deliberate confirmations silently swallowed the second of two real
+ *  bottles a sidewalk-width apart (field report: "I tapped it and nothing
+ *  happened"). Within this radius a re-confirm is still a double-tap of the
+ *  same item and dedups. */
+private const val CONFIRMED_DUPLICATE_RADIUS_METERS = 1.5
+
 /** What [addObservedItem] (SpotViewModel) should do with an incoming item
  *  against the session's existing observed items. */
 sealed interface DedupDecision {
@@ -38,18 +47,29 @@ sealed interface DedupDecision {
  * plainly — it carries no new evidence.
  */
 fun dedupUpgradeDecision(existing: List<ObservedSpotItem>, incoming: ObservedSpotItem): DedupDecision {
-    val matchIndex = existing.indexOfFirst { prior ->
-        prior.itemType == incoming.itemType &&
-            GeofenceVerification.distanceMeters(
-                prior.lat, prior.lng, incoming.lat, incoming.lng,
-            ) < OBSERVED_ITEM_DEDUP_RADIUS_METERS
+    var matchIndex = -1
+    var matchDistance = Double.MAX_VALUE
+    for ((index, prior) in existing.withIndex()) {
+        if (prior.itemType != incoming.itemType) continue
+        val distance = GeofenceVerification.distanceMeters(
+            prior.lat, prior.lng, incoming.lat, incoming.lng,
+        )
+        if (distance < OBSERVED_ITEM_DEDUP_RADIUS_METERS && distance < matchDistance) {
+            matchIndex = index
+            matchDistance = distance
+        }
     }
     if (matchIndex < 0) return DedupDecision.Add
     val matched = existing[matchIndex]
-    return if (incoming.provenance == PROVENANCE_USER_CONFIRMED && matched.provenance != PROVENANCE_USER_CONFIRMED) {
-        DedupDecision.Upgrade(matchIndex)
-    } else {
-        DedupDecision.Drop
+    val bothConfirmed = incoming.provenance == PROVENANCE_USER_CONFIRMED &&
+        matched.provenance == PROVENANCE_USER_CONFIRMED
+    return when {
+        // Two deliberate confirmations only fuse when nearly co-located —
+        // beyond that they are two real items, not a double-tap.
+        bothConfirmed && matchDistance >= CONFIRMED_DUPLICATE_RADIUS_METERS -> DedupDecision.Add
+        incoming.provenance == PROVENANCE_USER_CONFIRMED &&
+            matched.provenance != PROVENANCE_USER_CONFIRMED -> DedupDecision.Upgrade(matchIndex)
+        else -> DedupDecision.Drop
     }
 }
 

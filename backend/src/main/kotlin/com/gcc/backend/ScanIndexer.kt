@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory
  *   reconstructed/{cellId}/{v}/…     ->  a `reconstruction_assets` row
  *
  * The manifest is self-describing (it lists its own photoKeys, captureChunks,
- * capturedFrames, objectCapture), so indexing follows the manifest rather than
+ * objectCapture; older manifests may also carry the retired capturedFrames), so indexing follows the manifest rather than
  * guessing from prefixes. Fully idempotent — safe to run on a schedule.
  */
 class ScanIndexer(

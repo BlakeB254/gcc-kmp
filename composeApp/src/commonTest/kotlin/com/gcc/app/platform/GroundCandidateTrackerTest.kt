@@ -435,7 +435,7 @@ class GroundCandidateTrackerTest {
     // litter — unless the USER tapped it (intent overrides).
 
     @Test
-    fun unknownClassifiedCandidateIsDismissedNotCompleted() {
+    fun unknownClassifiedCandidateAwaitsIntentThenDismissesOnTimeout() {
         var now = 0L
         val tracker = GroundCandidateTracker(nowMs = { now })
         tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
@@ -444,9 +444,18 @@ class GroundCandidateTrackerTest {
         now = driveToFullProgress(tracker, 1L, now)
 
         assertTrue(tracker.completedCandidates().isEmpty(), "unknown appearance must not auto-file")
+        // Stage 1: not silently dismissed — parked awaiting the user's answer,
+        // reticle still rendered as the prompt's visual anchor.
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertEquals(listOf(1L), tracker.awaitingIntent())
+        assertTrue(tracker.activeScanning().any { it.first == 1L })
+
+        // Stage 2: the user ignored the prompt — reaped after the timeout.
+        now += (INTENT_PROMPT_TIMEOUT_SECONDS * 1000).toLong() + 1
         assertEquals(listOf(1L), tracker.dismissedUnknown())
         // Emit-once, terminal, gone from every other query.
         assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertTrue(tracker.awaitingIntent().isEmpty())
         assertTrue(tracker.activeScanning().none { it.first == 1L })
         assertTrue(tracker.completedCandidates().isEmpty())
     }
@@ -458,6 +467,8 @@ class GroundCandidateTrackerTest {
         tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
         tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
         now = driveToFullProgress(tracker, 1L, now)
+        assertTrue(tracker.dismissedUnknown().isEmpty()) // parked AWAITING_INTENT
+        now += (INTENT_PROMPT_TIMEOUT_SECONDS * 1000).toLong() + 1
         assertEquals(listOf(1L), tracker.dismissedUnknown())
 
         now += 1_000
@@ -465,6 +476,75 @@ class GroundCandidateTrackerTest {
         assertTrue(tracker.candidatesAwaitingClassification().none { it.id == 1L })
         assertTrue(tracker.activeScanning().none { it.first == 1L })
         assertTrue(tracker.dismissedUnknown().isEmpty())
+    }
+
+    @Test
+    fun confirmIntentCompletesAsUnknownLitterWithUserIntent() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertEquals(listOf(1L), tracker.awaitingIntent())
+
+        assertTrue(tracker.confirmIntent(1L))
+        val completed = tracker.completedCandidates()
+        assertEquals(listOf(1L), completed.map { it.id })
+        assertEquals(UNKNOWN_LITTER_LABEL, completed[0].itemType)
+        assertTrue(completed[0].userIntent, "prompt confirm is explicit user intent")
+        assertTrue(tracker.awaitingIntent().isEmpty())
+        // Answered — the timeout reaper must never re-emit it.
+        now += (INTENT_PROMPT_TIMEOUT_SECONDS * 1000).toLong() + 1
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+    }
+
+    @Test
+    fun rejectIntentDismissesImmediatelyWithoutReEmission() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+
+        assertTrue(tracker.rejectIntent(1L))
+        assertTrue(tracker.awaitingIntent().isEmpty())
+        assertTrue(tracker.activeScanning().none { it.first == 1L })
+        // The caller already cleared the reticle at reject time — the sweep
+        // must not hand the id back a second time.
+        now += (INTENT_PROMPT_TIMEOUT_SECONDS * 1000).toLong() + 1
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertTrue(tracker.completedCandidates().isEmpty())
+    }
+
+    @Test
+    fun worldTapOnAwaitingIntentCandidateAdoptsAndCompletes() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = null)
+        now = driveToFullProgress(tracker, 1L, now)
+        assertTrue(tracker.dismissedUnknown().isEmpty())
+        assertEquals(listOf(1L), tracker.awaitingIntent())
+
+        assertEquals(1L, tracker.adoptTap(0f, 0f, 0f))
+        val completed = tracker.completedCandidates()
+        assertEquals(listOf(1L), completed.map { it.id })
+        assertTrue(completed[0].userIntent)
+    }
+
+    @Test
+    fun autonomousTypedCompletionCarriesNoUserIntent() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))
+        tracker.recordClassification(1L, exclusionLabel = null, trashType = "bottle")
+        now = driveToFullProgress(tracker, 1L, now)
+
+        val completed = tracker.completedCandidates()
+        assertEquals(listOf(1L), completed.map { it.id })
+        assertEquals(false, completed[0].userIntent)
     }
 
     @Test

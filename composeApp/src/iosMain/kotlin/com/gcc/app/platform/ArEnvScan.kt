@@ -203,6 +203,9 @@ actual class ArEnvScanOverlay actual constructor() {
     private val _tapCandidate = MutableStateFlow(TapCandidateState())
     actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
 
+    private val _groundIntentPrompt = MutableStateFlow<GroundIntentPrompt?>(null)
+    actual val groundIntentPrompt: StateFlow<GroundIntentPrompt?> = _groundIntentPrompt.asStateFlow()
+
     // GPS <-> AR pairing, same model as ArRouteOverlay.
     private var hasGeoRef = false
     private var refLat = 0.0
@@ -285,7 +288,7 @@ actual class ArEnvScanOverlay actual constructor() {
     // table, keyed off the same packets fed to [groundCandidateTracker].ingest.
     private val groundCandidatePackets = mutableMapOf<Long, GroundCandidatePacket>()
     private var groundCandidateCompletedListener: (
-        (lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit
+        (lat: Double, lng: Double, photo: CapturedPhoto?, candidate: CompletedCandidate) -> Unit
     )? = null
     // Close-range evidence photos (TestFlight 157): the completion-time
     // captureFrame fires AFTER the camera has panned off the item, so the
@@ -297,7 +300,7 @@ actual class ArEnvScanOverlay actual constructor() {
     // mutex-guarded. Bounded: completion/timeout/exclusion evict, and the
     // cache never grows past [CANDIDATE_PHOTO_CACHE_MAX].
     private val candidatePhotoMutex = Mutex()
-    private val candidatePhotoCache = mutableMapOf<Long, ByteArray>()
+    private val candidatePhotoCache = mutableMapOf<Long, CapturedPhoto>()
     private val candidatePhotoRequested = mutableSetOf<Long>()
 
     private var floorGridTexture: UIImage? = null
@@ -688,14 +691,18 @@ actual class ArEnvScanOverlay actual constructor() {
         // SpotScreen missed the transient LOCATING phase on Compose
         // snapshot conflation and never fired at all on this early-return
         // path (2026-07-13 field walk: tap_count = 0 despite repeated taps).
-        val suppressed = _trashCandidate.value != null
-        ScanSessionTelemetry.active?.tap(state = if (suppressed) "suppressed" else null)
-        // I1: a tap while the whole-frame lock-on confirm card is up must
-        // not advance the (hidden, since trashCandidate != null suppresses
-        // the pill in SpotScreen) tap state machine — otherwise it can reach
-        // AWAITING_CONFIRMATION invisibly and surface a stale pill the
-        // instant the confirm card is dismissed/confirmed.
-        if (suppressed) return
+        val superseding = _trashCandidate.value != null
+        ScanSessionTelemetry.active?.tap(state = if (superseding) "supersede" else null)
+        // I1 (revised, post-158): a tap while the whole-frame lock-on confirm
+        // card is up used to be SILENTLY discarded — the single worst "I
+        // tapped trash and nothing happened" path in the field, because the
+        // card can lock onto something across the street while the user is
+        // deliberately tapping an item at their feet. Tap authority (Option
+        // A) says explicit intent wins: dismiss the stale card and process
+        // this tap normally. The original I1 hazard (the pill advancing
+        // INVISIBLY behind the card and surfacing stale later) can't happen
+        // anymore — the card is gone by the time the tap state machine runs.
+        if (superseding) dismissCandidate()
         pendingFocusTap = x.toDouble() to y.toDouble()
         _tapCandidate.update { it.reduce(TapEvent.Tapped(x, y)) }
     }
@@ -726,7 +733,10 @@ actual class ArEnvScanOverlay actual constructor() {
         focusWorld = Triple(hit.x, hit.y, hit.z)
         focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
         val latLng = localToLatLng(hit.x, hit.z) ?: run {
-            _tapCandidate.update { it.reduce(TapEvent.RaycastMissed) }
+            // The surface WAS hit — the session just has no AR↔GPS pairing
+            // yet. "Hold steady and tap again" would be a lie (no amount of
+            // steadiness helps); tell the user what's actually pending.
+            _tapCandidate.update { it.reduce(TapEvent.NoGeoRef) }
             return
         }
         _tapCandidate.update {
@@ -800,6 +810,49 @@ actual class ArEnvScanOverlay actual constructor() {
         _tapCandidate.update { it.reduce(TapEvent.Dismissed) }
     }
 
+    actual fun confirmGroundIntentPrompt() {
+        val prompt = _groundIntentPrompt.value ?: return
+        // Tracker flips it back to SCANNING with intent set — the next
+        // driveGroundCandidates tick completes it (full progress + intent)
+        // through the normal completion path: evidence photo, geo-ref
+        // resolution, user_confirmed provenance via CompletedCandidate.userIntent.
+        if (groundCandidateTracker.confirmIntent(prompt.id)) {
+            ScanSessionTelemetry.active?.detection(
+                label = UNKNOWN_LITTER_LABEL, confidence = null,
+                distanceM = groundCandidatePackets[prompt.id]?.distanceM?.toDouble(),
+                source = "intent-prompt", outcome = "confirmed",
+            )
+        }
+        _groundIntentPrompt.value = null
+    }
+
+    actual fun rejectGroundIntentPrompt() {
+        val prompt = _groundIntentPrompt.value ?: return
+        if (groundCandidateTracker.rejectIntent(prompt.id)) {
+            // Terminal immediately — the sweep will NOT re-emit this id, so
+            // clear the reticle and photo state here (same contract as the
+            // dismissedUnknown sweep).
+            nativeSurface?.clearScanReticle(prompt.id)
+            evictCandidatePhoto(prompt.id)
+            val packet = groundCandidatePackets.remove(prompt.id)
+            ScanSessionTelemetry.active?.detection(
+                label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
+                source = "intent-prompt", outcome = "dismissed:not-litter",
+            )
+        }
+        _groundIntentPrompt.value = null
+    }
+
+    /** Best-effort evidence frame for a tap confirmation — same silent
+     *  captureFrame seam the auto path's evidence photos use. Null when no
+     *  frame is available; never throws to the caller. */
+    actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = try {
+        captureFrame()?.takeIf { it.bytes.isNotEmpty() }
+    } catch (e: Throwable) {
+        DiagnosticsLog.error("env-ar", "tap evidence photo failed (item files without photo)", e)
+        null
+    }
+
     actual fun setElementObservedListener(
         listener: (
             (
@@ -812,7 +865,7 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     actual fun setGroundCandidateCompletedListener(
-        listener: ((lat: Double, lng: Double, photoBytes: ByteArray?, candidate: CompletedCandidate) -> Unit)?,
+        listener: ((lat: Double, lng: Double, photo: CapturedPhoto?, candidate: CompletedCandidate) -> Unit)?,
     ) {
         groundCandidateCompletedListener = listener
     }
@@ -1042,8 +1095,10 @@ actual class ArEnvScanOverlay actual constructor() {
                     candidate.imageHalfW * 1.15, candidate.imageHalfH * 1.15,
                 )
             )
-            val exclusionLabel = GroundExclusionRules.exclusionLabelFrom(labels)
-            val trashType = GroundExclusionRules.trashTypeFrom(labels)
+            // classify() suppresses a fixture exclusion when a trash token
+            // also matched — the crop always contains ground context, so
+            // "bottle on grass" must classify as bottle, not grass.
+            val (exclusionLabel, trashType) = GroundExclusionRules.classify(labels)
             groundCandidateTracker.recordClassification(candidate.id, exclusionLabel, trashType)
             if (exclusionLabel != null) {
                 // Silent, terminal — no caption either way. A PROPOSED id
@@ -1106,10 +1161,10 @@ actual class ArEnvScanOverlay actual constructor() {
             if (!candidatePhotoRequested.add(id)) continue
             scope.launch {
                 try {
-                    val bytes = captureFrame()?.bytes?.takeIf { it.isNotEmpty() } ?: return@launch
+                    val photo = captureFrame()?.takeIf { it.bytes.isNotEmpty() } ?: return@launch
                     candidatePhotoMutex.withLock {
                         if (candidatePhotoCache.size < CANDIDATE_PHOTO_CACHE_MAX) {
-                            candidatePhotoCache[id] = bytes
+                            candidatePhotoCache[id] = photo
                         }
                     }
                 } catch (e: Throwable) {
@@ -1136,10 +1191,12 @@ actual class ArEnvScanOverlay actual constructor() {
                 source = "geometry", outcome = "timeout",
             )
         }
-        // Appearance gating (TestFlight 157): fully-scanned candidates whose
-        // classification named nothing and that the user never tapped are
-        // ground bumps, not litter — dismissed silently, same reticle-clear
-        // contract as timeout. See GroundCandidateTracker.dismissedUnknown.
+        // Appearance gating (TestFlight 157, revised post-158): fully-scanned
+        // candidates whose classification named nothing and that the user
+        // never tapped first PARK as awaiting-intent (the tracker's stage 1)
+        // — surfaced below as the "is this litter?" prompt — and are only
+        // dismissed here once the prompt times out unanswered. Same
+        // reticle-clear contract as timeout either way.
         groundCandidateTracker.dismissedUnknown().forEach { id ->
             native.clearScanReticle(id)
             evictCandidatePhoto(id)
@@ -1148,6 +1205,17 @@ actual class ArEnvScanOverlay actual constructor() {
                 label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
                 source = "geometry", outcome = "dismissed:unknown",
             )
+        }
+        // Intent-prompt reconciliation: keep exactly one prompt mounted while
+        // any candidate is awaiting the user's answer. The current prompt
+        // stays until ITS id leaves the awaiting set (answered, world-tapped,
+        // or reaped above); then the next awaiting id (if any) takes over.
+        val awaitingIntent = groundCandidateTracker.awaitingIntent()
+        val currentPrompt = _groundIntentPrompt.value
+        if (currentPrompt == null || currentPrompt.id !in awaitingIntent) {
+            _groundIntentPrompt.value = awaitingIntent.firstOrNull()?.let { id ->
+                GroundIntentPrompt(id = id, distanceM = groundCandidatePackets[id]?.distanceM)
+            }
         }
         groundCandidateTracker.completedCandidates().forEach { completed ->
             groundCandidatePackets.remove(completed.id)
@@ -1175,13 +1243,13 @@ actual class ArEnvScanOverlay actual constructor() {
                     // blocks or drops the item itself.
                     scope.launch {
                         val stashed = candidatePhotoMutex.withLock { candidatePhotoCache.remove(completed.id) }
-                        val photoBytes = stashed ?: try {
-                            captureFrame()?.bytes?.takeIf { it.isNotEmpty() }
+                        val photo = stashed ?: try {
+                            captureFrame()?.takeIf { it.bytes.isNotEmpty() }
                         } catch (e: Throwable) {
                             DiagnosticsLog.error("env-ar", "completion photo captureFrame failed (item kept, no photo)", e)
                             null
                         }
-                        dispatch_async(dispatch_get_main_queue()) { listener(lat, lng, photoBytes, completed) }
+                        dispatch_async(dispatch_get_main_queue()) { listener(lat, lng, photo, completed) }
                     }
                 } else {
                     DiagnosticsLog.info(

@@ -6,45 +6,41 @@ import kotlin.test.assertEquals
 class RouteFogClassificationTest {
 
     @Test
-    fun cellAbsentFromPriorsIsFog() {
-        val result = classifyFogAndStale(
+    fun cellAbsentFromPriorsIsNotStale() {
+        val stale = classifyStaleCells(
             unscannedCells = setOf(0 to 0),
             cellPriorStates = emptyMap(),
         )
-        assertEquals(setOf(0 to 0), result.fogCells)
-        assertEquals(emptySet(), result.staleCells)
+        assertEquals(emptySet(), stale)
     }
 
     @Test
     fun cellMarkedStaleInPriorsIsStale() {
-        val result = classifyFogAndStale(
+        val stale = classifyStaleCells(
             unscannedCells = setOf(1 to 1),
             cellPriorStates = mapOf((1 to 1) to "stale"),
         )
-        assertEquals(emptySet(), result.fogCells)
-        assertEquals(setOf(1 to 1), result.staleCells)
+        assertEquals(setOf(1 to 1), stale)
     }
 
     @Test
-    fun cellMarkedFreshInPriorsIsNeitherFogNorStale() {
+    fun cellMarkedFreshInPriorsIsNotStale() {
         // "fresh" priors are folded directly into CoverageTracker.seedScannedCells
         // by RouteScanViewModel — they never appear in unscannedCells in the
         // first place, but this guards the function's own contract regardless.
-        val result = classifyFogAndStale(
+        val stale = classifyStaleCells(
             unscannedCells = setOf(2 to 2),
             cellPriorStates = mapOf((2 to 2) to "fresh"),
         )
-        assertEquals(emptySet(), result.fogCells)
-        assertEquals(emptySet(), result.staleCells)
+        assertEquals(emptySet(), stale)
     }
 
     @Test
-    fun mixedSetPartitionsCorrectly() {
-        val result = classifyFogAndStale(
+    fun mixedSetSelectsOnlyStale() {
+        val stale = classifyStaleCells(
             unscannedCells = setOf(0 to 0, 1 to 1, 2 to 2),
             cellPriorStates = mapOf((1 to 1) to "stale"),
         )
-        assertEquals(setOf(0 to 0, 2 to 2), result.fogCells)
-        assertEquals(setOf(1 to 1), result.staleCells)
+        assertEquals(setOf(1 to 1), stale)
     }
 }

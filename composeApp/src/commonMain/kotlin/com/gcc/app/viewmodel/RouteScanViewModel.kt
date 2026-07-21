@@ -25,7 +25,7 @@ import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.SessionEventLog
 import com.gcc.app.platform.SessionPointsEstimator
 import com.gcc.app.platform.bestOf
-import com.gcc.app.platform.classifyFogAndStale
+import com.gcc.app.platform.classifyStaleCells
 import com.gcc.app.platform.coverageTier
 import com.gcc.app.platform.detectDeviceCapabilities
 import com.gcc.app.platform.detectDeviceType
@@ -459,8 +459,8 @@ class RouteScanViewModel(
         // fog-exemption) so seeding stale cells as fog-exempt (below) doesn't
         // erase the "needs revisit" minimap indicator for cells not yet
         // re-scanned this session.
-        val classification = classifyFogAndStale(coverageTracker.getUnscannedCellsIgnoringSeed(), cellPriorStates)
-        _staleCellCenters.value = classification.staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
+        val staleCells = classifyStaleCells(coverageTracker.getUnscannedCellsIgnoringSeed(), cellPriorStates)
+        _staleCellCenters.value = staleCells.map { (row, col) -> coverageTracker.cellCenterLatLng(row, col) }
         // Ledger-fresh cells punch out of the minimap veil (already-scanned sky).
         _freshCellCenters.value = cellPriorStates
             .filterValues { it == "fresh" }

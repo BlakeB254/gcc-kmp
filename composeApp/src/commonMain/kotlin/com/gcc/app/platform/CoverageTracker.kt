@@ -520,14 +520,16 @@ class CoverageTracker {
         return unscanned
     }
 
-    /** Corridor cells (row, col) not yet scanned — drives ArRouteOverlay's fog node set. */
+    /** Corridor cells (row, col) not yet scanned — feeds the env-scan
+     *  guidance frontier (EnvScanGuidance.pickTarget). The AR fog renderer
+     *  this once drove was deleted with the fog feature. */
     fun getUnscannedCells(): Set<Pair<Int, Int>> =
         corridorCells - _scannedCells.value - preSeededCells
 
     /**
      * Corridor cells not credited THIS session, ignoring ledger fog-exemption
      * ([preSeededCells]) — for classifiers (e.g. the route stale-cell
-     * indicator, [com.gcc.app.platform.classifyFogAndStale]) that need to
+     * indicator, [com.gcc.app.platform.classifyStaleCells]) that need to
      * keep distinguishing ledger-stale-but-unrevisited cells from truly
      * fog-clear ones even after [seedScannedCells] marks stale cells
      * fog-exempt for AR rendering purposes.
