@@ -2,6 +2,7 @@ package com.gcc.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,10 +29,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -45,6 +48,7 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.CoverageQuality
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.TapPhase
 import com.gcc.app.platform.TrackingState
 import com.gcc.app.platform.isGeoRefFixUsable
 import com.gcc.app.platform.WorldMarkerKind
@@ -57,6 +61,7 @@ import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
 import com.gcc.app.ui.components.ScanMinimapOverlay
 import com.gcc.app.ui.components.SessionPointsPill
+import com.gcc.app.ui.components.TapCandidatePill
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.mapOverlayZoomBias
@@ -65,6 +70,7 @@ import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.model.Coordinates
+import kotlinx.coroutines.launch
 
 /**
  * Full-screen AR route guidance overlay, shown during SCOUTING once the worker
@@ -100,6 +106,9 @@ fun ArRouteScreen(
     val staleCellCenters by viewModel.staleCellCenters.collectAsState()
     val freshCellCenters by viewModel.freshCellCenters.collectAsState()
     val trackingState by overlay.trackingState.collectAsState()
+    val tapCandidate by overlay.tapCandidate.collectAsState()
+    val captureAllowed by viewModel.captureAllowed.collectAsState()
+    val tapConfirmScope = rememberCoroutineScope()
     val gpsHeading by viewModel.headingDegrees.collectAsState()
     val outdoorState by viewModel.outdoorState.collectAsState()
     val isIndoor = outdoorState == OutdoorState.INDOOR
@@ -276,6 +285,21 @@ fun ArRouteScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         ArRouteOverlayView(overlay = overlay, modifier = Modifier.fillMaxSize())
+        // Tap-to-confirm (env-scan parity): normalized view-space tap →
+        // overlay raycast → confirm pill. Sits under the HUD chrome so
+        // buttons/pills keep priority.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        overlay.focusAt(
+                            offset.x / size.width.toFloat(),
+                            offset.y / size.height.toFloat(),
+                        )
+                    }
+                },
+        )
 
         // Live trash-detection reticles over the camera feed.
         DetectionReticleOverlay(
@@ -581,6 +605,38 @@ fun ArRouteScreen(
         )
 
         DiagnosticsOverlay()
+
+        // Tap-to-confirm candidate pill (bottom-center) — sits above the lap
+        // fill bar so its buttons stay reachable while a candidate is live.
+        if (tapCandidate.phase != TapPhase.IDLE) {
+            TapCandidatePill(
+                state = tapCandidate,
+                onConfirm = {
+                    // Snapshot before dismissing: collectAsState propagation
+                    // isn't synchronous, so reading tapCandidate again after
+                    // overlay.dismissTapCandidate() below risks a stale value.
+                    val candidate = tapCandidate
+                    if (!captureAllowed) {
+                        overlay.dismissTapCandidate()
+                        viewModel.confirmRouteTapItem(candidate, null) // surfaces the gate error banner
+                    } else {
+                        overlay.confirmTapCandidate()?.let { confirmed ->
+                            tapConfirmScope.launch {
+                                val photo = overlay.captureTapEvidencePhoto()
+                                viewModel.confirmRouteTapItem(confirmed, photo)
+                            }
+                        }
+                    }
+                },
+                onReject = {
+                    overlay.rejectTapCandidate()?.let { rejected ->
+                        viewModel.rejectRouteTapItem(rejected)
+                    }
+                },
+                onDismiss = { overlay.dismissTapCandidate() },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp),
+            )
+        }
 
         // Exit AR button (top-left) — returns to the scout map.
         TextButton(

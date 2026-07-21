@@ -19,11 +19,14 @@ import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
+import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
 import com.gcc.app.platform.RaycastCoverageHit
 import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.SceneVote
 import com.gcc.app.platform.SessionEventLog
 import com.gcc.app.platform.SessionPointsEstimator
+import com.gcc.app.platform.TapCandidateState
+import com.gcc.app.platform.UNKNOWN_LITTER_LABEL
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.classifyStaleCells
 import com.gcc.app.platform.coverageTier
@@ -34,6 +37,7 @@ import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.app.platform.getPlatformName
 import com.gcc.app.platform.retractionOutcome
+import com.gcc.app.platform.routeTapFiling
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
@@ -380,6 +384,68 @@ class RouteScanViewModel(
             // map. The periodic flushes elsewhere stay as the retry sweep.
             arMarkerQueue.flush()
         }
+    }
+
+    /**
+     * A lap-1 tap confirmation (env-scan tap parity): files BOTH surfaces the
+     * block flow needs — a photo-backed hotspot (the lap-2 cleanup target;
+     * hotspots REQUIRE a before-photo, so a failed upload degrades to
+     * marker-only with a visible error) and a user-confirmed world marker
+     * (report/training-grade evidence, same provenance rule as the env scan).
+     */
+    fun confirmRouteTapItem(candidate: TapCandidateState, photoBytes: ByteArray?) {
+        if (!outdoorGate.captureAllowed.value) {
+            // Never silent (env-scan constraint 2 carried over).
+            _uiState.value = _uiState.value.copy(error = "Scan paused indoors — step outside and tap the item again")
+            return
+        }
+        val filing = routeTapFiling(candidate) ?: return
+        val lat = candidate.lat ?: return
+        val lng = candidate.lng ?: return
+        ScanSessionTelemetry.active?.confirm(candidate.label ?: UNKNOWN_LITTER_LABEL)
+        launchDetached {
+            val photoUrl = photoBytes?.let { bytes ->
+                try {
+                    apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("route-tap", "confirm photo upload failed (marker-only)", e)
+                    null
+                }
+            }
+            if (photoUrl != null) {
+                addDetectedHotspot(
+                    lat = lat,
+                    lng = lng,
+                    severity = filing.severity,
+                    beforePhotoUrl = photoUrl,
+                    confidence = candidate.confidence ?: 0f,
+                    estimatedWeightLbs = filing.estimatedWeightLbs,
+                    cleanupTarget = true,
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    error = "Photo didn't upload — item saved to the map, but no cleanup hotspot was created",
+                )
+            }
+            arMarkerQueue.enqueue(
+                ArDetectedMarkerRequest(
+                    lat = lat, lng = lng,
+                    label = filing.itemType,
+                    capturedAt = Clock.System.now(),
+                    mediaUrl = photoUrl,
+                    provenance = PROVENANCE_USER_CONFIRMED,
+                    estimatedWeightGrams = filing.estimatedWeightGrams,
+                ),
+            )
+            arMarkerQueue.flush()
+        }
+    }
+
+    /** "Not litter" on a route-lap tap — a negative training example.
+     *  Telemetry-only for now (route lap manifests don't carry a rejected
+     *  list; parity item noted in the PRD open items). */
+    fun rejectRouteTapItem(candidate: TapCandidateState) {
+        ScanSessionTelemetry.active?.reject(candidate.label ?: UNKNOWN_LITTER_LABEL)
     }
 
     // "Go outside" gate: GPS-accuracy evidence is fed here from the location

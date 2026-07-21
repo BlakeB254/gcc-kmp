@@ -32,7 +32,7 @@ claim job (block available → in_progress, 24 h window)
   cells inside the corridor; the minimap shows the corridor as "your zone"
   cut out of the veil, filling in live.
 - Litter found is tagged as **hotspots** (before-photo, type, severity,
-  weight estimate) via the same reticle/tap flow as the env scan.
+  weight estimate) via the same reticle/tap flow as the env scan — implemented via the shared TapToConfirmEngine (2026-07, route-lap tap parity plan).
 - Lap 1 completes at **≥95 % corridor fill** (auto-advance prompts review),
   or ≥85 % + closed loop, or all sections recorded. A worker must NEVER be
   stranded: force-complete is always reachable behind a confirm dialog.
@@ -119,3 +119,6 @@ claim job (block available → in_progress, 24 h window)
 - Lap-2 hotspot verification scoring surfaced to the worker (today the score
   records silently).
 - Payout UX after completion (report → payout status visibility).
+- Route-lap LiDAR ground-candidate auto-detect parity (GroundCandidateTracker
+  drive loop is still env-only).
+- Rejected route taps ride telemetry only (no manifest rejected list).

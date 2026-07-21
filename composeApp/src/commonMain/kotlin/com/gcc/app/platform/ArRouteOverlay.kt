@@ -127,6 +127,32 @@ expect class ArRouteOverlay() {
 
     /** Pause/resume capture without teardown (outdoor-gate driven). */
     fun setCaptureEnabled(enabled: Boolean)
+
+    // ── Tap-to-confirm (env-scan parity, block PRD lap-1 requirement) ──
+    // Same TapToConfirmEngine the env scan runs — the block PRD forbids the
+    // AR surfaces forking. iOS only; Android/Desktop expose an idle flow.
+
+    /** The one pending user-tapped candidate. See [TapCandidateState]. */
+    val tapCandidate: StateFlow<TapCandidateState>
+
+    /** Queue a normalized view-space tap (top-left origin) for raycast +
+     *  identify. A tap is NEVER silent — every outcome surfaces a pill. */
+    fun focusAt(x: Float, y: Float)
+
+    /** Persist the pending tapped candidate as user-confirmed litter and
+     *  reset. Returns the confirmed state, or null if nothing was pending. */
+    fun confirmTapCandidate(): TapCandidateState?
+
+    /** Record the pending tapped candidate as a negative example and reset. */
+    fun rejectTapCandidate(): TapCandidateState?
+
+    /** Drop the pending tapped candidate. Records nothing (accidental tap). */
+    fun dismissTapCandidate()
+
+    /** Best-effort downscaled JPEG of the current frame — the confirmed
+     *  item's hotspot before-photo / marker photo. Null when no frame
+     *  (and always off-iOS). */
+    suspend fun captureTapEvidencePhoto(): ByteArray?
 }
 
 /**

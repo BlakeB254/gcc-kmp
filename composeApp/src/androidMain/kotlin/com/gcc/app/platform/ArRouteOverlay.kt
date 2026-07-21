@@ -41,6 +41,13 @@ actual class ArRouteOverlay actual constructor() {
     actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> = emptyList<CaptureChunkInfo>() to null
     actual fun discardCurrentCaptureChunk() {}
     actual fun setCaptureEnabled(enabled: Boolean) {}
+
+    actual val tapCandidate: StateFlow<TapCandidateState> = MutableStateFlow(TapCandidateState())
+    actual fun focusAt(x: Float, y: Float) {}
+    actual fun confirmTapCandidate(): TapCandidateState? = null
+    actual fun rejectTapCandidate(): TapCandidateState? = null
+    actual fun dismissTapCandidate() {}
+    actual suspend fun captureTapEvidencePhoto(): ByteArray? = null
 }
 
 /** Android stub — no on-screen AR view; renders an empty box. */

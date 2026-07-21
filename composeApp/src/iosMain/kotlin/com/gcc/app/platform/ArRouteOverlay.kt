@@ -97,6 +97,38 @@ actual class ArRouteOverlay actual constructor() {
     private val frameFeedback = ArFrameFeedback({ sceneView }, { nativeSurface })
     actual val liveDetections: StateFlow<List<LiveDetection>> = frameFeedback.liveDetections
 
+    private val tapEngine = TapToConfirmEngine(
+        nativeSurfaceProvider = { nativeSurface },
+        // The route helper computes even pre-pairing (refLat 0.0) — gate it,
+        // same contract as the env overlay's null-before-hasGeoRef helper,
+        // so a pre-GPS tap gets the honest GPS_SYNCING pill.
+        localToLatLng = { x, z -> if (!hasGeoRef) null else localToLatLng(x, z) },
+    )
+    actual val tapCandidate: StateFlow<TapCandidateState> = tapEngine.tapCandidate
+
+    actual fun focusAt(x: Float, y: Float) {
+        ScanSessionTelemetry.active?.tap(state = null)
+        tapEngine.queueTap(x, y)
+        // Process immediately: the native raycast needs no ARFrame, and the
+        // SceneKit fallback reads the session's current frame. (The env scan
+        // defers to its analyze tick; the route overlay has no such tick at
+        // tap-friendly cadence — its fan loop is 1 Hz.)
+        dispatch_async(dispatch_get_main_queue()) {
+            tapEngine.processPendingTap(sceneView?.session?.currentFrame)
+        }
+    }
+
+    actual fun confirmTapCandidate(): TapCandidateState? = tapEngine.confirm()
+    actual fun rejectTapCandidate(): TapCandidateState? = tapEngine.reject()
+    actual fun dismissTapCandidate() = tapEngine.dismiss()
+
+    actual suspend fun captureTapEvidencePhoto(): ByteArray? {
+        val pixelBuffer = nativeSurface?.pixelBufferOrNull()
+            ?: sceneView?.session?.currentFrame?.capturedImage
+            ?: return null
+        return cvPixelBufferToMarkerPhotoJpeg(pixelBuffer)
+    }
+
     // Latest GPS fix <-> AR camera position pairing (see class KDoc).
     private var hasGeoRef = false
     private var refLat = 0.0

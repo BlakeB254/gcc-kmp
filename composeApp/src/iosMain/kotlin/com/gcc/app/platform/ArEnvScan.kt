@@ -29,16 +29,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import platform.ARKit.ARCoachingGoal
 import platform.ARKit.ARCoachingOverlayView
 import platform.ARKit.ARFrame
-import platform.ARKit.ARHitTestResult
-import platform.ARKit.ARHitTestResultTypeEstimatedHorizontalPlane
-import platform.ARKit.ARHitTestResultTypeExistingPlaneUsingGeometry
-import platform.ARKit.ARHitTestResultTypeFeaturePoint
 import platform.ARKit.ARPlaneAnchor
 import platform.ARKit.ARSCNView
 import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
 import platform.CoreGraphics.CGPointMake
-import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
@@ -130,10 +125,6 @@ actual class ArEnvScanOverlay actual constructor() {
          *  hit within this XZ-plane distance of the tapped world point.
          *  NEAR_DISTANCE_METERS (the range gate) is unchanged by focus. */
         private const val FOCUS_RADIUS_METERS = 1.5
-        /** Side of the square crop classified around a tap, as a fraction of the
-         *  image's smaller dimension. Wide enough to keep context (a bottle needs
-         *  the ground around it), tight enough to exclude the rest of the scene. */
-        private const val TAP_CROP_FRACTION = 0.35
         /** Minor grid interval: one metre (constraint 7). The grid texture is a
          *  3×3-cell tile — thin lines on the interior cell boundaries, a heavy
          *  line on its outer edge — so ONE texture repeat spans
@@ -200,8 +191,34 @@ actual class ArEnvScanOverlay actual constructor() {
     private val _multiItemReticles = MutableStateFlow<List<DetectionReticle>>(emptyList())
     actual val multiItemReticles: StateFlow<List<DetectionReticle>> = _multiItemReticles.asStateFlow()
 
-    private val _tapCandidate = MutableStateFlow(TapCandidateState())
-    actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
+    private val tapEngine = TapToConfirmEngine(
+        nativeSurfaceProvider = { nativeSurface },
+        localToLatLng = { x, z -> localToLatLng(x, z) }, // existing hasGeoRef-gated helper
+        onRaycastHit = { hit, imageX, imageY ->
+            // Env-only: focus bias, set unconditionally on any raycast hit
+            // (even pre-geo-ref) — moved verbatim from the pre-extraction
+            // tap flow.
+            focusImagePoint = imageX to imageY
+            focusWorld = Triple(hit.x, hit.y, hit.z)
+            focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
+        },
+        onTapGeoResolved = { hit ->
+            // Env-only: ground-candidate tap-adoption, moved verbatim from
+            // the pre-extraction tap flow — only ever ran once geo-resolve
+            // succeeded.
+            val scanningBeforeTap = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
+            groundCandidateTracker.adoptTap(hit.x, hit.y, hit.z)?.let { adoptedId ->
+                if (adoptedId !in scanningBeforeTap) {
+                    ScanSessionTelemetry.active?.detection(
+                        label = null, confidence = null,
+                        distanceM = groundCandidatePackets[adoptedId]?.distanceM?.toDouble(),
+                        source = "tap", outcome = "accepted",
+                    )
+                }
+            }
+        },
+    )
+    actual val tapCandidate: StateFlow<TapCandidateState> = tapEngine.tapCandidate
 
     private val _groundIntentPrompt = MutableStateFlow<GroundIntentPrompt?>(null)
     actual val groundIntentPrompt: StateFlow<GroundIntentPrompt?> = _groundIntentPrompt.asStateFlow()
@@ -253,11 +270,10 @@ actual class ArEnvScanOverlay actual constructor() {
     private val markerPositions = mutableListOf<Triple<Float, Float, Float>>()
 
     // Tap-to-focus (Task 5). A tap arrives on the gesture/main thread via
-    // [focusAt]; it's queued here and processed at the START of the next
-    // [analyzeTick] (on the Vision/analysis coroutine) rather than raycast
-    // synchronously off the tap — Vision/raycast work belongs on that queue.
-    /** Queued view-space tap awaiting the next tick; consumed then nulled. */
-    private var pendingFocusTap: Pair<Double, Double>? = null
+    // [focusAt]; it's queued here (via [tapEngine]) and processed at the
+    // START of the next [analyzeTick] (on the Vision/analysis coroutine)
+    // rather than raycast synchronously off the tap — Vision/raycast work
+    // belongs on that queue.
     /** Image-space point (top-left origin) the active focus raycast used —
      *  reused by [selectSalientObject] to bias candidate selection. */
     private var focusImagePoint: Pair<Double, Double>? = null
@@ -676,12 +692,11 @@ actual class ArEnvScanOverlay actual constructor() {
 
     /**
      * Queue a normalized view-space tap (top-left origin) for processing at
-     * the start of the next [analyzeTick] — see [processPendingFocusTap].
-     * Called from CameraCapture's gesture handler (main thread); reading/
-     * writing [pendingFocusTap] from both the main thread here and the
-     * analysis coroutine there is a plain last-write-wins overwrite (a
-     * single nullable field, not a collection), which is fine for a UX
-     * signal that a following tap is expected to supersede anyway.
+     * the start of the next [analyzeTick] — see [tapEngine]'s
+     * `processPendingTap`. Called from CameraCapture's gesture handler (main
+     * thread); the queued tap is a plain last-write-wins overwrite (a single
+     * nullable field, not a collection), which is fine for a UX signal that
+     * a following tap is expected to supersede anyway.
      */
     actual fun focusAt(x: Float, y: Float) {
         // Tap telemetry at the source (t2-task-1): emit BEFORE the early
@@ -703,111 +718,26 @@ actual class ArEnvScanOverlay actual constructor() {
         // INVISIBLY behind the card and surfacing stale later) can't happen
         // anymore — the card is gone by the time the tap state machine runs.
         if (superseding) dismissCandidate()
-        pendingFocusTap = x.toDouble() to y.toDouble()
-        _tapCandidate.update { it.reduce(TapEvent.Tapped(x, y)) }
-    }
-
-    /**
-     * Consume a queued [focusAt] tap: invert the image→view mapping
-     * [analyzeTrash] uses ([viewTapToImageCoords]) to recover the
-     * normalized image-space point, then raycast immediately. A hit
-     * becomes the focus bias for [FOCUS_DURATION_MS] — see
-     * [selectSalientObject] (saliency selection) and the promotion gate in
-     * [analyzeTrash] (lowered streak threshold) — and drives [tapCandidate]
-     * toward [TapPhase.AWAITING_CONFIRMATION] via [classifyTappedRegion].
-     * Haptic fires on FOCUS ACQUIRED (raycast hit), not on every tap. A miss
-     * is NEVER silent (global constraint 2): it reduces [TapEvent.RaycastMissed]
-     * so the pill can say so, instead of leaving the user staring at nothing.
-     */
-    private fun processPendingFocusTap(frame: ARFrame?) {
-        val tap = pendingFocusTap ?: return
-        pendingFocusTap = null
-        val (imageX, imageY) = viewTapToImageCoords(tap.first, tap.second)
-        val hit = raycastImage(frame, imageX, imageY)
-        if (hit == null) {
-            // Global constraint 2: a tap is NEVER silent.
-            _tapCandidate.update { it.reduce(TapEvent.RaycastMissed) }
-            return
-        }
-        focusImagePoint = imageX to imageY
-        focusWorld = Triple(hit.x, hit.y, hit.z)
-        focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
-        val latLng = localToLatLng(hit.x, hit.z) ?: run {
-            // The surface WAS hit — the session just has no AR↔GPS pairing
-            // yet. "Hold steady and tap again" would be a lie (no amount of
-            // steadiness helps); tell the user what's actually pending.
-            _tapCandidate.update { it.reduce(TapEvent.NoGeoRef) }
-            return
-        }
-        _tapCandidate.update {
-            it.reduce(TapEvent.RaycastHit(latLng.first, latLng.second, hit.distance))
-        }
-        dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
-        classifyTappedRegion(frame, imageX, imageY)
-
-        // Ground-candidate tap-adoption (Task 6): user intent is
-        // authoritative -- a tap within adoptTap's 1m gate promotes the
-        // nearest non-terminal ground candidate straight to SCANNING, on top
-        // of (and independent of) the tap-pill flow above. adoptTap can also
-        // re-select an already-SCANNING candidate (a repeat tap near it),
-        // which must NOT re-emit an "accepted" event -- only ids that were
-        // outside [scanningBeforeTap] just now made a genuine
-        // PROPOSED -> SCANNING transition.
-        val scanningBeforeTap = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
-        groundCandidateTracker.adoptTap(hit.x, hit.y, hit.z)?.let { adoptedId ->
-            if (adoptedId !in scanningBeforeTap) {
-                ScanSessionTelemetry.active?.detection(
-                    label = null, confidence = null,
-                    distanceM = groundCandidatePackets[adoptedId]?.distanceM?.toDouble(),
-                    source = "tap", outcome = "accepted",
-                )
-            }
-        }
-    }
-
-    /**
-     * Classify a crop centred on the tap, preserving surrounding context, and
-     * feed the result to the reducer. A tap bypasses
-     * [TrashDetectionRules.autoPromotionLabelFrom]'s parent-context suppression
-     * on purpose (constraint 11): the user may confirm a detached tire.
-     *
-     * A null label is NOT a failure — Option A: the candidate still reaches
-     * AWAITING_CONFIRMATION as "Unknown litter".
-     */
-    private fun classifyTappedRegion(frame: ARFrame?, imageX: Double, imageY: Double) {
-        val observations = classifyRegion(frame, imageX, imageY, TAP_CROP_FRACTION)
-        val label = TrashDetectionRules.trashLabelFrom(observations)
-        val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
-        _tapCandidate.update { it.reduce(TapEvent.Classified(label, confidence)) }
+        tapEngine.queueTap(x, y)
     }
 
     /**
      * [localToLatLng] resolved against this session's live geo reference —
-     * the class-scoped convenience [processPendingFocusTap] needs, since the
-     * top-level function (see `ArGeoMath.kt`) takes the reference explicitly
-     * and has no notion of "not yet paired". Null before [hasGeoRef].
+     * the class-scoped convenience [tapEngine] needs, since the top-level
+     * function (see `ArGeoMath.kt`) takes the reference explicitly and has
+     * no notion of "not yet paired". Null before [hasGeoRef].
      */
     private fun localToLatLng(x: Float, z: Float): Pair<Double, Double>? {
         if (!hasGeoRef) return null
         return localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
     }
 
-    actual fun confirmTapCandidate(): TapCandidateState? {
-        val pending = _tapCandidate.value
-        if (pending.phase != TapPhase.AWAITING_CONFIRMATION) return null
-        _tapCandidate.update { it.reduce(TapEvent.Confirmed) }
-        return pending
-    }
+    actual fun confirmTapCandidate(): TapCandidateState? = tapEngine.confirm()
 
-    actual fun rejectTapCandidate(): TapCandidateState? {
-        val pending = _tapCandidate.value
-        if (pending.phase != TapPhase.AWAITING_CONFIRMATION) return null
-        _tapCandidate.update { it.reduce(TapEvent.Rejected) }
-        return pending
-    }
+    actual fun rejectTapCandidate(): TapCandidateState? = tapEngine.reject()
 
     actual fun dismissTapCandidate() {
-        _tapCandidate.update { it.reduce(TapEvent.Dismissed) }
+        tapEngine.dismiss()
     }
 
     actual fun confirmGroundIntentPrompt() {
@@ -908,9 +838,9 @@ actual class ArEnvScanOverlay actual constructor() {
 
         // Tap-to-focus (Task 5): process at the START of the tick, before
         // any other Vision/raycast work this tick does — see
-        // [processPendingFocusTap] kdoc for why it's queued rather than
-        // handled synchronously off the tap.
-        processPendingFocusTap(frame)
+        // [TapToConfirmEngine.processPendingTap] kdoc for why it's queued
+        // rather than handled synchronously off the tap.
+        tapEngine.processPendingTap(frame)
 
         // Ceiling cue for the OutdoorGate — checked every tick, cheap
         // (anchors are already tracked; no Vision work involved).
@@ -1054,7 +984,7 @@ actual class ArEnvScanOverlay actual constructor() {
      * that was never vetted), folds in this tick's dwell gaze, and mirrors
      * the tracker's SCANNING/COMPLETED/TIMED_OUT state onto the native
      * reticle pool. Tap-adoption (the tracker's 4th input) is wired
-     * separately in [processPendingFocusTap] — it fires off the tap itself,
+     * separately in [TapToConfirmEngine.processPendingTap] — it fires off the tap itself,
      * at the START of the tick, not here.
      *
      * Every detection event this emits fires at most once per candidate
@@ -1287,46 +1217,6 @@ actual class ArEnvScanOverlay actual constructor() {
     }
 
     /**
-     * Classify a square region-of-interest centred on a normalized image-space
-     * point (top-left origin, matching [imageX]/[imageY] everywhere else in
-     * this file) — the tap-to-identify crop [classifyTappedRegion] needs, as
-     * opposed to whole-frame classification. Supports both render backends,
-     * same precedent as [saliencyOnDemand]/[ArFrameFeedback]'s
-     * `native?.pixelBufferOrNull() ?: frame?.capturedImage` pattern: the
-     * native RealityKit surface when bound, the SceneKit `ARFrame` otherwise.
-     */
-    private fun classifyRegion(
-        frame: ARFrame?,
-        imageX: Double,
-        imageY: Double,
-        fraction: Double,
-    ): List<ClassificationObservation> {
-        val pixelBuffer = nativeSurface?.pixelBufferOrNull() ?: frame?.capturedImage ?: return emptyList()
-        val side = fraction.coerceIn(0.0, 1.0)
-        val half = side / 2.0
-        // Vision's regionOfInterest is bottom-left origin; imageX/imageY here
-        // are top-left, so flip Y (same conversion analyzeTrash uses). The
-        // origin is clamped to [0, 1 - side] so origin + size never exceeds
-        // 1.0 — an off-center tap slides the crop inward (keeping its full
-        // side length) instead of handing Vision an out-of-bounds ROI.
-        val visionY = 1.0 - imageY
-        val roi = CGRectMake(
-            (imageX - half).coerceIn(0.0, 1.0 - side),
-            (visionY - half).coerceIn(0.0, 1.0 - side),
-            side,
-            side,
-        )
-        val request = VNClassifyImageRequest()
-        request.regionOfInterest = roi
-        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
-        handler.performRequests(listOf(request), error = null)
-        return request.results
-            ?.filterIsInstance<VNClassificationObservation>()
-            ?.map { ClassificationObservation(it.identifier, it.confidence) }
-            ?: emptyList()
-    }
-
-    /**
      * Pick which salient candidate to lock onto: with no active focus, the
      * Vision-ranked first candidate (existing behavior, unchanged). With an
      * active [focusAt] focus, the candidate whose bounding-box center is
@@ -1354,35 +1244,6 @@ actual class ArEnvScanOverlay actual constructor() {
             }
             distanceSquared
         }
-    }
-
-    private class RayHit(val x: Float, val y: Float, val z: Float, val distance: Float)
-
-    /**
-     * World hit for a normalized image-space point, via whichever backend is
-     * live: native RealityKit raycast (distance derived from the camera
-     * position) or the SceneKit-era ARFrame.hitTest.
-     */
-    private fun raycastImage(frame: ARFrame?, imageX: Double, imageY: Double): RayHit? {
-        nativeSurface?.let { surface ->
-            val hit = surface.raycast(imageX, imageY) ?: return null
-            val cam = surface.cameraPosition() ?: return null
-            val dx = hit[0] - cam[0]
-            val dy = hit[1] - cam[1]
-            val dz = hit[2] - cam[2]
-            return RayHit(
-                hit[0].toFloat(), hit[1].toFloat(), hit[2].toFloat(),
-                sqrt(dx * dx + dy * dy + dz * dz).toFloat(),
-            )
-        }
-        val hit = frame?.hitTest(
-            CGPointMake(imageX, imageY),
-            types = ARHitTestResultTypeExistingPlaneUsingGeometry
-                or ARHitTestResultTypeEstimatedHorizontalPlane
-                or ARHitTestResultTypeFeaturePoint,
-        )?.firstOrNull() as? ARHitTestResult ?: return null
-        val world = matrixTranslation(hit.worldTransform)
-        return RayHit(world[0], world[1], world[2], hit.distance.toFloat())
     }
 
     private fun analyzeTrash(
@@ -1457,7 +1318,7 @@ actual class ArEnvScanOverlay actual constructor() {
 
         val imageX = visionX
         val imageY = 1.0 - visionY
-        val hit = raycastImage(frame, imageX, imageY)
+        val hit = tapEngine.raycastImage(frame, imageX, imageY)
         val distance = hit?.distance
 
         val viewX = (1.0 - imageY).toFloat()
@@ -1549,7 +1410,7 @@ actual class ArEnvScanOverlay actual constructor() {
      * box and publishes the deduped/capped result for the overlay + capture
      * tagging.
      *
-     * Performance guard: region classification ([classifyRegion]) is skipped
+     * Performance guard: region classification ([TapToConfirmEngine.classifyRegion]) is skipped
      * entirely when there's 0-1 boxes. The 0-1 case is also where [analyzeTrash]'s
      * own whole-frame lock-on (the single [TrashCandidate] reticle) already
      * owns rendering, so this layer publishes nothing for it (I3) — only
@@ -1574,7 +1435,7 @@ actual class ArEnvScanOverlay actual constructor() {
         val classified = candidates.take(MAX_MULTI_ITEM_RETICLES).map { obs ->
             val box = obs.toReticleBox()
             val fraction = box.side.coerceIn(0.2, 0.5)
-            val observations = classifyRegion(frame, box.imageX, box.imageY, fraction)
+            val observations = tapEngine.classifyRegion(frame, box.imageX, box.imageY, fraction)
             val label = TrashDetectionRules.autoPromotionLabelFrom(observations)
             val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
             DetectionReticle(
@@ -1588,7 +1449,7 @@ actual class ArEnvScanOverlay actual constructor() {
 
     /** A saliency box's geometry in both coordinate systems Task 17 needs:
      *  [imageX]/[imageY] (Vision's bottom-left origin flipped to the top-left
-     *  "image" convention [classifyRegion] expects — same conversion
+     *  "image" convention [TapToConfirmEngine.classifyRegion] expects — same conversion
      *  [analyzeTrash] uses for `imageX`/`imageY`) and [viewX]/[viewY] (the
      *  portrait-screen convention [DetectionReticle]/`LiveDetection.cx`/`cy`
      *  use, i.e. `viewX = 1 - imageY`, `viewY = imageX`). [side] is the
@@ -1648,7 +1509,7 @@ actual class ArEnvScanOverlay actual constructor() {
                 visionY = origin.y + size.height / 2.0
                 bboxWidthFrac = size.width
             }
-        val hit = raycastImage(frame, visionX, 1.0 - visionY) ?: return
+        val hit = tapEngine.raycastImage(frame, visionX, 1.0 - visionY) ?: return
         if (hit.distance > ELEMENT_MAX_DISTANCE_METERS) return
 
         val world = floatArrayOf(hit.x, hit.y, hit.z)
