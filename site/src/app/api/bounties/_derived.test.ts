@@ -95,6 +95,13 @@ test('observationToBountySource: mediaUrls is empty when the observation has no 
   assert.deepEqual(source.mediaUrls, [])
 })
 
+test('observationToBountySource: a privacy-flagged photo never reaches the bounty card', () => {
+  const source = observationToBountySource(
+    makeObservation({ mediaUrl: 'https://example.com/x.jpg', attributes: { mediaFlagged: true } })
+  )
+  assert.deepEqual(source.mediaUrls, [])
+})
+
 test('observationToBountySource: title/description fall back to the itemType', () => {
   const source = observationToBountySource(makeObservation({ itemType: 'tire' }))
   assert.equal(source.title, 'Cleanup opportunity: Tire')

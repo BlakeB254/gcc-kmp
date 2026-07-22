@@ -58,4 +58,48 @@ class OrphanSessionRecoveryPlanTest {
         assertEquals(1783347520720L, sessionIdEpochMs("env-1783347520720-fuvaue"))
         assertNull(sessionIdEpochMs("not-a-session-id"))
     }
+
+    // ── planOrphanChunkBooking: per-ARTIFACT dedup (TestFlight 159 field
+    // round — the late-finalizing .mov was stranded forever because the
+    // sweep skipped any session that already had booked rows) ──
+
+    private fun bookedRow(index: Long, kind: String) =
+        com.gcc.shared.cache.CaptureChunkRecord(
+            sessionId = "env-1-abc", chunkIndex = index, kind = kind,
+            filePath = "/cap/chunk-$index.x", sizeBytes = 1L,
+            locationCellId = "0:0", r2Key = null, uploadedAtMs = null, createdAtMs = 0L,
+        )
+
+    @Test
+    fun lateVideoIsBookedWhenSidecarAndDepthAlreadyWere() {
+        val plan = planOrphanChunkBooking(
+            existing = listOf(bookedRow(0, "sidecar"), bookedRow(0, "depth")),
+            files = listOf("/cap/chunk-0.mov", "/cap/chunk-0.jsonl", "/cap/chunk-0.depth"),
+        )
+        assertEquals(listOf(OrphanChunkFile(0, "video", "/cap/chunk-0.mov")), plan)
+    }
+
+    @Test
+    fun fullyBookedSessionPlansNothing() {
+        val plan = planOrphanChunkBooking(
+            existing = listOf(bookedRow(0, "video"), bookedRow(0, "sidecar"), bookedRow(0, "depth")),
+            files = listOf("/cap/chunk-0.mov", "/cap/chunk-0.jsonl", "/cap/chunk-0.depth"),
+        )
+        assertEquals(emptyList(), plan)
+    }
+
+    @Test
+    fun unbookedSessionPlansEveryChunkFileAndIgnoresForeignNames() {
+        val plan = planOrphanChunkBooking(
+            existing = emptyList(),
+            files = listOf("/cap/chunk-0.mov", "/cap/chunk-1.jsonl", "/cap/notes.txt", "/cap/chunk-x.mov"),
+        )
+        assertEquals(
+            listOf(
+                OrphanChunkFile(0, "video", "/cap/chunk-0.mov"),
+                OrphanChunkFile(1, "sidecar", "/cap/chunk-1.jsonl"),
+            ),
+            plan,
+        )
+    }
 }

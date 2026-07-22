@@ -150,7 +150,6 @@ fun ScanMinimapOverlay(
     val litterRings = rememberRings(litterCoords, litterZoneCellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val scanRings = rememberRings(scanCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     val closeRings = rememberRings(closeCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
-    val seenRings = rememberRings(seenCellCenters, cellSizeMeters, latticeAnchorLat, latticeAnchorLng)
     // Session UNION (GRAZED+ ∪ SEEN): one silhouette for the whole territory
     // this session has touched. Field report (post-157, SEEN raised to 0.26):
     // walked/close patches STILL read as separate green islands, because the
@@ -194,7 +193,7 @@ fun ScanMinimapOverlay(
         // (freshCellCenters/freshCloseCellCenters, a different — coarser —
         // grid) keep the v1 per-cell rect rendering; only THIS session's own
         // 3m-grid cells trace through marching squares. The rings themselves
-        // (scanRings/closeRings/seenRings) are already traced+smoothed above
+        // (scanRings/closeRings) are already traced+smoothed above
         // (outside this draw scope, off the stable lattice anchor) — only
         // the cheap lat/lng→screen projection happens here, every frame.
         fun ringsToPath(rings: List<List<Pair<Double, Double>>>): Path {
@@ -212,7 +211,6 @@ fun ScanMinimapOverlay(
         // scanCellCenters is already GRAZED+ (CLOSE cells included).
         val scanOutline = ringsToPath(scanRings)
         val closeOutline = ringsToPath(closeRings)
-        val seenOutline = ringsToPath(seenRings)
         // GRAZED+ ∪ SEEN: the one connected silhouette the veil is punched
         // out of and the bright frontier edge follows. Pillar 7 originally
         // kept SEEN under fog ("sight still leaves fog on the ground"), but
@@ -389,9 +387,15 @@ fun ScanMinimapOverlay(
         // bright edge stroke around each GRAZED island kept the map reading
         // as separate blobs. The frontier stroke now follows the session
         // UNION, so the whole swept territory reads as one connected shape.
-        drawPath(seenOutline, color = GccGreen.copy(alpha = 0.26f))
-        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.42f))
-        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.78f))
+        // Field report (TestFlight 159): stroking the union without FILLING
+        // it still left the low-tier tissue between close-scanned clusters
+        // reading as an unscanned streak splitting the blob in two. The union
+        // now gets a solid floor fill (the summary map's flat 0.40 treatment)
+        // so the whole territory reads filled; the tier washes layer on top
+        // as brighter accents rather than carrying the fill alone.
+        drawPath(sessionUnionOutline, color = GccGreen.copy(alpha = 0.38f))
+        drawPath(scanOutline, color = GccGreen.copy(alpha = 0.20f))
+        drawPath(closeOutline, color = GccGreen.copy(alpha = 0.45f))
         drawPath(sessionUnionOutline, color = GccGreen.copy(alpha = 0.85f), style = Stroke(width = 1.2.dp.toPx()))
 
         // Litter-pattern zones over the coverage paint: merged orange shapes

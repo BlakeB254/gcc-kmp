@@ -27,6 +27,13 @@ data class RectifyRequest(
     val lng: Double,
 )
 
+/** POST /api/observations/{id}/flag-media — privacy flag-down for a
+ *  public-map litter photo (person/animal/interior/no visible trash). */
+@Serializable
+data class FlagObservationMediaRequest(
+    val reason: String? = null,
+)
+
 /** Flat JSON response of POST /api/scans/{id}/rectify (no ApiResponse envelope). */
 @Serializable
 data class RectifyResponse(

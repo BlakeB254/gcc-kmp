@@ -60,6 +60,22 @@ class ScanIndexer(
                     manifest.captureChunks?.forEach {
                         add(chunkRow(manifest.sessionId, it, artifactTypeForKey(it), cellOr(it, sessionCell), raw[it], null))
                     }
+                    // Late-arriving capture artifacts: the video chunk
+                    // finalizes asynchronously on-device and can upload via
+                    // the client's orphan sweep AFTER the manifest (which
+                    // freezes captureChunks at completion time) — e.g.
+                    // session env-1784734348036 shipped sidecar+depth in the
+                    // manifest but its .mov landed later. The listing is the
+                    // ground truth for the session's capture/ prefix, so
+                    // index anything there the manifest didn't name — the
+                    // reconstruction enqueue gate (jsonl+bin+mov) depends on
+                    // these rows existing.
+                    val manifestChunks = manifest.captureChunks.orEmpty().toSet()
+                    raw.keys
+                        .filter { it.contains("/${manifest.sessionId}/capture/") && it !in manifestChunks }
+                        .forEach {
+                            add(chunkRow(manifest.sessionId, it, artifactTypeForKey(it), cellOr(it, sessionCell), raw[it], null))
+                        }
                     manifest.objectCapture?.r2Key?.let {
                         add(chunkRow(manifest.sessionId, it, "usdz", cellOr(it, sessionCell), raw[it], manifest.completedAtMs))
                     }

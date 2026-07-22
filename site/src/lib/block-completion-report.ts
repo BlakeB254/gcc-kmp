@@ -32,6 +32,7 @@ import {
   type NewBlockCompletionReportRow,
 } from '@/db/schema'
 import { gridCell } from '@/lib/world-observations'
+import { servableMediaUrl } from '@/lib/observation-media'
 import { haversineDistance, pointInPolygon } from '@/lib/geo-utils'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -286,6 +287,7 @@ async function observationPhotoCandidates(
       lng: worldObservations.lng,
       itemType: worldObservations.itemType,
       mediaUrl: worldObservations.mediaUrl,
+      attributes: worldObservations.attributes,
       capturedAt: worldObservations.capturedAt,
     })
     .from(worldObservations)
@@ -297,7 +299,10 @@ async function observationPhotoCandidates(
       )
     )
 
+  // servableMediaUrl: flagged photos (person/animal/interior/no visible
+  // trash) must not appear in sponsor-facing report PDFs either.
   return rows
+    .map((r) => ({ ...r, mediaUrl: servableMediaUrl(r) }))
     .filter((r) => !!r.mediaUrl)
     .map((r) => ({
       locationCellId: r.locationCellId,

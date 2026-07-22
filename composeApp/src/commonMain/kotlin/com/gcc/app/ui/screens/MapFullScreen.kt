@@ -66,6 +66,7 @@ import kotlin.math.ln
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -903,9 +904,22 @@ fun MapFullScreen(
             // Litter-footprint info card (Pillar 8 Task 2, Part C) — tap a
             // close-zoom footprint shape to see its photo/type/weight.
             selectedObservation?.let { observation ->
+                val reportScope = rememberCoroutineScope()
                 ObservationInfoCard(
                     observation = observation,
                     onDismiss = { selectedObservation = null },
+                    onReportPhoto = {
+                        // Fire-and-forget: the card already hid the photo
+                        // locally; a failed flag just means the next viewer
+                        // can flag it again.
+                        reportScope.launch {
+                            try {
+                                gccApiClient.flagObservationMedia(observation.id)
+                            } catch (e: Exception) {
+                                DiagnosticsLog.error("photo-privacy", "flag-media failed for observation ${observation.id}", e)
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
@@ -2092,6 +2106,10 @@ private fun ObservationInfoCard(
     observation: com.gcc.shared.model.WorldObservation,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Privacy flag-down (Blake, 2026-07-22): fires the server-side hide for
+     *  a photo showing a person/animal/home interior — or no visible trash.
+     *  Null hides the affordance (previews without an authed client). */
+    onReportPhoto: (() -> Unit)? = null,
 ) {
     val itemLabel = observation.itemType?.let { TrashItemCatalog.infoFor(it).displayName }
         ?: "Litter"
@@ -2100,7 +2118,10 @@ private fun ObservationInfoCard(
     // so the footprint card's photo behaves like the spot card's — tap to view
     // large, swipe / arrows to page when there's more than one image.
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
-    val photoUrls = listOfNotNull(observation.mediaUrl)
+    // Local hide on report: the server flag lands async; the photo must
+    // disappear for THIS viewer immediately.
+    var photoReported by remember(observation.id) { mutableStateOf(false) }
+    val photoUrls = if (photoReported) emptyList() else listOfNotNull(observation.mediaUrl)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -2154,10 +2175,38 @@ private fun ObservationInfoCard(
                     onPhotoClick = { index -> fullScreenImageIndex = index },
                 )
                 Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Tap photo to enlarge",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = GccGreen,
+                    )
+                    if (onReportPhoto != null) {
+                        TextButton(
+                            onClick = {
+                                photoReported = true
+                                onReportPhoto()
+                            },
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                        ) {
+                            Text(
+                                "Report photo",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (photoReported) {
                 Text(
-                    "Tap photo to enlarge",
+                    "Photo reported — thanks, it's been hidden.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = GccGreen,
+                    color = TextMuted,
                 )
                 Spacer(modifier = Modifier.height(10.dp))
             }

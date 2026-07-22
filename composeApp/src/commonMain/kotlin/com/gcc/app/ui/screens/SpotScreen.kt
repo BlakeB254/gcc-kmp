@@ -1008,37 +1008,15 @@ private fun CameraPhase(
                 coveragePercent = coveragePercentValue,
             )
         }
-        // Beacon dissolve (spec 2026-07-10): when the PREVIOUS frontier
-        // target's patch — its cell or an immediate neighbor, tolerating
-        // hysteresis re-picks a cell over — reached CLOSE credit, fade the
-        // AR beacon out as the "you finished this patch" reward BEFORE the
-        // new target teleports it. A plain target change (something closer
-        // appeared) moves the beacon without ceremony.
-        val previousTarget = guidanceTarget
-        if (arOverlay != null && previousTarget != null) {
-            val prevCell = tracker.cellForLatLng(previousTarget.first, previousTarget.second)
-            val closeCells = creditedCells
-                .filterValues { it.quality == CoverageQuality.CLOSE }.keys
-            val patchDone = prevCell != null && closeCells.any { (r, c) ->
-                kotlin.math.abs(r - prevCell.first) <= 1 && kotlin.math.abs(c - prevCell.second) <= 1
-            }
-            if (patchDone) arOverlay.dissolveGuidanceBeacon()
-        }
+        // AR beacon removed (field round, TestFlight 159): during free env
+        // scans the frontier target is routinely the ground underfoot, so
+        // the blue beacon disc landed within a meter of the camera and read
+        // as a huge dark-blue band pulsing across the scene — distracting,
+        // with no clear purpose (Blake's call). Guidance stays on the
+        // minimap (guidanceTarget/guidancePhase below); the native beacon
+        // renderer stays dormant for a future deliberate design.
         guidanceTarget = pick?.target
         guidancePhase = pick?.phase ?: GuidancePhase.COVER
-        if (arOverlay != null) {
-            val target = pick?.target
-            if (target != null) arOverlay.setGuidanceTarget(target.first, target.second)
-            else arOverlay.clearGuidanceTarget()
-        }
-    }
-    // The beacon yields to confirm flows: while the tap pill or the lock-on
-    // card owns the screen it must not compete for attention; restored the
-    // moment the flow resolves (spec 2026-07-10 positioning constraints).
-    LaunchedEffect(tapCandidate.phase, trashCandidate) {
-        arOverlay?.setGuidanceBeaconSuppressed(
-            tapCandidate.phase == TapPhase.AWAITING_CONFIRMATION || trashCandidate != null
-        )
     }
     // Idle nudge: no new cell credited for a while → a BRIEF advisory via the
     // status chip, then back to the default caption. Restarting on

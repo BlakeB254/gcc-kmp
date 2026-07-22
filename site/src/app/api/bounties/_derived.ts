@@ -1,4 +1,5 @@
 import type { BountyRow, CommunityReport, WorldObservationRow } from '@/db/schema'
+import { servableMediaUrl } from '@/lib/observation-media'
 
 export const BOUNTY_MINIMUM_CENTS = 1000
 
@@ -105,7 +106,12 @@ export function observationToBountySource(observation: WorldObservationRow) {
     city: 'Chicago',
     communityArea: null as string | null,
     neighborhood: null as string | null,
-    mediaUrls: observation.mediaUrl ? [observation.mediaUrl] : [],
+    mediaUrls: (() => {
+      // Flag-down aware (see servableMediaUrl): flagged photos never reach
+      // bounty cards.
+      const url = servableMediaUrl(observation)
+      return url ? [url] : []
+    })(),
     aiAnalysis: null as { estimatedWeightLbs: number | null; trashTypes: string[]; confidence: number | null; severity: string | null } | null,
   }
 }

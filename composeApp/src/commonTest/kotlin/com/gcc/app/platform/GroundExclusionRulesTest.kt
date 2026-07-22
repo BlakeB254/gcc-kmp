@@ -77,7 +77,7 @@ class GroundExclusionRulesTest {
 
     @Test
     fun glassMatchesAtAnyConfidence() {
-        // trashTypeFrom is deliberately not confidence-gated (see its kdoc) —
+        // trashTypeFrom's DEFAULT stays ungated (suppression/routing uses) —
         // glass shards/bottles are litter and must reach the weight
         // estimator's solid-glass density bucket even on a weak guess.
         assertEquals("glass", GroundExclusionRules.trashTypeFrom(listOf(obs("glass", 0.05f))))
@@ -127,5 +127,34 @@ class GroundExclusionRulesTest {
         for (identifier in cases) {
             assertEquals(identifier, GroundExclusionRules.trashTypeFrom(listOf(obs(identifier, 0.2f))), identifier)
         }
+    }
+
+    // ── TRASH_TYPE_CONFIDENCE: the autonomous-typing floor (TestFlight 159
+    // phantom round: a ~0.02 "paper" guess on plain ground auto-filed litter
+    // the user never saw) ──
+
+    @Test
+    fun weakTrashGuessDoesNotTypeButStillSuppressesExclusion() {
+        // grass clears EXCLUSION_CONFIDENCE, paper is a 0.05 whisper: the
+        // candidate must NOT be typed (no autonomous filing) and must NOT be
+        // excluded (the whisper keeps it alive) — it survives untyped and
+        // routes to the AWAITING_INTENT prompt at full progress.
+        val decision = GroundExclusionRules.classify(listOf(obs("grass", 0.9f), obs("paper", 0.05f)))
+        assertNull(decision.trashType)
+        assertNull(decision.exclusionLabel)
+    }
+
+    @Test
+    fun confidentTrashGuessStillTypes() {
+        val decision = GroundExclusionRules.classify(listOf(obs("grass", 0.9f), obs("bottle", 0.6f)))
+        assertEquals("bottle", decision.trashType)
+        assertNull(decision.exclusionLabel)
+    }
+
+    @Test
+    fun typingFloorIsExactlyThirtyPercent() {
+        assertEquals(0.30f, GroundExclusionRules.TRASH_TYPE_CONFIDENCE)
+        assertEquals("bottle", GroundExclusionRules.classify(listOf(obs("bottle", 0.30f))).trashType)
+        assertNull(GroundExclusionRules.classify(listOf(obs("bottle", 0.29f))).trashType)
     }
 }

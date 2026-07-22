@@ -6,6 +6,7 @@ import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DedupDecision
 import com.gcc.app.platform.dedupUpgradeDecision
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.screenLitterPhotoPrivacy
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.hasUserConfirmedLitter
@@ -203,24 +204,15 @@ class SpotViewModel(
                 try {
                     val result = analyzer.analyzePhoto(photo.bytes, photo.depthAnalysis)
                     if (result != null) {
-                        if (result.trashTypes.isNotEmpty()) {
-                            addObservedItem(
-                                ObservedSpotItem(
-                                    lat = _uiState.value.currentLat,
-                                    lng = _uiState.value.currentLng,
-                                    // Analyzer emits display labels ("Glass",
-                                    // "Tires") — canonicalize so glyphs and the
-                                    // server taxonomy stay coherent.
-                                    itemType = TrashItemCatalog.canonicalType(result.trashTypes.first()),
-                                    severity = result.severity,
-                                    confidence = result.confidence,
-                                ),
-                                // The analyzed photo IS the detection frame —
-                                // ride it onto the marker so the map spot
-                                // carries the image that prompted it.
-                                photoBytes = photo.bytes.takeIf { it.isNotEmpty() },
-                            )
-                        }
+                        // Deliberately NO addObservedItem here: this is
+                        // whole-frame scene classification, and a generic
+                        // trash-ish token on a photo of plain ground used to
+                        // auto-file a phantom "other" item at the user's feet
+                        // the moment the first photo landed (field session
+                        // env-1784734348036: "1 Litter identified" with zero
+                        // detections completing and zero taps). Litter only
+                        // files through the candidate tracker / tap-intent
+                        // paths; this analysis just suggests tags.
                         _uiState.value = _uiState.value.copy(
                             aiAnalysis = result,
                             isAnalyzing = false,
@@ -335,9 +327,24 @@ class SpotViewModel(
         if (stamped.domain != null && stamped.domain != "litter") return
         scope.launch {
             try {
+                // Privacy screen BEFORE any bytes leave the device (Blake,
+                // 2026-07-22): a public-map litter image must never show a
+                // person, an animal, or a home interior. Blocked photo =
+                // marker files without media; never blocks the report.
+                val screenedBytes = photoBytes?.let { bytes ->
+                    val verdict = screenLitterPhotoPrivacy(bytes)
+                    if (verdict.allowed) bytes
+                    else {
+                        DiagnosticsLog.info(
+                            "photo-privacy",
+                            "marker photo withheld (${verdict.reason}) — marker enqueued without media",
+                        )
+                        null
+                    }
+                }
                 // Upload-then-enqueue: raw bytes never enter the persisted
                 // ArMarkerQueue — only the resolved URL (or null on failure).
-                val mediaUrl = photoBytes?.let { bytes ->
+                val mediaUrl = screenedBytes?.let { bytes ->
                     try {
                         apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
                     } catch (e: Exception) {

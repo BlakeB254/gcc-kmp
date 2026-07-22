@@ -1219,6 +1219,23 @@ class GccApiClient(
         return response.body<RectifyResponse>()
     }
 
+    /**
+     * Privacy flag-down for a public-map litter photo: hides the
+     * observation's image immediately (person / animal / home interior /
+     * no visible trash in frame); the URL stays stored for admin review.
+     */
+    suspend fun flagObservationMedia(observationId: Int, reason: String? = null) {
+        val response = httpClient.post("$baseUrl/api/observations/$observationId/flag-media") {
+            contentType(ContentType.Application.Json)
+            setBody(FlagObservationMediaRequest(reason = reason))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+    }
+
     /** Presigned R2 upload ticket for an environment-scan session artifact. */
     suspend fun createCaptureUploadUrl(request: CaptureUploadUrlRequest): CaptureUploadTicket {
         val response = httpClient.post("$baseUrl/api/captures/upload-url") {

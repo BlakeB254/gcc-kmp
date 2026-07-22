@@ -12,6 +12,7 @@ import com.gcc.app.platform.CoverageRetractionQueue
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
+import com.gcc.app.platform.screenLitterPhotoPrivacy
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.EnvScanSessionUploader
 import com.gcc.app.platform.capture.CaptureChunkUploader
@@ -357,10 +358,20 @@ class RouteScanViewModel(
         // scope.cancel() would otherwise drop it before it reaches the
         // persisted queue.
         launchDetached {
+            // Privacy screen first (same rule as the env-scan marker path):
+            // no people / animals / home interiors on the public map.
+            val screenedBytes = photoBytes?.let { bytes ->
+                val verdict = screenLitterPhotoPrivacy(bytes)
+                if (verdict.allowed) bytes
+                else {
+                    DiagnosticsLog.info("photo-privacy", "route marker photo withheld (${verdict.reason})")
+                    null
+                }
+            }
             // Upload-then-enqueue: the photo is best-effort and must never
             // block the marker, and raw bytes never enter the persisted
             // ArMarkerQueue — only the resolved URL (or null on failure).
-            val mediaUrl = photoBytes?.let { bytes ->
+            val mediaUrl = screenedBytes?.let { bytes ->
                 try {
                     apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
                 } catch (e: Exception) {
@@ -404,7 +415,18 @@ class RouteScanViewModel(
         val lng = candidate.lng ?: return
         ScanSessionTelemetry.active?.confirm(candidate.label ?: UNKNOWN_LITTER_LABEL)
         launchDetached {
-            val photoUrl = photoBytes?.let { bytes ->
+            // Same privacy screen as onMarkerPlaced: a hotspot before-photo
+            // is public-map imagery too. A blocked photo degrades to
+            // marker-only exactly like a failed upload — visible error below.
+            val screenedBytes = photoBytes?.let { bytes ->
+                val verdict = screenLitterPhotoPrivacy(bytes)
+                if (verdict.allowed) bytes
+                else {
+                    DiagnosticsLog.info("photo-privacy", "route tap photo withheld (${verdict.reason})")
+                    null
+                }
+            }
+            val photoUrl = screenedBytes?.let { bytes ->
                 try {
                     apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
                 } catch (e: Exception) {

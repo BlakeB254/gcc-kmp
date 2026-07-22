@@ -253,6 +253,36 @@ internal suspend fun recoverOrphanScanSessions(
 
 private val CHUNK_FILENAME = Regex("""chunk-(\d+)\.(mov|jsonl|depth)""")
 
+/** One bookable orphan chunk artifact: a file on disk with no matching
+ *  (chunkIndex, kind) row in [CaptureChunkStore]. */
+data class OrphanChunkFile(val index: Long, val kind: String, val filePath: String)
+
+/**
+ * Pure decision seam for [bookOrphanCaptureSessions]: which of [files]
+ * (absolute paths) need booking given the session's [existing] rows.
+ * Per-ARTIFACT, not per-session — the video chunk finalizes asynchronously
+ * and can land on disk after the stop-drain already booked sidecar+depth;
+ * a session-level "rows exist → skip" stranded those videos forever.
+ */
+fun planOrphanChunkBooking(
+    existing: List<CaptureChunkRecord>,
+    files: List<String>,
+): List<OrphanChunkFile> {
+    val alreadyBooked = existing.map { it.chunkIndex to it.kind }.toSet()
+    return files.mapNotNull { filePath ->
+        val match = CHUNK_FILENAME.matchEntire(filePath.substringAfterLast('/')) ?: return@mapNotNull null
+        val index = match.groupValues[1].toLongOrNull() ?: return@mapNotNull null
+        val kind = when (match.groupValues[2]) {
+            "mov" -> "video"
+            "jsonl" -> "sidecar"
+            "depth" -> "depth"
+            else -> return@mapNotNull null
+        }
+        if (index to kind in alreadyBooked) return@mapNotNull null
+        OrphanChunkFile(index = index, kind = kind, filePath = filePath)
+    }
+}
+
 /** Placeholder cell id when an orphan capture session has no matching GPS
  *  journal to derive a real one from (see [bookOrphanCaptureSessions]) — the
  *  R2 key still keys uniquely on sessionId, so this only affects which
@@ -265,8 +295,8 @@ private const val UNKNOWN_LOCATION_CELL_ID = "0:0"
  * [CaptureChunkStore] — the post-teardown-timeout orphan case (Task 4/5):
  * the app died (or the writer's async finalize never completed) before
  * `stopCaptureAndDrain()`'s packets reached [CaptureChunkStore.insertChunk].
- * Any session directory with files on disk but zero existing rows gets its
- * files booked as pending chunks — kind inferred from the native recorder's
+ * Any chunk file on disk without a matching (index, kind) row gets booked
+ * as a pending chunk — kind inferred from the native recorder's
  * own filename convention, `chunk-NNN.{mov,jsonl,depth}` (see
  * `ArSessionRecorder.swift`) — so
  * [com.gcc.app.platform.capture.CaptureChunkUploader] picks them up on its
@@ -293,31 +323,30 @@ internal suspend fun bookOrphanCaptureSessions(captureChunkStore: CaptureChunkSt
         if (files.isEmpty()) continue
         try {
             val existing = captureChunkStore.chunksForSession(sessionId)
-            if (existing.isNotEmpty()) continue // already booked — leave it alone
-            val cellId = readJournal(sessionId)?.samples?.firstOrNull()?.let {
-                val cell = SessionPointsEstimator.gridCell10m(it.lat, it.lng)
-                "${cell.first}:${cell.second}"
-            } ?: UNKNOWN_LOCATION_CELL_ID
+            // Per-ARTIFACT dedup, NOT a per-session skip. The video chunk
+            // finalizes asynchronously (AVAssetWriter.finishWriting) and the
+            // stop-drain wait is bounded, so a session routinely books its
+            // sidecar+depth in-scan while the .mov lands on disk moments
+            // after the final drain. The old `existing.isNotEmpty()` skip
+            // stranded that .mov FOREVER — the sweep saw two booked rows and
+            // walked away (field session env-1784734348036: 88% video
+            // coverage recorded, no video in R2, reconstruction starved).
+            val cellId = existing.firstOrNull()?.locationCellId
+                ?: readJournal(sessionId)?.samples?.firstOrNull()?.let {
+                    val cell = SessionPointsEstimator.gridCell10m(it.lat, it.lng)
+                    "${cell.first}:${cell.second}"
+                } ?: UNKNOWN_LOCATION_CELL_ID
             val nowMs = Clock.System.now().toEpochMilliseconds()
             var booked = 0
-            for (filePath in files) {
-                val name = filePath.substringAfterLast('/')
-                val match = CHUNK_FILENAME.matchEntire(name) ?: continue
-                val index = match.groupValues[1].toLongOrNull() ?: continue
-                val kind = when (match.groupValues[2]) {
-                    "mov" -> "video"
-                    "jsonl" -> "sidecar"
-                    "depth" -> "depth"
-                    else -> continue
-                }
-                val bytes = readLocalFileBytes(filePath)
+            for (orphanChunk in planOrphanChunkBooking(existing, files)) {
+                val bytes = readLocalFileBytes(orphanChunk.filePath)
                 if (bytes == null || bytes.isEmpty()) continue // nothing worth uploading
                 captureChunkStore.insertChunk(
                     CaptureChunkRecord(
                         sessionId = sessionId,
-                        chunkIndex = index,
-                        kind = kind,
-                        filePath = filePath,
+                        chunkIndex = orphanChunk.index,
+                        kind = orphanChunk.kind,
+                        filePath = orphanChunk.filePath,
                         sizeBytes = bytes.size.toLong(),
                         locationCellId = cellId,
                         r2Key = null,

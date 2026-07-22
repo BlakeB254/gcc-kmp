@@ -764,6 +764,15 @@ final class ArSessionRecorder {
                 if finishingWriter.status == .completed {
                     emitFinished(index: index, kind: "video", url: finishingURL, deleteIfEmpty: false)
                 } else {
+                    // Field session env-1784734348036 (build 159): the .mov
+                    // silently never reached R2 while videoCoveredSeconds
+                    // read 88% — NSLog alone is invisible to the flight
+                    // recorder, so nothing in events.jsonl explained the
+                    // missing chunk and reconstruction starved. Route the
+                    // failure through the diagnostics bridge so it lands in
+                    // the session event log.
+                    enqueueDiagnostic(level: "ERROR", tag: "capture",
+                                      message: "chunk \(index) video finalize failed: \(String(describing: finishingWriter.error))")
                     NSLog("GCC-DIAG ERR [capture] chunk %d video finalize failed: %@",
                           index, String(describing: finishingWriter.error))
                     try? FileManager.default.removeItem(at: finishingURL)
@@ -772,6 +781,13 @@ final class ArSessionRecorder {
             }
         } else {
             if finishingWriter.status == .writing { finishingWriter.cancelWriting() }
+            if sampleCount > 0 {
+                // Writer left .writing before finalize (e.g. a mid-chunk
+                // append error) with real frames on disk — same silent-video
+                // -loss class as a failed finishWriting; make it visible.
+                enqueueDiagnostic(level: "ERROR", tag: "capture",
+                                  message: "chunk \(index) video discarded: writer status \(finishingWriter.status.rawValue) with \(sampleCount) samples (\(String(describing: finishingWriter.error)))")
+            }
             try? FileManager.default.removeItem(at: finishingURL)
         }
     }

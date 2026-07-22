@@ -16,6 +16,20 @@ object GroundExclusionRules {
     /** Minimum classifier confidence for an exclusion label to count. Below this, a stray "bench" guess must not silently kill a real candidate. */
     const val EXCLUSION_CONFIDENCE = 0.45f
 
+    /**
+     * Minimum classifier confidence for a trash token to TYPE a candidate.
+     * Typing is what makes a candidate eligible to auto-complete and file
+     * with no user interaction ([GroundCandidateTracker.completedCandidates]
+     * accepts `itemType != null` alone — classification runs on PROPOSED
+     * candidates, BEFORE any dwell/tap gate). The crop's top-10 labels
+     * arrive with no floor at all, so a ~0.02-confidence "paper" guess on a
+     * leaf pile used to auto-file litter the user never saw. Below this
+     * floor the candidate stays untyped: it is NOT lost — at full scan
+     * progress it routes to the AWAITING_INTENT "is this litter?" prompt,
+     * which is exactly where an uncertain guess belongs.
+     */
+    const val TRASH_TYPE_CONFIDENCE = 0.30f
+
     // Whole-word tokens, not raw substrings: identifiers are matched via
     // TrashDetectionRules.tokensOf (splits on '_'/' '/','), and each
     // resulting token is compared for EXACT set membership. Plain substring
@@ -71,14 +85,22 @@ object GroundExclusionRules {
         }
 
     /**
-     * The trash-type keyword named by [labels], or null when nothing matches
-     * — callers fall back to [UNKNOWN_LITTER_LABEL] in that case. Unlike
-     * [exclusionLabelFrom] this is not confidence-gated: a candidate only
-     * reaches classification after passing the dwell/tap gates, so any
-     * trash-shaped guess is useful routing, never a false accusation.
+     * The trash-type keyword named by [labels] at or above [minConfidence],
+     * or null when nothing matches — callers fall back to
+     * [UNKNOWN_LITTER_LABEL] in that case. [minConfidence] defaults to 0
+     * (any guess) for suppression/routing uses; [classify] passes
+     * [TRASH_TYPE_CONFIDENCE] for the typing decision because a typed
+     * candidate can auto-file with no user interaction (classification runs
+     * on PROPOSED candidates — there is no dwell/tap gate ahead of it).
      */
-    fun trashTypeFrom(labels: List<ClassificationObservation>): String? =
-        labels.firstNotNullOfOrNull { obs -> matchToken(obs.identifier, TRASH_TOKENS) }
+    fun trashTypeFrom(
+        labels: List<ClassificationObservation>,
+        minConfidence: Float = 0f,
+    ): String? =
+        labels.firstNotNullOfOrNull { obs ->
+            if (obs.confidence < minConfidence) return@firstNotNullOfOrNull null
+            matchToken(obs.identifier, TRASH_TOKENS)
+        }
 
     /**
      * The one classification decision for a ground candidate. A positive
@@ -94,8 +116,14 @@ object GroundExclusionRules {
     data class GroundClassification(val exclusionLabel: String?, val trashType: String?)
 
     fun classify(labels: List<ClassificationObservation>): GroundClassification {
-        val trashType = trashTypeFrom(labels)
-        val exclusionLabel = if (trashType != null) null else exclusionLabelFrom(labels)
+        // Suppression stays UNGATED (any trash token keeps the candidate
+        // alive — bottle-on-grass must not be excluded as "grass"), but the
+        // TYPE only sticks at TRASH_TYPE_CONFIDENCE. A weak trash guess thus
+        // yields (exclusion=null, trashType=null): the candidate survives to
+        // full progress and asks the user instead of silently auto-filing.
+        val anyTrashToken = trashTypeFrom(labels)
+        val trashType = trashTypeFrom(labels, TRASH_TYPE_CONFIDENCE)
+        val exclusionLabel = if (anyTrashToken != null) null else exclusionLabelFrom(labels)
         return GroundClassification(exclusionLabel = exclusionLabel, trashType = trashType)
     }
 }

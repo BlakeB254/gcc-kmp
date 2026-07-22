@@ -46,6 +46,16 @@ internal fun bookCaptureChunksAsync(
                     )
                 )
             }
+            // Flight-recorder breadcrumb: field session env-1784734348036
+            // uploaded sidecar+depth but never the video, and nothing in
+            // events.jsonl said which kinds were ever booked — this line is
+            // the audit trail that distinguishes "never finalized/drained"
+            // from "booked but upload failed".
+            DiagnosticsLog.info(
+                "capture",
+                "booked ${infos.size} chunk artifact(s) for $sessionId: " +
+                    infos.joinToString { "${it.index}:${it.kind}(${it.sizeBytes}B)" },
+            )
             koin.getOrNull<CaptureChunkUploader>()?.flushPending()
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "chunk bookkeeping failed for $sessionId (${infos.size} chunk(s))", e)

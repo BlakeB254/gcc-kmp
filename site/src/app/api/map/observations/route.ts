@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { worldObservations } from '@/db/schema'
+import { servableMediaUrl } from '@/lib/observation-media'
 import { and, eq, between, gte } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
@@ -64,7 +65,9 @@ export async function GET(request: NextRequest) {
       // observed face, captured at registration (client Task 1).
       widthMeters: (r.attributes as Record<string, unknown> | null)?.estimatedWidthMeters ?? null,
       yawDegrees: (r.attributes as Record<string, unknown> | null)?.yawDegrees ?? null,
-      mediaUrl: r.mediaUrl,
+      // Flag-down aware: a user-flagged photo (person/animal/interior/no
+      // visible trash) serves as null while the URL stays stored for review.
+      mediaUrl: servableMediaUrl(r),
       sourceType: r.sourceType,
       capturedAt: r.capturedAt,
       // Source-record links so clients can resolve the backing report/hotspot
