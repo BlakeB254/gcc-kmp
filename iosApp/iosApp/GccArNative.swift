@@ -287,14 +287,39 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let frame = lastFrame
         frameLock.unlock()
         guard let frame else { return nil }
-        let query = frame.raycastQuery(
-            from: CGPoint(x: imageX, y: imageY),
-            allowing: .estimatedPlane,
-            alignment: .any
-        )
-        guard let hit = arView.session.raycast(query).first else { return nil }
-        let t = hit.worldTransform.columns.3
-        return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
+        let point = CGPoint(x: imageX, y: imageY)
+        // Preferred: ARKit's estimated-plane raycast.
+        let query = frame.raycastQuery(from: point, allowing: .estimatedPlane, alignment: .any)
+        if let hit = arView.session.raycast(query).first {
+            let t = hit.worldTransform.columns.3
+            return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
+        }
+        // Fallback 1: tracked plane geometry — estimated-plane raycasts
+        // routinely return nothing on low-texture pavement even while a
+        // perfectly good tracked ground plane exists (TestFlight 162: taps
+        // on clearly visible ground trash died as "hold steady and tap
+        // again" forever, because a single-shot estimated-plane query was
+        // the only path a tap had).
+        let planeQuery = frame.raycastQuery(from: point, allowing: .existingPlaneGeometry, alignment: .any)
+        if let hit = arView.session.raycast(planeQuery).first {
+            let t = hit.worldTransform.columns.3
+            return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
+        }
+        // Fallback 2: intersect the tap's camera ray with the known ground
+        // height (the same floorWorldY every other ground-anchored feature
+        // uses). Only for downward rays with a plausible (<30m) hit — an
+        // at-horizon tap still misses, which is honest.
+        frameLock.lock()
+        let knownFloorY = floorWorldY
+        frameLock.unlock()
+        let groundY = knownFloorY ?? cameraFallbackGroundY()
+        let origin = query.origin
+        let direction = query.direction
+        guard direction.y < -0.05 else { return nil }
+        let along = (groundY - origin.y) / direction.y
+        guard along > 0, along < 30 else { return nil }
+        let p = origin + direction * along
+        return [KotlinDouble(double: Double(p.x)), KotlinDouble(double: Double(p.y)), KotlinDouble(double: Double(p.z))]
     }
 
     func groundDetected() -> Bool { groundLive }

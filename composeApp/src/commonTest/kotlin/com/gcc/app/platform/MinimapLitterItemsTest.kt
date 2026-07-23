@@ -15,16 +15,23 @@ import kotlin.test.assertTrue
  */
 class MinimapLitterItemsTest {
 
+    // Session items are user-confirmed here so they pass the cluster display
+    // gate (clusterVisibleLitter) — this test is about DOMAIN filtering; the
+    // gating itself is covered in LitterClusterDisplayTest.
     private fun observed(
         domain: String?,
         itemType: String = "plastic_bottle",
-    ) = ObservedSpotItem(lat = 41.86, lng = -87.72, itemType = itemType, domain = domain)
+    ) = ObservedSpotItem(
+        lat = 41.86, lng = -87.72, itemType = itemType, domain = domain,
+        provenance = PROVENANCE_USER_CONFIRMED,
+    )
 
     private fun nearby(
         domain: String?,
         itemType: String? = "plastic_bottle",
+        id: Int = 1,
     ) = WorldObservation(
-        id = 1, lat = 41.86, lng = -87.72, itemType = itemType, domain = domain, state = "dirty",
+        id = id, lat = 41.86, lng = -87.72, itemType = itemType, domain = domain, state = "dirty",
         sourceType = "route_scan",
     )
 
@@ -34,7 +41,7 @@ class MinimapLitterItemsTest {
             observed("litter"),
             observed("vegetation", "bush"),
             observed("construction", "fence"),
-            observed(null), // legacy: null domain means litter
+            observed(null, itemType = "can"), // legacy: null domain means litter
         )
         val result = minimapLitterItems(session, expectedDirty = emptyList())
         assertEquals(2, result.size)
@@ -43,13 +50,17 @@ class MinimapLitterItemsTest {
 
     @Test
     fun nearbyLandmarkObservationsAreExcludedToo() {
+        // Three co-located litter observations = a displayable cluster; the
+        // pole is a landmark domain and must stay off the minimap even
+        // inside a cluster's radius.
         val expectedDirty = listOf(
-            nearby("litter", "can"),
-            nearby("construction", "pole"),
-            nearby(null, null),
+            nearby("litter", "can", id = 1),
+            nearby("litter", "can", id = 2),
+            nearby(null, null, id = 3),
+            nearby("construction", "pole", id = 4),
         )
         val result = minimapLitterItems(emptyList(), expectedDirty)
-        assertEquals(2, result.size)
+        assertEquals(3, result.size)
         // The null-itemType nearby litter observation still defaults to "other".
         assertTrue(result.any { it.itemType == "other" })
         assertTrue(result.none { it.itemType == "pole" })

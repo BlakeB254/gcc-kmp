@@ -3,6 +3,7 @@ package com.gcc.app.platform
 import kotlin.math.PI
 import kotlin.math.acos
 import kotlin.math.atan2
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -41,6 +42,16 @@ const val INTENT_PROMPT_TIMEOUT_SECONDS = 10.0
 
 /** Tolerance for the "progress >= 1.0" completion gate, to absorb float-sum rounding (0.4f+0.4f+0.2f is not always bit-exact 1.0f). */
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
+
+/** Close (<2m) re-observation frames that fully substitute for the 3-sector
+ *  orbit term in [GroundCandidateTracker]'s progress — see progressOf. */
+private const val STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE = 10f
+
+/** Completion progress threshold for a tap-adopted candidate: explicit user
+ *  intent plus decent geometric evidence files without demanding the full
+ *  autonomous evidence bar (TestFlight 162: tapped items still never filed
+ *  because full progress needed an orbit the user had no reason to walk). */
+private const val TAP_ADOPTED_COMPLETE_PROGRESS = 0.6f
 
 private enum class CandidateState { PROPOSED, SCANNING, AWAITING_INTENT, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN }
 
@@ -309,7 +320,12 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         val result = mutableListOf<CompletedCandidate>()
         for (candidate in candidates.values) {
             if (candidate.state != CandidateState.SCANNING) continue
-            if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
+            // Explicit user intent (tap / intent-prompt answer) lowers the
+            // completion bar — the user has already vouched for the item.
+            val threshold =
+                if (candidate.adoptedByTap) TAP_ADOPTED_COMPLETE_PROGRESS
+                else 1.0f - PROGRESS_COMPLETE_EPSILON
+            if (progressOf(candidate) < threshold) continue
             if (candidate.itemType == null && !candidate.adoptedByTap) continue
             candidate.state = CandidateState.COMPLETED
             val p = candidate.packet
@@ -423,7 +439,19 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
             .map { it.packet.id to progressOf(it) }
 
     private fun progressOf(candidate: TrackedCandidate): Float {
-        val angleTerm = min(candidate.angleBuckets.size / 3f, 1f)
+        // The orbit term (3 of 6 approach-bearing sectors) rewards walking
+        // around the item, but it must not be REQUIRED: field report
+        // (TestFlight 162) — a worker standing over a clear piece of trash,
+        // camera held on it, watched the reticle stall forever, because a
+        // single-bearing approach caps the old formula at 0.73. Sustained
+        // close observation ([STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE] frames
+        // under 2m) is comparable evidence that the item was really examined,
+        // so it substitutes for the orbit — orbiting stays the FAST path
+        // (3 sectors beat 10 close frames), standing and scanning the
+        // patient one.
+        val orbitTerm = min(candidate.angleBuckets.size / 3f, 1f)
+        val steadyTerm = min(candidate.closeFrames / STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE, 1f)
+        val angleTerm = max(orbitTerm, steadyTerm)
         val closeTerm = min(candidate.closeFrames / 4f, 1f)
         val observationTerm = min(candidate.observations / 6f, 1f)
         return 0.4f * angleTerm + 0.4f * closeTerm + 0.2f * observationTerm

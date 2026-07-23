@@ -55,7 +55,7 @@ import com.gcc.app.platform.NearbyDirtyPromptGate
 import com.gcc.app.platform.SessionAutoDetectPromptSource
 import com.gcc.app.platform.clusterIdsAround
 import com.gcc.app.platform.countFeatures
-import com.gcc.app.platform.countLitter
+import com.gcc.app.platform.clusterVisibleLitter
 import com.gcc.app.platform.minimapLitterItems
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.fanHitQuality
@@ -76,7 +76,6 @@ import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.KeepScreenAwake
 import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
-import com.gcc.app.platform.PROVENANCE_USER_REJECTED
 import com.gcc.app.platform.TrashItemCatalog
 import com.gcc.app.ui.components.*
 import kotlinx.coroutines.CancellationException
@@ -95,6 +94,7 @@ import kotlin.math.pow
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AreaMode
 import com.gcc.app.viewmodel.DuplicateMatch
+import com.gcc.app.viewmodel.LitterEvidenceShot
 import com.gcc.app.viewmodel.SessionUploadStatus
 import com.gcc.app.viewmodel.SpotPhase
 import com.gcc.app.viewmodel.SpotViewModel
@@ -289,15 +289,17 @@ fun SpotScreen(
                     report = uiState.submittedReport,
                     session = uiState.completedSession,
                     uploadStatus = uiState.uploadStatus,
-                    litterCount = countLitter(uiState.observedItems),
+                    // Display rule (Blake, 2026-07-23): the summary shows —
+                    // and counts — only litter that may display on the map:
+                    // user-confirmed items, or auto-detections that belong to
+                    // a genuine cluster. A lone unconfirmed auto-tag still
+                    // rides the manifest as data but no longer paints an
+                    // orange dot or inflates "Litter identified".
+                    litterCount = clusterVisibleLitter(uiState.observedItems).size,
                     featureCount = countFeatures(uiState.observedItems),
                     photoCount = uiState.capturedPhotos.size,
-                    // Session litter only — same rule as countLitter/the live
-                    // minimap: landmark features out, rejected candidates out.
-                    litterItems = uiState.observedItems.filter {
-                        (it.domain == null || it.domain == "litter") &&
-                            it.provenance != PROVENANCE_USER_REJECTED
-                    },
+                    litterItems = clusterVisibleLitter(uiState.observedItems),
+                    litterEvidence = uiState.litterEvidence,
                     matchingBounties = uiState.matchingBounties,
                     createdBounty = uiState.createdBounty,
                     isCreatingBounty = uiState.isCreatingBounty,
@@ -1042,8 +1044,11 @@ private fun CameraPhase(
     val litterItems = remember(observedItems) {
         observedItems.filter { it.domain == null || it.domain == "litter" }
     }
-    val trashItems = remember(litterItems) {
-        litterItems.map { Coordinates(lat = it.lat, lng = it.lng) }
+    // Minimap zone blobs: display-gated (Blake, 2026-07-23) — the orange
+    // problem-zone shapes only form around litter that may display (user-
+    // confirmed, or a genuine ≥3-item cluster). Lone auto-tags stay data-only.
+    val trashItems = remember(observedItems) {
+        clusterVisibleLitter(observedItems).map { Coordinates(lat = it.lat, lng = it.lng) }
     }
     // Minimap glyphs: this session's confirmed LITTER items PLUS the world
     // model's known litter nearby — previously scanned trash persists on the
@@ -1053,8 +1058,16 @@ private fun CameraPhase(
     // tree/etc.) are deliberately excluded: they're real world-observation
     // data and still count in "Features mapped", but must never render on
     // the minimap (punchlist: "little white squares on the minimap").
-    val typedMinimapItems = remember(observedItems, expectedDirty) {
-        minimapLitterItems(observedItems, expectedDirty)
+    // Both halves are cluster-gated, and world-model dots CLEAR live when
+    // this session close-scans their spot and finds nothing (no stale dots
+    // from past scans over ground you just verified clean).
+    val typedMinimapItems = remember(observedItems, expectedDirty, closeCellCenters) {
+        minimapLitterItems(
+            observedItems,
+            expectedDirty,
+            closeCellCenters = closeCellCenters,
+            cellSizeMeters = CoverageTracker.cellSizeMeters,
+        )
     }
 
     // Live viewfinder trash reticle (frame tap on the AVCapture stream).
@@ -2318,6 +2331,7 @@ private fun ResultPhase(
     featureCount: Int,
     photoCount: Int,
     litterItems: List<ObservedSpotItem> = emptyList(),
+    litterEvidence: List<LitterEvidenceShot> = emptyList(),
     matchingBounties: List<Bounty>,
     createdBounty: Bounty?,
     isCreatingBounty: Boolean,
@@ -2343,6 +2357,7 @@ private fun ResultPhase(
                 featureCount = featureCount,
                 photoCount = photoCount,
                 litterItems = litterItems,
+                litterEvidence = litterEvidence,
             )
         }
 

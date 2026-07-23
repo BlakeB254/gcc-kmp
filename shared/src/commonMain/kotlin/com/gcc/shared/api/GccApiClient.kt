@@ -65,6 +65,21 @@ class GccApiClient(
 
         /** Per-request override for large multipart/presigned uploads on slow cellular links. */
         private const val UPLOAD_REQUEST_TIMEOUT_MS = 180_000L
+
+        /** Ceiling for the size-scaled presigned-upload timeout (15 min). */
+        private const val UPLOAD_REQUEST_TIMEOUT_MAX_MS = 900_000L
+
+        /** The slowest uplink the scaled timeout still tolerates: ~12KB/s
+         *  (bytes ÷ 12 = milliseconds). Below that the link is effectively
+         *  down and failing to the persistent retry queue is correct. */
+        private const val UPLOAD_MIN_BYTES_PER_MS = 12L
+
+        /** Timeout for a presigned PUT of [byteCount] bytes: at least the
+         *  legacy 3-minute floor, growing with size at [UPLOAD_MIN_BYTES_PER_MS],
+         *  capped at [UPLOAD_REQUEST_TIMEOUT_MAX_MS]. */
+        internal fun presignedUploadTimeoutMs(byteCount: Int): Long =
+            (byteCount / UPLOAD_MIN_BYTES_PER_MS)
+                .coerceIn(UPLOAD_REQUEST_TIMEOUT_MS, UPLOAD_REQUEST_TIMEOUT_MAX_MS)
     }
 
     // ── HTTP Helpers ───────────────────────────────────────────────────
@@ -1253,7 +1268,12 @@ class GccApiClient(
         return response.body<ApiResponse<CaptureUploadTicket>>().data
     }
 
-    /** PUT a blob straight to a presigned URL (no auth header — it's in the signature). */
+    /** PUT a blob straight to a presigned URL (no auth header — it's in the signature).
+     *
+     *  The timeout scales with payload size: a fixed 3-minute cap meant a
+     *  large video chunk could NEVER upload on a weak cellular uplink
+     *  (TestFlight 162 field report — an 11.9MB chunk timed out forever at
+     *  ~60KB/s), while a scaled cap keeps small blobs failing fast. */
     suspend fun uploadToPresignedUrl(url: String, bytes: ByteArray, contentType: String) {
         // A presigned URL is fully self-authenticating, and R2 rejects a
         // request that adds a SECOND auth mechanism: [httpClient]'s
@@ -1270,8 +1290,12 @@ class GccApiClient(
             // with the same ticket succeeds; this was why every app-side
             // R2 upload failed while server-side verification passed.)
             url { takeFromRawEncoded(url) }
-            // Session-artifact blobs can be large; allow the longer upload timeout.
-            timeout { requestTimeoutMillis = UPLOAD_REQUEST_TIMEOUT_MS }
+            // Session-artifact blobs can be large; scale the cap to the payload.
+            timeout {
+                val scaled = presignedUploadTimeoutMs(bytes.size)
+                requestTimeoutMillis = scaled
+                socketTimeoutMillis = scaled
+            }
             contentType(ContentType.parse(contentType))
             setBody(bytes)
         }

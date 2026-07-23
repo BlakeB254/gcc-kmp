@@ -7,7 +7,12 @@ import { isR2Configured, r2BucketName, r2Client, rawScanKey, rawSessionArtifactK
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const UPLOAD_URL_TTL_SECONDS = 300
+// Generous TTL: a large video chunk on a weak cellular uplink can take many
+// minutes end-to-end, and the client's retry loop may start its PUT well
+// after presigning (TestFlight 162: 11.9MB chunk vs a 5-minute URL). R2
+// validates expiry at request start, so this bounds retry staleness, not
+// upload duration — 30 minutes is safe for a single-use PUT URL.
+const UPLOAD_URL_TTL_SECONDS = 1800
 // ext -> fixed server-side MIME type (never client-supplied — stored-XSS vector).
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',

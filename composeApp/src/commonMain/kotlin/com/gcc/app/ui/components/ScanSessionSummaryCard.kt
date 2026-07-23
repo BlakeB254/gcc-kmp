@@ -1,7 +1,13 @@
 package com.gcc.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +37,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.ScanScore
+import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.platform.decodeImageBitmap
+import com.gcc.app.viewmodel.LitterEvidenceShot
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.geoToCanvasProjector
 import com.gcc.app.ui.map.mapOverlayZoomBias
@@ -73,6 +84,10 @@ fun ScanSessionSummaryCard(
      *  these the finds vanish from the map the moment the scan ends, and the
      *  card's own "Litter identified" stat has no visual anchor. */
     litterItems: List<ObservedSpotItem> = emptyList(),
+    /** Evidence frames retained per identified item — swipeable strip under
+     *  the map so the worker can cycle through what the scan captured, with
+     *  the type/weight the scan concluded per shot. */
+    litterEvidence: List<LitterEvidenceShot> = emptyList(),
 ) {
     GccCard(accentColor = CardAccentGreen) {
         Text(
@@ -102,6 +117,11 @@ fun ScanSessionSummaryCard(
                     .height(240.dp)
                     .clip(RoundedCornerShape(12.dp)),
             )
+        }
+
+        if (litterEvidence.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            LitterEvidenceStrip(shots = litterEvidence)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -180,6 +200,100 @@ fun ScanSessionSummaryCard(
         }
     }
 }
+
+/**
+ * Swipeable strip of the session's litter-evidence frames: one page per
+ * identified item, captioned with the type and estimated weight the scan
+ * concluded, plus a page indicator — "cycle through the images" (Blake,
+ * 2026-07-23). Bytes decode lazily per shown page; a shot whose bytes fail
+ * to decode renders its caption over a placeholder box rather than crashing
+ * the summary.
+ */
+@Composable
+private fun LitterEvidenceStrip(shots: List<LitterEvidenceShot>) {
+    Text(
+        "What you found",
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    val pagerState = rememberPagerState(pageCount = { shots.size })
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(12.dp)),
+    ) { page ->
+        val shot = shots[page]
+        Box(modifier = Modifier.fillMaxSize()) {
+            val bitmap = remember(shot.atMs) { decodeImageBitmap(shot.bytes) }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Evidence photo of ${shot.itemType}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
+            // Caption scrim: what the scan concluded about this item.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    TrashItemCatalog.infoFor(shot.itemType).displayName,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                )
+                shot.estimatedWeightGrams?.let { grams ->
+                    Text(
+                        "Est. weight ~${formatWeight(grams)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
+        }
+    }
+    if (shots.size > 1) {
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            repeat(shots.size) { index ->
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 3.dp)
+                        .size(if (index == pagerState.currentPage) 8.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (index == pagerState.currentPage) GccGreen
+                            else TextMuted.copy(alpha = 0.4f),
+                        ),
+                )
+            }
+        }
+    }
+}
+
+private fun formatWeight(grams: Int): String =
+    if (grams >= 1000) {
+        val kg = grams / 1000.0
+        val rounded = (kg * 10).toInt() / 10.0
+        "$rounded kg"
+    } else {
+        "$grams g"
+    }
 
 @Composable
 private fun SessionStat(value: String, label: String) {

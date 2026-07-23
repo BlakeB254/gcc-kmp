@@ -124,6 +124,78 @@ fun removeLitterItemsNear(
         GeofenceVerification.distanceMeters(lat, lng, item.lat, item.lng) <= radiusMeters
 }
 
+// ── Cluster display gating (Blake, 2026-07-23) ──────────────────────
+// "I only want those orange dots displayed if there was an area scanned with
+// a lot of issues that can be viewed in a single frame." A lone automatic
+// detection is weak evidence and must not tag the map on its own — it still
+// rides the session manifest as data, but the map (live minimap, summary,
+// public markers) only shows litter that is either explicitly user-confirmed
+// or part of a genuine cluster.
+
+/** Minimum litter items (any provenance, self included) within
+ *  [LITTER_CLUSTER_RADIUS_METERS] for auto-detections to display as a cluster. */
+const val LITTER_CLUSTER_MIN_ITEMS = 3
+
+/** "Viewable in a single frame": items within this radius cluster together. */
+const val LITTER_CLUSTER_RADIUS_METERS = 6.0
+
+/** Session litter items within this distance of a world observation count as
+ *  "the litter is still there" when deciding whether a scan cleared a dot. */
+private const val CLEARED_OBSERVATION_MATCH_METERS = 4.0
+
+/**
+ * The session litter that may DISPLAY (minimap glyphs/zones, summary map and
+ * stats, public marker uploads): user-confirmed items always; auto-detected
+ * items only when at least [LITTER_CLUSTER_MIN_ITEMS] litter items sit within
+ * [LITTER_CLUSTER_RADIUS_METERS] of them. Rejected candidates and non-litter
+ * domains never display (unchanged).
+ */
+fun clusterVisibleLitter(items: List<ObservedSpotItem>): List<ObservedSpotItem> {
+    val litter = items.filter { !it.isRejected() && it.isLitter() }
+    return litter.filter { item ->
+        item.provenance == PROVENANCE_USER_CONFIRMED || litter.count { other ->
+            GeofenceVerification.distanceMeters(item.lat, item.lng, other.lat, other.lng) <=
+                LITTER_CLUSTER_RADIUS_METERS
+        } >= LITTER_CLUSTER_MIN_ITEMS
+    }
+}
+
+/**
+ * World-model litter (previous scans' observations) that may still display on
+ * this session's minimap:
+ *  - cluster-gated exactly like session items ("no lone dots from past scans"),
+ *  - and CLEARED the moment this session close-scans the spot without finding
+ *    litter there — [closeCellCenters] (the session's CLOSE-tier coverage)
+ *    covering the observation with no session litter within
+ *    [CLEARED_OBSERVATION_MATCH_METERS] means the ground was examined and the
+ *    old dot is stale. The server-side record is corrected separately (the
+ *    "already clean?" confirm flow); this keeps the LIVE display honest.
+ */
+fun visibleExpectedDirty(
+    expectedDirty: List<WorldObservation>,
+    sessionItems: List<ObservedSpotItem>,
+    closeCellCenters: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+): List<WorldObservation> {
+    val litterOnly = expectedDirty.filter { it.domain == null || it.domain == "litter" }
+    val clustered = litterOnly.filter { obs ->
+        litterOnly.count { other ->
+            GeofenceVerification.distanceMeters(obs.lat, obs.lng, other.lat, other.lng) <=
+                LITTER_CLUSTER_RADIUS_METERS
+        } >= LITTER_CLUSTER_MIN_ITEMS
+    }
+    val sessionLitter = sessionItems.filter { !it.isRejected() && it.isLitter() }
+    return clustered.filterNot { obs ->
+        val closeScanned = closeCellCenters.any { (lat, lng) ->
+            GeofenceVerification.distanceMeters(lat, lng, obs.lat, obs.lng) <= cellSizeMeters
+        }
+        closeScanned && sessionLitter.none {
+            GeofenceVerification.distanceMeters(it.lat, it.lng, obs.lat, obs.lng) <=
+                CLEARED_OBSERVATION_MATCH_METERS
+        }
+    }
+}
+
 /**
  * Litter-only glyphs for the scan minimap. Landmark/world-feature
  * observations (fence, pole, sign, bench, gate, tree, bush — domain
@@ -133,14 +205,20 @@ fun removeLitterItemsNear(
  * remove that feature we dont want it." `knownElements` (nearby landmark
  * observations) is intentionally not a parameter here — it never
  * contributes to the minimap.
+ *
+ * Both halves are display-gated: session items through [clusterVisibleLitter]
+ * (lone auto-detections stay off the map), world-model items through
+ * [visibleExpectedDirty] (no lone dots from past scans; close-scanned-clean
+ * spots clear immediately).
  */
 fun minimapLitterItems(
     observedItems: List<ObservedSpotItem>,
     expectedDirty: List<WorldObservation>,
+    closeCellCenters: List<Pair<Double, Double>> = emptyList(),
+    cellSizeMeters: Double = 3.0,
 ): List<ObservedSpotItem> {
-    val session = observedItems.filter { it.isLitter() }
-    val nearby = expectedDirty
-        .filter { it.domain == null || it.domain == "litter" }
+    val session = clusterVisibleLitter(observedItems)
+    val nearby = visibleExpectedDirty(expectedDirty, observedItems, closeCellCenters, cellSizeMeters)
         .map { obs ->
             ObservedSpotItem(
                 lat = obs.lat,

@@ -4,6 +4,7 @@ import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DedupDecision
+import com.gcc.app.platform.clusterVisibleLitter
 import com.gcc.app.platform.dedupUpgradeDecision
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.screenLitterPhotoPrivacy
@@ -51,6 +52,7 @@ import io.ktor.http.*
 import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,6 +108,18 @@ data class SpotUiState(
     /** Live post-scan upload progress (photos + capture chunks + manifest)
      *  for the Scan Session Complete screen's upload card. */
     val uploadStatus: SessionUploadStatus? = null,
+    /** Evidence frames retained per identified litter item — the summary
+     *  screen's swipeable "what you found" strip. Client-side display copy;
+     *  the wire uploads (marker media, report photos) have their own paths. */
+    val litterEvidence: List<LitterEvidenceShot> = emptyList(),
+)
+
+/** One retained litter-evidence frame + what the scan concluded about it. */
+data class LitterEvidenceShot(
+    val bytes: ByteArray,
+    val itemType: String,
+    val estimatedWeightGrams: Int?,
+    val atMs: Long,
 )
 
 data class DuplicateMatch(
@@ -125,9 +139,16 @@ class SpotViewModel(
     companion object {
         const val MAX_PHOTOS = 3
         /** How long the session-summary upload card watches the concurrent
-         *  capture-chunk drain before resolving to QUEUED. */
-        const val CHUNK_WATCH_TIMEOUT_MS = 120_000L
+         *  capture-chunk drain before resolving to QUEUED. Sized for a large
+         *  video chunk on a weak cellular uplink (field report, TestFlight
+         *  162: an 11.9MB chunk at ~60KB/s needs minutes, not seconds) —
+         *  the card keeps honest progress while the drain genuinely works. */
+        const val CHUNK_WATCH_TIMEOUT_MS = 480_000L
         const val CHUNK_WATCH_POLL_MS = 750L
+        /** While the watch runs, re-kick the chunk uploader this often —
+         *  a chunk whose PUT timed out retries with a FRESH presigned URL
+         *  instead of waiting for the next app launch. */
+        const val CHUNK_RETRY_KICK_MS = 45_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -142,6 +163,10 @@ class SpotViewModel(
     // Negative training examples (tapped + "Not litter") — never enter
     // uiState.observedItems / world_observations, only the R2 manifest.
     private val rejectedItems = mutableListOf<ObservedSpotItem>()
+    // Items (by atMs stamp) whose public marker already enqueued — the
+    // cluster-visibility gate re-evaluates on every add, so without this an
+    // item would enqueue once per later addition to its cluster.
+    private val enqueuedMarkerStamps = mutableSetOf<Long>()
     // Task 17: indices (into capturedPhotos, kept in sync with photoStamps
     // the same way removePhoto/purgeRecentCaptures already do) of photos
     // captured with >= 2 identified-litter reticles on screen — the "best
@@ -282,7 +307,12 @@ class SpotViewModel(
                     "upgraded ${upgraded.itemType} @ ${upgraded.lat}, ${upgraded.lng} to user_confirmed " +
                         "(matched a prior auto-detected tick)",
                 )
-                enqueueLitterMarker(upgraded, photoBytes)
+                retainLitterEvidence(upgraded, photoBytes)
+                // A confirmation upgrade always re-uploads (the server marker
+                // must gain user_confirmed provenance) — bypass the once-only
+                // stamp guard by clearing it first.
+                upgraded.atMs?.let(enqueuedMarkerStamps::remove)
+                enqueueVisibleLitterMarkers(upgraded, photoBytes)
             }
             DedupDecision.Add -> {
                 val nowMs = Clock.System.now().toEpochMilliseconds()
@@ -292,8 +322,36 @@ class SpotViewModel(
                 _uiState.value = _uiState.value.copy(observedItems = existing + stamped)
                 observedItemStamps.add(nowMs)
                 DiagnosticsLog.info("env-scan", "tagged ${item.itemType} @ ${item.lat}, ${item.lng} (${existing.size + 1} total)")
-                enqueueLitterMarker(stamped, photoBytes)
+                retainLitterEvidence(stamped, photoBytes)
+                enqueueVisibleLitterMarkers(stamped, photoBytes)
             }
+        }
+    }
+
+    /** Keep the evidence frame for the summary screen's litter strip. */
+    private fun retainLitterEvidence(item: ObservedSpotItem, photoBytes: ByteArray?) {
+        if (photoBytes == null) return
+        if (item.domain != null && item.domain != "litter") return
+        val shot = LitterEvidenceShot(
+            bytes = photoBytes,
+            itemType = item.itemType,
+            estimatedWeightGrams = item.estimatedWeightGrams,
+            atMs = item.atMs ?: Clock.System.now().toEpochMilliseconds(),
+        )
+        _uiState.value = _uiState.value.copy(litterEvidence = _uiState.value.litterEvidence + shot)
+    }
+
+    /** Once-only marker upload per item, gated on display visibility
+     *  ([clusterVisibleLitter], Blake 2026-07-23): user-confirmed items
+     *  upload immediately; a lone auto-detection is held back (manifest-only
+     *  data) and only uploads if a genuine cluster forms around it — at
+     *  which point every not-yet-uploaded member of the now-visible cluster
+     *  enqueues too. [incoming]'s photo only ever attaches to itself. */
+    private fun enqueueVisibleLitterMarkers(incoming: ObservedSpotItem, photoBytes: ByteArray?) {
+        for (visible in clusterVisibleLitter(_uiState.value.observedItems)) {
+            val stamp = visible.atMs ?: continue
+            if (!enqueuedMarkerStamps.add(stamp)) continue
+            enqueueLitterMarker(visible, if (stamp == incoming.atMs) photoBytes else null)
         }
     }
 
@@ -860,8 +918,27 @@ class SpotViewModel(
                 // QUEUED — accurate: they persist in CaptureChunkStore and
                 // retry on the next flush trigger (activation, next scan).
                 val watchDeadline = Clock.System.now().toEpochMilliseconds() + CHUNK_WATCH_TIMEOUT_MS
+                var lastRetryKickMs = Clock.System.now().toEpochMilliseconds()
+                var retryKick: Job? = null
                 while (chunksDone < chunkTotal && Clock.System.now().toEpochMilliseconds() < watchDeadline) {
                     delay(CHUNK_WATCH_POLL_MS)
+                    // Active retry (TestFlight 162 "stuck at 10 of 11"): a
+                    // chunk whose PUT timed out sits pending until SOMETHING
+                    // calls flushPending again — which used to be the next
+                    // app launch. Re-kick on a slow cadence while the user is
+                    // watching; flushPending's mutex serializes overlapping
+                    // kicks and each attempt re-presigns a fresh URL.
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    if (nowMs - lastRetryKickMs >= CHUNK_RETRY_KICK_MS && retryKick?.isActive != true) {
+                        lastRetryKickMs = nowMs
+                        retryKick = scope.launch {
+                            try {
+                                captureUploader.flushPending()
+                            } catch (e: Exception) {
+                                DiagnosticsLog.error("env-capture", "watch-loop chunk retry failed", e)
+                            }
+                        }
+                    }
                     val records = try {
                         captureChunkStore.chunksForSession(draft.sessionId)
                     } catch (e: Exception) {
