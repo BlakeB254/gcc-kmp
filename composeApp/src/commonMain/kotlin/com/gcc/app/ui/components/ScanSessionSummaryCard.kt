@@ -36,6 +36,7 @@ import com.gcc.app.ui.map.geoToCanvasProjector
 import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.metersToPixels
 import com.gcc.app.ui.map.quantizeAndTraceOutlines
+import com.gcc.app.ui.map.traceSessionSilhouette
 import com.gcc.app.ui.theme.CardAccentGreen
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccClaimed
@@ -278,8 +279,11 @@ private fun SessionCoverageMap(
         // GPS feed like the minimap's), so it only re-anchors if the session
         // itself changes.
         val anchor = remember(cellCenters) { cellCenters.first() }
+        // Same gap-closing silhouette tracer as the live minimap's frontier
+        // (traceSessionSilhouette) — one shared path, so the blob shown here
+        // is the SAME shape the worker watched grow during the scan.
         val rings = remember(cellCenters) {
-            quantizeAndTraceOutlines(cellCenters, CoverageTracker.cellSizeMeters, anchor.first, anchor.second)
+            traceSessionSilhouette(cellCenters, CoverageTracker.cellSizeMeters, anchor.first, anchor.second)
         }
         // Litter zone: same 5m-grid marching-squares shapes as the live
         // minimap, anchored to the SAME lattice as the coverage rings so the

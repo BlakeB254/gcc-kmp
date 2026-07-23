@@ -92,6 +92,74 @@ class CoverageOutlineTest {
         rings.forEach { assertTrue(isClosed(it)) }
     }
 
+    // ── closeCellGaps / traceSessionSilhouette ───────────────────────
+    // The AR raycast fan samples 15 discrete rays; past ~12m adjacent rays
+    // land further apart than one 3m cell, so fan-credited cells arrive as
+    // sparse single-cell columns ("comb"). Traced raw, every column is its
+    // own ring — the live minimap drew each as a separately-outlined capsule
+    // (field report: "streaks that never connect"). The silhouette tracer
+    // closes those sampling seams before tracing.
+
+    private fun combColumns(cols: List<Int>, rows: IntRange): List<Pair<Double, Double>> =
+        cols.flatMap { c -> rows.map { r -> cellCenter(r, c) } }
+
+    @Test
+    fun rawTraceOfSparseFanCombProducesOneRingPerColumn() {
+        // Documents the pre-fix behavior the silhouette tracer exists to avoid.
+        val rings = quantizeAndTraceOutlines(
+            combColumns(listOf(0, 2, 4), 0..9), cellSizeMeters, anchorLat, anchorLng,
+        )
+        assertEquals(3, rings.size)
+    }
+
+    @Test
+    fun silhouetteBridgesOneCellSamplingGaps() {
+        val rings = traceSessionSilhouette(
+            combColumns(listOf(0, 2, 4), 0..9), cellSizeMeters, anchorLat, anchorLng,
+        )
+        assertEquals(1, rings.size)
+        assertTrue(isClosed(rings.first()))
+    }
+
+    @Test
+    fun silhouetteBridgesTwoCellSamplingGaps() {
+        val rings = traceSessionSilhouette(
+            combColumns(listOf(0, 3), 0..9), cellSizeMeters, anchorLat, anchorLng,
+        )
+        assertEquals(1, rings.size)
+    }
+
+    @Test
+    fun silhouetteKeepsGenuinelySeparateAreasApart() {
+        // A 3+-cell gap is real unscanned ground, not a sampling seam.
+        val rings = traceSessionSilhouette(
+            combColumns(listOf(0, 8), 0..9), cellSizeMeters, anchorLat, anchorLng,
+        )
+        assertEquals(2, rings.size)
+    }
+
+    @Test
+    fun closeCellGapsIsASupersetOfItsInput() {
+        val cells = setOf(0 to 0, 0 to 2, 5 to 5)
+        val closed = closeCellGaps(cells)
+        assertTrue(closed.containsAll(cells))
+    }
+
+    @Test
+    fun closeCellGapsLeavesAnIsolatedCellAlone() {
+        assertEquals(setOf(4 to 4), closeCellGaps(setOf(4 to 4)))
+    }
+
+    @Test
+    fun closeCellGapsOnEmptySetIsEmpty() {
+        assertEquals(emptySet(), closeCellGaps(emptySet()))
+    }
+
+    @Test
+    fun silhouetteOnEmptyInputIsEmpty() {
+        assertEquals(emptyList(), traceSessionSilhouette(emptyList(), cellSizeMeters, anchorLat, anchorLng))
+    }
+
     @Test
     fun chaikinSmoothLeavesTinyRingsUnchanged() {
         val ring = listOf(0.0 to 0.0, 1.0 to 0.0, 0.0 to 0.0)

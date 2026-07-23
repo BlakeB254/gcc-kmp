@@ -167,3 +167,48 @@ fun quantizeAndTraceOutlines(
     val cells = cellCenters.map { (lat, lng) -> lattice.toRowCol(lat, lng) }.toSet()
     return traceCoverageOutlines(cells, lattice::cellCenter, cellSizeMeters)
 }
+
+/**
+ * Morphological closing (radius-1 dilate, then erode, 8-neighborhood): seals
+ * gaps of up to two cells between credited regions while keeping every input
+ * cell (closing is a superset of its input) and leaving genuinely separate
+ * areas (3+ cells apart) as separate islands.
+ *
+ * Why it exists: the AR raycast fan credits only the 15 cells its discrete
+ * rays LAND in per tick. Past ~12m, adjacent rays are further apart than one
+ * 3m grid cell, so a swept stretch of ground comes back as sparse single-cell
+ * columns. Those are sampling seams, not unscanned ground — the fan swept
+ * straight across them. Tracing the raw set outlines every column as its own
+ * capsule (field report, TestFlight 161: the live minimap read as "streaks
+ * that never connect" while the walk-credited summary blob was contiguous).
+ */
+fun closeCellGaps(cells: Set<Pair<Int, Int>>): Set<Pair<Int, Int>> {
+    if (cells.isEmpty()) return cells
+    val dilated = mutableSetOf<Pair<Int, Int>>()
+    for ((r, c) in cells) {
+        for (dr in -1..1) for (dc in -1..1) dilated.add(r + dr to c + dc)
+    }
+    return dilated.filterTo(mutableSetOf()) { (r, c) ->
+        (-1..1).all { dr -> (-1..1).all { dc -> (r + dr to c + dc) in dilated } }
+    }
+}
+
+/**
+ * The session's swept-territory silhouette: [quantizeAndTraceOutlines] with a
+ * [closeCellGaps] pass between quantization and tracing. This is THE shape
+ * both the live scan minimap's frontier (fill + bright edge + veil punch-out)
+ * and the Scan Session Complete summary map trace from the session's GRAZED+
+ * cells — one shared path so the live map and the completion map can never
+ * disagree about what "the area you covered" looks like.
+ */
+fun traceSessionSilhouette(
+    cellCenters: List<Pair<Double, Double>>,
+    cellSizeMeters: Double,
+    anchorLat: Double,
+    anchorLng: Double,
+): List<List<Pair<Double, Double>>> {
+    if (cellCenters.isEmpty()) return emptyList()
+    val lattice = CellLattice(anchorLat, anchorLng, cellSizeMeters)
+    val cells = closeCellGaps(cellCenters.map { (lat, lng) -> lattice.toRowCol(lat, lng) }.toSet())
+    return traceCoverageOutlines(cells, lattice::cellCenter, cellSizeMeters)
+}
