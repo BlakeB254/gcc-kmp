@@ -100,22 +100,9 @@ def main() -> None:
 
     det = PrivacyDetector()
     reports: dict[str, dict] = {}
-    for raw_key, session_id, cell in todo:
-        print(f"[{session_id}] {raw_key}")
-        video = r2_store.download_bytes(raw_key)
-        result = scrub_video_bytes(
-            video, det.detect_frames,
-            dilation_radius=args.dilation_radius, pad_frac=args.pad_frac,
-        )
-        scrub_key = r2_store.scrubbed_key_for(raw_key)
-        qc = det.qc_counts(_sample_frames(result.video_bytes))
-        r2_store.upload_bytes(scrub_key, result.video_bytes, "video/quicktime")
-        print(
-            f"  {result.frame_count} frames, {result.frames_with_detections} with detections "
-            f"{result.detections_by_label}; QC residual {qc}; "
-            f"{len(result.video_bytes) / 1e6:.1f}MB -> {scrub_key}"
-        )
-        rep = reports.setdefault(session_id, {
+
+    def _report_for(session_id: str, cell: str) -> dict:
+        return reports.setdefault(session_id, {
             "schema": 1,
             "sessionId": session_id,
             "locationCellId": cell,
@@ -126,8 +113,48 @@ def main() -> None:
                 "dilationRadius": args.dilation_radius, "padFrac": args.pad_frac,
             },
             "chunks": [],
+            "unreadableChunks": [],
         })
-        rep["chunks"].append({
+
+    # One unreadable chunk must not abort the sweep. Chunks are processed in
+    # (session_id, r2_key) order, so an un-finalized .mov uploaded by the app
+    # (ftyp+mdat but no moov atom — recording interrupted before
+    # AVAssetWriter.finishWriting) used to raise here and starve EVERY later
+    # session's chunks forever: recon jobs then defer on the scrub gate on a
+    # 10-minute loop with no way out. Isolate per chunk instead.
+    unreadable: list[str] = []
+    errored: list[str] = []
+    for raw_key, session_id, cell in todo:
+        print(f"[{session_id}] {raw_key}")
+        try:
+            video = r2_store.download_bytes(raw_key)
+            result = scrub_video_bytes(
+                video, det.detect_frames,
+                dilation_radius=args.dilation_radius, pad_frac=args.pad_frac,
+            )
+        except av.error.InvalidDataError as exc:
+            # Permanent: the object in R2 is not a decodable video. Record it
+            # so the damage is visible and auditable, and keep going.
+            print(f"  !! UNREADABLE video, skipping: {exc}")
+            unreadable.append(raw_key)
+            _report_for(session_id, cell)["unreadableChunks"].append({
+                "rawKey": raw_key, "error": str(exc),
+            })
+            continue
+        except Exception as exc:  # noqa: BLE001 — transient/unknown, keep sweeping
+            print(f"  !! FAILED ({type(exc).__name__}), skipping: {exc}")
+            errored.append(raw_key)
+            continue
+
+        scrub_key = r2_store.scrubbed_key_for(raw_key)
+        qc = det.qc_counts(_sample_frames(result.video_bytes))
+        r2_store.upload_bytes(scrub_key, result.video_bytes, "video/quicktime")
+        print(
+            f"  {result.frame_count} frames, {result.frames_with_detections} with detections "
+            f"{result.detections_by_label}; QC residual {qc}; "
+            f"{len(result.video_bytes) / 1e6:.1f}MB -> {scrub_key}"
+        )
+        _report_for(session_id, cell)["chunks"].append({
             "rawKey": raw_key,
             "scrubbedKey": scrub_key,
             "frames": result.frame_count,
@@ -138,11 +165,27 @@ def main() -> None:
         })
 
     for session_id, rep in reports.items():
-        first_chunk_key = rep["chunks"][0]["scrubbedKey"]
-        report_key = first_chunk_key.rsplit("/", 1)[0] + "/scrub-report.json"
+        # A session whose every chunk was unreadable still gets a report, so
+        # the failure is recorded rather than silently absent.
+        anchor = (rep["chunks"] or rep["unreadableChunks"])[0]
+        anchor_key = anchor.get("scrubbedKey") or r2_store.scrubbed_key_for(anchor["rawKey"])
+        report_key = anchor_key.rsplit("/", 1)[0] + "/scrub-report.json"
         r2_store.upload_bytes(report_key, json.dumps(rep, indent=2).encode(), "application/json")
         print(f"[{session_id}] report -> {report_key}")
 
+    if unreadable:
+        print(f"\n{len(unreadable)} unreadable chunk(s) skipped (permanent):")
+        for k in unreadable:
+            print(f"  {k}")
+    if errored:
+        # Transient/unknown failures are worth surfacing as a unit failure so
+        # they don't rot silently; unreadable ones are permanent and expected.
+        print(f"\n{len(errored)} chunk(s) failed with unexpected errors:")
+        for k in errored:
+            print(f"  {k}")
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -111,3 +111,26 @@ def test_scrub_video_no_detections_still_reencodes():
     result = scrub_video_bytes(src, lambda batch: [[] for _ in batch])
     assert result.frame_count == 12 and result.frames_with_detections == 0
     assert len(_decode_frames(result.video_bytes)) == 12
+
+
+def _unfinalized_mov() -> bytes:
+    """A .mov the app started writing but never finalized: ftyp + mdat with
+    no moov atom. This is exactly what the iOS capture uploads when a
+    recording is interrupted before AVAssetWriter.finishWriting() — seen in
+    real data as raw/464652:-721827/env-1785010826928-ctdbu9/…/chunk-0.mov."""
+    good = _make_video(n_frames=8)
+    # Strip the moov atom by keeping only the leading ftyp/mdat boxes.
+    moov = good.find(b"moov")
+    assert moov > 0, "fixture should contain a moov atom to remove"
+    return good[: moov - 4]
+
+
+def test_unfinalized_mov_raises_invalid_data():
+    """scrub_video_bytes surfaces a moov-less capture as InvalidDataError.
+
+    scrub_worker relies on this being distinguishable from transient errors:
+    it skips + records these permanently-broken chunks instead of aborting
+    the whole sweep (one such chunk used to starve every later session's
+    chunks, deferring their reconstruction jobs forever)."""
+    with pytest.raises(av.error.InvalidDataError):
+        scrub_video_bytes(_unfinalized_mov(), lambda frames: [[] for _ in frames])
