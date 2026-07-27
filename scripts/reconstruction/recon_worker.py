@@ -60,7 +60,7 @@ SCRUB_DEFER_MINUTES = 10
 CLAIM_SQL = f"""
 UPDATE reconstruction_jobs
 SET status='leased', leased_until=now() + interval '{LEASE_MINUTES} minutes',
-    attempts=attempts+1, updated_at=now()
+    attempts=attempts+1, updated_at=now(), last_error=NULL
 WHERE id = (
   SELECT id FROM reconstruction_jobs
   WHERE status='queued' OR (status='leased' AND leased_until < now())
@@ -279,6 +279,12 @@ def process_job(conn, job: Job) -> None:
         missing = unscrubbed_video_chunks(conn, job.location_cell_id)
         if missing:
             raise ScrubPending(missing)
+    # End the implicit transaction the gate's SELECT opened. psycopg is not
+    # autocommit, so leaving it open parks the connection idle-in-transaction
+    # for the entire fusion + gsplat training (30min+) — Neon's
+    # idle_in_transaction_session_timeout then severs it and the completion
+    # write (and the training's GPU time with it) is lost.
+    conn.commit()
 
     train_splat = os.environ.get("RECON_TRAIN_SPLAT", "1") == "1"
     require_activation = os.environ.get("SPLAT_REQUIRE_ACTIVATION", "0") == "1"
@@ -326,12 +332,42 @@ def process_job(conn, job: Job) -> None:
             f"cell {job.location_cell_id}: fusion produced no assets "
             f"(accepted={result.accepted_session_ids}, rejected={result.rejected_session_ids})"
         )
-    complete_cell(conn, job.location_cell_id, result, assets)
+    try:
+        complete_cell(conn, job.location_cell_id, result, assets)
+    except psycopg.OperationalError:
+        # The link can still die during a long training run even with no
+        # transaction open. The GPU work is done and the assets are already
+        # in R2 — retry the bookkeeping once on a fresh connection rather
+        # than throwing the run away.
+        print("db connection lost before completion -- retrying on a fresh one",
+              file=sys.stderr)
+        with psycopg.connect(os.environ["DATABASE_URL"]) as fresh:
+            complete_cell(fresh, job.location_cell_id, result, assets)
     print(
         f"job {job.id} done: cell {job.location_cell_id} v{assets[0].version}, "
         f"{len(assets)} asset(s), accepted={result.accepted_session_ids}, "
         f"rejected={result.rejected_session_ids}, activated={result.activated}"
     )
+
+
+def _safe_rollback(conn) -> None:
+    try:
+        conn.rollback()
+    except psycopg.OperationalError:
+        pass  # connection already gone; _record_outcome falls back to a fresh one
+
+
+def _record_outcome(conn, fn, *args) -> None:
+    """Run a small bookkeeping write (fail_job/defer_job), falling back to a
+    fresh connection when this one died during the long fusion/training run —
+    without this, a lost connection also loses the attempts accounting, so a
+    crashing job never reaches MAX_ATTEMPTS and retries at every lease expiry
+    forever."""
+    try:
+        fn(conn, *args)
+    except psycopg.OperationalError:
+        with psycopg.connect(os.environ["DATABASE_URL"]) as fresh:
+            fn(fresh, *args)
 
 
 def run_once(conn) -> bool:
@@ -345,13 +381,13 @@ def run_once(conn) -> bool:
     try:
         process_job(conn, job)
     except ScrubPending as pending:
-        conn.rollback()
+        _safe_rollback(conn)
         print(f"job {job.id} deferred {SCRUB_DEFER_MINUTES}min: {pending}")
-        defer_job(conn, job, str(pending))
+        _record_outcome(conn, defer_job, job, str(pending))
     except Exception as err:
-        conn.rollback()
+        _safe_rollback(conn)
         traceback.print_exc()
-        fail_job(conn, job, err)
+        _record_outcome(conn, fail_job, job, err)
     return True
 
 
@@ -369,19 +405,37 @@ def main() -> None:
     if not dsn:
         parser.error("DATABASE_URL is required")
 
-    with psycopg.connect(dsn) as conn:
+    conn = psycopg.connect(dsn)
+    try:
         if args.once:
             processed = run_once(conn)
             print("queue empty" if not processed else "done")
             return
-        if args.drain:
-            while run_once(conn):
-                pass
-            print("queue empty, draining done")
-            return
         while True:
-            if not run_once(conn):
+            try:
+                busy = run_once(conn)
+            except psycopg.OperationalError as err:
+                # The shared connection died mid-cycle (Neon severs idle
+                # links); the job's outcome was already recorded on a fresh
+                # connection by run_once. Reconnect and keep draining instead
+                # of taking the whole worker down.
+                print(f"db connection lost ({err}); reconnecting", file=sys.stderr)
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = psycopg.connect(dsn)
+                continue
+            if not busy:
+                if args.drain:
+                    print("queue empty, draining done")
+                    return
                 time.sleep(args.loop)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
